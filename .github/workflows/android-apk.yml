@@ -1,8 +1,9 @@
 name: Android APK
 
 # Builds the phone's APK, for phones and the emulator (arm64-v8a and x86_64 in one file), as the
-# version it ships as, signed with the project's key, and uploads it as the phone-apk artifact.
-# nightly.yml and release.yml call it and put the APK on their release. It has no Run workflow
+# version it ships as, signed with the project's key, and uploads it as the phone-apk artifact,
+# with the App Bundle for Google Play (AniBeam-<version>.aab, the Play flavor) beside it.
+# nightly.yml and release.yml call it and put both on their release. It has no Run workflow
 # of its own: an APK without a train version would sit below every nightly and not install
 # over one, so a build to try is a Nightly run. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a
 # base64 keystore: every APK has to carry the same key, or Android refuses it as an update to
@@ -76,6 +77,12 @@ jobs:
           path: apps/android/vendor/mpv
           key: mpv-${{ hashFiles('apps/android/scripts/fetch-mpv.sh') }}
 
+      # The bundletool jar the bundle needs, pinned and hash-checked by fetch-bundletool.sh.
+      - uses: actions/cache@v4
+        with:
+          path: apps/android/vendor/bundletool
+          key: bundletool-${{ hashFiles('apps/android/scripts/fetch-bundletool.sh') }}
+
       # build.sh links against platforms;android-36, which the runner image may not carry yet.
       - name: Android platform
         run: |
@@ -87,10 +94,15 @@ jobs:
         run: |
           export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" JAVA_HOME="$JAVA_HOME_17_X64"
           scripts/build.sh --dist
+          # The bundle reuses the crates the APK's build above compiled. Once the app reads
+          # ANIBEAM_FLAVOR, the Play flavor recompiles the app crate and nothing else.
+          scripts/build.sh --bundle --dist
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: phone-apk
-          path: apps/android/dist/*.apk
+          path: |
+            apps/android/dist/*.apk
+            apps/android/dist/*.aab
           if-no-files-found: error

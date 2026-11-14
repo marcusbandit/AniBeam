@@ -19,7 +19,7 @@ skip=(
   ':(exclude)**/CHANGELOG.md'
   ':(exclude)CHANGELOG.md'
   ':(exclude)docs/superpowers/'
-  ':(exclude)core/src/store/sql/'
+  ':(exclude)foundation/src/store/sql/'
   ':(exclude)core/src/releases/kinds.rs'
   ':(exclude)*.lock'
   ':(exclude).github/no-site-names.sh'

@@ -73,14 +73,15 @@ pub const BOOT_OPTIONS: [(&str, &str); 7] = [
 ];
 
 /// The iPhone's: the picture goes through the render API on OpenGL ES, decoding uses
-/// VideoToolbox, whose frames reach that GL context without a copy (mpv's `ios-gl` interop),
-/// and sound goes to an AudioUnit, which sets up the app's audio session itself. Film grain
+/// VideoToolbox with a copy back into ordinary textures. Without the copy, mpv's `ios-gl`
+/// interop maps the frames as luminance textures and their colour comes out purple and green
+/// (#977). Sound goes to an AudioUnit, which sets up the app's audio session itself. Film grain
 /// is the decoder's to apply: left to the GL renderer, this build's software HEVC frames come
 /// out black or in streaks.
 #[cfg(target_os = "ios")]
 pub const BOOT_OPTIONS: [(&str, &str); 6] = [
     ("vo", "libmpv"),
-    ("hwdec", "videotoolbox"),
+    ("hwdec", "videotoolbox-copy"),
     ("vd-lavc-film-grain", "cpu"),
     ("ao", "audiounit"),
     ("idle", "yes"),

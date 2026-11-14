@@ -15,22 +15,18 @@ crate-type = ["lib"]
 [dependencies]
 uniffi.workspace = true
 anibeam-contract = { workspace = true, features = ["sqlite"] }
+anibeam-foundation.workspace = true
+anibeam-net.workspace = true
 anibeam-recs.workspace = true
 anibeam-room.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
-rusqlite_migration.workspace = true
-directories = "6"
 notify = "8.2"
 notify-debouncer-full = "0.7"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
-governor = "0.10"
-backon = { version = "1.6", features = ["tokio-sleep"] }
-keyring-core = "1.0"
 regex = "1"
 # anirss's title patterns use lookaround, which `regex` does not do.
 fancy-regex = "0.14"
@@ -47,7 +43,6 @@ toml = "1"
 roxmltree = "0.20"
 anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
-if-addrs = "0.13"
 # Watch together rooms (#846): the relay's WebSocket, opened through reqwest's own client
 # and HTTP upgrade so it rides the same TLS setup as every other request.
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
@@ -73,21 +68,9 @@ anyhow = { version = "1", optional = true }
 phone = ["dep:librqbit", "dep:anyhow"]
 cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
 
-# The machine's keyring: the Secret Service over D-Bus on Linux, the login keychain on a
-# Mac, the Credential Manager on Windows. `keychain` rather than `protected`: the
-# protected store needs a provisioning profile, and the Mac build is ad-hoc signed.
-[target.'cfg(not(any(target_os = "macos", windows)))'.dependencies]
-zbus-secret-service-keyring-store = { version = "1.0", features = ["rt-tokio-crypto-rust"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
-
-[target.'cfg(windows)'.dependencies]
-windows-native-keyring-store = "1.1"
-
-# uname for the host's name; Windows reads COMPUTERNAME instead.
+# Pausing and resuming a host conversion with STOP and CONT.
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["system", "process"] }
+rustix = { version = "1", features = ["process"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -98,14 +81,6 @@ anibeam-relay = { path = "../apps/relay" }
 # target tables cannot read build.rs's `phone_os`, so they name the phone's systems.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 trash = "5"
-
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-# Fronted requests keep the bot shield's cookies (net/mod.rs, Front).
-reqwest = { version = "0.13", default-features = false, features = ["cookies"] }
-
-# Android's bundled TLS roots (net/mod.rs): its platform verifier needs JNI.
-[target.'cfg(target_os = "android")'.dependencies]
-webpki-root-certs = "1"
 
 [[example]]
 name = "cast_hls"

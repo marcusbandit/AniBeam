@@ -83,12 +83,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo clippy --locked -p anibeam-contract -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
+        run: cargo clippy --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
 
       # The contract alone, without the sqlite feature the core turns on: one cargo call
       # with the core merges their features, and would hide an ungated rusqlite use here.
       - name: Clippy (contract alone)
         run: cargo clippy --locked -p anibeam-contract --all-targets -- -D warnings
+
+      # The foundation alone, for the same reason: a feature of a shared dependency that only
+      # the core turns on would build here with the core and fail for the crate on its own.
+      - name: Clippy (foundation alone)
+        run: cargo clippy --locked -p anibeam-foundation --all-targets -- -D warnings
+
+      - name: Clippy (net alone)
+        run: cargo clippy --locked -p anibeam-net --all-targets -- -D warnings
 
       # Only the phone build compiles the core's phone and cast features, and no other
       # workflow builds the phone, so without this a desktop change can break the APK and
@@ -97,4 +105,4 @@ jobs:
         run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --locked -p anibeam-contract -p anibeam-core -p anibeam-host-api -p anibeam-cli
+        run: cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-core -p anibeam-host-api -p anibeam-cli

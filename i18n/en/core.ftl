@@ -469,7 +469,7 @@ core-core-guest-not-interested = Not interested on that computer is its owner's 
 core-core-guest-recommended = the recommendations on that computer are learnt from its owner's list
 core-core-nothing-picked = nothing picked
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is not a match provider
 core-prefs-provider-count = { $provider } appears { $count } times; every provider appears once
@@ -515,16 +515,16 @@ core-host-not-an-address = { $text } is not an address and port
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } is not a device key
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = timed out after { $ms }ms
 core-net-rate-limited = { $provider } rate limited
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: timed out a moment ago; { -app-name } waits { $seconds } s before asking it again
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = no data
 
@@ -555,7 +555,7 @@ core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
 core-calendar-episode = { $title } - Episode { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no home directory
 
@@ -965,7 +965,7 @@ core-metadata-progress-imdb-ratings = IMDb ratings
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = fetching images

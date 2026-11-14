@@ -465,7 +465,7 @@ core-core-guest-not-interested = «Не интересно» на том ком�
 core-core-guest-recommended = рекомендации на том компьютере подобраны по списку его владельца
 core-core-nothing-picked = ничего не выбрано
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } не является источником данных
 core-prefs-provider-count = { $provider } указан несколько раз ({ $count }); каждый источник указывается один раз
@@ -509,16 +509,16 @@ core-host-not-an-address = { $text } не является адресом с п�
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = время ожидания истекло через { $ms } мс
 core-net-rate-limited = { $provider } ограничил частоту запросов
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: только что не ответил вовремя; { -app-name } ждёт { $seconds } с перед новым запросом
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = нет данных
 
@@ -549,7 +549,7 @@ core-update-cannot-copy = Не удалось скопировать новое 
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
 core-calendar-episode = { $title }, серия { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = нет домашней папки
 
@@ -977,7 +977,7 @@ core-metadata-progress-imdb-ratings = рейтинги IMDb
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений

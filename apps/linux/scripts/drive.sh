@@ -15,8 +15,8 @@ log="$out/$(basename "$script" .json).drive.log"
 # target/debug/anibeam-staged, which is what runs. ANIBEAM_NO_BUILD=1 skips the build and reuses
 # this checkout's last staged build, so parallel captures in one checkout skip the rebuild.
 source "$(dirname "$0")/target-dir.sh"
-# ANIBEAM_QML_DIR=<dir> (debug builds) loads the QML from disk. A relative dir is made
-# absolute against the caller's directory; Qt's compile cache for it stays in the sandbox
+# ANIBEAM_QML_DIR=<dir> (debug builds, or the dev-qml feature) loads the QML from disk. A
+# relative dir is made absolute against the caller's directory; Qt's compile cache for it stays in the sandbox
 # root, not ~/.cache.
 if [ -n "${ANIBEAM_QML_DIR:-}" ]; then
   export ANIBEAM_QML_DIR="$(realpath -m "$ANIBEAM_QML_DIR")"
