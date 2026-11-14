@@ -13,7 +13,7 @@ name: Nightly
 # The phone rides the same train under its own number: when the phone or what it builds on
 # changed since its last nightly, the same run builds its APK from apps/android/Cargo.toml's
 # version, 2.4.3-nightly.20261030.12, and publishes it as android-v2.4.3-nightly.20261030.12,
-# with the iPhone's unsigned IPA (AniBeam-2.4.3-nightly.20261030.12.ipa) when that built too.
+# with the iPhone's unsigned IPA (AniBeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
 on:
   workflow_dispatch:
     inputs:
@@ -144,6 +144,7 @@ jobs:
     with:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.phone_version }}
+      nightly: true
 
   publish:
     needs: [gate, macos, linux, windows]
@@ -219,7 +220,8 @@ jobs:
         if: needs.ios.result == 'success'
         env:
           VERSION: ${{ needs.gate.outputs.phone_version }}
-        run: mv ipa/AniBeam.ipa "dist/AniBeam-$VERSION.ipa"
+        # AniBeam-Nightly-: the site lists only IPAs built with the nightly bundle id (site/tools/altstore.py).
+        run: mv ipa/AniBeam.ipa "dist/AniBeam-Nightly-$VERSION.ipa"
 
       - name: Publish the phone's nightly
         env:
