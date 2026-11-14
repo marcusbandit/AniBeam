@@ -155,8 +155,11 @@ fn room(reply: Result<Reply, CoreError>) -> Option<RoomInfo> {
 fn torrent(hash: &str, name: &str, progress: f64, eta: i64) -> String {
     json!([{
         "hash": hash, "name": name, "state": "downloading", "progress": progress, "eta": eta,
-        "save_path": "/lib/Bebop", "content_path": file_path(5.0),
-        "magnet_uri": format!("magnet:?xt=urn:btih:{hash}&dn=x&tr=udp%3A%2F%2Ftracker.example%3A1337"),
+        "save_path": "/lib/Bebop", "content_path": file_path(5.0), "private": false,
+        "magnet_uri": format!(
+            "magnet:?xt=urn:btih:{hash}&dn=x&tr=udp%3A%2F%2Ftracker.example%3A1337\
+             &tr=https%3A%2F%2Fprivate.example%2F0a1b2c3d4e5f6a7b%2Fannounce"
+        ),
     }])
     .to_string()
 }
@@ -321,7 +324,11 @@ fn a_member_downloads_the_host_s_torrent() {
     let urls = added_urls(&ben);
     assert_eq!(urls.len(), 1, "{urls:?}");
     assert!(urls[0].starts_with(&format!("magnet:?xt=urn:btih:{HASH}")));
-    assert!(urls[0].contains("tracker.example"), "trackers come along");
+    assert!(urls[0].contains("tracker.example"), "public trackers come along");
+    assert!(
+        !urls[0].contains("private.example"),
+        "a tracker with a passkey in its path stays with the host"
+    );
     // The relay never saw the hash or the release: only Ann's and Ben's apps did
     assert!(
         ben.http
@@ -493,4 +500,57 @@ fn the_host_cannot_ask_itself_and_a_member_with_the_file_cannot_ask() {
             other => panic!("{other:?}"),
         }
     }
+}
+
+#[test]
+fn a_private_torrent_is_never_offered() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[5.0]);
+    let ben = person(&relay, "Ben", &[4.0]);
+    let path = file_path(5.0);
+    ann.core
+        .store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at) VALUES (?1, ?2, ?3, ?4)",
+                params![path, HASH, NAME, anibeam_core::time::now_secs()],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let mut private: serde_json::Value =
+        serde_json::from_str(&torrent(HASH, NAME, 1.0, 0)).unwrap();
+    private[0]["private"] = json!(true);
+    ann.http.push_for(
+        &format!("torrents/info?hashes={HASH}"),
+        200,
+        private.to_string(),
+    );
+    let empty =
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>f</title></channel></rss>";
+    for _ in 0..6 {
+        ben.http.push_for("feed.example", 200, empty);
+    }
+    room_with_ben_missing(&ann, &ben);
+    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    // Ann's app offers the release's name alone, and Ben searches for it
+    common::wait_for(
+        &ann.c,
+        |e| {
+            e.plain_words
+                .as_ref()
+                .is_some_and(|w| w.id == "core-room-media-sent-name")
+        },
+        WAIT,
+    );
+    common::wait_for(
+        &ben.c,
+        |e| {
+            e.plain_words
+                .as_ref()
+                .is_some_and(|w| w.id == "core-room-media-not-found")
+        },
+        WAIT,
+    );
+    assert!(added_urls(&ben).is_empty());
 }

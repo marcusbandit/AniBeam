@@ -5,9 +5,9 @@
 //! the payloads on and reads none of them. The member asks (`Secret::Ask`); the
 //! host's app looks up where its own file came from and answers with an
 //! `Offer`. When the torrent client still holds the torrent the file came from
-//! (`downloads::origins`), the offer carries its magnet, trackers included, and
-//! the member hands that to its own torrent client: the host is a peer. When it
-//! does not, the offer carries the release's name, group and resolution, and the
+//! (`downloads::origins`) and it is not a private tracker's, the offer carries
+//! its magnet with the public trackers alone, and the member hands that to its
+//! own torrent client: the host is a peer. When it does not, the offer carries the release's name, group and resolution, and the
 //! member searches its own sources for the same release and downloads the one
 //! that fits best (`pick`). Either way the download goes through the downloads
 //! engine (`downloads::download_telling`), saved into the member's copy of the
@@ -68,7 +68,9 @@ pub enum Secret {
 pub struct Offer {
     /// The room episode this is for, so an answer to an old ask is dropped.
     pub episode_key: String,
-    /// The torrent, trackers included, while the host's client still holds it.
+    /// The torrent while the host's client still holds it: its hash, its name
+    /// and its public trackers (`foundation::magnet::public_only`), never a
+    /// private torrent's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub magnet: Option<String>,
     /// The info hash the file came from, when known: a search result with the
@@ -234,10 +236,24 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
 }
 
 /// The host's offer, when it answers this member's ask: the download starts.
-fn take_offer(playback: &Playback, serial: u64, from: MemberId, offer: Offer) {
+fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer) {
     let Some(owner) = owned(playback, serial) else {
         return;
     };
+    // Only a magnet with a hash reaches the torrent client, rebuilt from its hash,
+    // name and public trackers: any other link would have this member's machine
+    // fetch an address of the sender's choosing. Without one the release's name
+    // is still searched for on this member's own sources.
+    if let Some(link) = offer.magnet.take() {
+        offer.magnet = crate::foundation::magnet::public_only(&link);
+        if offer.magnet.is_none() {
+            tracing::warn!("room: an offer's link is not a magnet; its name is searched for");
+        }
+    }
+    offer.hash = offer
+        .hash
+        .take()
+        .filter(|h| crate::foundation::magnet::is_hash(h));
     let started = {
         let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
@@ -891,7 +907,14 @@ async fn offer_for(playback: &Arc<Playback>, file: u64, e: &proto::EpisodeRef) -
     }
     let magnet = match &origin {
         Some(o) => match downloads::qbt_client(&playback.downloads).await {
-            Ok(qbt) => qbt.magnet(&o.hash).await.ok().flatten(),
+            // Never a private torrent, and only the trackers that carry nothing
+            // of the host's own
+            Ok(qbt) => qbt
+                .magnet(&o.hash)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|m| crate::foundation::magnet::public_only(&m)),
             Err(err) => {
                 tracing::debug!("room: the torrent client was not reached: {err}");
                 None
