@@ -40,7 +40,8 @@ ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
-debug binary is minutes; the QML parse is a fraction of a second). It exists in debug and tester builds only. A
+debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds and in
+builds with the `dev-qml` feature only. A
 URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml`
 the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared
 components all come from disk. Edit, then run with the binary as it stands:
@@ -56,12 +57,15 @@ turn a relative dir into an absolute one against the directory they run from; a 
 reported in the `.log` and ignored, and a file missing from the dir is reported once and loaded from the
 compiled copy. Build before the last run of a task all the same: the binary the launcher starts has the QML compiled in.
 
-A build to try on another machine is a tester build, not a release build: `cargo build --profile
-tester -p anibeam` writes `target/tester/anibeam`, incremental, without debug info, so a Rust change
-relinks in a fraction of the release time and the binary copies over quickly. It keeps debug
-assertions, so it reads `ANIBEAM_QML_DIR` too: copy `apps/linux/qml/` over with the binary, start it
-with `ANIBEAM_QML_DIR` pointing there, and after a QML-only change copy the folder again and restart.
-It is never shipped.
+A build to try on another machine is a tester build: `cargo build --profile tester -p anibeam
+--features dev-qml` writes `target/tester/anibeam`, a release build without debug info, so the
+binary copies over quickly, and it reads `ANIBEAM_QML_DIR`. The other machine needs the same Qt,
+MpvQt and libmpv as the build box. Copy the binary, `apps/linux/qml/`, `apps/linux/themes/` and
+`apps/linux/mpv.conf` over, and start it with `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and
+`ANIBEAM_MPV_CONF` pointing at them. Quit any Anibeam already running there first: a second start
+hands off to the running one and exits. Without `--root <dir>` it opens that machine's real data,
+and a migration in the tester moves the database the installed build reads next. After a QML-only
+change, copy the folder again and restart. It is never shipped.
 
 `shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
 a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:
