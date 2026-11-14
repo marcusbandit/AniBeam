@@ -6,6 +6,8 @@
 //! - `POST /rooms` with `{"episode": EpisodeRef}` makes a room: `201` with
 //!   `{"code", "host_key"}`.
 //! - `GET /rooms/{code}/ws` joins one over WebSocket; `404` when it does not exist.
+//! - `GET /` is the find page, where a code is typed; `/?code=...` goes to
+//!   that room's page.
 //! - `GET /{code}` is the join page a shared link opens.
 //! - `GET /health` answers `ok`.
 //!
@@ -27,9 +29,9 @@ use axum::Router;
 use axum::body::Bytes;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, RawQuery, State};
 use axum::http::{StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -82,6 +84,7 @@ pub async fn serve_with(listener: TcpListener, options: Options) -> std::io::Res
         .route("/health", get(health))
         .route("/rooms", post(create))
         .route("/rooms/{code}/ws", get(join))
+        .route("/", get(find_page))
         .route("/{code}", get(join_page))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .with_state(relay);
@@ -297,6 +300,17 @@ async fn join(
             .max_message_size(MAX_BODY)
             .on_upgrade(move |socket| run_socket(relay, room_code, socket)),
         Err(rejection) => rejection.into_response(),
+    }
+}
+
+/// The find page, or the room page a script-less form asked for.
+async fn find_page(RawQuery(query): RawQuery) -> Response {
+    match page::code_from_query(query.as_deref()) {
+        Ok(Some(room_code)) => Redirect::to(&format!("/{room_code}")).into_response(),
+        Ok(None) => Html(page::find_html(None)).into_response(),
+        Err(typed) => {
+            (StatusCode::BAD_REQUEST, Html(page::find_html(Some(&typed)))).into_response()
+        }
     }
 }
 
