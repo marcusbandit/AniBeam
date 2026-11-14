@@ -1,4 +1,4 @@
-# Maintainer: Marcus Rosado <marcusbanditten@gmail.com>
+# Maintainer: Marcus Rosado <22052802+marcusbandit@users.noreply.github.com>
 # The AUR's anibeam-bin: the release build from GitHub, nothing compiled. CI builds the binary
 # in an Arch container against Arch's Qt, MpvQt and libmpv (arch.yml) and packs it with
 # apps/linux/packaging/aur/bin-tarball.sh, so it installs the same files as anibeam. Publish it

@@ -932,10 +932,10 @@ mod tests {
 
     #[test]
     fn the_dns_name_comes_out_of_the_status_document() {
-        let doc = br#"{"Version":"1.80","Self":{"DNSName":"banditbox.tail24c6a9.ts.net.","HostName":"banditbox"}}"#;
+        let doc = br#"{"Version":"1.80","Self":{"DNSName":"desk.example-tailnet.ts.net.","HostName":"desk"}}"#;
         assert_eq!(
             dns_name_of(doc).as_deref(),
-            Some("banditbox.tail24c6a9.ts.net")
+            Some("desk.example-tailnet.ts.net")
         );
         assert_eq!(dns_name_of(br#"{"Self":{"DNSName":""}}"#), None);
         assert_eq!(dns_name_of(br#"{"Self":{}}"#), None);
