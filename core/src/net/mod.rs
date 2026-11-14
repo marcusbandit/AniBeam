@@ -283,17 +283,17 @@ pub struct ReqwestHttp {
 /// and turn away their `Domain=` of the site; the jar is kept by the real host instead.
 struct Front {
     client: reqwest::Client,
-    #[cfg(target_os = "android")]
+    #[cfg(phone_os)]
     jar: reqwest::cookie::Jar,
     gate: tokio::sync::Mutex<front::Gate>,
 }
 
 impl Front {
-    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    #[cfg_attr(not(phone_os), allow(dead_code))]
     fn new(client: reqwest::Client) -> Front {
         Front {
             client,
-            #[cfg(target_os = "android")]
+            #[cfg(phone_os)]
             jar: reqwest::cookie::Jar::default(),
             gate: Default::default(),
         }
@@ -301,7 +301,7 @@ impl Front {
 
     async fn send(
         &self,
-        #[cfg_attr(not(target_os = "android"), allow(unused_mut))] mut req: HttpRequest,
+        #[cfg_attr(not(phone_os), allow(unused_mut))] mut req: HttpRequest,
         url: String,
         host: String,
     ) -> Result<HttpResponse, HttpError> {
@@ -318,9 +318,9 @@ impl Front {
                 ),
             })?;
         tokio::time::sleep(wait).await;
-        #[cfg(target_os = "android")]
+        #[cfg(phone_os)]
         let real = reqwest::Url::parse(&req.url).ok();
-        #[cfg(target_os = "android")]
+        #[cfg(phone_os)]
         if let Some(real) = &real
             && let Some(cookies) = reqwest::cookie::CookieStore::cookies(&self.jar, real)
             && let Ok(cookies) = cookies.to_str()
@@ -329,7 +329,7 @@ impl Front {
         }
         let answer = request(self.client.clone(), req, url, Some(host)).await;
         gate.finished(std::time::Instant::now(), answer.is_ok());
-        #[cfg(target_os = "android")]
+        #[cfg(phone_os)]
         if let (Ok(response), Some(real)) = (&answer, &real) {
             let set: Vec<reqwest::header::HeaderValue> = response
                 .headers
@@ -350,43 +350,33 @@ impl ReqwestHttp {
         // builder method. The platform verifier comes with that feature.
         // Set on the phone only (front.rs).
         let fronts = front::Fronts::default();
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(phone_os))]
         let fronted = None;
-        #[cfg(target_os = "android")]
+        #[cfg(phone_os)]
         let fronted;
         let builder = reqwest::Client::builder()
             .user_agent(format!("AniBeam/{}", crate::VERSION))
             .timeout(timeout);
-        // Android's platform verifier needs a JNI handle and a Java helper
-        // the app does not carry, so the phone checks against the bundled
-        // Mozilla roots instead.
-        #[cfg(target_os = "android")]
+        #[cfg(phone_os)]
         let builder = {
-            // Every root has to parse: a silently thinner store would turn
-            // into certificate errors far from their cause.
-            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
-                .iter()
-                .map(|der| reqwest::Certificate::from_der(der))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
+            let roots = bundled_roots()?;
             // Names are looked up over HTTPS: phone networks that block release sites by
             // name do it in plain DNS (see doh.rs). The resolvers' own client goes by
             // address, so it needs no lookup of its own.
-            let resolvers = reqwest::Client::builder()
-                .user_agent(format!("AniBeam/{}", crate::VERSION))
-                .tls_certs_only(roots.clone())
-                .build()
-                .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
+            let resolvers = with_roots(
+                reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION)),
+                roots.clone(),
+            )
+            .build()
+            .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
             let doh = doh::Doh::new(resolvers);
             fronted = Some(Front::new(front::client(
                 &doh,
                 &fronts,
-                Some(roots.clone()),
+                roots.clone(),
                 timeout,
             )?));
-            builder
-                .tls_certs_only(roots)
-                .dns_resolver(std::sync::Arc::new(doh))
+            with_roots(builder, roots).dns_resolver(std::sync::Arc::new(doh))
         };
         let client = builder
             .build()
@@ -419,19 +409,37 @@ pub fn room_client(connect_timeout: Duration) -> Result<reqwest::Client, CoreErr
         .map_err(|e| CoreError::internal(format!("room client: {e}")))
 }
 
-/// A client builder with the user agent and, on the phone, the bundled Mozilla roots.
+/// A client builder with the user agent and, on Android, the bundled Mozilla roots.
 fn plain_builder() -> Result<reqwest::ClientBuilder, CoreError> {
     let builder = reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION));
+    Ok(with_roots(builder, bundled_roots()?))
+}
+
+/// The builder checking against `roots` only, or the platform's verifier without them.
+fn with_roots(
+    builder: reqwest::ClientBuilder,
+    roots: Option<Vec<reqwest::Certificate>>,
+) -> reqwest::ClientBuilder {
+    match roots {
+        Some(roots) => builder.tls_certs_only(roots),
+        None => builder,
+    }
+}
+
+/// The Mozilla roots the app carries, on Android only: its platform verifier needs a JNI
+/// handle and a Java helper the app does not carry. Every other system, the iPhone's
+/// included, verifies against its own store. Every root has to parse: a silently thinner
+/// store would turn into certificate errors far from their cause.
+fn bundled_roots() -> Result<Option<Vec<reqwest::Certificate>>, CoreError> {
     #[cfg(target_os = "android")]
-    let builder = {
-        let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
-            .iter()
-            .map(|der| reqwest::Certificate::from_der(der))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
-        builder.tls_certs_only(roots)
-    };
-    Ok(builder)
+    return webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .map(|der| reqwest::Certificate::from_der(der))
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+        .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")));
+    #[cfg(not(target_os = "android"))]
+    Ok(None)
 }
 
 /// A URL as a log or error line names it: scheme, host and a port the URL names, since a
