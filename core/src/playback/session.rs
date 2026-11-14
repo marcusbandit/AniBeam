@@ -28,9 +28,11 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::titles;
+use crate::foundation::watch::MARK_FRACTION;
 use crate::library::cards;
 use crate::library::sidecar::sidecars_of;
-use crate::library::{classifier, labels, titles};
+use crate::library::{classifier, labels};
 use crate::prefs;
 use crate::presence::Activity;
 use crate::time;
@@ -41,9 +43,6 @@ pub const VIEW_SECS: f64 = 30.0;
 /// The largest advance between two ticks that still reads as playing rather
 /// than as a seek: one and a half times the shell's one-second tick.
 pub const MAX_TICK_DELTA: f64 = 1.5;
-/// How far through a file counts as watched when no outro is known. The
-/// number AniList and MAL use themselves.
-pub const MARK_FRACTION: f64 = 0.85;
 /// A position under this is not worth resuming to.
 pub const RESUME_HEAD: f64 = 5.0;
 /// How far the playhead has to move before another resume point is worth
@@ -143,7 +142,7 @@ impl Sessions {
     pub(crate) fn playing(&self) -> Option<Session> {
         self.lock()
             .values()
-            .filter(|s| s.profile == crate::profiles::OWNER)
+            .filter(|s| s.profile == crate::foundation::trust::OWNER)
             .filter(|s| s.last_position.is_some() && !s.paused)
             .max_by_key(|s| s.id)
             .cloned()
@@ -474,7 +473,7 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 /// Everything the player needs before the first frame, and the session the
 /// ticks that follow belong to.
 pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
-    open_for(core, file, crate::profiles::OWNER)
+    open_for(core, file, crate::foundation::trust::OWNER)
 }
 
 /// `OpenPlayback`: [`open`] as the call's reply.
@@ -732,7 +731,7 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
         (s.clone(), fired)
     };
     // Discord shows the owner's own playing, never a guest's.
-    if s.profile == crate::profiles::OWNER {
+    if s.profile == crate::foundation::trust::OWNER {
         crate::presence::tick(core, s.id, &s.presence, position, paused);
     }
     crate::room::tick(core, s.id, position, paused);
@@ -794,7 +793,7 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
         )?;
         Ok(())
     })?;
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
     let (folder, code) = core.store.read(|c| line_labels(c, s))?;
@@ -816,7 +815,7 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
 /// write answers is the outcome and none of it is a failure of the tick.
 fn mark(core: &Core, s: &Session) {
     // The tracker accounts are the owner's; a guest's own come with #632.
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return;
     }
     let Some(number) = s.number else { return };
@@ -900,7 +899,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     })?;
     // The bus is the owner's shell and log: a guest's playing writes their
     // rows and says nothing there.
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
     core.bus.debug(
@@ -950,7 +949,7 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");
         }
     });
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return;
     }
     core.bus.debug(
@@ -1055,7 +1054,7 @@ mod tests {
             presence: Arc::new(Activity::describe(
                 "Bebop", "EP 3", None, is_extra, false, None,
             )),
-            profile: crate::profiles::OWNER,
+            profile: crate::foundation::trust::OWNER,
         }
     }
 

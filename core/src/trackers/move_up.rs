@@ -58,7 +58,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
                 (r.get(6)?, r.get(7)?, r.get(8)?);
             Ok(MoveRow {
                 series: r.get::<_, i64>(0)? as u64,
-                title: crate::library::titles::resolve(
+                title: crate::foundation::titles::resolve(
                     lang,
                     romaji.as_deref(),
                     english.as_deref(),

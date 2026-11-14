@@ -19,6 +19,8 @@ use super::build::{self, LibraryPart};
 use super::{convert, history, keys, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
+use crate::foundation::machine::hostname;
+use crate::foundation::trust::{Asker, TailnetUser};
 use crate::time;
 
 /// How long a built snapshot answers every request.
@@ -38,17 +40,6 @@ pub struct Served {
     /// "": a profile never changes its person, so it is looked up once per launch.
     profiles: std::sync::Mutex<HashMap<String, u64>>,
     peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
-}
-
-/// The machine's name, for `Hello::host`.
-pub fn hostname() -> String {
-    #[cfg(unix)]
-    return rustix::system::uname()
-        .nodename()
-        .to_string_lossy()
-        .into_owned();
-    #[cfg(not(unix))]
-    return std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Windows".to_string());
 }
 
 pub fn router(core: Weak<Core>) -> Router {
@@ -125,7 +116,7 @@ pub struct Profile(pub u64);
 /// The person a request is answered as, as the tailnet names them right now, set beside
 /// [`Profile`] (#633). None when the tailnet does not say, as on a tagged machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Person(pub Option<trust::TailnetUser>);
+pub struct Person(pub Option<TailnetUser>);
 
 /// The sentence a phone shows when it asks for an episode here while
 /// streaming is off.
@@ -196,7 +187,7 @@ async fn trusted(
         // owner, so it is the owner's; a tailnet device is its Tailscale user's.
         let (asker, me) = match (&verdict, &proof) {
             (trust::Verdict::Outside, keys::Proof::Paired(_)) => (
-                trust::Asker::Owner,
+                Asker::Owner,
                 core.host.tailnet_now().and_then(|t| t.owner().cloned()),
             ),
             _ => core.host.asker(from.ip()),
@@ -204,14 +195,14 @@ async fn trusted(
         // Who it is, as the tailnet names them now, for the hello (#633). The profile
         // id below is cached for the launch; the name is read fresh with every request.
         let who = match &asker {
-            trust::Asker::Owner => me.clone(),
-            trust::Asker::Person(user) => Some(user.clone()),
-            trust::Asker::Unknown => None,
+            Asker::Owner => me.clone(),
+            Asker::Person(user) => Some(user.clone()),
+            Asker::Unknown => None,
         };
         let key = match &asker {
-            trust::Asker::Owner => String::new(),
-            trust::Asker::Person(user) => user.id.clone(),
-            trust::Asker::Unknown => return Ok((verdict, proof, None, None)),
+            Asker::Owner => String::new(),
+            Asker::Person(user) => user.id.clone(),
+            Asker::Unknown => return Ok((verdict, proof, None, None)),
         };
         let known = served
             .profiles
@@ -332,7 +323,7 @@ async fn hello(
     // takes them from (#733).
     let owner = profile
         .as_ref()
-        .is_some_and(|p| p.0.0 == crate::profiles::OWNER);
+        .is_some_and(|p| p.0.0 == crate::foundation::trust::OWNER);
     // `trusted` read the key before this route, so this only takes it.
     let key = st
         .core
@@ -492,7 +483,7 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
     let (snapshot, library) = build::snapshot(&core, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
     // The posters are everyone's; the owner's read keeps their table fresh.
-    if profile == crate::profiles::OWNER {
+    if profile == crate::foundation::trust::OWNER {
         *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
     }
     *slot = Some((Instant::now(), body.clone()));
@@ -512,10 +503,11 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
         .core
         .upgrade()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let part =
-        tokio::task::spawn_blocking(move || build::library_part(&core, crate::profiles::OWNER))
-            .await
-            .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
+    let part = tokio::task::spawn_blocking(move || {
+        build::library_part(&core, crate::foundation::trust::OWNER)
+    })
+    .await
+    .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
     let part = Arc::new(part);
     *slot = Some((Instant::now(), part.clone()));
     Ok(part)

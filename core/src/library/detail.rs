@@ -9,12 +9,13 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
+use crate::foundation::titles;
+use crate::foundation::watch::MARK_FRACTION;
 use crate::i18n::tr;
 use crate::library::cards::{next_up, upcoming};
 use crate::library::classifier;
+use crate::library::labels;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
-use crate::library::{labels, titles};
-use crate::playback::session::MARK_FRACTION;
 use crate::store::sql::placeholders;
 use crate::time;
 
@@ -393,7 +394,7 @@ impl Snapshot {
             // The list kept on this device is the owner's alone, as `load_for` reads it.
             let kept_here: Option<String> = r
                 .get::<_, Option<String>>(8)?
-                .filter(|_| self.profile == crate::profiles::OWNER);
+                .filter(|_| self.profile == crate::foundation::trust::OWNER);
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
@@ -992,7 +993,7 @@ mod tests {
                 })
                 .unwrap()
         };
-        let owner = crate::profiles::OWNER;
+        let owner = crate::foundation::trust::OWNER;
         assert_eq!(status(owner, Tracker::Anilist), Some(ListStatus::Watching));
         assert_eq!(status(2, Tracker::Anilist), Some(ListStatus::Completed));
         assert_eq!(status(owner, Tracker::Mal), Some(ListStatus::Paused));

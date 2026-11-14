@@ -312,7 +312,13 @@ impl Snapshot {
         now: SystemTime,
         scope: Option<&[u64]>,
     ) -> Result<Snapshot, CoreError> {
-        Self::load_for(conn, crate::profiles::OWNER, images_dir, now, scope)
+        Self::load_for(
+            conn,
+            crate::foundation::trust::OWNER,
+            images_dir,
+            now,
+            scope,
+        )
     }
 
     /// [`Snapshot::load`] with one profile's progress (#631): its history, resume
@@ -375,7 +381,7 @@ impl Snapshot {
         snap.load_tracker_entries(conn, profile, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, profile, scoped_series)?;
         // The list kept on this device is the owner's until it gets a profile (#632).
-        if profile == crate::profiles::OWNER {
+        if profile == crate::foundation::trust::OWNER {
             snap.load_local_entries(conn, scoped_series)?;
         }
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;

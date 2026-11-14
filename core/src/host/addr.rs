@@ -26,14 +26,6 @@ pub fn pick(all: &[IpAddr]) -> Vec<IpAddr> {
     mine
 }
 
-/// Every address on this machine's interfaces. A machine whose interfaces
-/// cannot be listed has none to offer.
-pub fn local_addresses() -> Vec<IpAddr> {
-    if_addrs::get_if_addrs()
-        .map(|all| all.into_iter().map(|i| i.ip()).collect())
-        .unwrap_or_default()
-}
-
 /// The sockets to listen on: the override when there is one
 /// (`ANIBEAM_HOST_BIND`, an `ip:port`), else each Tailscale address on the
 /// default port. Empty when Tailscale is not up. Err is the override's own
