@@ -769,7 +769,7 @@ async fn rest_of_show(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef, se
         provider: found[0].source.clone(),
         ..Default::default()
     };
-    match downloads::download_telling(core, found, Some(e.series_title.clone()), options, None) {
+    match downloads::download_telling(core, found, folder(&e.series_title), options, None) {
         Ok(_) => tracing::info!("room: {count} more episodes of the show handed on"),
         Err(err) => tracing::warn!("room: the rest of the show did not start: {err}"),
     }
