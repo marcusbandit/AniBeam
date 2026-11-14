@@ -79,8 +79,7 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
     prefs::changed(&core.services, preferences)
 }
 
-/// The end of every preferences write: the bus says what the preferences
-/// are now, and the call answers Ok.
+/// `GetSettings`: the settings as the store holds them.
 pub(crate) fn settings(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::Settings {
         settings: services.store.read(prefs::load_settings)?,

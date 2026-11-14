@@ -811,6 +811,17 @@ pub enum Call {
     RoomStatus,
 }
 
+/// The variant name of a call, for messages: the externally tagged JSON key.
+/// Beside `Call`, so a team that names a call in an error imports no front
+/// door.
+pub fn call_name(call: &Call) -> String {
+    match serde_json::to_value(call) {
+        Ok(serde_json::Value::String(s)) => s,
+        Ok(serde_json::Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
+        _ => "?".into(),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 pub enum Reply {
     Ok,

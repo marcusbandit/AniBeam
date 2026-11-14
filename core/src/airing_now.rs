@@ -19,7 +19,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::foundation::services::Services;
-use crate::foundation::titles;
+use crate::foundation::titles::{self, fallback_title};
 use crate::jobs::Finished;
 use crate::metadata::Metadata;
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
@@ -146,10 +146,6 @@ const AIRED_SQL: &str = "SELECT anilist_id, episode, aired_at, title_romaji, tit
        AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1
                        AND (h.anilist_id = a.anilist_id OR (a.mal_id IS NOT NULL AND h.mal_id = a.mal_id)))
      ORDER BY aired_at DESC, anilist_id, episode DESC, guess";
-
-pub(crate) fn fallback_title(anilist_id: u64) -> String {
-    format!("AniList {anilist_id}")
-}
 
 /// The page off the database: no request and no waiting.
 pub fn list(

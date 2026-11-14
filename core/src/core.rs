@@ -34,7 +34,7 @@ use crate::repos;
 use crate::room;
 use crate::stats;
 use crate::store::Store;
-use crate::trackers::{Trackers, accounts, cache, move_up, oauth, watching, writes};
+use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
@@ -697,7 +697,7 @@ impl Core {
             } => airing_now::set_not_interested(&self.services, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(&self.services),
             Call::PlanToWatch { anilist_id } => {
-                crate::trackers::plan_to_watch::plan_to_watch(&self.trackers, anilist_id)
+                plan_to_watch::plan_to_watch(&self.trackers, anilist_id)
             }
             Call::ListRecommended { scope } => recommended::list_call(&self.services, scope),
             Call::RefreshRecommended { force } => recommended::refresh_call(&self.metadata, force),

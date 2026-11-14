@@ -7,9 +7,8 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::airing_now::fallback_title;
 use crate::contract::*;
-use crate::foundation::titles;
+use crate::foundation::titles::{self, fallback_title};
 use crate::jobs::{Finished, JobCtx};
 use crate::prefs;
 use crate::trackers::Trackers;

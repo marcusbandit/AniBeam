@@ -27,7 +27,7 @@ use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use crate::contract::*;
 use crate::foundation::services::Services;
-use crate::foundation::titles;
+use crate::foundation::titles::{self, fallback_title};
 use crate::jobs::Finished;
 use crate::metadata::record::{self, StubWrite};
 use crate::net::anilist::WATCHING_LIST_QUERY;
@@ -39,12 +39,6 @@ use crate::trackers::accounts;
 use crate::trackers::cache::normalize_status;
 use crate::trackers::writes;
 use crate::trackers::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
-
-/// The title of last resort. A stub the store has only ever seen on this
-/// list still draws a card, and an id reads better than an empty one.
-fn fallback_title(anilist_id: u64) -> String {
-    format!("AniList {anilist_id}")
-}
 
 // The read -------------------------------------------------------------------
 

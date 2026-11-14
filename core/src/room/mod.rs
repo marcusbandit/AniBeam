@@ -337,13 +337,10 @@ fn not_in_room() -> CoreError {
     error("not_in_room", crate::words!("core-room-not-in"))
 }
 
-/// A name as the relay takes it: trimmed, 1 to 32 characters, no control
-/// characters. None for anything else.
-pub(crate) use anibeam_room::room::clean_name;
-
-/// Whether a relay address can be used. With the preferences that check it
-/// on a save (#854).
-pub(crate) use crate::prefs::relay_ok;
+// A name as the relay takes it, and whether a relay address can be used: the
+// relay crate's rule, and the one the preferences check on a save (#854).
+use crate::prefs::relay_ok;
+use anibeam_room::room::clean_name;
 
 /// The name and the relay from the preferences, or why they cannot be used.
 fn who(services: &Services) -> Result<(String, String), CoreError> {
