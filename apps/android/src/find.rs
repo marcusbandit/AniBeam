@@ -2733,6 +2733,6 @@ mod tests {
     #[test]
     fn stopping_says_what_happened_to_the_episodes() {
         assert!(unfollowed_line("Frieren", false).contains("stay on this phone"));
-        assert!(unfollowed_line("Frieren", true).contains("deleted the downloads in its folder"));
+        assert!(unfollowed_line("Frieren", true).contains("deleted its episodes"));
     }
 }
