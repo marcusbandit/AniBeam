@@ -1,13 +1,14 @@
 //! Get media (#889): a member whose library lacks the room's episode asks the
 //! host's app for it, and downloads what comes back.
 //!
-//! Everything that leads to the video travels sealed (`seal`): the relay passes
-//! the payloads on and reads none of them. The member asks (`Secret::Ask`); the
+//! Everything that leads to the video travels sealed (`seal`): a relay that only
+//! passes the payloads on reads none of them (an active one could swap the keys
+//! it lists, #982). The member asks (`Secret::Ask`); the
 //! host's app looks up where its own file came from and answers with an
 //! `Offer`. When the torrent client still holds the torrent the file came from
-//! (`downloads::origins`), the offer carries its magnet, trackers included, and
-//! the member hands that to its own torrent client: the host is a peer. When it
-//! does not, the offer carries the release's name, group and resolution, and the
+//! (`downloads::origins`) and it is not a private tracker's, the offer carries
+//! its magnet with the public trackers alone, and the member hands that to its
+//! own torrent client: the host is a peer. When it does not, the offer carries the release's name, group and resolution, and the
 //! member searches its own sources for the same release and downloads the one
 //! that fits best (`pick`). Either way the download goes through the downloads
 //! engine (`downloads::download_telling`), saved into the member's copy of the
@@ -32,12 +33,14 @@ use std::time::{Duration, Instant};
 
 use anibeam_room::proto::{self, ClientMsg, MemberId, Progress};
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use super::{Active, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
 use crate::downloads::{self, backend::DownloadsBackend, facts, origins, replace};
+use crate::events::Subscription;
+use crate::library::scan::ScanScope;
 use crate::playback::Playback;
 use crate::releases::titles;
 
@@ -51,11 +54,17 @@ const POLL: Duration = Duration::from_secs(2);
 /// handed to it, before it counts as lost.
 const LIST_WAIT: Duration = Duration::from_secs(120);
 
+/// How long a download may go without moving before Get media gives up on it:
+/// nobody seeds it, or the client holds it back. The torrent stays with the
+/// client, and Get media can be pressed again.
+const STALL: Duration = Duration::from_secs(10 * 60);
+
 /// How long a finished download has to show in the library.
 const ARRIVE_WAIT: Duration = Duration::from_secs(300);
 
-/// When a finished download is still not in the library, a scan is asked for
-/// once, this long after it finished: the watcher usually brings it sooner.
+/// When a finished download is still not in the library, its own path is
+/// scanned once, this long after it finished: the watcher usually brings it
+/// sooner.
 const SCAN_AFTER: Duration = Duration::from_secs(10);
 
 /// What two members seal to each other.
@@ -75,7 +84,9 @@ pub enum Secret {
 pub struct Offer {
     /// The room episode this is for, so an answer to an old ask is dropped.
     pub episode_key: String,
-    /// The torrent, trackers included, while the host's client still holds it.
+    /// The torrent while the host's client still holds it: its hash, its name
+    /// and its public trackers (`foundation::magnet::public_only`), never a
+    /// private torrent's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub magnet: Option<String>,
     /// The info hash the file came from, when known: a search result with the
@@ -103,10 +114,13 @@ pub struct Offer {
 #[derive(Debug)]
 enum Why {
     Nothing,
+    /// The host's app never answered, or the relay could not pass the ask on.
+    NoAnswer,
     NotFound,
     NoSources,
     Start(String),
     Lost,
+    Stalled,
     NotInLibrary,
 }
 
@@ -114,12 +128,14 @@ impl Why {
     fn words(&self) -> Words {
         match self {
             Why::Nothing => crate::words!("core-room-media-nothing"),
+            Why::NoAnswer => crate::words!("core-room-media-no-answer"),
             Why::NotFound => crate::words!("core-room-media-not-found"),
             Why::NoSources => crate::words!("core-room-media-no-sources"),
             Why::Start(message) => {
                 crate::words!("core-room-media-no-start", message = message.as_str())
             }
             Why::Lost => crate::words!("core-room-media-lost"),
+            Why::Stalled => crate::words!("core-room-media-stalled"),
             Why::NotInLibrary => crate::words!("core-room-media-not-in-library"),
         }
     }
@@ -160,7 +176,7 @@ pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomIn
             tokio::time::sleep(ASK_WAIT).await;
             if let Some(playback) = owner.upgrade() {
                 let late = |a: &Active| a.fetch == RoomFetch::Asking;
-                stop(&playback, serial, id, late, Why::Nothing);
+                stop(&playback, serial, id, late, Why::NoAnswer);
             }
         });
         out.push(Say::said(
@@ -212,6 +228,17 @@ fn owned(playback: &Playback, serial: u64) -> Option<Arc<Playback>> {
 pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret: Secret) {
     match secret {
         Secret::Ask { episode_key } => {
+            // Only the host's app answers: a member asks the host, never another
+            // member, whose torrents are its own
+            let hosting = playback
+                .rooms
+                .lock()
+                .as_ref()
+                .is_some_and(|a| a.serial == serial && a.is_host());
+            if !hosting {
+                tracing::debug!("room: an ask to a member who is not the host, dropped");
+                return;
+            }
             let Some(owner) = owned(playback, serial) else {
                 return;
             };
@@ -241,11 +268,41 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
     }
 }
 
+/// The relay refused to pass a sealed payload on: nobody by that id is
+/// connected, the host having just dropped. An ask waiting on it stops now
+/// rather than when its timer runs out.
+pub(super) fn seal_refused(playback: &Playback, serial: u64) {
+    let id = playback
+        .rooms
+        .lock()
+        .as_ref()
+        .filter(|a| a.serial == serial && a.fetch == RoomFetch::Asking)
+        .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
+    if let Some(id) = id {
+        let asking = |a: &Active| a.fetch == RoomFetch::Asking;
+        stop(playback, serial, id, asking, Why::NoAnswer);
+    }
+}
+
 /// The host's offer, when it answers this member's ask: the download starts.
-fn take_offer(playback: &Playback, serial: u64, from: MemberId, offer: Offer) {
+fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer) {
     let Some(owner) = owned(playback, serial) else {
         return;
     };
+    // Only a magnet with a hash reaches the torrent client, rebuilt from its hash,
+    // name and public trackers: any other link would have this member's machine
+    // fetch an address of the sender's choosing. Without one the release's name
+    // is still searched for on this member's own sources.
+    if let Some(link) = offer.magnet.take() {
+        offer.magnet = crate::foundation::magnet::public_only(&link);
+        if offer.magnet.is_none() {
+            tracing::warn!("room: an offer's link is not a magnet; its name is searched for");
+        }
+    }
+    offer.hash = offer
+        .hash
+        .take()
+        .filter(|h| crate::foundation::magnet::is_hash(h));
     let started = {
         let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
@@ -331,6 +388,7 @@ fn stop(playback: &Playback, serial: u64, id: u64, fits: impl FnOnce(&Active) ->
         }
         a.stop_fetch();
         a.fetch = RoomFetch::Failed;
+        a.fetch_error = Some(why.words());
         a.send(a.status());
         Say::said(
             Level::Warn,
@@ -393,20 +451,6 @@ async fn fetch(
     // A batch brings the rest of the show with it
     let rest = whole_show && !facts::read(&release).batch;
     let since = crate::time::now_secs();
-    let (tell, told) = oneshot::channel();
-    let options = DownloadOptions {
-        series: local.series,
-        provider: release.source.clone(),
-        ..Default::default()
-    };
-    downloads::download_telling(
-        &playback.downloads,
-        vec![release],
-        folder(&e.series_title),
-        options,
-        Some(tell),
-    )
-    .map_err(|err| Why::Start(err.to_string()))?;
     update(playback, serial, id, |a| {
         a.progress = Some(Progress {
             percent: 0.0,
@@ -414,9 +458,44 @@ async fn fetch(
         });
         true
     });
-    let added = told
-        .await
-        .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
+    // A Get media tried again finds the torrent the last one handed over:
+    // qBittorrent refuses to add it twice, so it is followed where it is
+    let held = match &known {
+        Some(hash) => match downloads::qbt_client(&playback.downloads).await {
+            Ok(qbt) => qbt
+                .torrents_named(std::slice::from_ref(hash))
+                .await
+                .is_ok_and(|t| !t.is_empty()),
+            Err(_) => false,
+        },
+        None => false,
+    };
+    let hash = if held {
+        known
+    } else {
+        let (tell, told) = oneshot::channel();
+        // The episode alone, now: never held to a rolling window
+        let options = DownloadOptions {
+            series: local.series,
+            provider: release.source.clone(),
+            rolling: Some(false),
+            ..Default::default()
+        };
+        downloads::download_telling(
+            &playback.downloads,
+            vec![release],
+            folder(&e.series_title),
+            options,
+            Some(tell),
+        )
+        .map_err(|err| Why::Start(err.to_string()))?;
+        let added = told
+            .await
+            .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
+        // A link the client fetches itself names no hash up front: the torrent is
+        // then found by its name among those added since
+        known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
+    };
     if rest {
         let (playback, offer, e) = (playback.clone(), offer.clone(), e.clone());
         playback
@@ -425,14 +504,26 @@ async fn fetch(
             .clone()
             .spawn(async move { rest_of_show(&playback, &offer, &e, local.series).await });
     }
-    // A link the client fetches itself names no hash up front: the torrent is
-    // then found by its name among those added since
-    let hash = known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()));
-    let content = follow(playback, serial, id, hash.as_deref(), &title, since).await?;
+    let content = follow(
+        playback,
+        serial,
+        id,
+        hash.as_deref(),
+        &title,
+        since,
+        offer,
+        e,
+        whole_show,
+    )
+    .await?;
     settle_in(playback, e, offer, &content).await
 }
 
-/// Reads the download's progress until it is done; its content path then.
+/// Reads the download's progress until it is done; the path of the episode's
+/// file then. A torrent of several files (the host's batch) downloads the
+/// episode's file alone, once the client knows the files: the rest are set to
+/// skip, and that file's progress is the one followed.
+#[allow(clippy::too_many_arguments)]
 async fn follow(
     playback: &Arc<Playback>,
     serial: u64,
@@ -440,62 +531,176 @@ async fn follow(
     hash: Option<&str>,
     title: &str,
     since: i64,
+    offer: &Offer,
+    e: &proto::EpisodeRef,
+    whole: bool,
 ) -> Result<String, Why> {
     let mut last_seen = Instant::now();
+    let mut stall = Stall::new(Instant::now());
+    // None until the client lists the torrent's files; then the one file
+    // followed, or Whole for a torrent of one file or none that is the episode
+    let mut unit: Option<Unit> = None;
     loop {
         tokio::time::sleep(POLL).await;
-        let listed = match downloads::qbt_client(&playback.downloads).await {
-            Ok(qbt) => match hash {
-                Some(hash) => qbt
-                    .torrents_named(&[hash.to_string()])
-                    .await
-                    .ok()
-                    .and_then(|t| t.into_iter().next()),
-                None => qbt.torrents().await.ok().and_then(|all| {
-                    all.into_iter()
-                        .find(|t| t.added_on >= since - 60 && replace::names_match(&t.name, title))
-                }),
-            },
-            Err(_) => None,
+        let qbt = downloads::qbt_client(&playback.downloads).await.ok();
+        let listed = match (&qbt, hash) {
+            (Some(qbt), Some(hash)) => qbt
+                .torrents_named(&[hash.to_string()])
+                .await
+                .ok()
+                .and_then(|t| t.into_iter().next()),
+            (Some(qbt), None) => qbt.torrents().await.ok().and_then(|all| {
+                all.into_iter()
+                    .find(|t| t.added_on >= since - 60 && replace::names_match(&t.name, title))
+            }),
+            (None, _) => None,
         };
-        let Some(t) = listed else {
+        let (Some(qbt), Some(t)) = (qbt, listed) else {
             if last_seen.elapsed() >= LIST_WAIT {
                 return Err(Why::Lost);
             }
             continue;
         };
         last_seen = Instant::now();
-        let progress = progress_of(&t);
+        let files = match unit {
+            Some(Unit::Whole) => None,
+            _ => qbt.files(&t.hash).await.ok().filter(|f| !f.is_empty()),
+        };
+        if unit.is_none()
+            && let Some(files) = &files
+        {
+            let one = episode_file(files, offer, e);
+            // Whole show keeps the batch's other episodes; the episode is still the one followed
+            if let Some(i) = one.filter(|_| !whole) {
+                let others: Vec<usize> = (0..files.len()).filter(|j| *j != i).collect();
+                if let Err(err) = qbt.set_file_priority(&t.hash, &others, 0).await {
+                    tracing::warn!("room: the other files of the torrent were not skipped: {err}");
+                }
+            }
+            unit = Some(one.map_or(Unit::Whole, Unit::File));
+        }
+        let followed = match (unit, &files) {
+            (Some(Unit::File(i)), Some(files)) => files.get(i).map(|f| {
+                let path = crate::downloads::rolling::file_path(&t.save_path, &f.name)
+                    .map(|p| p.to_string_lossy().into_owned());
+                (f.progress, path)
+            }),
+            // The files could not be read this time round
+            (Some(Unit::File(_)), None) => continue,
+            _ => None,
+        };
+        let (fraction, path) = followed.unwrap_or((t.progress, Some(t.content_path.clone())));
+        let progress = progress_at(fraction, t.eta);
         update(playback, serial, id, |a| {
             let changed = a.progress != progress;
             a.progress = progress;
             changed
         });
-        if t.progress >= 1.0 {
-            return Ok(t.content_path);
+        if fraction >= 1.0 {
+            return path.ok_or(Why::Lost);
         }
+        if stall.stuck(fraction, Instant::now()) {
+            return Err(Why::Stalled);
+        }
+    }
+}
+
+/// What of a torrent Get media follows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Unit {
+    Whole,
+    File(usize),
+}
+
+/// The file of a torrent of several that is the room's episode: the host's
+/// own file by its name, else the one file whose name carries the episode's
+/// number. None for a torrent of one file, or when no single file fits.
+fn episode_file(files: &[TorrentFile], offer: &Offer, e: &proto::EpisodeRef) -> Option<usize> {
+    if files.len() < 2 {
+        return None;
+    }
+    let base = |name: &str| name.rsplit(['/', '\\']).next().unwrap_or(name).to_string();
+    if !offer.file.is_empty()
+        && let Some(i) = files
+            .iter()
+            .position(|f| base(&f.name).eq_ignore_ascii_case(&offer.file))
+    {
+        return Some(i);
+    }
+    let want = e.number?;
+    let fits: Vec<usize> = files
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| {
+            let facts = facts::read_name(&f.name);
+            !facts.batch && facts.episode.is_some_and(|n| (n - want).abs() < 0.01)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match fits.as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    }
+}
+
+/// Whether a download has stopped moving: the furthest it got, and when.
+struct Stall {
+    best: f64,
+    since: Instant,
+}
+
+impl Stall {
+    fn new(now: Instant) -> Stall {
+        Stall {
+            best: 0.0,
+            since: now,
+        }
+    }
+
+    /// Notes how far the download is at `now`: true once it has gone `STALL`
+    /// without getting any further.
+    fn stuck(&mut self, fraction: f64, now: Instant) -> bool {
+        if fraction > self.best {
+            self.best = fraction;
+            self.since = now;
+        }
+        now.duration_since(self.since) >= STALL
     }
 }
 
 /// A torrent's progress as the status carries it: a tenth of a percent at most,
 /// and no time left when the client has none (qBittorrent says 8640000).
 pub fn progress_of(t: &Torrent) -> Option<Progress> {
+    progress_at(t.progress, t.eta)
+}
+
+/// `progress_of` for a fraction done and the client's seconds left.
+fn progress_at(fraction: f64, eta: i64) -> Option<Progress> {
     Progress {
-        percent: (t.progress * 1000.0).floor() / 10.0,
-        eta: u64::try_from(t.eta).ok(),
+        percent: (fraction * 1000.0).floor() / 10.0,
+        eta: u64::try_from(eta).ok(),
     }
     .clean()
 }
 
 /// Waits for the library to take the download in, and points the show it came
-/// in as at the room's match when the library did not have that show.
+/// in as at the room's match when the library did not have that show. Nothing
+/// is polled: the library is read again when a scan, a series or a match says
+/// it changed, and when the watcher has not brought the file in by
+/// `SCAN_AFTER`, the download's own path is scanned, once.
 async fn settle_in(
     playback: &Arc<Playback>,
     e: &proto::EpisodeRef,
     offer: &Offer,
     content: &str,
 ) -> Result<(), Why> {
-    let started = Instant::now();
+    let woken = Arc::new(Notify::new());
+    let _listening = Subscription::new(
+        playback.services.bus.clone(),
+        Arc::new(Arrivals(woken.clone())),
+    );
+    let started = tokio::time::Instant::now();
+    let (scan_at, deadline) = (started + SCAN_AFTER, started + ARRIVE_WAIT);
     let (mut matched, mut scanned) = (false, false);
     loop {
         let local = playback
@@ -516,16 +721,36 @@ async fn settle_in(
                 Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
             }
         }
-        if !scanned && started.elapsed() >= SCAN_AFTER {
-            scanned = true;
-            if let Err(err) = crate::library::scan::scan(&playback.library, None) {
-                tracing::debug!("room: scan after get media not started: {err}");
-            }
-        }
-        if started.elapsed() >= ARRIVE_WAIT {
+        if tokio::time::Instant::now() >= deadline {
             return Err(Why::NotInLibrary);
         }
-        tokio::time::sleep(POLL).await;
+        let until = if scanned { deadline } else { scan_at };
+        tokio::select! {
+            _ = woken.notified() => {}
+            _ = tokio::time::sleep_until(until) => {
+                if !scanned {
+                    scanned = true;
+                    let scope = ScanScope::Paths(vec![content.to_string()]);
+                    crate::library::scan::start(&playback.library, scope);
+                }
+            }
+        }
+    }
+}
+
+/// Wakes `settle_in` when the library or a show's match moved.
+struct Arrivals(Arc<Notify>);
+
+impl EventListener for Arrivals {
+    fn on_event(&self, event: Event) {
+        if matches!(
+            event.body,
+            EventBody::ScanFinished { .. }
+                | EventBody::SeriesChanged { .. }
+                | EventBody::MatchApplied { .. }
+        ) {
+            self.0.notify_one();
+        }
     }
 }
 
@@ -901,7 +1126,7 @@ pub fn rest(items: &[Release], offer: &Offer, e: &proto::EpisodeRef, have: &[f64
 async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key: String) {
     let asked = {
         let slot = playback.rooms.lock();
-        let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
+        let Some(a) = slot.as_ref().filter(|a| a.serial == serial && a.is_host()) else {
             return;
         };
         let Some(e) = a.episode.clone().filter(|e| e.episode_key == episode_key) else {
@@ -1044,7 +1269,14 @@ async fn offer_for(playback: &Arc<Playback>, file: u64, e: &proto::EpisodeRef) -
     }
     let magnet = match &origin {
         Some(o) => match downloads::qbt_client(&playback.downloads).await {
-            Ok(qbt) => qbt.magnet(&o.hash).await.ok().flatten(),
+            // Never a private torrent, and only the trackers that carry nothing
+            // of the host's own
+            Ok(qbt) => qbt
+                .magnet(&o.hash)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|m| crate::foundation::magnet::public_only(&m)),
             Err(err) => {
                 tracing::debug!("room: the torrent client was not reached: {err}");
                 None
@@ -1273,6 +1505,59 @@ mod tests {
         assert_eq!(progress_of(&t).unwrap().eta, None);
         t.eta = -1;
         assert_eq!(progress_of(&t).unwrap().eta, None);
+    }
+
+    fn files(names: &[&str]) -> Vec<TorrentFile> {
+        names
+            .iter()
+            .map(|n| TorrentFile {
+                name: (*n).into(),
+                size: 1,
+                progress: 0.0,
+                priority: 1,
+                episode: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_batch_downloads_the_episode_s_file_alone() {
+        let batch = files(&[
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 04 (1080p).mkv",
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 05 (1080p).mkv",
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 06 (1080p).mkv",
+        ]);
+        // The host's own file by its name
+        let host = Offer {
+            file: "[Lantern] Cowboy Bebop - 05 (1080p).mkv".into(),
+            ..offer("[Lantern] Cowboy Bebop (01-26) (1080p) [Batch]")
+        };
+        assert_eq!(episode_file(&batch, &host, &ep(5.0)), Some(1));
+        // A file renamed on the host's side is found by its number
+        let renamed = Offer {
+            file: "bebop five.mkv".into(),
+            ..host.clone()
+        };
+        assert_eq!(episode_file(&batch, &renamed, &ep(6.0)), Some(2));
+        // Two files of that number fit, so neither is picked
+        let two = files(&["A - 05.mkv", "B - 05.mkv"]);
+        assert_eq!(episode_file(&two, &renamed, &ep(5.0)), None);
+        // One file is the whole torrent
+        assert_eq!(episode_file(&batch[..1], &host, &ep(4.0)), None);
+    }
+
+    #[test]
+    fn a_download_that_stops_moving_is_stuck_after_the_stall_time() {
+        let t0 = Instant::now();
+        let mut stall = Stall::new(t0);
+        assert!(!stall.stuck(0.0, t0 + STALL / 2));
+        // It moved, so the clock starts again from there
+        assert!(!stall.stuck(0.1, t0 + STALL - Duration::from_secs(1)));
+        assert!(!stall.stuck(0.1, t0 + STALL + Duration::from_secs(1)));
+        assert!(stall.stuck(0.1, t0 + STALL * 2));
+        // Metadata never came: no progress from the start
+        let mut never = Stall::new(t0);
+        assert!(never.stuck(0.0, t0 + STALL));
     }
 
     #[test]

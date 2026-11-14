@@ -15,7 +15,7 @@ use crate::code::hex;
 use crate::limit::{self, Verdict};
 use crate::proto::{
     Action, ClientMsg, EpisodeRef, ErrorCode, MAX_KEY, MAX_MEMBERS, MAX_POSITION, MAX_SEALED,
-    Member, MemberId, PROTO, PlayState, Progress, Ready, RoomView, ServerMsg,
+    Member, MemberId, PROTO, PlayState, Progress, Ready, RoomView, SEAL_NOBODY, ServerMsg,
 };
 use crate::siphash::siphash24;
 
@@ -498,11 +498,7 @@ impl Room {
             .and_then(|s| s.conn);
         match target {
             Some(target) => vec![one(target, ServerMsg::Sealed { from, data })],
-            None => vec![error(
-                conn,
-                ErrorCode::NotAllowed,
-                "nobody else in the room has that id",
-            )],
+            None => vec![error(conn, ErrorCode::NotAllowed, SEAL_NOBODY)],
         }
     }
 

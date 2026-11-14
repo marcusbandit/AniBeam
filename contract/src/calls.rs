@@ -814,11 +814,11 @@ pub enum Call {
     RoomLeave,
     RoomStatus,
     /// Get media (#889): asks the host for the room's episode this library lacks. The
-    /// host's app answers, sealed so the relay cannot read it, with the torrent it came
-    /// from or the release's name, and this core downloads it through the downloads
-    /// engine. `RoomChanged` follows it: `fetch`, then everyone's view of the progress.
-    /// With `whole_show`, the rest of the show follows the episode (#922): the same
-    /// release group and resolution as the host's, through the downloads engine.
+    /// host's app answers, sealed so a relay that only passes it on cannot read it, with
+    /// the torrent it came from or the release's name, and this core downloads it through
+    /// the downloads engine. `RoomChanged` follows it: `fetch`, then everyone's view of
+    /// the progress. With `whole_show`, the rest of the show follows the episode (#922):
+    /// the same release group and resolution as the host's, through the downloads engine.
     RoomGetMedia {
         #[serde(default)]
         whole_show: bool,

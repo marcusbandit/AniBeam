@@ -1027,6 +1027,9 @@ pub struct RoomInfo {
     /// episode open. Always `Off` for everyone else.
     #[serde(default)]
     pub gate: RoomGate,
+    /// Why Get media stopped short, while `fetch` is `Failed`: the words to show.
+    #[serde(default)]
+    pub fetch_error: Option<Words>,
 }
 
 /// One person in a room.

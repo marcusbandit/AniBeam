@@ -133,10 +133,14 @@ ignores it, and a relay from before answers the new `seal` with `bad_message`.
 
 `data` is sealed by the core (`core/src/room/seal.rs`): X25519 between the two members' keys,
 HKDF-SHA256 salted with the room code with both public keys in its info, XChaCha20-Poly1305
-with a random nonce and the sender's then the recipient's key as additional data. The relay
-sees neither the torrent link, the info hash, the release's name nor the match ids inside.
-What it carries (`core/src/room/media.rs`): `ask`, the host's `offer` (magnet with trackers
-while its torrent client still holds the torrent its file came from, the info hash, the
+with a random nonce and the sender's then the recipient's key as additional data. A relay
+that only passes messages on sees neither the torrent link, the info hash, the release's name
+nor the match ids inside. The keys reach the members through the relay's member list
+unchecked, so an active relay could swap them and read or change what it carries; #982 is
+authenticating them.
+What it carries (`core/src/room/media.rs`): `ask`, the host's `offer` (magnet with its public
+trackers alone while its torrent client still holds the torrent its file came from, and never
+a private torrent's, the info hash, the
 release's and the file's names, group, resolution and the match ids) or `nothing`.
 
 ## Relays

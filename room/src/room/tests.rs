@@ -900,10 +900,12 @@ fn a_sealed_payload_to_nobody_or_to_oneself_is_refused() {
         assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed), "{to:?}");
         assert!(!outs[0].msg.ends_connection());
     }
-    // Someone who dropped is passed nothing while away
+    // Someone who dropped is passed nothing while away, and the sender hears the
+    // words it tells this refusal apart by
     r.disconnect(ConnId(1), 20);
     let outs = r.handle(ConnId(2), seal(ann, "eA=="), 30);
     assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed));
+    assert!(matches!(&outs[0].msg, ServerMsg::Error { message, .. } if message == SEAL_NOBODY));
 }
 
 #[test]

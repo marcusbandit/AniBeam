@@ -87,19 +87,35 @@ impl QbtClient {
     }
 
     /// The magnet link of a torrent the client still holds, trackers included,
-    /// as qBittorrent writes it; None when the client no longer has it.
+    /// as qBittorrent writes it. None when the client no longer has it, and
+    /// for a private torrent: its trackers carry this person's passkey, and
+    /// it has no other way to find peers. qBittorrent 5 says `private` in the
+    /// list; an older one says `is_private` in the torrent's properties.
     pub async fn magnet(&self, hash: &str) -> Result<Option<String>, CoreError> {
         let r = self
             .call(&format!("torrents/info?hashes={hash}"), None)
             .await?;
         let v: Value = r.json()?;
-        Ok(v.as_array()
-            .and_then(|a| {
-                a.iter()
-                    .find(|t| text(&t["hash"]).eq_ignore_ascii_case(hash))
-            })
-            .map(|t| text(&t["magnet_uri"]))
-            .filter(|m| m.starts_with("magnet:")))
+        let Some(t) = v.as_array().and_then(|a| {
+            a.iter()
+                .find(|t| text(&t["hash"]).eq_ignore_ascii_case(hash))
+        }) else {
+            return Ok(None);
+        };
+        let private = match t["private"].as_bool() {
+            Some(p) => p,
+            None => self.is_private(hash).await.unwrap_or(false),
+        };
+        Ok(Some(text(&t["magnet_uri"])).filter(|m| !private && m.starts_with("magnet:")))
+    }
+
+    /// Whether qBittorrent's properties call the torrent private.
+    async fn is_private(&self, hash: &str) -> Result<bool, CoreError> {
+        let r = self
+            .call(&format!("torrents/properties?hash={hash}"), None)
+            .await?;
+        let v: Value = r.json()?;
+        Ok(v["is_private"].as_bool().unwrap_or(false))
     }
 
     /// The files inside one torrent, in qBittorrent's order.
