@@ -18,6 +18,7 @@
 use std::net::IpAddr;
 
 use super::addr;
+use crate::foundation::trust::{Asker, TailnetUser};
 
 /// A device on the tailnet, as `tailscale status --json` names it.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,17 +41,6 @@ pub struct Peer {
     pub tagged: bool,
 }
 
-/// A person on the tailnet: the Tailscale user a device belongs to.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TailnetUser {
-    /// Tailscale's stable user id.
-    pub id: String,
-    /// "someone@example.com", or a GitHub login.
-    pub login: String,
-    /// The name Tailscale shows for them.
-    pub name: String,
-}
-
 /// This machine's tailnet addresses and every other device on it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tailnet {
@@ -61,16 +51,6 @@ pub struct Tailnet {
     pub me_user: Option<String>,
     /// Every user the status names, by id.
     pub users: Vec<TailnetUser>,
-}
-
-impl TailnetUser {
-    /// What to call them: their Tailscale name, or their login when it gives none. None
-    /// with neither, so no screen shows a bare user id (#633).
-    pub fn shown(&self) -> Option<&str> {
-        [self.name.trim(), self.login.trim()]
-            .into_iter()
-            .find(|s| !s.is_empty())
-    }
 }
 
 impl Tailnet {
@@ -86,17 +66,6 @@ impl Tailnet {
     pub fn owner(&self) -> Option<&TailnetUser> {
         self.me_user.as_deref().and_then(|id| self.user(id))
     }
-}
-
-/// Whose request it is (#631).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Asker {
-    /// This machine, or a device of the person it belongs to.
-    Owner,
-    /// A device of someone else on the tailnet.
-    Person(TailnetUser),
-    /// A tailnet device the host cannot tie to a person.
-    Unknown,
 }
 
 /// Who is asking from `from`. `tailnet` is None when `tailscale status` has never been

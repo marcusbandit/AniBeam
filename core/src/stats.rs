@@ -12,9 +12,9 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::foundation::titles;
 use crate::library::history::How;
 use crate::library::snapshot::{SeriesRow, Snapshot};
-use crate::library::titles;
 
 const SHOW_MINUTES: u32 = 24;
 const FILM_MINUTES: u32 = 100;

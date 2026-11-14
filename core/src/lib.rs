@@ -14,6 +14,7 @@ pub mod downloads;
 pub mod events;
 pub mod feed;
 pub mod first_run;
+pub mod foundation;
 pub mod franchise;
 pub mod host;
 pub mod html;

@@ -3,7 +3,7 @@
 //! languages, three orders, the folder name as the title of last resort. The
 //! native title is only ever first, for Native, and never a fallback.
 
-use crate::contract::TitleLanguage;
+use anibeam_contract::enums::TitleLanguage;
 
 /// An empty or blank string counts as absent, the way JavaScript's `||`
 /// treated `""`.

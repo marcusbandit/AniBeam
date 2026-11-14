@@ -211,6 +211,7 @@ mod imp {
             Some("mp4") | Some("m4v") => "video/mp4",
             Some("ts") | Some("m2ts") => "video/mp2t",
             Some("avi") => "video/x-msvideo",
+            Some("ogm") => "video/ogg",
             _ => "video/mp4",
         }
     }
