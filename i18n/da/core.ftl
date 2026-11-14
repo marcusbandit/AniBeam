@@ -118,7 +118,7 @@ core-error-version = Denne eksport er fra en nyere Anibeam (format { $found }). 
 core-error-internal = Anibeam ramte en intern fejl: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = indsæt adressen på et repo
 core-repos-must-be-https = adressen skal være https
@@ -155,7 +155,7 @@ core-repos-note-theirs = Denne anirss kører du selv, og computeren ændrer aldr
 core-repos-note-sandbox = Denne kørsel skriver aldrig i anirss' konfiguration, så computeren søger ikke i { $id } her
 core-repos-note-old = anirss { $version } kan ikke tage imod endpoints fra { -app-name }; opdater den til { $min } eller nyere, så computeren søger i dette
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = indeksets nøgle er ikke en ed25519-nøgle
 core-repos-key-not-base64 = indeksets nøgle er ikke 32 bytes base64
@@ -1196,7 +1196,7 @@ core-downloads-rolled = { $title }: nu på afsnit { $from } til { $to } af { $to
 core-downloads-roll-ahead = hold mindst ét afsnit foran
 core-downloads-roll-nothing = intet at hente
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = en JSON-søgekilde kommer fra et endpointrepo, hvis definition kortlægger dens felter
 core-releases-endpoint-no-name = mangler `name`
@@ -1208,17 +1208,17 @@ core-releases-endpoint-not-http = { $name }: adressen skal starte med http:// el
 core-releases-endpoint-needs-query = { $name }: en { $kind }-url skal indeholde pladsholderen {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: en { $kind }-url tilføjer selv søgningen, så den tager ingen {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = indekseren svarede med fejl { $code }
 core-releases-bad-feed = ugyldigt feed: { $error }
 core-releases-feed-answered = feedet svarede { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = ikke feedets JSON: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = ikke JSON: { $error }
 core-releases-search-error-said = søgningen svarede med en fejl: { $message }
@@ -1227,7 +1227,7 @@ core-releases-no-results-field = svaret har ingen resultater ved { $path }
 core-releases-results-not-list = svarets resultater er ikke en liste
 core-releases-search-answered = søgningen svarede { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = ingen endpoints endnu: tilføj et repo, eller et manuelt, under Endpoints i Mere
 core-releases-no-source-named = ingen kilde ved navn { $name }
@@ -1235,7 +1235,7 @@ core-releases-empty-query = skriv noget at søge efter
 core-releases-cannot-follow = { $name } kan ikke følges: den svarer på søgninger, men har intet feed at tjekke for nye afsnit
 core-releases-endpoint-gone = { $name } er ikke tilgængelig mere: fjernet, slået fra eller mangler sin nøgle
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } skal være ét kort ord
 core-releases-quirks-pattern-count = show_feed tager 1 til { $most } sidemønstre
@@ -1246,11 +1246,11 @@ core-releases-quirks-url-https = show_feed-url skal være https
 core-releases-quirks-url-host = show_feed-url skal ligge på endpointets egen vært
 core-releases-quirks-url-slug = show_feed-url tager {"{"}slug{"}"} én gang og ingen anden pladsholder
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = op 'tokens' skal have en ikke-tom `tokens`-liste
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = { $group }s pakke
 core-releases-episodes-phrase =

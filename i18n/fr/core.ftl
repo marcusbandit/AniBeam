@@ -118,7 +118,7 @@ core-error-version = Cet export vient d'un Anibeam plus récent (format { $found
 core-error-internal = Anibeam a rencontré une erreur interne : { $message }
 core-error-service = { $service } : { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = collez l'adresse d'un dépôt
 core-repos-must-be-https = l'adresse doit être en https
@@ -155,7 +155,7 @@ core-repos-note-theirs = Cet anirss est le vôtre, et l'ordinateur ne touche jam
 core-repos-note-sandbox = Cette session n'écrit jamais dans la configuration d'anirss, donc l'ordinateur ne cherche pas { $id } ici
 core-repos-note-old = anirss { $version } ne peut pas recevoir de sources d'{ -app-name } ; passez à la version { $min } ou plus récente pour que l'ordinateur cherche celle-ci
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = la clé de l'index n'est pas une clé ed25519
 core-repos-key-not-base64 = la clé de l'index n'est pas 32 octets en base64
@@ -1208,7 +1208,7 @@ core-downloads-rolled = { $title } : maintenant sur les épisodes { $from } à 
 core-downloads-roll-ahead = gardez au moins un épisode d'avance
 core-downloads-roll-nothing = rien à récupérer
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = une source de recherche JSON vient d'un dépôt de sources dont la définition associe ses champs
 core-releases-endpoint-no-name = `name` manquant
@@ -1220,17 +1220,17 @@ core-releases-endpoint-not-http = { $name } : l'adresse doit commencer par http
 core-releases-endpoint-needs-query = { $name } : l'url { $kind } doit contenir l'espace réservé {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name } : une url { $kind } ajoute elle-même la recherche, elle ne prend donc pas de {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = l'indexeur a répondu l'erreur { $code }
 core-releases-bad-feed = flux incorrect : { $error }
 core-releases-feed-answered = le flux a répondu { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = ce n'est pas le JSON du flux : { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = ce n'est pas du JSON : { $error }
 core-releases-search-error-said = la recherche a répondu par une erreur : { $message }
@@ -1239,7 +1239,7 @@ core-releases-no-results-field = la réponse n'a pas de résultats à { $path }
 core-releases-results-not-list = les résultats de la réponse ne sont pas une liste
 core-releases-search-answered = la recherche a répondu { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = aucun site pour l'instant : ajoutez un dépôt, ou un site à la main, sous Sites dans Plus
 core-releases-no-source-named = aucune source nommée { $name }
@@ -1247,7 +1247,7 @@ core-releases-empty-query = saisissez quelque chose à chercher
 core-releases-cannot-follow = { $name } ne peut pas être suivi : il répond aux recherches, mais n'a pas de flux pour vérifier les nouveaux épisodes
 core-releases-endpoint-gone = { $name } n'est plus disponible : retiré, désactivé ou sans sa clé
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } doit être un mot court
 core-releases-quirks-pattern-count = show_feed prend de 1 à { $most } modèles de page
@@ -1258,11 +1258,11 @@ core-releases-quirks-url-https = l'url show_feed doit être en https
 core-releases-quirks-url-host = l'url show_feed doit être sur l'hôte même de la source
 core-releases-quirks-url-slug = l'url show_feed prend {"{"}slug{"}"} une fois et aucun autre espace réservé
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = l'opération 'tokens' demande une liste `tokens` non vide
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = Lot de { $group }
 core-releases-episodes-phrase =

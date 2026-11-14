@@ -366,7 +366,7 @@ pub struct Torrent {
     #[serde(default)]
     pub series_id: Option<u64>,
     /// The episode the torrent's name says it carries, read as a release
-    /// title is (`downloads::facts`); None for a batch or a name that
+    /// title is (`releases::facts`); None for a batch or a name that
     /// names none.
     #[serde(default)]
     pub episode: Option<f64>,
@@ -388,7 +388,7 @@ pub struct Torrent {
     #[serde(default)]
     pub tracker: String,
     /// The release group in the torrent's name, read as a release title is
-    /// (`downloads::facts`).
+    /// (`releases::facts`).
     #[serde(default)]
     pub group: String,
     /// The resolution in the torrent's name.

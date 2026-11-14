@@ -10,9 +10,9 @@ use std::time::SystemTime;
 
 use rusqlite::Connection;
 
-use crate::contract::*;
-use crate::library::snapshot::{NextEpisode, Snapshot};
-use crate::time;
+use anibeam_contract::*;
+use anibeam_library::snapshot::{NextEpisode, Snapshot};
+use anibeam_foundation::time;
 
 /// One series's place on the Recent feed: the reason it is there, the
 /// highest episode number the series can claim (on disk, or the on-disk
@@ -240,8 +240,8 @@ pub fn list(
 /// `ListFeed`: pure over one snapshot load, scope None, so there is nothing
 /// to write and no job. The shell saves its own sort preference separately
 /// through `SetPreferences`.
-pub(crate) fn list_call(
-    services: &crate::foundation::services::Services,
+pub fn list_call(
+    services: &anibeam_foundation::services::Services,
     sort: FeedSort,
 ) -> Result<Reply, CoreError> {
     let images_dir = services.paths.images_dir();

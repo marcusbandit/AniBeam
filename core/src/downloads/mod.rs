@@ -19,7 +19,6 @@
 pub mod anirss;
 pub mod backend;
 pub mod contents;
-pub mod facts;
 pub mod feed;
 pub mod home;
 pub mod jackett;
@@ -47,7 +46,7 @@ use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::trash;
 use crate::net::{Http, HttpRequest};
-use crate::releases::{AnirssView, EndpointSync};
+use crate::releases::{AnirssView, EndpointSync, facts};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -3878,7 +3877,7 @@ mod tests {
             size: 1,
             progress,
             priority: 1,
-            episode: super::facts::read_name(name).episode,
+            episode: facts::read_name(name).episode,
         };
         let dir = "[Kumo-Subs] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
         let mut t = super::qbt::tests_torrent();

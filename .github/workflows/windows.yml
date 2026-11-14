@@ -14,6 +14,7 @@ on:
       - 'foundation/**'
       - 'net/**'
       - 'library/**'
+      - 'releases/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'
@@ -193,7 +194,7 @@ jobs:
         shell: pwsh
         env:
           AWS_LC_SYS_PREBUILT_NASM: '1'
-        run: cargo test --locked --no-fail-fast -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-core -p anibeam
+        run: cargo test --locked --no-fail-fast -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-core -p anibeam
 
       - name: Bundle
         run: apps/linux/packaging/windows/bundle.sh dist

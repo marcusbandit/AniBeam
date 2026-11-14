@@ -14,6 +14,7 @@ on:
       - 'foundation/**'
       - 'net/**'
       - 'library/**'
+      - 'releases/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'

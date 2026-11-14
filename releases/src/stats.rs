@@ -27,8 +27,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::UdpSocket;
 
 use super::endpoints::{quote, split_url, unquote_plus};
-use crate::contract::Release;
-use crate::net::{BoxFuture, Http, HttpRequest};
+use anibeam_contract::Release;
+use anibeam_net::{BoxFuture, Http, HttpRequest};
 
 // Every number here is anirss's, from `stats.py` as of anirss 0.7.1, and has to stay so: the
 // native engine's lookups give up when anirss's do (#547). Change one only with anirss.
@@ -276,7 +276,7 @@ pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
 pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
     let query = link.trim().strip_prefix("magnet:?")?;
     // The hex or base32 hash, read the way a download reads it, as 20 bytes.
-    let hash = crate::foundation::magnet::hash_bytes(link)?;
+    let hash = anibeam_foundation::magnet::hash_bytes(link)?;
     let mut trackers: Vec<String> = Vec::new();
     for (key, value) in query.split('&').filter_map(|p| p.split_once('=')) {
         // A magnet's values are percent-encoded; a `+` in one is a plus, not a space.
@@ -426,7 +426,7 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
     url.set_query(None);
     url.set_fragment(None);
     // Named as the HTTP client reads the announce, never by its passkey (#451).
-    let shown = crate::net::url_shown(announce);
+    let shown = anibeam_net::url_shown(announce);
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -474,7 +474,7 @@ async fn udp_scrape(announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     match udp_exchange(&host, port, hashes).await {
         Ok(out) => out,
         Err(e) => {
-            tracing::warn!("udp scrape {}: {e}", crate::net::url_shown(announce));
+            tracing::warn!("udp scrape {}: {e}", anibeam_net::url_shown(announce));
             HashMap::new()
         }
     }
@@ -588,7 +588,7 @@ pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
     // Parsed by the HTTP client's own parser, so the host, path and query are the ones it
     // fetches: a backslash, a tab or a control character reads as it does (#493). One
     // it would not fetch, or that names no host, is malformed here too.
-    let mut url = crate::net::parsed(link).ok_or(BadBencode)?;
+    let mut url = anibeam_net::parsed(link).ok_or(BadBencode)?;
     let path = quote(url.path().as_bytes(), PATH_SAFE);
     url.set_path(&path);
     if let Some(query) = url.query().map(|q| quote(q.as_bytes(), QUERY_SAFE)) {
@@ -623,7 +623,7 @@ impl Backend for Net<'_> {
         timeout: Duration,
     ) -> BoxFuture<'a, Option<Vec<u8>>> {
         Box::pin(async move {
-            let shown = crate::net::url_shown(url);
+            let shown = anibeam_net::url_shown(url);
             let Ok(encoded) = encode_http_link(url) else {
                 tracing::warn!("torrent download failed ({shown}): malformed URL");
                 return None;
@@ -970,7 +970,7 @@ async fn enrich_with(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
     use std::sync::Arc;
 
     // A tiny bencode encoder for fixtures.

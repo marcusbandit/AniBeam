@@ -37,7 +37,7 @@ use std::time::Duration;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use super::facts;
+use crate::releases::facts;
 use super::qbt::QbtClient;
 use crate::contract::*;
 use crate::downloads::Downloads;

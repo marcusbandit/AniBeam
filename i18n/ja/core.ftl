@@ -115,7 +115,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = リポジトリのアドレスを貼り付けてください
 core-repos-must-be-https = アドレスはhttpsにしてください
@@ -154,7 +154,7 @@ core-repos-note-theirs = このanirssはご自身で動かしているもので�
 core-repos-note-sandbox = この実行ではanirssの設定に書き込まないため、デスクトップはここで{ $id }を検索しません
 core-repos-note-old = anirss { $version }は{ -app-name }からエンドポイントを受け取れません。デスクトップで検索するには{ $min }以降に更新してください
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = インデックスの鍵がed25519鍵ではありません
 core-repos-key-not-base64 = インデックスの鍵が32バイトのbase64ではありません
@@ -1152,7 +1152,7 @@ core-downloads-rolled = { $title }: 全{ $total }話中、第{ $from }〜{ $to }
 core-downloads-roll-ahead = 少なくとも1話は先まで保持してください
 core-downloads-roll-nothing = 取得するものはありません
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON検索のソースは、項目の対応を定義したエンドポイントリポジトリから追加してください
 core-releases-endpoint-no-name = `name`がありません
@@ -1168,7 +1168,7 @@ core-releases-endpoint-not-http = { $name }: アドレスはhttp://かhttps://�
 core-releases-endpoint-needs-query = { $name }: { $kind }のurlには{"{"}query{"}"}プレースホルダーが必要です
 core-releases-endpoint-no-query = { $name }: { $kind }のurlは検索語を自動で付けるため、{"{"}query{"}"}は使いません
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = インデクサーがエラー{ $code }を返しました
@@ -1176,11 +1176,11 @@ core-releases-bad-feed = 不正なフィード: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = フィードが{ $status }を返しました
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = フィードのJSONではありません: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = JSONではありません: { $error }
 # $message is what the search said about itself
@@ -1191,7 +1191,7 @@ core-releases-no-results-field = 応答の{ $path }に結果がありません
 core-releases-results-not-list = 応答の結果がリストではありません
 core-releases-search-answered = 検索が{ $status }を返しました
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = エンドポイントがまだありません: 「その他」の「エンドポイント」で、リポジトリか手動のエンドポイントを追加してください
 core-releases-no-source-named = { $name }という名前のソースはありません
@@ -1199,7 +1199,7 @@ core-releases-empty-query = 検索語を入力してください
 core-releases-cannot-follow = { $name }はフォローできません: 検索には応答しますが、新エピソードを確認するフィードがありません
 core-releases-endpoint-gone = { $name }はもう利用できません: 削除されたか、オフになっているか、鍵がありません
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1213,12 +1213,12 @@ core-releases-quirks-url-https = show_feedのurlはhttpsにしてください
 core-releases-quirks-url-host = show_feedのurlはエンドポイントと同じホストにしてください
 core-releases-quirks-url-slug = show_feedのurlには{"{"}slug{"}"}を1回だけ使い、ほかのプレースホルダーは使えません
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = 操作'tokens'には空でない`tokens`リストが必要です
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = { $group }のバッチ

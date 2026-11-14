@@ -117,12 +117,12 @@ dependencies = [
  "anibeam-net",
  "anibeam-recs",
  "anibeam-relay",
+ "anibeam-releases",
  "anibeam-room",
  "anyhow",
  "axum",
  "base64 0.23.1",
  "ed25519-dalek",
- "fancy-regex",
  "flate2",
  "futures-core",
  "futures-util",
@@ -248,6 +248,30 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "anibeam-releases"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-net",
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "fancy-regex",
+ "rand 0.10.2",
+ "regex",
+ "reqwest",
+ "roxmltree",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

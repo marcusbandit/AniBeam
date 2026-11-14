@@ -50,7 +50,8 @@ use serde::{Deserialize, Serialize};
 
 use super::qbt::QbtClient;
 use super::replace::names_match;
-use super::{facts, settings};
+use super::settings;
+use crate::releases::facts;
 use crate::contract::*;
 use crate::downloads::Downloads;
 use crate::foundation::magnet;
