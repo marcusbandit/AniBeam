@@ -11,6 +11,8 @@ and every nightly, so the file is current without each visitor asking GitHub's A
     "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
     "tags":    every published tag, for What's new to link only releases that exist
   }
+and <site>/altstore/stable.json and nightly.json, the iPhone app's AltStore-format sources
+(tools/altstore.py).
 
 usage: releases.py <site-dir>    GH_TOKEN, when set, authenticates the call
 Without network, or when GitHub fails, nothing is written and the pages keep their plain links
@@ -22,6 +24,8 @@ import re
 import sys
 import urllib.request
 from pathlib import Path
+
+import altstore  # the iPhone app's sources, from the same releases
 
 REPO = "marcusbandit/AniBeam"
 MATCH = {
@@ -91,6 +95,7 @@ def main(site):
         "tags": sorted(r["tag_name"] for r in releases),
     }
     Path(site, "releases.json").write_text(json.dumps(data, indent=1) + "\n")
+    altstore.write(site, releases)
     print(f"releases: stable {data['stable'] and data['stable']['version']}, "
           f"nightly {data['nightly'] and data['nightly']['version']}, phone {data['phone'] and data['phone']['version']}, "
           f"phone nightly {data['phone_nightly'] and data['phone_nightly']['version']}")

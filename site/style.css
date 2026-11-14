@@ -1001,6 +1001,7 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
 /* The download page's channel and the chips only a release has */
 .dl-page[data-channel="nightly"] .stable-only { display: none; }
 .dl-page:not([data-channel="nightly"]) .nightly-only { display: none; }
+.term[hidden] { display: none; }
 .dl-chip.is-note { font-family: var(--sans); color: var(--fg-3); background: none; box-shadow: none; padding-inline: 4px; }
 .dl-auto.is-soon { cursor: default; pointer-events: none; }
 .dl-auto.is-soon .os-icon { display: none; }
