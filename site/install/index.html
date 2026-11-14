@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install the iPhone test build: Anibeam</title>
-<meta name="description" content="Open an Anibeam iPhone test build in AltStore, SideStore or LiveContainer.">
+<title>Add Anibeam to your iPhone: Anibeam</title>
+<meta name="description" content="Add the Anibeam source, or install one build, in AltStore, SideStore or LiveContainer.">
 <link rel="canonical" href="https://anibeam.app/install/">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#07080a">
@@ -28,28 +28,44 @@
 
 <main class="legal">
   <section class="legal-hero">
-    <h1>Install the test build</h1>
+    <h1>Add Anibeam to your iPhone</h1>
     <p class="legal-date" id="msg">Opening the app...</p>
+    <p class="term" id="src" hidden><code></code><button type="button" class="copy" data-copy="">Copy</button></p>
     <p><a class="btn btn-ghost" id="dl" href="../download/" hidden>Download the IPA</a></p>
   </section>
 </main>
 
 <script>
-// ?to=altstore|sidestore|livecontainer with either &url=<IPA url> (a PR test build) or
-// &channel=stable|nightly (the IPA the site's releases.json lists for that channel). Only an IPA
-// on this project's releases is passed on, so the page cannot send anyone to another address.
+// ?to=altstore|sidestore|livecontainer with one of
+//   &source=stable|nightly   adds the site's source for that channel (altstore/<channel>.json) to the app,
+//   &channel=stable|nightly  installs the IPA the site's releases.json lists for that channel once,
+//   &url=<IPA url>           installs that IPA once (a PR test build).
+// Only the site's own source and an IPA on this project's releases are passed on, so the page cannot
+// send anyone to another address. AltStore, SideStore and LiveContainer each take
+// <scheme>://source?url=<source> to add a source and AltStore and SideStore <scheme>://install?url=<ipa>
+// to install one IPA.
 const SCHEMES = { altstore: "altstore", sidestore: "sidestore", livecontainer: "livecontainer" };
 const KEYS = { stable: "phone", nightly: "phone_nightly" };
 const PREFIX = "https://github.com/marcusbandit/AniBeam/releases/download/";
+const SOURCES = "https://anibeam.app/altstore/";
 const okIpa = (ipa) => typeof ipa === "string" && ipa.startsWith(PREFIX) && ipa.endsWith(".ipa") && !/[\s<>"]/.test(ipa);
 const done = (ipa, scheme) => okIpa(ipa)
   ? { ipa, redirect: scheme + "://install?url=" + encodeURIComponent(ipa) }
   : { error: "That is not an Anibeam IPA link." };
-// Which IPA: from the address (url=), or from the release list (channel=), null until it is read.
+const source = (channel, scheme, ipa) => {
+  const feed = SOURCES + channel + ".json";
+  return { feed, ipa, redirect: scheme + "://source?url=" + encodeURIComponent(feed) };
+};
+// What is wanted: from the address (url=), or from the release list (channel=, source=), null until it is read.
 function wanted(search) {
   const q = new URLSearchParams(search);
   const scheme = SCHEMES[q.get("to")];
   if (!scheme) return { error: "Unknown app. Use AltStore, SideStore or LiveContainer." };
+  if (q.has("source")) {
+    const key = KEYS[q.get("source")];
+    if (!key) return { error: "That is not an Anibeam source." };
+    return { scheme, key, channel: q.get("source"), source: true };
+  }
   if (q.get("url")) return done(q.get("url"), scheme);
   const key = KEYS[q.get("channel")];
   if (!key) return { error: "That is not an Anibeam IPA link." };
@@ -59,11 +75,13 @@ function fromReleases(w, releases) {
   const rel = releases && releases[w.key];
   const ipa = rel && rel.assets && rel.assets.ipa;
   if (!ipa) return { none: true, channel: w.channel };
+  if (w.source) return okIpa(ipa) ? source(w.channel, w.scheme, ipa) : { error: "That is not an Anibeam source." };
   return done(ipa, w.scheme);
 }
 if (typeof document !== "undefined") {
   const msg = document.getElementById("msg");
   const dl = document.getElementById("dl");
+  const src = document.getElementById("src");
   const go = (r) => {
     if (r.error) { msg.textContent = r.error; return; }
     if (r.none) {
@@ -72,7 +90,15 @@ if (typeof document !== "undefined") {
       dl.hidden = false;
       return;
     }
-    msg.textContent = "Opening the app. If nothing happens, install it first, or download the IPA and open it there.";
+    if (r.feed) {
+      // The source address, to paste into the app's Sources screen when its link does not open.
+      msg.textContent = "Opening the app to add the Anibeam source. If nothing happens, install the app first, or paste this address into its Sources screen:";
+      src.querySelector("code").textContent = r.feed;
+      src.querySelector(".copy").dataset.copy = r.feed;
+      src.hidden = false;
+    } else {
+      msg.textContent = "Opening the app. If nothing happens, install it first, or download the IPA and open it there.";
+    }
     dl.href = r.ipa;
     dl.hidden = false;
     location.href = r.redirect;

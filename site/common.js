@@ -45,6 +45,9 @@ const AB = (() => {
   // The iPhone has no store to install from: its IPA is opened in a sideloading app through the
   // install page (install/index.html), which passes on only an IPA of this project's releases.
   const installLink = (to, ipa) => `${ROOT}install/?to=${to}&url=${encodeURIComponent(ipa)}`;
+  // Adding the site's source for a channel (stable or nightly) to the app, through the same page:
+  // GitHub strips custom schemes from a README, so every link goes through https.
+  const sourceLink = (to, channel) => `${ROOT}install/?to=${to}&source=${channel}`;
 
   // Copy buttons: copy the command, say so out loud for screen readers, and when the clipboard is
   // refused, select the command so a keyboard copy works.
@@ -68,5 +71,5 @@ const AB = (() => {
     }
   });
 
-  return { ROOT, t, locale, names, os, phone, macChip, releases: loadReleases, installLink };
+  return { ROOT, t, locale, names, os, phone, macChip, releases: loadReleases, installLink, sourceLink };
 })();

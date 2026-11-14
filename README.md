@@ -81,15 +81,15 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 | Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
 | Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
-| iPhone | Add to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
+| iPhone | Add the AniBeam source to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
 
-**iPhone** (unsigned, for sideloading). Pick the app you sideload with; it opens with the IPA ready to install. Nightly is the newest build from main.
+**iPhone** (unsigned, for sideloading). Pick the app you sideload with and add the AniBeam source: AniBeam then sits in its library and the app offers each new build as an update. Nightly is the newest build from main, and its source carries newer releases too. Both can be added side by side.
 
-Stable: [Add to AltStore](https://anibeam.app/install/?to=altstore&channel=stable) · [Add to SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) · [Add to LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable)
+Stable: [Add source to AltStore](https://anibeam.app/install/?to=altstore&source=stable) · [Add source to SideStore](https://anibeam.app/install/?to=sidestore&source=stable) · [Add source to LiveContainer](https://anibeam.app/install/?to=livecontainer&source=stable)
 
-Nightly: [Add to AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [Add to SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [Add to LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)
+Nightly: [Add source to AltStore](https://anibeam.app/install/?to=altstore&source=nightly) · [Add source to SideStore](https://anibeam.app/install/?to=sidestore&source=nightly) · [Add source to LiveContainer](https://anibeam.app/install/?to=livecontainer&source=nightly)
 
-A channel with no IPA yet says so on that page.
+To install one build without a source, once, in [AltStore](https://anibeam.app/install/?to=altstore&channel=stable), [SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) or [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable) (nightly: [AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)). A channel with no IPA yet says so on that page.
 
 <details>
 <summary><b>Mac</b>: Homebrew needs the tap first, and macOS asks once</summary>
