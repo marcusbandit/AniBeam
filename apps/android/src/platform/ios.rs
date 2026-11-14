@@ -17,7 +17,7 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2_core_foundation::CGRect;
 use objc2_foundation::{
-    NSCurrentLocaleDidChangeNotification, NSLocale, NSNotification, NSNotificationCenter,
+    NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
     NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
 };
 
@@ -104,6 +104,62 @@ pub fn system_locale() -> String {
         .firstObject()
         .map(|l| l.to_string())
         .unwrap_or_default()
+}
+
+/// The alternate icon sets in the asset catalog, in the picker's order after Default: 1
+/// Dark, 2 Line art. Their names are listed in project.yml.
+const ICONS: [&str; 2] = ["AppIconDark", "AppIconLine"];
+
+/// The home screen icon showing now: 0 Default, 1 Dark, 2 Line art.
+pub fn app_icon() -> i32 {
+    let Some(app_class) = AnyClass::get(c"UIApplication") else {
+        return 0;
+    };
+    // SAFETY: plain UIKit getters on the UI thread; `alternateIconName` is an NSString or nil.
+    let name = unsafe {
+        let app: *mut AnyObject = msg_send![app_class, sharedApplication];
+        if app.is_null() {
+            return 0;
+        }
+        let name: Option<Retained<NSString>> = msg_send![app, alternateIconName];
+        name.map(|n| n.to_string())
+    };
+    name.and_then(|n| ICONS.iter().position(|i| *i == n))
+        .map_or(0, |i| i as i32 + 1)
+}
+
+/// Shows home screen icon `which`; iOS tells the person with an alert. A refusal
+/// is logged.
+pub fn set_app_icon(which: i32) {
+    let Some(app_class) = AnyClass::get(c"UIApplication") else {
+        return;
+    };
+    let name: Option<Retained<NSString>> = usize::try_from(which - 1)
+        .ok()
+        .and_then(|i| ICONS.get(i))
+        .map(|n| NSString::from_str(n));
+    let done = RcBlock::new(|error: *mut NSError| {
+        // SAFETY: UIKit passes nil or an NSError it keeps alive for the call.
+        if let Some(error) = unsafe { error.as_ref() } {
+            log(&format!(
+                "iOS refused the app icon: {}",
+                error.localizedDescription()
+            ));
+        }
+    });
+    // SAFETY: `setAlternateIconName:completionHandler:` is called on the main thread, which
+    // is where Settings' callbacks run, with an NSString or nil and a block UIKit copies.
+    unsafe {
+        let app: *mut AnyObject = msg_send![app_class, sharedApplication];
+        if app.is_null() {
+            return;
+        }
+        let _: () = msg_send![
+            app,
+            setAlternateIconName: name.as_deref(),
+            completionHandler: &*done
+        ];
+    }
 }
 
 /// The phone is in dark mode: the window's style once there is one, the screen's before.

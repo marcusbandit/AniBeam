@@ -14,9 +14,14 @@ targets:
     sources:
       - path: Info.plist
         buildPhase: none
+      # The app icons: AppIcon, and AppIconDark and AppIconLine for More's picker. Written
+      # by ios/icons.py.
+      - path: Assets.xcassets
     settings:
       INFOPLIST_FILE: Info.plist
       PRODUCT_NAME: AniBeam
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIconDark AppIconLine
       # The Android app's applicationId.
       PRODUCT_BUNDLE_IDENTIFIER: com.marcusrosado.anibeam
       MARKETING_VERSION: "0"

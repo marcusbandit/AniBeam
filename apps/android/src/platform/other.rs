@@ -149,11 +149,13 @@ pub fn player_awake(on: bool) {
 }
 
 /// The Default launcher icon.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn app_icon() -> i32 {
     0
 }
 
 /// No launcher icon to change.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn set_app_icon(which: i32) {
     let _ = which;
 }
