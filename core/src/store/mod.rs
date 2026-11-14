@@ -12,6 +12,7 @@ use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use tokio::sync::oneshot;
 
 use crate::contract::CoreError;
+use crate::sync::recover;
 
 type Task = Box<dyn FnOnce(&mut Connection) + Send + 'static>;
 
@@ -201,7 +202,7 @@ impl Store {
         // A panic inside `f` would otherwise poison the mutex for the rest
         // of the process. Recover it: a closure that only reads leaves the
         // connection itself perfectly usable, poisoned or not.
-        let conn = self.reader_conn.lock().unwrap_or_else(|e| e.into_inner());
+        let conn = recover(&self.reader_conn);
         f(&conn)
     }
 

@@ -424,7 +424,7 @@ impl Watcher {
     }
 
     fn debouncer(&self) -> std::sync::MutexGuard<'_, Option<Debouncer<Backend, RecommendedCache>>> {
-        self.debouncer.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.debouncer)
     }
 }
 

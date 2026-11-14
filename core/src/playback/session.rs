@@ -35,6 +35,7 @@ use crate::library::sidecar::sidecars_of;
 use crate::library::{classifier, labels};
 use crate::prefs;
 use crate::presence::Activity;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::{on_hold, writes};
 
@@ -112,7 +113,7 @@ impl Sessions {
     /// A poisoned lock is recovered rather than propagated: the map holds
     /// plain data, so a panic elsewhere leaves it perfectly usable.
     fn lock(&self) -> MutexGuard<'_, HashMap<u64, Session>> {
-        self.map.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.map)
     }
 
     fn next_id(&self) -> u64 {

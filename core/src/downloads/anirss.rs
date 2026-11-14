@@ -23,6 +23,7 @@ use tokio::process::Child;
 
 use crate::contract::*;
 use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "anirss";
@@ -695,7 +696,7 @@ impl Sidecar {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(pipe).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let mut t = tail.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut t = recover(&tail);
                     if t.len() >= STDERR_TAIL {
                         t.pop_front();
                     }
@@ -766,7 +767,7 @@ impl Sidecar {
 
     /// The last few lines stderr said, joined, or `None` when it said nothing.
     fn stderr_tail(&self) -> Option<String> {
-        let t = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
+        let t = recover(&self.stderr);
         let lines: Vec<&str> = t
             .iter()
             .map(|s| s.trim())

@@ -28,6 +28,7 @@ use crate::library::cards;
 use crate::net::{Http, HttpRequest};
 use crate::store::Store;
 use crate::store::sql::placeholders;
+use crate::sync::recover;
 use crate::time;
 
 /// Fetches in flight at once.
@@ -209,9 +210,7 @@ impl ImageCache {
     /// one `Instant`, and a panicking job must not wedge the gate for the
     /// rest of the process.
     fn fill_gate(&self) -> MutexGuard<'_, Option<Instant>> {
-        self.fill_started_at
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        recover(&self.fill_started_at)
     }
 
     /// Whether a read that found a gap should ask for a fill.

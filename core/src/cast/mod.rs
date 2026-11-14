@@ -75,6 +75,7 @@ mod imp {
     use super::{castv2, dlna};
     use crate::contract::*;
     use crate::core::Core;
+    use crate::sync::recover;
 
     #[derive(Default)]
     pub struct Inner {
@@ -127,10 +128,7 @@ mod imp {
     }
 
     fn devices(inner: &Inner) -> Vec<CastDevice> {
-        inner
-            .devices
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        recover(&inner.devices)
             .iter()
             .map(|f| f.device.clone())
             .collect()
@@ -139,7 +137,7 @@ mod imp {
     fn found(core: &Arc<Core>, f: Found) {
         let inner = inner(core);
         let list = {
-            let mut d = inner.devices.lock().unwrap_or_else(|e| e.into_inner());
+            let mut d = recover(&inner.devices);
             match d.iter_mut().find(|x| x.device.id == f.device.id) {
                 Some(x) if *x == f => return,
                 Some(x) => *x = f,
@@ -271,7 +269,7 @@ mod imp {
     fn update(core: &Core, id: u64, f: impl FnOnce(&mut Session)) {
         let inner = inner(core);
         let out = {
-            let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+            let mut s = recover(&inner.session);
             let Some(session) = s.as_mut().filter(|s| s.id == id) else {
                 return;
             };
@@ -333,7 +331,7 @@ mod imp {
                 })
             }
             Call::CastStatus => {
-                let s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+                let s = recover(&inner.session);
                 Ok(Reply::CastState {
                     state: s.as_ref().map(|s| s.state.clone()),
                 })
@@ -345,10 +343,7 @@ mod imp {
                 audio_track,
                 subtitle,
             } => {
-                let found = inner
-                    .devices
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
+                let found = recover(&inner.devices)
                     .iter()
                     .find(|f| f.device.id == device)
                     .cloned()
@@ -376,7 +371,7 @@ mod imp {
                     duration: 0.0,
                     error: None,
                 };
-                *inner.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(Session {
+                *recover(&inner.session) = Some(Session {
                     id,
                     token: token.clone(),
                     state: state.clone(),
@@ -423,10 +418,7 @@ mod imp {
                 start,
                 duration,
             } => {
-                let found = inner
-                    .devices
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
+                let found = recover(&inner.devices)
                     .iter()
                     .find(|f| f.device.id == device)
                     .cloned()
@@ -463,7 +455,7 @@ mod imp {
                     duration,
                     error: None,
                 };
-                *inner.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(Session {
+                *recover(&inner.session) = Some(Session {
                     id,
                     token: token.clone(),
                     state: state.clone(),
@@ -526,7 +518,7 @@ mod imp {
     /// call, so `f` must not take it again: a DLNA action only spawns its request.
     fn control(core: &Core, f: impl FnOnce(Ctl<'_>, u64)) -> Result<Reply, CoreError> {
         let inner = inner(core);
-        let s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+        let s = recover(&inner.session);
         let Some(session) = s.as_ref() else {
             return Err(CoreError::invalid(
                 "cast",
@@ -562,7 +554,7 @@ mod imp {
     fn seek(core: &Core, to: f64) -> Result<Reply, CoreError> {
         let inner = inner(core);
         let (mode, base, title, id, prepared, pieces) = {
-            let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+            let mut s = recover(&inner.session);
             let Some(s) = s.as_mut() else {
                 return Err(CoreError::invalid(
                     "cast",
@@ -614,12 +606,7 @@ mod imp {
 
     fn stop(core: &Core) {
         let inner = inner(core);
-        let Some(session) = inner
-            .session
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-        else {
+        let Some(session) = recover(&inner.session).take() else {
             return;
         };
         inner.registry.remove(&session.token);
@@ -688,7 +675,7 @@ mod imp {
         let controller = castv2::start(found.addr, load, move |st| {
             on_cast_status(&status_core, id, st)
         });
-        let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = recover(&inner.session);
         match s.as_mut().filter(|s| s.id == id) {
             Some(s) => s.control = Control::Cast(controller),
             None => drop(controller),
@@ -769,7 +756,7 @@ mod imp {
             .handle
             .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
             .abort_handle();
-        let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = recover(&inner.session);
         match s.as_mut().filter(|s| s.id == id) {
             Some(s) => s.control = Control::Dlna { client, poll },
             None => {
@@ -785,12 +772,7 @@ mod imp {
 
     /// Whether session `id` is still the one casting.
     fn current(inner: &Inner, id: u64) -> bool {
-        inner
-            .session
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_some_and(|s| s.id == id)
+        recover(&inner.session).as_ref().is_some_and(|s| s.id == id)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -880,7 +862,7 @@ mod imp {
                 update(core, id, |s| {
                     s.mode = if hls { Mode::Hls } else { Mode::Direct }
                 });
-                let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+                let mut s = recover(&inner.session);
                 match s.as_mut().filter(|s| s.id == id) {
                     Some(s) => s.control = Control::Cast(controller),
                     // Stopped while connecting: the controller drops here and stops the TV.
@@ -954,7 +936,7 @@ mod imp {
                     .handle
                     .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
                     .abort_handle();
-                let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+                let mut s = recover(&inner.session);
                 match s.as_mut().filter(|s| s.id == id) {
                     Some(s) => {
                         s.mode = mode;

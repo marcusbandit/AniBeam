@@ -35,6 +35,7 @@ use crate::net::anilist::{
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
 };
 use crate::prefs;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::{
     TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
@@ -309,7 +310,7 @@ static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSe
     std::sync::LazyLock::new(Default::default);
 
 fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
-    REWATCHING.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&REWATCHING)
 }
 
 /// A series' place in `REWATCHING`, given up when the job that holds it ends

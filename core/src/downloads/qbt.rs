@@ -19,6 +19,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "qBittorrent";
@@ -369,7 +370,7 @@ impl QbtClient {
 
     async fn send(&self, path: &str, body: Option<Body>) -> Result<HttpResponse, CoreError> {
         let mut headers = vec![("Referer".to_string(), format!("{}/", self.base))];
-        if let Some(cookie) = self.sid.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        if let Some(cookie) = recover(&self.sid).clone() {
             headers.push(("Cookie".to_string(), cookie));
         }
         let method = if body.is_some() {
@@ -400,7 +401,7 @@ impl QbtClient {
     }
 
     async fn login(&self) -> Result<(), CoreError> {
-        if *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) {
+        if *recover(&self.rejected) {
             return Err(unauthorized(crate::i18n::tr(
                 "core-downloads-qbt-password-rejected",
                 &[],
@@ -443,7 +444,7 @@ impl QbtClient {
         // anything else, a proxy's 502 say, is worth another try on the next call.
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
         if r.status == 401 || (r.is_success() && text == "Fails.") {
-            *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = true;
+            *recover(&self.rejected) = true;
             return Err(unauthorized(crate::i18n::tr(
                 "core-downloads-qbt-login-rejected",
                 &[],
@@ -478,7 +479,7 @@ impl QbtClient {
             });
         match sid {
             Some(sid) => {
-                *self.sid.lock().unwrap_or_else(|e| e.into_inner()) = Some(sid);
+                *recover(&self.sid) = Some(sid);
                 Ok(())
             }
             // Logged in without a cookie: an auth bypass answered the

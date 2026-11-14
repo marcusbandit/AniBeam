@@ -23,6 +23,7 @@ use crate::metadata::apply::{is_rate_limited, provider_unreachable};
 use crate::metadata::fetch::message_of;
 use crate::metadata::record::{self, StubWrite};
 use crate::net::anilist::{Enrichment, RelatedNode};
+use crate::sync::recover;
 use crate::time;
 
 /// How long a rate-limited node sits out, and the floor under whatever
@@ -67,7 +68,7 @@ pub fn start_gap_crawl(core: &Arc<Core>) -> u64 {
 /// is what goes and gets whatever is missing behind it. At most once a
 /// minute per root, so opening the same page again changes nothing.
 pub fn maybe_crawl_for_read(core: &Arc<Core>, seed: u64, root: u64) {
-    let mut recent = core.crawl_recent.lock().unwrap_or_else(|e| e.into_inner());
+    let mut recent = recover(&core.crawl_recent);
     if !record_crawl(&mut recent, root, Instant::now()) {
         return;
     }

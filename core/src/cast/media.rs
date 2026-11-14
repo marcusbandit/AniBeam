@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use super::fmp4;
 use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, VideoCodec};
 use super::vtt::{self, Cue};
+use crate::sync::recover;
 
 /// What kind of receiver the episode is going to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,7 +153,7 @@ impl Prepared {
     pub fn segment(&self, i: usize) -> Result<Vec<u8>, String> {
         let s = self.segments.get(i).ok_or("no such segment")?;
         let last = i + 1 == self.segments.len();
-        let mut reader = self.reader.lock().unwrap_or_else(|e| e.into_inner());
+        let mut reader = recover(&self.reader);
         let (v, a) = mkv::segment(
             &mut reader,
             &self.probe,

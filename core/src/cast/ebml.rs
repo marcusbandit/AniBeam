@@ -2,6 +2,7 @@
 //! that can be sent to one. The demuxer's own seek misreads the cues ffmpeg writes, and a
 //! file with no cues has nothing for it to use; the clusters themselves are always there.
 
+use crate::sync::recover;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -135,12 +136,7 @@ impl Jump {
     }
 
     fn apply(&mut self) -> io::Result<()> {
-        if let Some(at) = self
-            .pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-        {
+        if let Some(at) = recover(&self.pending).take() {
             self.inner.seek(SeekFrom::Start(at))?;
         }
         Ok(())

@@ -25,6 +25,7 @@ use rusqlite::{Connection, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::sync::recover;
 
 /// When a followed episode is looked for, counted from the moment it aired:
 /// the feed is asked a little after it airs, since a release takes a while
@@ -178,7 +179,7 @@ pub async fn remember(core: &Arc<Core>, rules: &[SubscriptionRule]) {
 static ARMED: LazyLock<Mutex<HashSet<(u64, u32, i64)>>> = LazyLock::new(Default::default);
 
 fn armed() -> std::sync::MutexGuard<'static, HashSet<(u64, u32, i64)>> {
-    ARMED.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&ARMED)
 }
 
 /// A watch's place in `ARMED`, given up however the task ends: done,
