@@ -584,6 +584,19 @@ core-room-member-left = { $name } left the room.
 core-room-closed = The watch together room closed.
 core-room-lost = Lost the connection to the watch together room. Trying again.
 core-room-back = Back in the watch together room.
+core-room-media-asked = Asked the host for the episode.
+core-room-media-cannot = The host can't share this episode right now.
+core-room-media-sent = Sent { $name } the episode's torrent.
+core-room-media-sent-name = Sent { $name } the episode's release name.
+core-room-media-nothing = The host has no copy of the episode to share.
+core-room-media-torrent = Downloading the episode from the host's torrent.
+core-room-media-searching = Searching your sources for the host's release.
+core-room-media-not-found = None of your sources has the host's release.
+core-room-media-no-start = Could not start the download: { $message }
+core-room-media-client = the torrent client did not take it
+core-room-media-lost = The torrent client lost the episode's download.
+core-room-media-not-in-library = The episode downloaded, but it is not in your library. Check that downloads save into a library folder.
+core-room-media-here = The episode is in your library now.
 
 ## core/src/presence/mod.rs
 

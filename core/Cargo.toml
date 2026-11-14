@@ -52,6 +52,12 @@ if-addrs = "0.13"
 # and HTTP upgrade so it rides the same TLS setup as every other request.
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# Get media (#889): what the host passes a member is sealed end to end, an X25519 agreement
+# per pair and XChaCha20-Poly1305 under a key HKDF draws from it, so the relay forwards bytes
+# it cannot read.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
+hkdf = "0.13"
 # Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
 # for their TLS. Only the shells that cast turn it on.
 matroska-demuxer = { version = "0.8", optional = true }

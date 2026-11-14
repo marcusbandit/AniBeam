@@ -1014,6 +1014,13 @@ pub struct RoomInfo {
     pub session: Option<u64>,
     /// False while the connection to the relay is down and being tried again.
     pub connected: bool,
+    /// Where this member's Get media is (#889).
+    #[serde(default)]
+    pub fetch: RoomFetch,
+    /// Whether Get media can start: this library lacks the episode, and the host's app
+    /// can be asked for it.
+    #[serde(default)]
+    pub can_fetch: bool,
 }
 
 /// One person in a room.
@@ -1023,6 +1030,12 @@ pub struct RoomMember {
     pub name: String,
     pub host: bool,
     pub ready: RoomReady,
+    /// While `ready` is `Downloading`: how far, from 0 to 100.
+    #[serde(default)]
+    pub progress: Option<f64>,
+    /// While `ready` is `Downloading`: seconds left, when the torrent client can tell.
+    #[serde(default)]
+    pub eta: Option<u64>,
 }
 
 /// Which episode a room watches: its identity and nothing that leads to the video.
