@@ -1,7 +1,10 @@
 //! The app's icon, picked in Appearance. The window takes it through QGuiApplication, which
 //! is also the Dock's icon on a Mac and the taskbar's on Windows. On Linux the launcher and
 //! the dock read the icon theme by the desktop entry's name, so Dark is laid over the
-//! installed icon in the user's own hicolor folder, and Default takes it away again.
+//! installed icon in the user's own hicolor folder, and Default takes it away again. On a Mac
+//! QGuiApplication only changes the Dock while the app runs, so when AniBeam runs from its
+//! .app bundle Dark is also set as the bundle's custom icon through NSWorkspace, which is
+//! what Finder, Launchpad and the Dock show when it is closed, and Default removes it.
 
 use crate::theme::config::AppIcon;
 
@@ -23,7 +26,13 @@ pub fn install(icon: AppIcon) {
     {
         eprintln!("app icon: {e}");
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    if crate::runtime::args().root.is_none()
+        && let Err(e) = macos::install(icon)
+    {
+        eprintln!("app icon: {e}");
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let _ = icon;
 }
 
@@ -127,5 +136,56 @@ mod linux {
             std::fs::File::open(&root)?.set_times(now)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use std::path::PathBuf;
+
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSImage, NSWorkspace, NSWorkspaceIconCreationOptions};
+    use objc2_foundation::{NSData, NSString};
+
+    use super::AppIcon;
+
+    const DARK: &[u8] = include_bytes!("../assets/icon-dark.png");
+
+    /// The .app folder the running executable sits in (`X.app/Contents/MacOS/anibeam`), or
+    /// None for a cargo build, which has no bundle to give an icon to.
+    fn bundle() -> Option<PathBuf> {
+        let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+        let app = exe.parent()?.parent()?.parent()?;
+        (app.extension()? == "app" && app.is_dir()).then(|| app.to_path_buf())
+    }
+
+    pub fn install(icon: AppIcon) -> Result<(), String> {
+        let Some(app) = bundle() else {
+            return Ok(());
+        };
+        let path = NSString::from_str(&app.to_string_lossy());
+        let workspace = NSWorkspace::sharedWorkspace();
+        let ok = match icon {
+            AppIcon::Dark => {
+                let data = NSData::with_bytes(DARK);
+                let image = NSImage::initWithData(NSImage::alloc(), &data)
+                    .ok_or("the dark icon did not decode")?;
+                workspace.setIcon_forFile_options(
+                    Some(&image),
+                    &path,
+                    NSWorkspaceIconCreationOptions::empty(),
+                )
+            }
+            AppIcon::Default => workspace.setIcon_forFile_options(
+                None,
+                &path,
+                NSWorkspaceIconCreationOptions::empty(),
+            ),
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(format!("could not set the icon of {}", app.display()))
+        }
     }
 }
