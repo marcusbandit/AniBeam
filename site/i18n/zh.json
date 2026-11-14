@@ -88,5 +88,11 @@
   "But we support Tailscale": "不过我们支持 Tailscale",
   "Close": "关闭",
   "{n} episodes": "共 {n} 集",
-  "Movie": "电影"
+  "Movie": "电影",
+  "iPhone": "iPhone",
+  "Add to AltStore": "添加到 AltStore",
+  "Add to SideStore": "添加到 SideStore",
+  "Add to LiveContainer": "添加到 LiveContainer",
+  "Download IPA": "下载 IPA",
+  "Nightly test build, unsigned, for sideloading": "Nightly 测试版，未签名，用于侧载"
 }

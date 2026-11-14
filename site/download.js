@@ -24,6 +24,17 @@
       const from = card.dataset.asset === "apk" ? phone : desktop;
       if (from) card.href = from.assets[card.dataset.asset] || from.url;
     }
+    // The iPhone's tile is there only when the phone's nightly holds an IPA, so nothing shows
+    // before the first one. It is a test build, so it is the nightly's whatever the channel.
+    const ipa = rel.phone_nightly && rel.phone_nightly.assets.ipa;
+    const tile = document.getElementById("dl-iphone");
+    if (tile) {
+      tile.hidden = !ipa;
+      if (ipa) {
+        for (const a of tile.querySelectorAll("[data-install]")) a.href = AB.installLink(a.dataset.install, ipa);
+        tile.querySelector("[data-ipa]").href = ipa;
+      }
+    }
     // An Android phone sees only the phone's tile, so the line under the title is the phone
     // release's. An iPhone sees the Mac's tile until there is an iPhone app.
     const shown = android ? phone : desktop;

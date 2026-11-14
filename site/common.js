@@ -42,6 +42,10 @@ const AB = (() => {
   let releases;
   const loadReleases = () => (releases ??= fetch(ROOT + "releases.json").then((r) => (r.ok ? r.json() : null)).catch(() => null));
 
+  // The iPhone has no store to install from: its IPA is opened in a sideloading app through the
+  // install page (install/index.html), which passes on only an IPA of this project's releases.
+  const installLink = (to, ipa) => `${ROOT}install/?to=${to}&url=${encodeURIComponent(ipa)}`;
+
   // Copy buttons: copy the command, say so out loud for screen readers, and when the clipboard is
   // refused, select the command so a keyboard copy works.
   const live = document.createElement("span");
@@ -64,5 +68,5 @@ const AB = (() => {
     }
   });
 
-  return { ROOT, t, locale, names, os, phone, macChip, releases: loadReleases };
+  return { ROOT, t, locale, names, os, phone, macChip, releases: loadReleases, installLink };
 })();

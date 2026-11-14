@@ -88,5 +88,11 @@
  "But we support Tailscale": "Mas temos suporte ao Tailscale",
  "Close": "Fechar",
  "{n} episodes": "{n} episódios",
- "Movie": "Filme"
+ "Movie": "Filme",
+ "iPhone": "iPhone",
+ "Add to AltStore": "Adicionar ao AltStore",
+ "Add to SideStore": "Adicionar ao SideStore",
+ "Add to LiveContainer": "Adicionar ao LiveContainer",
+ "Download IPA": "Baixar o IPA",
+ "Nightly test build, unsigned, for sideloading": "Versão de teste nightly, sem assinatura, para sideload"
 }

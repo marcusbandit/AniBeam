@@ -1,2 +1,2 @@
 ### New
-- Early groundwork for an iPhone version, which is not out yet
+- A nightly iPhone IPA can be sideloaded; it is a test build

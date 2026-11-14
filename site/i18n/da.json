@@ -88,5 +88,11 @@
  "But we support Tailscale": "Men vi understøtter Tailscale",
  "Close": "Luk",
  "{n} episodes": "{n} afsnit",
- "Movie": "Film"
+ "Movie": "Film",
+ "iPhone": "iPhone",
+ "Add to AltStore": "Føj til AltStore",
+ "Add to SideStore": "Føj til SideStore",
+ "Add to LiveContainer": "Føj til LiveContainer",
+ "Download IPA": "Download IPA",
+ "Nightly test build, unsigned, for sideloading": "Nightly-testversion, usigneret, til sideloading"
 }
