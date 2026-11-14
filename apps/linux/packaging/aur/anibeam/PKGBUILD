@@ -1,4 +1,4 @@
-# Maintainer: Marcus Rosado <marcusbanditten@gmail.com>
+# Maintainer: Marcus Rosado <22052802+marcusbandit@users.noreply.github.com>
 # The AUR's anibeam: the native Qt shell built from a release tag. Publish it with
 # apps/linux/packaging/aur/publish.sh after the tag is on GitHub.
 pkgname=anibeam

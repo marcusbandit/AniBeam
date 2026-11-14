@@ -156,9 +156,6 @@ impl EventBus {
     pub fn warn(&self, stage: Stage, message: impl Into<String>, body: EventBody) -> Event {
         self.emit(Level::Warn, stage, message, None, body)
     }
-    pub fn error(&self, stage: Stage, message: impl Into<String>, body: EventBody) -> Event {
-        self.emit(Level::Error, stage, message, None, body)
-    }
     /// A line for both logs: `plain` for the person, `message` for the
     /// developer view. The two may say the same thing when the developer
     /// line is already plain.

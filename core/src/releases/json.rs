@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::contract::*;
+use crate::foundation::magnet::is_hash;
 use crate::net::{Http, HttpRequest, Method};
 use crate::repos::index::JsonMap;
 
@@ -63,7 +64,7 @@ fn bytes(v: &Value) -> Option<u64> {
             s.parse()
                 .ok()
                 .or_else(|| s.parse::<f64>().ok().and_then(whole))
-                .or_else(|| crate::downloads::facts::size_bytes(s))
+                .or_else(|| crate::foundation::size::size_bytes(s))
         }
         _ => None,
     }
@@ -89,18 +90,6 @@ fn ready_link(link: &str) -> Option<String> {
                 && is_hash(&v[9..])
         });
     (magnet && hashed).then(|| link.to_string())
-}
-
-/// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
-/// else is left out rather than put in a magnet, where it could add parameters of its own.
-fn is_hash(hash: &str) -> bool {
-    match hash.len() {
-        40 => hash.bytes().all(|b| b.is_ascii_hexdigit()),
-        32 => hash
-            .bytes()
-            .all(|b| b.is_ascii_alphabetic() || (b'2'..=b'7').contains(&b)),
-        _ => false,
-    }
 }
 
 /// The magnet for an info-hash, named after the release.

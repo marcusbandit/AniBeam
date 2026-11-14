@@ -1261,24 +1261,6 @@ pub struct ImportSummary {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
-pub struct Feed {
-    pub name: String,
-    pub active: bool,
-    pub torrents: u64,
-    pub query: String,
-    pub save_path: String,
-    pub url: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
-pub enum SubscriptionsResult {
-    Ok { feeds: Vec<Feed> },
-    Missing,
-    NeedsAuth,
-    Timeout,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Progress {
     pub done: u64,
     pub total: Option<u64>,
@@ -1410,7 +1392,7 @@ pub struct TailnetPerson {
 
 /// What the tailnet host is doing, for the Settings page: whether the
 /// preference is on, the URLs it answers on, and one plain sentence for the
-/// state ("Serving on 100.65.105.9", "Tailscale is not connected").
+/// state ("Serving on 100.64.0.1", "Tailscale is not connected").
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct HostStatus {
     pub enabled: bool,

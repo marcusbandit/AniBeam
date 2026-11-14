@@ -320,7 +320,7 @@ async fn add_links(
             file_hashes
                 .get(l)
                 .cloned()
-                .or_else(|| super::replace::magnet_hash(l))
+                .or_else(|| crate::foundation::magnet::hash(l))
         })
         .collect();
     Ok(AddedTorrents {
@@ -359,7 +359,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
             let save_path = rule_save_path(rule).unwrap_or("").to_string();
             SubscriptionRule {
                 name: name.clone(),
-                query: crate::subscriptions::decode_search_query(&feed_url).unwrap_or_default(),
+                query: crate::downloads::query::decode_search_query(&feed_url).unwrap_or_default(),
                 feed_url,
                 torrent_count: counts.get(&paths::norm(&save_path)).copied().unwrap_or(0),
                 file_count: 0,
