@@ -206,6 +206,17 @@ fn owned(playback: &Playback, serial: u64) -> Option<Arc<Playback>> {
 pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret: Secret) {
     match secret {
         Secret::Ask { episode_key } => {
+            // Only the host's app answers: a member asks the host, never another
+            // member, whose torrents are its own
+            let hosting = playback
+                .rooms
+                .lock()
+                .as_ref()
+                .is_some_and(|a| a.serial == serial && a.is_host());
+            if !hosting {
+                tracing::debug!("room: an ask to a member who is not the host, dropped");
+                return;
+            }
             let Some(owner) = owned(playback, serial) else {
                 return;
             };
@@ -764,7 +775,7 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
 async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key: String) {
     let asked = {
         let slot = playback.rooms.lock();
-        let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
+        let Some(a) = slot.as_ref().filter(|a| a.serial == serial && a.is_host()) else {
             return;
         };
         let Some(e) = a.episode.clone().filter(|e| e.episode_key == episode_key) else {
