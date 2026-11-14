@@ -2187,6 +2187,7 @@ mod tests {
             save_path: format!("/x/{name}"),
             enabled: true,
             taken: [format!("{name}-ep1")].into(),
+            added: Default::default(),
         }
     }
 

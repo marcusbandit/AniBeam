@@ -624,15 +624,15 @@ find-dropped = この作品名を含まない{ $count }件のリリースを除�
 
 find-following = フォロー中
 find-stop-following-ask = 「{ $name }」のフォローを解除?
-find-unfollow-explain = 新エピソードのダウンロードが止まります。フォルダの中身は残すことも、一緒に削除することもできます。削除する場合は、手動で入手したエピソードを含め、そこにあるダウンロードがすべて消えます。
+find-unfollow-explain = 新エピソードのダウンロードが止まります。フォローでダウンロードしたエピソードは、残すことも一緒に削除することもできます。手動で入手したエピソードはどちらの場合も残ります。
 find-stop-following = フォローをやめる
 find-stop-keep = やめて、エピソードは残す
-find-stop-delete = やめて、フォルダのダウンロードを削除
+find-stop-delete = やめて、エピソードを削除
 find-rule-taken = フォルダにダウンロード{ $downloads }件、ファイル{ $files }個
 find-rule-paused = 一時停止中のため、新エピソードは届きません。{ $taken }。
 find-rule-no-feed = ソースにフィードがないため、新エピソードは届きません。{ $taken }。
 find-rule-active = 新エピソードは自動でダウンロードされます。{ $taken }。
-find-unfollowed-deleted = 「{ $name }」のフォローをやめ、フォルダのダウンロードを削除しました。
+find-unfollowed-deleted = 「{ $name }」のフォローをやめ、エピソードを削除しました。
 find-unfollowed-kept = 「{ $name }」のフォローをやめました。エピソードはこの端末に残ります。
 find-stop-failed = 停止を完了できませんでした: { $error }
 

@@ -700,10 +700,10 @@ find-dropped = { $count ->
 
 find-following = Abo
 find-stop-following-ask = Abo von { $name } beenden?
-find-unfollow-explain = Neue Folgen werden nicht mehr geladen. Was in seinem Ordner liegt, kann bleiben oder mitgehen: jeder Download dort, auch von Hand geholte Folgen.
+find-unfollow-explain = Neue Folgen werden nicht mehr geladen. Die Folgen, die es geladen hat, können bleiben oder mitgehen. Von Hand geholte Folgen bleiben in jedem Fall.
 find-stop-following = Abo beenden
 find-stop-keep = Beenden, Folgen behalten
-find-stop-delete = Beenden und Downloads seines Ordners löschen
+find-stop-delete = Beenden und seine Folgen löschen
 find-rule-taken = { $downloads ->
     [one] { $downloads } Download
    *[other] { $downloads } Downloads
@@ -714,7 +714,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Es ist pausiert, also kommen keine neuen Folgen. { $taken }.
 find-rule-no-feed = Seine Quelle hat keinen Feed, also kommen keine neuen Folgen. { $taken }.
 find-rule-active = Neue Folgen werden von selbst geladen. { $taken }.
-find-unfollowed-deleted = Abo von { $name } beendet und die Downloads in seinem Ordner gelöscht.
+find-unfollowed-deleted = Abo von { $name } beendet und seine Folgen gelöscht.
 find-unfollowed-kept = Abo von { $name } beendet. Seine Folgen bleiben auf diesem Handy.
 find-stop-failed = Beenden ist nicht durchgelaufen: { $error }
 

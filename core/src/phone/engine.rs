@@ -604,6 +604,14 @@ impl Engine {
         }
     }
 
+    /// The info hashes of every torrent the engine holds now, lowercase.
+    pub fn hashes(&self) -> std::collections::HashSet<String> {
+        self.session.with_torrents(|it| {
+            it.map(|(_, h)| h.info_hash().as_string().to_lowercase())
+                .collect()
+        })
+    }
+
     pub async fn control(&self, hashes: &[String], action: PhoneAction) -> Result<(), CoreError> {
         for hash in hashes {
             let Some(h) = self.handle(hash) else { continue };

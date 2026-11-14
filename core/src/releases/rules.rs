@@ -32,6 +32,11 @@ pub struct Rule {
     /// The links already taken, so each episode downloads once.
     #[serde(default)]
     pub taken: BTreeSet<String>,
+    /// The info hashes of the torrents this rule added, lowercase. Unsubscribing with its
+    /// files removes these and nothing else, so a download got by hand into the same
+    /// folder stays (#654).
+    #[serde(default)]
+    pub added: BTreeSet<String>,
 }
 
 fn yes() -> bool {
@@ -97,10 +102,11 @@ impl RuleStore {
         {
             name = format!("{name} @{}", spec.endpoint_name);
         }
-        let taken = rules
+        let (taken, added) = rules
             .iter()
             .find(|r| r.name == name && same(r))
-            .map(|r| r.taken.clone());
+            .map(|r| (r.taken.clone(), r.added.clone()))
+            .unwrap_or_default();
         let rule = Rule {
             name: name.clone(),
             feed_url: spec.feed_url.clone(),
@@ -109,7 +115,8 @@ impl RuleStore {
             must_not_contain: spec.must_not_contain.clone(),
             save_path: save_base.join(&name).to_string_lossy().into_owned(),
             enabled: true,
-            taken: taken.unwrap_or_default(),
+            taken,
+            added,
         };
         rules.retain(|r| r.name != name);
         rules.push(rule.clone());
@@ -145,6 +152,20 @@ impl RuleStore {
         let mut rules = self.load();
         if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
             r.taken.extend(links.iter().cloned());
+        }
+        self.save(&rules)
+    }
+
+    /// Notes a torrent `rule` added: its link as taken, and its info hash, when the rule
+    /// is the one that brought the torrent in, as the rule's own.
+    pub fn mark_added(&self, rule: &str, link: &str, hash: Option<&str>) -> Result<(), CoreError> {
+        let _one = editing();
+        let mut rules = self.load();
+        if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
+            r.taken.insert(link.to_string());
+            if let Some(hash) = hash {
+                r.added.insert(hash.to_lowercase());
+            }
         }
         self.save(&rules)
     }
@@ -264,6 +285,7 @@ mod tests {
             save_path: "/x/Frieren".into(),
             enabled: true,
             taken: BTreeSet::new(),
+            added: BTreeSet::new(),
         }
     }
 
@@ -379,6 +401,8 @@ mod tests {
         rules[0].endpoint = String::new();
         store.save(&rules).unwrap();
         store.mark_taken("Show", &["a".to_string()]).unwrap();
+        // A torrent the rule added keeps its hash, lowercase, through the subscribe again.
+        store.mark_added("Show", "b", Some("ABC")).unwrap();
 
         let (_, again) = store
             .subscribe("Show", &spec(kept), filled, fill, dir.path())
@@ -388,7 +412,8 @@ mod tests {
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].feed_url, kept);
         assert_eq!(rules[0].endpoint, "keyed");
-        assert!(rules[0].taken.contains("a"));
+        assert!(rules[0].taken.contains("a") && rules[0].taken.contains("b"));
+        assert_eq!(rules[0].added, BTreeSet::from(["abc".to_string()]));
 
         // Another endpoint whose kept feed reads the same but fills another token is
         // another feed, and another rule.

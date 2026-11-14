@@ -628,15 +628,15 @@ find-dropped = 已排除 { $count } 个未写明这部番剧的资源。
 
 find-following = 追更中
 find-stop-following-ask = 停止追更《{ $name }》？
-find-unfollow-explain = 新剧集将不再下载。它文件夹里的内容可以保留，也可以一并删除：那里的所有下载，包括你手动获取的剧集。
+find-unfollow-explain = 新剧集将不再下载。它下载的剧集可以保留，也可以一并删除。你手动获取的剧集无论如何都会保留。
 find-stop-following = 停止追更
 find-stop-keep = 停止，保留剧集
-find-stop-delete = 停止并删除文件夹中的下载
+find-stop-delete = 停止并删除它的剧集
 find-rule-taken = 文件夹中有 { $downloads } 个下载、{ $files } 个文件
 find-rule-paused = 已暂停，不会有新剧集。{ $taken }。
 find-rule-no-feed = 它的来源没有订阅源，不会有新剧集。{ $taken }。
 find-rule-active = 新剧集会自动下载。{ $taken }。
-find-unfollowed-deleted = 已停止追更《{ $name }》，并删除了它文件夹中的下载。
+find-unfollowed-deleted = 已停止追更《{ $name }》，并删除了它的剧集。
 find-unfollowed-kept = 已停止追更《{ $name }》。它的剧集仍保留在这部手机上。
 find-stop-failed = 未能完成停止：{ $error }
 

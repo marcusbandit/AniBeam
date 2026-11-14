@@ -700,10 +700,10 @@ find-dropped = { $count ->
 
 find-following = Gevolgd
 find-stop-following-ask = { $name } niet meer volgen?
-find-unfollow-explain = Nieuwe afleveringen downloaden niet meer. Wat in de map staat kan blijven, of mee weg: elke download daar, ook afleveringen die je zelf haalde.
+find-unfollow-explain = Nieuwe afleveringen downloaden niet meer. De afleveringen die het downloadde kunnen blijven, of mee weg. Afleveringen die je zelf haalde blijven hoe dan ook.
 find-stop-following = Niet meer volgen
 find-stop-keep = Stoppen, afleveringen houden
-find-stop-delete = Stoppen en downloads in de map wissen
+find-stop-delete = Stoppen en de afleveringen wissen
 find-rule-taken = { $downloads ->
     [one] { $downloads } download
    *[other] { $downloads } downloads
@@ -714,7 +714,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Gepauzeerd, dus er komen geen nieuwe afleveringen. { $taken }.
 find-rule-no-feed = De bron heeft geen feed, dus er komen geen nieuwe afleveringen. { $taken }.
 find-rule-active = Nieuwe afleveringen downloaden vanzelf. { $taken }.
-find-unfollowed-deleted = { $name } niet meer gevolgd en de downloads in de map gewist.
+find-unfollowed-deleted = { $name } niet meer gevolgd en de afleveringen gewist.
 find-unfollowed-kept = { $name } niet meer gevolgd. De afleveringen blijven op deze telefoon.
 find-stop-failed = Stoppen is niet afgerond: { $error }
 

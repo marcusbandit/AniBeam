@@ -2195,8 +2195,8 @@ impl Find {
 
 impl Find {
     /// Stops following the open show: every subscription that fills its folder goes, and
-    /// with `files` what downloaded into that folder too, episodes included. The desktop's
-    /// Unsubscribe, after the same confirm.
+    /// with `files` the episodes those subscriptions downloaded too, while what was got by
+    /// hand into the folder stays. The desktop's Unsubscribe, after the same confirm.
     fn unfollow(&mut self, files: bool) {
         let busy = self
             .data()
@@ -2733,6 +2733,6 @@ mod tests {
     #[test]
     fn stopping_says_what_happened_to_the_episodes() {
         assert!(unfollowed_line("Frieren", false).contains("stay on this phone"));
-        assert!(unfollowed_line("Frieren", true).contains("deleted the downloads in its folder"));
+        assert!(unfollowed_line("Frieren", true).contains("deleted its episodes"));
     }
 }

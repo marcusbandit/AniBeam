@@ -700,10 +700,10 @@ find-dropped = { $count ->
 
 find-following = Suivie
 find-stop-following-ask = Ne plus suivre { $name } ?
-find-unfollow-explain = Les nouveaux épisodes ne se téléchargent plus. Ce qui est dans son dossier peut rester, ou partir avec lui : tous les téléchargements qu'il contient, épisodes pris à la main compris.
+find-unfollow-explain = Les nouveaux épisodes ne se téléchargent plus. Les épisodes qu'il a téléchargés peuvent rester, ou partir avec lui. Les épisodes pris à la main restent dans tous les cas.
 find-stop-following = Ne plus suivre
 find-stop-keep = Arrêter, garder les épisodes
-find-stop-delete = Arrêter et supprimer les téléchargements du dossier
+find-stop-delete = Arrêter et supprimer ses épisodes
 find-rule-taken = { $downloads ->
     [one] { $downloads } téléchargement
    *[other] { $downloads } téléchargements
@@ -714,7 +714,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Il est en pause, donc aucun nouvel épisode n'arrive. { $taken }.
 find-rule-no-feed = Sa source n'a pas de flux, donc aucun nouvel épisode n'arrive. { $taken }.
 find-rule-active = Les nouveaux épisodes se téléchargent seuls. { $taken }.
-find-unfollowed-deleted = { $name } n'est plus suivie, et les téléchargements de son dossier sont supprimés.
+find-unfollowed-deleted = { $name } n'est plus suivie, et ses épisodes sont supprimés.
 find-unfollowed-kept = { $name } n'est plus suivie. Ses épisodes restent sur ce téléphone.
 find-stop-failed = L'arrêt n'a pas abouti : { $error }
 

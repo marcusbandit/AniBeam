@@ -700,10 +700,10 @@ find-dropped = { $count ->
 
 find-following = Siguiendo
 find-stop-following-ask = ¿Dejar de seguir { $name }?
-find-unfollow-explain = Los episodios nuevos dejan de descargarse. Lo que hay en su carpeta puede quedarse o irse con ella: todas las descargas de ahí, también los episodios que obtuviste a mano.
+find-unfollow-explain = Los episodios nuevos dejan de descargarse. Los episodios que descargó pueden quedarse o irse con ella. Los que obtuviste a mano se quedan en cualquier caso.
 find-stop-following = Dejar de seguir
 find-stop-keep = Dejar, conservar episodios
-find-stop-delete = Dejar y eliminar descargas de su carpeta
+find-stop-delete = Dejar y eliminar sus episodios
 find-rule-taken = { $downloads ->
     [one] { $downloads } descarga
    *[other] { $downloads } descargas
@@ -714,7 +714,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Está en pausa, así que no llegan episodios nuevos. { $taken }.
 find-rule-no-feed = Su fuente no tiene feed, así que no llegan episodios nuevos. { $taken }.
 find-rule-active = Los episodios nuevos se descargan solos. { $taken }.
-find-unfollowed-deleted = Se dejó de seguir { $name } y se eliminaron las descargas de su carpeta.
+find-unfollowed-deleted = Se dejó de seguir { $name } y se eliminaron sus episodios.
 find-unfollowed-kept = Se dejó de seguir { $name }. Sus episodios siguen en este móvil.
 find-stop-failed = No se pudo terminar de dejar de seguir: { $error }
 
