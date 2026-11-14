@@ -142,6 +142,36 @@ nightly or a release, and stops when the newest heading in `CHANGELOG.md` is not
 version. Builds for people come from CI, never from a checkout: CONTRIBUTING.md, under
 Releases.
 
+### iOS
+
+The same app builds for the iPhone, without video for now. Slint draws through winit
+there, and `src/main.rs` is the executable that `ios/cargo.sh`, the Xcode project's build
+step, puts in the bundle. You need a Mac with Xcode, xcodegen (`brew install xcodegen`)
+and the simulator target (`rustup target add aarch64-apple-ios-sim`).
+
+```sh
+scripts/build-ios.sh                       # build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
+```
+
+`scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
+LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
+A PR's test build comment carries Add to AltStore, SideStore and LiveContainer links: they open
+`site/install/`, which hands the IPA's release URL to the app's `<app>://install?url=` scheme.
+
+Info.plist asks for the local network (`NSLocalNetworkUsageDescription`), which the host
+and casting need, and declares `_googlecast._tcp` under `NSBonjourServices`. Finding devices
+to cast to still needs more on a sideloaded build: the core's Chromecast search (mDNS) and
+DLNA search (SSDP) send their own multicast, which iOS only allows an app holding the
+`com.apple.developer.networking.multicast` entitlement. Apple grants it on request to a
+paid developer account's provisioning profile, so an AltStore or LiveContainer install
+never carries it, and the plist cannot add it. Until then the iPhone finds no Chromecast or
+DLNA renderer on its own.
+
+`librqbit-dualstack-sockets` 0.7.0 does not build for iOS, so Cargo.toml pins the fix
+from its pull request #7 under `[patch.crates-io]`. Drop the pin once a release has it.
+
 ## The emulator loop
 
 ```sh
@@ -200,7 +230,11 @@ src/                the app: the UI thread (app.rs), the phone's core (local.rs,
                     the other device (remote.rs, worker.rs), the phone's settings (prefs.rs)
 src/platform/       everything that differs by platform: android.rs holds android_main and
                     the JNI for the browser, the service, the network and the screen;
-                    other.rs stands in on every other target
+                    ios.rs holds ios_main, the hinge, and the language and light or
+                    dark setting; other.rs stands in on every other target
+src/main.rs         the iPhone's executable
+ios/                the iPhone's Xcode project (project.yml for xcodegen), Info.plist
+                    and cargo.sh, the build step that runs cargo
 ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host

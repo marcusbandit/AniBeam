@@ -38,6 +38,12 @@ pub enum Call {
     RemoveSource {
         source: u64,
     },
+    /// The source's folder now sits at `path`, as a phone app's does after a reinstall
+    /// moves its container. The source keeps its id, and everything under it follows.
+    MoveSource {
+        source: u64,
+        path: String,
+    },
     ForgetSeries {
         series: u64,
     },

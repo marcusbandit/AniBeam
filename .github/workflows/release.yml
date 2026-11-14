@@ -169,6 +169,17 @@ jobs:
       ref: ${{ needs.resolve.outputs.sha }}
       version: ${{ needs.resolve.outputs.version }}
 
+  # The phone's unsigned IPA, built at the same commit as the APK. It is optional the way it is
+  # on the nightly: a failed IPA build never holds the APK's release back.
+  ios:
+    needs: resolve
+    if: needs.resolve.outputs.app == 'phone'
+    uses: ./.github/workflows/ios-ipa.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
+
   publish:
     needs: [resolve, macos, linux, windows, arch]
     if: needs.resolve.outputs.app == 'desktop'
@@ -217,7 +228,9 @@ jobs:
   # The phone's release: the APK on a release of its own, never the Latest one. Its notes start
   # at the phone's version below it, a release made by hand until the first one this ships.
   publish-phone:
-    needs: [resolve, android]
+    needs: [resolve, android, ios]
+    # The IPA is optional: only the APK build has to succeed.
+    if: ${{ !cancelled() && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +241,18 @@ jobs:
         with:
           name: phone-apk
           path: dist
+
+      - uses: actions/download-artifact@v4
+        if: needs.ios.result == 'success'
+        with:
+          name: phone-ipa
+          path: ipa
+
+      - name: Name the IPA for this release
+        if: needs.ios.result == 'success'
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: mv ipa/AniBeam.ipa "dist/AniBeam-$VERSION.ipa"
 
       - name: Publish the phone's release
         env:
@@ -246,7 +271,7 @@ jobs:
           echo "previous=${previous:-none}"
           start=()
           if [ -n "$previous" ]; then start=(--notes-start-tag "$previous"); fi
-          gh release create "$tag" dist/*.apk --draft --latest=false --target "$SHA" \
+          gh release create "$tag" dist/* --draft --latest=false --target "$SHA" \
             --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest=false
 

@@ -81,6 +81,15 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 | Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
 | Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
+| iPhone | Add to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
+
+**iPhone** (unsigned, for sideloading). Pick the app you sideload with; it opens with the IPA ready to install. Nightly is the newest build from main.
+
+Stable: [Add to AltStore](https://anibeam.app/install/?to=altstore&channel=stable) · [Add to SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) · [Add to LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable)
+
+Nightly: [Add to AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [Add to SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [Add to LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)
+
+A channel with no IPA yet says so on that page.
 
 <details>
 <summary><b>Mac</b>: Homebrew needs the tap first, and macOS asks once</summary>

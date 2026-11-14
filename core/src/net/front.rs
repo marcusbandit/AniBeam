@@ -59,23 +59,23 @@ pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)
 /// The gap between the end of one fronted request and the start of the next. A front's edge
 /// can quietly stop answering an address that asks for dozens of pages within seconds, which
 /// a new subscription or a batch pick on a long show used to do (#135).
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(phone_os), allow(dead_code))]
 pub const GAP: Duration = Duration::from_secs(1);
 /// How long a front is left alone after a request it did not answer, so an address it has
 /// stopped answering is not asked again and again, each time for a whole timeout.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(phone_os), allow(dead_code))]
 pub const QUIET: Duration = Duration::from_secs(120);
 
 /// Paces the requests to fronted hosts. Held for the whole of one request, so they go one at
 /// a time, `GAP` apart, and none during `QUIET` after one that went unanswered.
 #[derive(Default)]
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(phone_os), allow(dead_code))]
 pub struct Gate {
     done: Option<Instant>,
     quiet_until: Option<Instant>,
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(phone_os), allow(dead_code))]
 impl Gate {
     /// How long a request at `now` waits before it goes; Err with what is left of the
     /// quiet when it must not go at all.

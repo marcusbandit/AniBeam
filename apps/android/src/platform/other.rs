@@ -24,11 +24,13 @@ pub fn pick_file(
 }
 
 /// The language the environment names, as `LANG` holds it.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_locale() -> String {
     std::env::var("LANG").unwrap_or_default()
 }
 
 /// Dark, the app's own default.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_dark() -> bool {
     true
 }
@@ -99,12 +101,14 @@ pub fn copy_text(label: &str, text: &str) -> bool {
 }
 
 /// No hinge.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn fold() -> (Option<f32>, bool) {
     (None, false)
 }
 
 /// The crease is never reported: the answer `Crease.at` gives on a phone without the window
 /// extensions.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn crease() -> crate::crease::Reading {
     crate::crease::decode(crate::crease::SILENT)
 }
@@ -145,11 +149,13 @@ pub fn player_awake(on: bool) {
 }
 
 /// The Default launcher icon.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn app_icon() -> i32 {
     0
 }
 
 /// No launcher icon to change.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn set_app_icon(which: i32) {
     let _ = which;
 }

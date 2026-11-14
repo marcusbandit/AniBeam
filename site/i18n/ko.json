@@ -88,5 +88,12 @@
   "But we support Tailscale": "하지만 Tailscale을 지원해요",
   "Close": "닫기",
   "{n} episodes": "{n}화",
-  "Movie": "영화"
+  "Movie": "영화",
+  "iPhone": "iPhone",
+  "Add to AltStore": "AltStore에 추가",
+  "Add to SideStore": "SideStore에 추가",
+  "Add to LiveContainer": "LiveContainer에 추가",
+  "Download IPA": "IPA 다운로드",
+  "Nightly test build, unsigned, for sideloading": "Nightly 테스트 빌드, 서명 없음, 사이드로딩용",
+  "Unsigned, for sideloading": "서명되지 않음, 사이드로딩용"
 }

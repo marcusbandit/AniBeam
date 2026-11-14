@@ -797,6 +797,110 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     Ok(Reply::Source { source })
 }
 
+/// Points a source at the folder its files sit in now, as when a phone app's
+/// container moves on a reinstall or a re-sign. The source keeps its id, and
+/// every series, file, quick fix and torrent origin under the old folder
+/// takes the new one, so matches and history stay. Refused as `add_source`
+/// refuses a path: not absolute, or overlapping another source. A scan of
+/// the source follows, which watches the new folder.
+pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreError> {
+    if !Path::new(path).is_absolute() {
+        return Err(CoreError::invalid(
+            "path",
+            tr("core-library-source-not-absolute", &[]),
+        ));
+    }
+    let owner = core.owner()?;
+    let path = normalise(path);
+    let available = Path::new(&path).is_dir();
+    let to = path.clone();
+    let from = core.store.tx(move |tx| {
+        let from: Option<String> = tx
+            .query_row(
+                "SELECT path FROM sources WHERE id = ?1",
+                params![source as i64],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let from = from.ok_or(CoreError::NotFound {
+            what: Entity::Source,
+            id: source,
+        })?;
+        let others: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT path FROM sources WHERE id != ?1")?;
+            stmt.query_map(params![source as i64], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for other in &others {
+            if *other == to {
+                return Err(CoreError::invalid(
+                    "path",
+                    tr("core-library-source-exists", &[]),
+                ));
+            }
+            if under(&to, other) || under(other, &to) {
+                return Err(CoreError::invalid(
+                    "path",
+                    tr("core-library-source-nested", &[]),
+                ));
+            }
+        }
+        tx.execute(
+            "UPDATE sources SET path = ?2, available = ?3 WHERE id = ?1",
+            params![source as i64, to, i64::from(available)],
+        )?;
+        // The old root itself, or anything below it on either separator, takes
+        // the new root in front of the rest of its path.
+        let below = "(path = ?1 OR substr(path, 1, length(?1) + 1) IN (?1 || '/', ?1 || '\\'))";
+        let moved = "?2 || substr(path, length(?1) + 1)";
+        tx.execute(
+            &format!("UPDATE series SET path = {moved} WHERE source_id = ?3 AND {below}"),
+            params![from, to, source as i64],
+        )?;
+        tx.execute(
+            &format!(
+                "UPDATE files SET path = {moved} WHERE {below} AND series_id IN \
+                 (SELECT id FROM series WHERE source_id = ?3)"
+            ),
+            params![from, to, source as i64],
+        )?;
+        // Keyed by path alone, so a stale row already at the new path gives way.
+        for table in ["file_fixes", "file_origins"] {
+            tx.execute(
+                &format!("UPDATE OR REPLACE {table} SET path = {moved} WHERE {below}"),
+                params![from, to],
+            )?;
+        }
+        Ok(from)
+    })?;
+    let unchanged = from == path;
+    if !unchanged {
+        core.library.forget_source(source);
+        core.unwatch_source(&from);
+    }
+    let moved = core
+        .store
+        .read(|c| load_source(c, &core.library, source))?
+        .ok_or(CoreError::NotFound {
+            what: Entity::Source,
+            id: source,
+        })?;
+    if unchanged {
+        return Ok(Reply::Source { source: moved });
+    }
+    // Not a change a person made, so not one the activity log shows.
+    core.bus.debug(
+        Stage::Library,
+        format!("source moved: {from} to {path}"),
+        EventBody::SourceChanged {
+            source: moved.clone(),
+        },
+    );
+    core.library.push_pending(vec![path]);
+    start(&owner, ScanScope::Source(source));
+    Ok(Reply::Source { source: moved })
+}
+
 /// Deletes the row; every series under it goes with it through the
 /// cascade, and both removals are announced.
 pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
