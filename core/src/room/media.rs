@@ -1,8 +1,9 @@
 //! Get media (#889): a member whose library lacks the room's episode asks the
 //! host's app for it, and downloads what comes back.
 //!
-//! Everything that leads to the video travels sealed (`seal`): the relay passes
-//! the payloads on and reads none of them. The member asks (`Secret::Ask`); the
+//! Everything that leads to the video travels sealed (`seal`): a relay that only
+//! passes the payloads on reads none of them (an active one could swap the keys
+//! it lists, #982). The member asks (`Secret::Ask`); the
 //! host's app looks up where its own file came from and answers with an
 //! `Offer`. When the torrent client still holds the torrent the file came from
 //! (`downloads::origins`) and it is not a private tracker's, the offer carries

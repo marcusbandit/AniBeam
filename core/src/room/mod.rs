@@ -1258,7 +1258,8 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             }
             ServerMsg::Sealed { from, data } => {
                 // Sealed to this member's key by the sender's: one that does not
-                // open was not for this pair, or was changed on the way
+                // open was not for this pair, or was changed on the way. The
+                // sender's key is the one the relay listed, unchecked (#982)
                 let theirs = a
                     .members
                     .iter()

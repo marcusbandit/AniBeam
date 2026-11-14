@@ -381,7 +381,7 @@ How far one person's file is from the host's, in seconds, so the same moment pla
 _Avoid_: delay, drift, sync offset
 
 **Get media**:
-What a room member without the episode presses to get it from the host. The host's app answers with the torrent its copy came from while its torrent client still holds it, else the release's name, and the member downloads it through Downloads: the torrent itself, or the same release found on the member's own sources. The answer is sealed between the two apps, so the relay passes it on without being able to read it. Everyone in the room sees the download's progress and time left.
+What a room member without the episode presses to get it from the host. The host's app answers with the torrent its copy came from while its torrent client still holds it, else the release's name, and the member downloads it through Downloads: the torrent itself, or the same release found on the member's own sources. The answer is sealed between the two apps, so a relay that only passes it on cannot read it; one that swapped the members' keys could (#982). Everyone in the room sees the download's progress and time left.
 _Avoid_: share, send file, sync download
 
 ### Route
