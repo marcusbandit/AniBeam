@@ -1086,7 +1086,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = een filmlink moet een magnet of een http(s)-URL zijn
 core-downloads-added-movie = Een film aan je downloads toegevoegd.
-core-downloads-unsubscribed = Abonnement op { $name } opgezegd.
 core-downloads-library-folder = { $folder } is de bibliotheekmap van { $name }, met afleveringen die dit abonnement niet downloadde: haal het abonnement weg zonder de bestanden, of haal { $name } weg vanaf de pagina ervan
 core-downloads-no-torrents-named = geen torrents genoemd
 core-downloads-paused =
@@ -1261,13 +1260,6 @@ core-releases-episodes-phrase =
        *[other] Afleveringen { $list }
     }
 core-releases-episode-range = { $from } t/m { $to }
-
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = anirss op dit platform
-core-subscriptions-unreadable = het antwoord kon niet worden gelezen ({ $message })
-core-subscriptions-stopped = het stopte zonder te zeggen waarom
-core-subscriptions-stopped-said = het stopte: { $said }
 
 ## Names that stay the same in every language
 

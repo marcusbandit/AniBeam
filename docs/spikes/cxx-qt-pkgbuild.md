@@ -1,6 +1,6 @@
 # Spike: a Cargo-only cxx-qt app packages through a PKGBUILD
 
-Resolves wayfinder ticket #10 on the native line map (#2). Run on 2026-09-03 on banditbox: Arch, Hyprland 0.56.1, RTX 3090 with nvidia-utils 610.43.03, Rust 1.92.0 stable through rustup 1.29.0 (pacman sees the rustup package as providing rust and cargo), GCC 16.1.1, lld 22.1.8, pacman 7.1.0 with its makepkg, qt6-base 6.11.1-1, qt6-declarative 6.11.1-3, mpvqt 1.2.0-1, mpv 0.41.0-3.
+Resolves wayfinder ticket #10 on the native line map (#2). Run on 2026-09-03 on the desktop: Arch, Hyprland 0.56.1, RTX 3090 with nvidia-utils 610.43.03, Rust 1.92.0 stable through rustup 1.29.0 (pacman sees the rustup package as providing rust and cargo), GCC 16.1.1, lld 22.1.8, pacman 7.1.0 with its makepkg, qt6-base 6.11.1-1, qt6-declarative 6.11.1-3, mpvqt 1.2.0-1, mpv 0.41.0-3.
 
 Code: `spikes/cxx-qt-pkgbuild/` on this branch. One Cargo crate and no CMake anywhere: a Rust QObject singleton with a property, an invokable and a signal fired from a tokio worker; a C++ `MpvAbstractItem` subclass registered into the same QML module; a QML window and the app icon compiled in as resources; a PKGBUILD under `packaging/` that builds the crate and installs the binary, a `.desktop` entry and the icon.
 

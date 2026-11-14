@@ -106,6 +106,6 @@ mod tests {
         assert!(HostAddress::parse("desktop:http").is_err());
         assert!(HostAddress::parse("desktop:0").is_err());
         assert!(HostAddress::parse("https://desktop").is_err());
-        assert!(HostAddress::parse("bandit box").is_err());
+        assert!(HostAddress::parse("my desk").is_err());
     }
 }

@@ -1297,7 +1297,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = link do filmu musi być magnetem lub adresem http(s)
 core-downloads-added-movie = Dodano film do pobrań.
-core-downloads-unsubscribed = Anulowano subskrypcję { $name }.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } to folder biblioteki serialu { $name }, z odcinkami, których ta subskrypcja nie pobrała: usuń subskrypcję bez jej plików albo usuń { $name } z jego strony
 core-downloads-no-torrents-named = nie podano nazw torrentów
@@ -1522,16 +1521,6 @@ core-releases-episodes-phrase =
     }
 # A run of episode numbers
 core-releases-episode-range = { $from } do { $to }
-
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = anirss na tej platformie
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = nie udało się odczytać odpowiedzi ({ $message })
-core-subscriptions-stopped = zatrzymał się bez podania powodu
-# $said is what anirss printed
-core-subscriptions-stopped-said = zatrzymał się: { $said }
 
 ## Names that stay the same in every language
 

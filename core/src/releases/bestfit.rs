@@ -219,7 +219,7 @@ fn resolution_score(res: i64, preferred_resolution: &str) -> i64 {
 
 /// A feed's size string ("6.2 GiB", "301.4 MiB") in MiB, or None if unreadable.
 pub fn size_mib(size: &str) -> Option<f64> {
-    crate::downloads::facts::size_in_bytes(size).map(|b| b / (1024.0 * 1024.0))
+    crate::foundation::size::size_in_bytes(size).map(|b| b / (1024.0 * 1024.0))
 }
 
 /// How many times smaller this title's codec can be than x264 for equal quality. 1.0

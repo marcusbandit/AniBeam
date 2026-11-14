@@ -31,8 +31,8 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
-use crate::library::titles;
 use crate::prefs;
 use crate::time;
 use mine::Mine;

@@ -133,7 +133,6 @@ pub enum Call {
         query: String,
         reveal_hidden: bool,
     },
-    ListSubscriptions,
     // Metadata
     SearchProvider {
         provider: Provider,
@@ -498,20 +497,6 @@ pub enum Call {
     /// `DownloadsUnavailable` with `what` set to `rule`. Not a job.
     ReadRule {
         name: String,
-    },
-    /// What removing a subscription would take with it. Ends in
-    /// `RemovalPlanned`; nothing changes.
-    PlanRemoveSubscription {
-        name: String,
-        torrents: bool,
-        files: bool,
-    },
-    /// Removes the feed and rule, and with `torrents` their torrents, and
-    /// with `files` their data on disk. Ends in `SubscriptionRemoved`.
-    RemoveSubscription {
-        name: String,
-        torrents: bool,
-        files: bool,
     },
     /// Deletes episodes' files, with their subtitle sidecars, from a library series: to
     /// the trash on a desktop, outright on a phone. Each file must belong to `series`

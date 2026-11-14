@@ -569,6 +569,15 @@ pub(crate) fn sync(core: &Core) {
     set_enabled(core, on);
 }
 
+/// `GetPresence`: whether this build can show what plays on Discord, and
+/// whether it is talking to a Discord client right now.
+pub(crate) fn status_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::Presence {
+        available: core.presence.available(),
+        connected: core.presence.connected(),
+    })
+}
+
 /// The switch. On shows the session playing now, if there is one; off
 /// clears and lets the connection go. A build that cannot reach Discord
 /// stays off whatever is asked.

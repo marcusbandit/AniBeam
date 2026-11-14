@@ -150,11 +150,6 @@ impl Install {
         }
     }
 
-    /// Whether `fetch` can update this copy.
-    pub fn updates_itself(&self) -> bool {
-        self.suffix(std::env::consts::ARCH).is_some()
-    }
-
     /// The end of the release file's name for this install on `arch` (Rust's name for it).
     fn suffix(&self, arch: &str) -> Option<String> {
         Some(match self {
