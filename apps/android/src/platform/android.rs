@@ -17,6 +17,8 @@ fn android_main(android: slint::android::AndroidApp) {
     // The activity itself, for the calls only an Activity answers; ndk_context holds the
     // Application. The reference lives as long as `android`, which outlives `run`.
     set_activity(android.activity_as_ptr());
+    // A phone that does not fold stays upright outside the player from the first frame.
+    screen_call("upright", "(Landroid/app/Activity;)V", None);
     let (commands, inbox) = std::sync::mpsc::channel();
 
     // Coming back to the app is a good moment to look at the host again.
@@ -844,7 +846,13 @@ pub fn set_volume(level: f32) {
     );
 }
 
-/// The player's screen: landscape with the system bars hidden, or back as it was.
+/// The activity's window is Java's to change, through `Screen`.
+pub fn window_up(window: &crate::AppWindow) {
+    let _ = window;
+}
+
+/// The player's screen: landscape with the system bars hidden, or back as it was: upright on
+/// a phone that does not fold, as held on a foldable or a tablet.
 pub fn player_screen(on: bool) {
     screen("player", on);
 }

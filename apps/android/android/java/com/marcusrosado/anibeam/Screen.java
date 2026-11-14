@@ -20,7 +20,8 @@ import android.view.WindowManager;
 /**
  * What the player asks of the screen, which Android only lets its UI thread change: the
  * picture in landscape with the system bars hidden, the display kept on while it plays, and
- * the brightness a swipe sets. The volume a swipe sets is the media stream's, the same the
+ * the brightness a swipe sets. Outside the player a phone that does not fold stays upright;
+ * a foldable or a tablet turns as it is held. The volume a swipe sets is the media stream's, the same the
  * phone's buttons move.
  * The native side calls these from its own thread; each posts to the UI thread.
  */
@@ -92,13 +93,38 @@ public final class Screen {
         }
     }
 
+    /**
+     * The orientation outside the player: portrait on a phone that does not fold, as held on
+     * one with a hinge sensor (a foldable, folded or open) and on a screen 600 dp wide or more
+     * (a tablet), whose two-pane layouts are made for landscape.
+     */
+    private static int rest(Activity activity) {
+        SensorManager sensors = (SensorManager) activity.getSystemService(Context.SENSOR_SERVICE);
+        // 36 is TYPE_HINGE_ANGLE, as in fold.
+        boolean hinge = sensors != null && sensors.getDefaultSensor(36) != null;
+        boolean wide = activity.getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        return hinge || wide
+                ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+    }
+
+    /** Sets the orientation outside the player, once the app starts. */
+    public static void upright(final Activity activity) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.setRequestedOrientation(rest(activity));
+            }
+        });
+    }
+
     public static void player(final Activity activity, final boolean on) {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 activity.setRequestedOrientation(on
                         ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                        : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                        : rest(activity));
                 Window window = activity.getWindow();
                 if (Build.VERSION.SDK_INT >= 28) {
                     WindowManager.LayoutParams lp = window.getAttributes();

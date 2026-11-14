@@ -7,11 +7,17 @@
 //! the app's window the first time the layout asks. UIKit says how far the hinge is open,
 //! not where the crease runs, so the crease is never reported and the layout takes it for a
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
+//!
+//! The orientations the app turns to are winit's view controller's to answer UIKit for, so
+//! they are asked for through winit's window. An iPhone that does not fold stays upright
+//! outside the player and turns to landscape in it; one whose hinge has been heard (the Duo)
+//! turns as it is held, everywhere.
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 use block2::RcBlock;
 use objc2::msg_send;
@@ -22,6 +28,10 @@ use objc2_foundation::{
     NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
     NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
 };
+use slint::ComponentHandle;
+use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::platform::ios::{ValidOrientations, WindowExtIOS};
+use slint::winit_030::winit::window::Window as WinitWindow;
 
 use super::FocusAsk;
 use crate::worker::Command;
@@ -240,6 +250,94 @@ pub fn player_awake(on: bool) {
     }
 }
 
+thread_local! {
+    /// The app's window, made on the UI thread, whose winit window the player turns to.
+    static APP_WINDOW: RefCell<Option<slint::Weak<crate::AppWindow>>> = const { RefCell::new(None) };
+}
+
+/// The app's window is made: kept, so the player can reach winit's window under it. The
+/// app takes its orientations as soon as winit's window is up.
+pub fn window_up(window: &crate::AppWindow) {
+    APP_WINDOW.set(Some(window.as_weak()));
+    slint::Timer::single_shot(Duration::ZERO, orient);
+}
+
+/// Runs `f` on winit's window, once the app's window has one: None before.
+fn with_winit<T>(f: impl FnOnce(&WinitWindow) -> T) -> Option<T> {
+    let window = APP_WINDOW.with_borrow(|w| w.as_ref().and_then(|w| w.upgrade()))?;
+    window.window().with_winit_window(f)
+}
+
+/// The player's screen: landscape on an iPhone that does not fold, upright again when it
+/// closes. One that folds turns as it is held either way.
+pub fn player_screen(on: bool) {
+    PLAYING.set(on);
+    orient();
+}
+
+/// `UIInterfaceOrientationMask`'s portrait, and its landscape either way round.
+const PORTRAIT: usize = 1 << 1;
+const LANDSCAPE: usize = (1 << 3) | (1 << 4);
+
+thread_local! {
+    /// The player is up.
+    static PLAYING: Cell<bool> = const { Cell::new(false) };
+    /// A hinge has been heard this run: the phone folds.
+    static FOLDS: Cell<bool> = const { Cell::new(false) };
+    /// The orientations last asked of UIKit, as a mask.
+    static ASKED: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Asks UIKit for the orientations the app takes now: upright outside the player and
+/// landscape in it on an iPhone that does not fold, any but upside down on one that does.
+/// winit's view controller answers `supportedInterfaceOrientations`; since iOS 16 a change
+/// to it turns the screen only once UIKit is told it changed, and the scene is asked to turn
+/// into it. Before winit's window is up it tries again a moment later.
+fn orient() {
+    let (valid, mask) = match (FOLDS.get(), PLAYING.get()) {
+        (true, _) => (
+            ValidOrientations::LandscapeAndPortrait,
+            PORTRAIT | LANDSCAPE,
+        ),
+        (false, true) => (ValidOrientations::Landscape, LANDSCAPE),
+        (false, false) => (ValidOrientations::Portrait, PORTRAIT),
+    };
+    if ASKED.get() == mask {
+        return;
+    }
+    if with_winit(|w| w.set_valid_orientations(valid)).is_none() {
+        slint::Timer::single_shot(Duration::from_millis(100), orient);
+        return;
+    }
+    ASKED.set(mask);
+    let Some(window) = app_window() else {
+        return;
+    };
+    // SAFETY: plain UIKit calls on the UI thread. The root view controller is winit's, the
+    // scene a UIWindowScene, and `initWithInterfaceOrientations:` takes the mask; the error
+    // handler may be nil.
+    unsafe {
+        let controller: *mut AnyObject = msg_send![&*window, rootViewController];
+        if !controller.is_null() {
+            let _: () = msg_send![controller, setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        let scene: *mut AnyObject = msg_send![&*window, windowScene];
+        let Some(class) = AnyClass::get(c"UIWindowSceneGeometryPreferencesIOS") else {
+            return;
+        };
+        if scene.is_null() {
+            return;
+        }
+        let preferences: Retained<AnyObject> =
+            msg_send![msg_send![class, alloc], initWithInterfaceOrientations: mask];
+        let _: () = msg_send![
+            scene,
+            requestGeometryUpdateWithPreferences: &*preferences,
+            errorHandler: None::<&block2::Block<dyn Fn(NonNull<NSError>)>>
+        ];
+    }
+}
+
 /// The phone's language as iOS lists it first: `da-DK`, `pt-BR`, `zh-Hans-CN`, the same
 /// shape Android gives.
 pub fn system_locale() -> String {
@@ -425,6 +523,11 @@ fn heard(update: *mut AnyObject) {
         }
     };
     HINGE.set(next);
+    // The first hinge heard says the phone folds: it turns as it is held from now on.
+    if matches!(next, Hinge::Angle(_)) && !FOLDS.get() {
+        FOLDS.set(true);
+        slint::Timer::single_shot(Duration::ZERO, orient);
+    }
 }
 
 /// The angle the layout takes: UIKit's status where it says shut or half open, since Apple
