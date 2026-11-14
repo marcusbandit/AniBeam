@@ -40,7 +40,7 @@ ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
-debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds only. A
+debug binary is minutes; the QML parse is a fraction of a second). It exists in debug and tester builds only. A
 URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml`
 the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared
 components all come from disk. Edit, then run with the binary as it stands:
@@ -55,6 +55,13 @@ error in a disk file shows up at run time as a load failure in the `.log`, not a
 turn a relative dir into an absolute one against the directory they run from; a dir without `Main.qml` is
 reported in the `.log` and ignored, and a file missing from the dir is reported once and loaded from the
 compiled copy. Build before the last run of a task all the same: the binary the launcher starts has the QML compiled in.
+
+A build to try on another machine is a tester build, not a release build: `cargo build --profile
+tester -p anibeam` writes `target/tester/anibeam`, incremental, without debug info, so a Rust change
+relinks in a fraction of the release time and the binary copies over quickly. It keeps debug
+assertions, so it reads `ANIBEAM_QML_DIR` too: copy `apps/linux/qml/` over with the binary, start it
+with `ANIBEAM_QML_DIR` pointing there, and after a QML-only change copy the folder again and restart.
+It is never shipped.
 
 `shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
 a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:

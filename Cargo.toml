@@ -29,3 +29,14 @@ rusqlite_migration = "2.6"
 
 [profile.release]
 debug = 1
+
+# A build to hand test on a machine (#927): `cargo build --profile tester -p anibeam`, into
+# target/tester/. It relinks in a fraction of a release build's time, and it loads the QML from
+# disk when ANIBEAM_QML_DIR is set, so a QML-only change needs no build at all. Never shipped.
+[profile.tester]
+inherits = "release"
+debug = 0
+incremental = true
+codegen-units = 256
+debug-assertions = true
+overflow-checks = false
