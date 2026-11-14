@@ -48,11 +48,16 @@ pub(crate) use anibeam_foundation::{percent, sync};
 /// reach `FakeHttp` and `Core::open_with_http`.
 #[doc(hidden)]
 pub use anibeam_net as net;
-pub use anibeam_net::{RELEASE, VERSION, images};
+pub use anibeam_net::{VERSION, images};
 
 pub use anibeam_contract::i18n;
 pub use contract::*;
 pub use core::Core;
 pub use paths::CorePaths;
+
+/// The version this build ships as: `2.4.0` on a stable release, `2.4.0-nightly.20261030.12`
+/// on a nightly, `2.4.0-pr.280.3` on a pull request's test build, and the workspace version
+/// on a build CI did not make. The update check reads its track and its age from this.
+pub const RELEASE: &str = env!("ANIBEAM_RELEASE");
 
 uniffi::setup_scaffolding!();

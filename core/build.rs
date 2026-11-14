@@ -13,13 +13,28 @@ const CREDENTIALS: [&str; 4] = [
 
 fn main() {
     // `phone_os`: the target is a phone's, Android or iOS. Every switch in the core that
-    // means "the phone" reads it, so a new phone platform is one line here.
+    // means "the phone" reads it. net/build.rs makes the same switch for the net crate, so
+    // a new phone platform is one line here and one there.
     println!("cargo::rustc-check-cfg=cfg(phone_os)");
     let phone = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android" || os == "ios");
     if phone {
         println!("cargo::rustc-cfg=phone_os");
     }
     credentials();
+    // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
+    // That string names the build and decides which updates it is offered; a build without
+    // it (a checkout, the AUR) counts as the workspace version. `VERSION`, the describe
+    // string, is worked out in net/build.rs.
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let shipped = std::env::var("ANIBEAM_RELEASE_VERSION")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    println!(
+        "cargo:rustc-env=ANIBEAM_RELEASE={}",
+        shipped.as_deref().unwrap_or(&fallback)
+    );
 }
 
 /// Each credential from the environment first, so a packaging script or CI can set one

@@ -323,8 +323,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    const SHOW: &str = include_str!("../../core/tests/fixtures/tvmaze/show-83073.json");
-    const SEARCH: &str = include_str!("../../core/tests/fixtures/tvmaze/search-avatar.json");
+    const SHOW: &str = include_str!("../tests/fixtures/tvmaze/show-83073.json");
+    const SEARCH: &str = include_str!("../tests/fixtures/tvmaze/search-avatar.json");
 
     fn client(http: Arc<FakeHttp>) -> TvmazeClient {
         TvmazeClient::new(ProviderClient::new(

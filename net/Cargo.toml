@@ -23,7 +23,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 governor = "0.10"
 backon = { version = "1.6", features = ["tokio-sleep"] }
 tracing = "0.1"
-time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+time = { version = "0.3", features = ["parsing"] }
 sha2 = "0.11"
 rand = "0.10"
 flate2 = "1"

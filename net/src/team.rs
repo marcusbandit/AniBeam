@@ -24,7 +24,7 @@ const MAL_GAP: Duration = Duration::from_millis(500);
 const TVMAZE_GAP: Duration = Duration::from_millis(550);
 
 pub struct Net {
-    pub services: Arc<Services>,
+    pub(crate) services: Arc<Services>,
     /// The provider clients, built once so every job shares one limiter
     /// per upstream.
     pub anilist: Arc<AnilistClient>,
@@ -38,7 +38,7 @@ pub struct Net {
     pub images: Arc<ImageCache>,
     /// The library's card read, for the `SeriesChanged` that follows a
     /// change to the images.
-    pub cards_for: CardsFor,
+    pub(crate) cards_for: CardsFor,
 }
 
 impl Net {

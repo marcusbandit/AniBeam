@@ -1,13 +1,14 @@
 use std::path::Path;
 use std::process::Command;
 
-/// `phone_os`, as in the core's build.rs, and the build's version for `VERSION` and
-/// `RELEASE` in `lib.rs`. The version is worked out here, the lowest crate that names it,
-/// because every provider client sends it in its user agent; the core hands both on. A
-/// commit moves it, so it rebuilds this crate and the ones above, never the foundation.
+/// `phone_os`, as in the core's build.rs, and the build's version for `VERSION` in
+/// `lib.rs`. The version is worked out here, the lowest crate that names it, because every
+/// provider client sends it in its user agent; the core hands it on. A commit moves it, so
+/// it rebuilds this crate and the ones above, never the foundation (#971).
 fn main() {
     // `phone_os`: the target is a phone's, Android or iOS. The phone's clients resolve
-    // over HTTPS and keep a front's cookies (lib.rs).
+    // over HTTPS and keep a front's cookies (lib.rs). core/build.rs makes the same switch
+    // for the core; a new phone platform is one line in each.
     println!("cargo::rustc-check-cfg=cfg(phone_os)");
     let phone = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android" || os == "ios");
     if phone {
@@ -16,18 +17,14 @@ fn main() {
     watch_git();
     rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
-    // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
-    // That string names the build and decides which updates it is offered; a build without
-    // it (a checkout, the AUR) describes itself from git and counts as the workspace version.
+    // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3,
+    // and is named by it; core/build.rs reads the same variable for `RELEASE`. A build
+    // without it (a checkout, the AUR) describes itself from git.
     println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
     let shipped = std::env::var("ANIBEAM_RELEASE_VERSION")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
-    println!(
-        "cargo:rustc-env=ANIBEAM_RELEASE={}",
-        shipped.as_deref().unwrap_or(&fallback)
-    );
     // Each app describes itself from its own tags only: the desktop's v2.3.0, the phone's
     // android-v2.1.1 (on Android and the iPhone alike). Any other tag never names a version.
     // A nightly's or test build's tag (v2.4.0-nightly.20261030.12) is never one to describe

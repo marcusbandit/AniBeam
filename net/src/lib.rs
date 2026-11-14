@@ -33,12 +33,6 @@ pub use team::Net;
 /// and the shell and the CLI print it as `anibeam_core::VERSION`.
 pub const VERSION: &str = env!("ANIBEAM_VERSION");
 
-/// The version this build ships as: `2.4.0` on a stable release, `2.4.0-nightly.20261030.12`
-/// on a nightly, `2.4.0-pr.280.3` on a pull request's test build, and the workspace version
-/// on a build CI did not make. The update check reads its track and its age from this, as
-/// `anibeam_core::RELEASE`; it is worked out with `VERSION`, so it lives beside it.
-pub const RELEASE: &str = env!("ANIBEAM_RELEASE");
-
 /// How long one tracker request may take. Per request, never per call: the
 /// limiter's 429 schedule sits under this and keeps its own bounds, so a
 /// rate limit is always reported as a rate limit and never as a timeout.
