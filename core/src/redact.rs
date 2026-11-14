@@ -1,6 +1,7 @@
 //! Keeping secrets out of what the core stores (#509). [`SECRET_PARAMS`] names the query
-//! parameters that hold one, [`secret_param`] looks a name up in it, and [`scrub_secrets`]
-//! empties their values and drops the login from every address in a text.
+//! parameters that hold one, [`secret_param`] looks a name up in it, [`split_params`] cuts an
+//! address at the separators in [`PARAM_SEPARATORS`], and [`scrub_secrets`] empties their
+//! values and drops the login from every address in a text.
 //!
 //! It names nothing else in the crate, so the event bus can scrub what it stores without
 //! reaching into the network layer (#856).
@@ -34,6 +35,51 @@ pub fn secret_param(name: &str) -> Option<&'static str> {
         .map(|(_, label)| *label)
 }
 
+/// What can stand in front of a query parameter: the `?` that opens the query, `&` and `;`
+/// between pairs, `&amp;` (an `&` in quoted XML), and the `#` of a fragment, which a feed
+/// or a callback can carry keys in too (#865). `&amp;` comes before `&` so it is read whole.
+pub const PARAM_SEPARATORS: [&str; 5] = ["&amp;", "?", "&", ";", "#"];
+
+/// The separator `text` starts with, if any.
+fn separator_at(text: &str) -> Option<&'static str> {
+    PARAM_SEPARATORS
+        .iter()
+        .find(|sep| text.starts_with(**sep))
+        .copied()
+}
+
+/// `url` cut at its parameters: the address up to its first `?` or `#`, then each
+/// parameter after it with the separator in front of it. Joining the pieces back in order
+/// gives `url`, so a caller can keep, mask or drop each pair and rebuild the rest.
+pub fn split_params(url: &str) -> (&str, Vec<(&'static str, &str)>) {
+    let Some(start) = url.find(['?', '#']) else {
+        return (url, Vec::new());
+    };
+    let (base, mut rest) = url.split_at(start);
+    let mut params = Vec::new();
+    while let Some(sep) = separator_at(rest) {
+        let after = &rest[sep.len()..];
+        let end = after
+            .char_indices()
+            .find(|(i, _)| separator_at(&after[*i..]).is_some())
+            .map_or(after.len(), |(i, _)| i);
+        params.push((sep, &after[..end]));
+        rest = &after[end..];
+    }
+    (base, params)
+}
+
+/// The one-character separators in [`PARAM_SEPARATORS`] as a regex class; `&amp;` is
+/// covered by its closing `;`.
+fn separator_class() -> String {
+    let chars: String = PARAM_SEPARATORS
+        .iter()
+        .filter(|sep| sep.len() == 1)
+        .map(|sep| regex::escape(sep))
+        .collect();
+    format!("[{chars}]")
+}
+
 /// The secret query parameters [`scrub_secrets`] empties, as one alternation.
 fn secret_names() -> String {
     SECRET_PARAMS
@@ -54,7 +100,8 @@ static LOGIN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
 /// `&amp;` in quoted XML, or in a fragment (`#token=abc`).
 static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(&format!(
-        r#"(?i)([?&;#](?:{})=)[^&#\s"'<>]*"#,
+        r#"(?i)({}(?:{})=)[^&#\s"'<>]*"#,
+        separator_class(),
         secret_names()
     ))
     .unwrap()
@@ -122,7 +169,33 @@ fn scrub_encoded_logins(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::scrub_secrets;
+    use super::{scrub_secrets, split_params};
+
+    #[test]
+    fn an_address_splits_at_every_parameter_separator_and_joins_back_whole() {
+        let url = "https://h/a;b?q=x&amp;apikey=K;sig=S&p=1#token=T";
+        let (base, params) = split_params(url);
+        assert_eq!(base, "https://h/a;b");
+        assert_eq!(
+            params,
+            vec![
+                ("?", "q=x"),
+                ("&amp;", "apikey=K"),
+                (";", "sig=S"),
+                ("&", "p=1"),
+                ("#", "token=T"),
+            ]
+        );
+        let joined: String = std::iter::once(base.to_string())
+            .chain(params.iter().map(|(sep, pair)| format!("{sep}{pair}")))
+            .collect();
+        assert_eq!(joined, url);
+        assert_eq!(split_params("https://h/rss"), ("https://h/rss", vec![]));
+        assert_eq!(
+            split_params("https://h/cb#token=T"),
+            ("https://h/cb", vec![("#", "token=T")])
+        );
+    }
 
     #[test]
     fn an_address_keeps_everything_but_its_login_and_keys() {

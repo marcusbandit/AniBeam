@@ -137,21 +137,26 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
 /// none and passes through unchanged.
 pub fn without_secrets(url: &str) -> String {
     let url = &without_userinfo(url);
-    let Some((base, query)) = url.split_once('?') else {
-        return url.to_string();
-    };
-    let kept: Vec<&str> = query
-        .split('&')
-        .filter(|pair| {
-            let name = pair.split('=').next().unwrap_or("");
-            crate::redact::secret_param(name).is_none()
-        })
-        .collect();
-    if kept.is_empty() {
-        base.to_string()
-    } else {
-        format!("{base}?{}", kept.join("&"))
+    let (base, params) = crate::redact::split_params(url);
+    let mut out = base.to_string();
+    // The `?` or `#` of a dropped pair, which the next kept pair stands behind instead.
+    let mut lead: Option<&str> = None;
+    for (sep, pair) in params {
+        let name = pair.split('=').next().unwrap_or("");
+        let opens = matches!(sep, "?" | "#");
+        if crate::redact::secret_param(name).is_some() {
+            if opens {
+                lead = Some(sep);
+            }
+            continue;
+        }
+        out.push_str(match lead.take() {
+            Some(lead) if !opens => lead,
+            _ => sep,
+        });
+        out.push_str(pair);
     }
+    out
 }
 
 /// `url` without a `user:password@` in front of its host.
@@ -267,6 +272,28 @@ mod tests {
             without_secrets("https://tracker.example/"),
             "https://tracker.example/"
         );
+    }
+
+    #[test]
+    fn a_key_after_a_hash_or_a_semicolon_is_dropped_too() {
+        assert_eq!(
+            without_secrets("https://h.example/feed?q=x#token=K"),
+            "https://h.example/feed?q=x"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/feed?q=x;passkey=K;c=1"),
+            "https://h.example/feed?q=x;c=1"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/feed?apikey=K;q=x#token=T&f=1"),
+            "https://h.example/feed?q=x#f=1"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/cb#token=K"),
+            "https://h.example/cb"
+        );
+        let anchored = "https://h.example/feed?q=x#latest";
+        assert_eq!(without_secrets(anchored), anchored);
     }
 
     use super::*;
