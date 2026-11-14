@@ -607,6 +607,9 @@ fn a_member_gets_the_whole_show_of_the_host_s_release() {
     for _ in 0..4 {
         ben.http.push_for("feed.example", 200, feed.clone());
     }
+    // Ben's client does not hold the episode's torrent yet
+    ben.http
+        .push_for(&format!("torrents/info?hashes={HASH}"), 200, "[]");
     // The rest of the show is a second download, which reads the save path again
     ben.http.push_for("app/defaultSavePath", 200, "/srv/TV");
     for _ in 0..3 {
@@ -697,7 +700,7 @@ fn a_private_torrent_is_never_offered() {
         ben.http.push_for("feed.example", 200, empty);
     }
     room_with_ben_missing(&ann, &ben);
-    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    room(ben.core.call(Call::RoomGetMedia { whole_show: false })).unwrap();
     // Ann's app offers the release's name alone, and Ben searches for it
     common::wait_for(
         &ann.c,
