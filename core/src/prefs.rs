@@ -112,6 +112,21 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
             ),
         ));
     }
+    if crate::room::clean_name(&p.room_name).is_none() && !p.room_name.trim().is_empty() {
+        return Err(CoreError::invalid(
+            "room_name",
+            crate::i18n::tr(
+                "core-prefs-room-name",
+                &[("max", anibeam_room::room::NAME_MAX.to_string().into())],
+            ),
+        ));
+    }
+    if !crate::room::relay_ok(&p.room_relay) {
+        return Err(CoreError::invalid(
+            "room_relay",
+            crate::i18n::tr("core-prefs-room-relay", &[]),
+        ));
+    }
     Ok(())
 }
 

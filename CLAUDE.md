@@ -30,9 +30,10 @@ The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld. The owner's l
 
 ## Architecture
 
-A Cargo workspace with three members:
+A Cargo workspace. The members most work touches:
 
-- **`core/`** (`anibeam-core`): everything that is not drawing. `contract/` is the door every shell talks through: calls, records, events and errors. `library/` scans and reads the library, `metadata/` matches and fetches, `net/` holds one client per provider behind `net/limiter.rs`, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. The store is SQLite with migrations in `store/sql/`. Integration tests live in `core/tests/`.
+- **`contract/`** (`anibeam-contract`): the door every shell talks through: calls, records, events and errors, plus the catalog lookup (`i18n`). It sits below the core, which re-exports all of it, so shells keep naming `anibeam_core::...`. Tracker #854 splits the rest of the core the same way.
+- **`core/`** (`anibeam-core`): everything that is not drawing. `library/` scans and reads the library, `metadata/` matches and fetches, `net/` holds one client per provider behind `net/limiter.rs`, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. The store is SQLite with migrations in `store/sql/`. Integration tests live in `core/tests/`.
 - **`apps/linux/`** (`anibeam`): the QML shell, bridged to the core through cxx-qt 0.10. Rust bridges in `src/bridge/`, QML in `qml/`, the libmpv item in `cpp/`, themes in `themes/`, the bundled `mpv.conf`.
 - **`apps/cli/`** (`anibeam-cli`): a terminal shell, and the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`, `import`, `export`, `events --follow`, `call <Name> --json '{...}'`.
 

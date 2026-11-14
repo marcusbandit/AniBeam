@@ -230,7 +230,7 @@ core-playback-region-spain = Испания
 core-playback-region-simplified = упрощённый
 core-playback-region-traditional = традиционный
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 # What a job is doing, for a status line while it runs. .stopped is the line when it
 # ended in a problem.
@@ -1537,3 +1537,25 @@ core-subscriptions-stopped-said = он остановился: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = имя должно содержать от 1 до { $max } символов, без управляющих символов
+core-prefs-room-relay = адрес ретранслятора должен начинаться с https:// или http://
+core-room-service = Совместный просмотр
+core-room-not-found = Комнаты с таким кодом нет. Возможно, она закрылась.
+core-room-full = Эта комната заполнена.
+core-room-proto = Этот ретранслятор работает на другой версии комнат. Обновите { -app-name }, чтобы войти.
+core-room-unreachable = Не удалось связаться с ретранслятором: { $message }
+core-room-refused = Ретранслятор отказал: { $message }
+core-room-not-in = Вы не в комнате.
+core-room-no-name = выберите имя, под которым вас увидят в комнате
+core-room-bad-code = код комнаты состоит из 6 букв и цифр
+core-room-created = Создана комната совместного просмотра. Её код: { $code }.
+core-room-joined = Вы вошли в комнату совместного просмотра { $code }.
+core-room-left = Вы вышли из комнаты совместного просмотра.
+core-room-member-joined = { $name } теперь в комнате.
+core-room-member-left = { $name } покидает комнату.
+core-room-closed = Комната совместного просмотра закрыта.
+core-room-lost = Связь с комнатой совместного просмотра потеряна. Пробуем снова.
+core-room-back = Снова в комнате совместного просмотра.

@@ -13,15 +13,17 @@ name = "anibeam_core"
 crate-type = ["lib"]
 
 [dependencies]
-uniffi = "=0.32.0"
+uniffi.workspace = true
+anibeam-contract = { workspace = true, features = ["sqlite"] }
 anibeam-recs.workspace = true
+anibeam-room.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
-rusqlite = { version = "0.40", features = ["bundled", "serde_json", "backup"] }
-rusqlite_migration = "2.6"
+rusqlite = { workspace = true, features = ["bundled", "serde_json", "backup"] }
+rusqlite_migration.workspace = true
 directories = "6"
 notify = "8.2"
 notify-debouncer-full = "0.7"
@@ -40,18 +42,16 @@ base64 = "0.23"
 # Endpoint repos (#143): the ed25519 check on a repo's signed index.
 ed25519-dalek = "2"
 tracing = "0.1"
-# The catalog (#792): every string a person reads, looked up by message ID in i18n/.
-fluent-bundle = "0.16"
-fluent-syntax = "0.12"
-unic-langid = "0.9"
-# Month and weekday names in the chosen language, for the dates the shells format.
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "unstable-locales"] }
 flate2 = "1"
 toml = "1"
 roxmltree = "0.20"
 anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
+# Watch together rooms (#846): the relay's WebSocket, opened through reqwest's own client
+# and HTTP upgrade so it rides the same TLS setup as every other request.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 # Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
 # for their TLS. Only the shells that cast turn it on.
 matroska-demuxer = { version = "0.8", optional = true }
@@ -85,6 +85,8 @@ rustix = { version = "1", features = ["system", "process"] }
 
 [dev-dependencies]
 tempfile = "3"
+# The native relay, run in-process by the rooms tests.
+anibeam-relay = { path = "../apps/relay" }
 
 # The desktop's trash; a phone (Android or iPhone) deletes its own files outright.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

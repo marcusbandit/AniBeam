@@ -3696,3 +3696,83 @@ door-not-a-torrent-action = { $value } er ikke en torrenthandling
 
 shell-starter-folder-failed = Kunne ikke oprette { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } tilbydes ikke længere
+
+## Watch together (#846)
+
+onboarding-step-together = Se sammen
+onboarding-title-together = Se med venner
+onboarding-body-together = Start et rum fra afspilleren, og send koden. Alle afspiller deres egen kopi af afsnittet, og afspil, pause og spol følges ad for jer alle.
+onboarding-ready-together = Se sammen
+onboarding-ready-together-as = Rum viser dig som { $name }.
+onboarding-ready-together-none = Intet navn endnu. Rumpanelet spørger første gang.
+onboarding-together-you = Dig
+onboarding-together-code = Rumkode
+onboarding-together-episode = Frieren · Afsnit 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Dit navn i rum
+rail-room = Se sammen (Ctrl+J)
+rail-room-in = I et se sammen-rum (Ctrl+J)
+player-chrome-watch-together = Se sammen
+player-chrome-room = Rum { $code } · { $count ->
+    [one] 1 person
+   *[other] { $count } personer
+}
+room-name-empty = Skriv det navn, de andre i rummet skal se.
+room-name-bad = Det navn virker ikke. Brug 1 til 32 tegn.
+room-error-not-found = Intet rum har den kode. Tjek den med den, der sendte den; rummet er måske lukket.
+room-error-full = Det rum er fuldt. Et rum har plads til 10 personer.
+room-error-unreachable = Kunne ikke nå rumserveren. Tjek din forbindelse, og prøv igen.
+room-error-refused = Rumserveren afviste det. Prøv igen om et minut.
+room-error-proto = Det rum kører på en nyere version af rum. Opdater { -app-name } for at gå ind i det.
+room-error-not-in-room = Du er ikke længere i det rum. Start eller gå ind i et igen.
+room-error-bad-code = En rumkode er 6 bogstaver og tal, fx K7QM2X.
+room-error-bad-relay = Rumserveren i Indstillinger, Afspilning er ikke en webadresse. Ret den der, og prøv igen.
+room-panel-title = Se sammen
+room-panel-close = Luk
+room-panel-connected = Forbundet
+room-panel-reconnecting = Forbinder igen
+room-panel-name-label = Dit navn i rum
+room-panel-name-placeholder = Dit navn
+room-panel-name-start = Start rummet
+room-panel-name-join = Gå ind i rummet
+room-panel-start = Start et rum
+room-panel-or-join = Eller gå ind i et med dets kode
+room-panel-join-label = Rumkode
+room-panel-join = Gå ind
+room-panel-you-are = Du vises som { $name }
+room-panel-change-name = Skift
+room-panel-code-label = Rumkode
+room-panel-copy = Kopier link
+room-panel-link-copied = Rumlink kopieret
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Dette afsnit er ikke i dit bibliotek, så du kan ikke se med endnu.
+room-panel-open-episode = Åbn afsnittet
+room-panel-people = { $count ->
+    [one] 1 person
+   *[other] { $count } personer
+}
+room-panel-host = Vært
+room-panel-you = Dig
+room-panel-ready = Klar
+room-panel-opening = Åbner
+room-panel-missing = Har det ikke
+room-panel-offset = Din forskydning
+room-panel-offset-earlier = Et halvt sekund tidligere
+room-panel-offset-later = Et halvt sekund senere
+room-panel-seconds = { $value } s
+room-panel-suggested = Introerne foreslår { $offset }
+room-panel-use-suggested = Brug den
+room-panel-leave = Forlad rummet
+player-room-speed = Hastigheden følger rummet
+settings-find-room-name =
+    .words = se sammen rum navn venner
+settings-find-room-relay =
+    .words = se sammen rum relæ server
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Se sammen
+settings-playback-together = Se sammen
+settings-playback-room-name = Dit navn i se sammen-rum
+settings-playback-room-name-placeholder = Dit navn
+settings-playback-room-relay = Rumserver
+settings-playback-room-relay-helper = Rum oprettes her. Skift den kun til en server, du selv kører.

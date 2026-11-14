@@ -64,9 +64,10 @@ cp -L "$app/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png" \
   "$tree/usr/share/icons/hicolor/512x512/apps/"
 rm -f "$app/AppRun" "$app/AppRun.wrapped" "$app/.DirIcon" \
   "$app/com.marcusrosado.AniBeam.desktop" "$app/com.marcusrosado.AniBeam.png"
-# The desktop file runs the command on PATH; the version stamp is the AppImage tooling's.
+# The desktop file runs the command on PATH, with the anibeam:// link it was opened for; the
+# version stamp is the AppImage tooling's.
 desktop="$tree/usr/share/applications/com.marcusrosado.AniBeam.desktop"
-sed -i -e '/^X-AppImage-/d' -e 's/^Exec=.*/Exec=anibeam/' "$desktop"
+sed -i -e '/^X-AppImage-/d' -e 's/^Exec=.*/Exec=anibeam %u/' "$desktop"
 install -m 755 "$here/anibeam.sh" "$tree/usr/bin/anibeam"
 # squashfs-root comes out drwx------; every user has to read the install.
 chmod -R u+rwX,go+rX,go-w "$tree"

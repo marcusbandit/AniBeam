@@ -3443,3 +3443,81 @@ door-not-a-torrent-action = { $value }은(는) 토렌트 동작이 아니에요
 
 shell-starter-folder-failed = { $folder }을(를) 만들지 못했어요: { $error }
 shell-update-gone = { -app-name } { $version }은(는) 더 이상 제공되지 않아요
+
+## Watch together (#846)
+
+onboarding-step-together = 함께 보기
+onboarding-title-together = 친구와 함께 보기
+onboarding-body-together = 플레이어에서 방을 만들고 코드를 보내세요. 각자 자기 파일로 에피소드를 재생하고, 재생, 일시정지, 탐색은 모두에게 똑같이 맞춰져요.
+onboarding-ready-together = 함께 보기
+onboarding-ready-together-as = 방에서 { $name }(으)로 보여요.
+onboarding-ready-together-none = 아직 이름이 없어요. 처음 쓸 때 방 패널에서 물어봐요.
+onboarding-together-you = 나
+onboarding-together-code = 방 코드
+onboarding-together-episode = Frieren · 3화
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = 방에서 쓸 이름
+rail-room = 함께 보기(Ctrl+J)
+rail-room-in = 함께 보기 방에 있음(Ctrl+J)
+player-chrome-watch-together = 함께 보기
+player-chrome-room = 방 { $code } · { $count ->
+   *[other] { $count }명
+}
+room-name-empty = 방에서 다른 사람에게 보일 이름을 입력하세요.
+room-name-bad = 쓸 수 없는 이름이에요. 1~32자로 정하세요.
+room-error-not-found = 그 코드의 방이 없어요. 보낸 사람에게 확인하세요. 방이 닫혔을 수 있어요.
+room-error-full = 방이 꽉 찼어요. 방에는 10명까지 들어갈 수 있어요.
+room-error-unreachable = 방 서버에 연결하지 못했어요. 연결을 확인하고 다시 시도하세요.
+room-error-refused = 방 서버가 거부했어요. 잠시 후 다시 시도하세요.
+room-error-proto = 그 방은 더 새로운 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+room-error-not-in-room = 더 이상 그 방에 있지 않아요. 방을 다시 만들거나 참여하세요.
+room-error-bad-code = 방 코드는 K7QM2X처럼 영문자와 숫자 6자예요.
+room-error-bad-relay = 설정, 재생의 방 서버가 웹 주소가 아니에요. 거기서 고친 뒤 다시 시도하세요.
+room-panel-title = 함께 보기
+room-panel-close = 닫기
+room-panel-connected = 연결됨
+room-panel-reconnecting = 다시 연결 중
+room-panel-name-label = 방에서 쓸 이름
+room-panel-name-placeholder = 이름
+room-panel-name-start = 방 만들기
+room-panel-name-join = 방 참여
+room-panel-start = 방 만들기
+room-panel-or-join = 또는 코드로 참여
+room-panel-join-label = 방 코드
+room-panel-join = 참여
+room-panel-you-are = { $name }(으)로 보여요
+room-panel-change-name = 변경
+room-panel-code-label = 방 코드
+room-panel-copy = 링크 복사
+room-panel-link-copied = 방 링크 복사됨
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = 이 에피소드가 라이브러리에 없어서 아직 같이 볼 수 없어요.
+room-panel-open-episode = 에피소드 열기
+room-panel-people = { $count ->
+   *[other] { $count }명
+}
+room-panel-host = 호스트
+room-panel-you = 나
+room-panel-ready = 준비됨
+room-panel-opening = 여는 중
+room-panel-missing = 파일 없음
+room-panel-offset = 내 오프셋
+room-panel-offset-earlier = 0.5초 빠르게
+room-panel-offset-later = 0.5초 느리게
+room-panel-seconds = { $value }초
+room-panel-suggested = 오프닝 기준 추천: { $offset }
+room-panel-use-suggested = 적용
+room-panel-leave = 방 나가기
+player-room-speed = 속도는 방에 맞춰져요
+settings-find-room-name =
+    .words = 함께 보기 방 이름 친구
+settings-find-room-relay =
+    .words = 함께 보기 방 릴레이 서버
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = 함께 보기
+settings-playback-together = 함께 보기
+settings-playback-room-name = 함께 보기 방에서 쓸 이름
+settings-playback-room-name-placeholder = 이름
+settings-playback-room-relay = 방 서버
+settings-playback-room-relay-helper = 방은 여기서 만들어져요. 직접 운영하는 서버일 때만 바꾸세요.

@@ -175,6 +175,8 @@ FocusScope {
         ["playback", words.t("settings-playback-name-next"), words.t("settings-find-next-episode.words")],
         ["playback", words.t("settings-playback-subtitle-languages"), words.t("settings-find-subtitle-languages.words")],
         ["playback", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
+        ["playback", words.t("settings-playback-room-name"), words.t("settings-find-room-name.words")],
+        ["playback", words.t("settings-playback-room-relay"), words.t("settings-find-room-relay.words")],
         ["subtitles", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
         ["subtitles", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
         ["subtitles", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],

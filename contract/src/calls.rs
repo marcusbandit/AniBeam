@@ -745,7 +745,7 @@ pub enum Call {
     /// Adds an endpoint by hand, outside any repo: a name, and an address with `{query}`
     /// where the search goes. A secret in the address (a
     /// `user:password@` login, or a key such as `apikey=`, `token=`, `passkey=`, `rsskey=`;
-    /// the full list is `releases::native::SECRET_PARAMS`) moves to the secret store; other
+    /// the full list is `redact::SECRET_PARAMS`) moves to the secret store; other
     /// placeholders take their value from `credentials`.
     AddCustomEndpoint {
         name: String,
@@ -790,6 +790,34 @@ pub enum Call {
     },
     CastStop,
     CastStatus,
+    // Watch together (#846). One room at a time; every room call answers `Room`.
+    /// Makes a room on the relay for the episode `session` plays, and joins it as the
+    /// host with that session attached. A room already joined is left first.
+    RoomCreate {
+        session: u64,
+    },
+    /// Joins a room by its code, as typed: case, spaces and dashes do not matter. What to
+    /// open follows as `RoomEpisode`. A room already joined is left first.
+    RoomJoin {
+        code: String,
+    },
+    /// The playback session the room drives from now on. From the host, a session on
+    /// another episode moves the whole room there.
+    RoomAttach {
+        session: u64,
+    },
+    /// Play, pause or seek for everyone, at a position in seconds on this member's own
+    /// file.
+    RoomCommand {
+        action: RoomAction,
+        position: f64,
+    },
+    /// This member's offset in seconds, kept for the attached file.
+    RoomSetOffset {
+        offset: f64,
+    },
+    RoomLeave,
+    RoomStatus,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -965,5 +993,9 @@ pub enum Reply {
     /// `Claude Code`, `Codex`, or None.
     TriageAgent {
         name: Option<String>,
+    },
+    /// The watch together room, None when not in one.
+    Room {
+        room: Option<RoomInfo>,
     },
 }

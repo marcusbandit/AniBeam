@@ -216,7 +216,7 @@ core-playback-region-spain = Spanje
 core-playback-region-simplified = vereenvoudigd
 core-playback-region-traditional = traditioneel
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Je mappen controleren
     .stopped = Mappen controleren stopte door een probleem.
@@ -1274,3 +1274,25 @@ core-subscriptions-stopped-said = het stopte: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = een naam is 1 tot { $max } tekens, zonder stuurtekens
+core-prefs-room-relay = het relayadres moet beginnen met https:// of http://
+core-room-service = Samen kijken
+core-room-not-found = Geen kamer met die code. Misschien is hij gesloten.
+core-room-full = Die kamer is vol.
+core-room-proto = Die relay draait een andere versie van kamers. Werk { -app-name } bij om mee te doen.
+core-room-unreachable = Kon de relay niet bereiken: { $message }
+core-room-refused = De relay weigerde: { $message }
+core-room-not-in = Je zit niet in een kamer.
+core-room-no-name = kies de naam waarmee anderen in de kamer je zien
+core-room-bad-code = een kamercode is 6 letters en cijfers
+core-room-created = Een kamer om samen te kijken gestart. De code is { $code }.
+core-room-joined = Lid geworden van kamer { $code } om samen te kijken.
+core-room-left = De kamer om samen te kijken verlaten.
+core-room-member-joined = { $name } kwam de kamer in.
+core-room-member-left = { $name } verliet de kamer.
+core-room-closed = De kamer om samen te kijken is gesloten.
+core-room-lost = Verbinding met de kamer om samen te kijken verloren. Opnieuw proberen.
+core-room-back = Weer in de kamer om samen te kijken.

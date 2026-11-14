@@ -122,7 +122,7 @@ number_value!(i32, i64, u32, u64, usize, f32, f64);
 #[macro_export]
 macro_rules! words {
     ($id:literal $(, $name:ident = $value:expr)* $(,)?) => {
-        $crate::contract::Words::new($id)$(.arg(stringify!($name), $value))*
+        $crate::Words::new($id)$(.arg(stringify!($name), $value))*
     };
 }
 

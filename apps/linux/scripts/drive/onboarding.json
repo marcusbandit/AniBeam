@@ -34,13 +34,17 @@
   {"click": "onboarding-add-sources"},
   {"click": "onboarding-continue"},
   {"wait": 300},
-  {"shot": "ob-9-ready"},
+  {"shot": "ob-9-together"},
+  {"click": "onboarding-skip"},
+  {"wait": 300},
+  {"eval": "Door.preferences.room_name", "expect": ""},
+  {"shot": "ob-10-ready"},
   {"click": "onboarding-continue"},
   {"wait": 800},
   {"eval": "frame.item.onboardingPanel.visible", "expect": false},
   {"eval": "frame.item.nav.current.page", "expect": "settings"},
-  {"shot": "ob-10-after"},
+  {"shot": "ob-11-after"},
   {"page": "settings", "props": {"tab": "about"}},
   {"wait": 600},
-  {"shot": "ob-11-about"}
+  {"shot": "ob-12-about"}
 ]

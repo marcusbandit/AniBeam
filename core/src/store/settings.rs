@@ -34,6 +34,8 @@ pub const PHONE_RULES_REKEPT: &str = "phone_rules_rekept";
 /// folder each show's own goes under, the films' folder and the tags. Absent
 /// until something sets it.
 pub const DOWNLOAD_PATHS: &str = "download_paths";
+/// Each file's watch together offset in seconds, by file id (#846). Per machine.
+pub const ROOM_OFFSETS: &str = "room_offsets";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

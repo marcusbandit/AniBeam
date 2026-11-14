@@ -70,10 +70,22 @@ SettingsTab {
                 Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
                 Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
     }
+    // Watch together (#846): the name others in a room see. Kept per machine, like the relay.
+    Panel {
+        title: words.t("settings-playback-together")
+        SettingRow { label: words.t("settings-playback-room-name")
+            Field { objectName: "settings-room-name"; text: Door.preferences.room_name || ""; placeholder: frame.room.suggestedName || words.t("settings-playback-room-name-placeholder"); width: theme.space(48)
+                accessibleName: words.t("settings-playback-room-name")
+                onEdited: function(t) { if (t.trim() !== "" && t.trim() !== (Door.preferences.room_name || "") && !frame.room.setName(t)) frame.toast(frame.room.error) } } }
+    }
     Panel {
         title: words.t("settings-playback-advanced")
         SettingRow { label: words.t("settings-playback-my-mpv"); helper: words.t("settings-playback-my-mpv-helper")
             status: Player.configLayers.length ? Player.configLayers.join("\n") : words.t("settings-playback-no-mpv-conf")
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
+        SettingRow { label: words.t("settings-playback-room-relay"); helper: words.t("settings-playback-room-relay-helper")
+            Field { objectName: "settings-room-relay"; text: Door.preferences.room_relay || ""; mono: true; width: theme.space(64)
+                accessibleName: words.t("settings-playback-room-relay")
+                onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } } }
     }
 }

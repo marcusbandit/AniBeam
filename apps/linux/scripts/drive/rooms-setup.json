@@ -1,0 +1,113 @@
+[
+  {
+    "log": "Watch together's setup (#846): the onboarding step, the ready summary and the two Settings, Playback rows. Run against a sandbox root with no room_name set."
+  },
+  {
+    "eval": "frame.item.openOnboarding(4); true"
+  },
+  {
+    "wait": 500
+  },
+  {
+    "shot": "room-setup-1-onboarding"
+  },
+  {
+    "click": "onboarding-room-name-field"
+  },
+  {
+    "type": "Ada"
+  },
+  {
+    "wait": 300
+  },
+  {
+    "shot": "room-setup-2-onboarding-named"
+  },
+  {
+    "click": "onboarding-continue"
+  },
+  {
+    "until": "Door.preferences.room_name === 'Ada'"
+  },
+  {
+    "wait": 400
+  },
+  {
+    "shot": "room-setup-3-ready"
+  },
+  {
+    "eval": "frame.item.onboardingPanel.finish(); true"
+  },
+  {
+    "page": "settings",
+    "props": {
+      "tab": "playback"
+    }
+  },
+  {
+    "wait": 500
+  },
+  {
+    "wheel": [
+      860,
+      500,
+      -1200
+    ]
+  },
+  {
+    "wait": 400
+  },
+  {
+    "wheel": [
+      860,
+      500,
+      -1200
+    ]
+  },
+  {
+    "wait": 400
+  },
+  {
+    "wheel": [
+      860,
+      500,
+      -1200
+    ]
+  },
+  {
+    "wait": 600
+  },
+  {
+    "shot": "room-setup-4-settings"
+  },
+  {
+    "key": "Ctrl+J"
+  },
+  {
+    "until": "frame.item.roomSheetPanel.open === true"
+  },
+  {
+    "wait": 400
+  },
+  {
+    "shot": "room-setup-5-join-sheet"
+  },
+  {
+    "click": "room-panel-code"
+  },
+  {
+    "type": "zzzz"
+  },
+  {
+    "key": "Return"
+  },
+  {
+    "until": "frame.item.room.error !== ''"
+  },
+  {
+    "wait": 300
+  },
+  {
+    "shot": "room-setup-6-bad-code"
+  }
+]

@@ -366,6 +366,20 @@ _Avoid_: auth header, token
 A device whose device key the host keeps. Its requests are answered on any network the host listens on, unless the person switched it off on the tailnet.
 _Avoid_: linked device, registered device
 
+### Watch together
+
+**Room**:
+Up to 10 people watching the same episode at once, each playing their own copy. A room holds the episode's identity, the play state and who is in it, never video or where to get it. It has a 6 character code, and its host moves it to the next episode.
+_Avoid_: party, session, lobby, watch party
+
+**Relay**:
+The server rooms live on: it hands out codes, passes the play state between members and serves the join page a room link opens. `anibeam-relay` is the native one, for self-hosting and tests; the Cloudflare Worker is the one the app uses by default.
+_Avoid_: room server, sync server, backend
+
+**Offset**:
+How far one person's file is from the host's, in seconds, so the same moment plays at the same time: local position is the room's position plus the offset. Kept per file, and suggested from the openings when both are known.
+_Avoid_: delay, drift, sync offset
+
 ### Route
 
 **Parity checklist**:

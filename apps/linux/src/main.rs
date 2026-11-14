@@ -143,8 +143,10 @@ fn main() {
         }
     };
     let Some(lock) = lock else {
-        let result = runtime::runtime()
-            .block_on(dbus::instance::hand_off(runtime::args().action.as_deref()));
+        let result = runtime::runtime().block_on(dbus::instance::hand_off(
+            runtime::args().action.as_deref(),
+            runtime::args().link.as_deref(),
+        ));
         match result {
             Ok(()) => std::process::exit(0),
             Err(e) => {

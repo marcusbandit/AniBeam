@@ -161,24 +161,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-contract"
+version = "2.5.0"
+dependencies = [
+ "chrono",
+ "fluent-bundle",
+ "fluent-syntax",
+ "rusqlite",
+ "rusqlite_migration",
+ "serde",
+ "serde_json",
+ "tracing",
+ "unic-langid",
+ "uniffi",
+]
+
+[[package]]
 name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
+ "anibeam-contract",
  "anibeam-host-api",
  "anibeam-recs",
+ "anibeam-room",
  "anyhow",
  "apple-native-keyring-store",
  "axum",
  "backon",
  "base64",
- "chrono",
  "directories",
  "ed25519-dalek",
  "fancy-regex",
  "flate2",
- "fluent-bundle",
- "fluent-syntax",
  "futures-core",
+ "futures-util",
  "governor",
  "if-addrs 0.13.4",
  "keyring-core",
@@ -201,11 +217,11 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "toml",
  "tracing",
  "trash",
- "unic-langid",
  "uniffi",
  "walkdir",
  "webpki-root-certs",
@@ -226,6 +242,14 @@ name = "anibeam-recs"
 version = "2.5.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "anibeam-room"
+version = "2.5.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6354,6 +6378,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest 0.10.7",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7143,6 +7178,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7326,6 +7373,22 @@ name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
+
+[[package]]
+name = "tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.9.5",
+ "sha1",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "type-map"

@@ -213,7 +213,7 @@ core-playback-region-spain = España
 core-playback-region-simplified = Simplificado
 core-playback-region-traditional = Tradicional
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Revisando tus carpetas
     .stopped = La revisión de tus carpetas se detuvo por un problema.
@@ -1295,3 +1295,25 @@ core-subscriptions-stopped-said = se detuvo: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = un nombre tiene de 1 a { $max } caracteres, sin caracteres de control
+core-prefs-room-relay = la dirección del relay debe empezar por https:// o http://
+core-room-service = Ver juntos
+core-room-not-found = Ninguna sala tiene ese código. Puede que se haya cerrado.
+core-room-full = Esa sala está llena.
+core-room-proto = Ese relay usa otra versión de las salas. Actualiza { -app-name } para unirte.
+core-room-unreachable = No se pudo llegar al relay: { $message }
+core-room-refused = El relay dijo que no: { $message }
+core-room-not-in = No estás en ninguna sala.
+core-room-no-name = elige el nombre con el que te ven los demás en la sala
+core-room-bad-code = un código de sala tiene 6 letras y dígitos
+core-room-created = Se abrió una sala para ver juntos. Su código es { $code }.
+core-room-joined = Te uniste a la sala { $code } para ver juntos.
+core-room-left = Saliste de la sala para ver juntos.
+core-room-member-joined = { $name } entró en la sala.
+core-room-member-left = { $name } salió de la sala.
+core-room-closed = La sala para ver juntos se cerró.
+core-room-lost = Se perdió la conexión con la sala para ver juntos. Reintentando.
+core-room-back = De vuelta en la sala para ver juntos.

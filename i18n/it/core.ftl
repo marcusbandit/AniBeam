@@ -213,7 +213,7 @@ core-playback-region-spain = Spagna
 core-playback-region-simplified = Semplificato
 core-playback-region-traditional = Tradizionale
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Controllo delle cartelle
     .stopped = Il controllo delle cartelle si è fermato per un problema.
@@ -1283,3 +1283,25 @@ core-subscriptions-stopped-said = si è fermato: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = un nome ha da 1 a { $max } caratteri, senza caratteri di controllo
+core-prefs-room-relay = l'indirizzo del relay deve iniziare con https:// o http://
+core-room-service = Guarda insieme
+core-room-not-found = Nessuna stanza ha quel codice. Potrebbe essere stata chiusa.
+core-room-full = Quella stanza è piena.
+core-room-proto = Quel relay usa un'altra versione delle stanze. Aggiorna { -app-name } per entrare.
+core-room-unreachable = Impossibile raggiungere il relay: { $message }
+core-room-refused = Il relay ha rifiutato: { $message }
+core-room-not-in = Non sei in una stanza.
+core-room-no-name = scegli il nome con cui ti vedono gli altri nella stanza
+core-room-bad-code = un codice stanza ha 6 tra lettere e cifre
+core-room-created = Stanza Guarda insieme avviata. Il codice è { $code }.
+core-room-joined = Entrato nella stanza Guarda insieme { $code }.
+core-room-left = Uscito dalla stanza Guarda insieme.
+core-room-member-joined = { $name } è entrato nella stanza.
+core-room-member-left = { $name } è uscito dalla stanza.
+core-room-closed = La stanza Guarda insieme è stata chiusa.
+core-room-lost = Connessione alla stanza Guarda insieme persa. Nuovo tentativo.
+core-room-back = Di nuovo nella stanza Guarda insieme.

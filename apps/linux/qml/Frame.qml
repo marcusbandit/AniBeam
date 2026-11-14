@@ -74,7 +74,7 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding || e.closer === roomSheet })
         escapeStack.clear()
         keep.forEach(function(e) {
             if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
@@ -204,6 +204,9 @@ FocusScope {
             else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
         }
         onVersionClicked: frame.openWhatsNew()
+        inRoom: roomState.inRoom
+        roomOpen: roomSheet.open
+        onRoomClicked: frame.toggleRoom()
     }
 
     Item {
@@ -517,6 +520,30 @@ FocusScope {
     function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
     readonly property alias onboardingPanel: onboarding
 
+    // Watch together (#846): the room outlives the player, so the frame keeps it. The player
+    // opens its own panel from its chrome; anywhere else Ctrl+J and the rail open this one.
+    Room { id: roomState }
+    readonly property alias room: roomState
+    readonly property alias roomSheetPanel: roomSheet
+    function openRoom() {
+        whatsNew.close()
+        if (page.item && page.item.openRoomPanel) page.item.openRoomPanel()
+        else roomSheet.openAt(null)
+    }
+    function toggleRoom() {
+        if (page.item && page.item.toggleRoomPanel) page.item.toggleRoomPanel()
+        else if (roomSheet.open) roomSheet.close()
+        else frame.openRoom()
+    }
+    // A link (anibeam://room/<code>) from the command line or a second launch
+    function joinRoomLink(code) {
+        if (!code) return
+        if (!(page.item && page.item.openRoomPanel)) roomSheet.openAt(null)
+        else page.item.openRoomPanel()
+        roomState.join(code)
+    }
+    Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
@@ -533,6 +560,7 @@ FocusScope {
         anchors.fill: parent
         z: 600
         Menu { id: menu }
+        RoomPanel { id: roomSheet }
         RemoveSheet { id: removeSheet }
         MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
@@ -636,6 +664,9 @@ FocusScope {
         // gets the first run instead, an older one only has it marked done
         onboarding.start()
         frame.noteSources()
+        roomState.refresh()
+        // Started from a room link: join it once the first page is up
+        if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
@@ -1211,6 +1242,8 @@ FocusScope {
     Shortcut { sequence: "Ctrl+F"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
+    // Watch together: the room panel, the player's own while it is up
+    Shortcut { sequence: "Ctrl+J"; enabled: !onboarding.visible; onActivated: frame.toggleRoom() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     // The mouse's own back and forward buttons, anywhere in the window. No other area takes
     // these two buttons, so a press reaches this one from under whatever it lands on.

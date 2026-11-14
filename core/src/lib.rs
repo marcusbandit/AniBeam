@@ -1,5 +1,5 @@
-//! AniBeam's core. One crate, every rule; every shell uses it through the
-//! contract in `contract`.
+//! AniBeam's core: every rule, used by every shell through the contract in
+//! `contract`, which hands on the `anibeam-contract` crate below it.
 
 pub mod agent;
 pub mod aired;
@@ -17,7 +17,6 @@ pub mod first_run;
 pub mod franchise;
 pub mod host;
 pub mod html;
-pub mod i18n;
 pub mod images;
 pub mod jobs;
 pub mod launch;
@@ -37,8 +36,10 @@ pub mod presence;
 pub(crate) mod process;
 pub mod profiles;
 pub mod recommended;
+pub mod redact;
 pub mod releases;
 pub mod repos;
+pub mod room;
 pub mod stats;
 pub mod store;
 pub mod subscriptions;
@@ -49,6 +50,7 @@ pub mod transfer;
 pub mod update;
 pub mod words;
 
+pub use anibeam_contract::i18n;
 pub use contract::*;
 pub use core::Core;
 pub use paths::CorePaths;

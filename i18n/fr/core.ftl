@@ -215,7 +215,7 @@ core-playback-region-spain = Espagne
 core-playback-region-simplified = simplifié
 core-playback-region-traditional = traditionnel
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Vérification de vos dossiers
     .stopped = La vérification de vos dossiers s'est arrêtée sur un problème.
@@ -1285,3 +1285,25 @@ core-subscriptions-stopped-said = il s'est arrêté : { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = un nom fait de 1 à { $max } caractères, sans caractère de contrôle
+core-prefs-room-relay = l'adresse du relais doit commencer par https:// ou http://
+core-room-service = Regarder ensemble
+core-room-not-found = Aucun salon n'a ce code. Il est peut-être fermé.
+core-room-full = Ce salon est plein.
+core-room-proto = Ce relais utilise une autre version des salons. Mettez à jour { -app-name } pour le rejoindre.
+core-room-unreachable = Impossible de joindre le relais : { $message }
+core-room-refused = Le relais a refusé : { $message }
+core-room-not-in = Vous n'êtes dans aucun salon.
+core-room-no-name = choisissez le nom sous lequel les autres vous voient dans le salon
+core-room-bad-code = un code de salon fait 6 lettres et chiffres
+core-room-created = Salon de visionnage créé. Son code est { $code }.
+core-room-joined = Vous avez rejoint le salon de visionnage { $code }.
+core-room-left = Vous avez quitté le salon de visionnage.
+core-room-member-joined = { $name } a rejoint le salon.
+core-room-member-left = { $name } a quitté le salon.
+core-room-closed = Le salon de visionnage est fermé.
+core-room-lost = Connexion au salon de visionnage perdue. Nouvelle tentative.
+core-room-back = De retour dans le salon de visionnage.

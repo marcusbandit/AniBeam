@@ -6,6 +6,8 @@
 //! runs a JSON array of input steps against the offscreen window and writes each `shot` step
 //! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/linux/captures`).
 //! `serve` runs the core and its tailnet host with no window, for other devices (`serve.rs`).
+//! An `anibeam://room/<code>` link, as the desktop's scheme handler passes it, joins that
+//! watch together room (#846); a second launch hands it to the running window.
 
 use std::path::PathBuf;
 
@@ -22,6 +24,8 @@ pub struct Args {
     pub drive: Option<String>,
     pub out: Option<PathBuf>,
     pub serve: bool,
+    /// An `anibeam://` link to open, as given: a watch together room.
+    pub link: Option<String>,
 }
 
 impl Default for Args {
@@ -38,6 +42,7 @@ impl Default for Args {
             drive: None,
             out: None,
             serve: false,
+            link: None,
         }
     }
 }
@@ -77,6 +82,16 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             // Qt's own: qmlprofiler and Qt Creator start the app with it, and
             // QGuiApplication reads it from argv after this parse
             other if other.starts_with("-qmljsdebugger") => {}
+            // The scheme handler's %u: one link, and only a kind this build opens
+            link if link.starts_with(SCHEME) => {
+                if room_code(link).is_none() {
+                    return Err(format!("{link} is not a link AniBeam opens"));
+                }
+                if a.link.is_some() {
+                    return Err("one link at a time".into());
+                }
+                a.link = Some(link.to_string());
+            }
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -89,10 +104,29 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         return Err("--out only means something with --drive".into());
     }
     let windowed = a.shoot.is_some() || a.drive.is_some() || a.page.is_some() || sized;
-    if a.serve && (windowed || a.props.is_some() || a.action.is_some()) {
+    if a.serve && (windowed || a.props.is_some() || a.action.is_some() || a.link.is_some()) {
         return Err("serve opens no window; it takes --root and nothing else".into());
     }
     Ok(a)
+}
+
+const SCHEME: &str = "anibeam://";
+
+/// The room code in an `anibeam://room/<code>` link, as written: the core normalises it
+/// (case, spaces and dashes) and says when it is not a code. A trailing slash, a query or a
+/// fragment is dropped, so a link pasted from a chat still opens. None for any other link.
+pub fn room_code(link: &str) -> Option<String> {
+    let rest = link.strip_prefix(SCHEME)?;
+    let rest = rest.strip_prefix("room/")?;
+    let code = rest
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('/');
+    let ok = !code.is_empty()
+        && code.len() <= 16
+        && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    ok.then(|| code.to_string())
 }
 
 /// Where a drive script's `shot` steps land: `--out`, else `$ANIBEAM_CAPTURES`, else the
@@ -166,6 +200,29 @@ mod tests {
         ] {
             assert!(parse(&argv(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_room_link_is_taken_and_any_other_link_refused() {
+        let a = parse(&argv("anibeam://room/K7QM2X")).unwrap();
+        assert_eq!(a.link.as_deref(), Some("anibeam://room/K7QM2X"));
+        assert_eq!(
+            room_code("anibeam://room/k7qm-2x/").as_deref(),
+            Some("k7qm-2x")
+        );
+        assert_eq!(
+            room_code("anibeam://room/K7QM2X?from=chat").as_deref(),
+            Some("K7QM2X")
+        );
+        assert_eq!(room_code("anibeam://room/"), None);
+        assert_eq!(room_code("anibeam://room/K7 QM"), None);
+        assert_eq!(room_code("anibeam://series/12"), None);
+        assert_eq!(room_code("https://example.com/room/K7QM2X"), None);
+        assert!(parse(&argv("anibeam://series/12")).is_err());
+        assert!(parse(&argv("anibeam://room/AAAAAA anibeam://room/BBBBBB")).is_err());
+        assert!(parse(&argv("serve anibeam://room/K7QM2X")).is_err());
+        // The scheme handler with no link passes nothing at all
+        assert_eq!(parse(&argv("")).unwrap().link, None);
     }
 
     #[test]

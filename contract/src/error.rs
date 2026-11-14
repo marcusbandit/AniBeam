@@ -163,6 +163,7 @@ impl std::fmt::Display for CoreError {
 
 impl std::error::Error for CoreError {}
 
+#[cfg(feature = "sqlite")]
 impl From<rusqlite::Error> for CoreError {
     fn from(e: rusqlite::Error) -> Self {
         CoreError::Storage {
@@ -171,6 +172,7 @@ impl From<rusqlite::Error> for CoreError {
     }
 }
 
+#[cfg(feature = "sqlite")]
 impl From<rusqlite_migration::Error> for CoreError {
     fn from(e: rusqlite_migration::Error) -> Self {
         CoreError::Storage {

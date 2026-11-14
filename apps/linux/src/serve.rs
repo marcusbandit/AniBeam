@@ -146,7 +146,7 @@ mod unix {
                 super::RELEASE_HOST
             };
             // No window, or no session bus: nobody to tell, which is fine.
-            let _ = runtime::runtime().block_on(instance::hand_off(Some(action)));
+            let _ = runtime::runtime().block_on(instance::hand_off(Some(action), None));
         });
         let service = match Service::bind(paths.lock_path(), paths.service_socket(), tell) {
             Ok(s) => s,
