@@ -61,7 +61,8 @@ pub struct Local {
 }
 
 /// Finds the room's episode here: the series by its AniList id, then its MAL id,
-/// then its TVmaze id, and in those the file by the episode's history key. A
+/// then its TVmaze id, and in those the file by the episode's history key, else
+/// by its number. A
 /// series that matches without the file is still named, so the shell can say the
 /// episode is missing from a show the person has.
 pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, CoreError> {
@@ -95,22 +96,36 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
             }
         }
     }
-    for &series in &candidates {
-        let file: Option<i64> = conn
-            .query_row(
-                "SELECT id FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
-                params![series as i64, e.episode_key],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if let Some(file) = file {
-            let opening = skip::cached(conn, series, &e.episode_key, crate::time::now_secs())?
-                .and_then(|windows| opening_of(&windows));
-            return Ok(Local {
-                series: Some(series),
-                file: Some(file as u64),
-                opening,
-            });
+    // The key first; then the episode by its number, since two copies of one
+    // episode can carry different keys ("6" here, "S03E06" in a folder named for
+    // its season)
+    let by_key = (
+        "SELECT id, episode_key FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
+        rusqlite::types::Value::from(e.episode_key.clone()),
+    );
+    let by_number = e.number.filter(|n| n.is_finite()).map(|n| {
+        (
+            "SELECT id, episode_key FROM files WHERE series_id = ?1 AND kind = 'episode'
+             AND abs(number - ?2) < 0.001 ORDER BY id LIMIT 1",
+            rusqlite::types::Value::from(n),
+        )
+    });
+    for (sql, want) in std::iter::once(by_key).chain(by_number) {
+        for &series in &candidates {
+            let file: Option<(i64, String)> = conn
+                .query_row(sql, params![series as i64, want], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+                .optional()?;
+            if let Some((file, key)) = file {
+                let opening = skip::cached(conn, series, &key, crate::time::now_secs())?
+                    .and_then(|windows| opening_of(&windows));
+                return Ok(Local {
+                    series: Some(series),
+                    file: Some(file as u64),
+                    opening,
+                });
+            }
         }
     }
     Ok(Local {
@@ -161,7 +176,7 @@ mod tests {
             mal_id: mal,
             tvmaze_id: tvmaze,
             episode_key: key.into(),
-            number: Some(1.0),
+            number: Some(key.parse().unwrap_or(1.0)),
             series_title: "Show".into(),
             episode_title: None,
             duration: None,
@@ -185,6 +200,20 @@ mod tests {
                 opening: None
             }
         );
+    }
+
+    #[test]
+    fn a_copy_under_another_key_is_found_by_its_number() {
+        let c = conn();
+        series(&c, 1, Some(21), None);
+        c.execute(
+            "INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at)
+             VALUES (12, 1, '/lib/1/12.mkv', 0, 0, 'episode', 6, 3, 'EP 6', 'S03E06', '[]', 0)",
+            [],
+        )
+        .unwrap();
+        let found = find_local(&c, &episode(Some(21), None, "6")).unwrap();
+        assert_eq!(found.file, Some(12));
     }
 
     #[test]
