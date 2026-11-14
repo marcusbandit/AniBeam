@@ -333,12 +333,18 @@ pub(crate) fn take_join_call(playback: &Playback) -> Result<Reply, CoreError> {
 }
 
 /// `DiscordListen`.
+/// A launch asks before the switch has come on from the stored setting, so
+/// the ask is kept until then.
 pub(crate) fn listen_call(playback: &Arc<Playback>) -> Result<Reply, CoreError> {
-    if playback.presence.enabled.load(Ordering::Relaxed)
-        && let Some(worker) = &recover(&playback.presence.inner).worker
+    let until = Instant::now() + LISTEN;
     {
-        let until = Instant::now() + LISTEN;
-        worker.post(move |d| d.listen = Some(until));
+        let mut inner = recover(&playback.presence.inner);
+        match &inner.worker {
+            Some(worker) if playback.presence.enabled.load(Ordering::Relaxed) => {
+                worker.post(move |d| d.listen = Some(until));
+            }
+            _ => inner.listen = Some(until),
+        }
     }
     super::status_call(playback)
 }

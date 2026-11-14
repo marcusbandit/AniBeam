@@ -503,6 +503,9 @@ struct Inner {
     let_in: HashSet<String>,
     /// A room Discord handed over to join, until the shell takes it.
     pending_join: Option<(String, Instant)>,
+    /// Asked to listen before the switch came on at launch: handed to the
+    /// worker when it starts.
+    listen: Option<Instant>,
 }
 
 /// The room as Discord shows it.
@@ -752,6 +755,9 @@ pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
     run(playback, &inner, actions);
     if on {
         join::post_party(&inner);
+        if let (Some(until), Some(worker)) = (inner.listen.take(), &inner.worker) {
+            worker.post(move |d| d.listen = Some(until));
+        }
     }
     drop(inner);
     // The room team says each change of room on the bus; presence follows it from the

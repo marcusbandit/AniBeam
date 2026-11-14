@@ -584,7 +584,7 @@ FocusScope {
         ScanSummary { id: scanSummary }
         DiscordAsk {
             id: discordAsk
-            anchors.right: parent.right; anchors.rightMargin: theme.space(4)
+            anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top; anchors.topMargin: theme.space(4)
         }
         UpdateNotice {

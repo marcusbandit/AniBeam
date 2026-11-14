@@ -1,5 +1,5 @@
 // Someone pressed Ask to Join on this person's Discord profile (#966). One island at the
-// top right per ask, oldest first. Start room (or Let in, in a room) lets them in through
+// top centre per ask, oldest first, clear of the room panel at the right. Start room (or Let in, in a room) lets them in through
 // the frame's room, which starts one when there is none; No closes the ask, and the core
 // never brings that person here again. The x only puts the island away: unanswered is not
 // a no, and Discord lets the ask go after 30 s anyway, which takes the island with it.
@@ -82,7 +82,7 @@ Frost {
             Button {
                 objectName: "discord-ask-let-in"
                 text: root.ask && root.ask.in_room ? words.t("discord-ask-let-in") : words.t("discord-ask-start-room")
-                icon: root.ask && root.ask.in_room ? "user-plus" : "users"
+                icon: root.ask && root.ask.in_room ? "user-check" : "users"
                 onClicked: root.answer(true)
             }
             Button {

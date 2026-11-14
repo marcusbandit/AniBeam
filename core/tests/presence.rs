@@ -810,8 +810,9 @@ fn a_launch_by_discord_listens_with_nothing_to_show() {
     let (_dir, core, c) = common::open_core();
     let fake = Fake::default();
     core.set_presence_transport(Box::new(fake.clone()));
-    switch(&core, true);
+    // A launch asks before the stored switch has come on
     core.call(Call::DiscordListen).unwrap();
+    switch(&core, true);
     wait_presence(&c, true);
     fake.say(Incoming::Join {
         secret: "room:K7QM2X".into(),
