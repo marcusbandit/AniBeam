@@ -160,7 +160,11 @@ fn by_number(
     )?;
     let files = stmt
         .query_map(params![series as i64, number], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?))
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     if let Some(want) = season
@@ -282,7 +286,10 @@ mod tests {
         let mut s4 = s3.clone();
         s4.episode_key = "S04E06".into();
         assert_eq!(find_local(&c, &s4).unwrap().file, None);
-        assert_eq!(find_local(&c, &episode(Some(21), None, "6")).unwrap().file, None);
+        assert_eq!(
+            find_local(&c, &episode(Some(21), None, "6")).unwrap().file,
+            None
+        );
         assert_eq!(season_of("S03E06"), Some(3));
         assert_eq!(season_of("12.5"), None);
     }

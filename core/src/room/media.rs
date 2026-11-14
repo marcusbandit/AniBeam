@@ -26,12 +26,14 @@ use std::time::{Duration, Instant};
 
 use anibeam_room::proto::{self, ClientMsg, MemberId, Progress};
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use super::{Active, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
 use crate::downloads::{self, backend::DownloadsBackend, facts, origins, replace};
+use crate::events::Subscription;
+use crate::library::scan::ScanScope;
 use crate::playback::Playback;
 use crate::releases::titles;
 
@@ -53,8 +55,9 @@ const STALL: Duration = Duration::from_secs(10 * 60);
 /// How long a finished download has to show in the library.
 const ARRIVE_WAIT: Duration = Duration::from_secs(300);
 
-/// When a finished download is still not in the library, a scan is asked for
-/// once, this long after it finished: the watcher usually brings it sooner.
+/// When a finished download is still not in the library, its own path is
+/// scanned once, this long after it finished: the watcher usually brings it
+/// sooner.
 const SCAN_AFTER: Duration = Duration::from_secs(10);
 
 /// What two members seal to each other.
@@ -481,7 +484,17 @@ async fn fetch(
         // then found by its name among those added since
         known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
     };
-    let content = follow(playback, serial, id, hash.as_deref(), &title, since, offer, e).await?;
+    let content = follow(
+        playback,
+        serial,
+        id,
+        hash.as_deref(),
+        &title,
+        since,
+        offer,
+        e,
+    )
+    .await?;
     settle_in(playback, e, offer, &content).await
 }
 
@@ -615,7 +628,10 @@ struct Stall {
 
 impl Stall {
     fn new(now: Instant) -> Stall {
-        Stall { best: 0.0, since: now }
+        Stall {
+            best: 0.0,
+            since: now,
+        }
     }
 
     /// Notes how far the download is at `now`: true once it has gone `STALL`
@@ -645,14 +661,23 @@ fn progress_at(fraction: f64, eta: i64) -> Option<Progress> {
 }
 
 /// Waits for the library to take the download in, and points the show it came
-/// in as at the room's match when the library did not have that show.
+/// in as at the room's match when the library did not have that show. Nothing
+/// is polled: the library is read again when a scan, a series or a match says
+/// it changed, and when the watcher has not brought the file in by
+/// `SCAN_AFTER`, the download's own path is scanned, once.
 async fn settle_in(
     playback: &Arc<Playback>,
     e: &proto::EpisodeRef,
     offer: &Offer,
     content: &str,
 ) -> Result<(), Why> {
-    let started = Instant::now();
+    let woken = Arc::new(Notify::new());
+    let _listening = Subscription::new(
+        playback.services.bus.clone(),
+        Arc::new(Arrivals(woken.clone())),
+    );
+    let started = tokio::time::Instant::now();
+    let (scan_at, deadline) = (started + SCAN_AFTER, started + ARRIVE_WAIT);
     let (mut matched, mut scanned) = (false, false);
     loop {
         let local = playback
@@ -673,16 +698,36 @@ async fn settle_in(
                 Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
             }
         }
-        if !scanned && started.elapsed() >= SCAN_AFTER {
-            scanned = true;
-            if let Err(err) = crate::library::scan::scan(&playback.library, None) {
-                tracing::debug!("room: scan after get media not started: {err}");
-            }
-        }
-        if started.elapsed() >= ARRIVE_WAIT {
+        if tokio::time::Instant::now() >= deadline {
             return Err(Why::NotInLibrary);
         }
-        tokio::time::sleep(POLL).await;
+        let until = if scanned { deadline } else { scan_at };
+        tokio::select! {
+            _ = woken.notified() => {}
+            _ = tokio::time::sleep_until(until) => {
+                if !scanned {
+                    scanned = true;
+                    let scope = ScanScope::Paths(vec![content.to_string()]);
+                    crate::library::scan::start(&playback.library, scope);
+                }
+            }
+        }
+    }
+}
+
+/// Wakes `settle_in` when the library or a show's match moved.
+struct Arrivals(Arc<Notify>);
+
+impl EventListener for Arrivals {
+    fn on_event(&self, event: Event) {
+        if matches!(
+            event.body,
+            EventBody::ScanFinished { .. }
+                | EventBody::SeriesChanged { .. }
+                | EventBody::MatchApplied { .. }
+        ) {
+            self.0.notify_one();
+        }
     }
 }
 

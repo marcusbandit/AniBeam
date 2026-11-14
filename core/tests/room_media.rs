@@ -251,8 +251,11 @@ fn ben_gets_it(ann: &Person, ben: &Person, ben_id: u32, hash: &str, batch: bool)
     );
     for _ in 0..3 {
         if batch {
-            ben.http
-                .push_for(&format!("torrents/files?hash={hash}"), 200, batch_files(1.0));
+            ben.http.push_for(
+                &format!("torrents/files?hash={hash}"),
+                200,
+                batch_files(1.0),
+            );
         }
         ben.http.push_for(
             &format!("torrents/info?hashes={hash}"),
@@ -322,8 +325,11 @@ fn a_member_downloads_the_host_s_torrent() {
             200,
             torrent(HASH, NAME, 0.13, 120),
         );
-        ben.http
-            .push_for(&format!("torrents/files?hash={HASH}"), 200, batch_files(0.4));
+        ben.http.push_for(
+            &format!("torrents/files?hash={HASH}"),
+            200,
+            batch_files(0.4),
+        );
     }
 
     let ben_id = room_with_ben_missing(&ann, &ben);
@@ -350,7 +356,10 @@ fn a_member_downloads_the_host_s_torrent() {
     let urls = added_urls(&ben);
     assert_eq!(urls.len(), 1, "{urls:?}");
     assert!(urls[0].starts_with(&format!("magnet:?xt=urn:btih:{HASH}")));
-    assert!(urls[0].contains("tracker.example"), "public trackers come along");
+    assert!(
+        urls[0].contains("tracker.example"),
+        "public trackers come along"
+    );
     assert!(
         !urls[0].contains("private.example"),
         "a tracker with a passkey in its path stays with the host"
