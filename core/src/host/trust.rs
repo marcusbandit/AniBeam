@@ -421,7 +421,7 @@ mod tests {
             "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                            "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
             "nodekey:bb": {"ID": "nLaptop", "HostName": "", "DNSName": "laptop.example-tailnet.ts.net.",
-                           "OS": "linux", "Online": false, "TailscaleIPs": ["100.80.3.4"]},
+                           "OS": "linux", "Online": false, "TailscaleIPs": ["100.64.0.6"]},
             "nodekey:cc": {"HostName": "no-id", "TailscaleIPs": ["100.90.0.1"]}
         }
     }"#;
@@ -489,7 +489,7 @@ mod tests {
     fn every_tailnet_device_is_trusted_by_default() {
         let t = read_status(STATUS).unwrap();
         assert_eq!(decide(ip("100.70.1.2"), &[], Some(&t)), Verdict::Serve);
-        assert_eq!(decide(ip("100.80.3.4"), &[], Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.6"), &[], Some(&t)), Verdict::Serve);
         // One the status has not caught up with yet, and no status at all.
         assert_eq!(decide(ip("100.99.9.9"), &[], Some(&t)), Verdict::Serve);
         assert_eq!(decide(ip("100.70.1.2"), &[], None), Verdict::Serve);
@@ -504,7 +504,7 @@ mod tests {
         assert_eq!(decide(ip("fd7a:115c:a1e0::2"), &off, Some(&t)), refused);
         assert_eq!(decide(ip("::ffff:100.70.1.2"), &off, Some(&t)), refused);
         // The others stay trusted.
-        assert_eq!(decide(ip("100.80.3.4"), &off, Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.6"), &off, Some(&t)), Verdict::Serve);
     }
 
     #[test]

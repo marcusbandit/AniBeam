@@ -97,8 +97,8 @@ mod tests {
         "Peer": {
             "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "TailscaleIPs": ["fd7a:115c:a1e0::2", "100.70.1.2"]},
             "b": {"ID": "nLaptop", "HostName": "laptop", "Online": true, "TailscaleIPs": ["fd7a:115c:a1e0::3"]},
-            "c": {"ID": "nAway", "HostName": "away", "Online": false, "TailscaleIPs": ["100.80.0.4"]},
-            "d": {"ID": "nOff", "HostName": "hub", "Online": true, "TailscaleIPs": ["100.80.0.5"]},
+            "c": {"ID": "nAway", "HostName": "away", "Online": false, "TailscaleIPs": ["100.64.0.4"]},
+            "d": {"ID": "nOff", "HostName": "hub", "Online": true, "TailscaleIPs": ["100.64.0.5"]},
             "e": {"ID": "nLan", "HostName": "printer", "Online": true, "TailscaleIPs": ["192.168.1.9"]}
         }
     }"#;

@@ -18,7 +18,7 @@ const STATUS: &[u8] = br#"{
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                        "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
         "nodekey:bb": {"ID": "nLaptop", "HostName": "laptop", "OS": "linux", "Online": false,
-                       "TailscaleIPs": ["100.80.3.4"]}
+                       "TailscaleIPs": ["100.64.0.6"]}
     }
 }"#;
 
@@ -96,7 +96,7 @@ fn every_tailnet_device_is_answered_until_it_is_switched_off() {
     );
     let phone = serve_as(&rt, &core, "100.70.1.2");
     let phone6 = serve_as(&rt, &core, "fd7a:115c:a1e0::2");
-    let laptop = serve_as(&rt, &core, "100.80.3.4");
+    let laptop = serve_as(&rt, &core, "100.64.0.6");
     let stranger = serve_as(&rt, &core, "100.99.9.9");
     assert_eq!(get(&rt, &format!("{phone}{hello}")).0, 200);
     assert_eq!(get(&rt, &format!("{stranger}{hello}")).0, 200);
@@ -269,9 +269,9 @@ fn hello_says_when_the_path_to_the_asker_is_relayed() {
             "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "Active": true,
                   "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
             "b": {"ID": "nLaptop", "HostName": "laptop", "Online": true, "Active": true,
-                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.80.3.4"]},
+                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.64.0.6"]},
             "c": {"ID": "nTablet", "HostName": "tab", "Online": true, "Active": false,
-                  "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.80.3.5"]}
+                  "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.64.0.8"]}
         }
     }"#;
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -302,7 +302,7 @@ fn hello_says_when_the_path_to_the_asker_is_relayed() {
         hello("fd7a:115c:a1e0::2")["relayed"],
         serde_json::json!(true)
     );
-    assert!(hello("100.80.3.4").get("relayed").is_none(), "direct");
-    assert!(hello("100.80.3.5").get("relayed").is_none(), "idle");
+    assert!(hello("100.64.0.6").get("relayed").is_none(), "direct");
+    assert!(hello("100.64.0.8").get("relayed").is_none(), "idle");
     assert!(hello("127.0.0.1").get("relayed").is_none());
 }
