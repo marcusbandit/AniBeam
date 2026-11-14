@@ -45,6 +45,7 @@ update-notice-downloading = AniBeam { $version } 다운로드 중
 update-notice-ready = AniBeam { $version } 준비 완료
 update-notice-failed = 업데이트 실패
 update-notice-on-aur = AniBeam { $version }이(가) AUR에 올라왔어요
+update-notice-in-repo = AniBeam { $version }이(가) { $manager } 저장소에 올라왔어요
 update-notice-out = AniBeam { $version } 출시
 update-notice-out-titled = AniBeam { $version } “{ $title }” 출시
 update-notice-progress = { $percent }%  ·  { $total } MB 중 { $got } MB

@@ -4,8 +4,9 @@
 // - install: Update downloads it here, with the progress along the island's foot and a
 //   Cancel, and the app restarts into it once it is ready. A download that finishes while the player, a sheet
 //   or What's new has the window waits for a Restart click instead.
-// - command: a package manager owns this copy (the AUR), so the island shows the command
-//   that updates it and a Copy button. Shell only says so once the AUR has the version.
+// - command: a package manager owns this copy (the AUR, or the apt or dnf repo), so the
+//   island shows the command that updates it and a Copy button. Shell only says so once
+//   that source has the version, and names it in `from`.
 // - source: a build from a checkout, which only a pull and a rebuild moves on.
 // - page: the release has no file for this copy, so Release page opens it.
 // The track is Stable or Nightly, and until someone picks one it is the running build's
@@ -40,6 +41,8 @@ Frost {
     // install, command, source or page, as Shell offered it
     property string how: ""
     property string command: ""
+    // Where a command update comes from: aur, apt or dnf; empty when Shell does not say
+    property string from: ""
     // offer, downloading, ready or failed
     property string phase: "offer"
     property real got: 0
@@ -88,8 +91,8 @@ Frost {
     Connections {
         target: Shell
         // An answer for a track since switched away from is dropped
-        function onUpdateAvailable(version, title, url, track, how, command) {
-            if (track === root.track && !root.busy) root.show(version, title, url, how, command)
+        function onUpdateAvailable(version, title, url, track, how, command, from) {
+            if (track === root.track && !root.busy) root.show(version, title, url, how, command, from)
         }
         function onUpdateCurrent(track, error) {
             if (track !== root.track) return
@@ -124,13 +127,14 @@ Frost {
     function checkNow() { asked = true; laterFor = ""; check() }
     // Later puts the offer away for this run only: the next start offers it again
     property string laterFor: ""
-    function show(version, title, url, how, command) {
+    function show(version, title, url, how, command, from) {
         asked = false
         root.version = version
         root.title = title
         root.url = url
         root.how = how
         root.command = command
+        root.from = from || ""
         root.phase = "offer"
         root.copied = false
         root.pending = true
@@ -174,7 +178,8 @@ Frost {
         if (phase === "downloading") return words.t("update-notice-downloading", { version: version })
         if (phase === "ready") return words.t("update-notice-ready", { version: version })
         if (phase === "failed") return words.t("update-notice-failed")
-        if (how === "command") return words.t("update-notice-on-aur", { version: version })
+        if (how === "command" && from === "aur") return words.t("update-notice-on-aur", { version: version })
+        if (how === "command" && (from === "apt" || from === "dnf")) return words.t("update-notice-in-repo", { version: version, manager: from })
         return title ? words.t("update-notice-out-titled", { version: version, title: title }) : words.t("update-notice-out", { version: version })
     }
     readonly property string detail: {
