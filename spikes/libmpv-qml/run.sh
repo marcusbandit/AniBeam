@@ -1,9 +1,9 @@
 #!/bin/bash
 # run.sh NAME [mpvspike args...]   env: QPA=wayland|xcb, WS=6 (target workspace), MON=DP-1
-S=${S:-${TMPDIR:-/tmp}/mpvspike}
+S=${SPIKE:-$HOME/spike-libmpv}
 NAME=$1; shift
 OUT=$S/runs/$NAME; rm -rf "$OUT"; mkdir -p "$OUT"
-F='/mnt/wd_general/media/Anime/Girls und Panzer/Girls und Panzer/[ak-Submarines] Girls und Panzer - 03 [BD 1080p][6DDB5621].mkv'
+F=$S/media/gup03.mkv
 WS=${WS:-6}; MON=${MON:-DP-1}; QPA=${QPA:-wayland}
 SP=$(hyprctl monitors -j | jq -r ".[] | select(.name==\"$MON\") | .specialWorkspace.name")
 if [ "$SP" = "special:communication" ]; then
