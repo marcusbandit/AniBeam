@@ -379,7 +379,8 @@ pub fn fold() -> (Option<f32>, bool) {
 /// layout stops asking; one with a hinge is laid out by the guess.
 pub fn crease() -> crate::crease::Reading {
     match ask() {
-        Hinge::Absent => crate::crease::Reading::Silent,
+        // Silent stops the layout's timer, whose fold() call installs `turnable`: wait for it.
+        Hinge::Absent if TURNABLE.get() => crate::crease::Reading::Silent,
         _ => crate::crease::Reading::None,
     }
 }
@@ -538,11 +539,18 @@ extern "C-unwind" fn supported(_this: *mut AnyObject, _cmd: Sel) -> usize {
 /// window and one view controller. Turns the window upright straight away on an iPhone that
 /// was held sideways at launch.
 fn turnable() {
+    if install() {
+        turn();
+    }
+}
+
+/// Replaces the view controller's method once there is a window; true on the call that did.
+fn install() -> bool {
     if TURNABLE.get() {
-        return;
+        return false;
     }
     let Some(window) = app_window() else {
-        return;
+        return false;
     };
     // SAFETY: a UIWindow's `rootViewController` is a UIViewController or nil. The replaced
     // method takes no arguments and returns a UIInterfaceOrientationMask, an NSUInteger,
@@ -551,12 +559,11 @@ fn turnable() {
     unsafe {
         let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
         let Some(controller) = controller else {
-            return;
+            return false;
         };
         let class = controller.class() as *const AnyClass as *mut AnyClass;
-        let imp: Imp = std::mem::transmute(
-            supported as extern "C-unwind" fn(*mut AnyObject, Sel) -> usize,
-        );
+        let imp: Imp =
+            std::mem::transmute(supported as extern "C-unwind" fn(*mut AnyObject, Sel) -> usize);
         objc2::ffi::class_replaceMethod(
             class,
             sel!(supportedInterfaceOrientations),
@@ -565,7 +572,7 @@ fn turnable() {
         );
     }
     TURNABLE.set(true);
-    turn();
+    true
 }
 
 /// Tells UIKit the orientations changed, and asks the window's scene to turn to one of them
@@ -614,6 +621,6 @@ fn turn() {
 /// outside it when it closes.
 pub fn player_screen(on: bool) {
     PLAYING.set(on);
-    turnable();
+    install();
     turn();
 }

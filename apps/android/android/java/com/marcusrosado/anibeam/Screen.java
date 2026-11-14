@@ -17,6 +17,8 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
+import java.lang.ref.WeakReference;
+
 /**
  * What the player asks of the screen, which Android only lets its UI thread change: the
  * picture in landscape with the system bars hidden, the display kept on while it plays, and
@@ -34,6 +36,9 @@ public final class Screen {
      * a foldable or a tablet, where the wide layout fits.
      */
     private static volatile int rest = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+
+    /** The activity `rest` was last asked of. */
+    private static volatile WeakReference<Activity> applied = new WeakReference<Activity>(null);
 
     /** The player has the screen. Set and read on the UI thread. */
     private static boolean playing;
@@ -94,8 +99,10 @@ public final class Screen {
         int want = hinge < 0 && activity.getResources().getConfiguration().smallestScreenWidthDp < 600
                 ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
-        if (want == rest) return;
+        // A recreated activity (a font size change, say) starts unspecified: ask it again.
+        if (want == rest && applied.get() == activity) return;
         rest = want;
+        applied = new WeakReference<Activity>(activity);
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
