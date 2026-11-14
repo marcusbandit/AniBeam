@@ -20,6 +20,7 @@ pub(crate) fn has_extension(name: &str, list: &[&str]) -> bool {
         .is_some_and(|e| list.contains(&e.to_string_lossy().to_lowercase().as_str()))
 }
 
+pub(crate) mod act;
 pub mod cards;
 pub mod classifier;
 pub mod delete;

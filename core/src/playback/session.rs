@@ -477,6 +477,13 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     open_for(core, file, crate::profiles::OWNER)
 }
 
+/// `OpenPlayback`: [`open`] as the call's reply.
+pub(crate) fn open_call(core: &Core, file: u64) -> Result<Reply, CoreError> {
+    Ok(Reply::Playback {
+        session: Box::new(open(core, file)?),
+    })
+}
+
 /// [`open`] for one profile: the resume point it starts from and every row
 /// the session writes are that profile's.
 pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession, CoreError> {

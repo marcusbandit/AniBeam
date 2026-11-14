@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod aired;
 pub mod airing_now;
+pub(crate) mod app;
 pub mod atomic_file;
 pub mod calendar;
 pub mod cast;

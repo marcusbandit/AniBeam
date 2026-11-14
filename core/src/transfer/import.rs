@@ -54,9 +54,7 @@ pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
         message: e.to_string(),
     })?;
     let (doc, ignored) = format::parse(&bytes)?;
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     let started = owner.clone();
     Ok(started
         .jobs

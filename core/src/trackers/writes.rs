@@ -740,9 +740,7 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
         Action::Score { .. } => JobKind::Score,
         _ => JobKind::SetStatus,
     };
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     let jobs = owner.jobs.clone();
     Ok(Some(jobs.start(kind, move |ctx| async move {
         run_many(owner, ctx, reachable, action, left_out).await
@@ -970,9 +968,7 @@ fn start_holding(
     action: Action,
     slot: Option<RewatchSlot>,
 ) -> Result<u64, CoreError> {
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     let jobs = owner.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
         let _slot = slot;

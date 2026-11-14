@@ -1365,6 +1365,13 @@ pub fn set(
     Ok(Reply::Ok)
 }
 
+/// `GetRollingSettings`: the rolling part of the downloads settings.
+pub fn settings_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::RollingSettings {
+        rolling: super::settings::read(core)?.rolling,
+    })
+}
+
 /// `SetRollingSettings`: the rolling part of the downloads settings, the
 /// rest left as stored. Out-of-range numbers are brought into range, the
 /// way the desktop's sliders hold them.

@@ -241,9 +241,7 @@ pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     Ok(Reply::Started {
         job: start_refresh(&owner)?,
     })
