@@ -396,7 +396,7 @@ impl AnirssClient {
         let mut rules: Vec<SubscriptionRule> =
             serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
         for r in &mut rules {
-            r.query = crate::subscriptions::decode_search_query(&r.feed_url).unwrap_or_default();
+            r.query = crate::downloads::query::decode_search_query(&r.feed_url).unwrap_or_default();
         }
         Ok(rules)
     }

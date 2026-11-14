@@ -922,7 +922,6 @@ core-downloads-nothing-selected = 没有选择要下载的内容
 core-downloads-added = 已添加 { $count } 个下载。
 core-downloads-movie-link = 电影链接必须是磁力链接或 http(s) 网址
 core-downloads-added-movie = 已把一部电影加入下载。
-core-downloads-unsubscribed = 已取消订阅《{ $name }》。
 core-downloads-library-folder = { $folder } 是《{ $name }》的媒体库文件夹，其中有不是此订阅下载的剧集：请移除订阅但保留文件，或在《{ $name }》的页面中移除它
 core-downloads-no-torrents-named = 没有指定种子
 core-downloads-paused = 已暂停 { $count } 个下载。
@@ -1077,13 +1076,6 @@ core-releases-refine-no-tokens = 操作 'tokens' 需要非空的 `tokens` 列表
 core-releases-group-batch = { $group } 的合集
 core-releases-episodes-phrase = 第 { $list } 集
 core-releases-episode-range = { $from } 至 { $to }
-
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = 此平台上的 anirss
-core-subscriptions-unreadable = 无法读取它的响应（{ $message }）
-core-subscriptions-stopped = 它停止了，没有说明原因
-core-subscriptions-stopped-said = 它停止了：{ $said }
 
 ## Names that stay the same in every language
 

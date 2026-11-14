@@ -22,7 +22,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
-rusqlite = { workspace = true, features = ["bundled", "serde_json", "backup"] }
+rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 rusqlite_migration.workspace = true
 directories = "6"
 notify = "8.2"

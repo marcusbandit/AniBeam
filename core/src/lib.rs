@@ -42,7 +42,6 @@ pub mod repos;
 pub mod room;
 pub mod stats;
 pub mod store;
-pub mod subscriptions;
 pub(crate) mod sync;
 pub mod time;
 pub mod trackers;

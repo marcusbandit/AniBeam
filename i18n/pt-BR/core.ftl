@@ -1103,7 +1103,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = o link de um filme precisa ser um magnet ou uma URL http(s)
 core-downloads-added-movie = Um filme incluído nos seus downloads.
-core-downloads-unsubscribed = Deixou de seguir { $name }.
 core-downloads-library-folder = { $folder } é a pasta da biblioteca de { $name }, com episódios que esta série seguida não baixou: deixe de seguir sem os arquivos, ou remova { $name } pela página dela
 core-downloads-no-torrents-named = nenhum torrent indicado
 core-downloads-paused =
@@ -1278,13 +1277,6 @@ core-releases-episodes-phrase =
        *[other] Episódios { $list }
     }
 core-releases-episode-range = { $from } a { $to }
-
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = o anirss nesta plataforma
-core-subscriptions-unreadable = a resposta não pôde ser lida ({ $message })
-core-subscriptions-stopped = parou sem dizer por quê
-core-subscriptions-stopped-said = parou: { $said }
 
 ## Names that stay the same in every language
 

@@ -1261,24 +1261,6 @@ pub struct ImportSummary {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
-pub struct Feed {
-    pub name: String,
-    pub active: bool,
-    pub torrents: u64,
-    pub query: String,
-    pub save_path: String,
-    pub url: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
-pub enum SubscriptionsResult {
-    Ok { feeds: Vec<Feed> },
-    Missing,
-    NeedsAuth,
-    Timeout,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Progress {
     pub done: u64,
     pub total: Option<u64>,

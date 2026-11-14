@@ -997,7 +997,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = 영화 링크는 magnet이나 http(s) 주소여야 해요
 core-downloads-added-movie = 다운로드에 영화를 추가했어요.
-core-downloads-unsubscribed = { $name } 구독을 해지했어요.
 core-downloads-library-folder = { $folder }은(는) { $name }의 라이브러리 폴더이고, 이 구독이 받지 않은 에피소드가 있어요. 파일은 두고 구독만 제거하거나, { $name } 페이지에서 작품을 제거하세요
 core-downloads-no-torrents-named = 지정한 토렌트가 없어요
 core-downloads-paused =
@@ -1167,13 +1166,6 @@ core-releases-episodes-phrase =
        *[other] { $list }화
     }
 core-releases-episode-range = { $from }~{ $to }
-
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = 이 플랫폼의 anirss
-core-subscriptions-unreadable = 응답을 읽을 수 없어요({ $message })
-core-subscriptions-stopped = 이유 없이 멈췄어요
-core-subscriptions-stopped-said = 멈췄어요: { $said }
 
 ## Names that stay the same in every language
 

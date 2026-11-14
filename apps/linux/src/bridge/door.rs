@@ -1370,10 +1370,8 @@ impl qobject::Door {
             | EventBody::CastChanged { .. }
             | EventBody::Notice
             | EventBody::JobStarted { .. }
-            | EventBody::SubscriptionsListed { .. }
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
-            | EventBody::RemovalPlanned { .. }
             | EventBody::RecommendedRefreshed
             | EventBody::ShowPageRead { .. } => {}
             EventBody::RoomChanged { room } => {
