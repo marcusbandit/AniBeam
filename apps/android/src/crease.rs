@@ -29,11 +29,12 @@ pub enum Reading {
 }
 
 /// `Crease.at`'s answer on a phone without the window extensions: it never will say.
-pub const SILENT: i64 = -2;
+const SILENT: i64 = -2;
 
 /// Unpacks `Crease.at`'s answer: -2 for a phone without extensions, -1 for no fold, and
 /// otherwise bit 40 for across, bit 41 for half open, bits 20 to 39 the start and bits 0
-/// to 19 the end.
+/// to 19 the end. Only a platform with window extensions calls it.
+#[allow(dead_code)]
 pub fn decode(packed: i64) -> Reading {
     match packed {
         SILENT => Reading::Silent,
