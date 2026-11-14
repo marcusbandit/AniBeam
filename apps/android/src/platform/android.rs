@@ -844,6 +844,11 @@ pub fn set_volume(level: f32) {
     );
 }
 
+/// The activity's window is Java's to change, through `Screen`.
+pub fn window_up(window: &crate::AppWindow) {
+    let _ = window;
+}
+
 /// The player's screen: landscape with the system bars hidden, or back as it was.
 pub fn player_screen(on: bool) {
     screen("player", on);
