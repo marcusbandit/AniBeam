@@ -32,7 +32,7 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 pub const APP_ID: &str = "com.marcusrosado.AniBeam";
 pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
 
-/// Debug builds only: ANIBEAM_QML_DIR=qml (relative to where it runs; shoot.sh and drive.sh make
+/// Debug and tester builds only (both keep debug assertions): ANIBEAM_QML_DIR=qml (relative to where it runs; shoot.sh and drive.sh make
 /// it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
 /// cargo build. A directory without Main.qml is almost certainly a mistyped or wrongly
 /// relative path, so it warns and keeps the compiled QML instead of claiming a disk load.
