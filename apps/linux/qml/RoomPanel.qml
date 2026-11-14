@@ -187,19 +187,19 @@ Item {
                     Label { msg: root.inPlayer ? "room-panel-or-join" : "room-panel-join-label"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
                     Row {
                         spacing: theme.space(2)
-                        Field {
+                        CodeInput {
                             id: codeField
                             objectName: "room-panel-code"
                             width: parent.parent.width - joinButton.width - parent.spacing
-                            mono: true
-                            placeholder: "K7QM2X" // i18n: none
                             accessibleName: words.t("room-panel-join-label")
                             invalid: room.error !== "" && room.busy === ""
+                            onFilled: root.joinTyped()
                             Keys.onReturnPressed: root.joinTyped()
                             Keys.onEnterPressed: root.joinTyped()
                         }
                         Button {
                             id: joinButton
+                            anchors.verticalCenter: parent.verticalCenter
                             objectName: "room-panel-join"
                             primary: !root.inPlayer
                             icon: "log-in"

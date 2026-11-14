@@ -39,6 +39,7 @@ fn main() {
             .qml_file("qml/Switch.qml")
             .qml_file("qml/Button.qml")
             .qml_file("qml/Field.qml")
+            .qml_file("qml/CodeInput.qml")
             .qml_file("qml/Dropdown.qml")
             .qml_file("qml/Swatches.qml")
             .qml_file("qml/SliderRow.qml")
