@@ -43,7 +43,9 @@ pub mod trackers;
 pub mod transfer;
 pub mod update;
 
-pub use anibeam_foundation::{atomic_file, html, jobs, prefs, profiles, redact, store, time, words};
+pub use anibeam_foundation::{
+    atomic_file, html, jobs, prefs, profiles, redact, store, time, words,
+};
 pub(crate) use anibeam_foundation::{percent, sync};
 
 pub use anibeam_contract::i18n;
