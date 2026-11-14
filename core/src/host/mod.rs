@@ -364,6 +364,40 @@ pub fn devices(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
     listed(core)
 }
 
+/// `GetHost`: the host's state as last known.
+pub(crate) fn status_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::Host {
+        status: core.host.status(),
+    })
+}
+
+/// `ListTailnetDevices`: [`devices`] as the call's reply.
+pub(crate) fn devices_call(core: &Core) -> Result<Reply, CoreError> {
+    let (devices, people) = devices(core);
+    Ok(Reply::TailnetDevices { devices, people })
+}
+
+/// `SetTailnetDeviceTrust`: switches one device off or back on, the only
+/// write that changes which devices are off.
+pub(crate) fn set_device_trust(
+    core: &Core,
+    device: String,
+    trusted: bool,
+) -> Result<Reply, CoreError> {
+    let preferences = core.store.write(move |c| {
+        let mut p = prefs::load_preferences(c)?;
+        p.tailnet_switched_off.retain(|d| *d != device);
+        if !trusted {
+            p.tailnet_switched_off.push(device);
+        }
+        prefs::save_preferences(c, &p)?;
+        Ok(p)
+    })?;
+    core.host
+        .set_switched_off(preferences.tailnet_switched_off.clone());
+    crate::app::preferences_changed(core, preferences)
+}
+
 /// Whether Tailscale carries the path to `from` through a relay, as the last
 /// read says. Hello asks it, so it never waits on `tailscale`: a read older
 /// than `TAILNET_AGAIN` is made on a worker for the next ask, and before any

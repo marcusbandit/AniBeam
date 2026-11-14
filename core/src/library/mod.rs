@@ -11,6 +11,7 @@ pub(crate) static BRACKETS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s*\[[^\]]*\]\s*").unwrap());
 pub(crate) static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
+pub(crate) mod act;
 pub mod cards;
 pub mod classifier;
 pub mod delete;

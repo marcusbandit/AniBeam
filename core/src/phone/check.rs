@@ -270,6 +270,13 @@ async fn host(
     out
 }
 
+/// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
+pub(crate) fn run_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneNetCheck {
+        checks: core.handle.block_on(run(core)),
+    })
+}
+
 /// Every check, hosts side by side so the whole run takes about as long as the slowest.
 pub async fn run(core: &Core) -> Vec<NetCheck> {
     let client = match crate::net::resolver_client() {

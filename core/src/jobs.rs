@@ -34,6 +34,19 @@ struct Running {
     progress: Arc<Mutex<Option<Progress>>>,
 }
 
+/// The reply of a call that started a job: the job's id, which the shell
+/// follows through the job's events.
+pub(crate) fn started(job: u64) -> Reply {
+    Reply::Started { job }
+}
+
+/// The reply of a call that starts a job only when there is one to run, such
+/// as a tracker write for a series no connected tracker carries, which is kept
+/// on this device: Ok with no job (#213).
+pub(crate) fn started_or_ok(job: Option<u64>) -> Reply {
+    job.map_or(Reply::Ok, started)
+}
+
 /// The job registry: one at a time per `JobKind::one_at_a_time`, every job
 /// cancellable, every job's terminal event guaranteed.
 pub struct Jobs {

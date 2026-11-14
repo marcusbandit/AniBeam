@@ -3,18 +3,22 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
+use crate::agent;
 use crate::airing_now;
+use crate::app;
+use crate::cast;
 use crate::contract::*;
 use crate::downloads;
 use crate::events::{EventBus, Subscription};
 use crate::feed;
 use crate::franchise;
+use crate::host;
 use crate::images::{self, ImageCache};
-use crate::jobs::Jobs;
+use crate::jobs::{Jobs, started, started_or_ok};
 use crate::launch;
-use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
+use crate::library::{act, delete, fixes, reads, report, schedule};
 use crate::metadata::{OUTAGE_WINDOW, airing, apply, automatch};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
@@ -24,18 +28,20 @@ use crate::net::mal::MalClient;
 use crate::net::tvmaze::TvmazeClient;
 use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
+use crate::phone;
 use crate::playback::session::{self, Sessions};
 use crate::playback::skip;
-use crate::prefs;
+use crate::presence;
 use crate::recommended;
+use crate::repos;
+use crate::room;
+use crate::stats;
 use crate::store::Store;
 use crate::sync::recover;
-use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::move_up;
 use crate::trackers::oauth;
-use crate::trackers::on_hold;
 use crate::trackers::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::trackers::watching;
 use crate::trackers::writes;
@@ -716,9 +722,7 @@ impl Core {
                 );
             }
         }
-        let core = self
-            .arc()
-            .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+        let core = self.owner()?;
         // The host follows the stored preference from the first moment, so
         // a phone can reach a machine that was left sharing.
         crate::host::sync(self);
@@ -815,6 +819,9 @@ impl Core {
 
     /// Returns fast, always. Every call after `shutdown` fails the same
     /// way, without touching anything else.
+    ///
+    /// A router and nothing more: every arm is one call into the module that
+    /// owns it, grouped by the team the call belongs to (#773, #854).
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {
@@ -822,48 +829,38 @@ impl Core {
             });
         }
         match call {
-            Call::About => Ok(Reply::About {
-                about: About {
-                    version: crate::VERSION.to_string(),
-                    data_dir: self.paths.data_dir.clone(),
-                    config_dir: self.paths.config_dir.clone(),
-                    cache_dir: self.paths.cache_dir.clone(),
-                    db_path: self.paths.db_path().to_string_lossy().into_owned(),
-                },
-            }),
-            Call::RecentEvents { limit } => Ok(Reply::Events {
-                events: self.bus.recent(limit)?,
-            }),
-            Call::ClearEvents => {
-                self.bus.clear()?;
-                Ok(Reply::Ok)
-            }
-            Call::ListJobs => Ok(Reply::Jobs {
-                jobs: self.jobs.list(),
-            }),
-            Call::CancelJob { job } => {
-                self.jobs.cancel(job)?;
-                Ok(Reply::Ok)
-            }
+            // The front door: the core itself, its log, jobs and settings
+            Call::About => app::about(self),
+            Call::RecentEvents { limit } => app::recent_events(self, limit),
+            Call::ClearEvents => app::clear_events(self),
+            Call::ListJobs => app::list_jobs(self),
+            Call::CancelJob { job } => app::cancel_job(self, job),
+            Call::GetPreferences => app::preferences(self),
+            Call::SetPreferences { preferences } => app::set_preferences(self, preferences),
+            Call::GetSettings => app::settings(self),
+            Call::SetSubtitleDefaults { defaults } => app::set_subtitle_defaults(self, defaults),
+            Call::SetAutoSkip { intro, outro } => app::set_auto_skip(self, intro, outro),
+            Call::SetProviderOrder { order } => app::set_provider_order(self, order),
+            Call::GetStats {
+                year,
+                utc_offset,
+                month_starts,
+            } => stats::get_call(self, year, utc_offset, &month_starts),
+            Call::ScheduleAgent => agent::available_call(),
+            Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
+
+            // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(self),
             Call::AddSource { path } => scan::add_source(self, &path),
             Call::RemoveSource { source } => scan::remove_source(self, source),
             Call::ForgetSeries { series } => scan::forget_series(self, series),
             Call::Scan { source } => scan::scan(self, source),
             Call::RescanSeries { series } => scan::rescan_series(self, series),
-            Call::DeleteEpisodes { series, files } => {
-                crate::library::delete::delete_episodes(self, series, files)
-            }
-            Call::DeleteWatched { finished_shows } => {
-                crate::library::delete::delete_watched(self, finished_shows)
-            }
-            Call::FixFiles { series, fixes } => {
-                crate::library::fixes::fix_files(self, series, fixes)
-            }
-            Call::ReportFix { series, files, app } => {
-                crate::library::report::report_fix(self, series, files, app)
-            }
-            Call::TriageAgent => crate::library::report::triage_agent(),
+            Call::DeleteEpisodes { series, files } => delete::delete_episodes(self, series, files),
+            Call::DeleteWatched { finished_shows } => delete::delete_watched(self, finished_shows),
+            Call::FixFiles { series, fixes } => fixes::fix_files(self, series, fixes),
+            Call::ReportFix { series, files, app } => report::report_fix(self, series, files, app),
+            Call::TriageAgent => report::triage_agent(),
             // `reveal_hidden` is the shell's tab visibility, not a filter:
             // the Hidden tab always lists what it holds.
             Call::ListSeries {
@@ -881,31 +878,16 @@ impl Core {
                 direction,
                 reveal_hidden: _,
             } => reads::list_library(self, tab, &query, sort, direction),
-            // Pure over one snapshot load, scope None: nothing to write and
-            // no job. The shell's own sort preference is saved separately
-            // through SetPreferences.
-            Call::ListFeed { sort } => {
-                let images_dir = self.paths.images_dir();
-                let cards = self
-                    .store
-                    .read(|c| feed::list(c, &images_dir, sort, time::now()))?;
-                Ok(Reply::Feed { cards })
-            }
+            Call::ListFeed { sort } => feed::list_call(self, sort),
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
-            Call::ActOnSeries { series, action } => self.act_on_series(series, action),
-            Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
-            Call::ScheduleAgent => Ok(Reply::Agent {
-                name: crate::agent::available(),
-            }),
-            Call::AskScheduleAgent { series } => Ok(Reply::Started {
-                job: crate::agent::start(self, series)?,
-            }),
+            Call::ActOnSeries { series, action } => act::act_on_series(self, series, action),
+            Call::ParseSchedule { text } => Ok(schedule::parse_call(&text)),
             Call::SetScheduleNotes {
                 series,
                 season,
                 notes,
-            } => crate::library::schedule::set_notes(self, series, season, notes),
+            } => schedule::set_notes(self, series, season, notes),
             Call::SetEpisodeCount { series, count } => {
                 reads::set_episode_count(self, series, count)
             }
@@ -915,247 +897,26 @@ impl Core {
                 reveal_hidden,
             } => reads::list_metadata(self, filter, &query, reveal_hidden),
             Call::Lookup { path } => reads::lookup(self, &path),
-            // Two counts off one table, so this answers off the reader
-            // connection rather than becoming a job.
-            Call::GetStorage => {
-                let (image_count, image_bytes) = self.store.read(|c| self.images.storage(c))?;
-                Ok(Reply::Storage {
-                    image_count,
-                    image_bytes,
-                })
-            }
-            Call::ClearImages => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: images::start_clear(&core),
-                })
-            }
+
+            // Net: the image cache
+            Call::GetStorage => images::storage_call(self),
+            Call::ClearImages => Ok(started(images::start_clear(&self.owner()?))),
+
+            // Metadata: matching, airing, Airing now, Recommended, franchises
             Call::SearchProvider {
                 provider,
                 query,
                 limit,
-            } => Ok(Reply::Started {
-                job: apply::search(self, provider, &query, limit)?,
-            }),
-            Call::ResolveLink { url } => Ok(Reply::Started {
-                job: apply::resolve_link(self, &url)?,
-            }),
-            Call::ApplyMatch { series, target } => Ok(Reply::Started {
-                job: apply::apply_match(self, series, target)?,
-            }),
-            Call::RefreshSeries { series } => Ok(Reply::Started {
-                job: apply::refresh_series(self, series)?,
-            }),
-            Call::RefreshAll => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: apply::refresh_all(&core),
-                })
+            } => apply::search(self, provider, &query, limit).map(started),
+            Call::ResolveLink { url } => apply::resolve_link(self, &url).map(started),
+            Call::ApplyMatch { series, target } => {
+                apply::apply_match(self, series, target).map(started)
             }
-            Call::AutoMatch => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: automatch::start(&core),
-                })
-            }
-            Call::RefreshAiring { series } => Ok(Reply::Started {
-                job: airing::start_refresh(self, series)?,
-            }),
+            Call::RefreshSeries { series } => apply::refresh_series(self, series).map(started),
+            Call::RefreshAll => Ok(started(apply::refresh_all(&self.owner()?))),
+            Call::AutoMatch => Ok(started(automatch::start(&self.owner()?))),
+            Call::RefreshAiring { series } => airing::start_refresh(self, series).map(started),
             Call::ClearMatch { series } => automatch::clear_match(self, series),
-            Call::GetPreferences => Ok(Reply::Preferences {
-                preferences: self.store.read(prefs::load_preferences)?,
-            }),
-            Call::SetPreferences { preferences } => {
-                prefs::validate_preferences(&preferences)?;
-                let p = preferences;
-                let (before, preferences) = self.store.write(move |c| {
-                    let before = prefs::load_preferences(c)?;
-                    // Only SetTailnetDeviceTrust changes which devices are off,
-                    // so a stale copy of the preferences saved from a page
-                    // can never switch a device back on.
-                    let mut p = p;
-                    p.tailnet_switched_off = before.tailnet_switched_off.clone();
-                    prefs::save_preferences(c, &p)?;
-                    Ok((before, p))
-                })?;
-                self.host.set_streaming(preferences.stream_over_tailscale);
-                self.host
-                    .set_switched_off(preferences.tailnet_switched_off.clone());
-                self.host.follow(self, preferences.share_over_tailscale);
-                crate::presence::set_enabled(self, preferences.discord_presence);
-                if before.calendar_feed != preferences.calendar_feed {
-                    crate::calendar::set_enabled(self, preferences.calendar_feed);
-                }
-                // On hold switched on: the entries due now move without
-                // waiting for the next launch.
-                if on_hold::wants_sweep(&before, &preferences)
-                    && let Some(core) = self.arc()
-                {
-                    on_hold::kick(&core);
-                }
-                self.bus.debug(
-                    Stage::Store,
-                    "preferences changed",
-                    EventBody::PreferencesChanged { preferences },
-                );
-                Ok(Reply::Ok)
-            }
-            Call::GetHost => Ok(Reply::Host {
-                status: self.host.status(),
-            }),
-            Call::ListTailnetDevices => {
-                let (devices, people) = crate::host::devices(self);
-                Ok(Reply::TailnetDevices { devices, people })
-            }
-            Call::SetTailnetDeviceTrust { device, trusted } => {
-                let preferences = self.store.write(move |c| {
-                    let mut p = prefs::load_preferences(c)?;
-                    p.tailnet_switched_off.retain(|d| *d != device);
-                    if !trusted {
-                        p.tailnet_switched_off.push(device);
-                    }
-                    prefs::save_preferences(c, &p)?;
-                    Ok(p)
-                })?;
-                self.host
-                    .set_switched_off(preferences.tailnet_switched_off.clone());
-                self.bus.debug(
-                    Stage::Store,
-                    "preferences changed",
-                    EventBody::PreferencesChanged { preferences },
-                );
-                Ok(Reply::Ok)
-            }
-            Call::GetPresence => Ok(Reply::Presence {
-                available: self.presence.available(),
-                connected: self.presence.connected(),
-            }),
-            Call::GetSettings => Ok(Reply::Settings {
-                settings: self.store.read(prefs::load_settings)?,
-            }),
-            Call::SetSubtitleDefaults { defaults } => {
-                prefs::validate_subtitle_defaults(&defaults)?;
-                self.store
-                    .write(move |c| prefs::save_subtitle_defaults(c, &defaults))?;
-                self.bus.debug(
-                    Stage::Store,
-                    "subtitle defaults changed",
-                    EventBody::SettingsChanged,
-                );
-                Ok(Reply::Ok)
-            }
-            Call::SetAutoSkip { intro, outro } => {
-                self.store
-                    .write(move |c| prefs::save_auto_skip(c, &AutoSkip { intro, outro }))?;
-                self.bus.debug(
-                    Stage::Store,
-                    "auto-skip changed",
-                    EventBody::SettingsChanged,
-                );
-                Ok(Reply::Ok)
-            }
-            Call::SetProviderOrder { order } => {
-                prefs::validate_provider_order(&order)?;
-                self.store
-                    .write(move |c| prefs::save_provider_order(c, &order))?;
-                self.bus.debug(
-                    Stage::Store,
-                    "provider order changed",
-                    EventBody::SettingsChanged,
-                );
-                Ok(Reply::Ok)
-            }
-            Call::GetTrackers => Ok(Reply::Trackers {
-                state: accounts::state(self)?,
-            }),
-            Call::SetTrackerCredentials {
-                tracker,
-                client_id,
-                client_secret,
-            } => accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref()),
-            Call::ConnectTracker { tracker } => Ok(Reply::Started {
-                job: oauth::connect(self, tracker)?,
-            }),
-            Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
-            Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
-            Call::MarkEpisode { series, episode } => Ok(Reply::Started {
-                job: writes::mark(self, series, episode)?,
-            }),
-            Call::SetProgress {
-                series,
-                progress,
-                season,
-            } => Ok(
-                match writes::set_progress(self, series, progress, season)? {
-                    Some(job) => Reply::Started { job },
-                    None => Reply::Ok,
-                },
-            ),
-            // A series no connected tracker carries keeps these here: Ok, no job (#213)
-            Call::SetScore { series, score } => Ok(match writes::set_score(self, series, score)? {
-                Some(job) => Reply::Started { job },
-                None => Reply::Ok,
-            }),
-            Call::PreviewListMove { tracker } => Ok(Reply::ListMove {
-                rows: self.store.read(|c| move_up::preview(c, tracker))?,
-            }),
-            Call::MoveLists { tracker, series } => Ok(Reply::Started {
-                job: move_up::start(self, tracker, series)?,
-            }),
-            Call::SetListStatus { series, status } => {
-                Ok(match writes::set_list_status(self, series, status)? {
-                    Some(job) => Reply::Started { job },
-                    None => Reply::Ok,
-                })
-            }
-            Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
-                job: writes::set_notes(self, series, &notes)?,
-            }),
-            // Nothing to check up front: an unconnected or a fresh tracker
-            // is the job's own skip, not a refusal.
-            Call::RefreshProgress { tracker } => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: cache::start_refresh(&core, tracker, false),
-                })
-            }
-            // The cached list leaves at once and starts nothing: a read
-            // with a network side effect made every library change an
-            // AniList request. The page asks for a refresh on its own.
-            Call::ListWatching => watching::list_call(self),
-            Call::GetStats {
-                year,
-                utc_offset,
-                month_starts,
-            } => {
-                let images_dir = self.paths.images_dir();
-                let now = time::now();
-                let stats = self.store.read(|c| {
-                    let snap = crate::library::snapshot::Snapshot::load(c, &images_dir, now, None)?;
-                    let log = crate::stats::finishes(c)?;
-                    Ok(crate::stats::compute(
-                        &snap,
-                        &log,
-                        year,
-                        i64::from(utc_offset),
-                        &month_starts,
-                        time::to_secs(now),
-                    ))
-                })?;
-                Ok(Reply::Stats { stats })
-            }
-            Call::ListPlanning => watching::planning_call(self),
-            Call::RefreshWatching { force } => watching::refresh_call(self, force),
-            // Airing now reads its own tables, like Watching: the list call
-            // answers off the cache and the page asks for a refresh itself.
             Call::ListAiringNow { season } => airing_now::list_call(self, season),
             Call::RefreshAiringNow { season, force } => {
                 airing_now::refresh_call(self, season, force)
@@ -1166,57 +927,76 @@ impl Core {
             } => airing_now::set_not_interested(self, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(self),
             Call::PlanToWatch { anilist_id } => airing_now::plan_to_watch(self, anilist_id),
-            // Recommended for you keeps its own tables too, and so does the
-            // page it opens for a show the library does not have.
             Call::ListRecommended { scope } => recommended::list_call(self, scope),
             Call::RefreshRecommended { force } => recommended::refresh_call(self, force),
             Call::GetShowPage { anilist_id } => recommended::page::get_call(self, anilist_id),
+            Call::GetFranchiseGraph { series } => franchise::graph_call(self, series),
+
+            // Trackers: accounts, list writes, Watching and the list moves
+            Call::GetTrackers => accounts::state(self).map(|state| Reply::Trackers { state }),
+            Call::SetTrackerCredentials {
+                tracker,
+                client_id,
+                client_secret,
+            } => accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref()),
+            Call::ConnectTracker { tracker } => oauth::connect(self, tracker).map(started),
+            Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
+            Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
+            Call::MarkEpisode { series, episode } => {
+                writes::mark(self, series, episode).map(started)
+            }
+            Call::SetProgress {
+                series,
+                progress,
+                season,
+            } => writes::set_progress(self, series, progress, season).map(started_or_ok),
+            Call::SetScore { series, score } => {
+                writes::set_score(self, series, score).map(started_or_ok)
+            }
+            Call::SetListStatus { series, status } => {
+                writes::set_list_status(self, series, status).map(started_or_ok)
+            }
+            Call::SetSeriesNotes { series, notes } => {
+                writes::set_notes(self, series, &notes).map(started)
+            }
             Call::SetShowListStatus { anilist_id, status } => {
-                writes::set_show_list_status(self, anilist_id, status)
-                    .map(|job| job.map_or(Reply::Ok, |job| Reply::Started { job }))
+                writes::set_show_list_status(self, anilist_id, status).map(started_or_ok)
             }
             Call::SetShowScore { anilist_id, score } => {
-                writes::set_show_score(self, anilist_id, score)
-                    .map(|job| job.map_or(Reply::Ok, |job| Reply::Started { job }))
+                writes::set_show_score(self, anilist_id, score).map(started_or_ok)
             }
-            // The graph is drawn off the tables as they stand, and the
-            // crawl behind it fills in whatever the walk found missing.
-            Call::GetFranchiseGraph { series } => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Graph {
-                    layout: franchise::graph(&core, series)?,
-                })
+            Call::PreviewListMove { tracker } => move_up::preview_call(self, tracker),
+            Call::MoveLists { tracker, series } => {
+                move_up::start(self, tracker, series).map(started)
             }
+            Call::RefreshProgress { tracker } => Ok(started(cache::start_refresh(
+                &self.owner()?,
+                tracker,
+                false,
+            ))),
+            Call::ListWatching => watching::list_call(self),
+            Call::ListPlanning => watching::planning_call(self),
+            Call::RefreshWatching { force } => watching::refresh_call(self, force),
+
             // Downloads: the status is a read off the state, the rest are
-            // jobs over anirss or the torrent client, except the two list
-            // reads the page polls, which answer through events and never
-            // through the job registry.
-            Call::GetDownloads => Ok(Reply::Downloads {
-                status: downloads::status(self)?,
-            }),
-            Call::ConnectDownloads => Ok(Reply::Started {
-                job: downloads::connect(self)?,
-            }),
-            Call::SearchReleases { query, endpoint } => Ok(Reply::Started {
-                job: downloads::search(self, query, endpoint)?,
-            }),
+            // jobs over anirss or the torrent client, except the list reads
+            // the page polls, which answer through events
+            Call::GetDownloads => downloads::status(self).map(|status| Reply::Downloads { status }),
+            Call::ConnectDownloads => downloads::connect(self).map(started),
+            Call::SearchReleases { query, endpoint } => {
+                downloads::search(self, query, endpoint).map(started)
+            }
             Call::RefineReleases {
                 query,
                 endpoint,
                 items,
                 op,
-            } => Ok(Reply::Started {
-                job: downloads::refine(self, query, endpoint, items, op)?,
-            }),
+            } => downloads::refine(self, query, endpoint, items, op).map(started),
             Call::PreviewSubscription {
                 query,
                 endpoint,
                 items,
-            } => Ok(Reply::Started {
-                job: downloads::preview(self, query, endpoint, items)?,
-            }),
+            } => downloads::preview(self, query, endpoint, items).map(started),
             Call::Subscribe {
                 query,
                 endpoint,
@@ -1224,29 +1004,24 @@ impl Core {
                 name,
                 wire_query,
                 series,
-            } => Ok(Reply::Started {
-                job: downloads::subscribe(self, query, endpoint, items, name, wire_query, series)?,
-            }),
-            Call::DownloadReleases { items, name } => Ok(Reply::Started {
-                job: downloads::download(self, items, name)?,
-            }),
+            } => downloads::subscribe(self, query, endpoint, items, name, wire_query, series)
+                .map(started),
+            Call::DownloadReleases { items, name } => {
+                downloads::download(self, items, name).map(started)
+            }
             Call::DownloadReleasesWith {
                 items,
                 name,
                 options,
-            } => Ok(Reply::Started {
-                job: downloads::download_with(self, items, name, options)?,
-            }),
-            Call::DownloadMovie { link } => Ok(Reply::Started {
-                job: downloads::movie(self, link)?,
-            }),
+            } => downloads::download_with(self, items, name, options).map(started),
+            Call::DownloadMovie { link } => downloads::movie(self, link).map(started),
             Call::ListSubscriptionRules => downloads::list_rules(self),
             Call::ListTorrents => downloads::list_torrents(self),
             Call::ReadFeed { url, tag } => downloads::read_feed(self, url, tag),
             Call::ReadRule { name } => downloads::read_rule(self, name),
-            Call::RepairSubscription { name } => Ok(Reply::Started {
-                job: downloads::repair_subscription(self, name)?,
-            }),
+            Call::RepairSubscription { name } => {
+                downloads::repair_subscription(self, name).map(started)
+            }
             Call::RemoveShow {
                 title,
                 rule,
@@ -1254,12 +1029,11 @@ impl Core {
                 torrents,
                 files,
                 series,
-            } => Ok(Reply::Started {
-                job: downloads::remove_show(self, title, rule, hashes, torrents, files, series)?,
-            }),
-            Call::ControlTorrents { hashes, action } => Ok(Reply::Started {
-                job: downloads::control(self, hashes, action)?,
-            }),
+            } => downloads::remove_show(self, title, rule, hashes, torrents, files, series)
+                .map(started),
+            Call::ControlTorrents { hashes, action } => {
+                downloads::control(self, hashes, action).map(started)
+            }
             Call::SetRoll {
                 id,
                 ahead,
@@ -1267,9 +1041,7 @@ impl Core {
                 delete_watched,
             } => downloads::rolling::set(self, id, ahead, on, delete_watched),
             Call::RollMore { id, count } => downloads::rolling::roll_more(self, id, count),
-            Call::GetRollingSettings => Ok(Reply::RollingSettings {
-                rolling: downloads::settings::read(self)?.rolling,
-            }),
+            Call::GetRollingSettings => downloads::rolling::settings_call(self),
             Call::SetRollingSettings { rolling } => downloads::rolling::set_settings(self, rolling),
             Call::SetDownloadSettings {
                 settings,
@@ -1282,81 +1054,116 @@ impl Core {
                 torrent_password.as_deref(),
             ),
             Call::UseTorrentClient { id } => downloads::use_client(self, id),
-            Call::TestTorrentClient => Ok(Reply::Started {
-                job: downloads::test_torrent_client(self)?,
-            }),
-            Call::CheckEndpoints => Ok(Reply::Started {
-                job: downloads::check_endpoints(self)?,
-            }),
+            Call::TestTorrentClient => downloads::test_torrent_client(self).map(started),
+            Call::CheckEndpoints => downloads::check_endpoints(self).map(started),
+            Call::StartEndpoint { name } => downloads::start_endpoint(self, name).map(started),
             Call::InspectRelease { link } => downloads::inspect_release(self, link),
-            Call::PhoneSources => Ok(Reply::PhoneSources {
-                sources: crate::phone::sources(self),
-            }),
-            Call::SetPhoneSources { sources } => crate::phone::set_sources(self, sources),
-            Call::PhoneSearchSources => Ok(Reply::PhoneSources {
-                sources: crate::phone::search_sources(self),
-            }),
-            Call::ListRepoEndpoints => Ok(Reply::EndpointCatalog {
-                catalog: crate::repos::catalog(self)?,
-            }),
-            Call::AddEndpointRepo { url } => crate::repos::add_repo(self, url),
-            Call::TrustEndpointRepo { url, key } => crate::repos::trust_repo(self, url, key),
-            Call::RemoveEndpointRepo { url } => crate::repos::remove_repo(self, url),
-            Call::RefreshEndpointRepos => crate::repos::refresh(self),
+
+            // Releases: endpoint repos and the endpoints installed from them
+            Call::ListRepoEndpoints => {
+                repos::catalog(self).map(|catalog| Reply::EndpointCatalog { catalog })
+            }
+            Call::AddEndpointRepo { url } => repos::add_repo(self, url),
+            Call::TrustEndpointRepo { url, key } => repos::trust_repo(self, url, key),
+            Call::RemoveEndpointRepo { url } => repos::remove_repo(self, url),
+            Call::RefreshEndpointRepos => repos::refresh(self),
             Call::InstallEndpoint {
                 repo,
                 id,
                 credentials,
-            } => crate::repos::install(self, repo, id, credentials),
+            } => repos::install(self, repo, id, credentials),
             Call::UpdateEndpoint {
                 install,
                 credentials,
-            } => crate::repos::update(self, install, credentials),
-            Call::RemoveEndpoint { install } => crate::repos::remove(self, install),
+            } => repos::update(self, install, credentials),
+            Call::RemoveEndpoint { install } => repos::remove(self, install),
             Call::SetEndpointCredentials {
                 install,
                 credentials,
-            } => crate::repos::set_credentials(self, install, credentials),
+            } => repos::set_credentials(self, install, credentials),
             Call::SetEndpointEnabled { install, enabled } => {
-                crate::repos::set_enabled(self, install, enabled)
+                repos::set_enabled(self, install, enabled)
             }
             Call::AddCustomEndpoint {
                 name,
                 url,
                 credentials,
-            } => crate::repos::add_custom(self, name, url, credentials),
+            } => repos::add_custom(self, name, url, credentials),
             Call::EditCustomEndpoint { install, name, url } => {
-                crate::repos::edit_custom(self, install, name, url)
+                repos::edit_custom(self, install, name, url)
             }
+
+            // Downloads on the phone: its own sources and torrent engine
+            Call::PhoneSources => phone::sources_call(self),
+            Call::SetPhoneSources { sources } => phone::set_sources(self, sources),
+            Call::PhoneSearchSources => phone::search_sources_call(self),
             Call::PhoneSearch {
                 query,
                 endpoint,
                 fallback,
-            } => crate::phone::search(self, query, endpoint, fallback),
-            Call::PhoneFindShows { query, limit } => crate::phone::find_shows(self, query, limit),
+            } => phone::search(self, query, endpoint, fallback),
+            Call::PhoneFindShows { query, limit } => phone::find_shows(self, query, limit),
             Call::PhoneRefine {
                 query,
                 endpoint,
                 items,
                 op,
-            } => crate::phone::refine(self, query, endpoint, items, op),
+            } => phone::refine(self, query, endpoint, items, op),
             Call::PhoneDownload {
                 items,
                 name,
                 limit_bytes,
                 rolling,
-            } => crate::phone::download(self, items, name, limit_bytes, rolling),
+            } => phone::download(self, items, name, limit_bytes, rolling),
             Call::PhoneSubscribe {
                 query,
                 endpoint,
                 items,
                 name,
-            } => crate::phone::subscribe(self, query, endpoint, items, name),
-            Call::PhoneRules => crate::phone::rules(self),
-            Call::PhoneUnsubscribe { names, files } => {
-                crate::phone::unsubscribe(self, names, files)
+            } => phone::subscribe(self, query, endpoint, items, name),
+            Call::PhoneRules => phone::rules(self),
+            Call::PhoneUnsubscribe { names, files } => phone::unsubscribe(self, names, files),
+            Call::PhoneTorrents => phone::torrents(self),
+            Call::PhoneNetCheck => phone::check::run_call(self),
+            Call::PhoneControl { hashes, action } => phone::control(self, hashes, action),
+            Call::SetPhoneHeld { held } => phone::set_held(self, held),
+
+            // Host: the tailnet host, export and import
+            Call::GetHost => host::status_call(self),
+            Call::ListTailnetDevices => host::devices_call(self),
+            Call::SetTailnetDeviceTrust { device, trusted } => {
+                host::set_device_trust(self, device, trusted)
             }
-            Call::PhoneTorrents => crate::phone::torrents(self),
+            Call::Export { path, private } => Ok(started(transfer::export::start(
+                &self.owner()?,
+                path,
+                private,
+            ))),
+            Call::Import { path } => transfer::import::start(self, &path).map(started),
+
+            // Playback: the player's session, Discord, casting and rooms
+            Call::OpenPlayback { file } => session::open_call(self, file),
+            Call::ReportChapters {
+                session,
+                chapters,
+                duration,
+            } => skip::start(self, session, chapters, duration).map(started),
+            Call::Tick {
+                session,
+                position,
+                paused,
+            } => session::tick(self, session, position, paused).map(|()| Reply::Ok),
+            Call::ClosePlayback {
+                session,
+                position,
+                reason,
+            } => session::close(self, session, position, reason).map(|()| Reply::Ok),
+            Call::SetTrackChoice {
+                series,
+                audio,
+                subtitle,
+            } => session::set_track_choice(self, series, audio, subtitle),
+            Call::GetPresence => presence::status_call(self),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }
@@ -1364,137 +1171,14 @@ impl Core {
             | Call::CastPause
             | Call::CastSeek { .. }
             | Call::CastStop
-            | Call::CastStatus) => crate::cast::call(self, c),
+            | Call::CastStatus) => cast::call(self, c),
             c @ (Call::RoomCreate { .. }
             | Call::RoomJoin { .. }
             | Call::RoomAttach { .. }
             | Call::RoomCommand { .. }
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
-            | Call::RoomStatus) => crate::room::call(self, c),
-            Call::PhoneNetCheck => Ok(Reply::PhoneNetCheck {
-                checks: self.handle.block_on(crate::phone::check::run(self)),
-            }),
-            Call::PhoneControl { hashes, action } => crate::phone::control(self, hashes, action),
-            Call::SetPhoneHeld { held } => crate::phone::set_held(self, held),
-            Call::StartEndpoint { name } => Ok(Reply::Started {
-                job: downloads::start_endpoint(self, name)?,
-            }),
-            Call::OpenPlayback { file } => Ok(Reply::Playback {
-                session: Box::new(session::open(self, file)?),
-            }),
-            // The duration reaches the session at once, so the mark and
-            // the completion rules have it from this tick on; the windows
-            // themselves are the job's, and the outro follows it.
-            Call::ReportChapters {
-                session,
-                chapters,
-                duration,
-            } => Ok(Reply::Started {
-                job: skip::start(self, session, chapters, duration)?,
-            }),
-            // The tick's reply is `Ok` and nothing else; every outcome the
-            // rules decide arrives as an event.
-            Call::Tick {
-                session,
-                position,
-                paused,
-            } => {
-                session::tick(self, session, position, paused)?;
-                Ok(Reply::Ok)
-            }
-            Call::ClosePlayback {
-                session,
-                position,
-                reason,
-            } => {
-                session::close(self, session, position, reason)?;
-                Ok(Reply::Ok)
-            }
-            Call::SetTrackChoice {
-                series,
-                audio,
-                subtitle,
-            } => session::set_track_choice(self, series, audio, subtitle),
-            Call::Export { path, private } => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: transfer::export::start(&core, path, private),
-                })
-            }
-            // The file is read and its version checked here rather than in
-            // the job, so a document this core is too old to read is
-            // refused at once instead of failing a job the shell already
-            // thinks is running.
-            Call::Import { path } => Ok(Reply::Started {
-                job: transfer::import::start(self, &path)?,
-            }),
-        }
-    }
-
-    /// `Call::ActOnSeries` (#208): every id checked first, so a pick that is
-    /// gone fails the whole call before anything is written.
-    fn act_on_series(&self, series: Vec<u64>, action: SeriesAction) -> Result<Reply, CoreError> {
-        let mut picks: Vec<u64> = Vec::with_capacity(series.len());
-        for id in series {
-            if !picks.contains(&id) {
-                picks.push(id);
-            }
-        }
-        if picks.is_empty() {
-            return Err(CoreError::invalid(
-                "series",
-                crate::i18n::tr("core-core-nothing-picked", &[]),
-            ));
-        }
-        // One read for every id, however many were picked
-        let there: std::collections::HashSet<u64> = self.store.read(|c| {
-            let sql = format!(
-                "SELECT id FROM series WHERE id IN ({})",
-                crate::store::sql::placeholders(picks.len())
-            );
-            let mut stmt = c.prepare(&sql)?;
-            let ids = stmt
-                .query_map(
-                    rusqlite::params_from_iter(picks.iter().map(|id| *id as i64)),
-                    |r| r.get::<_, i64>(0),
-                )?
-                .map(|id| id.map(|id| id as u64))
-                .collect::<Result<_, _>>()?;
-            Ok(ids)
-        })?;
-        if let Some(&id) = picks.iter().find(|id| !there.contains(id)) {
-            return Err(CoreError::NotFound {
-                what: Entity::Series,
-                id,
-            });
-        }
-        match action {
-            SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
-            SeriesAction::Rescan => scan::rescan_many(self, &picks),
-            // Every pick kept on this device is Ok with no job (#213)
-            SeriesAction::Score { score } => Ok(
-                match writes::start_many(self, &picks, writes::ManyWrite::Score(score))? {
-                    Some(job) => Reply::Started { job },
-                    None => Reply::Ok,
-                },
-            ),
-            SeriesAction::ListStatus { status } => Ok(
-                match writes::start_many(self, &picks, writes::ManyWrite::Status(status))? {
-                    Some(job) => Reply::Started { job },
-                    None => Reply::Ok,
-                },
-            ),
-            SeriesAction::FindMatch => {
-                let core = self
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started {
-                    job: automatch::start_for(&core, picks),
-                })
-            }
+            | Call::RoomStatus) => room::call(self, c),
         }
     }
 
