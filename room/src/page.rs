@@ -172,8 +172,8 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
     let (title, og_title, og_description, heading, episode) = match room {
         // A room whose host has not picked anything yet (#922)
         Some(room) if room.episode.is_none() => (
-            "AniBeam room".to_owned(),
-            "Watch together in AniBeam".to_owned(),
+            "Anibeam room".to_owned(),
+            "Watch together in Anibeam".to_owned(),
             format!("Room {code}"),
             "Nothing picked yet".to_owned(),
             String::new(),
@@ -409,7 +409,7 @@ mod tests {
         room.episode = None;
         let html = join_html("K7QM2X", Some(&room));
         assert!(html.contains("<h1>Nothing picked yet</h1>"));
-        assert!(html.contains(r#"content="Watch together in AniBeam""#));
+        assert!(html.contains(r#"content="Watch together in Anibeam""#));
         assert!(html.contains(r#"href="anibeam://room/K7QM2X""#));
         assert!(!html.contains(r#"class="episode""#));
     }
