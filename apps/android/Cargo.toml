@@ -37,11 +37,13 @@ slint = { version = "1.18", default-features = false, features = ["backend-andro
 jni = "0.21"
 ndk-context = "0.1"
 
-# The iPhone draws through winit, and reads the hinge from UIKit (platform/ios.rs).
+# The iPhone draws through winit, and reads the hinge, its settings and its notifications
+# from UIKit and Foundation (platform/ios.rs).
 [target.'cfg(target_os = "ios")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-winit"] }
 objc2 = "0.6"
 objc2-core-foundation = "0.3"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSError", "NSLocale", "NSNotification", "NSOperation", "NSString", "NSURL", "NSValue"] }
 block2 = "0.6"
 
 [build-dependencies]

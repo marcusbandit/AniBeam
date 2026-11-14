@@ -24,11 +24,13 @@ pub fn pick_file(
 }
 
 /// The language the environment names, as `LANG` holds it.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_locale() -> String {
     std::env::var("LANG").unwrap_or_default()
 }
 
 /// Dark, the app's own default.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_dark() -> bool {
     true
 }

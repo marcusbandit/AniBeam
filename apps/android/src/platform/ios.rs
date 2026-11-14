@@ -1,5 +1,5 @@
-//! The iPhone: its entry point and the hinge. Every other call is `other.rs`'s stand-in
-//! until the iPhone brings its own.
+//! The iPhone: its entry point, the hinge, and the phone's language and light or dark
+//! setting. Every other call is `other.rs`'s stand-in until the iPhone brings its own.
 //!
 //! The hinge comes from UIKit's `UIHingeInteraction` (iOS 27.1, the iPhone Duo), added to
 //! the app's window the first time the layout asks. UIKit says how far the hinge is open,
@@ -7,12 +7,21 @@
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
 
 use std::cell::{Cell, RefCell};
+use std::path::Path;
+use std::ptr::NonNull;
+use std::sync::mpsc::Sender;
 
 use block2::RcBlock;
 use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyClass, AnyObject};
+use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2_core_foundation::CGRect;
+use objc2_foundation::{
+    NSCurrentLocaleDidChangeNotification, NSLocale, NSNotification, NSNotificationCenter,
+    NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
+};
+
+use crate::worker::Command;
 
 pub use super::other::*;
 
@@ -25,9 +34,102 @@ pub fn ios_main() {
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         eprintln!("AniBeam: no data directory at {}: {e}", data_dir.display());
     }
+    // Application Support goes into iCloud and computer backups, and downloaded episodes are
+    // large and can be downloaded again, so the library folder stays out of them.
+    let library = data_dir.join(crate::local::LIBRARY_DIR);
+    match std::fs::create_dir_all(&library) {
+        Ok(()) => keep_out_of_backups(&library),
+        Err(e) => eprintln!("AniBeam: no library folder at {}: {e}", library.display()),
+    }
     let (commands, inbox) = std::sync::mpsc::channel();
+    // Held for the whole run: the notification centre keeps the observers while they live.
+    let _observers = observe(commands.clone());
     if let Err(e) = crate::run(data_dir, commands, inbox) {
         eprintln!("AniBeam stopped: {e}");
+    }
+}
+
+/// Sets `NSURLIsExcludedFromBackupKey` on `dir`, which covers everything in it. Set at every
+/// start, since a restore from a backup can leave the folder without it.
+fn keep_out_of_backups(dir: &Path) {
+    let Some(url) = NSURL::from_directory_path(dir) else {
+        eprintln!("AniBeam: no file URL for {}", dir.display());
+        return;
+    };
+    let yes = NSNumber::new_bool(true);
+    // SAFETY: the key takes an NSNumber holding a BOOL.
+    let set =
+        unsafe { url.setResourceValue_forKey_error(Some(&yes), NSURLIsExcludedFromBackupKey) };
+    if let Err(e) = set {
+        eprintln!("AniBeam: {} stays in backups: {e:?}", dir.display());
+    }
+}
+
+/// What `android_main` hears from the activity, from UIKit's notifications: coming back to
+/// the foreground looks at the host again, and the phone's light or dark setting or its
+/// language changing has Appearance's System mode and a language left to follow the phone
+/// follow it. The light or dark setting is read again each time the app becomes active, which
+/// covers a change made in Settings or Control Center.
+fn observe(commands: Sender<Command>) -> Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>> {
+    let center = NSNotificationCenter::defaultCenter();
+    let queue = NSOperationQueue::mainQueue();
+    let foreground = RcBlock::new(move |_: NonNull<NSNotification>| {
+        let _ = commands.send(Command::Sync);
+    });
+    let changed = RcBlock::new(|_: NonNull<NSNotification>| {
+        let _ = slint::invoke_from_event_loop(crate::system_changed);
+    });
+    // UIKit's notification names are strings equal to their constants' names.
+    let will_enter_foreground = NSString::from_str("UIApplicationWillEnterForegroundNotification");
+    let did_become_active = NSString::from_str("UIApplicationDidBecomeActiveNotification");
+    let watch = |name: &NSNotificationName, block: &RcBlock<dyn Fn(NonNull<NSNotification>)>| {
+        // SAFETY: the blocks touch only a Sender and Slint's thread-safe queue, and run on the
+        // main queue, the UI thread.
+        unsafe {
+            center.addObserverForName_object_queue_usingBlock(Some(name), None, Some(&queue), block)
+        }
+    };
+    vec![
+        watch(&will_enter_foreground, &foreground),
+        watch(&did_become_active, &changed),
+        // SAFETY: a Foundation constant, read once it is linked.
+        watch(unsafe { NSCurrentLocaleDidChangeNotification }, &changed),
+    ]
+}
+
+/// The phone's language as iOS lists it first: `da-DK`, `pt-BR`, `zh-Hans-CN`, the same
+/// shape Android gives.
+pub fn system_locale() -> String {
+    NSLocale::preferredLanguages()
+        .firstObject()
+        .map(|l| l.to_string())
+        .unwrap_or_default()
+}
+
+/// The phone is in dark mode: the window's style once there is one, the screen's before.
+pub fn system_dark() -> bool {
+    const DARK: isize = 2; // UIUserInterfaceStyleDark
+    // SAFETY: plain UIKit getters on the UI thread; each returns an object or nil, and
+    // `userInterfaceStyle` an NSInteger.
+    unsafe {
+        let traits: *mut AnyObject = match app_window() {
+            Some(window) => msg_send![&*window, traitCollection],
+            None => {
+                let Some(screen) = AnyClass::get(c"UIScreen") else {
+                    return true;
+                };
+                let main: *mut AnyObject = msg_send![screen, mainScreen];
+                if main.is_null() {
+                    return true;
+                }
+                msg_send![main, traitCollection]
+            }
+        };
+        if traits.is_null() {
+            return true;
+        }
+        let style: isize = msg_send![traits, userInterfaceStyle];
+        style == DARK
     }
 }
 
