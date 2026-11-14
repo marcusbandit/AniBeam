@@ -744,10 +744,10 @@ find-dropped = { $count ->
 
 find-following = Подписка
 find-stop-following-ask = Отписаться от «{ $name }»?
-find-unfollow-explain = Новые серии перестанут скачиваться. Содержимое папки подписки можно оставить или удалить вместе с ней: все загрузки в ней, включая серии, скачанные вручную.
+find-unfollow-explain = Новые серии перестанут скачиваться. Серии, скачанные по подписке, можно оставить или удалить вместе с ней. Серии, скачанные вручную, останутся в любом случае.
 find-stop-following = Отписаться
 find-stop-keep = Отписаться, серии оставить
-find-stop-delete = Отписаться и удалить загрузки из папки
+find-stop-delete = Отписаться и удалить её серии
 find-rule-taken = { $downloads ->
     [one] { $downloads } загрузка
     [few] { $downloads } загрузки
@@ -762,7 +762,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Подписка на паузе, новые серии не придут. { $taken }.
 find-rule-no-feed = У источника нет ленты, новые серии не придут. { $taken }.
 find-rule-active = Новые серии скачиваются сами. { $taken }.
-find-unfollowed-deleted = Подписка на «{ $name }» отменена, загрузки из её папки удалены.
+find-unfollowed-deleted = Подписка на «{ $name }» отменена, её серии удалены.
 find-unfollowed-kept = Подписка на «{ $name }» отменена. Серии остаются на этом телефоне.
 find-stop-failed = Отмена подписки не завершилась: { $error }
 

@@ -746,10 +746,10 @@ find-dropped = { $count ->
 
 find-following = Obserwowane
 find-stop-following-ask = Przestać obserwować: { $name }?
-find-unfollow-explain = Nowe odcinki przestaną się pobierać. To, co jest w folderze subskrypcji, może zostać albo zniknąć razem z nią: każde pobranie stamtąd, także odcinki pobrane ręcznie.
+find-unfollow-explain = Nowe odcinki przestaną się pobierać. Odcinki pobrane przez subskrypcję mogą zostać albo zniknąć razem z nią. Odcinki pobrane ręcznie zostają w każdym przypadku.
 find-stop-following = Nie obserwuj
 find-stop-keep = Zatrzymaj, zostaw odcinki
-find-stop-delete = Zatrzymaj i usuń pobrane z folderu
+find-stop-delete = Zatrzymaj i usuń jej odcinki
 find-rule-taken = { $downloads ->
     [one] { $downloads } pobranie
     [few] { $downloads } pobrania
@@ -764,7 +764,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Jest wstrzymana, więc nowe odcinki nie przychodzą. { $taken }.
 find-rule-no-feed = Jej źródło nie ma kanału, więc nowe odcinki nie przychodzą. { $taken }.
 find-rule-active = Nowe odcinki pobierają się same. { $taken }.
-find-unfollowed-deleted = Przestano obserwować: { $name }. Usunięto pobrane pliki z folderu subskrypcji.
+find-unfollowed-deleted = Przestano obserwować: { $name }. Usunięto odcinki subskrypcji.
 find-unfollowed-kept = Przestano obserwować: { $name }. Odcinki zostają na tym telefonie.
 find-stop-failed = Nie udało się zatrzymać: { $error }
 

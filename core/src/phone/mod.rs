@@ -850,16 +850,17 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
         core.handle.block_on(async {
             let engine = engine(core).await?;
             for rule in &gone {
+                // Only the torrents the rule added: the show's folder is shared with
+                // downloads got by hand, and those stay (#654).
                 let hashes: Vec<String> = engine
                     .list()
                     .await
                     .into_iter()
-                    .filter(|t| t.save_path == rule.save_path)
+                    .filter(|t| rule.added.contains(&t.hash.to_lowercase()))
                     .map(|t| t.hash)
                     .collect();
                 engine.control(&hashes, PhoneAction::Remove).await?;
-                // The folder is the show's, shared with downloads made by hand: it goes only
-                // when the rule's torrents took the last of it.
+                // The folder goes only when the rule's torrents took the last of it.
                 let _ = std::fs::remove_dir(&rule.save_path);
             }
             Ok::<(), CoreError>(())
@@ -962,7 +963,9 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| rule.name.clone());
-        let mut taken = Vec::new();
+        // What the engine held before this round is not the rule's, even when the rule
+        // asks for the same torrent: a download got by hand stays the person's.
+        let before = engine.hashes();
         for item in crate::releases::rules::due(&rule, &items) {
             let file = match torrent_file(core, &item.link).await {
                 Ok(file) => file,
@@ -973,7 +976,12 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
                 }
             };
             match engine.add(item, &folder, file).await {
-                Ok(_) => {
+                Ok(hash) => {
+                    // Noted as it lands, so an unsubscribe right after finds it.
+                    let own = (!before.contains(&hash.to_lowercase())).then_some(hash.as_str());
+                    if let Err(e) = store.mark_added(&rule.name, &item.link, own) {
+                        tracing::warn!("subscription {} not saved: {e}", rule.name);
+                    }
                     core.bus.say(
                         Level::Info,
                         Stage::Downloads,
@@ -981,15 +989,9 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );
-                    taken.push(item.link.clone());
                 }
                 Err(e) => tracing::warn!("{} not added: {e}", item.title),
             }
-        }
-        if !taken.is_empty()
-            && let Err(e) = store.mark_taken(&rule.name, &taken)
-        {
-            tracing::warn!("subscription {} not saved: {e}", rule.name);
         }
     }
 }

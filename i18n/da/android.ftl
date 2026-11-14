@@ -700,10 +700,10 @@ find-dropped = { $count ->
 
 find-following = Følger
 find-stop-following-ask = Stop med at følge { $name }?
-find-unfollow-explain = Nye afsnit downloades ikke mere. Det, der ligger i mappen, kan blive eller følge med: alle downloads dér, også afsnit du hentede selv.
+find-unfollow-explain = Nye afsnit downloades ikke mere. De afsnit, den har hentet, kan blive eller følge med. Afsnit du hentede selv, bliver under alle omstændigheder.
 find-stop-following = Stop med at følge
 find-stop-keep = Stop, behold afsnittene
-find-stop-delete = Stop og slet mappens downloads
+find-stop-delete = Stop og slet dens afsnit
 find-rule-taken = { $downloads ->
     [one] { $downloads } download
    *[other] { $downloads } downloads
@@ -714,7 +714,7 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Det er sat på pause, så der kommer ingen nye afsnit. { $taken }.
 find-rule-no-feed = Kilden har intet feed, så der kommer ingen nye afsnit. { $taken }.
 find-rule-active = Nye afsnit downloades af sig selv. { $taken }.
-find-unfollowed-deleted = Stoppede med at følge { $name } og slettede downloads i dens mappe.
+find-unfollowed-deleted = Stoppede med at følge { $name } og slettede dens afsnit.
 find-unfollowed-kept = Stoppede med at følge { $name }. Dens afsnit bliver på denne telefon.
 find-stop-failed = Stoppet blev ikke færdigt: { $error }
 

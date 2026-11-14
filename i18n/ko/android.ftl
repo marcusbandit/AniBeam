@@ -668,15 +668,15 @@ find-dropped = { $count ->
 
 find-following = 구독 중
 find-stop-following-ask = { $name } 구독을 멈출까요?
-find-unfollow-explain = 새 에피소드 다운로드가 멈춰요. 폴더에 있는 파일은 남기거나 함께 삭제할 수 있어요. 삭제하면 직접 받은 에피소드를 포함해 그 폴더의 모든 다운로드가 지워져요.
+find-unfollow-explain = 새 에피소드 다운로드가 멈춰요. 구독으로 받은 에피소드는 남기거나 함께 삭제할 수 있어요. 직접 받은 에피소드는 어느 쪽이든 남아요.
 find-stop-following = 구독 해지
 find-stop-keep = 멈추고 에피소드 유지
-find-stop-delete = 멈추고 폴더의 다운로드 삭제
+find-stop-delete = 멈추고 에피소드 삭제
 find-rule-taken = 폴더에 다운로드 { $downloads }개, 파일 { $files }개
 find-rule-paused = 일시정지 상태라 새 에피소드가 오지 않아요. { $taken }.
 find-rule-no-feed = 소스에 피드가 없어서 새 에피소드가 오지 않아요. { $taken }.
 find-rule-active = 새 에피소드가 자동으로 다운로드돼요. { $taken }.
-find-unfollowed-deleted = { $name } 구독을 멈추고 폴더의 다운로드를 삭제했어요.
+find-unfollowed-deleted = { $name } 구독을 멈추고 에피소드를 삭제했어요.
 find-unfollowed-kept = { $name } 구독을 멈췄어요. 에피소드는 이 휴대전화에 남아요.
 find-stop-failed = 구독 해지를 마치지 못했어요: { $error }
 
