@@ -156,11 +156,11 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
 /// as the library is from the app's own folder down (`AniBeam/Anime` on the iPhone,
 /// `files/Anime` on Android), so a folder the app never owned is never taken for it.
 fn moved_library(old: &Path, library: &Path) -> bool {
-    let tail = |p: &Path| {
+    fn tail(p: &Path) -> Vec<std::path::Component<'_>> {
         let mut names = p.components().rev().take(2).collect::<Vec<_>>();
         names.reverse();
         names
-    };
+    }
     old != library && !old.is_dir() && tail(old).len() == 2 && tail(old) == tail(library)
 }
 
