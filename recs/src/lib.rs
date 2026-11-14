@@ -1,6 +1,6 @@
 //! anime-rec-lab's recommender. Pure functions over a person's list, a catalogue of shows and a
 //! set of other AniList users: no network, no disk, no clock. That is what lets it move into
-//! AniBeam's core unchanged if it earns a place there.
+//! Anibeam's core unchanged if it earns a place there.
 //!
 //! Three models give an opinion on every show, each in points above or below your own mean:
 //!

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-AniBeam browses, plays and tracks a local anime library: it scans configured folders, matches series against AniList (TVmaze for what AniList does not carry), plays video in the window through libmpv, syncs progress with AniList and MyAnimeList, and renders a franchise relation graph. It is a Qt 6 QML shell over a Rust core. The Electron app it replaced was retired on 2026-10-19 (#70); the `v2.0.0` tag holds its source.
+Anibeam browses, plays and tracks a local anime library: it scans configured folders, matches series against AniList (TVmaze for what AniList does not carry), plays video in the window through libmpv, syncs progress with AniList and MyAnimeList, and renders a franchise relation graph. It is a Qt 6 QML shell over a Rust core. The Electron app it replaced was retired on 2026-10-19 (#70); the `v2.0.0` tag holds its source.
 
 ## Git Workflow
 

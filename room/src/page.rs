@@ -24,7 +24,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
                 format!("{episode}. Room {code}")
             };
             (
-                format!("{series} in AniBeam"),
+                format!("{series} in Anibeam"),
                 format!("Watch {series} together"),
                 og_description,
                 series,
@@ -32,8 +32,8 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
             )
         }
         None => (
-            "AniBeam room".to_owned(),
-            "AniBeam room".to_owned(),
+            "Anibeam room".to_owned(),
+            "Anibeam room".to_owned(),
             "This room is closed, or the code is wrong.".to_owned(),
             "Room not found".to_owned(),
             "It may have closed. Ask for a new link.".to_owned(),
@@ -45,7 +45,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
         format!("\n<p class=\"episode\">{episode}</p>")
     };
     let open = if room.is_some() {
-        format!("\n<a class=\"open\" href=\"anibeam://room/{code}\">Open in AniBeam</a>")
+        format!("\n<a class=\"open\" href=\"anibeam://room/{code}\">Open in Anibeam</a>")
     } else {
         String::new()
     };
@@ -59,7 +59,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#07080a">
 <title>{title}</title>
-<meta property="og:site_name" content="AniBeam">
+<meta property="og:site_name" content="Anibeam">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{og_title}">
 <meta property="og:description" content="{og_description}">
@@ -84,7 +84,7 @@ h1 {{ margin: 0; font-size: 26px; line-height: 1.2; overflow-wrap: anywhere; }}
 <p class="kicker">Watch together</p>
 <h1>{heading}</h1>{episode}
 <p class="code">{code}</p>{open}
-<a class="get" href="{DOWNLOAD_URL}">Get AniBeam</a>
+<a class="get" href="{DOWNLOAD_URL}">Get Anibeam</a>
 </main>
 </body>
 </html>

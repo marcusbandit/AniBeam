@@ -15,7 +15,7 @@ use crate::bridge::shell::qobject::Shell;
 
 /// The element a run under --root adds to every well known name it owns (R35). A sandbox
 /// exists so a dev run touches nothing outside itself, and the desktop's idea of which
-/// process is AniBeam is outside itself: without this a sandbox takes the real app's names,
+/// process is Anibeam is outside itself: without this a sandbox takes the real app's names,
 /// because zbus asks for a name with ReplaceExisting set.
 const SANDBOX: &str = "Sandbox";
 
@@ -170,7 +170,7 @@ async fn reach(action: Option<&str>, link: Option<&str>) -> Result<(), String> {
     };
     result
         .map(|_| ())
-        .map_err(|e| format!("could not reach the running AniBeam: {e}"))
+        .map_err(|e| format!("could not reach the running Anibeam: {e}"))
 }
 
 pub struct AppInterface {

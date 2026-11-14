@@ -154,7 +154,7 @@ pub fn render(entries: &[Entry], now: i64) -> String {
         "VERSION:2.0".to_string(),
         "PRODID:-//AniBeam//EN".to_string(),
         "CALSCALE:GREGORIAN".to_string(),
-        "X-WR-CALNAME:AniBeam".to_string(),
+        "X-WR-CALNAME:Anibeam".to_string(),
     ];
     for e in entries {
         lines.push("BEGIN:VEVENT".to_string());
@@ -478,7 +478,7 @@ mod tests {
         assert!(text.contains("DTSTART:20261102T140509Z\r\n"));
         assert!(text.contains("DURATION:PT24M\r\n"));
         assert!(text.contains("SUMMARY:Frieren\\, Part 2 - Episode 3\r\n"));
-        assert!(text.contains("X-WR-CALNAME:AniBeam\r\n"));
+        assert!(text.contains("X-WR-CALNAME:Anibeam\r\n"));
     }
 
     #[test]

@@ -13,7 +13,7 @@ const DARK_GROUND: &str = "#101216";
 const LIGHT_GROUND: &str = "#f6f7fa";
 const DARK_TEXT: &str = "#e4e7ee";
 const LIGHT_TEXT: &str = "#1b1e26";
-/// The AniBeam teal, the seed when the portal has no accent.
+/// The Anibeam teal, the seed when the portal has no accent.
 const ANIBEAM_TEAL: &str = "#46e0c4";
 pub const SCRIM_ALPHA: f64 = 0.8;
 

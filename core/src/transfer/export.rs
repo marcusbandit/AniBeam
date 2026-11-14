@@ -135,7 +135,7 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     Ok(doc)
 }
 
-/// The history section alone, for another AniBeam computer to merge
+/// The history section alone, for another Anibeam computer to merge
 /// (`host::history`). No accounts, so no keyring read.
 pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
     core.store.read(|c| {

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=AniBeam cxx-qt spike
+Name=Anibeam cxx-qt spike
 Comment=Throwaway probe: Rust QObject, C++ MpvAbstractItem and QML in one Cargo build
 Exec=anibeam-spike
 Icon=anibeam-spike

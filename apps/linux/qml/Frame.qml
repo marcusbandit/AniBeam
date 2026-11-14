@@ -942,7 +942,7 @@ FocusScope {
     property var moveOffers: ({})
     // The move sheet for a tracker, from Settings; answers whether there was anything to move
     function openMoveLists(t) { return moveListsSheet.openFor(t) }
-    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // A series Anibeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
         return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
