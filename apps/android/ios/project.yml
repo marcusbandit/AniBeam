@@ -17,6 +17,13 @@ targets:
       # The app icons: AppIcon, and AppIconDark and AppIconLine for More's picker. Written
       # by ios/icons.py.
       - path: Assets.xcassets
+      # The licenses of the libraries statically linked into the app (libmpv, FFmpeg and what
+      # they use): the notices and the full license texts, copied into the bundle as they are.
+      - path: THIRD-PARTY-NOTICES.md
+        buildPhase: resources
+      - path: licenses
+        type: folder
+        buildPhase: resources
     settings:
       INFOPLIST_FILE: Info.plist
       PRODUCT_NAME: AniBeam
