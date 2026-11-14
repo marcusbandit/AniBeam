@@ -312,6 +312,36 @@ mod tests {
     }
 
     #[test]
+    fn the_constructors_build_the_variants() {
+        assert_eq!(
+            CoreError::service("anirss", "unreachable", String::from("timed out")),
+            CoreError::Service {
+                service: "anirss".into(),
+                code: "unreachable".into(),
+                message: "timed out".into(),
+            }
+        );
+        assert_eq!(
+            CoreError::provider(Provider::Mal, Some(401), "invalid_token"),
+            CoreError::Provider {
+                provider: Provider::Mal,
+                status: Some(401),
+                message: "invalid_token".into(),
+                retry_after: None,
+            }
+        );
+        assert_eq!(
+            CoreError::provider_retry(Provider::Anilist, Some(429), "slow down", Some(9.0)),
+            CoreError::Provider {
+                provider: Provider::Anilist,
+                status: Some(429),
+                message: "slow down".into(),
+                retry_after: Some(9.0),
+            }
+        );
+    }
+
+    #[test]
     fn display_names_the_thing() {
         let e = CoreError::Refused {
             reason: Refusal::OnDisk,

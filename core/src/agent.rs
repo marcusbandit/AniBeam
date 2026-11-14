@@ -365,7 +365,7 @@ async fn run(
             },
         }),
         Outcome::Stopped => Err(CoreError::internal("cancelled")),
-        Outcome::Failed(why) => Err(CoreError::service(name.to_string(), "no_answer", why)),
+        Outcome::Failed(why) => Err(CoreError::service(name, "no_answer", why)),
     }
 }
 

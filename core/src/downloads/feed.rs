@@ -19,7 +19,7 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
     let host = crate::net::host_shown(url);
     let response = http
         .send(
-            HttpRequest::get(url.to_string())
+            HttpRequest::get(url)
                 .header("Accept", "application/rss+xml, application/xml, text/xml")
                 .timeout(FEED_TIMEOUT),
         )

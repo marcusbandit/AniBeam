@@ -20,7 +20,7 @@ impl MalClient {
     /// refresh is worth trying.
     pub async fn get(&self, url: &str, token: &str) -> Result<HttpResponse, CoreError> {
         self.client
-            .send(HttpRequest::get(url.to_string()).headers(bearer(token)))
+            .send(HttpRequest::get(url).headers(bearer(token)))
             .await
     }
 
@@ -33,7 +33,7 @@ impl MalClient {
     ) -> Result<HttpResponse, CoreError> {
         self.client
             .send(
-                HttpRequest::new(Method::Patch, url.to_string())
+                HttpRequest::new(Method::Patch, url)
                     .headers(bearer(token))
                     .body(Body::Form(form)),
             )
@@ -48,7 +48,7 @@ impl MalClient {
         form: Vec<(String, String)>,
     ) -> Result<HttpResponse, CoreError> {
         self.client
-            .send(HttpRequest::post(url.to_string()).body(Body::Form(form)))
+            .send(HttpRequest::post(url).body(Body::Form(form)))
             .await
     }
 }
@@ -62,10 +62,7 @@ impl MalClient {
         timeout: std::time::Duration,
     ) -> Result<HttpResponse, CoreError> {
         self.client
-            .send_within(
-                HttpRequest::get(url.to_string()).headers(bearer(token)),
-                timeout,
-            )
+            .send_within(HttpRequest::get(url).headers(bearer(token)), timeout)
             .await
     }
 
@@ -78,10 +75,7 @@ impl MalClient {
         timeout: std::time::Duration,
     ) -> Result<HttpResponse, CoreError> {
         self.client
-            .send_within(
-                HttpRequest::post(url.to_string()).body(Body::Form(form)),
-                timeout,
-            )
+            .send_within(HttpRequest::post(url).body(Body::Form(form)), timeout)
             .await
     }
 }

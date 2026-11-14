@@ -100,7 +100,7 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest::get(url.to_string()).timeout(PROBE_TIMEOUT))
+    http.send(HttpRequest::get(url).timeout(PROBE_TIMEOUT))
         .await
         .map(|r| r.is_success())
         .unwrap_or(false)

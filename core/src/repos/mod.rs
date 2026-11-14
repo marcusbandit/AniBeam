@@ -100,7 +100,7 @@ async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
     if url.starts_with("https://") || url.starts_with("http://") {
         // A repo's host has no rate of its own; it waits the floor like any endpoint host.
         let http = Paced::new(core.http.clone(), Vec::new());
-        let req = HttpRequest::get(url.to_string())
+        let req = HttpRequest::get(url)
             .header("Accept", "application/json")
             .timeout(FETCH_TIMEOUT);
         let res = crate::net::Http::send(&http, req).await.map_err(|e| {

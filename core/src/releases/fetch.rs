@@ -281,11 +281,7 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
             )],
         ),
     };
-    Some(CoreError::service(
-        endpoint_name.to_string(),
-        "refused",
-        message,
-    ))
+    Some(CoreError::service(endpoint_name, "refused", message))
 }
 
 /// Parse an RSS feed into releases. Reads a tracker's extension fields when present;
@@ -294,7 +290,7 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
     let data = data.strip_prefix('\u{feff}').unwrap_or(data);
     let doc = roxmltree::Document::parse(data).map_err(|e| {
         CoreError::service(
-            endpoint_name.to_string(),
+            endpoint_name,
             "unreadable",
             crate::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
         )
@@ -373,7 +369,7 @@ pub async fn fetch_rss(
     tracing::debug!("GET {}", crate::net::url_shown(url));
     let response = http
         .send(
-            HttpRequest::get(url.to_string())
+            HttpRequest::get(url)
                 .header("User-Agent", USER_AGENT)
                 .header(
                     "Accept",
@@ -382,7 +378,7 @@ pub async fn fetch_rss(
                 .timeout(timeout),
         )
         .await
-        .map_err(|e| CoreError::service(source_name.to_string(), "unreachable", e.message))?;
+        .map_err(|e| CoreError::service(source_name, "unreachable", e.message))?;
     if !response.is_success() {
         // Prowlarr can send its error document with a 401 or a 403; its reason beats a status.
         let body = String::from_utf8_lossy(&response.body);
@@ -394,7 +390,7 @@ pub async fn fetch_rss(
             return Err(e);
         }
         return Err(CoreError::service(
-            source_name.to_string(),
+            source_name,
             format!("http_{}", response.status),
             crate::i18n::tr(
                 "core-releases-feed-answered",

@@ -80,16 +80,16 @@ pub async fn fetch(
 ) -> Result<Vec<Release>, CoreError> {
     let response = http
         .send(
-            HttpRequest::get(url.to_string())
+            HttpRequest::get(url)
                 .header("User-Agent", super::fetch::USER_AGENT)
                 .header("Accept", "application/json")
                 .timeout(timeout),
         )
         .await
-        .map_err(|e| CoreError::service(source.to_string(), "unreachable", e.message))?;
+        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
     if !response.is_success() {
         return Err(CoreError::service(
-            source.to_string(),
+            source,
             format!("http_{}", response.status),
             crate::i18n::tr(
                 "core-releases-feed-answered",
@@ -98,7 +98,7 @@ pub async fn fetch(
         ));
     }
     parse(&response.body, source)
-        .map_err(|message| CoreError::service(source.to_string(), "unreadable", message))
+        .map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

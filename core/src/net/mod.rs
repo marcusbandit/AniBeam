@@ -842,6 +842,44 @@ mod tests {
         }
     }
 
+    /// The builder makes the same request the struct literal did: headers in the order
+    /// added, `None` body and timeout passing straight through.
+    #[test]
+    fn the_builder_builds_the_literal() {
+        let built = HttpRequest::new(Method::Patch, "https://example.com/a")
+            .header("Accept", "application/json")
+            .headers(vec![("X-One".into(), "1".into())])
+            .header("X-Two", String::from("2"))
+            .body(Body::Json(serde_json::json!({ "a": 1 })))
+            .timeout(Duration::from_secs(3));
+        assert_eq!(
+            built,
+            HttpRequest {
+                method: Method::Patch,
+                url: "https://example.com/a".into(),
+                headers: vec![
+                    ("Accept".into(), "application/json".into()),
+                    ("X-One".into(), "1".into()),
+                    ("X-Two".into(), "2".into()),
+                ],
+                body: Some(Body::Json(serde_json::json!({ "a": 1 }))),
+                timeout: Some(Duration::from_secs(3)),
+            }
+        );
+        let bare = HttpRequest::post("u").body(None).timeout(None);
+        assert_eq!(
+            bare,
+            HttpRequest {
+                method: Method::Post,
+                url: "u".into(),
+                headers: Vec::new(),
+                body: None,
+                timeout: None,
+            }
+        );
+        assert_eq!(HttpRequest::get("u").method, Method::Get);
+    }
+
     fn get(url: &str) -> HttpRequest {
         HttpRequest::get(url)
     }

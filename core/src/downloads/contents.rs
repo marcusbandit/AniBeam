@@ -71,7 +71,7 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
         return Ok((Vec::new(), 0));
     }
     let r = http
-        .send(HttpRequest::get(link.to_string()).timeout(std::time::Duration::from_secs(20)))
+        .send(HttpRequest::get(link).timeout(std::time::Duration::from_secs(20)))
         .await
         .map_err(|e| {
             CoreError::service(

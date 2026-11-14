@@ -590,7 +590,7 @@ async fn fetch_one(
     dir: &Path,
     url: &str,
 ) -> Result<String, CoreError> {
-    let request = HttpRequest::get(url.to_string());
+    let request = HttpRequest::get(url);
     let response = http
         .send(request)
         .await
