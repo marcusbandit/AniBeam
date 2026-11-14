@@ -542,11 +542,15 @@ fn release(title: &str, link: &str) -> Release {
 // Plan B: the release by its name, from the member's own sources
 // ---------------------------------------------------------------------------
 
-/// Searches the member's sources for the host's release.
+/// Searches the member's sources for the host's release. When no result is
+/// the host's own (a renamed file, a release no source carries), the best fit
+/// of the same episode from the closest search stands in: the room's offset
+/// covers a cut that differs.
 async fn search(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef) -> Result<Release, Why> {
     let backend = DownloadsBackend::open(core)
         .await
         .map_err(|err| Why::Start(err.to_string()))?;
+    let mut found_episode = Vec::new();
     for query in queries(offer, e) {
         match backend.search(&query, None, true).await {
             Ok(raw) => {
@@ -554,11 +558,46 @@ async fn search(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef) -> Resul
                     tracing::info!("room: found the host's release with {query:?}");
                     return Ok(found);
                 }
+                let fits: Vec<Release> = raw
+                    .items
+                    .into_iter()
+                    .filter(|r| episode_fits(&facts::read(r), e))
+                    .collect();
+                if !fits.is_empty() {
+                    found_episode.push((raw.query, raw.endpoint, fits));
+                }
             }
             Err(err) => tracing::debug!("room: search {query:?} failed: {err}"),
         }
     }
+    for (query, endpoint, items) in found_episode {
+        match backend.analyze(&query, &endpoint, &items).await {
+            Ok(a) if a.best_fit.available => {
+                if let Some(item) = a.best_fit.item {
+                    tracing::info!(
+                        "room: no source has the host's release; best fit from {query:?}"
+                    );
+                    return Ok(item);
+                }
+            }
+            Ok(_) => {}
+            Err(err) => tracing::debug!("room: best fit for {query:?} failed: {err}"),
+        }
+    }
     Err(Why::NotFound)
+}
+
+/// A release that holds this episode alone: never a batch, and one with no
+/// number only for the first episode, which is how a film is named.
+fn episode_fits(f: &ReleaseFacts, e: &proto::EpisodeRef) -> bool {
+    if f.batch {
+        return false;
+    }
+    match (e.number, f.episode) {
+        (Some(want), Some(got)) => (want - got).abs() < 0.01,
+        (Some(want), None) => (want - 1.0).abs() < 0.01,
+        (None, _) => true,
+    }
 }
 
 /// What to search for, the closest first: the group, the show as the release
@@ -589,9 +628,32 @@ pub fn queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
         out.push(join(&[&show, ep]));
     }
     out.push(join(&[&e.series_title, ep]));
+    // A first episode may be a film, whose releases carry no number
+    if ep == "01" {
+        let bare = untagged(&show);
+        if !bare.is_empty() {
+            out.push(bare);
+        }
+        out.push(e.series_title.trim().to_string());
+    }
     let mut seen = std::collections::HashSet::new();
     out.retain(|q| !q.is_empty() && seen.insert(q.to_lowercase()));
     out
+}
+
+/// A name without its bracketed tags: "Film (BD 1080p) [ABCD1234]" reads "Film".
+fn untagged(name: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0u32;
+    for c in name.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The search result that is the host's release, or none: the same torrent by
@@ -612,13 +674,8 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
         return Some(100_000);
     }
     let f = facts::read(r);
-    if f.batch {
+    if !episode_fits(&f, e) {
         return None;
-    }
-    match (e.number, f.episode) {
-        (Some(want), Some(got)) if (want - got).abs() < 0.01 => {}
-        (None, _) => {}
-        _ => return None,
     }
     let same = facts::same_release(&r.title, &f, &offer.name)
         || facts::same_release(&r.title, &f, &offer.file);
@@ -914,6 +971,33 @@ mod tests {
             release("Cowboy.Bebop.S01E05.renamed", &magnet(7)),
         ];
         assert_eq!(pick(&items, &host, &ep(5.0)).unwrap().link, magnet(7));
+    }
+
+    #[test]
+    fn a_film_s_release_fits_its_one_episode() {
+        let host = offer("[MTBB] The Disappearance of Haruhi Suzumiya (v2) (BD 1080p) [8D032564]");
+        let items = vec![release(
+            "[MTBB] The Disappearance of Haruhi Suzumiya (v2) (BD 1080p) [8D032564]",
+            &magnet(1),
+        )];
+        assert_eq!(pick(&items, &host, &ep(1.0)).unwrap().link, magnet(1));
+        assert_eq!(pick(&items, &host, &ep(2.0)), None);
+    }
+
+    #[test]
+    fn a_first_episode_also_searches_without_its_number() {
+        let q = queries(
+            &offer("[MTBB] The Disappearance of Haruhi Suzumiya (BD 1080p)"),
+            &ep(1.0),
+        );
+        assert!(
+            q.iter()
+                .any(|q| q == "The Disappearance of Haruhi Suzumiya"),
+            "{q:?}"
+        );
+        assert!(q.iter().any(|q| q == "Cowboy Bebop"), "{q:?}");
+        let q = queries(&offer("[Lantern] Cowboy Bebop - 05 (1080p)"), &ep(5.0));
+        assert!(!q.iter().any(|q| q == "Cowboy Bebop"), "{q:?}");
     }
 
     #[test]
