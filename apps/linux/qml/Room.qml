@@ -213,6 +213,9 @@ QtObject {
             var was = root.info ? String(root.info.fetch || "") : ""
             root.info = room && room.code ? room : null
             if (!root.info) { root.episode = null; return }
+            // The room moved on: what was found for the last episode no longer holds
+            var now = root.info.episode ? String(root.info.episode.episode_key) : ""
+            if (root.episode && String(root.episode.episode.episode_key) !== now) root.episode = null
             root.settle()
             // A Get media that stopped short says why in the line the core logged with it,
             // which the bridge sets before it passes the room on

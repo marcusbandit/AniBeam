@@ -728,6 +728,14 @@ fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreErr
             return Err(not_in_room());
         }
         let mine = episode::of_session(&s);
+        // A member's player still on another episode, as the room moves on,
+        // does not take the room's: it stays as it was, Get media on offer
+        if !host
+            && let Some(room) = &a.episode
+            && !episode::plays(&mine, room)
+        {
+            return Ok(a.info());
+        }
         // The room's episode, unless this session moves the room off it or
         // picks the first one
         let room_episode = a
