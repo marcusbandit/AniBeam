@@ -118,6 +118,7 @@ fn hello(name: &str, host_key: Option<&str>) -> ClientMsg {
         client: "anibeam/test".into(),
         host_key: host_key.map(Into::into),
         rejoin_key: None,
+        key: None,
     }
 }
 
@@ -301,6 +302,7 @@ async fn status_reaches_everyone() {
         &mut bea,
         &ClientMsg::Status {
             ready: Ready::Ready,
+            progress: None,
         },
     )
     .await;

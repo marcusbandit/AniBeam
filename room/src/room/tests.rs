@@ -27,6 +27,7 @@ fn hello(name: &str, host_key: Option<&str>, rejoin_key: Option<&str>) -> Client
         client: "anibeam/2.5.0".into(),
         host_key: host_key.map(Into::into),
         rejoin_key: rejoin_key.map(Into::into),
+        key: None,
     }
 }
 
@@ -113,6 +114,7 @@ fn another_protocol_version_is_refused() {
         client: "anibeam/9".into(),
         host_key: None,
         rejoin_key: None,
+        key: None,
     };
     let outs = r.handle(ConnId(1), msg, 0);
     assert_eq!(error_code(&outs), Some(ErrorCode::Proto));
@@ -383,6 +385,7 @@ fn only_the_host_changes_the_episode() {
         ConnId(2),
         ClientMsg::Status {
             ready: Ready::Ready,
+            progress: None,
         },
         11,
     );
@@ -429,6 +432,7 @@ fn status_updates_the_member_list_for_everyone() {
         ConnId(2),
         ClientMsg::Status {
             ready: Ready::Missing,
+            progress: None,
         },
         10,
     );
@@ -826,4 +830,185 @@ fn a_new_room_is_paused_at_zero() {
     );
     assert!(r.members().is_empty());
     assert!(!r.is_closed());
+}
+
+// Sealed payloads, keys and download progress (#889)
+
+fn hello_keyed(name: &str, key: &str) -> ClientMsg {
+    ClientMsg::Hello {
+        name: name.into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: Some(key.into()),
+    }
+}
+
+fn seal(to: MemberId, data: &str) -> ClientMsg {
+    ClientMsg::Seal {
+        to,
+        data: data.into(),
+    }
+}
+
+#[test]
+fn a_sealed_payload_goes_to_its_member_only_unread() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    let (bea, _) = join(&mut r, 2, "Bea", None, 0);
+    join(&mut r, 3, "Cy", None, 0);
+    let data = "bm90IGZvciB0aGUgcmVsYXk=";
+    let outs = r.handle(ConnId(2), seal(ann, data), 10);
+    assert_eq!(
+        outs,
+        vec![Out {
+            to: To::One(ConnId(1)),
+            msg: ServerMsg::Sealed {
+                from: bea,
+                data: data.into()
+            }
+        }]
+    );
+}
+
+#[test]
+fn a_sealed_payload_over_the_cap_goes_nowhere() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let outs = r.handle(ConnId(2), seal(ann, &"A".repeat(MAX_SEALED)), 10);
+    assert!(matches!(outs[0].msg, ServerMsg::Sealed { .. }));
+    let outs = r.handle(ConnId(2), seal(ann, &"A".repeat(MAX_SEALED + 1)), 20);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].to, To::One(ConnId(2)));
+    assert_eq!(error_code(&outs), Some(ErrorCode::BadMessage));
+    assert!(!outs[0].msg.ends_connection());
+}
+
+#[test]
+fn a_sealed_payload_to_nobody_or_to_oneself_is_refused() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    let (bea, _) = join(&mut r, 2, "Bea", None, 0);
+    for to in [bea, MemberId(99)] {
+        let outs = r.handle(ConnId(2), seal(to, "eA=="), 10);
+        assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed), "{to:?}");
+        assert!(!outs[0].msg.ends_connection());
+    }
+    // Someone who dropped is passed nothing while away
+    r.disconnect(ConnId(1), 20);
+    let outs = r.handle(ConnId(2), seal(ann, "eA=="), 30);
+    assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed));
+}
+
+#[test]
+fn sealed_payloads_count_against_the_rate() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let mut passed = 0;
+    let mut limited = false;
+    for _ in 0..(RATE_PER_SEC + 5) {
+        let outs = r.handle(ConnId(2), seal(ann, "eA=="), 100);
+        match outs.first().map(|o| &o.msg) {
+            Some(ServerMsg::Sealed { .. }) => passed += 1,
+            Some(ServerMsg::Error {
+                code: ErrorCode::RateLimited,
+                ..
+            }) => limited = true,
+            _ => {}
+        }
+    }
+    assert_eq!(passed, RATE_PER_SEC);
+    assert!(limited);
+}
+
+#[test]
+fn keys_show_in_the_member_list_and_bad_ones_do_not() {
+    let mut r = room();
+    let key = "A".repeat(43) + "=";
+    let outs = r.handle(ConnId(1), hello_keyed("Ann", &key), 0);
+    welcome(&outs, 1);
+    r.handle(ConnId(2), hello_keyed("Bea", "not a key!"), 0);
+    r.handle(ConnId(3), hello_keyed("Cy", &"A".repeat(MAX_KEY + 1)), 0);
+    let keys: Vec<Option<String>> = r.members().into_iter().map(|m| m.key).collect();
+    assert_eq!(keys, vec![Some(key), None, None]);
+}
+
+#[test]
+fn a_rejoin_brings_its_new_key() {
+    let mut r = room();
+    let outs = r.handle(ConnId(1), hello_keyed("Ann", "b2xk"), 0);
+    let (_, rejoin) = welcome(&outs, 1);
+    r.disconnect(ConnId(1), 10);
+    let again = ClientMsg::Hello {
+        name: "Ann".into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: Some(rejoin),
+        key: Some("bmV3".into()),
+    };
+    r.handle(ConnId(2), again, 20);
+    assert_eq!(r.members()[0].key.as_deref(), Some("bmV3"));
+}
+
+#[test]
+fn download_progress_shows_for_everyone_until_ready() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let progress = Progress {
+        percent: 40.0,
+        eta: Some(75),
+    };
+    let status = |ready, progress| ClientMsg::Status { ready, progress };
+    let outs = r.handle(ConnId(2), status(Ready::Missing, Some(progress)), 10);
+    assert_eq!(outs[0].to, To::All);
+    let ServerMsg::Members { members } = &outs[0].msg else {
+        panic!("{outs:?}")
+    };
+    assert_eq!(members[1].progress, Some(progress));
+    // Nonsense is dropped rather than shown
+    let silly = Progress {
+        percent: 400.0,
+        eta: None,
+    };
+    r.handle(ConnId(2), status(Ready::Missing, Some(silly)), 20);
+    assert_eq!(r.members()[1].progress, None);
+    // Ready carries none, whatever the status said
+    r.handle(ConnId(2), status(Ready::Ready, Some(progress)), 30);
+    assert_eq!(r.members()[1].progress, None);
+}
+
+#[test]
+fn a_new_episode_clears_download_progress() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let fetching = ClientMsg::Status {
+        ready: Ready::Missing,
+        progress: Some(Progress {
+            percent: 10.0,
+            eta: None,
+        }),
+    };
+    r.handle(ConnId(2), fetching, 10);
+    r.handle(ConnId(1), ClientMsg::Episode { episode: ep("e2") }, 20);
+    assert!(r.members().iter().all(|m| m.progress.is_none()));
+}
+
+#[test]
+fn a_room_stored_before_keys_reads_back() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    let mut v = serde_json::to_value(&r).unwrap();
+    for slot in v["slots"].as_array_mut().unwrap() {
+        let slot = slot.as_object_mut().unwrap();
+        slot.remove("key");
+        slot.remove("progress");
+    }
+    let back: Room = serde_json::from_value(v).unwrap();
+    assert_eq!(back.members()[0].key, None);
 }
