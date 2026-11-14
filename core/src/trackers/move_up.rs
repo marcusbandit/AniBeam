@@ -13,13 +13,14 @@ use rusqlite::{Connection, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::trackers::{accounts, writes};
 
 /// `PreviewListMove`: [`preview`] off the reader connection.
-pub(crate) fn preview_call(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
+pub(crate) fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
     Ok(Reply::ListMove {
-        rows: core.store.read(|c| preview(c, t))?,
+        rows: services.store.read(|c| preview(c, t))?,
     })
 }
 
@@ -101,6 +102,7 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
         ));
     }
     let connected = core
+        .services
         .store
         .read(|c| accounts::load_row(c, t))?
         .is_some_and(|row| row.connected_at.is_some());
@@ -108,7 +110,7 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
         return Err(CoreError::NotConnected { tracker: t });
     }
     let owner = core.owner()?;
-    let jobs = owner.jobs.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(jobs.start(JobKind::MoveLists, move |ctx| async move {
         run(owner, ctx, t, series).await
     }))
@@ -126,6 +128,7 @@ async fn run(
     picked: Vec<u64>,
 ) -> Result<Finished, CoreError> {
     let rows: Vec<MoveRow> = core
+        .services
         .store
         .write_async(move |c| preview(c, t))
         .await?
@@ -133,6 +136,7 @@ async fn run(
         .filter(|r| picked.contains(&r.series))
         .collect();
     let user_id = core
+        .services
         .store
         .write_async(move |c| accounts::load_row(c, t))
         .await?
@@ -145,6 +149,7 @@ async fn run(
         let series = row.series;
         // A series gone since the preview is that series' failure alone.
         let Ok(target) = core
+            .services
             .store
             .write_async(move |c| writes::targets(c, series))
             .await
@@ -187,7 +192,8 @@ async fn run(
             // The tracker now has the newer word, whether or not its reply
             // carried a stamp, so the preview never offers this row again.
             let now = crate::time::now_secs();
-            core.store
+            core.services
+                .store
                 .write_async(move |c| {
                     c.execute(
                         "UPDATE tracker_entries SET updated_at = MAX(COALESCE(updated_at, 0), ?3)
@@ -201,7 +207,7 @@ async fn run(
         } else if refused {
             failed += 1;
         }
-        if let Ok(Some(card)) = crate::metadata::apply::card_for(&core, series).await {
+        if let Ok(Some(card)) = crate::metadata::apply::card_for(&core.services, series).await {
             ctx.changed(card);
         }
     }

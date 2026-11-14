@@ -89,7 +89,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     if files.is_empty() {
         return Ok(Reply::Ok);
     }
-    let (rows, sources, title) = core.store.read(|c| {
+    let (rows, sources, title) = core.services.store.read(|c| {
         let mut rows = Vec::new();
         for id in &files {
             let row = c
@@ -147,7 +147,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
                 "moved to the trash"
             }
         );
-        core.bus.say(
+        core.services.bus.say(
             Level::Info,
             Stage::Library,
             crate::words!(
@@ -190,9 +190,9 @@ type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
 /// does, and a file a torrent is still writing stays. Every path is checked first and one
 /// that fails refuses the lot. Each series it touched is scanned again.
 pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let now = crate::time::now();
-    let (picked, sources) = core.store.read(|c| {
+    let (picked, sources) = core.services.store.read(|c| {
         let snap = super::snapshot::Snapshot::load(c, &images_dir, now, None)?;
         let mut picked: Vec<Picked> = Vec::new();
         for row in &snap.series {
@@ -298,7 +298,8 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
                 place = trash_where()
             )
         };
-        core.bus
+        core.services
+            .bus
             .say(Level::Info, Stage::Library, plain, line, EventBody::Notice);
     }
     // A trash that fails part way has still moved what it moved: every series is read again

@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::releases::native::Native;
 use crate::releases::stats;
 
@@ -72,7 +73,7 @@ pub(super) async fn subscribe(
     let name = paths::name_for(name, items, query)?;
     let spec = native.preview(query, endpoint, items).await?;
     let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
+    let saving = paths::resolve(&core.services, &qbt).await?;
     // Naming is check-then-act: one subscription at a time
     let _one = core.downloads.rules.lock().await;
     let name = unique_name(&qbt, &name, &spec).await?;
@@ -187,12 +188,12 @@ pub(super) async fn download(
     let name = paths::name_for(name, items, FALLBACK_NAME)?;
     let links = checked_links(items.iter().map(|i| i.link.as_str()))?;
     let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
+    let saving = paths::resolve(&core.services, &qbt).await?;
     let save_path = match save_path {
         Some(p) => p.to_string(),
         None => paths::join(&saving.save_base, &name),
     };
-    add_links(core, &qbt, &links, &save_path, &saving).await
+    add_links(&core.services, &qbt, &links, &save_path, &saving).await
 }
 
 /// One torrent straight into the films' folder, with no folder of its own
@@ -200,8 +201,8 @@ pub(super) async fn download(
 pub(super) async fn movie(core: &Arc<Core>, link: &str) -> Result<AddedTorrents, CoreError> {
     let links = checked_links([link])?;
     let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
-    add_links(core, &qbt, &links, &saving.movie_path, &saving).await
+    let saving = paths::resolve(&core.services, &qbt).await?;
+    add_links(&core.services, &qbt, &links, &saving.movie_path, &saving).await
 }
 
 /// The upload's file name: the link's last path segment, decoded.
@@ -264,7 +265,7 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
 /// a URL. One qBittorrent already has is not uploaded again. The hashes
 /// are the ones known up front: an uploaded file's and a magnet's.
 async fn add_links(
-    core: &Core,
+    services: &Services,
     qbt: &QbtClient,
     links: &[String],
     save_path: &str,
@@ -278,7 +279,7 @@ async fn add_links(
     let mut fetched = if web.is_empty() {
         HashMap::new()
     } else {
-        stats::fetch_torrents(core.http.as_ref(), &web, FETCH_DEADLINE).await
+        stats::fetch_torrents(services.http.as_ref(), &web, FETCH_DEADLINE).await
     };
     let file_hashes: HashMap<String, String> = fetched
         .iter()
@@ -347,7 +348,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
     for t in qbt.torrents().await? {
         *counts.entry(paths::norm(&t.save_path)).or_default() += 1;
     }
-    let here = files_here(core)?;
+    let here = files_here(&core.services)?;
     let mut out: Vec<SubscriptionRule> = rules
         .iter()
         .map(|(name, rule)| {
@@ -434,7 +435,7 @@ pub(super) async fn remove(
             crate::i18n::tr("core-downloads-native-no-names", &[]),
         ));
     }
-    let here = files_here(core)?;
+    let here = files_here(&core.services)?;
     if files && !torrents && !here {
         return Err(CoreError::invalid(
             "files",
@@ -442,11 +443,11 @@ pub(super) async fn remove(
         ));
     }
     let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
+    let saving = paths::resolve(&core.services, &qbt).await?;
     let _one = core.downloads.rules.lock().await;
     let plans = plan(&qbt, &unique, torrents, files, here, &saving.save_base).await?;
     if files {
-        confined(core, &plans, &saving, here)?;
+        confined(&core.services, &plans, &saving, here)?;
     }
     if !dry_run {
         execute(&qbt, &plans, torrents, files, here).await?;
@@ -539,7 +540,12 @@ async fn plan(
 /// Refuses files outside the save folders (anirss `check_confined`), and on
 /// this machine a folder that is the home folder, holds it, or holds a
 /// library folder, as the trash's own checks refuse them.
-fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Result<(), CoreError> {
+fn confined(
+    services: &Services,
+    plans: &[Plan],
+    saving: &SavePaths,
+    here: bool,
+) -> Result<(), CoreError> {
     let roots = [saving.save_base.as_str(), saving.movie_path.as_str()];
     let outside: Vec<&str> = plans
         .iter()
@@ -559,9 +565,9 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
         return Ok(());
     }
     for p in plans {
-        super::not_a_library_show(core, &p.save_path)?;
+        super::not_a_library_show(services, &p.save_path)?;
     }
-    let sources: Vec<String> = core.store.read(|c| {
+    let sources: Vec<String> = services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM sources")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         let mut all = Vec::new();
@@ -633,8 +639,8 @@ async fn execute(
 // Disk ------------------------------------------------------------------------
 
 /// Whether the client in use saves on this machine (`settings::files_here`).
-fn files_here(core: &Core) -> Result<bool, CoreError> {
-    Ok(settings::files_here(&settings::read(core)?))
+fn files_here(services: &Services) -> Result<bool, CoreError> {
+    Ok(settings::files_here(&settings::read(services)?))
 }
 
 /// The files under `dir` and their bytes, links not followed; nothing for

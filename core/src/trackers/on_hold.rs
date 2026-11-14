@@ -356,7 +356,12 @@ pub(crate) async fn after_refresh(core: &Arc<Core>) {
     if !RUNS_HERE {
         return;
     }
-    match core.store.write_async(|c| prefs::load_preferences(c)).await {
+    match core
+        .services
+        .store
+        .write_async(|c| prefs::load_preferences(c))
+        .await
+    {
         Ok(p) if p.on_hold_auto => {
             start(core);
         }
@@ -378,7 +383,7 @@ pub(crate) fn kick(core: &Arc<Core>) {
         return;
     }
     let now = time::now();
-    let read = core.store.read(|c| {
+    let read = core.services.store.read(|c| {
         let (mut connected, mut stale) = (false, false);
         for t in [Tracker::Anilist, Tracker::Mal] {
             if let Some(row) = accounts::load_row(c, t)?
@@ -406,7 +411,7 @@ pub(crate) fn kick(core: &Arc<Core>) {
 /// the running one's id.
 pub fn start(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(
+    core.services.jobs.clone().start(
         JobKind::OnHold,
         move |ctx| async move { run(owner, ctx).await },
     )
@@ -430,6 +435,7 @@ struct Pass {
 
 async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
     let p = core
+        .services
         .store
         .write_async(|c| prefs::load_preferences(c))
         .await?;
@@ -445,6 +451,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
         let row = core
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -464,6 +471,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
         }
         let now = time::now_secs();
         let due = core
+            .services
             .store
             .write_async(move |c| due(c, t, now, days))
             .await?;
@@ -512,6 +520,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
                 return Err(e);
             }
             let on = core
+                .services
                 .store
                 .write_async(|c| prefs::load_preferences(c))
                 .await?
@@ -615,7 +624,7 @@ async fn move_one(
 ) -> Result<Option<&'static str>, CoreError> {
     let media_id = entry.media_id;
     let cached = core
-        .store
+        .services.store
         .write_async(move |c| {
             c.query_row(
                 "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
@@ -636,6 +645,7 @@ async fn move_one(
     };
     let (anilist_id, mal_id, progress) = (entry.anilist_id, entry.mal_id, live.progress);
     let here = core
+        .services
         .store
         .write_async(move |c| local(c, t, anilist_id, mal_id, progress))
         .await?;
@@ -643,9 +653,10 @@ async fn move_one(
         return Ok(Some(why));
     }
     let stamp = writes::send_status(core, t, media_id, token, ListStatus::Paused).await?;
-    writes::record_status(core, t, media_id, ListStatus::Paused, stamp).await?;
-    let images_dir = core.paths.images_dir();
+    writes::record_status(&core.services, t, media_id, ListStatus::Paused, stamp).await?;
+    let images_dir = core.services.paths.images_dir();
     let cards = core
+        .services
         .store
         .write_async(move |c| {
             let ids = series_for(c, t, media_id)?;
@@ -779,7 +790,7 @@ pub(crate) fn played(core: &Core, series: u64) {
     if !RUNS_HERE {
         return;
     }
-    let paused = match core.store.read(|c| paused_entries(c, series)) {
+    let paused = match core.services.store.read(|c| paused_entries(c, series)) {
         Ok(paused) => paused,
         Err(e) => {
             tracing::debug!("On hold: series {series} could not be read: {e}");
@@ -792,7 +803,7 @@ pub(crate) fn played(core: &Core, series: u64) {
     let Some(owner) = core.arc() else {
         return;
     };
-    let jobs = owner.jobs.clone();
+    let jobs = owner.services.jobs.clone();
     jobs.start(JobKind::SetStatus, move |ctx| async move {
         back_to_watching(owner, ctx, series, paused).await
     });
@@ -865,7 +876,7 @@ async fn back_to_watching(
             }
             let stamp =
                 writes::send_status(&core, t, media_id, &token, ListStatus::Watching).await?;
-            writes::record_status(&core, t, media_id, ListStatus::Watching, stamp).await?;
+            writes::record_status(&core.services, t, media_id, ListStatus::Watching, stamp).await?;
             Ok::<bool, CoreError>(true)
         };
         match attempt.await {
@@ -885,10 +896,11 @@ async fn back_to_watching(
             }
         }
     }
-    if let Some(card) = card_for(&core, series).await? {
+    if let Some(card) = card_for(&core.services, series).await? {
         ctx.changed(card);
     }
     let name = core
+        .services
         .store
         .write_async(move |c| {
             c.query_row(

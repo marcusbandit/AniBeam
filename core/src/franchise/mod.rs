@@ -42,7 +42,7 @@ pub(crate) fn graph_call(core: &Core, series: u64) -> Result<Reply, CoreError> {
 /// of one card is not a graph.
 pub fn graph(core: &Arc<Core>, series: u64) -> Result<Option<FranchiseLayout>, CoreError> {
     let now = time::now_secs();
-    let built = core.store.read(|conn| {
+    let built = core.services.store.read(|conn| {
         let matched: Option<Option<i64>> = conn
             .query_row(
                 "SELECT anilist_id FROM series WHERE id = ?1",

@@ -16,6 +16,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::images;
 use crate::jobs::Finished;
@@ -72,6 +73,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
     let per_page = limit.clamp(1, MAX_RESULTS);
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::Search, move |_ctx| async move {
@@ -130,6 +132,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
     };
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ResolveLink, move |_ctx| async move {
@@ -172,9 +175,10 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
 /// carries its own season. Electron's ` (Season N)` display suffix leaves
 /// with its `title` field.
 pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64, CoreError> {
-    let folder = folder_name(core, series)?;
+    let folder = folder_name(&core.services, series)?;
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ApplyMatch, move |ctx| async move {
@@ -193,7 +197,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                 MatchTarget::Tvmaze { id } => {
                     fetch::fetch_and_write_tvmaze(&owner, series, id, true, time::now_secs())
                         .await?;
-                    if let Some(card) = card_for(&owner, series).await? {
+                    if let Some(card) = card_for(&owner.services, series).await? {
                         ctx.changed(card);
                     }
                     return Ok(Finished {
@@ -208,6 +212,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     None => {
                         let now = time::now_secs();
                         owner
+                            .services
                             .store
                             .tx_async(move |tx| {
                                 fetch::write_match_only(
@@ -221,7 +226,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                                 )
                             })
                             .await?;
-                        if let Some(card) = card_for(&owner, series).await? {
+                        if let Some(card) = card_for(&owner.services, series).await? {
                             ctx.changed(card);
                         }
                         // A MAL-only match carries no record format.
@@ -242,6 +247,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // exactly what the step exists to avoid.
             let now = time::now_secs();
             owner
+                .services
                 .store
                 .tx_async(move |tx| {
                     // The series row's `anilist_id` is a foreign key, so the
@@ -268,7 +274,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     )
                 })
                 .await?;
-            if let Some(card) = card_for(&owner, series).await? {
+            if let Some(card) = card_for(&owner.services, series).await? {
                 ctx.emit(
                     Level::Debug,
                     "match applied",
@@ -285,6 +291,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // anybody knows and it stays.
             if let Some(mal_id) = pasted_mal {
                 owner
+                    .services
                     .store
                     .write_async(move |c| {
                         c.execute(
@@ -295,7 +302,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     })
                     .await?;
             }
-            if let Some(card) = card_for(&owner, series).await? {
+            if let Some(card) = card_for(&owner.services, series).await? {
                 ctx.changed(card);
             }
 
@@ -311,7 +318,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
 /// Starts the Refresh job for one series: the same fetch the match ran,
 /// against the id the series already carries.
 pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
-    let target = core.store.read(|c| refresh_target(c, series))?;
+    let target = core.services.store.read(|c| refresh_target(c, series))?;
     let Some(target) = target else {
         return Err(CoreError::NotFound {
             what: Entity::Series,
@@ -333,13 +340,14 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
     };
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::Refresh, move |ctx| async move {
             let folder = target.folder;
             let (refreshed, failed) = match fetch_id(&owner, series, id, target.confirmed).await {
                 Ok(()) => {
-                    if let Some(card) = card_for(&owner, series).await? {
+                    if let Some(card) = card_for(&owner.services, series).await? {
                         ctx.changed(card);
                     }
                     (1, 0)
@@ -460,63 +468,70 @@ fn start_refresh_walk(
     sql: &'static str,
 ) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(kind, move |ctx| async move {
-        let work = owner.store.write_async(move |c| candidates(c, sql)).await?;
-        let progress_label = match label {
-            "refresh" => tr("core-metadata-progress-refresh", &[]),
-            _ => tr("core-metadata-progress-backfill", &[]),
-        };
-        let total = work.len() as u64;
-        let (mut refreshed, mut failed) = (0u64, 0u64);
-        for (done, c) in work.into_iter().enumerate() {
-            ctx.checkpoint()?;
-            ctx.progress(done as u64, Some(total), &progress_label);
-            match fetch_id(&owner, c.series, c.id, c.confirmed).await {
-                Ok(()) => {
-                    refreshed += 1;
-                    if let Some(card) = card_for(&owner, c.series).await? {
-                        ctx.changed(card);
+    core.services
+        .jobs
+        .clone()
+        .start(kind, move |ctx| async move {
+            let work = owner
+                .services
+                .store
+                .write_async(move |c| candidates(c, sql))
+                .await?;
+            let progress_label = match label {
+                "refresh" => tr("core-metadata-progress-refresh", &[]),
+                _ => tr("core-metadata-progress-backfill", &[]),
+            };
+            let total = work.len() as u64;
+            let (mut refreshed, mut failed) = (0u64, 0u64);
+            for (done, c) in work.into_iter().enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(done as u64, Some(total), &progress_label);
+                match fetch_id(&owner, c.series, c.id, c.confirmed).await {
+                    Ok(()) => {
+                        refreshed += 1;
+                        if let Some(card) = card_for(&owner.services, c.series).await? {
+                            ctx.changed(card);
+                        }
+                    }
+                    // A provider saying stop, or nothing answering at all, ends
+                    // the walk rather than counting one failed series and
+                    // asking again for the next.
+                    Err(e) if provider_stopped(&e) => return Err(e),
+                    Err(e) => {
+                        failed += 1;
+                        ctx.emit(
+                            Level::Warn,
+                            format!("refresh failed for {}: {}", c.folder, message_of(&e)),
+                            EventBody::Notice,
+                        );
                     }
                 }
-                // A provider saying stop, or nothing answering at all, ends
-                // the walk rather than counting one failed series and
-                // asking again for the next.
-                Err(e) if provider_stopped(&e) => return Err(e),
-                Err(e) => {
-                    failed += 1;
-                    ctx.emit(
-                        Level::Warn,
-                        format!("refresh failed for {}: {}", c.folder, message_of(&e)),
-                        EventBody::Notice,
-                    );
-                }
             }
-        }
-        // Both walks write records, so both bring covers, banners and
-        // portraits in, and both owe the sweep that keeps the directory
-        // from only ever growing.
-        images::sweep_after(&owner, label).await;
-        let said = match (refreshed, failed) {
-            (0, 0) => None,
-            (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),
-            (0, f) => Some(crate::words!("core-metadata-update-failed-many", count = f)),
-            (n, f) => Some(crate::words!(
-                "core-metadata-updated-some",
-                count = n,
-                failed = f
-            )),
-        };
-        Ok(Finished {
-            plain: said,
-            level: if failed == 0 {
-                Level::Info
-            } else {
-                Level::Warn
-            },
-            message: format!("{label}: {refreshed} refreshed, {failed} failed"),
-            body: EventBody::RefreshFinished { refreshed, failed },
+            // Both walks write records, so both bring covers, banners and
+            // portraits in, and both owe the sweep that keeps the directory
+            // from only ever growing.
+            images::sweep_after(&owner, label).await;
+            let said = match (refreshed, failed) {
+                (0, 0) => None,
+                (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),
+                (0, f) => Some(crate::words!("core-metadata-update-failed-many", count = f)),
+                (n, f) => Some(crate::words!(
+                    "core-metadata-updated-some",
+                    count = n,
+                    failed = f
+                )),
+            };
+            Ok(Finished {
+                plain: said,
+                level: if failed == 0 {
+                    Level::Info
+                } else {
+                    Level::Warn
+                },
+                message: format!("{label}: {refreshed} refreshed, {failed} failed"),
+                body: EventBody::RefreshFinished { refreshed, failed },
+            })
         })
-    })
 }
 
 fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, CoreError> {
@@ -647,8 +662,8 @@ fn refresh_target(
         .optional()?)
 }
 
-fn folder_name(core: &Core, series: u64) -> Result<String, CoreError> {
-    let folder: Option<String> = core.store.read(|c| {
+fn folder_name(services: &Services, series: u64) -> Result<String, CoreError> {
+    let folder: Option<String> = services.store.read(|c| {
         Ok(c.query_row(
             "SELECT folder_name FROM series WHERE id = ?1",
             params![series as i64],
@@ -664,9 +679,12 @@ fn folder_name(core: &Core, series: u64) -> Result<String, CoreError> {
 
 /// The one card a single-series job reports. `None` when the series went
 /// away underneath the job, which is not worth failing over.
-pub(crate) async fn card_for(core: &Core, series: u64) -> Result<Option<SeriesCard>, CoreError> {
-    let dir = core.paths.images_dir();
-    let cards = core
+pub(crate) async fn card_for(
+    services: &Services,
+    series: u64,
+) -> Result<Option<SeriesCard>, CoreError> {
+    let dir = services.paths.images_dir();
+    let cards = services
         .store
         .write_async(move |c| cards::cards_for(c, &dir, &[series]))
         .await?;

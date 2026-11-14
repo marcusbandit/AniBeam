@@ -206,6 +206,7 @@ fn load_or_make(path: &Path) -> Option<DeviceKey> {
 /// Reads the paired keys from the store into the host.
 pub fn load(core: &Core) {
     match core
+        .services
         .store
         .read(|c| settings::get_or_default::<Vec<Paired>>(c, settings::PAIRED_DEVICES))
     {
@@ -228,7 +229,7 @@ pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
         key: proof::hex(&bytes),
         name: name.to_string(),
     };
-    let list = core.store.write(move |c| {
+    let list = core.services.store.write(move |c| {
         let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
         list.retain(|p| p.key != entry.key);
         list.push(entry);
@@ -242,7 +243,7 @@ pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
 /// Forgets the pairing with `key`.
 pub fn unpair(core: &Core, key: &str) -> Result<(), CoreError> {
     let key = key.to_ascii_lowercase();
-    let list = core.store.write(move |c| {
+    let list = core.services.store.write(move |c| {
         let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
         list.retain(|p| p.key != key);
         settings::set(c, settings::PAIRED_DEVICES, &list)?;

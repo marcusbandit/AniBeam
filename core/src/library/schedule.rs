@@ -6,7 +6,7 @@
 use rusqlite::{Connection, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::library::cards;
 use crate::library::schedule_text::{SPAN_MAX, fold, parse};
 use crate::time as clock;
@@ -136,13 +136,13 @@ pub fn parse_call(text: &str) -> Reply {
 
 /// `Call::SetScheduleNotes`: replaces one season's notes of a series.
 pub fn set_notes(
-    core: &Core,
+    services: &Services,
     series: u64,
     season: Option<u32>,
     notes: Vec<ScheduleNote>,
 ) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let card = core
+    let images_dir = services.paths.images_dir();
+    let card = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?
         .into_iter()
@@ -163,7 +163,7 @@ pub fn set_notes(
     let rows = fold(rows);
     let count = rows.len();
     let now = clock::now_secs();
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         let tx = c.transaction()?;
         tx.execute(
             "DELETE FROM schedule_notes WHERE series_id = ?1 AND season IS ?2",
@@ -189,7 +189,7 @@ pub fn set_notes(
         tx.commit()?;
         Ok(())
     })?;
-    let cards = core
+    let cards = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
@@ -204,7 +204,7 @@ pub fn set_notes(
             format!("{title}'s schedule set by hand"),
         )
     };
-    core.bus.say(
+    services.bus.say(
         Level::Info,
         Stage::Library,
         said,

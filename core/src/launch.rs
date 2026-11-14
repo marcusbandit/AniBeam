@@ -115,7 +115,7 @@ fn after_scan(core: &Arc<Core>) {
     apply::backfill_stubs(core);
     crawl::start_gap_crawl(core);
     airing::start_refresh_library(core);
-    imdb::start_refresh(core);
+    imdb::start_refresh(&core.services);
     cache::start_refresh(core, None, false);
     images::start_fill(core);
     // The followed shows' next episodes, from the rules last read (#215)
@@ -125,7 +125,7 @@ fn after_scan(core: &Arc<Core>) {
     // rows and one walk of the image directory, so it goes on the runtime
     // with nothing waiting on it.
     let owner = core.clone();
-    core.handle.spawn(async move {
+    core.services.handle.spawn(async move {
         images::sweep_after(&owner, "a launch").await;
     });
 }

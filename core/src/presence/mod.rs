@@ -562,6 +562,7 @@ pub(crate) fn close(core: &Core, session: u64) {
 /// The switch at launch, from the stored preference.
 pub(crate) fn sync(core: &Core) {
     let on = core
+        .services
         .store
         .read(prefs::load_preferences)
         .map(|p| p.discord_presence)
@@ -674,7 +675,7 @@ fn arm(core: &Core, session: u64, generation: u64) {
     let weak = Arc::downgrade(&owner);
     drop(owner);
     let wait = Duration::from_millis(core.presence.pause_clear_ms.load(Ordering::Relaxed));
-    core.handle.spawn(async move {
+    core.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
         if let Some(core) = weak.upgrade() {
             elapsed(&core, session, generation);

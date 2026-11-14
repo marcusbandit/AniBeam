@@ -19,6 +19,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
@@ -277,9 +278,12 @@ pub fn list(
 /// The `ListAiringNow` call: the cached season at once, and the id of a
 /// refresh already running so the page can say one is on its way.
 pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let now = time::now_secs();
-    let listed = core.store.read(|c| list(c, &images_dir, pick, now))?;
+    let listed = core
+        .services
+        .store
+        .read(|c| list(c, &images_dir, pick, now))?;
     Ok(Reply::AiringNow {
         now: listed,
         refreshing: running(core, pick),
@@ -290,7 +294,8 @@ pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
 fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
     let key = season_of(pick, time::now_secs()).key;
     let id = *core.airing_reads.lock().unwrap().get(&key)?;
-    core.jobs
+    core.services
+        .jobs
         .list()
         .into_iter()
         .any(|j| j.id == id)
@@ -304,7 +309,7 @@ fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
 pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply, CoreError> {
     let now = time::now_secs();
     let key = season_of(pick, now).key;
-    let fetched_at: Option<i64> = core.store.read(|c| {
+    let fetched_at: Option<i64> = core.services.store.read(|c| {
         c.query_row(
             "SELECT fetched_at FROM season_fetches WHERE season = ?1",
             params![key],
@@ -319,12 +324,13 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
     }
     let mut reads = core.airing_reads.lock().unwrap();
     if let Some(id) = reads.get(&key).copied()
-        && core.jobs.list().into_iter().any(|j| j.id == id)
+        && core.services.jobs.list().into_iter().any(|j| j.id == id)
     {
         return Ok(Reply::Started { job: id });
     }
     let owner = core.owner()?;
     let job = core
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshAiringNow, move |_| async move {
@@ -407,7 +413,8 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
     let count = shows.len();
     let next_key = season_of(SeasonPick::Next, now).key;
     let key = season.key.clone();
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| write(tx, &key, &next_key, &shows, &aired, now))
         .await?;
     // Every cover before the event, so the cards draw local files.
@@ -688,9 +695,13 @@ fn prune_not_interested(tx: &Transaction) -> Result<(), CoreError> {
 /// they read now, from a season row or else the library's media row, so
 /// Settings can name it after every season has moved on. Marking twice
 /// keeps the first moment; taking the mark back is a plain delete.
-pub fn set_not_interested(core: &Core, anilist_id: u64, on: bool) -> Result<Reply, CoreError> {
+pub fn set_not_interested(
+    services: &Services,
+    anilist_id: u64,
+    on: bool,
+) -> Result<Reply, CoreError> {
     let now = time::now_secs();
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         if !on {
             c.execute(
                 "DELETE FROM not_interested WHERE anilist_id = ?1",
@@ -737,9 +748,9 @@ pub fn set_not_interested(core: &Core, anilist_id: u64, on: bool) -> Result<Repl
 }
 
 /// The `ListNotInterested` call: newest mark first.
-pub fn list_not_interested(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let shows = core.store.read(|c| {
+pub fn list_not_interested(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let shows = services.store.read(|c| {
         let mut stmt = c.prepare(
             "SELECT n.anilist_id, n.title, i.path, n.marked_at FROM not_interested n
              LEFT JOIN images i ON i.url = n.cover_url
@@ -768,7 +779,7 @@ pub fn list_not_interested(core: &Core) -> Result<Reply, CoreError> {
 /// for it (a MAL-only account and a show AniList gives no MAL id), and
 /// `NotConnected` when no tracker is connected at all.
 pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let (targets, title) = core.store.read(|c| {
+    let (targets, title) = core.services.store.read(|c| {
         let lang = prefs::load_preferences(c)?.title_language;
         let found = c
             .query_row(
@@ -849,6 +860,7 @@ pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     }
     let owner = core.owner()?;
     let job = core
+        .services
         .jobs
         .clone()
         .start(JobKind::SetStatus, move |ctx| async move {
@@ -891,13 +903,21 @@ async fn plan(
             if let Some(live) = live
                 && let Some(status) = live.status
             {
-                writes::record_progress(&core, t, media_id, live.progress, status, live.updated_at)
-                    .await?;
+                writes::record_progress(
+                    &core.services,
+                    t,
+                    media_id,
+                    live.progress,
+                    status,
+                    live.updated_at,
+                )
+                .await?;
                 return Ok::<Option<ListStatus>, CoreError>(Some(status));
             }
             let stamp =
                 writes::send_status(&core, t, media_id, &token, ListStatus::Planning).await?;
-            writes::record_progress(&core, t, media_id, 0, ListStatus::Planning, stamp).await?;
+            writes::record_progress(&core.services, t, media_id, 0, ListStatus::Planning, stamp)
+                .await?;
             Ok(None)
         };
         match attempt.await {

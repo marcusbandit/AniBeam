@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::net::HttpRequest;
 
@@ -26,10 +27,10 @@ const ALWAYS: [(&str, &str); 2] = [
 
 /// The hosts a search on this phone goes to, one each, with the site's front page to fetch
 /// and the port its searches connect to.
-fn searched_hosts(core: &Core) -> Vec<(String, String, u16)> {
+fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
     let mut out: Vec<(String, String, u16)> = Vec::new();
     // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
-    for (_, e) in super::searched(core) {
+    for (_, e) in super::searched(services) {
         let host = crate::repos::index::host_of(&e.url);
         let port = port_of(&e.url);
         // By host and port: a Prowlarr and a Jackett on one machine are two servers.
@@ -96,7 +97,7 @@ async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
 }
 
 async fn host(
-    core: &Core,
+    services: &Services,
     doh: &crate::net::doh::Doh,
     name: &str,
     url: &str,
@@ -222,7 +223,7 @@ async fn host(
     }
 
     let start = Instant::now();
-    let answer = core
+    let answer = services
         .http
         .send(
             HttpRequest::get(url)
@@ -265,7 +266,7 @@ async fn host(
 /// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
 pub(crate) fn run_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneNetCheck {
-        checks: core.handle.block_on(run(core)),
+        checks: core.services.handle.block_on(run(core)),
     })
 }
 
@@ -286,7 +287,7 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
     let Ok(owner) = core.owner() else {
         return Vec::new();
     };
-    let mut hosts = searched_hosts(core);
+    let mut hosts = searched_hosts(&core.services);
     hosts.extend(
         ALWAYS
             .iter()
@@ -297,8 +298,9 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         .into_iter()
         .map(|(name, url, port)| {
             let (owner, doh) = (owner.clone(), doh.clone());
-            core.handle
-                .spawn(async move { host(&owner, &doh, &name, &url, port).await })
+            core.services
+                .handle
+                .spawn(async move { host(&owner.services, &doh, &name, &url, port).await })
         })
         .collect();
     let mut out = Vec::new();

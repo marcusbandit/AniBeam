@@ -22,7 +22,7 @@ use rusqlite::{Connection, params, params_from_iter};
 use serde_json::json;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::library::{cards, readings};
 use crate::percent;
@@ -699,13 +699,15 @@ pub fn triage_agent() -> Result<Reply, CoreError> {
 /// Drafts the issue for the fixes on `files`, asking an installed agent for a
 /// triage first. Blocks while the agent works, up to three minutes.
 pub fn report_fix(
-    core: &Core,
+    services: &Services,
     series: u64,
     files: Vec<u64>,
     app: Option<String>,
 ) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let mut facts = core.store.read(|c| facts(c, &images_dir, series, &files))?;
+    let images_dir = services.paths.images_dir();
+    let mut facts = services
+        .store
+        .read(|c| facts(c, &images_dir, series, &files))?;
     if let Some(app) = app.filter(|a| !a.trim().is_empty()) {
         facts.app = app;
     }

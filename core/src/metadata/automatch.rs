@@ -37,6 +37,7 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
@@ -245,8 +246,9 @@ fn next_candidate(
 
 /// Records that this series was looked at and found nothing, under the
 /// rules of this version of the matcher.
-async fn stamp_attempt(core: &Core, series: u64, now: i64) -> Result<(), CoreError> {
-    core.store
+async fn stamp_attempt(services: &Services, series: u64, now: i64) -> Result<(), CoreError> {
+    services
+        .store
         .write_async(move |c| {
             c.execute(
                 "UPDATE series SET attempted_at = ?2, attempt_version = ?3 WHERE id = ?1",
@@ -373,13 +375,13 @@ async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option
 /// because it is no longer armed by the time the loop asks again.
 pub fn start(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
+    core.services.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
         // 1. The backfill. A series carrying an AniList id with no provider
         //    beside it is an import, or a row from a build that wrote the
         //    id alone; either way it is matched and the column should say
         //    so before anything decides it is a candidate.
         let backfilled = owner
-            .store
+            .services.store
             .write_async(|c| {
                 Ok(c.execute("UPDATE series SET provider = 'anilist' WHERE provider IS NULL AND anilist_id IS NOT NULL", [])? as u64)
             })
@@ -388,7 +390,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
         // 2. The version guard. New rules earn every failed attempt a
         //    second look; a match already made is left alone.
         let reset = owner
-            .store
+            .services.store
             .tx_async(|tx| {
                 let stored: u32 = settings::get(tx, settings::AUTO_MATCH_VERSION)?.unwrap_or(0);
                 if stored >= AUTO_MATCH_VERSION {
@@ -409,7 +411,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
         if reset > 0 {
             ctx.emit(Level::Info, format!("Auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
         }
-        let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
+        let order = owner.services.store.write_async(|c| prefs::load_provider_order(c)).await?;
 
         // 3. The loop, one series at a time. `seen` keeps a series this run
         //    has already had a turn at from coming back round: a miss is
@@ -417,7 +419,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
         //    for the next run, and would otherwise be asked again at once.
         let (mut matched, mut unmatched) = (0u64, 0u64);
         let mut seen: HashSet<u64> = HashSet::new();
-        let images_dir = owner.paths.images_dir();
+        let images_dir = owner.services.paths.images_dir();
         loop {
             ctx.checkpoint()?;
             let mut skip = armed(&owner);
@@ -426,7 +428,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             skip.extend(recover(&owner.library.match_in_flight).iter().copied());
             skip.sort_unstable();
             skip.dedup();
-            let Some((series, folder, kind)) = owner.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
+            let Some((series, folder, kind)) = owner.services.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
             seen.insert(series);
             ctx.progress(matched + unmatched, None, &folder);
 
@@ -442,14 +444,14 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let label = hit.provider.label();
                     ctx.say(Level::Info, crate::words!("core-metadata-matched-to", show = &folder, title = &title), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
-                    let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
+                    let cards = owner.services.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
                         ctx.changed(card);
                     }
                 }
                 Ok(None) => {
                     unmatched += 1;
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
+                    stamp_attempt(&owner.services, series, time::now_secs()).await?;
                     ctx.emit(Level::Info, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                 }
                 // A rate limit the limiter could not ride out, or nothing
@@ -507,12 +509,12 @@ pub fn start(core: &Arc<Core>) -> u64 {
 /// to it.
 pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
+    core.services.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
         let picked = series.clone();
         // (id, folder, kind, has a match, missing, cleared by the user)
         type Row = (u64, String, SeriesKind, bool, bool, bool);
         let rows: Vec<Row> = owner
-            .store
+            .services.store
             .write_async(move |c| {
                 let sql = format!(
                     "SELECT id, folder_name, kind, provider IS NOT NULL, missing_since IS NOT NULL,
@@ -549,8 +551,8 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
             .into_iter()
             .filter(|r| !r.3 && !r.4 && !busy.contains(&r.0))
             .collect();
-        let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
-        let images_dir = owner.paths.images_dir();
+        let order = owner.services.store.write_async(|c| prefs::load_provider_order(c)).await?;
+        let images_dir = owner.services.paths.images_dir();
         let total = todo.len() as u64;
         let (mut matched, mut unmatched, mut failed) = (0u64, 0u64, 0u64);
         let (mut hit_pair, mut miss_name) = (None, None);
@@ -568,7 +570,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
                     ctx.emit(Level::Debug, format!("Match ({label} {:.2}): {folder} -> {}", hit.score, hit.title), EventBody::Notice);
                     hit_pair = Some((folder.clone(), hit.title.clone()));
                     let dir = images_dir.clone();
-                    let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
+                    let cards = owner.services.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
                         ctx.changed(card);
                     }
@@ -579,7 +581,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
                     // stamped with the version would let the next version's
                     // reset put the series back in the automatic run.
                     if !cleared {
-                        stamp_attempt(&owner, series, time::now_secs()).await?;
+                        stamp_attempt(&owner.services, series, time::now_secs()).await?;
                     }
                     ctx.emit(Level::Debug, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                     miss_name = Some(folder);
@@ -667,7 +669,7 @@ fn find_line(
 /// resets, unlike a miss, which always carries the version that made it.
 pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
     let now = time::now_secs();
-    let changed = core.store.write(move |c| {
+    let changed = core.services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                     tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
@@ -682,12 +684,13 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
             id: series,
         });
     }
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let cards = core
+        .services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
-    core.bus.debug(
+    core.services.bus.debug(
         Stage::Metadata,
         format!("match cleared: {title}"),
         EventBody::SeriesChanged { series: cards },

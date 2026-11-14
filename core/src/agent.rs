@@ -208,6 +208,7 @@ pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
     let brief = brief(core, series)?;
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ScheduleAgent, move |ctx| async move {

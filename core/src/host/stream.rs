@@ -71,7 +71,8 @@ pub fn byte_range(header: Option<&str>, len: u64) -> Range {
 /// The file and its sidecars, by row id.
 fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
     let core = st.core.upgrade()?;
-    core.store
+    core.services
+        .store
         .read(|c| {
             Ok(c.query_row(
                 "SELECT path, sidecars FROM files WHERE id = ?1",
@@ -345,7 +346,7 @@ pub async fn hls(
     let converter = st
         .streams
         .converter
-        .get_or_init(|| Converter::new(std::path::Path::new(&core.paths.cache_dir)));
+        .get_or_init(|| Converter::new(std::path::Path::new(&core.services.paths.cache_dir)));
     match converter.piece(&key, &source, i).await {
         Some(bytes) => ([(header::CONTENT_TYPE, "video/mp2t")], Body::from(bytes)).into_response(),
         None => error(StatusCode::SERVICE_UNAVAILABLE, "the conversion failed"),
@@ -391,7 +392,7 @@ pub(crate) fn run_to_end(
         }
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let sub = crate::events::Subscription::new(core.bus.clone(), Arc::new(Relay(tx)));
+    let sub = crate::events::Subscription::new(core.services.bus.clone(), Arc::new(Relay(tx)));
     let job = match core.call_as(profile, call) {
         Ok(Reply::Started { job }) => job,
         other => {

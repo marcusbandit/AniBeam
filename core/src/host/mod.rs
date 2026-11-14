@@ -305,7 +305,7 @@ impl Host {
         let bind = recover(&self.bind)
             .clone()
             .or_else(|| std::env::var(BIND_ENV).ok());
-        let task = core.handle.spawn(supervise(
+        let task = core.services.handle.spawn(supervise(
             Arc::downgrade(&owner),
             self.status.clone(),
             cancel.clone(),
@@ -327,7 +327,7 @@ impl Host {
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
     keys::load(core);
-    let on = match core.store.read(prefs::load_preferences) {
+    let on = match core.services.store.read(prefs::load_preferences) {
         Ok(p) => {
             core.host.set_streaming(p.stream_over_tailscale);
             core.host.set_switched_off(p.tailnet_switched_off);
@@ -351,10 +351,10 @@ pub fn sync(core: &Core) {
 /// waits: a fresh read runs on a worker and arrives as `TailnetDevicesChanged`.
 pub fn devices(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
     if let Some(arc) = core.arc() {
-        core.handle.spawn_blocking(move || {
+        core.services.handle.spawn_blocking(move || {
             arc.host.tailnet(true);
             let (devices, people) = listed(&arc);
-            arc.bus.debug(
+            arc.services.bus.debug(
                 Stage::System,
                 "tailnet devices",
                 EventBody::TailnetDevicesChanged { devices, people },
@@ -384,7 +384,7 @@ pub(crate) fn set_device_trust(
     device: String,
     trusted: bool,
 ) -> Result<Reply, CoreError> {
-    let preferences = core.store.write(move |c| {
+    let preferences = core.services.store.write(move |c| {
         let mut p = prefs::load_preferences(c)?;
         p.tailnet_switched_off.retain(|d| *d != device);
         if !trusted {
@@ -395,7 +395,7 @@ pub(crate) fn set_device_trust(
     })?;
     core.host
         .set_switched_off(preferences.tailnet_switched_off.clone());
-    crate::app::preferences_changed(core, preferences)
+    crate::app::preferences_changed(&core.services, preferences)
 }
 
 /// Whether Tailscale carries the path to `from` through a relay, as the last
@@ -409,7 +409,7 @@ pub fn relayed(core: &Core, from: std::net::IpAddr) -> bool {
         return false;
     }
     if let Some(arc) = core.arc() {
-        core.handle.spawn_blocking(move || {
+        core.services.handle.spawn_blocking(move || {
             arc.host.tailnet(true);
         });
     }
@@ -884,11 +884,12 @@ mod tests {
         let paths = crate::CorePaths::under(dir.path());
         let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
         let core = Core::open_with_secrets(paths, secrets).unwrap();
-        let mut p = core.store.read(prefs::load_preferences).unwrap();
+        let mut p = core.services.store.read(prefs::load_preferences).unwrap();
         p.stream_over_tailscale = false;
         core.call(Call::SetPreferences { preferences: p }).unwrap();
         assert!(!core.host.streaming());
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute(
                     "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",
@@ -915,7 +916,8 @@ mod tests {
             trusted: false,
         })
         .unwrap();
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute(
                     "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",

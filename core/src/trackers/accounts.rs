@@ -17,11 +17,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::secrets::{Secrets, StoreKind};
+use crate::foundation::services::Services;
 use crate::library::cards;
 use crate::net::HttpResponse;
 use crate::prefs;
 use crate::time;
-use crate::trackers::secrets::{Secrets, StoreKind};
 
 /// The one url the code exchange and the refresh both post to.
 pub(crate) const MAL_TOKEN_URL: &str = "https://myanimelist.net/v1/oauth2/token";
@@ -137,8 +138,8 @@ pub fn load_row(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError>
 /// Both accounts and which of them is the main one. Reads the keyring for
 /// the client secrets, so this belongs on a calling thread; a job asks
 /// through `state_async`.
-pub fn state(core: &Core) -> Result<TrackerState, CoreError> {
-    let (main, anilist, mal) = core.store.read(|c| {
+pub fn state(services: &Services) -> Result<TrackerState, CoreError> {
+    let (main, anilist, mal) = services.store.read(|c| {
         Ok((
             prefs::load_main_tracker(c)?,
             load_row(c, Tracker::Anilist)?,
@@ -147,19 +148,19 @@ pub fn state(core: &Core) -> Result<TrackerState, CoreError> {
     })?;
     Ok(TrackerState {
         main,
-        anilist: account(core, Tracker::Anilist, anilist),
-        mal: account(core, Tracker::Mal, mal),
+        anilist: account(services, Tracker::Anilist, anilist),
+        mal: account(services, Tracker::Mal, mal),
     })
 }
 
 /// `state` from inside a job. The keyring is synchronous underneath, so it
 /// runs on the blocking pool rather than on a tokio worker.
-pub(crate) async fn state_async(core: &Arc<Core>) -> Result<TrackerState, CoreError> {
-    let owner = core.clone();
-    joined(core.handle.spawn_blocking(move || state(&owner)).await)?
+pub(crate) async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreError> {
+    let owner = services.clone();
+    joined(services.handle.spawn_blocking(move || state(&owner)).await)?
 }
 
-fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
+fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount {
     let row = row.unwrap_or_default();
     let bundled_id = bundled_client_id(t);
     let bundled_secret = bundled_client_secret(t);
@@ -175,7 +176,7 @@ fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
             .stored_client_id()
             .or_else(|| bundled_id.map(str::to_string))
             .unwrap_or_default(),
-        has_client_secret: core.secrets().has(&secret_key(t)) || bundled_secret.is_some(),
+        has_client_secret: services.secrets().has(&secret_key(t)) || bundled_secret.is_some(),
         // Whether this build can sign in with nothing pasted at all. The id
         // is enough for both: AniList's implicit grant has no secret, and a
         // MAL app is a public client unless it was registered as "web", in
@@ -190,10 +191,10 @@ fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
 /// secret is not one of them: MAL decides whether it wanted one, and
 /// `token_failure` turns its answer into something a user can act on.
 pub fn effective_credentials(
-    core: &Core,
+    services: &Services,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let row = core.store.read(|c| load_row(c, t))?.unwrap_or_default();
+    let row = services.store.read(|c| load_row(c, t))?.unwrap_or_default();
     let client_id = row
         .stored_client_id()
         .or_else(|| bundled_client_id(t).map(str::to_string))
@@ -206,7 +207,7 @@ pub fn effective_credentials(
                 ),
             )
         })?;
-    let stored_secret = core
+    let stored_secret = services
         .secrets()
         .get(&secret_key(t), row.secret_store)?
         .map(|(value, _)| value);
@@ -239,12 +240,13 @@ fn pick_secret(
 /// `effective_credentials` from inside a job, on the blocking pool for the
 /// keyring's sake.
 pub(crate) async fn credentials_async(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let owner = core.clone();
+    let owner = services.clone();
     joined(
-        core.handle
+        services
+            .handle
             .spawn_blocking(move || effective_credentials(&owner, t))
             .await,
     )?
@@ -259,7 +261,7 @@ pub(crate) async fn credentials_async(
 /// is the only way to take back a secret pasted for an app that turned out
 /// to need none; anything else is stored.
 pub fn set_credentials(
-    core: &Core,
+    services: &Services,
     t: Tracker,
     client_id: &str,
     client_secret: Option<&str>,
@@ -267,13 +269,13 @@ pub fn set_credentials(
     let client_id = client_id.trim().to_string();
     let store = match client_secret.map(str::trim) {
         Some("") => {
-            core.secrets().delete(&secret_key(t))?;
+            services.secrets().delete(&secret_key(t))?;
             None
         }
-        Some(secret) => Some(core.secrets().set(&secret_key(t), secret)?),
+        Some(secret) => Some(services.secrets().set(&secret_key(t), secret)?),
         None => None,
     };
-    core.store.tx(move |tx| {
+    services.store.tx(move |tx| {
         tx.execute(
             "INSERT INTO tracker_accounts (tracker, client_id) VALUES (?1, ?2)
              ON CONFLICT(profile_id, tracker) DO UPDATE SET client_id = excluded.client_id",
@@ -290,15 +292,15 @@ pub fn set_credentials(
         }
         Ok(())
     })?;
-    emit_trackers_changed(core)?;
+    emit_trackers_changed(services)?;
     Ok(Reply::Ok)
 }
 
 /// Signs out. The credentials survive by decision: a user who disconnects
 /// to fix a bad token should not have to paste their client id back in.
 /// What goes is the account, the progress cache and the tokens.
-pub fn disconnect(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
-    core.store.tx(move |tx| {
+pub fn disconnect(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
+    services.store.tx(move |tx| {
         tx.execute(
             "UPDATE tracker_accounts SET user_id = NULL, username = NULL, expires_at = NULL, connected_at = NULL,
                     synced_at = NULL, progress_fetched_at = NULL
@@ -308,25 +310,27 @@ pub fn disconnect(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
         tx.execute("DELETE FROM tracker_entries WHERE tracker = ?1", params![t.as_str()])?;
         Ok(())
     })?;
-    let secrets = core.secrets();
+    let secrets = services.secrets();
     // Both are attempted whatever the first one says: a token left behind
     // is a token that would be used again.
     let access = secrets.delete(&access_key(t));
     let refresh = secrets.delete(&refresh_key(t));
     access.and(refresh)?;
-    emit_trackers_changed(core)?;
+    emit_trackers_changed(services)?;
     // Every card whose match carries this tracker's id loses the numbers
     // that came off it.
-    emit_series_changed(core, Some(t), format!("{} disconnected", t.label()))?;
+    emit_series_changed(services, Some(t), format!("{} disconnected", t.label()))?;
     Ok(Reply::Ok)
 }
 
 /// Which tracker answers first. Every matched series can change what it
 /// shows, since the numbers now come off the other account.
-pub fn set_main(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
-    core.store.write(move |c| prefs::save_main_tracker(c, t))?;
-    emit_trackers_changed(core)?;
-    emit_series_changed(core, None, format!("main tracker is {}", t.label()))?;
+pub fn set_main(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
+    services
+        .store
+        .write(move |c| prefs::save_main_tracker(c, t))?;
+    emit_trackers_changed(services)?;
+    emit_series_changed(services, None, format!("main tracker is {}", t.label()))?;
     Ok(Reply::Ok)
 }
 
@@ -340,12 +344,13 @@ pub fn set_main(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
 /// through the blocking pool.
 pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>, CoreError> {
     let row = core
+        .services
         .store
         .write_async(move |c| load_row(c, t))
         .await?
         .unwrap_or_default();
     let hint = row.secret_store;
-    let token = with_secrets(core, move |s| s.get(&access_key(t), hint))
+    let token = with_secrets(&core.services, move |s| s.get(&access_key(t), hint))
         .await?
         .map(|(value, _)| value);
     let Some(token) = token else { return Ok(None) };
@@ -354,7 +359,7 @@ pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>
     if t != Tracker::Mal || !due_for_refresh(row.expires_at, time::now()) {
         return Ok(Some(token));
     }
-    let refresh = with_secrets(core, move |s| s.get(&refresh_key(t), hint))
+    let refresh = with_secrets(&core.services, move |s| s.get(&refresh_key(t), hint))
         .await?
         .map(|(value, _)| value);
     let Some(refresh) = refresh else {
@@ -364,7 +369,7 @@ pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>
         Ok(fresh) => Ok(Some(fresh)),
         Err(e) => {
             tracing::debug!("the MAL refresh failed: {e}");
-            core.bus.say(
+            core.services.bus.say(
                 Level::Warn,
                 Stage::Trackers,
                 crate::words!("core-trackers-mal-reconnect"),
@@ -386,7 +391,7 @@ fn due_for_refresh(expires_at: Option<SystemTime>, now: SystemTime) -> bool {
 /// The refresh grant. MAL hands back a whole new pair, so both tokens and
 /// the new expiry are stored before the caller sees the access token.
 async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreError> {
-    let (client_id, client_secret) = credentials_async(core, Tracker::Mal).await?;
+    let (client_id, client_secret) = credentials_async(&core.services, Tracker::Mal).await?;
     let form = token_form(
         &client_id,
         client_secret.as_deref(),
@@ -397,9 +402,10 @@ async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreErro
         return Err(token_failure(&response, client_secret.is_some()));
     }
     let tokens = parse_tokens(&response.body, time::now())?;
-    let store = save_tokens(core, Tracker::Mal, &tokens).await?;
+    let store = save_tokens(&core.services, Tracker::Mal, &tokens).await?;
     let expires_at = time::opt_to_secs(tokens.expires_at);
-    core.store
+    core.services
+        .store
         .write_async(move |c| {
             c.execute(
                 "UPDATE tracker_accounts SET expires_at = ?2, secret_store = ?3 WHERE tracker = ?1",
@@ -494,19 +500,19 @@ pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreE
 /// Both tokens into the keyring, and where the access token landed, which
 /// is what the row's `secret_store` records.
 pub(crate) async fn save_tokens(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     tokens: &Tokens,
 ) -> Result<StoreKind, CoreError> {
     let access = tokens.access_token.clone();
-    let store = with_secrets(core, move |s| s.set(&access_key(t), &access)).await?;
+    let store = with_secrets(services, move |s| s.set(&access_key(t), &access)).await?;
     match tokens.refresh_token.clone() {
         Some(refresh) => {
-            with_secrets(core, move |s| s.set(&refresh_key(t), &refresh)).await?;
+            with_secrets(services, move |s| s.set(&refresh_key(t), &refresh)).await?;
         }
         // A flow with no refresh token must not leave the last one behind:
         // it belongs to a session that is over.
-        None => with_secrets(core, move |s| s.delete(&refresh_key(t))).await?,
+        None => with_secrets(services, move |s| s.delete(&refresh_key(t))).await?,
     }
     Ok(store)
 }
@@ -514,7 +520,7 @@ pub(crate) async fn save_tokens(
 /// The row a finished flow leaves: who signed in, with which id, until
 /// when, and where their tokens went.
 pub(crate) async fn save_connection(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     user_id: Option<u64>,
     username: &str,
@@ -527,7 +533,7 @@ pub(crate) async fn save_connection(
     let user_id = user_id.map(|id| id as i64);
     let expires_at = time::opt_to_secs(expires_at);
     let connected_at = time::now_secs();
-    core.store
+    services.store
         .tx_async(move |tx| {
             tx.execute(
                 "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, expires_at, connected_at, secret_store)
@@ -546,16 +552,16 @@ pub(crate) async fn save_connection(
 
 /// Every keyring call a job makes goes through here: the Secret Service is
 /// synchronous zbus underneath, so a tokio worker must never block on it.
-/// The facade is taken off the field rather than through `Core::secrets`,
+/// The facade is taken off the field rather than through `Services::secrets`,
 /// which would run the D-Bus probe on the calling task; whoever started
 /// the job has already been through the accessor.
-pub(crate) async fn with_secrets<T, F>(core: &Arc<Core>, f: F) -> Result<T, CoreError>
+pub(crate) async fn with_secrets<T, F>(services: &Services, f: F) -> Result<T, CoreError>
 where
     T: Send + 'static,
     F: FnOnce(&Secrets) -> Result<T, CoreError> + Send + 'static,
 {
-    let secrets = core.secrets.clone();
-    joined(core.handle.spawn_blocking(move || f(&secrets)).await)?
+    let secrets = services.secrets.clone();
+    joined(services.handle.spawn_blocking(move || f(&secrets)).await)?
 }
 
 /// A blocking task that was cancelled or panicked, reported rather than
@@ -577,9 +583,9 @@ pub(crate) fn tracker_error(t: Tracker, message: impl Into<String>) -> CoreError
 }
 
 /// The whole tracker state, after anything that changed a part of it.
-pub(crate) fn emit_trackers_changed(core: &Core) -> Result<(), CoreError> {
-    let state = state(core)?;
-    core.bus.debug(
+pub(crate) fn emit_trackers_changed(services: &Services) -> Result<(), CoreError> {
+    let state = state(services)?;
+    services.bus.debug(
         Stage::Trackers,
         "trackers changed",
         EventBody::TrackersChanged { state },
@@ -589,16 +595,20 @@ pub(crate) fn emit_trackers_changed(core: &Core) -> Result<(), CoreError> {
 
 /// The cards whose numbers came off a tracker, in one batch: `Some(t)` for
 /// the series carrying that tracker's id, `None` for every matched series.
-fn emit_series_changed(core: &Core, t: Option<Tracker>, message: String) -> Result<(), CoreError> {
-    let images_dir = core.paths.images_dir();
-    let cards = core.store.read(|c| {
+fn emit_series_changed(
+    services: &Services,
+    t: Option<Tracker>,
+    message: String,
+) -> Result<(), CoreError> {
+    let images_dir = services.paths.images_dir();
+    let cards = services.store.read(|c| {
         let ids = matched_ids(c, t)?;
         cards::cards_for(c, &images_dir, &ids)
     })?;
     if cards.is_empty() {
         return Ok(());
     }
-    core.bus.debug(
+    services.bus.debug(
         Stage::Trackers,
         message,
         EventBody::SeriesChanged { series: cards },

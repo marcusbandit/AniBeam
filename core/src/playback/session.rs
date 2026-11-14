@@ -28,6 +28,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::foundation::watch::MARK_FRACTION;
 use crate::library::cards;
@@ -448,7 +449,8 @@ pub fn windows_of(core: &Core, session: u64) -> Result<Vec<SkipWindow>, CoreErro
         what: Entity::Session,
         id: session,
     })?;
-    core.store
+    core.services
+        .store
         .read(|c| cached_windows(c, s.series, &s.episode_key))
 }
 
@@ -487,9 +489,9 @@ pub(crate) fn open_call(core: &Core, file: u64) -> Result<Reply, CoreError> {
 /// [`open`] for one profile: the resume point it starts from and every row
 /// the session writes are that profile's.
 pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let (f, s, resume_from, skip_windows, Neighbours { prev, next, first_season }, episode_title, subtitle_defaults, lang) =
-        core.store.read(|c| {
+        core.services.store.read(|c| {
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
             // torrent is still writing does not open.
@@ -773,7 +775,7 @@ fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
             Effect::View => record_view(core, s)?,
             Effect::Mark => mark(core, s),
             Effect::Complete => complete(core, s)?,
-            Effect::Resume(position) => write_resume(core, s, *position),
+            Effect::Resume(position) => write_resume(&core.services, s, *position),
         }
     }
     Ok(())
@@ -785,7 +787,7 @@ fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
 fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
     let (series, key, now, profile) =
         (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
-    core.store.write(move |c| {
+    core.services.store.write(move |c| {
         c.execute(
             "INSERT INTO views (profile_id, series_id, episode_key, at) VALUES (?4, ?1, ?2, ?3)
              ON CONFLICT(profile_id, series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
@@ -797,8 +799,8 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
     if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
-    let (folder, code) = core.store.read(|c| line_labels(c, s))?;
-    core.bus.info(
+    let (folder, code) = core.services.store.read(|c| line_labels(c, s))?;
+    core.services.bus.info(
         Stage::Playback,
         format!("viewed {folder} {code}"),
         EventBody::Viewed {
@@ -822,11 +824,12 @@ fn mark(core: &Core, s: &Session) {
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
         let folder = core
+            .services
             .store
             .read(|c| line_labels(c, s))
             .map(|(folder, _)| folder)
             .unwrap_or_default();
-        core.bus.say(
+        core.services.bus.say(
             Level::Warn,
             Stage::Playback,
             crate::words!("core-playback-not-saved", folder = &folder),
@@ -838,6 +841,7 @@ fn mark(core: &Core, s: &Session) {
     // The hidden guard, ahead of the job's own: a series the user hid never
     // gets a mark because it was played, and it says nothing about it.
     let hidden = core
+        .services
         .store
         .read(|c| {
             for (tracker, id) in [(Tracker::Anilist, s.anilist_id), (Tracker::Mal, s.mal_id)] {
@@ -874,7 +878,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     // seconds of forward play, the view rule. A scrub to the credits or a file
     // that ends at once still completes the episode, but adds no finish.
     let watched = s.viewed;
-    core.store.tx(move |tx| {
+    core.services.store.tx(move |tx| {
         tx.execute(
             "DELETE FROM resume_points WHERE profile_id = ?3 AND series_id = ?1 AND episode_key = ?2",
             params![series as i64, key, profile as i64],
@@ -903,7 +907,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
-    core.bus.debug(
+    core.services.bus.debug(
         Stage::Playback,
         "resume point cleared",
         EventBody::ResumePointChanged {
@@ -915,13 +919,14 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         return Ok(());
     }
     crate::downloads::rolling::nudge(core);
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let cards = core
+        .services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[s.series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let what = if s.is_film { "a film" } else { "an episode" };
-    core.bus.debug(
+    core.services.bus.debug(
         Stage::Playback,
         format!("{title} finished {what}"),
         EventBody::SeriesChanged { series: cards },
@@ -933,7 +938,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
 /// and what it needs back is the event, which goes out at once. The row is
 /// queued behind whatever the writer is doing, and the queue is FIFO, so a
 /// completion that deletes the row still runs after the upsert before it.
-fn write_resume(core: &Core, s: &Session, position: f64) {
+fn write_resume(services: &Services, s: &Session, position: f64) {
     let (series, key, now, profile) =
         (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
     // A duration is only known once the shell has reported the chapters, and
@@ -941,7 +946,7 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
     // every fraction drawn off it.
     let duration = s.duration.unwrap_or(0.0);
     let named = key.clone();
-    core.store.post(move |c| {
+    services.store.post(move |c| {
         if let Err(e) = c.execute(
             "INSERT INTO resume_points (profile_id, series_id, episode_key, position, duration, at) VALUES (?6, ?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
@@ -953,7 +958,7 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
     if s.profile != crate::foundation::trust::OWNER {
         return;
     }
-    core.bus.debug(
+    services.bus.debug(
         Stage::Playback,
         "resume point saved",
         EventBody::ResumePointChanged {
@@ -1003,13 +1008,13 @@ fn line_labels(conn: &Connection, s: &Session) -> Result<(String, String), CoreE
 /// The series' playback memory: which audio and which subtitles the last
 /// episode was watched with, so the next one opens on the same pair.
 pub fn set_track_choice(
-    core: &Core,
+    services: &Services,
     series: u64,
     audio: Option<TrackRef>,
     subtitle: Option<SubtitleChoice>,
 ) -> Result<Reply, CoreError> {
     let json = serde_json::to_string(&TrackChoice { audio, subtitle })?;
-    let changed = core.store.write(move |c| {
+    let changed = services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET track_choice = ?1 WHERE id = ?2",
             params![json, series as i64],

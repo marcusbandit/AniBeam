@@ -21,6 +21,7 @@ use rusqlite::{Connection, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
@@ -391,7 +392,8 @@ pub fn patch_repeat(
 /// connection wants and what a page opening does not.
 pub fn start_refresh(core: &Arc<Core>, tracker: Option<Tracker>, force: bool) -> u64 {
     let owner = core.clone();
-    core.jobs
+    core.services
+        .jobs
         .clone()
         .start(JobKind::RefreshProgress, move |ctx| async move {
             run(owner, ctx, tracker, force).await
@@ -421,6 +423,7 @@ async fn run(
     for t in wanted {
         ctx.checkpoint()?;
         let row = core
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -469,7 +472,7 @@ async fn run(
     }
 
     if !refreshed.is_empty() {
-        let cards = matched_cards(&core, &refreshed).await?;
+        let cards = matched_cards(&core.services, &refreshed).await?;
         ctx.changed_all(cards);
     }
     // A list just fetched, or one still inside the window, is the one On
@@ -535,7 +538,8 @@ async fn fetch_and_replace(
     };
     let count = entries.len();
     let now = time::now_secs();
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| replace(tx, t, &entries, now))
         .await?;
     Ok(count)
@@ -545,12 +549,13 @@ async fn fetch_and_replace(
 /// cards: the numbers on all of them just changed, so they leave in one
 /// batch rather than one event each.
 async fn matched_cards(
-    core: &Arc<Core>,
+    services: &Services,
     refreshed: &[Tracker],
 ) -> Result<Vec<SeriesCard>, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = services.paths.images_dir();
     let refreshed = refreshed.to_vec();
-    core.store
+    services
+        .store
         .write_async(move |c| {
             let mut ids: BTreeSet<u64> = BTreeSet::new();
             for t in refreshed {

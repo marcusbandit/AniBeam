@@ -17,6 +17,7 @@ use super::closure::{self, Closure};
 use super::{as_i64, as_u64};
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::images;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::apply::{is_rate_limited, provider_unreachable};
@@ -44,7 +45,8 @@ const REFRESH_THROTTLE: Duration = Duration::from_secs(60);
 /// handed the running job's id and starts nothing.
 pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
     let owner = core.clone();
-    core.jobs
+    core.services
+        .jobs
         .clone()
         .start(JobKind::Crawl, move |ctx| async move {
             run(&owner, &ctx, seeds, refetch_seeds).await
@@ -56,10 +58,11 @@ pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
 /// owes anything by the time its turn comes, so it costs nothing.
 pub fn start_gap_crawl(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs
+    core.services
+        .jobs
         .clone()
         .start(JobKind::Crawl, move |ctx| async move {
-            let seeds = owner.store.write_async(gap_seeds).await?;
+            let seeds = owner.services.store.write_async(gap_seeds).await?;
             run(&owner, &ctx, seeds, false).await
         })
 }
@@ -121,6 +124,7 @@ async fn run(
             ctx.checkpoint()?;
             let now = time::now_secs();
             let graph = core
+                .services
                 .store
                 .write_async(move |c| closure::close(c, seed, closure::CAP, now))
                 .await?;
@@ -132,7 +136,7 @@ async fn run(
             };
             let Some(id) = next else { break };
 
-            let (done, total) = core.store.write_async(progress).await?;
+            let (done, total) = core.services.store.write_async(progress).await?;
             ctx.progress(done, Some(total), &format!("AniList {id}"));
 
             match core.anilist.enrichment_raw(id).await {
@@ -141,7 +145,7 @@ async fn run(
                 // that partial bundle must never displace the four-part
                 // one a full fetch left in `raw`.
                 Ok((Some(enrichment), _raw)) => {
-                    write_node(core, id, &enrichment, time::now_secs()).await?;
+                    write_node(&core.services, id, &enrichment, time::now_secs()).await?;
                     fetch_covers(core, &enrichment).await;
                     fetched += 1;
                     ctx.emit(
@@ -156,7 +160,7 @@ async fn run(
                     tracing::debug!("AniList has no entry for {id}");
                     failed += 1;
                     first_failure.get_or_insert_with(|| format!("AniList has no entry for {id}"));
-                    stamp_empty(core, id, time::now_secs()).await?;
+                    stamp_empty(&core.services, id, time::now_secs()).await?;
                 }
                 // AniList saying stop. The node keeps owing its edges and
                 // is left alone for a minute rather than counted as done.
@@ -165,7 +169,7 @@ async fn run(
                 // per-node chatter in a log meant to carry state changes.
                 Err(e) if is_rate_limited(&e) => {
                     let wait = retry_after(&e);
-                    defer(core, id, time::now_secs() + wait).await?;
+                    defer(&core.services, id, time::now_secs() + wait).await?;
                     parked.insert(id);
                     deferred += 1;
                     tracing::debug!("the crawl deferred {id} for {wait}s after a rate limit");
@@ -182,7 +186,7 @@ async fn run(
                     tracing::debug!("the crawl failed at {id}: {}", message_of(&e));
                     failed += 1;
                     first_failure.get_or_insert_with(|| message_of(&e));
-                    stamp_empty(core, id, time::now_secs()).await?;
+                    stamp_empty(&core.services, id, time::now_secs()).await?;
                 }
             }
         }
@@ -250,7 +254,7 @@ fn retry_after(e: &CoreError) -> i64 {
 /// crawl is not a metadata fetch), its outgoing edges are replaced, and
 /// every neighbour gets the stub row the edge needs to point at.
 async fn write_node(
-    core: &Core,
+    services: &Services,
     id: u64,
     enrichment: &Enrichment,
     now: i64,
@@ -267,7 +271,7 @@ async fn write_node(
                 .collect()
         })
         .unwrap_or_default();
-    core.store
+    services.store
         .tx_async(move |tx| {
             record::write_stub(tx, &own)?;
             tx.execute("DELETE FROM relations WHERE from_id = ?1", params![as_i64(id)])?;
@@ -347,8 +351,8 @@ async fn fetch_covers(core: &Core, enrichment: &Enrichment) {
 /// The bare stub goes first because a seed can be an id with no media row
 /// at all, and an `UPDATE` that matches nothing would leave the node owing
 /// its edges for ever, which is a loop rather than a missing stamp.
-async fn stamp_empty(core: &Core, id: u64, now: i64) -> Result<(), CoreError> {
-    core.store
+async fn stamp_empty(services: &Services, id: u64, now: i64) -> Result<(), CoreError> {
+    services.store
         .tx_async(move |tx| {
             record::write_stub(tx, &StubWrite { id, ..StubWrite::default() })?;
             tx.execute(
@@ -363,8 +367,9 @@ async fn stamp_empty(core: &Core, id: u64, now: i64) -> Result<(), CoreError> {
 /// The node is rate limited: it keeps owing its edges and is left out of
 /// the fetch list until this instant passes. The bare stub goes first for
 /// the same reason it does above.
-async fn defer(core: &Core, id: u64, until: i64) -> Result<(), CoreError> {
-    core.store
+async fn defer(services: &Services, id: u64, until: i64) -> Result<(), CoreError> {
+    services
+        .store
         .tx_async(move |tx| {
             record::write_stub(
                 tx,

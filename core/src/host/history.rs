@@ -26,6 +26,7 @@ use rusqlite::Connection;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::library::cards;
 use crate::paths::normalise;
 use crate::sync::recover;
@@ -45,11 +46,11 @@ const DOCUMENT_MAX: usize = 64 * 1024 * 1024;
 /// out, so the other computer never takes a guess for the person's choice.
 /// No sources or fixes: those belong to this machine, and a library export
 /// already leaves out accounts, keys and preferences.
-pub fn document(core: &Core) -> Result<Document, CoreError> {
-    let mut doc = export::build(core, false, SystemTime::now())?;
-    doc.history = Some(export::history_section(core)?);
+pub fn document(services: &Services) -> Result<Document, CoreError> {
+    let mut doc = export::build(services, false, SystemTime::now())?;
+    doc.history = Some(export::history_section(services)?);
     doc.sources.clear();
-    let confirmed: std::collections::HashSet<String> = core.store.read(|c| {
+    let confirmed: std::collections::HashSet<String> = services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM series WHERE confirmed = 1")?;
         let rows = stmt
             .query_map([], |r| r.get::<_, String>(0))?
@@ -325,9 +326,9 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
 }
 
 /// Merges another computer's document into this library.
-pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError> {
+pub async fn merge(services: &Services, doc: Document) -> Result<Merged, CoreError> {
     // A read, on the writer the async side has, so no runtime thread blocks.
-    let here = core.store.write_async(|c| locals(c)).await?;
+    let here = services.store.write_async(|c| locals(c)).await?;
     let mapping = map(&doc.series, &here);
     let paths: HashMap<String, String> = mapping
         .iter()
@@ -347,7 +348,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
         .collect();
     let now = time::now_secs();
     let mut touched: Vec<u64> = adopt.iter().map(|(id, _)| *id).collect();
-    let matches = core
+    let matches = services
         .store
         .tx_async(move |tx| {
             let mut n = 0u64;
@@ -372,7 +373,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
                     .chain(history.completed.iter().map(|c| &c.series))
                     .filter_map(|p| ids_by_path.get(p.as_str()).copied()),
             );
-            import::merge_history(core, history).await?
+            import::merge_history(services, history).await?
         }
         None => (0, 0, 0),
     };
@@ -385,13 +386,13 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
     if merged.any() {
         touched.sort_unstable();
         touched.dedup();
-        let images = core.paths.images_dir();
-        let cards = core
+        let images = services.paths.images_dir();
+        let cards = services
             .store
             .write_async(move |c| cards::cards_for(c, &images, &touched))
             .await?;
         if !cards.is_empty() {
-            core.bus.debug(
+            services.bus.debug(
                 Stage::Library,
                 "series changed by another computer's history",
                 EventBody::SeriesChanged { series: cards },
@@ -404,7 +405,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
 /// Pulls the history of the Anibeam at `base` (`http://<address>:<port>`)
 /// and merges it. Nothing is merged from something that is not Anibeam or
 /// does not serve its history.
-pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
+pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> {
     let http = reqwest::Client::builder()
         .timeout(PULL_FOR)
         .redirect(reqwest::redirect::Policy::none())
@@ -444,14 +445,14 @@ pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
         }
     }
     let (doc, _) = format::parse(&bytes)?;
-    let merged = merge(core, doc).await?;
+    let merged = merge(services, doc).await?;
     if merged.any() {
         let name = if hello.host.is_empty() {
             base
         } else {
             &hello.host
         };
-        core.bus.info(
+        services.bus.info(
             Stage::Library,
             format!(
                 "Merged history from {name}: {} watched, {} resume points, {} matches",
@@ -500,7 +501,7 @@ async fn pull_if_due(core: &Arc<Core>, base: &str) {
     if !due(core, base) {
         return;
     }
-    if let Err(e) = pull(core, base).await {
+    if let Err(e) = pull(&core.services, base).await {
         tracing::debug!("history: pulling from {base} failed: {e}");
         recover(&core.host.pulled).remove(&device(core, base));
     }
@@ -509,7 +510,7 @@ async fn pull_if_due(core: &Arc<Core>, base: &str) {
 /// Pulls from every trusted Anibeam on the tailnet that is due, on a worker.
 pub fn pull_all(core: &Core) {
     let Some(core) = core.arc() else { return };
-    let handle = core.handle.clone();
+    let handle = core.services.handle.clone();
     handle.spawn(async move {
         let reader = core.clone();
         let asked = tokio::task::spawn_blocking(move || {
@@ -542,7 +543,7 @@ pub fn pull_back(core: &Core, from: IpAddr) {
         std::net::SocketAddr::new(from, wire::DEFAULT_PORT)
     );
     let Some(core) = core.arc() else { return };
-    let handle = core.handle.clone();
+    let handle = core.services.handle.clone();
     handle.spawn(async move { pull_if_due(&core, &base).await });
 }
 

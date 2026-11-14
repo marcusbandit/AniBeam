@@ -22,6 +22,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::fetch::message_of;
 use crate::playback::session::{self, Session};
@@ -142,7 +143,7 @@ fn miss_retry_secs() -> i64 {
 /// The answer, and where it came from, against the episode. One row per
 /// episode, replaced whole every time a session settles on one.
 async fn write_cache(
-    core: &Core,
+    services: &Services,
     s: &Session,
     windows: &[SkipWindow],
     source: &str,
@@ -154,7 +155,7 @@ async fn write_cache(
         source.to_string(),
         time::now_secs(),
     );
-    core.store
+    services.store
         .write_async(move |c| {
             c.execute(
                 "INSERT INTO skip_windows (series_id, episode_key, windows, source, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -193,6 +194,7 @@ pub fn start(
     session::report_chapters(core, session, duration, None);
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::SkipWindows, move |ctx| async move {
@@ -239,7 +241,7 @@ async fn resolve(
     let askable =
         !s.is_extra && s.mal_id.is_some() && s.number.is_some_and(|n| n.is_finite() && n > 0.0);
     if from_file.len() == 2 || (!from_file.is_empty() && !askable) {
-        write_cache(core, s, &from_file, SkipSource::Chapters.as_str()).await?;
+        write_cache(&core.services, s, &from_file, SkipSource::Chapters.as_str()).await?;
         return Ok(from_file);
     }
     let asked = ask(core, ctx, s, duration).await?;
@@ -269,6 +271,7 @@ async fn ask(
 ) -> Result<Vec<SkipWindow>, CoreError> {
     let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
     if let Some(windows) = core
+        .services
         .store
         .write_async(move |c| cached(c, series, &key, now))
         .await?
@@ -295,13 +298,13 @@ async fn ask(
         .await
     {
         Ok(Some(windows)) => {
-            write_cache(core, s, &windows, SkipSource::AniSkip.as_str()).await?;
+            write_cache(&core.services, s, &windows, SkipSource::AniSkip.as_str()).await?;
             Ok(windows)
         }
         // AniSkip holds nothing for this episode yet. Cached as a miss, so
         // the next play asks nobody, and asked about again in seven days.
         Ok(None) => {
-            write_cache(core, s, &[], MISS).await?;
+            write_cache(&core.services, s, &[], MISS).await?;
             Ok(Vec::new())
         }
         // A failure to ask says nothing about the episode, so nothing is

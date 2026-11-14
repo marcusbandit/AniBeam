@@ -318,8 +318,11 @@ const RETRY_SECS: i64 = 10 * 60;
 /// per show; a second opening joins the first one's, and one that failed is
 /// tried again ten minutes on at the soonest.
 pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let (page, read_at) = core.store.read(|c| read(c, &images_dir, anilist_id))?;
+    let images_dir = core.services.paths.images_dir();
+    let (page, read_at) = core
+        .services
+        .store
+        .read(|c| read(c, &images_dir, anilist_id))?;
     let now = time::now_secs();
     let reading = if read_at.is_some_and(|at| now - at < PAGE_TTL) {
         None
@@ -333,8 +336,13 @@ pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
 }
 
 fn start_read(core: &Core, anilist_id: u64, now: i64) -> Result<Option<u64>, CoreError> {
-    let running: std::collections::HashSet<u64> =
-        core.jobs.list().into_iter().map(|j| j.id).collect();
+    let running: std::collections::HashSet<u64> = core
+        .services
+        .jobs
+        .list()
+        .into_iter()
+        .map(|j| j.id)
+        .collect();
     let mut reads = core.show_reads.lock().unwrap();
     // A read that ended and is past the retry gap is forgotten, so the map
     // only ever holds the reads of the last few minutes.
@@ -344,6 +352,7 @@ fn start_read(core: &Core, anilist_id: u64, now: i64) -> Result<Option<u64>, Cor
     }
     let owner = core.owner()?;
     let job = core
+        .services
         .jobs
         .clone()
         .start(JobKind::ReadShowPage, move |_| async move {
@@ -394,7 +403,8 @@ async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
     }
     let now = time::now_secs();
     let text = media.to_string();
-    core.store
+    core.services
+        .store
         .write_async(move |c| {
             sync::put_show(c, id, Some(&text), now)?;
             c.execute(

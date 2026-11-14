@@ -31,6 +31,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::apply::{card_for, provider_stopped};
 use crate::metadata::fetch::{self, message_of};
@@ -213,7 +214,8 @@ async fn refresh_anilist(
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
     let status = schedule.status.clone();
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| {
             let before = stored(tx, anilist_id)?;
             record::write_episodes(tx, anilist_id, &rows, true, now)?;
@@ -231,6 +233,7 @@ async fn refresh_tvmaze(core: &Core, show_id: u64, now: i64) -> Result<bool, Cor
     let show = fetch::fetch_show(core, show_id).await?;
     let urls = fetch::show_image_urls(&show);
     let changed = core
+        .services
         .store
         .tx_async(move |tx| {
             let before = stored_show(tx, show_id)?;
@@ -318,8 +321,9 @@ fn write_status(
     Ok(true)
 }
 
-async fn stamp_async(core: &Core, behind: Behind, now: i64) -> Result<(), CoreError> {
-    core.store
+async fn stamp_async(services: &Services, behind: Behind, now: i64) -> Result<(), CoreError> {
+    services
+        .store
         .tx_async(move |tx| match behind {
             Behind::Anilist { anilist_id, .. } => stamp(tx, anilist_id, now),
             // The show's fetch is its clock, so a failed turn moves it on
@@ -360,7 +364,7 @@ async fn refresh_reported(
                 ),
                 EventBody::Notice,
             );
-            stamp_async(core, cand.behind.clone(), now).await?;
+            stamp_async(&core.services, cand.behind.clone(), now).await?;
             Ok(false)
         }
     }
@@ -371,7 +375,7 @@ async fn refresh_reported(
 /// asks for this on its way into a page, and "nothing to do" is an answer
 /// rather than an error.
 pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
-    let known: Option<i64> = core.store.read(|c| {
+    let known: Option<i64> = core.services.store.read(|c| {
         Ok(c.query_row(
             "SELECT 1 FROM series WHERE id = ?1",
             params![series as i64],
@@ -387,11 +391,13 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
     }
     let owner = core.owner()?;
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshAiring, move |ctx| async move {
             let now = time::now_secs();
             let cand = owner
+                .services
                 .store
                 .write_async(move |c| candidate(c, series, now, false))
                 .await?;
@@ -407,7 +413,7 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
                 });
             };
             let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
-            if updated && let Some(card) = card_for(&owner, series).await? {
+            if updated && let Some(card) = card_for(&owner.services, series).await? {
                 ctx.changed(card);
             }
             // A new date for a followed show's next episode is a new timer (#215)
@@ -435,11 +441,16 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
 /// fetches write back.
 pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs
+    core.services
+        .jobs
         .clone()
         .start(JobKind::RefreshAiring, move |ctx| async move {
             let now = time::now_secs();
-            let work = owner.store.write_async(move |c| candidates(c, now)).await?;
+            let work = owner
+                .services
+                .store
+                .write_async(move |c| candidates(c, now))
+                .await?;
             let total = work.len() as u64;
             let mut updated = 0u64;
             for (done, cand) in work.into_iter().enumerate() {
@@ -450,7 +461,7 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                 // stamp the last series hours before it was actually fetched.
                 if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
                     updated += 1;
-                    if let Some(card) = card_for(&owner, cand.series).await? {
+                    if let Some(card) = card_for(&owner.services, cand.series).await? {
                         ctx.changed(card);
                     }
                 }

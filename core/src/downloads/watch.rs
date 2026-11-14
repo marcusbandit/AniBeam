@@ -25,6 +25,7 @@ use rusqlite::{Connection, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::sync::recover;
 
 /// When a followed episode is looked for, counted from the moment it aired:
@@ -155,6 +156,7 @@ pub async fn remember(core: &Arc<Core>, rules: &[SubscriptionRule]) {
         .collect();
     let now = crate::time::now_secs();
     let saved = core
+        .services
         .store
         .tx_async(move |tx| {
             tx.execute("DELETE FROM follows", [])?;
@@ -198,7 +200,7 @@ impl Drop for Slot {
 /// watch ends, so the episode after it gets one.
 pub fn arm(core: &Core) {
     let now = crate::time::now_secs();
-    let found = match core.store.read(|c| due(c, now)) {
+    let found = match core.services.store.read(|c| due(c, now)) {
         Ok(found) => found,
         Err(e) => {
             tracing::debug!("followed episodes not read: {e}");
@@ -212,7 +214,7 @@ pub fn arm(core: &Core) {
             continue;
         }
         let core = owner.clone();
-        owner.handle.spawn(async move {
+        owner.services.handle.spawn(async move {
             let _slot = Slot(key);
             let ended = watch(&core, &d).await;
             if ended {
@@ -241,7 +243,12 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
             tokio::time::sleep(std::time::Duration::from_secs((left as u64).min(NAP))).await;
         }
         let read = d.clone();
-        let now = match core.store.write_async(move |c| standing(c, &read)).await {
+        let now = match core
+            .services
+            .store
+            .write_async(move |c| standing(c, &read))
+            .await
+        {
             Ok(s) => s,
             Err(e) => {
                 tracing::debug!("followed episode not read: {e}");
@@ -253,7 +260,7 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
             (Standing::Stale, _) => return false,
             (Standing::Missing, Step::Refresh | Step::Check) => refresh(core, d.series).await,
             (Standing::Missing, Step::GiveUp) => {
-                give_up(core, d).await;
+                give_up(&core.services, d).await;
                 return true;
             }
         }
@@ -268,7 +275,7 @@ async fn running_client(core: &Arc<Core>) -> Option<Arc<super::qbt::QbtClient>> 
     if let Some(client) = core.downloads.state().qbt.clone() {
         return Some(client);
     }
-    let settings = super::load_settings(core).await.ok()?;
+    let settings = super::load_settings(&core.services).await.ok()?;
     if settings.torrent_mode != TorrentMode::Existing {
         return None;
     }
@@ -281,6 +288,7 @@ async fn refresh(core: &Arc<Core>, series: u64) {
         return;
     };
     let feeds: Vec<String> = match core
+        .services
         .store
         .write_async(move |c| {
             let mut stmt = c.prepare("SELECT feed_url FROM follows WHERE series_id = ?1")?;
@@ -314,9 +322,9 @@ async fn refresh(core: &Arc<Core>, series: u64) {
 }
 
 /// The one line for an episode that never came, said once ever.
-async fn give_up(core: &Arc<Core>, d: &Due) {
+async fn give_up(services: &Services, d: &Due) {
     let (series, episode, now) = (d.series, d.episode, crate::time::now_secs());
-    let first = core
+    let first = services
         .store
         .write_async(move |c| {
             Ok(c.execute(
@@ -328,7 +336,7 @@ async fn give_up(core: &Arc<Core>, d: &Due) {
     if !matches!(first, Ok(true)) {
         return;
     }
-    core.bus.say(
+    services.bus.say(
         Level::Warn,
         Stage::Downloads,
         missed_line(&d.title, d.episode),
@@ -403,7 +411,7 @@ mod tests {
     /// A followed show with episodes 1 to 3 out (1 here, 2 a day ago and
     /// missing, 3 a week ago and missing) and 4 due tomorrow.
     fn followed(core: &Core, now: i64) {
-        core.store
+        core.services.store
             .write(move |c| {
                 c.execute_batch(
                     "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0);
@@ -441,6 +449,7 @@ mod tests {
         let now = 2_000_000_000;
         followed(&core, now);
         let found: Vec<u32> = core
+            .services
             .store
             .read(|c| due(c, now))
             .unwrap()
@@ -451,7 +460,8 @@ mod tests {
 
         // Given up on once, the recent miss is not watched again after a
         // restart; and an episode that arrives is not missing.
-        core.store
+        core.services
+            .store
             .write(move |c| {
                 c.execute(
                     "INSERT INTO follow_misses (series_id, episode, said_at) VALUES (1, 2, ?1)",
@@ -461,6 +471,7 @@ mod tests {
             })
             .unwrap();
         let found: Vec<u32> = core
+            .services
             .store
             .read(|c| due(c, now))
             .unwrap()
@@ -477,7 +488,7 @@ mod tests {
             aired_at: now + 86_400,
         };
         assert_eq!(
-            core.store.read(|c| standing(c, &due4)).unwrap(),
+            core.services.store.read(|c| standing(c, &due4)).unwrap(),
             Standing::Missing
         );
         let due1 = Due {
@@ -486,7 +497,7 @@ mod tests {
             ..due4.clone()
         };
         assert_eq!(
-            core.store.read(|c| standing(c, &due1)).unwrap(),
+            core.services.store.read(|c| standing(c, &due1)).unwrap(),
             Standing::Arrived
         );
         let moved = Due {
@@ -494,7 +505,7 @@ mod tests {
             ..due4.clone()
         };
         assert_eq!(
-            core.store.read(|c| standing(c, &moved)).unwrap(),
+            core.services.store.read(|c| standing(c, &moved)).unwrap(),
             Standing::Stale
         );
         core.shutdown();
@@ -507,21 +518,35 @@ mod tests {
         let (_dir, core) = core();
         let now = 2_000_000_000;
         followed(&core, now);
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute("UPDATE series SET hidden = 1", [])?;
                 Ok(())
             })
             .unwrap();
-        assert!(core.store.read(|c| due(c, now)).unwrap().is_empty());
-        core.store
+        assert!(
+            core.services
+                .store
+                .read(|c| due(c, now))
+                .unwrap()
+                .is_empty()
+        );
+        core.services
+            .store
             .write(|c| {
                 c.execute("UPDATE series SET hidden = 0", [])?;
                 Ok(())
             })
             .unwrap();
-        core.handle.block_on(remember(&core, &[]));
-        assert!(core.store.read(|c| due(c, now)).unwrap().is_empty());
+        core.services.handle.block_on(remember(&core, &[]));
+        assert!(
+            core.services
+                .store
+                .read(|c| due(c, now))
+                .unwrap()
+                .is_empty()
+        );
         core.shutdown();
     }
 }

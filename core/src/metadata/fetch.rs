@@ -82,7 +82,8 @@ pub async fn fetch_and_write(
     let urls = record::image_urls(&write);
     let row_mal_id = write.mal_id;
 
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| {
             record::write_media(tx, &write, &raw, now)?;
             // The schedule was just fetched, so the airing refresh has
@@ -117,6 +118,7 @@ pub async fn fetch_and_write(
 /// When the series' rows disagree with the record it has now, it is scanned.
 pub(crate) async fn reread_after_record(core: &Core, series: u64) {
     let reread = core
+        .services
         .store
         .write_async(move |c| crate::library::readings::record_matters(c, series))
         .await
@@ -178,7 +180,8 @@ pub async fn fetch_and_write_tvmaze(
 ) -> Result<(), CoreError> {
     let show = fetch_show(core, show_id).await?;
     let urls = show_image_urls(&show);
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| {
             write_show(tx, &show, now)?;
             write_tvmaze_match(tx, series, show_id, confirmed, now)

@@ -226,7 +226,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
     let undo = fixes.iter().all(|f| f.reading.is_none());
     let undoes = fixes.iter().any(|f| f.reading.is_none());
     let n = fixes.len();
-    let changed = core.store.tx(move |tx| {
+    let changed = core.services.store.tx(move |tx| {
         let found: Option<i64> = tx
             .query_row(
                 "SELECT id FROM series WHERE id = ?1",
@@ -243,8 +243,9 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
         write_fixes(tx, series, &fixes, now)
     })?;
     if changed > 0 {
-        let images_dir = core.paths.images_dir();
+        let images_dir = core.services.paths.images_dir();
         let cards = core
+            .services
             .store
             .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
         let title = cards.first().map_or_else(String::new, |c| c.title.clone());
@@ -258,7 +259,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
         } else {
             crate::words!("core-library-fixed", count = n, title = &title)
         };
-        core.bus.say(
+        core.services.bus.say(
             Level::Info,
             Stage::Library,
             said,

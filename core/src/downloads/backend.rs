@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::releases::BestfitConfig;
 use crate::releases::native::Native;
 
@@ -27,25 +28,25 @@ pub enum DownloadsBackend {
 
 /// The engine the settings pick. A store that cannot be read is an error,
 /// not a quiet fall back to one or the other.
-pub fn engine(core: &Core) -> Result<DownloadsEngine, CoreError> {
-    Ok(settings::read(core)?.engine)
+pub fn engine(services: &Services) -> Result<DownloadsEngine, CoreError> {
+    Ok(settings::read(services)?.engine)
 }
 
 /// What best fit ranks by on the desktop's native engine: the preferences saved in the
 /// config of the anirss Anibeam runs, as anirss itself ranks (#545). A remote anirss keeps
 /// its config on its own machine, and a missing file leaves the core's own ranking: None.
-fn saved_bestfit(core: &Core) -> Result<Option<BestfitConfig>, CoreError> {
-    let mode = settings::read(core)?.anirss_mode;
+fn saved_bestfit(services: &Services) -> Result<Option<BestfitConfig>, CoreError> {
+    let mode = settings::read(services)?.anirss_mode;
     if mode == AnirssMode::Remote {
         return Ok(None);
     }
-    Ok(settings::anirss_config_path(core).and_then(|p| settings::anirss_bestfit(&p)))
+    Ok(settings::anirss_config_path(services).and_then(|p| settings::anirss_bestfit(&p)))
 }
 
 impl DownloadsBackend {
     /// The backend the settings pick.
     pub async fn open(core: &Arc<Core>) -> Result<DownloadsBackend, CoreError> {
-        DownloadsBackend::with(core, engine(core)?).await
+        DownloadsBackend::with(core, engine(&core.services)?).await
     }
 
     /// The backend for `engine`. Native never starts the sidecar; anirss is
@@ -57,7 +58,8 @@ impl DownloadsBackend {
         match engine {
             DownloadsEngine::Anirss => ensure_client(core).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                let native = Native::for_core(core, Vec::new(), saved_bestfit(core)?);
+                let native =
+                    Native::for_core(&core.services, Vec::new(), saved_bestfit(&core.services)?);
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()
@@ -255,7 +257,7 @@ impl DownloadsBackend {
                     return false;
                 };
                 kind != crate::releases::kinds::FILTERED_RSS
-                    && !crate::repos::installed_narrows(core, endpoint)
+                    && !crate::repos::installed_narrows(&core.services, endpoint)
             }
             DownloadsBackend::Native(native, _) => native
                 .endpoints

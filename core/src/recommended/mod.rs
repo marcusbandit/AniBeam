@@ -31,6 +31,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
 use crate::prefs;
@@ -301,12 +302,12 @@ pub fn list(
 
 /// The `ListRecommended` call: the last fit at once, and the id of a fit
 /// already running so the row can say one is on its way.
-pub fn list_call(core: &Core, scope: RecommendedScope) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let recommended = core.store.read(|c| list(c, &images_dir, scope))?;
+pub fn list_call(services: &Services, scope: RecommendedScope) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let recommended = services.store.read(|c| list(c, &images_dir, scope))?;
     Ok(Reply::Recommended {
         recommended,
-        refreshing: core.jobs.running(JobKind::RefreshRecommended),
+        refreshing: services.jobs.running(JobKind::RefreshRecommended),
     })
 }
 
@@ -314,7 +315,7 @@ pub fn list_call(core: &Core, scope: RecommendedScope) -> Result<Reply, CoreErro
 /// than `STALE_AFTER_SECS` (or there never was one) or `force` says so, `Ok`
 /// when it is fresh. A run AniList stopped short is never fresh. One runs at a time; a second ask joins it.
 pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
-    let read_at: Option<i64> = core.store.read(|c| {
+    let read_at: Option<i64> = core.services.store.read(|c| {
         Ok(
             c.query_row("SELECT read_at FROM rec_state WHERE id = 1", [], |r| {
                 r.get(0)
@@ -335,7 +336,8 @@ pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
 /// Starts the fit, or answers with the one running.
 pub fn start(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs
+    core.services
+        .jobs
         .clone()
         .start(JobKind::RefreshRecommended, move |ctx| async move {
             refresh(owner, ctx).await
@@ -386,7 +388,7 @@ fn finished(message: String) -> Finished {
 }
 
 async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
-    let mine = core.store.read(Mine::read)?;
+    let mine = core.services.store.read(Mine::read)?;
     let now = time::now_secs();
     let empty = |state: RecommendedState| {
         move |tx: &rusqlite::Transaction| {
@@ -395,13 +397,17 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         }
     };
     if mine.entries.is_empty() {
-        core.store.tx_async(empty(RecommendedState::NoList)).await?;
+        core.services
+            .store
+            .tx_async(empty(RecommendedState::NoList))
+            .await?;
         return Ok(finished(
             "Recommended for you: no list to learn from".to_string(),
         ));
     }
     let Some((mean, signals)) = signals(&mine.entries, &DropReasons::new()) else {
-        core.store
+        core.services
+            .store
             .tx_async(empty(RecommendedState::NoScores))
             .await?;
         return Ok(finished(
@@ -422,7 +428,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
                 format!("Recommended for you stopped reading AniList: {why}"),
                 EventBody::Notice,
             );
-            core.store.read(sync::saved)?
+            core.services.store.read(sync::saved)?
         }
         Err(sync::Halt::Fail(e)) => return Err(e),
     };
@@ -431,7 +437,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
 
     let (catalog, neighbours) = {
         let people = found.people.clone();
-        core.store
+        core.services
+            .store
             .read(|c| Ok((sync::catalog(c)?, sync::neighbours(c, &people)?)))?
     };
     let rated = signals.len();
@@ -451,7 +458,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         .flat_map(|r| std::iter::once(r.id).chain(r.why.near.iter().map(|n| n.id)))
         .collect();
     let saved = found.clone();
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| {
             tx.execute("DELETE FROM rec_ranked", [])?;
             let mut insert = tx.prepare(
@@ -472,7 +480,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         .await?;
 
     // Every cover before the event, so the tiles draw local files.
-    let urls: Vec<String> = core.store.read(|c| {
+    let urls: Vec<String> = core.services.store.read(|c| {
         let media = media_of(c, &covers_for)?;
         Ok(covers_for
             .iter()
@@ -500,7 +508,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
 /// (`RefreshRecommended`), so a list nobody looks recommendations up for
 /// never sends the recommender's reads.
 pub fn after_tracker_refresh(core: &Arc<Core>) {
-    match core.store.read(state_of) {
+    match core.services.store.read(state_of) {
         Ok((_, Some(_))) => {
             start(core);
         }

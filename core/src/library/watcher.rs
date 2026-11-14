@@ -324,7 +324,7 @@ impl Watcher {
                 }
                 Err(errors) => {
                     for e in errors {
-                        core.bus.warn(
+                        core.services.bus.warn(
                             Stage::Library,
                             format!("watcher error: {e}"),
                             EventBody::Notice,
