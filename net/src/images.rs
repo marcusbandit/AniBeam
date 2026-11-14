@@ -20,21 +20,21 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, param
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
-use crate::atomic_file;
-use crate::contract::*;
-use crate::jobs::Finished;
-use crate::net::Net;
-use crate::net::{Http, HttpRequest};
-use crate::store::Store;
-use crate::store::sql::placeholders;
-use crate::sync::recover;
-use crate::time;
+use crate::Net;
+use crate::{Http, HttpRequest};
+use anibeam_contract::*;
+use anibeam_foundation::atomic_file;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::store::Store;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
 
 /// How the cache reads the cards of the series whose images changed, for the
 /// `SeriesChanged` that tells the shells. It is the library's
 /// `cards::cards_for`, which `Core::open` hands the net team, so the cache
 /// names no team above it (#854).
-pub(crate) type CardsFor = fn(&Connection, &Path, &[u64]) -> Result<Vec<SeriesCard>, CoreError>;
+pub type CardsFor = fn(&Connection, &Path, &[u64]) -> Result<Vec<SeriesCard>, CoreError>;
 
 /// Fetches in flight at once.
 const CONCURRENCY: usize = 4;
@@ -656,7 +656,7 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
                 ctx.progress(
                     (round * BATCH) as u64,
                     Some(total),
-                    &crate::i18n::tr("core-images-progress-fetching", &[]),
+                    &anibeam_contract::i18n::tr("core-images-progress-fetching", &[]),
                 );
                 let mut arrived: Vec<String> = Vec::new();
                 for (url, outcome) in owner.images.ensure(batch).await {
@@ -720,7 +720,7 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
 
 /// `GetStorage`: two counts off one table, answered off the reader
 /// connection rather than as a job.
-pub(crate) fn storage_call(net: &Net) -> Result<Reply, CoreError> {
+pub fn storage_call(net: &Net) -> Result<Reply, CoreError> {
     let (image_count, image_bytes) = net.services.store.read(|c| net.images.storage(c))?;
     Ok(Reply::Storage {
         image_count,
@@ -786,9 +786,9 @@ pub fn start_clear(net: &Net) -> u64 {
 /// the directory from only ever growing. Its report is bookkeeping rather
 /// than a state change, so it goes to the trace log and never to the
 /// activity log, and a failure costs nothing but disk.
-pub(crate) async fn sweep_after(net: &Net, what: &str) {
+pub async fn sweep_after(net: &Net, what: &str) {
     let cache = net.images.clone();
-    let now = crate::time::now_secs();
+    let now = anibeam_foundation::time::now_secs();
     match net
         .services
         .store
@@ -808,7 +808,7 @@ pub(crate) async fn sweep_after(net: &Net, what: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use crate::FakeHttp;
 
     #[test]
     fn the_key_is_the_urls_sha256_and_the_path_shards_on_its_first_two_hex() {

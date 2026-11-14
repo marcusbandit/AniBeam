@@ -466,16 +466,16 @@ core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 후 시간 초과
 core-net-rate-limited = { $provider } 요청 한도 초과
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 방금 시간이 초과됐어요. { -app-name }이(가) { $seconds }초 기다린 뒤 다시 요청해요
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 데이터 없음
 
@@ -780,7 +780,7 @@ core-metadata-progress-imdb-ratings = IMDb 평점
 
 core-franchise-relation-character = 같은 캐릭터
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 이미지 가져오는 중
 

@@ -113,19 +113,18 @@ dependencies = [
  "anibeam-contract",
  "anibeam-foundation",
  "anibeam-host-api",
+ "anibeam-net",
  "anibeam-recs",
  "anibeam-relay",
  "anibeam-room",
  "anyhow",
  "axum",
- "backon",
  "base64 0.23.1",
  "ed25519-dalek",
  "fancy-regex",
  "flate2",
  "futures-core",
  "futures-util",
- "governor",
  "librqbit",
  "matroska-demuxer",
  "mdns-sd",
@@ -151,7 +150,6 @@ dependencies = [
  "trash",
  "uniffi",
  "walkdir",
- "webpki-root-certs",
 ]
 
 [[package]]
@@ -188,6 +186,29 @@ dependencies = [
  "ed25519-dalek",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-net"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "backon",
+ "flate2",
+ "governor",
+ "rand 0.10.2",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
+ "walkdir",
+ "webpki-root-certs",
 ]
 
 [[package]]

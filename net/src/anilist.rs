@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use super::limiter::ProviderClient;
 use super::{Body, HttpRequest, null_to_default};
-use crate::contract::{CoreError, Provider};
+use anibeam_contract::{CoreError, Provider};
 
 pub const ANILIST_API: &str = "https://graphql.anilist.co";
 
@@ -753,7 +753,7 @@ impl AnilistClient {
             Some(data) if !data.is_null() => Ok(data.clone()),
             _ => Err(provider_error(
                 None,
-                crate::i18n::tr("core-net-no-data", &[]),
+                anibeam_contract::i18n::tr("core-net-no-data", &[]),
             )),
         }
     }
@@ -855,8 +855,8 @@ fn parse_media(value: &serde_json::Value) -> Result<Option<Media>, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::limiter::ProviderClient;
-    use crate::net::{Body, FakeHttp, Upstream};
+    use crate::limiter::ProviderClient;
+    use crate::{Body, FakeHttp, Upstream};
     use std::sync::Arc;
     use std::time::Duration;
 

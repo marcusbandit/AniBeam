@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use super::limiter::ProviderClient;
 use super::{HttpRequest, null_to_default};
-use crate::contract::{CoreError, Provider};
+use anibeam_contract::{CoreError, Provider};
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
 
@@ -94,8 +94,8 @@ impl JikanClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::limiter::ProviderClient;
-    use crate::net::{FakeHttp, Upstream};
+    use crate::limiter::ProviderClient;
+    use crate::{FakeHttp, Upstream};
     use std::sync::Arc;
     use std::time::Duration;
 

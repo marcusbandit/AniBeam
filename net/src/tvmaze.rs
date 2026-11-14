@@ -12,8 +12,8 @@ use serde::Deserialize;
 
 use super::limiter::ProviderClient;
 use super::{HttpRequest, HttpResponse, null_to_default};
-use crate::contract::{AiringStatus, CoreError, Provider};
-use crate::percent;
+use anibeam_contract::{AiringStatus, CoreError, Provider};
+use anibeam_foundation::percent;
 
 pub const TVMAZE_API: &str = "https://api.tvmaze.com";
 
@@ -319,12 +319,12 @@ fn check(response: &HttpResponse) -> Result<(), CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::{FakeHttp, Upstream};
+    use crate::{FakeHttp, Upstream};
     use std::sync::Arc;
     use std::time::Duration;
 
-    const SHOW: &str = include_str!("../../tests/fixtures/tvmaze/show-83073.json");
-    const SEARCH: &str = include_str!("../../tests/fixtures/tvmaze/search-avatar.json");
+    const SHOW: &str = include_str!("../tests/fixtures/tvmaze/show-83073.json");
+    const SEARCH: &str = include_str!("../tests/fixtures/tvmaze/search-avatar.json");
 
     fn client(http: Arc<FakeHttp>) -> TvmazeClient {
         TvmazeClient::new(ProviderClient::new(

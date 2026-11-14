@@ -1,16 +1,20 @@
-//! The network layer: the real client and the fake that stands in for it in
-//! tests, over the one transport in `foundation::http`, whose names this hands
-//! on. Nothing above this module knows about reqwest.
+//! The net team (#854): the real client and the fake that stands in for it in
+//! tests, over the one transport in `anibeam_foundation::http`, whose names
+//! this hands on; one client per provider, each behind the shared limiter in
+//! `limiter`; and the image cache. It depends on the foundation and the
+//! contract only. The core hands it on as `anibeam_core::net`, and the image
+//! cache as `anibeam_core::images`.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::contract::{CoreError, Provider};
+use anibeam_contract::{CoreError, Provider};
 
 pub mod anilist;
 pub mod aniskip;
 pub mod doh;
 pub mod front;
+pub mod images;
 pub mod imdb;
 pub mod jikan;
 pub mod limiter;
@@ -19,27 +23,32 @@ mod team;
 pub mod tvmaze;
 pub mod wikidata;
 
-pub use crate::foundation::http::{
+pub use anibeam_foundation::http::{
     Body, BoxFuture, FilePart, Http, HttpError, HttpRequest, HttpResponse, Method,
 };
 pub use team::Net;
+
+/// The describe string computed by build.rs: `2.0.0.r14.g1a2b3c4` at a commit,
+/// `CARGO_PKG_VERSION` when git is absent. Every client here sends it in its user agent,
+/// and the shell and the CLI print it as `anibeam_core::VERSION`.
+pub const VERSION: &str = env!("ANIBEAM_VERSION");
 
 /// How long one tracker request may take. Per request, never per call: the
 /// limiter's 429 schedule sits under this and keeps its own bounds, so a
 /// rate limit is always reported as a rate limit and never as a timeout.
 /// A user is waiting on every one of these, which is why they are capped
 /// tighter than the client's own 30 seconds.
-pub(crate) const TRACKER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+pub const TRACKER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// A count off a provider's JSON, which is unsigned and small: anything
 /// missing or absurd is nought rather than a wrap-around.
-pub(crate) fn as_count(value: Option<u64>) -> u32 {
+pub fn as_count(value: Option<u64>) -> u32 {
     as_u32(value).unwrap_or(0)
 }
 
 /// The same number when the provider sent one it can hold, and nothing when
 /// it sent none or sent something absurd.
-pub(crate) fn as_u32(value: Option<u64>) -> Option<u32> {
+pub fn as_u32(value: Option<u64>) -> Option<u32> {
     value.and_then(|v| u32::try_from(v).ok())
 }
 
@@ -220,7 +229,7 @@ impl Front {
         let wait = gate
             .admit(std::time::Instant::now())
             .map_err(|left| HttpError {
-                message: crate::i18n::tr(
+                message: anibeam_contract::i18n::tr(
                     "core-net-waiting",
                     &[
                         ("host", host.as_str().into()),
@@ -371,7 +380,7 @@ pub fn host_shown(url: &str) -> String {
 }
 
 /// `url` as the HTTP client reads it, when it names a host.
-pub(crate) fn parsed(url: &str) -> Option<reqwest::Url> {
+pub fn parsed(url: &str) -> Option<reqwest::Url> {
     reqwest::Url::parse(url)
         .ok()
         .filter(|u| u.host_str().is_some())

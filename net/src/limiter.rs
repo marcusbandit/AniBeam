@@ -11,7 +11,7 @@ use backon::{ExponentialBuilder, Retryable};
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 
 use super::{Http, HttpRequest, HttpResponse, Upstream};
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// The retry schedule the spec fixes: 1, 2, 4, 8, 16, 32 seconds, capped
 /// at 60, six retries after the first request.
@@ -146,7 +146,7 @@ impl ProviderClient {
                     // like any other: nothing is retried and the caller
                     // decides what to do about it.
                     Err(_) => Err(super::HttpError {
-                        message: crate::i18n::tr(
+                        message: anibeam_contract::i18n::tr(
                             "core-net-timed-out",
                             &[("ms", d.as_millis().to_string().into())],
                         ),
@@ -186,7 +186,7 @@ impl ProviderClient {
             Err(Attempt::Limited(r)) => Err(CoreError::provider_retry(
                 self.upstream.provider(),
                 Some(429),
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-net-rate-limited",
                     &[("provider", self.upstream.label().into())],
                 ),
@@ -202,8 +202,8 @@ impl ProviderClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::Provider;
-    use crate::net::FakeHttp;
+    use crate::FakeHttp;
+    use anibeam_contract::Provider;
     use std::time::Instant;
 
     fn get(url: &str) -> HttpRequest {
@@ -219,7 +219,7 @@ mod tests {
         fn send(
             &self,
             _req: HttpRequest,
-        ) -> crate::net::BoxFuture<'_, Result<HttpResponse, crate::net::HttpError>> {
+        ) -> crate::BoxFuture<'_, Result<HttpResponse, crate::HttpError>> {
             let delay = self.delay;
             Box::pin(async move {
                 tokio::time::sleep(delay).await;

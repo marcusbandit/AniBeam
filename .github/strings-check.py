@@ -42,6 +42,7 @@ DEV_ONLY = {
 CODE = UI + [
     "contract/src/**/*.rs",
     "foundation/src/**/*.rs",
+    "net/src/**/*.rs",
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",

@@ -12,6 +12,7 @@ on:
     paths:
       - 'contract/**'
       - 'foundation/**'
+      - 'net/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'

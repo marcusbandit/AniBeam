@@ -457,16 +457,16 @@ core-host-not-an-address = { $text } 不是地址和端口
 
 core-host-not-a-key = { $key } 不是设备密钥
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 后超时
 core-net-rate-limited = { $provider } 限制了请求频率
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }：刚才超时了；{ -app-name } 会等待 { $seconds } 秒后再请求
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 没有数据
 
@@ -729,7 +729,7 @@ core-metadata-progress-imdb-ratings = IMDb 评分
 
 core-franchise-relation-character = 共同角色
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 正在获取图片
 
