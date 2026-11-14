@@ -94,5 +94,6 @@
   "Add to SideStore": "SideStore에 추가",
   "Add to LiveContainer": "LiveContainer에 추가",
   "Download IPA": "IPA 다운로드",
-  "Nightly test build, unsigned, for sideloading": "Nightly 테스트 빌드, 서명 없음, 사이드로딩용"
+  "Nightly test build, unsigned, for sideloading": "Nightly 테스트 빌드, 서명 없음, 사이드로딩용",
+  "Unsigned, for sideloading": "서명되지 않음, 사이드로딩용"
 }

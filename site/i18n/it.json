@@ -94,5 +94,6 @@
   "Add to SideStore": "Aggiungi a SideStore",
   "Add to LiveContainer": "Aggiungi a LiveContainer",
   "Download IPA": "Scarica l'IPA",
-  "Nightly test build, unsigned, for sideloading": "Build di prova nightly, non firmata, per il sideloading"
+  "Nightly test build, unsigned, for sideloading": "Build di prova nightly, non firmata, per il sideloading",
+  "Unsigned, for sideloading": "Non firmato, per il sideloading"
 }

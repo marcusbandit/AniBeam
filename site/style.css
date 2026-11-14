@@ -1002,9 +1002,11 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
 html[data-device="phone"] .dl-tile:not([data-os="android"]),
 html[data-device="phone"] .dl-term,
 html[data-device="phone"] .get-term,
-html[data-device="phone"] .channel,
 html[data-device="phone"] .dl-other,
 html[data-device="phone"] .dl-all { display: none; }
+
+/* An Android phone has no channels, but an iPhone does: its IPA is on each of them. */
+html[data-os="android"] .channel { display: none; }
 
 /* An iPhone: no app yet, so the note says it is coming and the Mac's download stands in. */
 .ios-mac, .ios-soon { display: none; }

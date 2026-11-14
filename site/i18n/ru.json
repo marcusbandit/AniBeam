@@ -94,5 +94,6 @@
  "Add to SideStore": "Добавить в SideStore",
  "Add to LiveContainer": "Добавить в LiveContainer",
  "Download IPA": "Скачать IPA",
- "Nightly test build, unsigned, for sideloading": "Тестовая сборка nightly, без подписи, для сайдлоада"
+ "Nightly test build, unsigned, for sideloading": "Тестовая сборка nightly, без подписи, для сайдлоада",
+  "Unsigned, for sideloading": "Без подписи, для сайдлоада"
 }
