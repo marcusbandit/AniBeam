@@ -136,6 +136,7 @@ pub fn set_volume(level: f32) {
 }
 
 /// No screen to turn.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn player_screen(on: bool) {
     let _ = on;
 }

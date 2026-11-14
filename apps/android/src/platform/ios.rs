@@ -7,6 +7,9 @@
 //! the app's window the first time the layout asks. UIKit says how far the hinge is open,
 //! not where the crease runs, so the crease is never reported and the layout takes it for a
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
+//!
+//! The window turns only where its layout fits: an iPhone that does not fold stays upright
+//! outside the player, and the player turns to landscape (#937).
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -16,7 +19,8 @@ use std::sync::mpsc::Sender;
 use block2::RcBlock;
 use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
+use objc2::runtime::{AnyClass, AnyObject, Imp, NSObjectProtocol, ProtocolObject, Sel};
+use objc2::sel;
 use objc2_core_foundation::CGRect;
 use objc2_foundation::{
     NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
@@ -92,6 +96,7 @@ fn observe(commands: Sender<Command>) -> Vec<Retained<ProtocolObject<dyn NSObjec
     // Called straight away, not through Slint's queue: the GL must be gone when it returns.
     let background = RcBlock::new(|_: NonNull<NSNotification>| crate::player::background());
     let active = RcBlock::new(|_: NonNull<NSNotification>| {
+        turnable();
         crate::video::hold(false);
         crate::player::foreground();
     });
@@ -362,6 +367,7 @@ thread_local! {
 /// window: the iPhone Duo's inner screen folds across its long side, so it runs across
 /// when the window is taller than wide.
 pub fn fold() -> (Option<f32>, bool) {
+    turnable();
     let angle = match ask() {
         Hinge::Angle(a) => Some(a),
         _ => None,
@@ -425,6 +431,10 @@ fn heard(update: *mut AnyObject) {
         }
     };
     HINGE.set(next);
+    // A hinge that reports an angle is a foldable's: from then on the window turns freely.
+    if matches!(next, Hinge::Angle(_)) && !FOLDS.replace(true) {
+        turn();
+    }
 }
 
 /// The angle the layout takes: UIKit's status where it says shut or half open, since Apple
@@ -487,4 +497,123 @@ fn app_window() -> Option<Retained<AnyObject>> {
         }
         None
     }
+}
+
+/// `UIInterfaceOrientationMaskPortrait`.
+const PORTRAIT: usize = 1 << 1;
+/// `UIInterfaceOrientationMaskLandscape`: left and right.
+const LANDSCAPE: usize = (1 << 3) | (1 << 4);
+
+thread_local! {
+    /// The player has the screen.
+    static PLAYING: Cell<bool> = const { Cell::new(false) };
+    /// UIKit has reported a hinge angle: this iPhone folds.
+    static FOLDS: Cell<bool> = const { Cell::new(false) };
+    /// The window's view controller answers with `orientations`.
+    static TURNABLE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The orientations the window may take: landscape while the player is open, any but upside
+/// down on a foldable, and upright on an iPhone that does not fold, whose short screen has no
+/// room for the wide layout.
+fn orientations() -> usize {
+    if PLAYING.get() {
+        LANDSCAPE
+    } else if FOLDS.get() {
+        PORTRAIT | LANDSCAPE
+    } else {
+        PORTRAIT
+    }
+}
+
+/// The view controller's `supportedInterfaceOrientations`, which UIKit calls on the main
+/// thread.
+extern "C-unwind" fn supported(_this: *mut AnyObject, _cmd: Sel) -> usize {
+    orientations()
+}
+
+/// Has the window's view controller answer `supportedInterfaceOrientations` with
+/// `orientations`, once there is a window. winit's view controller answers from a setting
+/// Slint gives no way to change, so its method is replaced on its class; the app has one
+/// window and one view controller. Turns the window upright straight away on an iPhone that
+/// was held sideways at launch.
+fn turnable() {
+    if TURNABLE.get() {
+        return;
+    }
+    let Some(window) = app_window() else {
+        return;
+    };
+    // SAFETY: a UIWindow's `rootViewController` is a UIViewController or nil. The replaced
+    // method takes no arguments and returns a UIInterfaceOrientationMask, an NSUInteger,
+    // which is `supported`'s signature and the "Q@:" encoding; UIKit calls it on the main
+    // thread, where the thread locals it reads live.
+    unsafe {
+        let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
+        let Some(controller) = controller else {
+            return;
+        };
+        let class = controller.class() as *const AnyClass as *mut AnyClass;
+        let imp: Imp = std::mem::transmute(
+            supported as extern "C-unwind" fn(*mut AnyObject, Sel) -> usize,
+        );
+        objc2::ffi::class_replaceMethod(
+            class,
+            sel!(supportedInterfaceOrientations),
+            imp,
+            c"Q@:".as_ptr(),
+        );
+    }
+    TURNABLE.set(true);
+    turn();
+}
+
+/// Tells UIKit the orientations changed, and asks the window's scene to turn to one of them
+/// if it is not in one already (iOS 16 and later).
+fn turn() {
+    let Some(window) = app_window() else {
+        return;
+    };
+    let Some(prefs_class) = AnyClass::get(c"UIWindowSceneGeometryPreferencesIOS") else {
+        return;
+    };
+    let refused = RcBlock::new(|error: *mut NSError| {
+        // SAFETY: UIKit passes an NSError it keeps alive for the call.
+        if let Some(error) = unsafe { error.as_ref() } {
+            log(&format!(
+                "iOS kept the orientation: {}",
+                error.localizedDescription()
+            ));
+        }
+    });
+    // SAFETY: plain UIKit calls on the main thread. `rootViewController` and `windowScene`
+    // return objects or nil; the preferences take a UIInterfaceOrientationMask, and the
+    // scene copies the error block.
+    unsafe {
+        let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
+        if let Some(controller) = controller {
+            let _: () = msg_send![&*controller, setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        let scene: Option<Retained<AnyObject>> = msg_send![&*window, windowScene];
+        let Some(scene) = scene else {
+            return;
+        };
+        let prefs: Retained<AnyObject> = msg_send![
+            msg_send![prefs_class, alloc],
+            initWithInterfaceOrientations: orientations()
+        ];
+        let _: () = msg_send![
+            &*scene,
+            requestGeometryUpdateWithPreferences: &*prefs,
+            errorHandler: &*refused
+        ];
+    }
+}
+
+/// The player's screen: landscape while it is open, and back to what the window takes
+/// outside it when it closes.
+pub fn player_screen(on: bool) {
+    PLAYING.set(on);
+    turnable();
+    turn();
 }
