@@ -468,7 +468,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
    the card, so every size matches the app. Only the track menu is new; the app will take it
    over (#785). */
 .player { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); container-type: inline-size; }
-.pl-stage { position: absolute; left: 0; top: 0; width: 960px; height: 540px; transform: scale(var(--k, 0.66)); transform-origin: 0 0; font-family: var(--sans); }
+.pl-stage { position: absolute; left: 0; top: 0; width: 960px; height: 540px; transform: scale(var(--k, 1.2)); transform-origin: 0 0; font-family: var(--sans); }
 .pl-video { position: absolute; inset: 0; background: url("img/art/player.webp") center / cover no-repeat; }
 .pl-glass { position: absolute; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; background: rgba(8, 9, 12, 0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .pl-head { left: 12px; top: 12px; display: flex; align-items: center; gap: 12px; }
@@ -503,6 +503,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .pl-vol::after { content: ""; position: absolute; right: -3px; top: -7px; width: 6px; height: 18px; border-radius: 999px; background: var(--done); }
 .pl-readout { width: 36px; margin-left: 12px; color: #5f6885; font-size: 11.3px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: center; }
 .tracks {
+  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   position: absolute;
   right: 148px;
   bottom: 136px;
@@ -520,7 +521,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .tracks-h { padding: 6px 8px 2px; color: rgba(255, 255, 255, 0.5); font-size: 11.5px; font-weight: 600; }
 .tr { padding: 7px 9px; border-radius: 8px; color: rgba(255, 255, 255, 0.85); font-size: 13.5px; }
 .tr.is-on { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.tr.is-on::after { content: ""; float: right; width: 14px; height: 14px; margin: 2px 0 0 12px; background: var(--done); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+.tr.is-on::after { content: ""; float: right; width: 14px; height: 14px; margin: 2px 0 0 12px; background: var(--done); -webkit-mask: var(--check) center / contain no-repeat; mask: var(--check) center / contain no-repeat; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-player .pl-fill, .js .feat-player .pl-knob { transition: width 9s linear, left 9s linear, opacity 0.2s ease; }
   .js .feat-player:not(.in) { --played: 33.8%; }
@@ -542,7 +543,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .al-eps { display: grid; grid-template-columns: repeat(28, minmax(0, 1fr)); gap: 4px; }
 .al-eps i { height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
 .al-eps i.on, .al-eps i.now { background: var(--done); }
-.al-eps i.now { box-shadow: 0 0 0 3px rgba(70, 224, 196, 0.3); }
+.al-eps i.now { box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 30%, transparent); }
 .al-foot { display: flex; align-items: center; gap: 10px; color: var(--fg-2); font-size: 15px; font-weight: 600; }
 .al-foot > svg { width: 22px; height: 22px; fill: var(--anilist); }
 .al-synced { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--done); font-size: 14px; font-weight: 600; }
@@ -584,9 +585,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 /* Sequels in watch order: a rail of six segments, lit where the season is in the library, over
    one row of the seasons (watch order in the app is #784) */
 .related { padding: 26px 32px 30px; }
-.rel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; text-align: left; }
-.rel-head b { color: var(--fg); font-size: 18px; font-weight: 600; }
-.rel-head span { color: var(--fg-2); font-size: 15px; }
+.rel-head { display: block; color: var(--fg); font-size: 18px; font-weight: 600; text-align: left; }
 .rel-rail, .rel-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
 .rel-rail { margin: 18px 0 20px; }
 .rel-rail i { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
@@ -595,7 +594,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .stone-art { position: relative; flex: none; }
 .stone img { width: 56px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .stone:not(.owned) img { opacity: 0.4; filter: saturate(0.4); }
-.tick { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--done); color: #07201b; box-shadow: 0 0 0 3px var(--card-b); }
+.tick { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--done); color: #07201b; box-shadow: 0 0 0 3px var(--card-a); }
 .tick svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
 .stone div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .stone b { color: var(--fg); font-size: 15px; font-weight: 600; line-height: 1.25; text-wrap: balance; }
@@ -749,14 +748,15 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 @media (max-width: 1100px) {
   .window { grid-template-columns: 64px 1fr; }
 
+  .feat-grid { grid-template-columns: minmax(0, 1fr); row-gap: 56px; }
+  .rel-rail { display: none; }
+  .rel-row { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; margin-top: 20px; }
+
   .trust-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 56px; }
   .tcell:nth-child(3) { border-left: 0; }
 }
 @media (max-width: 900px) {
   .cast-section { grid-template-columns: minmax(0, 1fr); }
-  .feat-grid { grid-template-columns: minmax(0, 1fr); row-gap: 56px; }
-  .rel-rail { display: none; }
-  .rel-row { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; margin-top: 20px; }
 
 }
 @media (max-width: 700px) {
