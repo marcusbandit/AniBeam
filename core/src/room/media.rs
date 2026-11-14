@@ -14,7 +14,7 @@
 //! show when the library has it, else into a folder named for the show.
 //!
 //! While it downloads, the member's status carries its progress and time left,
-//! which is all the relay and the others see. Once done, the core waits for the
+//! which is all the relay and the others see. Once done, the playback waits for the
 //! library to take the file in, points the show at the room's match when it
 //! arrived as a show the library did not know, and says `RoomEpisode` with the
 //! file, so the shell opens it and the member is ready.
@@ -30,8 +30,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Active, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
-use crate::core::Core;
 use crate::downloads::{self, backend::DownloadsBackend, facts, origins, replace};
+use crate::playback::Playback;
 use crate::releases::titles;
 
 /// How long the host's app has to answer before Get media stops waiting.
@@ -123,10 +123,10 @@ impl Why {
 // ---------------------------------------------------------------------------
 
 /// `RoomGetMedia`: seals an ask to the host's app and waits for its answer.
-pub(super) fn get(core: &Core) -> Result<Option<RoomInfo>, CoreError> {
+pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
     let mut out = Vec::new();
     let info = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         if !a.can_fetch() {
             return Err(error(
@@ -147,12 +147,12 @@ pub(super) fn get(core: &Core) -> Result<Option<RoomInfo>, CoreError> {
         a.send(ClientMsg::Seal { to: host, data });
         let id = begin(a, RoomFetch::Asking);
         // An app from before Get media, or one gone quiet, never answers
-        let (owner, serial) = (a.core.clone(), a.serial);
-        core.handle.spawn(async move {
+        let (owner, serial) = (a.playback.clone(), a.serial);
+        playback.services.handle.spawn(async move {
             tokio::time::sleep(ASK_WAIT).await;
-            if let Some(core) = owner.upgrade() {
+            if let Some(playback) = owner.upgrade() {
                 let late = |a: &Active| a.fetch == RoomFetch::Asking;
-                stop(&core, serial, id, late, Why::Nothing);
+                stop(&playback, serial, id, late, Why::Nothing);
             }
         });
         out.push(Say::said(
@@ -166,7 +166,7 @@ pub(super) fn get(core: &Core) -> Result<Option<RoomInfo>, CoreError> {
         ));
         a.info()
     };
-    emit(core, out);
+    emit(&playback.services, out);
     Ok(info)
 }
 
@@ -189,15 +189,30 @@ impl Active {
     }
 }
 
+/// The playback team, held for a task that outlives the call, while the room
+/// `serial` is still the one here.
+fn owned(playback: &Playback, serial: u64) -> Option<Arc<Playback>> {
+    playback
+        .rooms
+        .lock()
+        .as_ref()
+        .filter(|a| a.serial == serial)
+        .and_then(|a| a.playback.upgrade())
+}
+
 /// A sealed payload opened: what it asks of this member.
-pub(super) fn on_secret(core: &Core, serial: u64, from: MemberId, secret: Secret) {
+pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret: Secret) {
     match secret {
         Secret::Ask { episode_key } => {
-            let Ok(owner) = core.owner() else { return };
-            core.handle
+            let Some(owner) = owned(playback, serial) else {
+                return;
+            };
+            playback
+                .services
+                .handle
                 .spawn(async move { answer(owner, serial, from, episode_key).await });
         }
-        Secret::Offer(offer) => take_offer(core, serial, from, offer),
+        Secret::Offer(offer) => take_offer(playback, serial, from, offer),
         Secret::Nothing { episode_key } => {
             let fits = |a: &Active| {
                 a.fetch == RoomFetch::Asking
@@ -206,23 +221,25 @@ pub(super) fn on_secret(core: &Core, serial: u64, from: MemberId, secret: Secret
                         .is_some_and(|e| e.episode_key == episode_key)
                     && a.host_key().is_some_and(|(h, _)| h == from)
             };
-            let id = core
+            let id = playback
                 .rooms
                 .lock()
                 .as_ref()
                 .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
             if let Some(id) = id {
-                stop(core, serial, id, fits, Why::Nothing);
+                stop(playback, serial, id, fits, Why::Nothing);
             }
         }
     }
 }
 
 /// The host's offer, when it answers this member's ask: the download starts.
-fn take_offer(core: &Core, serial: u64, from: MemberId, offer: Offer) {
-    let Ok(owner) = core.owner() else { return };
+fn take_offer(playback: &Playback, serial: u64, from: MemberId, offer: Offer) {
+    let Some(owner) = owned(playback, serial) else {
+        return;
+    };
     let started = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return;
         };
@@ -263,8 +280,8 @@ fn take_offer(core: &Core, serial: u64, from: MemberId, offer: Offer) {
     let Some((id, token, e, say)) = started else {
         return;
     };
-    emit(core, vec![say]);
-    core.handle.spawn(async move {
+    emit(&playback.services, vec![say]);
+    playback.services.handle.spawn(async move {
         let run = fetch(&owner, serial, id, &offer, &e);
         let result = tokio::select! {
             _ = token.cancelled() => return,
@@ -278,9 +295,9 @@ fn take_offer(core: &Core, serial: u64, from: MemberId, offer: Offer) {
 }
 
 /// Changes the fetch `id`, if it still runs, and tells the relay and the shell.
-fn update(core: &Core, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bool) {
+fn update(playback: &Playback, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bool) {
     let say = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -290,13 +307,13 @@ fn update(core: &Core, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bool
         a.send(a.status());
         Say::debug(format!("Room {}: get media", a.code), a.changed())
     };
-    emit(core, vec![say]);
+    emit(&playback.services, vec![say]);
 }
 
 /// Stops the fetch `id` short, when `fits` its state, and says why.
-fn stop(core: &Core, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
+fn stop(playback: &Playback, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
     let say = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -313,14 +330,14 @@ fn stop(core: &Core, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, w
             a.changed(),
         )
     };
-    emit(core, vec![say]);
+    emit(&playback.services, vec![say]);
 }
 
 /// The episode is in the library: the fetch ends, and the room's episode is
 /// found again, which says `RoomEpisode` with the file for the shell to open.
-fn arrived(core: &Core, serial: u64, id: u64, e: proto::EpisodeRef) {
+fn arrived(playback: &Playback, serial: u64, id: u64, e: proto::EpisodeRef) {
     let say = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -332,28 +349,29 @@ fn arrived(core: &Core, serial: u64, id: u64, e: proto::EpisodeRef) {
             a.changed(),
         )
     };
-    emit(core, vec![say]);
-    super::find(core, serial, e);
+    emit(&playback.services, vec![say]);
+    super::find(playback, serial, e);
 }
 
 /// The member's side: the release to download, the download, its progress,
 /// and the wait for the library to take it in.
 async fn fetch(
-    core: &Arc<Core>,
+    playback: &Arc<Playback>,
     serial: u64,
     id: u64,
     offer: &Offer,
     e: &proto::EpisodeRef,
 ) -> Result<(), Why> {
-    let local = core
+    let local = playback
+        .services
         .store
         .read(|c| episode::find_local(c, e))
         .unwrap_or_default();
     let release = match &offer.magnet {
         Some(magnet) => release(&offer.name, magnet),
         None => {
-            let found = search(core, offer, e).await?;
-            update(core, serial, id, |a| {
+            let found = search(playback, offer, e).await?;
+            update(playback, serial, id, |a| {
                 a.fetch = RoomFetch::Downloading;
                 true
             });
@@ -370,14 +388,14 @@ async fn fetch(
         ..Default::default()
     };
     downloads::download_telling(
-        core,
+        &playback.downloads,
         vec![release],
         folder(&e.series_title),
         options,
         Some(tell),
     )
     .map_err(|err| Why::Start(err.to_string()))?;
-    update(core, serial, id, |a| {
+    update(playback, serial, id, |a| {
         a.progress = Some(Progress {
             percent: 0.0,
             eta: None,
@@ -390,13 +408,13 @@ async fn fetch(
     // A link the client fetches itself names no hash up front: the torrent is
     // then found by its name among those added since
     let hash = known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()));
-    let content = follow(core, serial, id, hash.as_deref(), &title, since).await?;
-    settle_in(core, e, offer, &content).await
+    let content = follow(playback, serial, id, hash.as_deref(), &title, since).await?;
+    settle_in(playback, e, offer, &content).await
 }
 
 /// Reads the download's progress until it is done; its content path then.
 async fn follow(
-    core: &Arc<Core>,
+    playback: &Arc<Playback>,
     serial: u64,
     id: u64,
     hash: Option<&str>,
@@ -406,7 +424,7 @@ async fn follow(
     let mut last_seen = Instant::now();
     loop {
         tokio::time::sleep(POLL).await;
-        let listed = match downloads::qbt_client(core).await {
+        let listed = match downloads::qbt_client(&playback.downloads).await {
             Ok(qbt) => match hash {
                 Some(hash) => qbt
                     .torrents_named(&[hash.to_string()])
@@ -428,7 +446,7 @@ async fn follow(
         };
         last_seen = Instant::now();
         let progress = progress_of(&t);
-        update(core, serial, id, |a| {
+        update(playback, serial, id, |a| {
             let changed = a.progress != progress;
             a.progress = progress;
             changed
@@ -452,7 +470,7 @@ pub fn progress_of(t: &Torrent) -> Option<Progress> {
 /// Waits for the library to take the download in, and points the show it came
 /// in as at the room's match when the library did not have that show.
 async fn settle_in(
-    core: &Arc<Core>,
+    playback: &Arc<Playback>,
     e: &proto::EpisodeRef,
     offer: &Offer,
     content: &str,
@@ -460,7 +478,8 @@ async fn settle_in(
     let started = Instant::now();
     let (mut matched, mut scanned) = (false, false);
     loop {
-        let local = core
+        let local = playback
+            .services
             .store
             .read(|c| episode::find_local(c, e))
             .unwrap_or_default();
@@ -468,18 +487,18 @@ async fn settle_in(
             return Ok(());
         }
         if !matched
-            && let Some(series) = series_holding(core, content)
+            && let Some(series) = series_holding(playback, content)
             && let Some(target) = target(offer, e)
         {
             matched = true;
-            match crate::metadata::apply::apply_match(core, series, target) {
+            match crate::metadata::apply::apply_match(&playback.metadata, series, target) {
                 Ok(_) => tracing::info!("room: matched series {series} to the room's show"),
                 Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
             }
         }
         if !scanned && started.elapsed() >= SCAN_AFTER {
             scanned = true;
-            if let Err(err) = crate::library::scan::scan(core, None) {
+            if let Err(err) = crate::library::scan::scan(&playback.library, None) {
                 tracing::debug!("room: scan after get media not started: {err}");
             }
         }
@@ -492,10 +511,12 @@ async fn settle_in(
 
 /// The library series that holds the download, by its content path: the file
 /// itself, or a file in the folder it made.
-fn series_holding(core: &Core, content: &str) -> Option<u64> {
+fn series_holding(playback: &Playback, content: &str) -> Option<u64> {
     let path = content.replace('\\', "/");
     let folder = format!("{}/", path.trim_end_matches('/'));
-    core.store
+    playback
+        .services
+        .store
         .read(move |c| {
             Ok(c.query_row(
                 "SELECT series_id FROM files WHERE path = ?1 OR substr(path, 1, length(?2)) = ?2
@@ -548,8 +569,12 @@ fn release(title: &str, link: &str) -> Release {
 /// the host's own (a renamed file, a release no source carries), the best fit
 /// of the same episode from the closest search stands in: the room's offset
 /// covers a cut that differs.
-async fn search(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef) -> Result<Release, Why> {
-    let backend = DownloadsBackend::open(core)
+async fn search(
+    playback: &Arc<Playback>,
+    offer: &Offer,
+    e: &proto::EpisodeRef,
+) -> Result<Release, Why> {
+    let backend = DownloadsBackend::open(&playback.downloads)
         .await
         .map_err(|err| Why::Start(err.to_string()))?;
     if backend.has_no_sources() {
@@ -720,9 +745,9 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
 // ---------------------------------------------------------------------------
 
 /// The host's app answers a member's ask with what it has of the episode.
-async fn answer(core: Arc<Core>, serial: u64, to: MemberId, episode_key: String) {
+async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key: String) {
     let asked = {
-        let slot = core.rooms.lock();
+        let slot = playback.rooms.lock();
         let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
             return;
         };
@@ -746,14 +771,15 @@ async fn answer(core: Arc<Core>, serial: u64, to: MemberId, episode_key: String)
     let (e, file, (name, theirs), keys, code) = asked;
     let file = match file {
         Some(f) => Some(f),
-        None => core
+        None => playback
+            .services
             .store
             .read(|c| episode::find_local(c, &e))
             .ok()
             .and_then(|l| l.file),
     };
     let offer = match file {
-        Some(f) => offer_for(&core, f, &e).await,
+        Some(f) => offer_for(&playback, f, &e).await,
         None => None,
     };
     let torrent = offer.as_ref().is_some_and(|o| o.magnet.is_some());
@@ -773,7 +799,7 @@ async fn answer(core: Arc<Core>, serial: u64, to: MemberId, episode_key: String)
         return;
     };
     let said = {
-        let slot = core.rooms.lock();
+        let slot = playback.rooms.lock();
         let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
             return;
         };
@@ -792,7 +818,7 @@ async fn answer(core: Arc<Core>, serial: u64, to: MemberId, episode_key: String)
             EventBody::RoomChanged { room: a.info() },
         )
     };
-    emit(&core, vec![said]);
+    emit(&playback.services, vec![said]);
 }
 
 fn seal_one(keys: &super::seal::Keys, code: &str, theirs: &str, s: &Secret) -> Option<String> {
@@ -830,8 +856,9 @@ fn seal_offer(
 
 /// What the host can offer for its file `file`: the torrent while the client
 /// holds it, and the release's name always.
-async fn offer_for(core: &Arc<Core>, file: u64, e: &proto::EpisodeRef) -> Option<Offer> {
-    let path: String = core
+async fn offer_for(playback: &Arc<Playback>, file: u64, e: &proto::EpisodeRef) -> Option<Offer> {
+    let path: String = playback
+        .services
         .store
         .read(move |c| {
             Ok(
@@ -841,27 +868,29 @@ async fn offer_for(core: &Arc<Core>, file: u64, e: &proto::EpisodeRef) -> Option
             )
         })
         .ok()?;
-    let read = |core: &Arc<Core>, path: &str| {
+    let read = |playback: &Arc<Playback>, path: &str| {
         let p = path.to_string();
-        core.store
+        playback
+            .services
+            .store
             .read(move |c| origins::of(c, &[p.as_str()]))
             .ok()
             .and_then(|mut m| m.remove(path))
     };
-    let mut origin = read(core, &path);
+    let mut origin = read(playback, &path);
     // A file the client brought in that nobody has read the client for yet
     if origin.is_none()
-        && let Some(qbt) = downloads::running_qbt(core)
+        && let Some(qbt) = downloads::running_qbt(&playback.downloads)
         && let Ok(torrents) = qbt.torrents().await
     {
         origins::logged(
-            origins::record_from(core, Some(&qbt), &torrents).await,
+            origins::record_from(&playback.services, Some(&qbt), &torrents).await,
             "for a room",
         );
-        origin = read(core, &path);
+        origin = read(playback, &path);
     }
     let magnet = match &origin {
-        Some(o) => match downloads::qbt_client(core).await {
+        Some(o) => match downloads::qbt_client(&playback.downloads).await {
             Ok(qbt) => qbt.magnet(&o.hash).await.ok().flatten(),
             Err(err) => {
                 tracing::debug!("room: the torrent client was not reached: {err}");

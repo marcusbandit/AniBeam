@@ -161,6 +161,8 @@ impl Core {
             net.clone(),
             trackers.clone(),
             downloads.clone(),
+            library.clone(),
+            metadata.clone(),
         ));
         let host = Arc::new(Host::new(
             services.clone(),

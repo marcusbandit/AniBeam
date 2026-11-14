@@ -1279,7 +1279,7 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
         find(playback, serial, e);
     }
     if let Some((from, s)) = secret {
-        media::on_secret(core, serial, from, s);
+        media::on_secret(playback, serial, from, s);
     }
     true
 }
