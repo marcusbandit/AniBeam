@@ -88,13 +88,17 @@ tempfile = "3"
 # The native relay, run in-process by the rooms tests.
 anibeam-relay = { path = "../apps/relay" }
 
-# The desktop's trash; a phone deletes its own files outright.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# The desktop's trash; a phone (Android or iPhone) deletes its own files outright. Cargo's
+# target tables cannot read build.rs's `phone_os`, so they name the phone's systems.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 trash = "5"
 
-[target.'cfg(target_os = "android")'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 # Fronted requests keep the bot shield's cookies (net/mod.rs, Front).
 reqwest = { version = "0.13", default-features = false, features = ["cookies"] }
+
+# Android's bundled TLS roots (net/mod.rs): its platform verifier needs JNI.
+[target.'cfg(target_os = "android")'.dependencies]
 webpki-root-certs = "1"
 
 [[example]]

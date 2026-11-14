@@ -13,6 +13,13 @@ const CREDENTIALS: [&str; 4] = [
 ];
 
 fn main() {
+    // `phone_os`: the target is a phone's, Android or iOS. Every switch in the core that
+    // means "the phone" reads it, so a new phone platform is one line here.
+    println!("cargo::rustc-check-cfg=cfg(phone_os)");
+    let phone = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android" || os == "ios");
+    if phone {
+        println!("cargo::rustc-cfg=phone_os");
+    }
     credentials();
     watch_git();
     rerun_when_head_moves();
@@ -30,11 +37,10 @@ fn main() {
         shipped.as_deref().unwrap_or(&fallback)
     );
     // Each app describes itself from its own tags only: the desktop's v2.3.0, the phone's
-    // android-v2.1.1. Any other tag never names a version.
-    let android = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android");
+    // android-v2.1.1 (on Android and the iPhone alike). Any other tag never names a version.
     // A nightly's or test build's tag (v2.4.0-nightly.20261030.12) is never one to describe
     // from: only a stable version is.
-    let (pattern, exclude, prefix) = if android {
+    let (pattern, exclude, prefix) = if phone {
         ("android-v[0-9]*", "android-v*-*", "android-v")
     } else {
         ("v[0-9]*", "v*-*", "v")
