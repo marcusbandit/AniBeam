@@ -1091,6 +1091,7 @@ core-room-service = 一起看
 core-room-not-found = 没有使用该代码的房间。房间可能已关闭。
 core-room-full = 该房间已满。
 core-room-proto = 该中继运行的是另一个版本的房间。请更新 { -app-name } 后再加入。
+core-room-needs-episode = 该中继需要一集才能创建房间。请在播放器里创建，或更新中继。
 core-room-unreachable = 无法连接中继：{ $message }
 core-room-refused = 中继拒绝了请求：{ $message }
 core-room-not-in = 你不在房间中。

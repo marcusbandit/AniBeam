@@ -187,7 +187,10 @@ fn ben_in(room: &RoomInfo, you: u32) -> Option<&RoomMember> {
 /// Ann hosts episode 5, Ben joins without it and asks for it. Returns Ben's id.
 fn room_with_ben_missing(ann: &Person, ben: &Person) -> u32 {
     let ann_s = open(ann, ann.files[0]);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
     let joined = room(ben.core.call(Call::RoomJoin {
         code: made.code.clone(),
     }))
@@ -298,7 +301,7 @@ fn a_member_downloads_the_host_s_torrent() {
     }
 
     let ben_id = room_with_ben_missing(&ann, &ben);
-    let asked = room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    let asked = room(ben.core.call(Call::RoomGetMedia { whole_show: false })).unwrap();
     assert_eq!(asked.fetch, RoomFetch::Asking);
     assert!(!asked.can_fetch);
 
@@ -375,7 +378,7 @@ fn a_member_finds_the_host_s_release_by_its_name() {
     }
 
     let ben_id = room_with_ben_missing(&ann, &ben);
-    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    room(ben.core.call(Call::RoomGetMedia { whole_show: false })).unwrap();
     common::wait_for(
         &ann.c,
         |e| {
@@ -420,7 +423,7 @@ fn nothing_found_fails_and_get_media_can_be_tried_again() {
         ben.http.push_for("feed.example", 200, empty);
     }
     room_with_ben_missing(&ann, &ben);
-    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    room(ben.core.call(Call::RoomGetMedia { whole_show: false })).unwrap();
     common::wait_for(
         &ben.c,
         |e| {
@@ -442,7 +445,10 @@ fn the_host_cannot_ask_itself_and_a_member_with_the_file_cannot_ask() {
     let ann = person(&relay, "Ann", &[5.0]);
     let ben = person(&relay, "Ben", &[5.0]);
     let ann_s = open(&ann, ann.files[0]);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
     assert!(!made.can_fetch);
     room(ben.core.call(Call::RoomJoin { code: made.code })).unwrap();
     common::wait_for(
@@ -451,9 +457,115 @@ fn the_host_cannot_ask_itself_and_a_member_with_the_file_cannot_ask() {
         WAIT,
     );
     for p in [&ann, &ben] {
-        match p.core.call(Call::RoomGetMedia) {
+        match p.core.call(Call::RoomGetMedia { whole_show: false }) {
             Err(CoreError::Service { code, .. }) => assert_eq!(code, "cannot_fetch"),
             other => panic!("{other:?}"),
         }
     }
+}
+
+#[test]
+fn a_member_gets_the_whole_show_of_the_host_s_release() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[5.0]);
+    let ben = person(&relay, "Ben", &[4.0]);
+    let path = file_path(5.0);
+    ann.core
+        .store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at) VALUES (?1, ?2, ?3, ?4)",
+                params![path, HASH, NAME, anibeam_core::time::now_secs()],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    ann.http.push_for(
+        &format!("torrents/info?hashes={HASH}"),
+        200,
+        torrent(HASH, NAME, 1.0, 0),
+    );
+    // Ben's source has more of Ann's release, and other things beside it
+    let hash = |n: u32| format!("{n:040x}");
+    let item = |title: &str, n: u32| {
+        format!(
+            "<item><title>{title}</title><link>magnet:?xt=urn:btih:{}</link></item>",
+            hash(n)
+        )
+    };
+    let feed = format!(
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>f</title>{}</channel></rss>",
+        [
+            item("[Lantern] Cowboy Bebop - 01 (1080p)", 1),
+            item("[Lantern] Cowboy Bebop - 02 (1080p)", 2),
+            item("[Lantern] Cowboy Bebop - 04 (1080p)", 4),
+            item("[Lantern] Cowboy Bebop - 05 (1080p)", 5),
+            item("[Lantern] Cowboy Bebop - 06 (720p)", 6),
+            item("[Other] Cowboy Bebop - 07 (1080p)", 7),
+            item("[Lantern] Cowboy Bebop (01-26) (1080p) [Batch]", 9),
+            item("[Lantern] Cowboy Bebop - 08 (1080p)", 8),
+        ]
+        .concat()
+    );
+    for _ in 0..4 {
+        ben.http.push_for("feed.example", 200, feed.clone());
+    }
+    // The rest of the show is a second download, which reads the save path again
+    ben.http.push_for("app/defaultSavePath", 200, "/srv/TV");
+    for _ in 0..3 {
+        ben.http.push_for("torrents/add", 200, "Ok.");
+    }
+    for _ in 0..3 {
+        ben.http.push_for(
+            &format!("torrents/info?hashes={HASH}"),
+            200,
+            torrent(HASH, NAME, 0.4, 120),
+        );
+    }
+
+    let ben_id = room_with_ben_missing(&ann, &ben);
+    room(ben.core.call(Call::RoomGetMedia { whole_show: true })).unwrap();
+    ann_sees_progress(&ann, ben_id);
+    // The room's episode first, from Ann's torrent; then the rest of her release
+    // that Ben lacks: 1, 2 and 8, not 4, which he has, nor another group's or
+    // another resolution's, nor a batch.
+    let lines = || -> Vec<String> {
+        added_urls(&ben)
+            .iter()
+            .flat_map(|u| u.lines().map(str::to_string).collect::<Vec<_>>())
+            .collect()
+    };
+    assert!(
+        ben.c.wait_for(|_| lines().len() >= 4, WAIT),
+        "{:?} after {:#?}",
+        lines(),
+        ben.http
+            .requests()
+            .iter()
+            .map(|r| r.url.clone())
+            .collect::<Vec<_>>()
+    );
+    let urls = lines();
+    assert!(
+        urls[0].starts_with(&format!("magnet:?xt=urn:btih:{HASH}")),
+        "{urls:?}"
+    );
+    let rest = urls[1..].to_vec();
+    let want: Vec<String> = [1, 2, 8]
+        .iter()
+        .map(|n| format!("magnet:?xt=urn:btih:{}", hash(*n)))
+        .collect();
+    assert_eq!(rest, want);
+    let searched = ben
+        .http
+        .requests()
+        .iter()
+        .find(|r| r.url.contains("feed.example"))
+        .map(|r| r.url.clone())
+        .unwrap();
+    assert!(searched.contains("Lantern"), "{searched}");
+    assert!(
+        !searched.contains("05"),
+        "the whole show is searched: {searched}"
+    );
 }

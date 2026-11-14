@@ -3,7 +3,8 @@
 //!
 //! Routes:
 //!
-//! - `POST /rooms` with `{"episode": EpisodeRef}` makes a room: `201` with
+//! - `POST /rooms` with `{"episode": EpisodeRef}`, or `{}` for a room with
+//!   nothing picked yet (#922), makes a room: `201` with
 //!   `{"code", "host_key"}`.
 //! - `GET /rooms/{code}/ws` joins one over WebSocket; `404` when it does not exist.
 //! - `GET /` is the find page, where a code is typed; `/?code=...` goes to
@@ -229,7 +230,7 @@ async fn create(
             .into_response();
     }
     let Ok(request) = serde_json::from_slice::<CreateRoom>(&body) else {
-        return (StatusCode::BAD_REQUEST, "expected {\"episode\": ...}").into_response();
+        return (StatusCode::BAD_REQUEST, "expected {} or {\"episode\": ...}").into_response();
     };
     if inner.rooms.len() >= MAX_ROOMS {
         return (StatusCode::SERVICE_UNAVAILABLE, "the relay is full").into_response();

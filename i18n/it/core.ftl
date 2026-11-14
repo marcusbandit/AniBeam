@@ -1284,6 +1284,7 @@ core-room-service = Guarda insieme
 core-room-not-found = Nessuna stanza ha quel codice. Potrebbe essere stata chiusa.
 core-room-full = Quella stanza è piena.
 core-room-proto = Quel relay usa un'altra versione delle stanze. Aggiorna { -app-name } per entrare.
+core-room-needs-episode = Quel relay vuole un episodio per avviare una stanza. Avviala dal lettore o aggiorna il relay.
 core-room-unreachable = Impossibile raggiungere il relay: { $message }
 core-room-refused = Il relay ha rifiutato: { $message }
 core-room-not-in = Non sei in una stanza.

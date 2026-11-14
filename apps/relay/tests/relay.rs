@@ -55,6 +55,7 @@ fn episode(key: &str) -> EpisodeRef {
         episode_title: Some("Asteroid Blues".into()),
         duration: Some(1500.0),
         opening_start: Some(0.0),
+        film: false,
     }
 }
 
@@ -119,6 +120,7 @@ fn hello(name: &str, host_key: Option<&str>) -> ClientMsg {
         host_key: host_key.map(Into::into),
         rejoin_key: None,
         key: None,
+        unpicked: true,
     }
 }
 
@@ -156,8 +158,57 @@ async fn create_hands_out_a_code_and_a_host_key() {
 #[tokio::test]
 async fn create_refuses_a_bad_body() {
     let addr = start().await;
-    let (status, _) = http(&addr, "POST", "/rooms", "{\"nope\":1}").await;
+    let (status, _) = http(&addr, "POST", "/rooms", "{\"episode\":1}").await;
     assert_eq!(status, 400);
+    let (status, _) = http(&addr, "POST", "/rooms", "not json").await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn a_room_can_start_with_nothing_picked() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "POST", "/rooms", "{}").await;
+    assert_eq!(status, 201, "{body}");
+    let room: CreatedRoom = serde_json::from_str(&body).unwrap();
+    let (status, page) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 200);
+    assert!(page.contains("Nothing picked yet"));
+    let mut host = connect(&addr, &room.code).await;
+    send(&mut host, &hello("Ann", Some(&room.host_key))).await;
+    match recv(&mut host).await {
+        ServerMsg::Welcome { room, .. } => assert_eq!(room.episode, None),
+        other => panic!("expected welcome, got {other:?}"),
+    }
+    // An app from before is turned away, and the room goes on
+    let mut old = connect(&addr, &room.code).await;
+    let before = ClientMsg::Hello {
+        name: "Cid".into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: None,
+        unpicked: false,
+    };
+    send(&mut old, &before).await;
+    match recv(&mut old).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Proto),
+        other => panic!("expected an error, got {other:?}"),
+    }
+    assert!(closed(&mut old).await);
+    let (mut ben, _) = join(&addr, &room.code, "Ben", None).await;
+    send(
+        &mut host,
+        &ClientMsg::Episode {
+            episode: episode("e2"),
+        },
+    )
+    .await;
+    let got = recv_until(&mut ben, |m| matches!(m, ServerMsg::Episode { .. })).await;
+    let ServerMsg::Episode { episode: e, .. } = got else {
+        unreachable!()
+    };
+    assert_eq!(e.episode_key, "e2");
 }
 
 #[tokio::test]
