@@ -6,7 +6,7 @@ name: Android APK
 # of its own: an APK without a train version would sit below every nightly and not install
 # over one, so a build to try is a Nightly run. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a
 # base64 keystore: every APK has to carry the same key, or Android refuses it as an update to
-# the AniBeam already on a phone. A run without the secret stops instead of signing with a
+# the Anibeam already on a phone. A run without the secret stops instead of signing with a
 # throwaway key.
 on:
   workflow_call:
@@ -51,7 +51,7 @@ jobs:
           KEYSTORE: ${{ secrets.ANIBEAM_ANDROID_KEYSTORE }}
         run: |
           if [ -z "$KEYSTORE" ]; then
-            echo "::error::The ANIBEAM_ANDROID_KEYSTORE secret is not set. An APK signed with any other key will not install over the AniBeam already on a phone; see CONTRIBUTING.md, Releases."
+            echo "::error::The ANIBEAM_ANDROID_KEYSTORE secret is not set. An APK signed with any other key will not install over the Anibeam already on a phone; see CONTRIBUTING.md, Releases."
             exit 1
           fi
           base64 -d <<<"$KEYSTORE" > "$RUNNER_TEMP/anibeam.keystore"

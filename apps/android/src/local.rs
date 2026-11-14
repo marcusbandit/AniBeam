@@ -1,4 +1,4 @@
-//! The phone's own AniBeam: the same core the desktop runs, opened over the app's files.
+//! The phone's own Anibeam: the same core the desktop runs, opened over the app's files.
 //!
 //! The core keeps its database, cache and secrets under `files/core`, and the phone's
 //! library is one folder the app owns, `files/Anime`. Events go to logcat under the tag

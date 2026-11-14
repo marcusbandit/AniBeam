@@ -1,4 +1,4 @@
-# AniBeam
+# Anibeam
 
 A local anime library: it scans folders, matches what it finds against AniList and Jikan, plays the files, and keeps trackers up to date. The native line splits the app into one core and one shell per platform; this glossary is the vocabulary both halves share.
 
@@ -139,7 +139,7 @@ Removing a missing series with everything it holds. The only way a series leaves
 _Avoid_: delete, purge, remove series
 
 **Export**:
-The JSON file that carries a library out of one AniBeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
+The JSON file that carries a library out of one Anibeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
 _Avoid_: backup, dump, migration file
 
 **Private data**:
@@ -295,7 +295,7 @@ A torrent as the torrent client reports it: its state, progress and speed. The o
 _Avoid_: download, job, task
 
 **Downloads choice**:
-What searches, follows and downloads on the desktop, under Settings, Downloads: AniBeam itself (the core's own port of anirss, which searches the core's sources and writes the torrent client's rules directly) or the search helper (anirss, run as the sidecar or reached on a server). AniBeam itself is the default (#552): fresh settings pick it, and so do settings stored before the choice existed or naming one this build does not know. Settings that name the search helper keep it. Sources written only into anirss's own config.toml are not read by AniBeam itself; they come in through an endpoint repo or by hand.
+What searches, follows and downloads on the desktop, under Settings, Downloads: Anibeam itself (the core's own port of anirss, which searches the core's sources and writes the torrent client's rules directly) or the search helper (anirss, run as the sidecar or reached on a server). Anibeam itself is the default (#552): fresh settings pick it, and so do settings stored before the choice existed or naming one this build does not know. Settings that name the search helper keep it. Sources written only into anirss's own config.toml are not read by Anibeam itself; they come in through an endpoint repo or by hand.
 _Avoid_: backend, mode. The code calls it the downloads engine (`DownloadsEngine`), native or anirss.
 
 **Sidecar**:
@@ -337,7 +337,7 @@ An app's `CHANGELOG.md`: every version newest first, each a few one-line changes
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
 **First run**:
-The walkthrough a fresh desktop install opens with instead of an empty library: what AniBeam is, the anime folder (or a new Anime folder in the videos folder), the tracker, how Downloads works, and what is left for later. Every step can be skipped. It shows once; an install that was already in use never sees it, and Settings, About runs it again.
+The walkthrough a fresh desktop install opens with instead of an empty library: what Anibeam is, the anime folder (or a new Anime folder in the videos folder), the tracker, how Downloads works, and what is left for later. Every step can be skipped. It shows once; an install that was already in use never sees it, and Settings, About runs it again.
 _Avoid_: onboarding wizard, tour, setup assistant
 
 **What's new**:
@@ -355,7 +355,7 @@ A device the tailnet host answers. Every device on the tailnet is trusted until 
 _Avoid_: allowed device, whitelisted device
 
 **Device key**:
-The key pair each AniBeam makes once and keeps with its secrets. The tailnet host says its public key in its hello; a phone or another AniBeam signs each request to it with its own.
+The key pair each Anibeam makes once and keeps with its secrets. The tailnet host says its public key in its hello; a phone or another Anibeam signs each request to it with its own.
 _Avoid_: token, password, certificate
 
 **Proof**:

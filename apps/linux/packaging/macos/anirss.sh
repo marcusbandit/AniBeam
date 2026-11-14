@@ -62,7 +62,7 @@ cp -R "$src/anirss_lib" "$dest/app/anirss_lib"
 chmod 755 "$dest/app/anirss"
 cat > "$dest/bin/anirss" <<'SH'
 #!/bin/sh
-# AniBeam's own anirss: the release it was built with, on the Python beside it.
+# Anibeam's own anirss: the release it was built with, on the Python beside it.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$here/python/bin/python3" "$here/app/anirss" "$@"
 SH

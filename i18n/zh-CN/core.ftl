@@ -79,7 +79,7 @@ event-problem-trackers = 你的列表出了问题。详情见开发者选项。
 event-problem-franchise = 相关番剧出了问题。详情见开发者选项。
 event-problem-playback = 播放出了问题。详情见开发者选项。
 event-problem-store = 保存数据时出了问题。详情见开发者选项。
-event-problem-system = AniBeam 出了问题。详情见开发者选项。
+event-problem-system = Anibeam 出了问题。详情见开发者选项。
 event-problem-downloads = 下载出了问题。详情见开发者选项。
 
 ## Errors (contract::CoreError)
@@ -104,8 +104,8 @@ core-error-io = 无法读写文件：{ $message }
 core-error-storage = 无法保存媒体库：{ $message }
 core-error-keyring = 无法访问系统密码存储：{ $message }
 core-error-unsupported = 暂不支持 { $what }。
-core-error-version = 这份导出来自更新版本的 AniBeam（格式 { $found }）。请更新 AniBeam 后再导入。
-core-error-internal = AniBeam 遇到内部错误：{ $message }
+core-error-version = 这份导出来自更新版本的 Anibeam（格式 { $found }）。请更新 Anibeam 后再导入。
+core-error-internal = Anibeam 遇到内部错误：{ $message }
 core-error-service = { $service }：{ $message }
 
 ## core/src/repos/mod.rs
@@ -550,7 +550,7 @@ core-trackers-page-failed = 登录没有完成
 core-trackers-page-go-back = 请回到 { $app } 重试。
 core-trackers-page-finishing-title = { $app }，仍在完成中
 core-trackers-page-finishing = 仍在完成中
-core-trackers-page-finishing-body = { $site } 已响应，AniBeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
+core-trackers-page-finishing-body = { $site } 已响应，Anibeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
 core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 此次登录已取消
 core-trackers-page-cancelled-body = 你可以关闭此标签页。如有需要，请从 { $app } 重新开始。
@@ -865,8 +865,8 @@ core-downloads-anirss-slow-start = anirss 没有在 { $seconds } 秒内启动
 core-downloads-anirss-slow-start-said = anirss 没有在 { $seconds } 秒内启动：{ $said }
 core-downloads-anirss-install-mac = 请安装 anirss { $version } 或更高版本：{ $command }
 core-downloads-anirss-install-linux = 请安装 anirss { $version } 或更高版本：AUR 上的 anirss 包，或 { $command }
-core-downloads-anirss-too-old = anirss { $version } 版本太旧，AniBeam 需要 { $minimum } 或更高版本。{ $update }。
-core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 AniBeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
+core-downloads-anirss-too-old = anirss { $version } 版本太旧，Anibeam 需要 { $minimum } 或更高版本。{ $update }。
+core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 Anibeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
 core-downloads-anirss-update-mac = 更新命令：{ $command }
 core-downloads-anirss-update-linux = 请更新 anirss 包，或运行：{ $command }
 
@@ -894,16 +894,16 @@ core-downloads-anirss-missing = { $install }。或在设置中指向一个正在
 core-downloads-anirss-command-missing = 找不到 { $command }。{ $install }。或在设置中指向一个正在运行的服务器。
 core-downloads-anirss-start-failed = { $command } 无法启动：{ $error }
 core-downloads-anirss-too-old-said = { $tooOld } 它说：{ $message }
-core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，AniBeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，AniBeam 会替你运行它
-core-downloads-own-client-gone = AniBeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 AniBeam，或在设置中指向你自己的 qBittorrent
+core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，Anibeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，Anibeam 会替你运行它
+core-downloads-own-client-gone = Anibeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 Anibeam，或在设置中指向你自己的 qBittorrent
 core-downloads-no-port = { $address } 中没有端口
 core-downloads-own-client-settings = 无法写入 qBittorrent 的设置：{ $error }
 core-downloads-own-client-start-failed = { $command } 无法启动：{ $error }
-core-downloads-own-client-slow-start = AniBeam 的 qBittorrent 没有启动
-core-downloads-own-client-slow-start-said = AniBeam 的 qBittorrent 没有启动：{ $said }
+core-downloads-own-client-slow-start = Anibeam 的 qBittorrent 没有启动
+core-downloads-own-client-slow-start-said = Anibeam 的 qBittorrent 没有启动：{ $said }
 core-downloads-not-ready = 下载尚未就绪。请检查设置中的“下载”。
 core-downloads-ready = 下载已就绪。
-core-downloads-helper-sources = 下载现在由 AniBeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
+core-downloads-helper-sources = 下载现在由 Anibeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
 core-downloads-client-connected = 下载应用已连接。
 core-downloads-client-not-connected = 下载应用未连接。请在设置中检查它的地址。
 core-downloads-not-on-demand = { $name } 不是按需启动的端点
@@ -1079,7 +1079,7 @@ core-releases-episode-range = { $from } 至 { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

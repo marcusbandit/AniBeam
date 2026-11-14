@@ -63,7 +63,7 @@ pub(crate) fn secret_key(t: Tracker) -> String {
 
 /// The client id compiled into this build, if there was one to compile in.
 /// Set at build time the way Electron's Vite env was, so a packaged
-/// AniBeam signs in with the project's own app registration and nobody has
+/// Anibeam signs in with the project's own app registration and nobody has
 /// to make one; a build without them still works, the user just pastes
 /// their own in the Trackers tab. An id set to nothing is no id.
 pub fn bundled_client_id(t: Tracker) -> Option<&'static str> {

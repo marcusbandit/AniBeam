@@ -1,4 +1,4 @@
-# Build AniBeam from source
+# Build Anibeam from source
 
 Most people want an installer from [Releases](https://github.com/marcusbandit/AniBeam/releases).
 This page is for building the app yourself or working on it.
@@ -16,7 +16,7 @@ pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt
 
 ```bash
 git clone https://github.com/marcusbandit/AniBeam.git
-cd AniBeam
+cd Anibeam
 cargo build --release -p anibeam     # target/release/anibeam
 ```
 
@@ -32,7 +32,7 @@ ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
 A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.6.0 or newer,
 `yay -S anirss qbittorrent-nox` on Arch). With anirss 0.7.1 or newer, subscribing to a show
 you already have saves straight into its folder; an older one saves under its own folder
-first and AniBeam moves the rule after.
+first and Anibeam moves the rule after.
 
 It also has no AniList or MyAnimeList app registration of its own, so the Trackers tab asks
 for a client ID the first time you connect. To bundle your own, copy `.env.example` to
@@ -92,7 +92,7 @@ anibeam-cli list --tab all --sort alpha --direction asc
 
 ## The phone's door
 
-With Share over Tailscale on, AniBeam listens on port 8790 on this computer's Tailscale
+With Share over Tailscale on, Anibeam listens on port 8790 on this computer's Tailscale
 addresses only. See what it serves with `curl http://<address>:8790/api/v1/hello` and
 `/api/v1/snapshot`; `host-api/src/lib.rs` describes the JSON. `ANIBEAM_HOST_BIND=127.0.0.1:8790`
 picks the address by hand, and `0.0.0.0:8790` lets an Android emulator reach it at

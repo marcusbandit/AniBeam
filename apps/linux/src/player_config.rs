@@ -8,7 +8,7 @@ use toml_edit::{DocumentMut, value};
 
 use crate::paths::ShellPaths;
 
-// The options every AniBeam player sets, shared with the phone.
+// The options every Anibeam player sets, shared with the phone.
 pub use anibeam_core::playback::options::{owned_options, subtitle_options};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -87,7 +87,7 @@ pub fn preview_options() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// The bundled file, then the user's own while the toggle is on, then AniBeam's own.
+/// The bundled file, then the user's own while the toggle is on, then Anibeam's own.
 /// A layer that is not on disk is not a layer: mpv's `include` of a missing file is an
 /// error the player would have nothing useful to say about.
 pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {

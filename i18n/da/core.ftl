@@ -89,7 +89,7 @@ event-problem-trackers = Noget gik galt med dine lister. Udviklerindstillinger h
 event-problem-franchise = Noget gik galt med relaterede serier. Udviklerindstillinger har detaljerne.
 event-problem-playback = Noget gik galt med afspilningen. Udviklerindstillinger har detaljerne.
 event-problem-store = Noget gik galt, da dine data skulle gemmes. Udviklerindstillinger har detaljerne.
-event-problem-system = Noget gik galt med AniBeam. Udviklerindstillinger har detaljerne.
+event-problem-system = Noget gik galt med Anibeam. Udviklerindstillinger har detaljerne.
 event-problem-downloads = Noget gik galt med downloads. Udviklerindstillinger har detaljerne.
 
 ## Errors (contract::CoreError)
@@ -114,8 +114,8 @@ core-error-io = Kunne ikke læse eller skrive en fil: { $message }
 core-error-storage = Kunne ikke gemme dit bibliotek: { $message }
 core-error-keyring = Kunne ikke nå systemets adgangskodelager: { $message }
 core-error-unsupported = { $what } understøttes ikke endnu.
-core-error-version = Denne eksport er fra en nyere AniBeam (format { $found }). Opdater AniBeam for at importere den.
-core-error-internal = AniBeam ramte en intern fejl: { $message }
+core-error-version = Denne eksport er fra en nyere Anibeam (format { $found }). Opdater Anibeam for at importere den.
+core-error-internal = Anibeam ramte en intern fejl: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -575,7 +575,7 @@ core-trackers-page-failed = Login blev ikke gennemført
 core-trackers-page-go-back = Gå tilbage til { $app } og prøv igen.
 core-trackers-page-finishing-title = { $app }, gør stadig færdig
 core-trackers-page-finishing = Gør stadig færdig
-core-trackers-page-finishing-body = { $site } svarede, og AniBeam gør login færdigt. Gå tilbage til { $app }, som siger til, når det er klar.
+core-trackers-page-finishing-body = { $site } svarede, og Anibeam gør login færdigt. Gå tilbage til { $app }, som siger til, når det er klar.
 core-trackers-page-cancelled-title = { $app }, login annulleret
 core-trackers-page-cancelled = Dette login blev annulleret
 core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis det var meningen.
@@ -1020,8 +1020,8 @@ core-downloads-anirss-slow-start = anirss startede ikke inden for { $seconds } s
 core-downloads-anirss-slow-start-said = anirss startede ikke inden for { $seconds } sekunder: { $said }
 core-downloads-anirss-install-mac = Installer anirss { $version } eller nyere med: { $command }
 core-downloads-anirss-install-linux = Installer anirss { $version } eller nyere: anirss-pakken fra AUR, eller { $command }
-core-downloads-anirss-too-old = anirss { $version } er for gammel til AniBeam, som kræver { $minimum } eller nyere. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert torrentprograms login for sig, hvilket AniBeam skal bruge for at skifte program; anirss { $minimum } og nyere kan. { $update }.
+core-downloads-anirss-too-old = anirss { $version } er for gammel til Anibeam, som kræver { $minimum } eller nyere. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert torrentprograms login for sig, hvilket Anibeam skal bruge for at skifte program; anirss { $minimum } og nyere kan. { $update }.
 core-downloads-anirss-update-mac = Opdater den med: { $command }
 core-downloads-anirss-update-linux = Opdater anirss-pakken, eller kør: { $command }
 
@@ -1049,19 +1049,19 @@ core-downloads-anirss-missing = { $install }. Eller peg Indstillinger på en ser
 core-downloads-anirss-command-missing = { $command } blev ikke fundet. { $install }. Eller peg Indstillinger på en server, der kører.
 core-downloads-anirss-start-failed = { $command } kunne ikke starte: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Den sagde: { $message }
-core-downloads-no-torrent-client = Ingen qBittorrent svarer på { $address }, og AniBeam har ingen egen at køre. Installer qBittorrent og slå dens Web UI til, eller installer qbittorrent-nox, som AniBeam så kører for dig
-core-downloads-own-client-gone = AniBeams qBittorrent er væk: qbittorrent-nox er ikke installeret. Geninstaller AniBeam, eller peg Indstillinger på din egen qBittorrent
+core-downloads-no-torrent-client = Ingen qBittorrent svarer på { $address }, og Anibeam har ingen egen at køre. Installer qBittorrent og slå dens Web UI til, eller installer qbittorrent-nox, som Anibeam så kører for dig
+core-downloads-own-client-gone = Anibeams qBittorrent er væk: qbittorrent-nox er ikke installeret. Geninstaller Anibeam, eller peg Indstillinger på din egen qBittorrent
 core-downloads-no-port = ingen port i { $address }
 core-downloads-own-client-settings = kan ikke skrive qBittorrents indstillinger: { $error }
 core-downloads-own-client-start-failed = { $command } kunne ikke starte: { $error }
-core-downloads-own-client-slow-start = AniBeams qBittorrent startede ikke
-core-downloads-own-client-slow-start-said = AniBeams qBittorrent startede ikke: { $said }
+core-downloads-own-client-slow-start = Anibeams qBittorrent startede ikke
+core-downloads-own-client-slow-start-said = Anibeams qBittorrent startede ikke: { $said }
 core-downloads-not-ready = Downloads er ikke klar. Tjek Downloads i Indstillinger.
 core-downloads-ready = Downloads er klar.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads søger nu med AniBeam selv, som ikke læser den { $count } kilde i søgehjælperens egen konfiguration. Tilføj den under Indstillinger, Downloads, eller vælg søgehjælperen dér.
-       *[other] Downloads søger nu med AniBeam selv, som ikke læser de { $count } kilder i søgehjælperens egen konfiguration. Tilføj dem under Indstillinger, Downloads, eller vælg søgehjælperen dér.
+        [one] Downloads søger nu med Anibeam selv, som ikke læser den { $count } kilde i søgehjælperens egen konfiguration. Tilføj den under Indstillinger, Downloads, eller vælg søgehjælperen dér.
+       *[other] Downloads søger nu med Anibeam selv, som ikke læser de { $count } kilder i søgehjælperens egen konfiguration. Tilføj dem under Indstillinger, Downloads, eller vælg søgehjælperen dér.
     }
 core-downloads-client-connected = Downloadprogrammet er forbundet.
 core-downloads-client-not-connected = Downloadprogrammet er ikke forbundet. Tjek dets adresse i Indstillinger.
@@ -1262,7 +1262,7 @@ core-releases-episode-range = { $from } til { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

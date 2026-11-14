@@ -8,8 +8,10 @@
 //! not where the crease runs, so the crease is never reported and the layout takes it for a
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
 //!
-//! The window turns only where its layout fits: an iPhone that does not fold stays upright
-//! outside the player, and the player turns to landscape (#937).
+//! The status bar and the home indicator are winit's view controller's to answer UIKit for,
+//! so the player asks for them through winit's window. So are the orientations: an iPhone
+//! that does not fold stays upright outside the player, and the player turns to landscape
+//! (#937).
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -19,13 +21,16 @@ use std::sync::mpsc::Sender;
 use block2::RcBlock;
 use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyClass, AnyObject, Imp, NSObjectProtocol, ProtocolObject, Sel};
-use objc2::sel;
+use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2_core_foundation::CGRect;
 use objc2_foundation::{
     NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
     NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
 };
+use slint::ComponentHandle;
+use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::platform::ios::{ValidOrientations, WindowExtIOS};
+use slint::winit_030::winit::window::Window as WinitWindow;
 
 use super::FocusAsk;
 use crate::worker::Command;
@@ -39,20 +44,20 @@ pub fn ios_main() {
     let data_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
         .join("Library/Application Support/AniBeam");
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        eprintln!("AniBeam: no data directory at {}: {e}", data_dir.display());
+        eprintln!("Anibeam: no data directory at {}: {e}", data_dir.display());
     }
     // Application Support goes into iCloud and computer backups, and downloaded episodes are
     // large and can be downloaded again, so the library folder stays out of them.
     let library = data_dir.join(crate::local::LIBRARY_DIR);
     match std::fs::create_dir_all(&library) {
         Ok(()) => keep_out_of_backups(&library),
-        Err(e) => eprintln!("AniBeam: no library folder at {}: {e}", library.display()),
+        Err(e) => eprintln!("Anibeam: no library folder at {}: {e}", library.display()),
     }
     let (commands, inbox) = std::sync::mpsc::channel();
     // Held for the whole run: the notification centre keeps the observers while they live.
     let _observers = observe(commands.clone());
     if let Err(e) = crate::run(data_dir, commands, inbox) {
-        eprintln!("AniBeam stopped: {e}");
+        eprintln!("Anibeam stopped: {e}");
     }
 }
 
@@ -60,7 +65,7 @@ pub fn ios_main() {
 /// start, since a restore from a backup can leave the folder without it.
 fn keep_out_of_backups(dir: &Path) {
     let Some(url) = NSURL::from_directory_path(dir) else {
-        eprintln!("AniBeam: no file URL for {}", dir.display());
+        eprintln!("Anibeam: no file URL for {}", dir.display());
         return;
     };
     let yes = NSNumber::new_bool(true);
@@ -68,7 +73,7 @@ fn keep_out_of_backups(dir: &Path) {
     let set =
         unsafe { url.setResourceValue_forKey_error(Some(&yes), NSURLIsExcludedFromBackupKey) };
     if let Err(e) = set {
-        eprintln!("AniBeam: {} stays in backups: {e:?}", dir.display());
+        eprintln!("Anibeam: {} stays in backups: {e:?}", dir.display());
     }
 }
 
@@ -245,6 +250,125 @@ pub fn player_awake(on: bool) {
     }
 }
 
+thread_local! {
+    /// The app's window, made on the UI thread, whose winit window the player turns to.
+    static APP_WINDOW: RefCell<Option<slint::Weak<crate::AppWindow>>> = const { RefCell::new(None) };
+}
+
+/// The app's window is made: kept, so the player can reach winit's window under it.
+pub fn window_up(window: &crate::AppWindow) {
+    APP_WINDOW.set(Some(window.as_weak()));
+}
+
+/// Runs `f` on winit's window, once the app's window has one; false before.
+fn with_winit(f: impl FnOnce(&WinitWindow)) -> bool {
+    let Some(window) = APP_WINDOW.with_borrow(|w| w.as_ref().and_then(|w| w.upgrade())) else {
+        return false;
+    };
+    window.window().with_winit_window(f).is_some()
+}
+
+/// The player's screen: while it is up the status bar is hidden and the home indicator fades
+/// after a moment, as in Apple's own players; when it closes both come back. UIKit lays the
+/// safe area out again, and winit tells Slint, so the pages keep clear of the bar.
+///
+/// The player also turns the window to landscape, and back to what the window takes outside
+/// it when it closes.
+pub fn player_screen(on: bool) {
+    PLAYING.set(on);
+    with_winit(|w| {
+        w.set_prefers_status_bar_hidden(on);
+        w.set_prefers_home_indicator_hidden(on);
+    });
+    turn();
+}
+
+/// `UIInterfaceOrientationMaskPortrait`.
+const PORTRAIT: usize = 1 << 1;
+/// `UIInterfaceOrientationMaskLandscape`: left and right.
+const LANDSCAPE: usize = (1 << 3) | (1 << 4);
+
+thread_local! {
+    /// The player has the screen.
+    static PLAYING: Cell<bool> = const { Cell::new(false) };
+    /// UIKit has reported a hinge angle: this iPhone folds.
+    static FOLDS: Cell<bool> = const { Cell::new(false) };
+    /// winit's window has been told the orientations once.
+    static TURNED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The orientations the window may take, as winit names them and as UIKit's mask: landscape
+/// while the player is open, either on a foldable, and upright on an iPhone that does not
+/// fold, whose short screen has no room for the wide layout.
+fn orientations() -> (ValidOrientations, usize) {
+    if PLAYING.get() {
+        (ValidOrientations::Landscape, LANDSCAPE)
+    } else if FOLDS.get() {
+        (
+            ValidOrientations::LandscapeAndPortrait,
+            PORTRAIT | LANDSCAPE,
+        )
+    } else {
+        (ValidOrientations::Portrait, PORTRAIT)
+    }
+}
+
+/// Tells winit's window the orientations the first time it is there, which turns an iPhone
+/// held sideways at launch upright.
+fn turnable() {
+    if !TURNED.get() {
+        turn();
+    }
+}
+
+/// Tells winit's view controller the orientations, and asks the window's scene to turn to
+/// one of them if it is not in one already: winit only asks UIKit to try, which iOS 16 and
+/// later no longer act on by themselves.
+fn turn() {
+    let (valid, mask) = orientations();
+    if !with_winit(|w| w.set_valid_orientations(valid)) {
+        return;
+    }
+    TURNED.set(true);
+    let Some(window) = app_window() else {
+        return;
+    };
+    let Some(prefs_class) = AnyClass::get(c"UIWindowSceneGeometryPreferencesIOS") else {
+        return;
+    };
+    let refused = RcBlock::new(|error: *mut NSError| {
+        // SAFETY: UIKit passes an NSError it keeps alive for the call.
+        if let Some(error) = unsafe { error.as_ref() } {
+            log(&format!(
+                "iOS kept the orientation: {}",
+                error.localizedDescription()
+            ));
+        }
+    });
+    // SAFETY: plain UIKit calls on the main thread. `rootViewController` and `windowScene`
+    // return objects or nil; the preferences take a UIInterfaceOrientationMask, and the
+    // scene copies the error block.
+    unsafe {
+        let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
+        if let Some(controller) = controller {
+            let _: () = msg_send![&*controller, setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        let scene: Option<Retained<AnyObject>> = msg_send![&*window, windowScene];
+        let Some(scene) = scene else {
+            return;
+        };
+        let prefs: Retained<AnyObject> = msg_send![
+            msg_send![prefs_class, alloc],
+            initWithInterfaceOrientations: mask
+        ];
+        let _: () = msg_send![
+            &*scene,
+            requestGeometryUpdateWithPreferences: &*prefs,
+            errorHandler: &*refused
+        ];
+    }
+}
+
 /// The phone's language as iOS lists it first: `da-DK`, `pt-BR`, `zh-Hans-CN`, the same
 /// shape Android gives.
 pub fn system_locale() -> String {
@@ -379,8 +503,8 @@ pub fn fold() -> (Option<f32>, bool) {
 /// layout stops asking; one with a hinge is laid out by the guess.
 pub fn crease() -> crate::crease::Reading {
     match ask() {
-        // Silent stops the layout's timer, whose fold() call installs `turnable`: wait for it.
-        Hinge::Absent if TURNABLE.get() => crate::crease::Reading::Silent,
+        // Silent stops the layout's timer, whose fold() call turns the window: wait for it.
+        Hinge::Absent if TURNED.get() => crate::crease::Reading::Silent,
         _ => crate::crease::Reading::None,
     }
 }
@@ -498,129 +622,4 @@ fn app_window() -> Option<Retained<AnyObject>> {
         }
         None
     }
-}
-
-/// `UIInterfaceOrientationMaskPortrait`.
-const PORTRAIT: usize = 1 << 1;
-/// `UIInterfaceOrientationMaskLandscape`: left and right.
-const LANDSCAPE: usize = (1 << 3) | (1 << 4);
-
-thread_local! {
-    /// The player has the screen.
-    static PLAYING: Cell<bool> = const { Cell::new(false) };
-    /// UIKit has reported a hinge angle: this iPhone folds.
-    static FOLDS: Cell<bool> = const { Cell::new(false) };
-    /// The window's view controller answers with `orientations`.
-    static TURNABLE: Cell<bool> = const { Cell::new(false) };
-}
-
-/// The orientations the window may take: landscape while the player is open, any but upside
-/// down on a foldable, and upright on an iPhone that does not fold, whose short screen has no
-/// room for the wide layout.
-fn orientations() -> usize {
-    if PLAYING.get() {
-        LANDSCAPE
-    } else if FOLDS.get() {
-        PORTRAIT | LANDSCAPE
-    } else {
-        PORTRAIT
-    }
-}
-
-/// The view controller's `supportedInterfaceOrientations`, which UIKit calls on the main
-/// thread.
-extern "C-unwind" fn supported(_this: *mut AnyObject, _cmd: Sel) -> usize {
-    orientations()
-}
-
-/// Has the window's view controller answer `supportedInterfaceOrientations` with
-/// `orientations`, once there is a window. winit's view controller answers from a setting
-/// Slint gives no way to change, so its method is replaced on its class; the app has one
-/// window and one view controller. Turns the window upright straight away on an iPhone that
-/// was held sideways at launch.
-fn turnable() {
-    if install() {
-        turn();
-    }
-}
-
-/// Replaces the view controller's method once there is a window; true on the call that did.
-fn install() -> bool {
-    if TURNABLE.get() {
-        return false;
-    }
-    let Some(window) = app_window() else {
-        return false;
-    };
-    // SAFETY: a UIWindow's `rootViewController` is a UIViewController or nil. The replaced
-    // method takes no arguments and returns a UIInterfaceOrientationMask, an NSUInteger,
-    // which is `supported`'s signature and the "Q@:" encoding; UIKit calls it on the main
-    // thread, where the thread locals it reads live.
-    unsafe {
-        let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
-        let Some(controller) = controller else {
-            return false;
-        };
-        let class = controller.class() as *const AnyClass as *mut AnyClass;
-        let imp: Imp =
-            std::mem::transmute(supported as extern "C-unwind" fn(*mut AnyObject, Sel) -> usize);
-        objc2::ffi::class_replaceMethod(
-            class,
-            sel!(supportedInterfaceOrientations),
-            imp,
-            c"Q@:".as_ptr(),
-        );
-    }
-    TURNABLE.set(true);
-    true
-}
-
-/// Tells UIKit the orientations changed, and asks the window's scene to turn to one of them
-/// if it is not in one already (iOS 16 and later).
-fn turn() {
-    let Some(window) = app_window() else {
-        return;
-    };
-    let Some(prefs_class) = AnyClass::get(c"UIWindowSceneGeometryPreferencesIOS") else {
-        return;
-    };
-    let refused = RcBlock::new(|error: *mut NSError| {
-        // SAFETY: UIKit passes an NSError it keeps alive for the call.
-        if let Some(error) = unsafe { error.as_ref() } {
-            log(&format!(
-                "iOS kept the orientation: {}",
-                error.localizedDescription()
-            ));
-        }
-    });
-    // SAFETY: plain UIKit calls on the main thread. `rootViewController` and `windowScene`
-    // return objects or nil; the preferences take a UIInterfaceOrientationMask, and the
-    // scene copies the error block.
-    unsafe {
-        let controller: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
-        if let Some(controller) = controller {
-            let _: () = msg_send![&*controller, setNeedsUpdateOfSupportedInterfaceOrientations];
-        }
-        let scene: Option<Retained<AnyObject>> = msg_send![&*window, windowScene];
-        let Some(scene) = scene else {
-            return;
-        };
-        let prefs: Retained<AnyObject> = msg_send![
-            msg_send![prefs_class, alloc],
-            initWithInterfaceOrientations: orientations()
-        ];
-        let _: () = msg_send![
-            &*scene,
-            requestGeometryUpdateWithPreferences: &*prefs,
-            errorHandler: &*refused
-        ];
-    }
-}
-
-/// The player's screen: landscape while it is open, and back to what the window takes
-/// outside it when it closes.
-pub fn player_screen(on: bool) {
-    PLAYING.set(on);
-    install();
-    turn();
 }

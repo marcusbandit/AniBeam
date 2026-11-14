@@ -11,7 +11,7 @@ use anibeam_core::{
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "anibeam-cli", version = anibeam_core::VERSION, about = "AniBeam's core from the terminal")]
+#[command(name = "anibeam-cli", version = anibeam_core::VERSION, about = "Anibeam's core from the terminal")]
 struct Cli {
     /// Put every directory under this root instead of the XDG paths.
     #[arg(long, global = true)]

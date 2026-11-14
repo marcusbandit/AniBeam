@@ -1,4 +1,4 @@
-//! Two AniBeam computers merge their watch history, resume points and
+//! Two Anibeam computers merge their watch history, resume points and
 //! matches (#561): two cores with the same show in different folders, one
 //! serving its real router on loopback and the other pulling from it.
 

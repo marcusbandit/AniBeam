@@ -5,7 +5,7 @@
 
 ## Names that stay the same in every language. Messages use them; none is shown alone.
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -97,7 +97,7 @@ event-problem-trackers = Something went wrong with your lists. Developer options
 event-problem-franchise = Something went wrong with related shows. Developer options have the details.
 event-problem-playback = Something went wrong with playback. Developer options have the details.
 event-problem-store = Something went wrong with saving your data. Developer options have the details.
-event-problem-system = Something went wrong with AniBeam. Developer options have the details.
+event-problem-system = Something went wrong with Anibeam. Developer options have the details.
 event-problem-downloads = Something went wrong with downloads. Developer options have the details.
 
 ## Errors (contract::CoreError)
@@ -124,8 +124,8 @@ core-error-io = Could not read or write a file: { $message }
 core-error-storage = Could not save your library: { $message }
 core-error-keyring = Could not reach the system password store: { $message }
 core-error-unsupported = { $what } is not supported yet.
-core-error-version = This export is from a newer AniBeam (format { $found }). Update AniBeam to import it.
-core-error-internal = AniBeam hit an internal error: { $message }
+core-error-version = This export is from a newer Anibeam (format { $found }). Update Anibeam to import it.
+core-error-internal = Anibeam hit an internal error: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -648,7 +648,7 @@ core-trackers-oauth-port-failed = port { $port } on this computer could not be o
 core-trackers-oauth-port-busy = port { $port } on this computer is in use by another program. Wait a moment and try again, or close the program using it if it stays busy.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } returned an error: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } is connected to { $app }
 core-trackers-page-close-tab = You can close this tab.
@@ -657,7 +657,7 @@ core-trackers-page-failed = The sign-in did not finish
 core-trackers-page-go-back = Go back to { $app } and try again.
 core-trackers-page-finishing-title = { $app }, still finishing
 core-trackers-page-finishing = Still finishing
-core-trackers-page-finishing-body = { $site } answered and AniBeam is finishing the sign-in. Return to { $app }, which says when it is done.
+core-trackers-page-finishing-body = { $site } answered and Anibeam is finishing the sign-in. Return to { $app }, which says when it is done.
 core-trackers-page-cancelled-title = { $app }, sign-in cancelled
 core-trackers-page-cancelled = This sign-in was cancelled
 core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } if you meant to.
@@ -1162,8 +1162,8 @@ core-downloads-anirss-slow-start-said = anirss did not start within { $seconds }
 core-downloads-anirss-install-mac = Install anirss { $version } or newer with: { $command }
 core-downloads-anirss-install-linux = Install anirss { $version } or newer: the anirss package on the AUR, or { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } is too old for AniBeam, which needs { $minimum } or newer. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } cannot keep each torrent client's login to itself, which AniBeam needs to switch clients; anirss { $minimum } and newer can. { $update }.
+core-downloads-anirss-too-old = anirss { $version } is too old for Anibeam, which needs { $minimum } or newer. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } cannot keep each torrent client's login to itself, which Anibeam needs to switch clients; anirss { $minimum } and newer can. { $update }.
 core-downloads-anirss-update-mac = Update it with: { $command }
 core-downloads-anirss-update-linux = Update the anirss package, or run: { $command }
 
@@ -1196,21 +1196,21 @@ core-downloads-anirss-command-missing = { $command } was not found. { $install }
 core-downloads-anirss-start-failed = { $command } could not start: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } It said: { $message }
-core-downloads-no-torrent-client = No qBittorrent answers at { $address }, and AniBeam has none of its own to run. Install qBittorrent and turn on its Web UI, or install qbittorrent-nox, which AniBeam then runs for you
-core-downloads-own-client-gone = AniBeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall AniBeam, or point Settings at a qBittorrent of your own
+core-downloads-no-torrent-client = No qBittorrent answers at { $address }, and Anibeam has none of its own to run. Install qBittorrent and turn on its Web UI, or install qbittorrent-nox, which Anibeam then runs for you
+core-downloads-own-client-gone = Anibeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall Anibeam, or point Settings at a qBittorrent of your own
 core-downloads-no-port = no port in { $address }
 core-downloads-own-client-settings = cannot write qBittorrent's settings: { $error }
 core-downloads-own-client-start-failed = { $command } could not start: { $error }
-core-downloads-own-client-slow-start = AniBeam's qBittorrent did not start
+core-downloads-own-client-slow-start = Anibeam's qBittorrent did not start
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = AniBeam's qBittorrent did not start: { $said }
+core-downloads-own-client-slow-start-said = Anibeam's qBittorrent did not start: { $said }
 core-downloads-not-ready = Downloads are not ready. Check Downloads in Settings.
 core-downloads-ready = Downloads are ready.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads now search with AniBeam itself, which does not read the { $count } source in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
-       *[other] Downloads now search with AniBeam itself, which does not read the { $count } sources in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
+        [one] Downloads now search with Anibeam itself, which does not read the { $count } source in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
+       *[other] Downloads now search with Anibeam itself, which does not read the { $count } sources in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
     }
 core-downloads-client-connected = The download app is connected.
 core-downloads-client-not-connected = The download app is not connected. Check its address in Settings.

@@ -27,7 +27,7 @@ use super::{settings, trash};
 
 /// How `CoreError::Service` names a refusal that is the engine's own,
 /// not the torrent client's.
-const SERVICE: &str = "AniBeam";
+const SERVICE: &str = "Anibeam";
 
 /// The folder a download with no name and no show to name it after goes
 /// into (anirss's fallback name).

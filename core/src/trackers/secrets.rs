@@ -411,7 +411,7 @@ impl FileStore {
 
 impl CredentialStoreApi for FileStore {
     fn vendor(&self) -> String {
-        "AniBeam file store, secrets.json".to_string()
+        "Anibeam file store, secrets.json".to_string()
     }
 
     fn id(&self) -> String {
