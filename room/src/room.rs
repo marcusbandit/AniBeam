@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::code::hex;
 use crate::limit::{self, Verdict};
 use crate::proto::{
-    Action, ClientMsg, EpisodeRef, ErrorCode, MAX_MEMBERS, MAX_POSITION, Member, MemberId, PROTO,
-    PlayState, Ready, RoomView, ServerMsg,
+    Action, ClientMsg, EpisodeRef, ErrorCode, MAX_KEY, MAX_MEMBERS, MAX_POSITION, MAX_SEALED,
+    Member, MemberId, PROTO, PlayState, Progress, Ready, RoomView, ServerMsg,
 };
 use crate::siphash::siphash24;
 
@@ -70,6 +70,13 @@ struct Slot {
     rejoin_key: String,
     window_ms: u64,
     window_count: u32,
+    /// The public key the member's hello carried. A room stored before keys
+    /// reads with none.
+    #[serde(default)]
+    key: Option<String>,
+    /// How far the member's download of the episode is, while it runs.
+    #[serde(default)]
+    progress: Option<Progress>,
 }
 
 /// A watch together room.
@@ -162,6 +169,8 @@ impl Room {
                 host: self.host == Some(s.id),
                 ready: s.ready,
                 joined_ms: s.joined_ms,
+                key: s.key.clone(),
+                progress: s.progress,
             })
             .collect()
     }
@@ -227,7 +236,18 @@ impl Room {
                     client: _,
                     host_key,
                     rejoin_key,
-                } => self.hello(conn, name, proto, host_key, rejoin_key, now_ms),
+                    key,
+                } => self.hello(
+                    conn,
+                    Hello {
+                        name,
+                        proto,
+                        host_key,
+                        rejoin_key,
+                        key,
+                    },
+                    now_ms,
+                ),
                 _ => vec![error(conn, ErrorCode::Proto, "hello must come first")],
             };
         };
@@ -283,6 +303,7 @@ impl Room {
                 };
                 for slot in &mut self.slots {
                     slot.ready = Ready::Loading;
+                    slot.progress = None;
                 }
                 vec![
                     all(ServerMsg::Episode {
@@ -293,11 +314,17 @@ impl Room {
                     all(self.members_msg()),
                 ]
             }
-            ClientMsg::Status { ready } => {
-                self.slots[i].ready = ready;
+            ClientMsg::Status { ready, progress } => {
+                let slot = &mut self.slots[i];
+                slot.ready = ready;
+                // Only someone without the episode is fetching it
+                slot.progress = progress
+                    .filter(|_| ready != Ready::Ready)
+                    .and_then(Progress::clean);
                 vec![all(self.members_msg())]
             }
             ClientMsg::Bye => self.bye(i, conn, now_ms),
+            ClientMsg::Seal { to, data } => self.seal(id, conn, to, data),
         }
     }
 
@@ -335,15 +362,14 @@ impl Room {
         outs
     }
 
-    fn hello(
-        &mut self,
-        conn: ConnId,
-        name: String,
-        proto: u32,
-        host_key: Option<String>,
-        rejoin_key: Option<String>,
-        now_ms: u64,
-    ) -> Vec<Out> {
+    fn hello(&mut self, conn: ConnId, hello: Hello, now_ms: u64) -> Vec<Out> {
+        let Hello {
+            name,
+            proto,
+            host_key,
+            rejoin_key,
+            key,
+        } = hello;
         if proto != PROTO {
             return vec![error(
                 conn,
@@ -378,6 +404,7 @@ impl Room {
                 }
                 slot.left_ms = None;
                 slot.name = name;
+                slot.key = clean_key(key);
                 slot.window_ms = now_ms;
                 slot.window_count = 0;
                 i
@@ -406,6 +433,8 @@ impl Room {
                     rejoin_key,
                     window_ms: now_ms,
                     window_count: 0,
+                    key: clean_key(key),
+                    progress: None,
                 });
                 self.slots.len() - 1
             }
@@ -433,6 +462,32 @@ impl Room {
             msg: self.members_msg(),
         });
         outs
+    }
+
+    /// Passes a sealed payload from member `from` to member `to`, unread. Too
+    /// large, or for nobody connected but the sender, it goes nowhere and the
+    /// sender hears why; neither closes the connection.
+    fn seal(&mut self, from: MemberId, conn: ConnId, to: MemberId, data: String) -> Vec<Out> {
+        if data.len() > MAX_SEALED {
+            return vec![error(
+                conn,
+                ErrorCode::BadMessage,
+                format!("a sealed payload is at most {MAX_SEALED} characters"),
+            )];
+        }
+        let target = self
+            .slots
+            .iter()
+            .find(|s| s.id == to && s.id != from)
+            .and_then(|s| s.conn);
+        match target {
+            Some(target) => vec![one(target, ServerMsg::Sealed { from, data })],
+            None => vec![error(
+                conn,
+                ErrorCode::NotAllowed,
+                "nobody else in the room has that id",
+            )],
+        }
     }
 
     fn bye(&mut self, i: usize, conn: ConnId, now_ms: u64) -> Vec<Out> {
@@ -548,6 +603,26 @@ pub fn clean_name(name: &str) -> Option<String> {
         return None;
     }
     Some(name.to_owned())
+}
+
+/// What a hello says, as the room reads it.
+struct Hello {
+    name: String,
+    proto: u32,
+    host_key: Option<String>,
+    rejoin_key: Option<String>,
+    key: Option<String>,
+}
+
+/// A public key as the room keeps it: base64 characters, at most [`MAX_KEY`].
+/// Anything else is no key, so a bad one cannot reach the other members.
+fn clean_key(key: Option<String>) -> Option<String> {
+    key.filter(|k| {
+        !k.is_empty()
+            && k.len() <= MAX_KEY
+            && k.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'=' | b'-' | b'_'))
+    })
 }
 
 /// Compares two keys without stopping at the first difference.

@@ -26,6 +26,8 @@
 //! so a listener may call straight back into the core.
 
 pub mod episode;
+pub mod media;
+pub mod seal;
 mod socket;
 pub mod sync;
 
@@ -149,6 +151,14 @@ struct Active {
     suggested: Option<f64>,
     ready: Ready,
     drift: Drift,
+    /// This member's key pair for the room: others seal payloads to its public
+    /// half, which the hello carries (#889).
+    keys: Arc<seal::Keys>,
+    /// Where Get media is, the download's progress the status carries, and the
+    /// fetch running now: its number, and the token that stops it.
+    fetch: RoomFetch,
+    progress: Option<proto::Progress>,
+    fetching: Option<(u64, CancellationToken)>,
     tx: mpsc::UnboundedSender<ClientMsg>,
     cancel: CancellationToken,
     kick: Arc<Notify>,
@@ -170,7 +180,46 @@ impl Active {
             suggested_offset: self.suggested,
             session: self.session,
             connected: self.connected,
+            fetch: self.fetch,
+            can_fetch: self.can_fetch(),
         })
+    }
+
+    /// The status this member's relay sees: ready or not, and the download's
+    /// progress while Get media runs.
+    fn status(&self) -> ClientMsg {
+        ClientMsg::Status {
+            ready: self.ready,
+            progress: self.progress.filter(|_| self.ready != Ready::Ready),
+        }
+    }
+
+    /// The host, when it is someone else and its app can be sealed to.
+    fn host_key(&self) -> Option<(MemberId, String)> {
+        self.members
+            .iter()
+            .find(|m| m.host && Some(m.id) != self.you)
+            .and_then(|m| Some((m.id, m.key.clone()?)))
+    }
+
+    /// Whether Get media can start: the episode is missing here, nothing is
+    /// fetching it, and the host's app can be asked.
+    fn can_fetch(&self) -> bool {
+        self.connected
+            && self.session.is_none()
+            && self.ready == Ready::Missing
+            && matches!(self.fetch, RoomFetch::Idle | RoomFetch::Failed)
+            && self.host_key().is_some()
+    }
+
+    /// Stops following a Get media. The download itself stays with the
+    /// torrent client.
+    fn stop_fetch(&mut self) {
+        if let Some((_, token)) = self.fetching.take() {
+            token.cancel();
+        }
+        self.fetch = RoomFetch::Idle;
+        self.progress = None;
     }
 
     fn is_host(&self) -> bool {
@@ -229,6 +278,7 @@ impl Active {
         self.suggested = None;
         self.drift = Drift::default();
         self.ready = Ready::Loading;
+        self.stop_fetch();
     }
 
     /// Tells the player where the room is, now.
@@ -244,15 +294,19 @@ impl Active {
 }
 
 fn member(m: &Member) -> RoomMember {
+    let progress = m.progress.filter(|_| m.ready != Ready::Ready);
     RoomMember {
         id: m.id.0,
         name: m.name.clone(),
         host: m.host,
-        ready: match m.ready {
-            Ready::Ready => RoomReady::Ready,
-            Ready::Missing => RoomReady::Missing,
-            Ready::Loading => RoomReady::Loading,
+        ready: match (m.ready, progress) {
+            (Ready::Ready, _) => RoomReady::Ready,
+            (_, Some(_)) => RoomReady::Downloading,
+            (Ready::Missing, None) => RoomReady::Missing,
+            (Ready::Loading, None) => RoomReady::Loading,
         },
+        progress: progress.map(|p| p.percent),
+        eta: progress.and_then(|p| p.eta),
     }
 }
 
@@ -395,6 +449,7 @@ pub(crate) fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
             None
         }
         Call::RoomStatus => core.rooms.lock().as_ref().and_then(Active::info),
+        Call::RoomGetMedia => media::get(core)?,
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
@@ -508,6 +563,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
     let kick = Arc::new(Notify::new());
     let (first, answer) = oneshot::channel();
     let hosting = b.session.is_some();
+    let keys = Arc::new(seal::Keys::new());
     let paused = PlayState {
         playing: false,
         position: 0.0,
@@ -545,6 +601,10 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
             Ready::Loading
         },
         drift: Drift::default(),
+        keys: keys.clone(),
+        fetch: RoomFetch::Idle,
+        progress: None,
+        fetching: None,
         tx,
         cancel: cancel.clone(),
         kick: kick.clone(),
@@ -558,6 +618,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
             code: b.code,
             name: b.name,
             host_key: b.host_key,
+            key: keys.public(),
             client: b.client,
             rx,
             cancel: cancel.clone(),
@@ -608,6 +669,8 @@ fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
         a.session = Some(session);
         a.file = Some(s.file);
         a.ready = Ready::Ready;
+        // Whatever Get media was doing, the episode is open now
+        a.stop_fetch();
         let mine = episode::of_session(&s);
         a.mine = Some(mine.clone());
         if a.is_host() && !episode::same(&mine, &room_episode) {
@@ -645,9 +708,7 @@ fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
                     None => (a.suggested.unwrap_or(0.0), false),
                 };
             }
-            a.send(ClientMsg::Status {
-                ready: Ready::Ready,
-            });
+            a.send(a.status());
             out.push(a.bring(session));
         }
         out.push(Say::debug(
@@ -790,9 +851,10 @@ fn set_offset(core: &Core, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
 /// Leaves the room for good: the relay frees the place at once.
 fn leave(core: &Core) {
     let taken = core.rooms.lock().take();
-    let Some(a) = taken else {
+    let Some(mut a) = taken else {
         return;
     };
+    a.stop_fetch();
     a.send(ClientMsg::Bye);
     a.cancel.cancel();
     core.bus.emit_said(
@@ -807,7 +869,8 @@ fn leave(core: &Core) {
 
 /// The core is closing: say goodbye, quietly.
 pub(crate) fn shutdown(core: &Core) {
-    if let Some(a) = core.rooms.lock().take() {
+    if let Some(mut a) = core.rooms.lock().take() {
+        a.stop_fetch();
         a.send(ClientMsg::Bye);
         a.cancel.cancel();
     }
@@ -889,7 +952,7 @@ pub(crate) fn closed(core: &Core, session: u64) {
             return;
         }
         a.detach();
-        a.send(ClientMsg::Status { ready: a.ready });
+        a.send(a.status());
         Say::debug(format!("Room: session {session} closed"), a.changed())
     };
     emit(core, vec![out]);
@@ -986,7 +1049,7 @@ fn on_welcome(core: &Core, serial: u64, you: MemberId, room: RoomView, server_ms
             // A member who comes back to the same episode was already told about it.
             to_match = (a.session.is_none() && (first || moved)).then(|| room.episode.clone());
         }
-        a.send(ClientMsg::Status { ready: a.ready });
+        a.send(a.status());
         if was_down {
             out.push(Say::said(
                 Level::Info,
@@ -1032,7 +1095,7 @@ fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
         } else {
             Ready::Missing
         };
-        a.send(ClientMsg::Status { ready: a.ready });
+        a.send(a.status());
         a.suggested = sync::suggest_offset(e.opening_start, local.opening);
         out.push(Say {
             level: Level::Info,
@@ -1105,6 +1168,7 @@ fn take_state(a: &mut Active, state: PlayState, by: MemberId) -> Option<Say> {
 fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
     let mut out = Vec::new();
     let mut to_match = None;
+    let mut secret = None;
     {
         let mut slot = core.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
@@ -1156,7 +1220,7 @@ fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
                         a.ready = Ready::Ready;
                         out.push(a.bring(session));
                     }
-                    a.send(ClientMsg::Status { ready: a.ready });
+                    a.send(a.status());
                 } else {
                     // The old episode stops; the shell opens the new one.
                     if let Some(session) = a.session {
@@ -1174,12 +1238,35 @@ fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
                     a.changed(),
                 ));
             }
+            ServerMsg::Sealed { from, data } => {
+                // Sealed to this member's key by the sender's: one that does not
+                // open was not for this pair, or was changed on the way
+                let theirs = a
+                    .members
+                    .iter()
+                    .find(|m| m.id == from)
+                    .and_then(|m| m.key.clone());
+                let opened = theirs
+                    .and_then(|k| a.keys.open(&a.code, &k, &data))
+                    .and_then(|plain| serde_json::from_slice::<media::Secret>(&plain).ok());
+                match opened {
+                    Some(s) => secret = Some((from, s)),
+                    None => tracing::debug!(
+                        "Room {}: a sealed payload from member {} did not open",
+                        a.code,
+                        from.0
+                    ),
+                }
+            }
             _ => {}
         }
     }
     emit(core, out);
     if let Some(e) = to_match {
         find(core, serial, e);
+    }
+    if let Some((from, s)) = secret {
+        media::on_secret(core, serial, from, s);
     }
     true
 }
@@ -1218,9 +1305,10 @@ fn finish(core: &Core, serial: u64) {
             None
         }
     };
-    let Some(a) = taken else {
+    let Some(mut a) = taken else {
         return;
     };
+    a.stop_fetch();
     a.cancel.cancel();
     core.bus.emit_said(
         Level::Warn,
@@ -1282,6 +1370,10 @@ mod tests {
             suggested: None,
             ready: Ready::Ready,
             drift: Drift::default(),
+            keys: Arc::new(seal::Keys::new()),
+            fetch: RoomFetch::Idle,
+            progress: None,
+            fetching: None,
             tx,
             cancel: CancellationToken::new(),
             kick: Arc::new(Notify::new()),

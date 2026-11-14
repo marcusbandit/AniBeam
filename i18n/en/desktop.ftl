@@ -2158,6 +2158,7 @@ room-error-proto = That room runs on a newer version of rooms. Update { -app-nam
 room-error-not-in-room = You are no longer in that room. Start or join one again.
 room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
 room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
+room-error-cannot-fetch = The host can't share this episode right now. Try again once they are back in the room.
 
 ## RoomPanel.qml
 
@@ -2179,7 +2180,6 @@ room-panel-code-label = Room code
 room-panel-copy = Copy link
 room-panel-link-copied = Room link copied
 room-panel-watching = { $series } · { $episode }
-room-panel-missing-here = This episode is not in your library, so you can't play along yet.
 room-panel-open-episode = Open the episode
 room-panel-people = { $count ->
     [one] 1 person
@@ -2197,6 +2197,13 @@ room-panel-seconds = { $value } s
 room-panel-suggested = The openings suggest { $offset }
 room-panel-use-suggested = Use it
 room-panel-leave = Leave the room
+room-panel-get-media = Get media
+room-panel-downloading = Downloading
+room-panel-asking = Asking the host
+room-panel-searching = Searching
+room-panel-failed = Couldn't get it
+room-panel-percent = { $percent }%
+room-panel-left = { $time } left
 
 ## PlayerPage.qml
 
