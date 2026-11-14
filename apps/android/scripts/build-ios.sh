@@ -13,7 +13,8 @@
 # sign it themselves when they install it. It is built as ANIBEAM_RELEASE_VERSION when CI
 # sets one (2.4.3 or 2.4.3-nightly.20261113.41), else as Cargo.toml's version. The bundle's
 # short version is the base, 2.4.3, which is all iOS takes, and its build number the run
-# number of a nightly.
+# number of a nightly. ANIBEAM_NIGHTLY=1 builds it as AniBeam Nightly, bundle id
+# com.marcusrosado.anibeam.nightly, so a nightly installs beside the release (#944).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,6 +38,12 @@ case "$release_version" in
     ;;
 esac
 
+# A nightly is its own app: its own bundle id and name, so both can be installed at once.
+identity=()
+if [ "${ANIBEAM_NIGHTLY:-}" = 1 ]; then
+  identity=(PRODUCT_BUNDLE_IDENTIFIER=com.marcusrosado.anibeam.nightly "ANIBEAM_DISPLAY_NAME=AniBeam Nightly")
+fi
+
 # The player's libmpv, linked statically (build.rs); fetched once, then only when its pin
 # changes.
 "$here/scripts/fetch-mpv-ios.sh" || {
@@ -50,7 +57,7 @@ if [ "$mode" = ipa ]; then
   xcodebuild -project "$here/ios/AniBeam.xcodeproj" -scheme AniBeam -configuration Release \
     -sdk iphoneos -destination 'generic/platform=iOS' \
     -derivedDataPath "$here/build/ios" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$version" \
-    CURRENT_PROJECT_VERSION="$build_number" -quiet build
+    CURRENT_PROJECT_VERSION="$build_number" ${identity[@]+"${identity[@]}"} -quiet build
   # An IPA is a zip whose root is Payload/, holding the .app.
   stage="$here/build/ios/ipa"
   rm -rf "$stage" "$here/build/ios/AniBeam.ipa"
@@ -65,5 +72,5 @@ fi
 xcodebuild -project "$here/ios/AniBeam.xcodeproj" -scheme AniBeam -configuration "$mode" \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath "$here/build/ios" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$version" \
-  CURRENT_PROJECT_VERSION="$build_number" -quiet build
+  CURRENT_PROJECT_VERSION="$build_number" ${identity[@]+"${identity[@]}"} -quiet build
 echo "build-ios.sh: $here/build/ios/Build/Products/$mode-iphonesimulator/AniBeam.app"
