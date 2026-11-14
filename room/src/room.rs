@@ -237,7 +237,17 @@ impl Room {
                     host_key,
                     rejoin_key,
                     key,
-                } => self.hello(conn, name, proto, host_key, rejoin_key, key, now_ms),
+                } => self.hello(
+                    conn,
+                    Hello {
+                        name,
+                        proto,
+                        host_key,
+                        rejoin_key,
+                        key,
+                    },
+                    now_ms,
+                ),
                 _ => vec![error(conn, ErrorCode::Proto, "hello must come first")],
             };
         };
@@ -352,16 +362,14 @@ impl Room {
         outs
     }
 
-    fn hello(
-        &mut self,
-        conn: ConnId,
-        name: String,
-        proto: u32,
-        host_key: Option<String>,
-        rejoin_key: Option<String>,
-        key: Option<String>,
-        now_ms: u64,
-    ) -> Vec<Out> {
+    fn hello(&mut self, conn: ConnId, hello: Hello, now_ms: u64) -> Vec<Out> {
+        let Hello {
+            name,
+            proto,
+            host_key,
+            rejoin_key,
+            key,
+        } = hello;
         if proto != PROTO {
             return vec![error(
                 conn,
@@ -595,6 +603,15 @@ pub fn clean_name(name: &str) -> Option<String> {
         return None;
     }
     Some(name.to_owned())
+}
+
+/// What a hello says, as the room reads it.
+struct Hello {
+    name: String,
+    proto: u32,
+    host_key: Option<String>,
+    rejoin_key: Option<String>,
+    key: Option<String>,
 }
 
 /// A public key as the room keeps it: base64 characters, at most [`MAX_KEY`].

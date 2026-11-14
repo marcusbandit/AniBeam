@@ -1371,7 +1371,8 @@ impl Core {
             | Call::RoomCommand { .. }
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
-            | Call::RoomStatus) => crate::room::call(self, c),
+            | Call::RoomStatus
+            | Call::RoomGetMedia) => crate::room::call(self, c),
             Call::PhoneNetCheck => Ok(Reply::PhoneNetCheck {
                 checks: self.handle.block_on(crate::phone::check::run(self)),
             }),

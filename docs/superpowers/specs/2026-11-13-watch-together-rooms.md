@@ -118,6 +118,27 @@ what the protocol shows. `secret` is 16 random bytes the room keys its rejoin ke
 (SipHash-2-4): the crate has no randomness of its own, so it builds for wasm32 unchanged, and
 deriving the keys from `host_key` instead would let the host forge everyone's.
 
+### Get media (#889), protocol 1 still
+
+Added without a version bump: every new field is optional and a relay or client from before
+ignores it, and a relay from before answers the new `seal` with `bad_message`.
+
+- `hello` may carry `key`: the member's X25519 public key for this room session, base64. The
+  member list carries it as `Member.key` (at most `MAX_KEY` characters of base64, else dropped).
+- `status` may carry `progress { percent, eta? }` while the member downloads the episode;
+  `Member.progress` shows it to everyone, cleared when ready or when the episode changes.
+- `seal { to, data }` passes `data` (at most `MAX_SEALED`, 8 KB) to one other connected
+  member as `sealed { from, data }`, under the same rate. Too large is `bad_message`; nobody
+  by that id, or oneself, is `not_allowed`. Neither closes the socket.
+
+`data` is sealed by the core (`core/src/room/seal.rs`): X25519 between the two members' keys,
+HKDF-SHA256 salted with the room code with both public keys in its info, XChaCha20-Poly1305
+with a random nonce and the sender's then the recipient's key as additional data. The relay
+sees neither the torrent link, the info hash, the release's name nor the match ids inside.
+What it carries (`core/src/room/media.rs`): `ask`, the host's `offer` (magnet with trackers
+while its torrent client still holds the torrent its file came from, the info hash, the
+release's and the file's names, group, resolution and the match ids) or `nothing`.
+
 ## Relays
 
 Native (`apps/relay`): axum with the `ws` feature, rooms in memory, `anibeam_relay::serve(listener)`

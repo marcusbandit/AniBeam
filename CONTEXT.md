@@ -380,6 +380,10 @@ _Avoid_: room server, sync server, backend
 How far one person's file is from the host's, in seconds, so the same moment plays at the same time: local position is the room's position plus the offset. Kept per file, and suggested from the openings when both are known.
 _Avoid_: delay, drift, sync offset
 
+**Get media**:
+What a room member without the episode presses to get it from the host. The host's app answers with the torrent its copy came from while its torrent client still holds it, else the release's name, and the member downloads it through Downloads: the torrent itself, or the same release found on the member's own sources. The answer is sealed between the two apps, so the relay passes it on without being able to read it. Everyone in the room sees the download's progress and time left.
+_Avoid_: share, send file, sync download
+
 ### Route
 
 **Parity checklist**:

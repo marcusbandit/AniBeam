@@ -85,6 +85,22 @@ impl QbtClient {
             .unwrap_or_default())
     }
 
+    /// The magnet link of a torrent the client still holds, trackers included,
+    /// as qBittorrent writes it; None when the client no longer has it.
+    pub async fn magnet(&self, hash: &str) -> Result<Option<String>, CoreError> {
+        let r = self
+            .call(&format!("torrents/info?hashes={hash}"), None)
+            .await?;
+        let v: Value = r.json()?;
+        Ok(v.as_array()
+            .and_then(|a| {
+                a.iter()
+                    .find(|t| text(&t["hash"]).eq_ignore_ascii_case(hash))
+            })
+            .map(|t| text(&t["magnet_uri"]))
+            .filter(|m| m.starts_with("magnet:")))
+    }
+
     /// The files inside one torrent, in qBittorrent's order.
     pub async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
         let r = self

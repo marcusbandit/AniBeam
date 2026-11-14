@@ -803,6 +803,11 @@ pub enum Call {
     },
     RoomLeave,
     RoomStatus,
+    /// Get media (#889): asks the host for the room's episode this library lacks. The
+    /// host's app answers, sealed so the relay cannot read it, with the torrent it came
+    /// from or the release's name, and this core downloads it through the downloads
+    /// engine. `RoomChanged` follows it: `fetch`, then everyone's view of the progress.
+    RoomGetMedia,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
