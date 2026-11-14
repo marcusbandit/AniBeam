@@ -185,13 +185,13 @@ impl AnirssClient {
     /// `DELETE /endpoints/<name>` (anirss 0.6).
     pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
         let response = self
-            .send(HttpRequest {
-                method: Method::Delete,
-                url: format!("{}/endpoints/{}", self.base, encode(name)),
-                headers: self.headers(),
-                body: None,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(
+                    Method::Delete,
+                    format!("{}/endpoints/{}", self.base, encode(name)),
+                )
+                .headers(self.headers()),
+            )
             .await?;
         judge(response).map(|_| ())
     }
@@ -454,13 +454,11 @@ impl AnirssClient {
             url = format!("{url}?{}", q.join("&"));
         }
         let response = self
-            .send(HttpRequest {
-                method: Method::Get,
-                url,
-                headers: self.headers(),
-                body: None,
-                timeout,
-            })
+            .send(
+                HttpRequest::get(url)
+                    .headers(self.headers())
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }
@@ -474,13 +472,12 @@ impl AnirssClient {
         let mut headers = self.headers();
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
         let response = self
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}{}", self.base, path),
-                headers,
-                body: Some(Body::Json(body)),
-                timeout,
-            })
+            .send(
+                HttpRequest::post(format!("{}{}", self.base, path))
+                    .headers(headers)
+                    .body(Body::Json(body))
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }

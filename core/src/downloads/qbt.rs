@@ -378,13 +378,11 @@ impl QbtClient {
             Method::Get
         };
         self.http
-            .send(HttpRequest {
-                method,
-                url: format!("{}/api/v2/{path}", self.base),
-                headers,
-                body,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(method, format!("{}/api/v2/{path}", self.base))
+                    .headers(headers)
+                    .body(body),
+            )
             .await
             .map_err(|e| {
                 CoreError::service(
@@ -414,13 +412,11 @@ impl QbtClient {
         ];
         let r = self
             .http
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}/api/v2/auth/login", self.base),
-                headers: vec![("Referer".to_string(), format!("{}/", self.base))],
-                body: Some(Body::Form(form)),
-                timeout: None,
-            })
+            .send(
+                HttpRequest::post(format!("{}/api/v2/auth/login", self.base))
+                    .header("Referer", format!("{}/", self.base))
+                    .body(Body::Form(form)),
+            )
             .await
             .map_err(|e| {
                 CoreError::service(

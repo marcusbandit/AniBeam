@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::foundation::magnet::is_hash;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::repos::index::JsonMap;
 
 /// The value at a dot path of object keys; the value itself for an empty path.
@@ -211,19 +211,12 @@ pub async fn fetch(
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".to_string(),
-                    super::fetch::USER_AGENT.to_string(),
-                ),
-                ("Accept".to_string(), "application/json".to_string()),
-            ],
-            body: None,
-            timeout: Some(timeout),
-        })
+        .send(
+            HttpRequest::get(url.to_string())
+                .header("User-Agent", super::fetch::USER_AGENT)
+                .header("Accept", "application/json")
+                .timeout(timeout),
+        )
         .await
         .map_err(|e| CoreError::service(source.to_string(), "unreachable", e.message))?;
     if !response.is_success() {

@@ -142,6 +142,49 @@ pub struct HttpRequest {
     pub timeout: Option<Duration>,
 }
 
+impl HttpRequest {
+    /// A request with no headers, no body and the client's timeout. The
+    /// methods below add the rest, so a call site reads as what it sends.
+    pub fn new(method: Method, url: impl Into<String>) -> HttpRequest {
+        HttpRequest {
+            method,
+            url: url.into(),
+            headers: Vec::new(),
+            body: None,
+            timeout: None,
+        }
+    }
+
+    pub fn get(url: impl Into<String>) -> HttpRequest {
+        HttpRequest::new(Method::Get, url)
+    }
+
+    pub fn post(url: impl Into<String>) -> HttpRequest {
+        HttpRequest::new(Method::Post, url)
+    }
+
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> HttpRequest {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Adds every header in `headers`, after any already set.
+    pub fn headers(mut self, headers: Vec<(String, String)>) -> HttpRequest {
+        self.headers.extend(headers);
+        self
+    }
+
+    pub fn body(mut self, body: impl Into<Option<Body>>) -> HttpRequest {
+        self.body = body.into();
+        self
+    }
+
+    pub fn timeout(mut self, timeout: impl Into<Option<Duration>>) -> HttpRequest {
+        self.timeout = timeout.into();
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct HttpResponse {
     pub status: u16,
@@ -800,13 +843,7 @@ mod tests {
     }
 
     fn get(url: &str) -> HttpRequest {
-        HttpRequest {
-            method: Method::Get,
-            url: url.into(),
-            headers: vec![],
-            body: None,
-            timeout: None,
-        }
+        HttpRequest::get(url)
     }
 
     /// A refused connection to a feed URL names the host and never the

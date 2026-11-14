@@ -203,17 +203,11 @@ impl ProviderClient {
 mod tests {
     use super::*;
     use crate::contract::Provider;
-    use crate::net::{FakeHttp, Method};
+    use crate::net::FakeHttp;
     use std::time::Instant;
 
     fn get(url: &str) -> HttpRequest {
-        HttpRequest {
-            method: Method::Get,
-            url: url.into(),
-            headers: vec![],
-            body: None,
-            timeout: None,
-        }
+        HttpRequest::get(url)
     }
 
     /// A server that takes its time and then answers.

@@ -46,7 +46,7 @@ use std::time::Duration;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -1071,16 +1071,10 @@ async fn probe_endpoints(core: &Core, endpoints: &mut [SearchEndpoint]) {
 /// One ready probe, short: a local service either answers at once or is
 /// not there.
 async fn probe(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(std::time::Duration::from_millis(1500)),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url.to_string()).timeout(std::time::Duration::from_millis(1500)))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// Re-probes the on-demand endpoints the status already lists. Starts
@@ -1481,16 +1475,10 @@ async fn watch_search(
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(std::time::Duration::from_secs(2)),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url.to_string()).timeout(std::time::Duration::from_secs(2)))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// The facts read off each release, and the library series the query
@@ -3564,7 +3552,7 @@ mod tests {
         let wrote = http
             .requests()
             .iter()
-            .any(|r| r.url.contains("/endpoints") && !matches!(r.method, Method::Get));
+            .any(|r| r.url.contains("/endpoints") && !matches!(r.method, crate::net::Method::Get));
         core.shutdown();
         (sync, wrote)
     }

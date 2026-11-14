@@ -21,7 +21,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::downloads::EndpointSync;
 use crate::i18n::tr;
-use crate::net::{HttpRequest, Method};
+use crate::net::HttpRequest;
 use index::{Definition, Index, RepoFault};
 
 pub use pace::{FLOOR, Paced};
@@ -99,13 +99,9 @@ async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
     if url.starts_with("https://") || url.starts_with("http://") {
         // A repo's host has no rate of its own; it waits the floor like any endpoint host.
         let http = Paced::new(core.http.clone(), Vec::new());
-        let req = HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![("Accept".into(), "application/json".into())],
-            body: None,
-            timeout: Some(FETCH_TIMEOUT),
-        };
+        let req = HttpRequest::get(url.to_string())
+            .header("Accept", "application/json")
+            .timeout(FETCH_TIMEOUT);
         let res = crate::net::Http::send(&http, req).await.map_err(|e| {
             RepoFault::new(
                 "unreachable",

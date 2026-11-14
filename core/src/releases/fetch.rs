@@ -11,7 +11,7 @@ use regex::Regex;
 use roxmltree::Node;
 
 use crate::contract::{CoreError, Release};
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// anirss `fetch_rss` default: a blackholed endpoint must fail fast so the fallback probe
 /// can move on instead of feeling like a hang.
@@ -372,19 +372,15 @@ pub async fn fetch_rss(
 ) -> Result<Vec<Release>, CoreError> {
     tracing::debug!("GET {}", crate::net::url_shown(url));
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                ("User-Agent".to_string(), USER_AGENT.to_string()),
-                (
-                    "Accept".to_string(),
-                    "application/rss+xml, application/xml, text/xml, */*".to_string(),
-                ),
-            ],
-            body: None,
-            timeout: Some(timeout),
-        })
+        .send(
+            HttpRequest::get(url.to_string())
+                .header("User-Agent", USER_AGENT)
+                .header(
+                    "Accept",
+                    "application/rss+xml, application/xml, text/xml, */*",
+                )
+                .timeout(timeout),
+        )
         .await
         .map_err(|e| CoreError::service(source_name.to_string(), "unreachable", e.message))?;
     if !response.is_success() {

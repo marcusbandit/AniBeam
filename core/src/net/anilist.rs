@@ -6,7 +6,7 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{Body, HttpRequest, Method, null_to_default};
+use super::{Body, HttpRequest, null_to_default};
 use crate::contract::{CoreError, Provider};
 
 pub const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -711,15 +711,11 @@ impl AnilistClient {
         if let Some(token) = token {
             headers.push(("Authorization".to_string(), format!("Bearer {token}")));
         }
-        let request = HttpRequest {
-            method: Method::Post,
-            url: ANILIST_API.to_string(),
-            headers,
-            body: Some(Body::Json(
+        let request = HttpRequest::post(ANILIST_API)
+            .headers(headers)
+            .body(Body::Json(
                 serde_json::json!({ "query": query, "variables": variables }),
-            )),
-            timeout: None,
-        };
+            ));
         let response = match timeout {
             Some(d) => self.client.send_within(request, d).await?,
             None => self.client.send(request).await?,

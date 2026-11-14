@@ -4,7 +4,7 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, Method, null_to_default};
+use super::{HttpRequest, null_to_default};
 use crate::contract::{CoreError, Provider, SkipKind, SkipSource, SkipWindow};
 
 pub const ANISKIP_API: &str = "https://api.aniskip.com/v2";
@@ -54,13 +54,7 @@ impl AniSkipClient {
         );
         let response = self
             .client
-            .send(HttpRequest {
-                method: Method::Get,
-                url,
-                headers: vec![("Accept".to_string(), "application/json".to_string())],
-                body: None,
-                timeout: None,
-            })
+            .send(HttpRequest::get(url).header("Accept", "application/json"))
             .await?;
         if response.status == 404 {
             return Ok(None);

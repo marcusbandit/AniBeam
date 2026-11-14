@@ -122,15 +122,7 @@ mod tests {
     async fn an_endpoint_request_goes_out_as_one_so_only_it_can_be_fronted() {
         let doors = Arc::new(Doors::default());
         let paced = Paced::new(doors.clone(), Vec::new());
-        let _ = paced
-            .send(HttpRequest {
-                method: crate::net::Method::Get,
-                url: "http://localhost:1/x".into(),
-                headers: Vec::new(),
-                body: None,
-                timeout: None,
-            })
-            .await;
+        let _ = paced.send(HttpRequest::get("http://localhost:1/x")).await;
         assert_eq!(*doors.0.lock().unwrap(), ["endpoint"]);
     }
 

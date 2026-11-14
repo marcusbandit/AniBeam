@@ -25,7 +25,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
 use crate::library::cards;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::store::Store;
 use crate::store::sql::placeholders;
 use crate::time;
@@ -591,13 +591,7 @@ async fn fetch_one(
     dir: &Path,
     url: &str,
 ) -> Result<String, CoreError> {
-    let request = HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: None,
-    };
+    let request = HttpRequest::get(url.to_string());
     let response = http
         .send(request)
         .await

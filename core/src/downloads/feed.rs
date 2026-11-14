@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 const FEED_TIMEOUT: Duration = Duration::from_secs(30);
 /// More than any feed anirss registers holds; a broad one is cut here.
@@ -18,16 +18,11 @@ const MAX_ENTRIES: usize = 200;
 pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreError> {
     let host = crate::net::host_shown(url);
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![(
-                "Accept".to_string(),
-                "application/rss+xml, application/xml, text/xml".to_string(),
-            )],
-            body: None,
-            timeout: Some(FEED_TIMEOUT),
-        })
+        .send(
+            HttpRequest::get(url.to_string())
+                .header("Accept", "application/rss+xml, application/xml, text/xml")
+                .timeout(FEED_TIMEOUT),
+        )
         .await
         .map_err(|e| CoreError::service(host.clone(), "unreachable", e.message))?;
     if !response.is_success() {
