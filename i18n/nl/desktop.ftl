@@ -1861,7 +1861,6 @@ downloads-suggest-in-library = In je bibliotheek
 downloads-suggest-on-anilist = Op AniList, niet in je bibliotheek
 downloads-plan-to-watch = Later kijken
 downloads-suggest-release-search = Zoek in plaats daarvan releasenamen voor “{ $query }” op { $names }
-downloads-suggest-release-search-none = Zoek in plaats daarvan releasenamen voor “{ $query }” op geen bron
 downloads-key-return = Enter
 downloads-sources = Bronnen
 downloads-source-hint-starting = starten

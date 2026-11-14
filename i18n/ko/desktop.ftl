@@ -1681,7 +1681,6 @@ downloads-suggest-in-library = 내 라이브러리에 있음
 downloads-suggest-on-anilist = AniList에 있음, 라이브러리에는 없음
 downloads-plan-to-watch = 시청 예정
 downloads-suggest-release-search = 대신 { $names }에서 “{ $query }” 릴리스 이름 검색
-downloads-suggest-release-search-none = 대신 “{ $query }” 릴리스 이름 검색 (소스 없음)
 downloads-key-return = Enter
 downloads-sources = 소스
 downloads-source-hint-starting = 시작 중

@@ -1450,7 +1450,6 @@ downloads-suggest-in-library = ライブラリにあり
 downloads-suggest-on-anilist = AniList上、ライブラリになし
 downloads-plan-to-watch = 視聴予定
 downloads-suggest-release-search = 代わりに{ $names }でリリース名「{ $query }」を検索
-downloads-suggest-release-search-none = 代わりにリリース名「{ $query }」を検索（ソースなし）
 downloads-key-return = Enter
 downloads-sources = ソース
 downloads-source-hint-starting = 起動中

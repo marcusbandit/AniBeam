@@ -1861,7 +1861,6 @@ downloads-suggest-in-library = I dit bibliotek
 downloads-suggest-on-anilist = På AniList, ikke i dit bibliotek
 downloads-plan-to-watch = Planlæg
 downloads-suggest-release-search = Søg i udgivelsesnavne efter “{ $query }” på { $names } i stedet
-downloads-suggest-release-search-none = Søg i udgivelsesnavne efter “{ $query }” uden nogen kilde i stedet
 downloads-key-return = Retur
 downloads-sources = Kilder
 downloads-source-hint-starting = starter

@@ -2077,7 +2077,6 @@ downloads-suggest-in-library = В вашей библиотеке
 downloads-suggest-on-anilist = На AniList, нет в библиотеке
 downloads-plan-to-watch = В планы
 downloads-suggest-release-search = Искать «{ $query }» в названиях релизов в { $names }
-downloads-suggest-release-search-none = Искать «{ $query }» в названиях релизов: нет источников
 downloads-key-return = Enter
 downloads-sources = Источники
 downloads-source-hint-starting = запуск

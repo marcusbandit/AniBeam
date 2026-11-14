@@ -1404,7 +1404,6 @@ downloads-suggest-in-library = 已在媒体库中
 downloads-suggest-on-anilist = AniList 上有，不在媒体库中
 downloads-plan-to-watch = 想看
 downloads-suggest-release-search = 改为在 { $names } 上搜索资源名称“{ $query }”
-downloads-suggest-release-search-none = 改为搜索资源名称“{ $query }”，但没有可用来源
 downloads-key-return = Enter
 downloads-sources = 来源
 downloads-source-hint-starting = 启动中

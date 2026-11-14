@@ -1916,7 +1916,8 @@ Item {
         Tile {
             id: suggestTile
             objectName: "downloads-suggestions"
-            visible: page.suggesting
+            // With no source on and no show matched yet there is nothing to offer
+            visible: page.suggesting && (page.suggestRows.length > 0 || page.enabledEndpoints.length > 0)
             width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
@@ -2021,14 +2022,18 @@ Item {
                         }
                     }
                 }
+                // Searching release names needs a source that is on; without one, Return
+                // still says why and how to get one
                 Item {
+                    objectName: "suggest-release-search"
+                    visible: page.enabledEndpoints.length > 0
                     width: parent.width
                     height: theme.space(14)
                     Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 || releaseRowMouse.containsMouse ? theme.glassFloat : "transparent" }
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.enabledEndpoints.length ? words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") }) : words.t("downloads-suggest-release-search-none", { query: page.query })
+                        text: words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") })
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
