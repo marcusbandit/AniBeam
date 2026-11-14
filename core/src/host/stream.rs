@@ -35,7 +35,7 @@ pub struct Streams {
 
 /// The file and its sidecars, by row id.
 fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
-    let team = st.team.upgrade()?;
+    let team = st.live()?;
     team.services
         .store
         .read(|c| {
@@ -202,7 +202,7 @@ pub async fn subtitle(
 }
 
 pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Response {
-    let Some(front) = st.team.upgrade().and_then(|team| team.front.get()) else {
+    let Some(front) = st.live().and_then(|team| team.front.get()) else {
         return not_found();
     };
     match front.skip_windows(session) {
@@ -305,7 +305,7 @@ pub async fn hls(
         path,
         probe: (*probe).clone(),
     };
-    let Some(team) = st.team.upgrade() else {
+    let Some(team) = st.live() else {
         return not_found();
     };
     let converter = st
@@ -426,8 +426,7 @@ pub async fn call(
         return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
     let Some((team, front)) = st
-        .team
-        .upgrade()
+        .live()
         .and_then(|team| team.front.get().map(|front| (team, front)))
     else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");

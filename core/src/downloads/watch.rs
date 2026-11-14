@@ -527,6 +527,25 @@ mod tests {
         core.shutdown();
     }
 
+    /// An airing refresh that moved a schedule says so on the bus, and the
+    /// timers are armed before `signal` returns, where the refresh used to
+    /// call `arm` itself (#854).
+    #[test]
+    fn a_moved_schedule_arms_the_followed_episodes() {
+        let (_dir, core) = core();
+        let now = crate::time::now_secs();
+        followed(&core, now);
+        let next = (1, 4, now + 86_400);
+        let missed = (1, 2, now - 86_400);
+        assert!(!armed().contains(&next));
+        core.services.bus.signal(Signal::SchedulesMoved);
+        {
+            let armed = armed();
+            assert!(armed.contains(&next) && armed.contains(&missed));
+        }
+        core.shutdown();
+    }
+
     /// A show the rules no longer follow, or that the person hid, has no
     /// timer.
     #[test]

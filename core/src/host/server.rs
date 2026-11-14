@@ -44,6 +44,16 @@ pub struct Served {
     peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
+impl Served {
+    /// The host team, while the core it answers for is still there: a request
+    /// that lands as the core goes away is refused, as it was when the server
+    /// held the core itself.
+    pub(super) fn live(&self) -> Option<Arc<Host>> {
+        let team = self.team.upgrade()?;
+        team.front.get().is_some().then_some(team)
+    }
+}
+
 pub fn router(team: Weak<Host>) -> Router {
     // The encoders are tried now, so the first phone to say hello hears
     // whether this machine converts.
@@ -132,7 +142,7 @@ async fn streaming_on(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let on = st.team.upgrade().is_some_and(|team| team.streaming());
+    let on = st.live().is_some_and(|team| team.streaming());
     if on || request.uri().path() == wire::CALL {
         next.run(request).await
     } else {
@@ -152,7 +162,7 @@ async fn trusted(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let Some(team) = st.team.upgrade() else {
+    let Some(team) = st.live() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let header = request
@@ -317,16 +327,15 @@ async fn hello(
     let owner = profile
         .as_ref()
         .is_some_and(|p| p.0.0 == crate::foundation::trust::OWNER);
+    let team = st.live();
     // `trusted` read the key before this route, so this only takes it.
-    let key = st
-        .team
-        .upgrade()
+    let key = team
+        .as_ref()
         .and_then(|team| team.keys.mine(&team.services.paths.device_key_path()));
-    let streaming = st.team.upgrade().is_some_and(|team| team.streaming());
-    let relayed = st
-        .team
-        .upgrade()
-        .is_some_and(|team| super::relayed(&team, from.ip()));
+    let streaming = team.as_ref().is_some_and(|team| team.streaming());
+    let relayed = team
+        .as_ref()
+        .is_some_and(|team| super::relayed(team, from.ip()));
     // Whose progress this device gets (#633): named as the tailnet names them now, or as
     // the profile was last seen when the tailnet does not say.
     let id = profile.map(|p| p.0.0);
@@ -334,7 +343,7 @@ async fn hello(
         .and_then(|p| p.0.0)
         .zip(id)
         .and_then(|(user, id)| crate::profiles::shown(&user, id));
-    let named = match (fresh, st.team.upgrade(), id) {
+    let named = match (fresh, team, id) {
         (Some(named), _, _) => Some(named),
         (None, Some(team), Some(id)) => tokio::task::spawn_blocking(move || {
             team.services.store.read(|c| crate::profiles::named(c, id))
@@ -407,7 +416,7 @@ async fn peer_list(
     let hosts = match fresh {
         Some(hosts) => hosts,
         None => {
-            let Some(team) = st.team.upgrade() else {
+            let Some(team) = st.live() else {
                 return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
             };
             let asked = tokio::task::spawn_blocking(move || {
@@ -464,8 +473,7 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
         return Ok(body.clone());
     }
     let team = st
-        .team
-        .upgrade()
+        .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let (snapshot, library) = build::snapshot(&team, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
@@ -487,8 +495,7 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
         return Ok(part.clone());
     }
     let team = st
-        .team
-        .upgrade()
+        .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let part = tokio::task::spawn_blocking(move || {
         build::library_part(&team.services, crate::foundation::trust::OWNER)
@@ -575,7 +582,7 @@ async fn history_document(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
-    let Some(team) = st.team.upgrade() else {
+    let Some(team) = st.live() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let built = tokio::task::spawn_blocking(move || {

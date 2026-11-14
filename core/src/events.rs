@@ -41,7 +41,7 @@ pub type CardsHook = Arc<dyn Fn(&mut [SeriesCard]) + Send + Sync>;
 /// hook hears it inline, on the thread that says it, before `signal`
 /// returns, so it lands where the call it replaced did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Signal {
+pub(crate) enum Signal {
     /// An airing refresh moved a schedule: the downloads arm the followed
     /// shows' episode timers again.
     SchedulesMoved,
@@ -51,7 +51,7 @@ pub enum Signal {
     TrackersChanged,
 }
 
-pub type SignalHook = Arc<dyn Fn(Signal) + Send + Sync>;
+pub(crate) type SignalHook = Arc<dyn Fn(Signal) + Send + Sync>;
 
 impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
