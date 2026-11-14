@@ -1006,7 +1006,7 @@ fn the_host_starts_anyway_and_a_late_copy_joins_in_sync() {
     assert_eq!(started.gate, RoomGate::Off);
     applied(&ann.c, ann_s, |playing, _, _| playing);
     applied(&ben.c, ben_s, |playing, _, _| playing);
-    assert_eq!(status(&cid).unwrap().can_fetch, true);
+    assert!(status(&cid).unwrap().can_fetch);
 
     // The next episode moves everyone, Cid included, and its first play is
     // held again until the host chooses.
