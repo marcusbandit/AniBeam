@@ -97,6 +97,7 @@ pub struct Offer {
 enum Why {
     Nothing,
     NotFound,
+    NoSources,
     Start(String),
     Lost,
     NotInLibrary,
@@ -107,6 +108,7 @@ impl Why {
         match self {
             Why::Nothing => crate::words!("core-room-media-nothing"),
             Why::NotFound => crate::words!("core-room-media-not-found"),
+            Why::NoSources => crate::words!("core-room-media-no-sources"),
             Why::Start(message) => {
                 crate::words!("core-room-media-no-start", message = message.as_str())
             }
@@ -550,6 +552,9 @@ async fn search(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef) -> Resul
     let backend = DownloadsBackend::open(core)
         .await
         .map_err(|err| Why::Start(err.to_string()))?;
+    if backend.has_no_sources() {
+        return Err(Why::NoSources);
+    }
     let mut found_episode = Vec::new();
     for query in queries(offer, e) {
         match backend.search(&query, None, true).await {

@@ -1296,6 +1296,7 @@ core-room-media-nothing = De host heeft geen kopie van de aflevering om te delen
 core-room-media-torrent = De aflevering wordt gedownload via de torrent van de host.
 core-room-media-searching = Je bronnen worden doorzocht op de release van de host.
 core-room-media-not-found = Geen van je bronnen heeft de release van de host.
+core-room-media-no-sources = Elke bron staat uit. Zet er een aan om te zoeken.
 core-room-media-no-start = De download kon niet starten: { $message }
 core-room-media-client = de torrentclient nam hem niet aan
 core-room-media-lost = De torrentclient is de download van de aflevering kwijt.

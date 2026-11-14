@@ -1557,6 +1557,7 @@ core-room-media-nothing = Gospodarz nie ma kopii odcinka do udostępnienia.
 core-room-media-torrent = Pobieranie odcinka z torrenta gospodarza.
 core-room-media-searching = Szukanie wydania gospodarza w Twoich źródłach.
 core-room-media-not-found = Żadne z Twoich źródeł nie ma wydania gospodarza.
+core-room-media-no-sources = Każde źródło jest wyłączone. Włącz jedno, aby szukać.
 core-room-media-no-start = Nie udało się rozpocząć pobierania: { $message }
 core-room-media-client = klient torrent go nie przyjął
 core-room-media-lost = Klient torrent zgubił pobieranie odcinka.

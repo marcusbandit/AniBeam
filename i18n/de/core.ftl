@@ -1295,6 +1295,7 @@ core-room-media-nothing = Der Host hat keine Kopie der Folge zum Teilen.
 core-room-media-torrent = Lade die Folge über den Torrent des Hosts herunter.
 core-room-media-searching = Suche in deinen Quellen nach dem Release des Hosts.
 core-room-media-not-found = Keine deiner Quellen hat das Release des Hosts.
+core-room-media-no-sources = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
 core-room-media-no-start = Der Download ließ sich nicht starten: { $message }
 core-room-media-client = der Torrent-Client hat ihn nicht angenommen
 core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.

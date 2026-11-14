@@ -437,6 +437,43 @@ fn nothing_found_fails_and_get_media_can_be_tried_again() {
 }
 
 #[test]
+fn every_source_off_says_so_rather_than_that_none_has_it() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[5.0]);
+    let ben = person(&relay, "Ben", &[4.0]);
+    let Reply::EndpointCatalog { catalog } = ben.core.call(Call::ListRepoEndpoints).unwrap() else {
+        panic!("no catalog");
+    };
+    for e in catalog.installed {
+        ben.core
+            .call(Call::SetEndpointEnabled {
+                install: e.install_id,
+                enabled: false,
+            })
+            .unwrap();
+    }
+    room_with_ben_missing(&ann, &ben);
+    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    common::wait_for(
+        &ben.c,
+        |e| {
+            e.plain_words
+                .as_ref()
+                .is_some_and(|w| w.id == "core-room-media-no-sources")
+        },
+        WAIT,
+    );
+    let now = room(ben.core.call(Call::RoomStatus)).unwrap();
+    assert_eq!(now.fetch, RoomFetch::Failed);
+    assert!(
+        !ben.http
+            .requests()
+            .iter()
+            .any(|r| r.url.contains("feed.example"))
+    );
+}
+
+#[test]
 fn the_host_cannot_ask_itself_and_a_member_with_the_file_cannot_ask() {
     let relay = relay();
     let ann = person(&relay, "Ann", &[5.0]);

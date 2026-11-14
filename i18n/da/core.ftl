@@ -1295,6 +1295,7 @@ core-room-media-nothing = Værten har ingen kopi af afsnittet at dele.
 core-room-media-torrent = Henter afsnittet fra værtens torrent.
 core-room-media-searching = Søger i dine kilder efter værtens udgivelse.
 core-room-media-not-found = Ingen af dine kilder har værtens udgivelse.
+core-room-media-no-sources = Alle kilder er slået fra. Slå en til for at søge.
 core-room-media-no-start = Kunne ikke starte hentningen: { $message }
 core-room-media-client = torrentklienten tog den ikke
 core-room-media-lost = Torrentklienten mistede afsnittets hentning.

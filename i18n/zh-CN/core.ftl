@@ -1112,6 +1112,7 @@ core-room-media-nothing = 房主没有可分享的这一集。
 core-room-media-torrent = 正在通过房主的种子下载这一集。
 core-room-media-searching = 正在你的来源中搜索房主的发布。
 core-room-media-not-found = 你的来源中都没有房主的发布。
+core-room-media-no-sources = 所有来源都已关闭。开启一个才能搜索。
 core-room-media-no-start = 无法开始下载：{ $message }
 core-room-media-client = 种子客户端没有接受
 core-room-media-lost = 种子客户端丢失了这一集的下载。
