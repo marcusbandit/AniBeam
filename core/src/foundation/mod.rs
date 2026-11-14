@@ -6,13 +6,15 @@
 //! `secrets` and `services` are the exceptions so far. They reach modules
 //! that are foundation too but still sit at the crate root: `sync` and
 //! `atomic_file` for the one, the store, the bus, the jobs registry and the
-//! paths for the other. `services` also names net's `Http` trait, which
-//! comes down here when the crates are pulled out.
+//! paths for the other.
 
 pub mod above;
+pub mod http;
 pub mod machine;
 pub mod magnet;
 pub mod names;
+pub mod range;
+pub mod relations;
 pub mod secrets;
 pub mod services;
 pub mod size;

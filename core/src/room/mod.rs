@@ -341,15 +341,9 @@ fn not_in_room() -> CoreError {
 /// characters. None for anything else.
 pub(crate) use anibeam_room::room::clean_name;
 
-/// Whether a relay address can be used: http or https, with a host.
-pub(crate) fn relay_ok(relay: &str) -> bool {
-    let relay = relay.trim();
-    (relay.starts_with("https://") || relay.starts_with("http://"))
-        && reqwest::Url::parse(relay)
-            .ok()
-            .and_then(|u| u.host_str().map(|h| !h.is_empty()))
-            .unwrap_or(false)
-}
+/// Whether a relay address can be used. With the preferences that check it
+/// on a save (#854).
+pub(crate) use crate::prefs::relay_ok;
 
 /// The name and the relay from the preferences, or why they cannot be used.
 fn who(services: &Services) -> Result<(String, String), CoreError> {
@@ -400,7 +394,7 @@ pub(crate) fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreEr
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
-                crate::core::call_name(&other)
+                crate::contract::call_name(&other)
             )));
         }
     };

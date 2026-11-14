@@ -35,7 +35,6 @@ pub mod replace;
 pub mod rewire;
 pub mod rolling;
 pub mod settings;
-pub mod trash;
 pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -46,6 +45,7 @@ use std::time::Duration;
 use crate::contract::*;
 use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
+use crate::library::trash;
 use crate::net::{Http, HttpRequest};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;

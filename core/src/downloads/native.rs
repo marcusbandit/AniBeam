@@ -23,7 +23,8 @@ use crate::releases::stats;
 use super::anirss::url_safe;
 use super::paths::{self, SavePaths};
 use super::qbt::{self, QbtClient};
-use super::{settings, trash};
+use super::settings;
+use crate::library::trash;
 
 /// How `CoreError::Service` names a refusal that is the engine's own,
 /// not the torrent client's.

@@ -76,23 +76,11 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
     if on_hold::wants_sweep(&before, &preferences) {
         on_hold::kick(&core.trackers);
     }
-    preferences_changed(&core.services, preferences)
+    prefs::changed(&core.services, preferences)
 }
 
 /// The end of every preferences write: the bus says what the preferences
 /// are now, and the call answers Ok.
-pub(crate) fn preferences_changed(
-    services: &Services,
-    preferences: Preferences,
-) -> Result<Reply, CoreError> {
-    services.bus.debug(
-        Stage::Store,
-        "preferences changed",
-        EventBody::PreferencesChanged { preferences },
-    );
-    Ok(Reply::Ok)
-}
-
 pub(crate) fn settings(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::Settings {
         settings: services.store.read(prefs::load_settings)?,

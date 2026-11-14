@@ -14,3 +14,13 @@ pub use anibeam_contract::{
 pub use anibeam_contract::{
     calls::*, downloads::*, enums::*, error::*, events::*, records::*, words::*,
 };
+
+/// The variant name of a call, for messages: the externally tagged JSON key. Here
+/// rather than on `Core`, so the teams that name a call in an error import no front door.
+pub fn call_name(call: &Call) -> String {
+    match serde_json::to_value(call) {
+        Ok(serde_json::Value::String(s)) => s,
+        Ok(serde_json::Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
+        _ => "?".into(),
+    }
+}

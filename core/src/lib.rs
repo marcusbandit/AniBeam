@@ -1,6 +1,7 @@
 //! Anibeam's core: every rule, used by every shell through the contract in
 //! `contract`, which hands on the `anibeam-contract` crate below it.
 
+pub(crate) mod act;
 pub mod agent;
 pub mod aired;
 pub mod airing_now;

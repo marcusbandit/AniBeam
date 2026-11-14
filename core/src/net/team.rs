@@ -70,7 +70,7 @@ impl Net {
         // per call instead.
         let mal = Arc::new(MalClient::new(
             ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)
-                .with_attempt_timeout(crate::trackers::TRACKER_TIMEOUT),
+                .with_attempt_timeout(super::TRACKER_TIMEOUT),
         ));
         let tvmaze = Arc::new(TvmazeClient::new(ProviderClient::new(
             Upstream::Tvmaze,

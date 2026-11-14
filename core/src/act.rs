@@ -1,4 +1,6 @@
-//! `ActOnSeries` (#208): one action over several picked series at once.
+//! `ActOnSeries` (#208): one action over several picked series at once. It hands
+//! each action to the team that owns it, the library, the trackers or the
+//! metadata, so it is front door code and sits beside `Core::call` (#854).
 
 use std::collections::HashSet;
 

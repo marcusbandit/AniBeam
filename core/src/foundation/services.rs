@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use crate::contract::{EventBody, Stage};
 use crate::events::EventBus;
+use crate::foundation::http::Http;
 use crate::foundation::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::jobs::Jobs;
-use crate::net::Http;
 use crate::paths::CorePaths;
 use crate::store::Store;
 

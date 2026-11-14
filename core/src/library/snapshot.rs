@@ -386,7 +386,7 @@ impl Snapshot {
         }
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.imdb = imdb_picks(conn, scoped_series)?;
-        snap.franchises = crate::franchise::groups::load(conn, snap.lang)?;
+        snap.franchises = super::franchises::load(conn, snap.lang)?;
         Ok(snap)
     }
 

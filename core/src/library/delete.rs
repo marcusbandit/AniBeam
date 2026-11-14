@@ -1,6 +1,6 @@
 //! Deleting episodes (#158): the files of chosen episodes, with their subtitle sidecars, out
 //! of the library. On a desktop they go to the trash, where they can be put back; a phone has
-//! no trash and deletes them (`downloads::trash`). The series is scanned again at once, so its
+//! no trash and deletes them (`library::trash`). The series is scanned again at once, so its
 //! page and cubes follow without waiting on the watcher. A torrent that held one of the files
 //! leaves the client with them (#266), and Delete watched does the same across the whole
 //! library at once.
@@ -151,14 +151,14 @@ pub fn delete_episodes(
     let n = numbers.len();
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
-    let moved = crate::downloads::trash::move_to_trash(&targets);
+    let moved = super::trash::move_to_trash(&targets);
     crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let line = format!(
             "{} {} of {title} {}",
             n,
             crate::words::pick(n, "episode", "episodes"),
-            if crate::downloads::trash::WHERE == "deleted" {
+            if super::trash::WHERE == "deleted" {
                 "deleted"
             } else {
                 "moved to the trash"
@@ -185,7 +185,7 @@ pub fn delete_episodes(
 /// Where removed files went, as the catalog's `$place` names it: `deleted` where the
 /// system has no trash, `trash` otherwise.
 fn trash_where() -> &'static str {
-    if crate::downloads::trash::WHERE == "deleted" {
+    if super::trash::WHERE == "deleted" {
         "deleted"
     } else {
         "trash"
@@ -276,7 +276,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
             bytes: 0,
         });
     }
-    let moved = crate::downloads::trash::move_to_trash(&targets);
+    let moved = super::trash::move_to_trash(&targets);
     crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
@@ -296,7 +296,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
         };
         let line = format!(
             "{what} {}",
-            if crate::downloads::trash::WHERE == "deleted" {
+            if super::trash::WHERE == "deleted" {
                 "deleted"
             } else {
                 "moved to the trash"
