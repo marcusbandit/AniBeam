@@ -88,5 +88,12 @@
   "But we support Tailscale": "でも Tailscale に対応しています",
   "Close": "閉じる",
   "{n} episodes": "全{n}話",
-  "Movie": "映画"
+  "Movie": "映画",
+  "iPhone": "iPhone",
+  "Add to AltStore": "AltStoreに追加",
+  "Add to SideStore": "SideStoreに追加",
+  "Add to LiveContainer": "LiveContainerに追加",
+  "Download IPA": "IPAをダウンロード",
+  "Nightly test build, unsigned, for sideloading": "Nightlyのテストビルド。未署名、サイドロード用",
+  "Unsigned, for sideloading": "未署名、サイドロード用"
 }

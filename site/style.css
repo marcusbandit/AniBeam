@@ -1002,9 +1002,11 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
 html[data-device="phone"] .dl-tile:not([data-os="android"]),
 html[data-device="phone"] .dl-term,
 html[data-device="phone"] .get-term,
-html[data-device="phone"] .channel,
 html[data-device="phone"] .dl-other,
 html[data-device="phone"] .dl-all { display: none; }
+
+/* An Android phone has no channels, but an iPhone does: its IPA is on each of them. */
+html[data-os="android"] .channel { display: none; }
 
 /* An iPhone: no app yet, so the note says it is coming and the Mac's download stands in. */
 .ios-mac, .ios-soon { display: none; }
@@ -1012,6 +1014,10 @@ html[data-os="ios"] .ios-mac { display: inline-flex; }
 .ios-mac .os-icon { fill: currentColor; stroke: none; }
 html[data-os="ios"] .dl-tile[data-os="mac"] { display: flex; }
 html[data-os="ios"] .dl-tile[data-os="android"] { display: none; }
+/* The iPhone's test build tile, shown by download.js once the phone's nightly has an IPA. An
+   iPhone sees it with the Mac's tile above. */
+.dl-tile[hidden] { display: none; }
+html[data-os="ios"] .dl-tile[data-os="ios"]:not([hidden]) { display: flex; }
 html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
 .ios-soon svg { width: 16px; height: 16px; fill: currentColor; }
 

@@ -7,7 +7,7 @@ and every nightly, so the file is current without each visitor asking GitHub's A
   {
     "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"}},
     "nightly": the same, or null when no nightly is newer than the stable release,
-    "phone":   {"tag", "version", "published", "url", "assets": {"apk"}},
+    "phone":   {"tag", "version", "published", "url", "assets": {"apk", "ipa"}},
     "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
     "tags":    every published tag, for What's new to link only releases that exist
   }
@@ -32,6 +32,7 @@ MATCH = {
     "setup": lambda n: n.endswith("-setup.exe"),
     "zip": lambda n: bool(re.search(r"windows.*\.zip$", n)),
     "apk": lambda n: n.endswith(".apk"),
+    "ipa": lambda n: n.endswith(".ipa"),
 }
 
 
@@ -85,8 +86,8 @@ def main(site):
     data = {
         "stable": shape(stable, desktop),
         "nightly": shape(nightly, desktop),
-        "phone": shape(phone, ["apk"]),
-        "phone_nightly": shape(phone_nightly, ["apk"]),
+        "phone": shape(phone, ["apk", "ipa"]),
+        "phone_nightly": shape(phone_nightly, ["apk", "ipa"]),
         "tags": sorted(r["tag_name"] for r in releases),
     }
     Path(site, "releases.json").write_text(json.dumps(data, indent=1) + "\n")

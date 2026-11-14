@@ -2,29 +2,20 @@ name: iOS automerge
 
 # Merges the iPhone and Mac contributors' PRs on their own (#909): .github/ios-automerge.sh
 # holds the rules. A PR that only touches iPhone or Mac files squash merges once its checks
-# pass; any other waits for the owner's approval of its head commit, then merges the same way.
+# pass; any other is its author's to merge, and this leaves it alone (#916).
 #
-# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, comma separated, no
-# spaces); while it is unset this does nothing. Each run looks at the PRs its event names:
-#
-#   workflow_run          a PR's workflow finished, the event that merges a passed push
-#   pull_request_review   a review came in, so an approval merges
-#   pull_request_target   a PR opened, moved or got a push: comments only, never merges,
-#                         since its checks may not have started yet
-#   workflow_dispatch     every open PR, for a sweep by hand
-#
-# The script always comes from the default branch and never runs a PR's code. The YAML of
-# a pull_request_review run comes from the PR, as GitHub runs it, but a PR that changes any
-# workflow never merges on its own, and this token cannot merge one anyway. A merge made
-# with this token starts no push workflows on main; the nightly builds it as usual.
+# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, separated by commas
+# or spaces); while it is unset this does nothing. A finished PR workflow looks at the PRs it
+# names, a PR marked ready or moved onto main looks at itself, since its checks may all have
+# passed already, and a run by hand looks at every open one. The script always comes from the default
+# branch and never runs a PR's code. A merge made with this token starts no push workflows
+# on main; the nightly builds it as usual.
 on:
   workflow_run:
     workflows: [Android, Arch, CI, Linux, macOS, Windows, Site, Strings, "No sites", "PR build", "PR issue"]
     types: [completed]
-  pull_request_review:
-    types: [submitted]
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review, edited]
+    types: [ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -33,20 +24,15 @@ permissions:
   checks: read
   actions: read
 
-# One merging run at a time, so a PR is never merged twice. A run that only comments has its
-# own group, so it never takes the place of a merging run waiting its turn.
-concurrency:
-  group: ios-automerge-${{ github.event_name == 'pull_request_target' && 'note' || 'merge' }}
-  cancel-in-progress: false
+# No concurrency group: a queued run would replace another queued one and drop the PRs it
+# named. Two runs racing on one PR are harmless, since the second merge is refused.
 
 jobs:
   ios-automerge:
-    # A finished push to main names no PR, and a PR event only matters for a listed author.
+    # A finished push to main names no PR.
     if: >-
       vars.IOS_AUTOMERGE_AUTHORS != ''
       && (github.event_name != 'workflow_run' || github.event.workflow_run.pull_requests[0] != null)
-      && (github.event.pull_request == null || contains(format(',{0},', vars.IOS_AUTOMERGE_AUTHORS),
-          format(',{0},', github.event.pull_request.user.login)))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -61,9 +47,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
-          OWNER: ${{ github.repository_owner }}
           PRS: >-
             ${{ github.event.pull_request.number
             || join(github.event.workflow_run.pull_requests.*.number, ' ') }}
-          MERGE: ${{ github.event_name == 'pull_request_target' && '0' || '1' }}
+          DRY_RUN: '0'
         run: .github/ios-automerge.sh
