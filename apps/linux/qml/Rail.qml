@@ -1,5 +1,6 @@
 // The sidebar: one flat column a step up from the ground. The brand at the top, then the
-// places the app is for, Home, Library and Airing, each a glyph over its name. The rest of the app
+// places the app is for, Home, Library and Airing, each a glyph over its name, and Join room
+// for watching together. The rest of the app
 // (Feed, Watching, Stats, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
 // foot, named by their tips, and the foot itself holds the title-language switch and the
 // version, which opens What's new. The active place takes the soft accent; nothing else is lit.
@@ -38,6 +39,14 @@ Item {
     width: itemWidth + pad * 2
     // The frame cuts its status strip to this, so the two share one band along the foot
     readonly property real footHeight: theme.space(9)
+    // A short window shrinks the round buttons near the foot before they run into the places
+    // above; a tall one leaves them at full size
+    readonly property real roundSize: {
+        var foot = theme.space(4) + theme.space(3) + lang.height + versionLabel.implicitHeight + lower.spacing * 3
+        var free = height - (upper.y + upper.implicitHeight) - theme.space(4) - foot
+        var each = Math.floor(free / secondary.length - lower.spacing)
+        return Math.max(theme.space(8), Math.min(theme.space(11), each))
+    }
 
     // The labels at the size the items set them, never shown: their widest sets the column
     Column {
@@ -50,6 +59,7 @@ Item {
     Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
 
     Column {
+        id: upper
         x: root.pad
         y: theme.space(4)
         spacing: theme.space(2)
@@ -106,6 +116,51 @@ Item {
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.modelData.index) }
             }
         }
+
+        // Watch together (#888): not a page, but a tile like the places above, so joining a
+        // room by its code is in sight rather than only on Ctrl+J. Its label wraps rather
+        // than widening the rail.
+        Rectangle {
+            id: roomEntry
+            objectName: "rail-room"
+            readonly property bool on: root.inRoom || root.roomOpen
+            Accessible.role: Accessible.Button
+            Accessible.name: words.t(root.inRoom ? "rail-in-room" : "rail-join-room")
+            Accessible.onPressAction: root.roomClicked()
+            width: root.itemWidth
+            height: Math.max(theme.space(17), roomColumn.implicitHeight + theme.space(4))
+            radius: theme.radiusTile
+            color: on ? theme.accentSoft : rm.containsMouse ? theme.raised : "transparent"
+            border.color: roomEntry.activeFocus ? theme.focusRing : "transparent"
+            border.width: 1
+            scale: theme.reducedMotion ? 1 : (rm.pressed ? 0.97 : 1)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.roomClicked()
+            Keys.onSpacePressed: root.roomClicked()
+            Column {
+                id: roomColumn
+                anchors.centerIn: parent
+                width: parent.width - theme.space(2)
+                spacing: theme.space(1.5)
+                Icon {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    glyph: "users"
+                    size: theme.space(6)
+                    color: roomEntry.on ? theme.accent : (rm.containsMouse ? theme.text : theme.textDim)
+                }
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    msg: root.inRoom ? "rail-in-room" : "rail-join-room"
+                    role: "title"
+                    font.pointSize: theme.typeSmall
+                    color: roomEntry.on || rm.containsMouse ? theme.text : theme.textDim
+                }
+            }
+            MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.roomClicked() }
+            Tooltip { text: root.inRoom ? words.t("rail-room-in") : words.t("rail-room") }
+        }
     }
 
     // The rest of the app, and the foot
@@ -115,34 +170,6 @@ Item {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: theme.space(4)
         spacing: theme.space(1.5)
-
-        // Watch together: not a page, so not in the list below; the same round glyph button
-        Rectangle {
-            id: roomEntry
-            objectName: "rail-room"
-            readonly property bool on: root.inRoom || root.roomOpen
-            Accessible.role: Accessible.Button
-            Accessible.name: words.t("rail-room")
-            Accessible.onPressAction: root.roomClicked()
-            x: (root.itemWidth - width) / 2
-            width: theme.space(11); height: width
-            radius: width / 2
-            color: on ? theme.accentSoft : rm.containsMouse ? theme.raised : "transparent"
-            border.color: roomEntry.activeFocus ? theme.focusRing : "transparent"
-            border.width: 1
-            scale: theme.reducedMotion ? 1 : (rm.pressed ? 0.95 : 1)
-            activeFocusOnTab: true
-            Keys.onReturnPressed: root.roomClicked()
-            Keys.onSpacePressed: root.roomClicked()
-            Icon {
-                anchors.centerIn: parent
-                glyph: "users"
-                size: theme.space(5)
-                color: roomEntry.on ? theme.accent : (rm.containsMouse ? theme.text : theme.textFaint)
-            }
-            MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.roomClicked() }
-            Tooltip { text: root.inRoom ? words.t("rail-room-in") : words.t("rail-room") }
-        }
 
         Repeater {
             model: root.secondary
@@ -156,7 +183,7 @@ Item {
                 Accessible.selected: on
                 Accessible.onPressAction: root.picked(modelData.index)
                 x: (root.itemWidth - width) / 2
-                width: theme.space(11); height: width
+                width: root.roundSize; height: width
                 radius: width / 2
                 color: on ? theme.accentSoft : mm.containsMouse ? theme.raised : "transparent"
                 border.color: minor.activeFocus ? theme.focusRing : "transparent"
@@ -168,7 +195,7 @@ Item {
                 Icon {
                     anchors.centerIn: parent
                     glyph: minor.modelData.icon
-                    size: theme.space(5)
+                    size: Math.min(theme.space(5), Math.round(minor.width * 0.45))
                     color: minor.on ? theme.accent : (mm.containsMouse ? theme.text : theme.textFaint)
                 }
                 MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
@@ -247,6 +274,7 @@ Item {
         }
         // The version: a click opens What's new
         Label {
+            id: versionLabel
             objectName: "rail-version"
             width: root.itemWidth
             horizontalAlignment: Text.AlignHCenter

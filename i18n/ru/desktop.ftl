@@ -4046,6 +4046,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Ваше имя в комнатах
 rail-room = Совместный просмотр (Ctrl+J)
 rail-room-in = В комнате совместного просмотра (Ctrl+J)
+rail-join-room = Войти в комнату
+rail-in-room = В комнате
 player-chrome-watch-together = Смотреть вместе
 player-chrome-room = Комната { $code } · { $count ->
     [one] { $count } человек

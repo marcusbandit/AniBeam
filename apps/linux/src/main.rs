@@ -22,6 +22,7 @@ mod problem;
 mod read_cache;
 mod runtime;
 mod scan_summary;
+mod scheme;
 mod serve;
 mod theme;
 #[cfg(windows)]
@@ -164,6 +165,9 @@ fn main() {
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
     paths::name_bundled_helpers();
+    // anibeam:// links come here even on an install from before rooms (#888). A thread,
+    // so after the setenvs above.
+    scheme::ensure();
 
     // The core is open before the engine, so the Door singleton the first QML file names
     // finds it already there.

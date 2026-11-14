@@ -3711,6 +3711,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Tu nombre en las salas
 rail-room = Ver juntos (Ctrl+J)
 rail-room-in = En una sala para ver juntos (Ctrl+J)
+rail-join-room = Unirse a sala
+rail-in-room = En una sala
 player-chrome-watch-together = Ver juntos
 player-chrome-room = Sala { $code } · { $count ->
     [one] 1 persona
