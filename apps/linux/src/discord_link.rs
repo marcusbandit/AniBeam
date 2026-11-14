@@ -40,6 +40,21 @@ fn entry(id: &str, exec: &str) -> String {
     )
 }
 
+/// The Exec line of an entry's `[Desktop Entry]` group, never an action's.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn main_exec(entry: &str) -> Option<String> {
+    let mut in_main = false;
+    for line in entry.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_main = t == "[Desktop Entry]";
+        } else if in_main && let Some(exec) = t.strip_prefix("Exec=") {
+            return Some(exec.to_string());
+        }
+    }
+    None
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
     use std::process::{Command, Stdio};
@@ -51,11 +66,10 @@ mod linux {
         let Some(dir) = own.parent().map(|d| d.to_path_buf()) else {
             return;
         };
-        let Some(exec) = std::fs::read_to_string(&own).ok().and_then(|t| {
-            t.lines()
-                .find_map(|l| l.strip_prefix("Exec="))
-                .map(str::to_string)
-        }) else {
+        let Some(exec) = std::fs::read_to_string(&own)
+            .ok()
+            .and_then(|t| super::main_exec(&t))
+        else {
             return;
         };
         let name = format!("discord-{id}.desktop");
@@ -94,5 +108,12 @@ mod tests {
         assert!(e.contains("MimeType=x-scheme-handler/discord-123;"));
         assert!(e.contains("NoDisplay=true"));
         assert!(entry("9", "/opt/anibeam").contains("\nExec=/opt/anibeam %u\n"));
+    }
+
+    #[test]
+    fn only_the_main_group_s_exec_counts() {
+        let e = "[Desktop Action new]\nExec=/opt/other\n\n[Desktop Entry]\nName=A\nExec=/opt/anibeam %U\n";
+        assert_eq!(main_exec(e).as_deref(), Some("/opt/anibeam %U"));
+        assert_eq!(main_exec("[Desktop Action x]\nExec=/a\n"), None);
     }
 }

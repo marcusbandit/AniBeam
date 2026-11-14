@@ -79,8 +79,8 @@ pub struct Connection<S> {
 
 impl<S: Stream> Connection<S> {
     /// Says which application this is, waits for READY and asks for the join
-    /// events. A Discord that refuses a subscription still shows activities,
-    /// so a refusal is no failure; only a connection that is gone is.
+    /// events. A Discord that refuses or ignores a subscription still shows
+    /// activities, so the subscriptions are never waited on.
     pub fn handshake(mut stream: S, client_id: &str) -> Result<Connection<S>, SendError> {
         stream.write_all(&encode(HANDSHAKE, &json!({"v": 1, "client_id": client_id})))?;
         let mut conn = Connection {
@@ -92,11 +92,13 @@ impl<S: Stream> Connection<S> {
         if reply["evt"] != "READY" {
             return Err(SendError::Gone(format!("no READY: {reply}")));
         }
+        // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
+        // activities, and the replies are skipped by nonce on the way to the next one.
         for evt in SUBSCRIBED {
-            match conn.command("SUBSCRIBE", Some(evt), json!({})) {
-                Ok(_) | Err(SendError::Rejected(_)) => {}
-                Err(e) => return Err(e),
-            }
+            conn.nonce += 1;
+            let nonce = format!("anibeam-{}-{}", std::process::id(), conn.nonce);
+            let command = json!({"cmd": "SUBSCRIBE", "evt": evt, "args": {}, "nonce": nonce});
+            conn.stream.write_all(&encode(FRAME, &command))?;
         }
         Ok(conn)
     }
@@ -642,21 +644,28 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_subscription_still_connects() {
+    fn a_refused_or_ignored_subscription_still_connects_and_shows() {
+        // Ignored: READY and nothing more.
+        assert!(Connection::handshake(Fake::new(&[ready()]), "123").is_ok());
+        // Refused, then a set that is answered.
+        let refused = |n| {
+            (
+                FRAME,
+                json!({"cmd": "SUBSCRIBE", "evt": "ERROR", "nonce": nonce(n),
+                       "data": {"code": 4006, "message": "Not authenticated"}}),
+            )
+        };
         let fake = Fake::new(&[
             ready(),
+            refused(1),
+            refused(2),
             (
                 FRAME,
-                json!({"cmd": "SUBSCRIBE", "evt": "ERROR", "nonce": nonce(1),
-                           "data": {"code": 4006, "message": "Not authenticated"}}),
-            ),
-            (
-                FRAME,
-                json!({"cmd": "SUBSCRIBE", "evt": "ERROR", "nonce": nonce(2),
-                           "data": {"code": 4006, "message": "Not authenticated"}}),
+                json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(3)}),
             ),
         ]);
-        assert!(Connection::handshake(fake, "123").is_ok());
+        let mut conn = Connection::handshake(fake, "123").unwrap();
+        conn.set_activity(None).unwrap();
     }
 
     #[test]

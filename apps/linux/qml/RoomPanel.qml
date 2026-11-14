@@ -305,7 +305,7 @@ Item {
                     }
                     // Discord (#966): an open room can be joined from Discord with no ask
                     Column {
-                        visible: !!Door.preferences.discord_presence
+                        visible: frame.room.onDiscord
                         spacing: theme.space(1)
                         Label { msg: "room-panel-discord"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
                         Seg {

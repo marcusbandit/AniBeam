@@ -625,8 +625,8 @@ fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
             _ => None,
         })
         .collect();
-    // Each activity is tried with its poster, then without.
-    assert_eq!(posters, vec![true, false, true, false]);
+    // Each activity is tried with its poster, then without, then without its party too.
+    assert_eq!(posters, vec![true, false, false, true, false, false]);
 }
 
 // ---------------------------------------------------------------------------
@@ -821,4 +821,11 @@ fn a_launch_by_discord_listens_with_nothing_to_show() {
     });
     // Nothing was shown for it.
     assert!(sets(&fake.sent()).is_empty());
+    // A window that comes up after the event takes the join, once.
+    let take = || match core.call(Call::DiscordTakeJoin).unwrap() {
+        Reply::DiscordJoin { code } => code,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(take().as_deref(), Some("K7QM2X"));
+    assert_eq!(take(), None);
 }

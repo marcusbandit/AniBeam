@@ -1279,3 +1279,30 @@ fn the_room_shows_on_discord_with_everyone_in_it_while_nothing_plays() {
         w.iter().rev().find(|x| !matches!(x, Wire::Answer(..))) == Some(&Wire::Clear)
     });
 }
+
+#[test]
+fn switching_discord_off_in_a_room_takes_the_room_off_and_keeps_it_off() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let discord = on_discord(&ann);
+    let made = room(ann.core.call(Call::RoomCreate { session: None })).expect("a room");
+    discord.wait("the room", |_| {
+        discord
+            .last_party()
+            .is_some_and(|p| p.secret.ends_with(&made.code))
+    });
+    let mut prefs = match ann.core.call(Call::GetPreferences).unwrap() {
+        Reply::Preferences { preferences } => preferences,
+        other => panic!("{other:?}"),
+    };
+    prefs.discord_presence = false;
+    ann.core
+        .call(Call::SetPreferences { preferences: prefs })
+        .unwrap();
+    ann.core.presence_flush();
+    let off = discord.wire().len();
+    std::thread::sleep(Duration::from_millis(1500));
+    let after = discord.wire();
+    assert_eq!(after.last(), Some(&Wire::Clear), "{after:#?}");
+    assert_eq!(after.len(), off, "nothing shows again: {after:#?}");
+}

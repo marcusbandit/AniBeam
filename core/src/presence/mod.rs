@@ -212,11 +212,7 @@ fn field(s: &str) -> String {
 
 /// A party id for this run outside any room, so two runs never share one.
 fn solo_party_id() -> String {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    std::process::id().hash(&mut h);
-    std::time::SystemTime::now().hash(&mut h);
-    format!("solo-{:016x}", h.finish())
+    format!("solo-{:032x}", rand::random::<u128>())
 }
 
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
@@ -498,11 +494,15 @@ struct Inner {
     room_open: bool,
     /// The party id outside a room, fixed for the run.
     solo: String,
+    /// The party id of the room this person is in, new with each room.
+    room_party: String,
     /// Asks waiting on an answer, by Discord user id.
     asks: HashMap<String, Ask>,
     /// Who this person let in to the room they are in now: a second ask
     /// from them is let in again without a question.
     let_in: HashSet<String>,
+    /// A room Discord handed over to join, until the shell takes it.
+    pending_join: Option<(String, Instant)>,
 }
 
 /// The room as Discord shows it.
@@ -791,8 +791,12 @@ fn run(playback: &Arc<Playback>, inner: &Inner, actions: Vec<Action>) {
         let change: Box<dyn FnOnce(&mut Desired)> = match action {
             Action::Set(activity) => Box::new(move |d| d.want = Some(activity)),
             Action::Clear => Box::new(|d| d.want = None),
+            // Off takes the room and the party with it, so nothing shows again until on
             Action::Disconnect => Box::new(|d| {
                 d.want = None;
+                d.party = None;
+                d.idle = None;
+                d.answers.clear();
                 d.disconnect = true;
             }),
             Action::Arm {
@@ -867,6 +871,7 @@ fn spawn(
         last_sent: None,
         posters: true,
         privacy: true,
+        parties: true,
     };
     let theirs = mailbox.clone();
     let spawned = std::thread::Builder::new()
@@ -907,6 +912,8 @@ struct Worker {
     posters: bool,
     /// Whether this connection takes an open party.
     privacy: bool,
+    /// Whether this connection takes a party at all.
+    parties: bool,
 }
 
 /// A new desired state, as the worker takes it.
@@ -1075,6 +1082,7 @@ impl Worker {
                     tracing::debug!("discord presence lost the connection: {e}");
                     self.transport.close();
                     self.set_connected(false, Level::Info, "Discord stopped answering");
+                    self.dirty = self.shown().is_some();
                     return;
                 }
             }
@@ -1147,6 +1155,7 @@ impl Worker {
                     self.set_connected(true, Level::Info, "Discord is showing what plays");
                     self.posters = true;
                     self.privacy = true;
+                    self.parties = true;
                 }
                 Err(e) => {
                     tracing::debug!("discord presence could not connect: {e:?}");
@@ -1166,6 +1175,9 @@ impl Worker {
                 && let Some(p) = a.party.as_mut()
             {
                 p.open = false;
+            }
+            if !self.parties {
+                a.party = None;
             }
         }
         self.last_sent = Some(Instant::now());
@@ -1197,6 +1209,18 @@ impl Worker {
             result = self.transport.send(Some(a));
             if matches!(result, Err(SendError::Rejected(_))) {
                 self.privacy = true;
+            }
+        }
+        // Nor a party at all, which a client without joins may not take: what plays
+        // still shows, and the next connection tries the party again.
+        if let (Err(SendError::Rejected(e)), Some(a)) = (&result, activity.as_mut())
+            && a.party.is_some()
+        {
+            tracing::debug!("discord refused the party, showing the activity without it: {e}");
+            a.party = None;
+            result = self.transport.send(Some(a));
+            if result.is_ok() {
+                self.parties = false;
             }
         }
         match result {

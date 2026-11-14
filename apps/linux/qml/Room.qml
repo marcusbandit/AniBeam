@@ -108,13 +108,18 @@ QtObject {
     }
     // Discord (#966): someone who asked to join is let in, into this room or one started
     // for what plays. It waits on the relay like Create, and on a name like Create too.
+    // False while another room call waits on the relay: the ask stays up to press again
     function letIn(user) {
-        if (busy !== "") return
+        if (busy !== "") return false
         error = ""
-        if (needsName) { waiting = { kind: "letin", user: user }; frame.openRoom(); return }
+        if (needsName) { waiting = { kind: "letin", user: user }; frame.openRoom(); return true }
         callAsync(inRoom ? "letin" : "create", "DiscordAnswer", { user_id: user, allow: true })
         if (!inRoom) frame.openRoom()
+        return true
     }
+    // Whether this build can show anything on Discord, and the switch is on
+    property bool discordAvailable: false
+    readonly property bool onDiscord: discordAvailable && !!Door.preferences.discord_presence
     // Whether anyone on Discord may join this room without asking; each room starts invite only
     property bool discordOpen: false
     function setDiscordOpen(open) {
@@ -221,6 +226,8 @@ QtObject {
     function refresh() {
         var r = Door.call("RoomStatus", {})
         if (!r.error) info = r.reply.room || null
+        var p = Door.call("GetPresence", {})
+        if (!p.error) discordAvailable = !!p.reply.available
     }
 
     property Connections events: Connections {

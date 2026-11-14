@@ -551,8 +551,14 @@ FocusScope {
             var b = envelope.body
             if (envelope.kind === "DiscordJoinAsk") discordAsk.add({ user_id: b.user_id, name: b.name, avatar: b.avatar || "", in_room: b.in_room })
             else if (envelope.kind === "DiscordAskGone") discordAsk.drop(b.user_id)
-            else if (envelope.kind === "DiscordJoin") frame.joinRoomLink(b.code)
+            else if (envelope.kind === "DiscordJoin") frame.takeDiscordJoin()
         }
+    }
+    // Taken from the core rather than the event, so a join that came before this window
+    // was up (Discord launched the app for it) still lands, and only once
+    function takeDiscordJoin() {
+        var r = Door.call("DiscordTakeJoin", {})
+        if (!r.error && r.reply.code) frame.joinRoomLink(r.reply.code)
     }
 
     // The tracker connect sheet, over everything: the Watching page's empty
@@ -683,6 +689,7 @@ FocusScope {
         roomState.refresh()
         // Started from a room link: join it once the first page is up
         if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
+        Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }

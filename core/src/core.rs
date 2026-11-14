@@ -1002,6 +1002,7 @@ impl Core {
                 presence::join::set_open_call(&self.playback, open)
             }
             Call::DiscordListen => presence::join::listen_call(&self.playback),
+            Call::DiscordTakeJoin => presence::join::take_join_call(&self.playback),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }

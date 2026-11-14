@@ -29,9 +29,9 @@ Frost {
     function answer(allow) {
         var a = ask
         if (!a) return
-        drop(a.user_id)
-        if (allow) frame.room.letIn(a.user_id)
+        if (allow) { if (frame.room.letIn(a.user_id)) drop(a.user_id) }
         else {
+            drop(a.user_id)
             var r = Door.call("DiscordAnswer", { user_id: a.user_id, allow: false })
             if (r.error) frame.fail(r.error)
         }

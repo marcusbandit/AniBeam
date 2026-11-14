@@ -252,6 +252,7 @@ pub enum EventBody {
         user_id: String,
     },
     /// This person pressed Join on Discord or accepted an invite into a room: the shell
+    /// takes it with `DiscordTakeJoin`, so a window that opens later still gets it, and
     /// joins it as it would an `anibeam://room/<code>` link.
     DiscordJoin {
         code: String,

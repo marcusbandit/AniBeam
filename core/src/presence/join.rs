@@ -65,7 +65,7 @@ fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
                 party: None,
             };
             let party = Party {
-                id: party_id(&room.code),
+                id: inner.room_party.clone(),
                 size: room.size.clamp(1, MAX_MEMBERS),
                 max: MAX_MEMBERS,
                 secret: format!("{ROOM_SECRET}{}", room.code),
@@ -86,14 +86,11 @@ fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
     }
 }
 
-/// A room's party id: the same for everyone in it, and not its code, which
-/// Discord would show to people who have not been let in.
-fn party_id(code: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "anibeam-room".hash(&mut h);
-    code.hash(&mut h);
-    format!("room-{:016x}", h.finish())
+/// A party id for one room on this machine: random, so nothing about the
+/// room's code can be read back out of it, which anyone who sees the activity
+/// can. Each member's is their own.
+fn random_party_id() -> String {
+    format!("room-{:032x}", rand::random::<u128>())
 }
 
 /// The room team's word on the room this core is in: its code, how many are
@@ -105,6 +102,7 @@ pub(crate) fn set_room(playback: &Arc<Playback>, show: Option<RoomShow>) {
     if !same {
         inner.let_in.clear();
         inner.room_open = false;
+        inner.room_party = random_party_id();
     }
     if inner.room == show {
         return;
@@ -164,6 +162,7 @@ fn joined(playback: &Arc<Playback>, secret: &str) {
         .and_then(anibeam_room::code::normalize)
     {
         Some(code) => {
+            recover(&playback.presence.inner).pending_join = Some((code.clone(), Instant::now()));
             bus.emit(
                 Level::Info,
                 Stage::Playback,
@@ -318,6 +317,19 @@ pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Repl
         }
     }
     super::status_call(playback)
+}
+
+/// How long a join Discord handed over waits for a window to take it.
+const JOIN_KEEPS: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// `DiscordTakeJoin`.
+pub(crate) fn take_join_call(playback: &Playback) -> Result<Reply, CoreError> {
+    let code = recover(&playback.presence.inner)
+        .pending_join
+        .take()
+        .filter(|(_, at)| at.elapsed() < JOIN_KEEPS)
+        .map(|(code, _)| code);
+    Ok(Reply::DiscordJoin { code })
 }
 
 /// `DiscordListen`.

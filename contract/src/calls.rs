@@ -385,6 +385,9 @@ pub enum Call {
     /// Discord launched the app to hand over a join: stay connected for a moment with
     /// nothing to show so it can. Answers `Presence`.
     DiscordListen,
+    /// The room Discord last asked this app to join, once: a window that opens after the
+    /// join came (Discord launched the app for it) takes it here. Answers `DiscordJoin`.
+    DiscordTakeJoin,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -980,6 +983,9 @@ pub enum Reply {
     },
     DiscordBlocked {
         people: Vec<DiscordPerson>,
+    },
+    DiscordJoin {
+        code: Option<String>,
     },
     Settings {
         settings: Settings,
