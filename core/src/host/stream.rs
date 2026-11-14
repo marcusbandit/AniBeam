@@ -105,6 +105,7 @@ fn video_type(path: &std::path::Path) -> &'static str {
         Some("webm") => "video/webm",
         Some("avi") => "video/x-msvideo",
         Some("ts" | "m2ts") => "video/mp2t",
+        Some("ogm") => "video/ogg",
         _ => "video/x-matroska",
     }
 }

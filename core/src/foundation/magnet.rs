@@ -2,7 +2,8 @@
 //! result to a torrent, reading a feed and scraping a tracker all read it the
 //! same way, through here.
 
-/// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case.
+/// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
+/// else is left out rather than put in a magnet, where it could add parameters of its own.
 pub fn is_hash(hash: &str) -> bool {
     match hash.len() {
         40 => hash.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -14,9 +15,14 @@ pub fn is_hash(hash: &str) -> bool {
 }
 
 /// The info-hash a magnet link names, as lowercase hex (the base32 form is
-/// converted). None for anything that is not a magnet with a hash.
+/// converted). The scheme reads in any case. None for anything that is not a
+/// magnet with a hash.
 pub fn hash(link: &str) -> Option<String> {
-    let query = link.trim().strip_prefix("magnet:?")?;
+    let link = link.trim();
+    let query = link
+        .get(..8)
+        .filter(|head| head.eq_ignore_ascii_case("magnet:?"))
+        .map(|_| &link[8..])?;
     for part in query.split('&') {
         let Some(v) = part
             .get(..3)
@@ -32,11 +38,10 @@ pub fn hash(link: &str) -> Option<String> {
         else {
             continue;
         };
-        if h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Some(h.to_string());
-        }
-        if h.len() == 32 {
-            return base32_hex(h);
+        match h.len() {
+            40 if is_hash(h) => return Some(h.to_string()),
+            32 => return base32_hex(h),
+            _ => {}
         }
     }
     None
@@ -91,6 +96,11 @@ mod tests {
         );
         assert_eq!(hash("https://tracker.example/download/1.torrent"), None);
         assert_eq!(hash("magnet:?xt=urn:btih:short"), None);
+        // The scheme in any case, as a feed or a search may write it.
+        assert_eq!(
+            hash(&format!("Magnet:?xt=urn:btih:{hex}")).as_deref(),
+            Some(hex)
+        );
     }
 
     #[test]

@@ -20,6 +20,7 @@ use super::{convert, history, keys, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::foundation::machine::hostname;
+use crate::foundation::trust::{Asker, TailnetUser};
 use crate::time;
 
 /// How long a built snapshot answers every request.
@@ -115,7 +116,7 @@ pub struct Profile(pub u64);
 /// The person a request is answered as, as the tailnet names them right now, set beside
 /// [`Profile`] (#633). None when the tailnet does not say, as on a tagged machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Person(pub Option<trust::TailnetUser>);
+pub struct Person(pub Option<TailnetUser>);
 
 /// The sentence a phone shows when it asks for an episode here while
 /// streaming is off.
@@ -186,7 +187,7 @@ async fn trusted(
         // owner, so it is the owner's; a tailnet device is its Tailscale user's.
         let (asker, me) = match (&verdict, &proof) {
             (trust::Verdict::Outside, keys::Proof::Paired(_)) => (
-                trust::Asker::Owner,
+                Asker::Owner,
                 core.host.tailnet_now().and_then(|t| t.owner().cloned()),
             ),
             _ => core.host.asker(from.ip()),
@@ -194,14 +195,14 @@ async fn trusted(
         // Who it is, as the tailnet names them now, for the hello (#633). The profile
         // id below is cached for the launch; the name is read fresh with every request.
         let who = match &asker {
-            trust::Asker::Owner => me.clone(),
-            trust::Asker::Person(user) => Some(user.clone()),
-            trust::Asker::Unknown => None,
+            Asker::Owner => me.clone(),
+            Asker::Person(user) => Some(user.clone()),
+            Asker::Unknown => None,
         };
         let key = match &asker {
-            trust::Asker::Owner => String::new(),
-            trust::Asker::Person(user) => user.id.clone(),
-            trust::Asker::Unknown => return Ok((verdict, proof, None, None)),
+            Asker::Owner => String::new(),
+            Asker::Person(user) => user.id.clone(),
+            Asker::Unknown => return Ok((verdict, proof, None, None)),
         };
         let known = served
             .profiles

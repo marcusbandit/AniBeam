@@ -41,8 +41,8 @@ pub fn title_key(name: &str) -> String {
         Some((stem, ext)) if ext.eq_ignore_ascii_case("torrent") => stem,
         _ => without_video_extension(name),
     };
-    stem.to_lowercase()
-        .chars()
+    stem.chars()
+        .flat_map(char::to_lowercase)
         .filter(|c| c.is_alphanumeric())
         .collect()
 }
