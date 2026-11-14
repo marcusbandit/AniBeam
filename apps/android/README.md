@@ -228,8 +228,8 @@ src/                the app: the UI thread (app.rs), the phone's core (local.rs,
                     the other device (remote.rs, worker.rs), the phone's settings (prefs.rs)
 src/platform/       everything that differs by platform: android.rs holds android_main and
                     the JNI for the browser, the service, the network and the screen;
-                    ios.rs holds ios_main and the hinge; other.rs stands in on every
-                    other target
+                    ios.rs holds ios_main, the hinge, and the language and light or
+                    dark setting; other.rs stands in on every other target
 src/main.rs         the iPhone's executable
 ios/                the iPhone's Xcode project (project.yml for xcodegen), Info.plist
                     and cargo.sh, the build step that runs cargo
