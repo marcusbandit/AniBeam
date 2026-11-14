@@ -10,9 +10,9 @@
 //!
 //! The orientations the app turns to, the status bar and the home indicator are winit's
 //! view controller's to answer UIKit for, so they are asked for through winit's window. An
-//! iPhone that does not fold stays upright outside the player and turns to landscape in it;
-//! one whose hinge has been heard (the Duo) turns as it is held, everywhere. The player
-//! hides the status bar and the home indicator.
+//! iPhone stays upright outside the player and turns to landscape in it; the iPhone Duo
+//! does the same folded, on its cover screen, and stays in landscape everywhere unfolded.
+//! The player hides the status bar and the home indicator.
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -271,9 +271,9 @@ fn with_winit<T>(f: impl FnOnce(&WinitWindow) -> T) -> Option<T> {
 
 /// The player's screen: while it is up the status bar is hidden and the home indicator fades
 /// after a moment, as in Apple's own players; when it closes both come back. UIKit lays the
-/// safe area out again, and winit tells Slint, so the pages keep clear of the bar. It is
-/// landscape on an iPhone that does not fold, upright again when it closes; one that folds
-/// turns as it is held either way.
+/// safe area out again, and winit tells Slint, so the pages keep clear of the bar. The
+/// player turns to landscape, and the app turns back upright when it closes unless an
+/// unfolded iPhone Duo holds it in landscape.
 pub fn player_screen(on: bool) {
     with_winit(|w| {
         w.set_prefers_status_bar_hidden(on);
@@ -287,29 +287,41 @@ pub fn player_screen(on: bool) {
 const PORTRAIT: usize = 1 << 1;
 const LANDSCAPE: usize = (1 << 3) | (1 << 4);
 
+/// The hinge angle in degrees under which the phone is shut and shows its cover screen, as
+/// `fold.slint` reads it. Half open or flat is unfolded.
+const SHUT_UNDER: f32 = 30.0;
+
 thread_local! {
     /// The player is up.
     static PLAYING: Cell<bool> = const { Cell::new(false) };
-    /// A hinge has been heard this run: the phone folds.
-    static FOLDS: Cell<bool> = const { Cell::new(false) };
     /// The orientations last asked of UIKit, as a mask.
     static ASKED: Cell<usize> = const { Cell::new(0) };
 }
 
-/// Asks UIKit for the orientations the app takes now: upright outside the player and
-/// landscape in it on an iPhone that does not fold, any but upside down on one that does.
-/// winit's view controller answers `supportedInterfaceOrientations`; since iOS 16 a change
-/// to it turns the screen only once UIKit is told it changed, and the scene is asked to turn
-/// into it. Before winit's window is up it tries again a moment later.
+/// The phone is unfolded: its hinge has been heard open 30 degrees or more, half open or
+/// flat. Shut, a phone with no hinge, a hinge not heard from yet and a hinge UIKit has lost
+/// (the window is on the cover screen, or moving between the screens) all count as folded.
+fn unfolded() -> bool {
+    matches!(HINGE.get(), Hinge::Angle(a) if a >= SHUT_UNDER)
+}
+
+/// The orientations the app takes: landscape on an unfolded iPhone Duo, in the player or
+/// out of it; otherwise upright outside the player and landscape in it.
+fn orientations(unfolded: bool, playing: bool) -> (ValidOrientations, usize) {
+    if unfolded || playing {
+        (ValidOrientations::Landscape, LANDSCAPE)
+    } else {
+        (ValidOrientations::Portrait, PORTRAIT)
+    }
+}
+
+/// Asks UIKit for the orientations the app takes now, after the player opens or closes and
+/// whenever the hinge changes. winit's view controller answers
+/// `supportedInterfaceOrientations`; since iOS 16 a change to it turns the screen only once
+/// UIKit is told it changed, and the scene is asked to turn into it. Before winit's window
+/// is up it tries again a moment later.
 fn orient() {
-    let (valid, mask) = match (FOLDS.get(), PLAYING.get()) {
-        (true, _) => (
-            ValidOrientations::LandscapeAndPortrait,
-            PORTRAIT | LANDSCAPE,
-        ),
-        (false, true) => (ValidOrientations::Landscape, LANDSCAPE),
-        (false, false) => (ValidOrientations::Portrait, PORTRAIT),
-    };
+    let (valid, mask) = orientations(unfolded(), PLAYING.get());
     if ASKED.get() == mask {
         return;
     }
@@ -530,10 +542,11 @@ fn heard(update: *mut AnyObject) {
             Hinge::Angle(degrees(status, radians))
         }
     };
+    let was_unfolded = unfolded();
     HINGE.set(next);
-    // The first hinge heard says the phone folds: it turns as it is held from now on.
-    if matches!(next, Hinge::Angle(_)) && !FOLDS.get() {
-        FOLDS.set(true);
+    // Folding or unfolding changes the orientations the app takes: asked for straight away,
+    // once UIKit's handler has returned.
+    if unfolded() != was_unfolded {
         slint::Timer::single_shot(Duration::ZERO, orient);
     }
 }
