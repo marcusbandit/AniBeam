@@ -32,20 +32,20 @@ pub fn ios_main() {
     let data_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
         .join("Library/Application Support/AniBeam");
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        eprintln!("AniBeam: no data directory at {}: {e}", data_dir.display());
+        eprintln!("Anibeam: no data directory at {}: {e}", data_dir.display());
     }
     // Application Support goes into iCloud and computer backups, and downloaded episodes are
     // large and can be downloaded again, so the library folder stays out of them.
     let library = data_dir.join(crate::local::LIBRARY_DIR);
     match std::fs::create_dir_all(&library) {
         Ok(()) => keep_out_of_backups(&library),
-        Err(e) => eprintln!("AniBeam: no library folder at {}: {e}", library.display()),
+        Err(e) => eprintln!("Anibeam: no library folder at {}: {e}", library.display()),
     }
     let (commands, inbox) = std::sync::mpsc::channel();
     // Held for the whole run: the notification centre keeps the observers while they live.
     let _observers = observe(commands.clone());
     if let Err(e) = crate::run(data_dir, commands, inbox) {
-        eprintln!("AniBeam stopped: {e}");
+        eprintln!("Anibeam stopped: {e}");
     }
 }
 
@@ -53,7 +53,7 @@ pub fn ios_main() {
 /// start, since a restore from a backup can leave the folder without it.
 fn keep_out_of_backups(dir: &Path) {
     let Some(url) = NSURL::from_directory_path(dir) else {
-        eprintln!("AniBeam: no file URL for {}", dir.display());
+        eprintln!("Anibeam: no file URL for {}", dir.display());
         return;
     };
     let yes = NSNumber::new_bool(true);
@@ -61,7 +61,7 @@ fn keep_out_of_backups(dir: &Path) {
     let set =
         unsafe { url.setResourceValue_forKey_error(Some(&yes), NSURLIsExcludedFromBackupKey) };
     if let Err(e) = set {
-        eprintln!("AniBeam: {} stays in backups: {e:?}", dir.display());
+        eprintln!("Anibeam: {} stays in backups: {e:?}", dir.display());
     }
 }
 

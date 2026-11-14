@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 640
     height: 480
     visible: true
-    title: "AniBeam cxx-qt spike"
+    title: "Anibeam cxx-qt spike"
 
     property string ticks: ""
 

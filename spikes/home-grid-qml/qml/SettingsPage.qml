@@ -529,10 +529,10 @@ FocusScope {
                             Button { text: "Add folder"; icon: "folder-plus" }
                             Button { text: "Scan all"; icon: "refresh-cw" }
                         },
-                        Note { text: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
+                        Note { text: "Anibeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
                         SettingRow {
                             label: "Show hidden shows"
-                            helper: "Shows hidden series on every page until AniBeam closes."
+                            helper: "Shows hidden series on every page until Anibeam closes."
                             Switch {}
                         },
                         SettingRow {
@@ -703,7 +703,7 @@ FocusScope {
                     }
                     SettingRow {
                         label: "Use my mpv.conf"
-                        helper: "Loads ~/.config/mpv/mpv.conf under AniBeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
+                        helper: "Loads ~/.config/mpv/mpv.conf under Anibeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
                         Switch {}
                     }
                 }
@@ -723,7 +723,7 @@ FocusScope {
                 Panel {
                     title: "Subtitle defaults"
                     icon: "type"
-                    helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
+                    helper: "What every session starts from. Change tracks in the player and Anibeam remembers them per series."
                     Pair {
                         rowGap: theme.space(2)
                         SettingRow {
@@ -941,7 +941,7 @@ FocusScope {
                             spacing: theme.space(2)
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "AniBeam"
+                                text: "Anibeam"
                                 color: theme.text
                                 font.family: theme.fontSans
                                 font.pointSize: theme.typeLarge
