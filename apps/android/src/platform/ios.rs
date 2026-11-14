@@ -39,12 +39,15 @@ enum Hinge {
     Unasked,
     /// Asked, and UIKit has not answered yet.
     Asked,
-    /// No hinge here: an iPhone that does not fold, or an iOS older than 27.1.
+    /// No hinge here: an iOS older than 27.1, with no `UIHingeInteraction` class. The only
+    /// proof there is no hinge; a nil hinge from UIKit is `Lost`.
     Absent,
     /// The hinge's angle in degrees, 0 shut and 180 flat.
     Angle(f32),
-    /// A hinge answered before, but the window has left the hierarchy that reports it for
-    /// now, as it may while the phone moves between its screens.
+    /// UIKit reported no hinge for now: the window has left the hierarchy that reports it,
+    /// as it may while the phone moves between its screens, or the app opened while it was
+    /// out (launched folded, on the cover screen). The layout keeps asking, so a hinge that
+    /// turns up later is followed; an iPhone that does not fold stays here.
     Lost,
 }
 
@@ -113,10 +116,7 @@ fn heard(update: *mut AnyObject) {
             msg_send![update, hinge]
         };
         if hinge.is_null() {
-            match HINGE.get() {
-                Hinge::Angle(_) | Hinge::Lost => Hinge::Lost,
-                _ => Hinge::Absent,
-            }
+            Hinge::Lost
         } else {
             let status: isize = msg_send![hinge, status];
             let radians: f64 = msg_send![hinge, angle];
