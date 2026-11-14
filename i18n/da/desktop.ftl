@@ -3713,6 +3713,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Dit navn i rum
 rail-room = Se sammen (Ctrl+J)
 rail-room-in = I et se sammen-rum (Ctrl+J)
+rail-join-room = Gå ind i rum
+rail-in-room = I et rum
 player-chrome-watch-together = Se sammen
 player-chrome-room = Rum { $code } · { $count ->
     [one] 1 person

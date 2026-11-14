@@ -3710,6 +3710,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Je naam in kamers
 rail-room = Samen kijken (Ctrl+J)
 rail-room-in = In een kamer om samen te kijken (Ctrl+J)
+rail-join-room = Kamer betreden
+rail-in-room = In een kamer
 player-chrome-watch-together = Samen kijken
 player-chrome-room = Kamer { $code } · { $count ->
     [one] 1 persoon

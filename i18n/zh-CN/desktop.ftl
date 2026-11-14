@@ -3071,6 +3071,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = 你在房间中的名字
 rail-room = 一起看（Ctrl+J）
 rail-room-in = 正在一起看房间中（Ctrl+J）
+rail-join-room = 加入房间
+rail-in-room = 在房间中
 player-chrome-watch-together = 一起看
 player-chrome-room = 房间 { $code } · { $count ->
    *[other] { $count } 人

@@ -535,6 +535,8 @@ rail-whats-new = What's new
 rail-settings-note = Settings: { $note }
 rail-room = Watch together (Ctrl+J)
 rail-room-in = In a watch together room (Ctrl+J)
+rail-join-room = Join room
+rail-in-room = In a room
 
 ## FixSheet.qml
 
