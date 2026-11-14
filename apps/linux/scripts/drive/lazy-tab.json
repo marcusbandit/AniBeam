@@ -1,0 +1,25 @@
+[
+  {"log": "Tab reaches every card on a long page, built or not (#627). Needs a root whose library is"},
+  {"log": "taller than the window, so the cards near the end start unbuilt: a folder of 200 shows does"},
+  {"click": "rail-library"},
+  {"until": "driver.item.pageReady('library')"},
+  {"until": "frame.item.pageItem.cardIds().length >= 120", "timeout": 60000},
+  {"eval": "frame.item.pageItem.cardIds()", "as": "ids"},
+  {"eval": "'tile-' + vars.ids[vars.ids.length - 1]", "as": "last"},
+  {"log": "the last card has not been built when the page opens"},
+  {"eval": "driver.item.findItem(vars.last) === null", "expect": true},
+
+  {"log": "Tab walks the cards in order until the last one has the focus"},
+  {"click": [900, 400]},
+  {"key": "Tab", "repeatUntil": "window.activeFocusItem && window.activeFocusItem.objectName === vars.last", "max": 400},
+  {"eval": "window.activeFocusItem.objectName === vars.last", "expect": true},
+
+  {"log": "and it is scrolled into view once the glide settles"},
+  {"wait": 400},
+  {"eval": "(function() { var c = window.activeFocusItem, p = c.mapToItem(null, 0, 0); return p.y >= 0 && p.y + c.height <= window.height })()", "expect": true},
+  {"shot": "lazy-tab-01-last-card"},
+
+  {"log": "Shift+Tab goes back one card at a time"},
+  {"key": "Shift+Tab"},
+  {"eval": "window.activeFocusItem.objectName === 'tile-' + vars.ids[vars.ids.length - 2]", "expect": true}
+]

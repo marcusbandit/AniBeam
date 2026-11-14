@@ -9,6 +9,10 @@
 // is settled) and as the view scrolls, and builds those within a screen of the viewport:
 // synchronously when already in view, asynchronously ahead of it. A built card stays
 // built. Outside a PageScroll the tile builds at once, as a plain card would.
+//
+// An unbuilt tile is a tab stop in its card's place (#627): Tab or Shift+Tab onto it builds
+// the card at once, hands the card the focus and scrolls it into view, so the keyboard
+// reaches every card on a long page.
 import QtQuick
 
 Item {
@@ -20,6 +24,36 @@ Item {
     // false for a tile that holds tiles (a section of cards): it builds at once while the
     // first frame's budget lasts but spends none of it, so the budget goes to its cards
     property bool spends: true
+
+    // A tab stop only while there is no card to take the focus itself
+    activeFocusOnTab: !loader.item
+    property bool focusOnBuild: false
+    onActiveFocusChanged: {
+        if (!activeFocus || loader.item) return
+        focusOnBuild = true
+        if (flick && !seen) flick.lazyRemove(root)
+        build(true)
+        if (loader.item) handFocus()
+    }
+    // The card takes the focus; a tile that holds tiles (a section) passes it to its first
+    // stop, or its last when Shift+Tab came in from below
+    function handFocus() {
+        focusOnBuild = false
+        var it = loader.item, back = root.focusReason === Qt.BacktabFocusReason
+        var target = it.activeFocusOnTab ? it : back ? lastStopIn(it) : it.nextItemInFocusChain(true)
+        if (!target || !inside(target, it)) target = it
+        target.forceActiveFocus(back ? Qt.BacktabFocusReason : Qt.TabFocusReason)
+        if (flick && flick.reveal !== undefined) flick.reveal(target)
+    }
+    function inside(item, box) { for (var p = item; p; p = p.parent) if (p === box) return true; return false }
+    function lastStopIn(box) {
+        var last = null
+        for (var cur = box.nextItemInFocusChain(true), n = 0; cur && n < 5000 && inside(cur, box); n++) {
+            last = cur
+            cur = cur.nextItemInFocusChain(true)
+        }
+        return last
+    }
 
     function findFlick() {
         for (var p = parent; p; p = p.parent)
@@ -56,5 +90,6 @@ Item {
         active: root.seen
         asynchronous: false
         sourceComponent: root.sourceComponent
+        onLoaded: if (root.focusOnBuild && root.activeFocus) root.handFocus()
     }
 }
