@@ -7,6 +7,9 @@
 //! the app's window the first time the layout asks. UIKit says how far the hinge is open,
 //! not where the crease runs, so the crease is never reported and the layout takes it for a
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
+//!
+//! The status bar and the home indicator are winit's view controller's to answer UIKit for,
+//! so the player asks for them through winit's window.
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -22,6 +25,10 @@ use objc2_foundation::{
     NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
     NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
 };
+use slint::ComponentHandle;
+use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::platform::ios::WindowExtIOS;
+use slint::winit_030::winit::window::Window as WinitWindow;
 
 use super::FocusAsk;
 use crate::worker::Command;
@@ -238,6 +245,34 @@ pub fn player_awake(on: bool) {
             let _: () = msg_send![app, setIdleTimerDisabled: on];
         }
     }
+}
+
+thread_local! {
+    /// The app's window, made on the UI thread, whose winit window the player turns to.
+    static APP_WINDOW: RefCell<Option<slint::Weak<crate::AppWindow>>> = const { RefCell::new(None) };
+}
+
+/// The app's window is made: kept, so the player can reach winit's window under it.
+pub fn window_up(window: &crate::AppWindow) {
+    APP_WINDOW.set(Some(window.as_weak()));
+}
+
+/// Runs `f` on winit's window, once the app's window has one.
+fn with_winit(f: impl FnOnce(&WinitWindow)) {
+    let Some(window) = APP_WINDOW.with_borrow(|w| w.as_ref().and_then(|w| w.upgrade())) else {
+        return;
+    };
+    window.window().with_winit_window(f);
+}
+
+/// The player's screen: while it is up the status bar is hidden and the home indicator fades
+/// after a moment, as in Apple's own players; when it closes both come back. UIKit lays the
+/// safe area out again, and winit tells Slint, so the pages keep clear of the bar.
+pub fn player_screen(on: bool) {
+    with_winit(|w| {
+        w.set_prefers_status_bar_hidden(on);
+        w.set_prefers_home_indicator_hidden(on);
+    });
 }
 
 /// The phone's language as iOS lists it first: `da-DK`, `pt-BR`, `zh-Hans-CN`, the same
