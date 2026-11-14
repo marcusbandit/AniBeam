@@ -4,15 +4,18 @@ name: iOS automerge
 # holds the rules. A PR that only touches iPhone or Mac files squash merges once its checks
 # pass; any other is its author's to merge, and this leaves it alone (#916).
 #
-# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, comma separated, no
-# spaces); while it is unset this does nothing. A finished PR workflow looks at the PRs it
-# names; a run by hand looks at every open one. The script always comes from the default
+# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, separated by commas
+# or spaces); while it is unset this does nothing. A finished PR workflow looks at the PRs it
+# names, a PR marked ready or moved onto main looks at itself, since its checks may all have
+# passed already, and a run by hand looks at every open one. The script always comes from the default
 # branch and never runs a PR's code. A merge made with this token starts no push workflows
 # on main; the nightly builds it as usual.
 on:
   workflow_run:
     workflows: [Android, Arch, CI, Linux, macOS, Windows, Site, Strings, "No sites", "PR build", "PR issue"]
     types: [completed]
+  pull_request_target:
+    types: [ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -21,10 +24,8 @@ permissions:
   checks: read
   actions: read
 
-# One run at a time, so a PR is never merged twice.
-concurrency:
-  group: ios-automerge
-  cancel-in-progress: false
+# No concurrency group: a queued run would replace another queued one and drop the PRs it
+# named. Two runs racing on one PR are harmless, since the second merge is refused.
 
 jobs:
   ios-automerge:
@@ -46,5 +47,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
-          PRS: ${{ join(github.event.workflow_run.pull_requests.*.number, ' ') }}
+          PRS: >-
+            ${{ github.event.pull_request.number
+            || join(github.event.workflow_run.pull_requests.*.number, ' ') }}
+          DRY_RUN: '0'
         run: .github/ios-automerge.sh

@@ -9,14 +9,14 @@
 #   GH_REPO   owner/name
 #   AUTHORS   GitHub logins, separated by spaces or commas
 #   PRS       the PR numbers to look at, from the event; empty looks at every open one
-#   DRY_RUN   1 to say what it would do without merging
+#   DRY_RUN   0 to merge; by default it only says what it would do
 #
 # It reads PRs through the API only and never runs their code. Anything it cannot read
 # leaves the PR waiting: an API error never counts as a pass.
 set -euo pipefail
 : "${GH_REPO:?}" "${AUTHORS:?}"
 PRS="${PRS:-}"
-DRY_RUN="${DRY_RUN:-0}"
+DRY_RUN="${DRY_RUN:-1}"
 SELF_WORKFLOW="iOS automerge"
 SELF_JOB="ios-automerge"
 
@@ -87,7 +87,7 @@ consider() {
     say "$pr" "not mergeable into main"
     return 0
   fi
-  if [ "$DRY_RUN" = 1 ]; then
+  if [ "$DRY_RUN" != 0 ]; then
     say "$pr" "would merge ${sha:0:8}"
     return 0
   fi
