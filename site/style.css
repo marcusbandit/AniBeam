@@ -901,8 +901,8 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
   .dl-tile.is-featured .dl-main { min-width: 0; width: 100%; }
 }
 
-/* The nav: the language, GitHub, and the way to the downloads */
-.nav-lang, .nav-gh { display: inline-flex; align-items: center; gap: 7px; }
+/* The nav: the language, Watch together, GitHub, and the way to the downloads */
+.nav-lang, .nav-gh, .nav-rooms { display: inline-flex; align-items: center; gap: 7px; }
 /* The language menu: a native <details>, so it opens with a click or the keyboard and needs no
    script. The panel lists every language in its own name. */
 .nav-lang { position: relative; }
@@ -935,8 +935,8 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 .lang-menu a[aria-current="true"] { color: #fff; }
 .lang-menu a[aria-current="true"]::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
-.nav-lang svg, .nav-gh svg { width: 15px; height: 15px; }
-.nav-lang svg { fill: none; stroke: currentColor; stroke-width: 2; }
+.nav-lang svg, .nav-gh svg, .nav-rooms svg { width: 15px; height: 15px; }
+.nav-lang svg, .nav-rooms svg { fill: none; stroke: currentColor; stroke-width: 2; }
 .nav-gh svg { fill: currentColor; }
 
 /* What's new: the apps' patch notes, a version per entry, newest first. A version is a row: its
@@ -1020,9 +1020,10 @@ html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 
   .term code { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
-/* A narrow nav keeps the language menu and the download button; GitHub stays in the footer. */
+/* A narrow nav keeps the language menu and the download button; GitHub and Watch together stay
+   in the footer. */
 @media (max-width: 700px) {
-  .nav-links .nav-gh { display: none; }
+  .nav-links .nav-gh, .nav-links .nav-rooms { display: none; }
   .nav-lang summary, .nav .btn-sm { white-space: nowrap; }
 }
 /* On a phone the menu is the globe alone; its name stays for screen readers. */
