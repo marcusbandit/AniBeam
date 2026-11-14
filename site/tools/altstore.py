@@ -1,7 +1,7 @@
-"""Writes the iPhone app's sources, <site>/altstore/stable.json and nightly.json, for AltStore,
-SideStore and LiveContainer to subscribe to: a JSON feed of the app's versions, after which the app
-sits in their library and they offer each new build as an update. releases.py calls it with the
-GitHub releases it already read, so the feeds and the download buttons see the same data.
+"""Writes the iPhone app's source, <site>/altstore/source.json, for AltStore, SideStore and
+LiveContainer to subscribe to: a JSON feed of the app's versions, after which the app sits in their
+library and they offer each new build as an update. releases.py calls it with the GitHub releases it
+already read, so the feed and the download buttons see the same data.
 
 The format is AltStore's source format, which the other two read (AltStore Classic's Source,
 StoreApp and AppVersion models, and LiveContainer's LCAltStoreSourcesView). Top level: name,
@@ -10,14 +10,21 @@ developerName, localizedDescription, iconURL, versions, appPermissions. Version:
 downloadURL, size, plus buildVersion, minOSVersion and localizedDescription. The versions array is
 ordered, newest first, because AltStore takes the first entry as the latest.
 
-  stable.json   the phone's releases (android-v2.4.3) that carry an IPA
-  nightly.json  the phone's nightlies and its releases together, so a nightly subscriber is never
-                left behind a newer stable release; the newest build, whichever it is, comes first
+One source, two apps, each with a bundle id of its own so both install side by side:
+
+  Anibeam          com.marcusrosado.anibeam          the phone's releases (android-v2.4.3)
+  Anibeam Nightly  com.marcusrosado.anibeam.nightly  the phone's nightlies (android-v2.4.3-nightly.N.M)
+
+An app with no IPA yet is left out, so the source is valid with two apps, one or none.
+
+Nightlies published before the nightly bundle id (#944) carry the stable id inside their IPA, and
+AltStore refuses an IPA whose bundle id differs from its app's. They cannot be told apart by tag,
+so nightly.yml names the IPA of a nightly with the nightly id AniBeam-Nightly-<version>.ipa, and
+only nightlies holding such an asset are listed; the old ones are skipped.
 
 An IPA's short version is the base of the release's version and its build number the run number
 of a nightly, 1 for a release (apps/android/scripts/build-ios.sh); AltStore checks a downloaded
-IPA against them, so they are derived the same way here. A source with no IPA yet has an empty
-apps list, which every app accepts.
+IPA against them, so they are derived the same way here.
 """
 import json
 import plistlib
@@ -25,30 +32,34 @@ import re
 from pathlib import Path
 
 BASE = "https://anibeam.app"
-BUNDLE_ID = "com.marcusrosado.anibeam"
 IOS = Path(__file__).resolve().parent.parent.parent / "apps" / "android" / "ios"
-CHANNELS = {
+SOURCE = {
+    "name": "Anibeam",
+    "identifier": "com.marcusrosado.anibeam.source",
+    "subtitle": "Anibeam for iPhone",
+    "description": "Anibeam for iPhone, and Anibeam Nightly, the newest build from main, side by side. Add this source and both show up in your library, each new build as an update.",
+    "icon": "img/icon.png",
+}
+APPS = {
     "stable": {
-        "name": "AniBeam",
-        "identifier": "com.marcusrosado.anibeam.source",
-        "subtitle": "AniBeam for iPhone",
-        "description": "Releases of AniBeam for iPhone. Add this source and AniBeam shows up in your library with each new release as an update.",
+        "name": "Anibeam",
+        "bundle_id": "com.marcusrosado.anibeam",
         "app_subtitle": "Browse and play your anime library",
         "icon": "img/icon.png",
     },
     "nightly": {
-        "name": "AniBeam Nightly",
-        "identifier": "com.marcusrosado.anibeam.source.nightly",
-        "subtitle": "The newest AniBeam for iPhone, built from main",
-        "description": "The newest AniBeam builds for iPhone, built from main and less polished than a release. Newer releases appear here too.",
-        "app_subtitle": "Nightly build of AniBeam",
+        "name": "Anibeam Nightly",
+        "bundle_id": "com.marcusrosado.anibeam.nightly",
+        "app_subtitle": "Nightly build of Anibeam",
         # The website's nightly mark: rsvg-convert -w 512 -h 512 img/logo-nightly.svg
         # -o img/icon-nightly.png after the logo changes.
         "icon": "img/icon-nightly.png",
     },
 }
-APP_DESCRIPTION = ("AniBeam browses and plays your anime library, keeps your AniList and MyAnimeList "
-                   "progress in step, and talks to AniBeam on your computer.")
+# nightly.yml names a nightly's IPA with this prefix once it is built with the nightly bundle id.
+NIGHTLY_IPA = "AniBeam-Nightly-"
+APP_DESCRIPTION = ("Anibeam browses and plays your anime library, keeps your AniList and MyAnimeList "
+                   "progress in step, and talks to Anibeam on your computer.")
 
 
 def deployment_target():
@@ -73,7 +84,7 @@ def version_of(tag):
     return m.group(1), build
 
 
-def entries(releases, kinds, min_os):
+def entries(releases, channel, min_os):
     out = []
     for r in releases:
         if r.get("draft"):
@@ -82,9 +93,10 @@ def entries(releases, kinds, min_os):
         if not v:
             continue
         nightly = "-nightly." in r["tag_name"]
-        if ("nightly" if nightly else "stable") not in kinds:
+        if nightly != (channel == "nightly"):
             continue
-        ipa = next((a for a in r["assets"] if a["name"].endswith(".ipa")), None)
+        ipa = next((a for a in r["assets"] if a["name"].endswith(".ipa")
+                    and (not nightly or a["name"].startswith(NIGHTLY_IPA))), None)
         if not ipa:
             continue
         entry = {
@@ -103,28 +115,30 @@ def entries(releases, kinds, min_os):
     return out
 
 
-def feed(channel, versions):
-    c = CHANNELS[channel]
+def feed(versions):
     apps = []
-    if versions:
+    for channel in ("stable", "nightly"):
+        c = APPS[channel]
+        if not versions[channel]:
+            continue
         apps.append({
             "name": c["name"],
-            "bundleIdentifier": BUNDLE_ID,
+            "bundleIdentifier": c["bundle_id"],
             "developerName": "marcusbandit",
             "subtitle": c["app_subtitle"],
             "localizedDescription": APP_DESCRIPTION,
             "iconURL": f"{BASE}/{c['icon']}",
             "category": "entertainment",
-            "versions": versions,
+            "versions": versions[channel],
             "appPermissions": {"entitlements": [], "privacy": privacy()},
         })
     return {
-        "name": c["name"],
-        "identifier": c["identifier"],
-        "sourceURL": f"{BASE}/altstore/{channel}.json",
-        "subtitle": c["subtitle"],
-        "description": c["description"],
-        "iconURL": f"{BASE}/{c['icon']}",
+        "name": SOURCE["name"],
+        "identifier": SOURCE["identifier"],
+        "sourceURL": f"{BASE}/altstore/source.json",
+        "subtitle": SOURCE["subtitle"],
+        "description": SOURCE["description"],
+        "iconURL": f"{BASE}/{SOURCE['icon']}",
         "website": BASE,
         "nsfw": False,
         "apps": apps,
@@ -136,9 +150,6 @@ def write(site, releases):
     out = Path(site, "altstore")
     out.mkdir(parents=True, exist_ok=True)
     min_os = deployment_target()
-    counts = {}
-    for channel, kinds in (("stable", {"stable"}), ("nightly", {"stable", "nightly"})):
-        versions = entries(releases, kinds, min_os)
-        counts[channel] = len(versions)
-        (out / f"{channel}.json").write_text(json.dumps(feed(channel, versions), indent=2) + "\n")
-    print(f"altstore: stable {counts['stable']} versions, nightly {counts['nightly']} versions")
+    versions = {c: entries(releases, c, min_os) for c in APPS}
+    (out / "source.json").write_text(json.dumps(feed(versions), indent=2) + "\n")
+    print(f"altstore: stable {len(versions['stable'])} versions, nightly {len(versions['nightly'])} versions")

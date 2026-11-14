@@ -14,6 +14,10 @@ on:
       version:
         type: string
         default: ''
+      # A nightly builds as AniBeam Nightly with its own bundle id, beside the release (#944).
+      nightly:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,6 +26,7 @@ env:
   CARGO_TERM_COLOR: always
   # The version the IPA ships as, 2.4.3 or 2.4.3-nightly.20261113.41; empty builds Cargo.toml's.
   ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
+  ANIBEAM_NIGHTLY: ${{ inputs.nightly && '1' || '' }}
   # The project's AniList and MAL registrations, so the phone signs in with one tap.
   ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
   ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
