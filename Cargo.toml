@@ -29,3 +29,11 @@ rusqlite_migration = "2.6"
 
 [profile.release]
 debug = 1
+
+# A build to hand test on a machine (#927): the release build without debug info, into
+# target/tester/, so the binary is small to copy. Built with the anibeam package's `dev-qml`
+# feature it loads the QML from disk when ANIBEAM_QML_DIR is set, so a QML-only change needs no
+# build at all. Never shipped.
+[profile.tester]
+inherits = "release"
+debug = 0
