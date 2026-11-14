@@ -7,15 +7,15 @@ use std::collections::HashMap;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::images;
-use crate::library::Library;
-use crate::library::cards;
-use crate::library::snapshot::Snapshot;
-use crate::library::sort;
-use crate::prefs;
-use crate::time;
+use crate::Library;
+use crate::cards;
+use crate::snapshot::Snapshot;
+use crate::sort;
+use anibeam_contract::*;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_net::images;
 
 /// A film to the tabs: the folder was classified as one, or the match says
 /// the title is one. Carried from `MetadataTab.tsx`'s `isMovie`.
@@ -55,7 +55,7 @@ pub(crate) struct Loaded {
 /// same state generation when a shell has turned the cache on
 /// (`Core::set_snapshot_cache`). A list, the rail and the pool reading in
 /// one beat with different arguments then pay for one snapshot.
-pub(crate) struct KeptLoad {
+pub struct KeptLoad {
     generation: u64,
     at: std::time::Instant,
     loaded: Loaded,
@@ -324,10 +324,10 @@ pub fn set_hidden_many(
         .read(|c| cards::cards_for(c, &images_dir, series))?;
     let n = cards.len();
     let plain = match (cards.as_slice(), hidden) {
-        ([one], true) => crate::words!("core-library-hid-one", title = &one.title),
-        ([one], false) => crate::words!("core-library-back-one", title = &one.title),
-        (_, true) => crate::words!("core-library-hid-many", count = n),
-        (_, false) => crate::words!("core-library-back-many", count = n),
+        ([one], true) => anibeam_contract::words!("core-library-hid-one", title = &one.title),
+        ([one], false) => anibeam_contract::words!("core-library-back-one", title = &one.title),
+        (_, true) => anibeam_contract::words!("core-library-hid-many", count = n),
+        (_, false) => anibeam_contract::words!("core-library-back-many", count = n),
     };
     let what = if hidden { "hidden" } else { "shown" };
     services.bus.say(
@@ -381,8 +381,10 @@ pub fn set_episode_count(
         None => format!("{title}'s episode count cleared"),
     };
     let said = match count {
-        Some(n) => crate::words!("core-library-episode-count-set", title = &title, count = n),
-        None => crate::words!("core-library-episode-count-cleared", title = &title),
+        Some(n) => {
+            anibeam_contract::words!("core-library-episode-count-set", title = &title, count = n)
+        }
+        None => anibeam_contract::words!("core-library-episode-count-cleared", title = &title),
     };
     services.bus.say(
         Level::Info,

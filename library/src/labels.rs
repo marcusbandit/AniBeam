@@ -3,7 +3,7 @@
 //! drift. Carried from src/shared/extraLabels.ts.
 
 use super::classifier::format_number;
-use crate::contract::ExtraKind;
+use anibeam_contract::ExtraKind;
 
 pub fn extra_code(kind: ExtraKind) -> &'static str {
     match kind {
@@ -69,7 +69,7 @@ pub fn episode_code(season: Option<u32>, number: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::ExtraKind;
+    use anibeam_contract::ExtraKind;
 
     #[test]
     fn codes_and_labels() {

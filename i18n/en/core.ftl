@@ -974,7 +974,7 @@ core-transfer-wrong-format = not an { $format } document
 
 core-transfer-imported = Loaded your library from the file.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = no file { $id } in the library
@@ -1008,7 +1008,7 @@ core-library-watched-removed =
        *[trash] moved to the trash
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1036,7 +1036,7 @@ core-library-runs-span = { $first } to { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } and { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = an episode number runs from 0 to 10000
 core-library-fix-season-range = a season runs up to 200
@@ -1054,7 +1054,7 @@ core-library-fixed =
        *[other] Fixed how { $count } files of { $title } are read.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = Hid { $title }.
@@ -1064,12 +1064,12 @@ core-library-back-many = { $count } shows are back.
 core-library-episode-count-set = { $title } now has { $count } episodes.
 core-library-episode-count-cleared = Cleared the episode count of { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Cleared the schedule notes of { $title }.
 core-library-schedule-saved = Saved { $count } schedule notes for { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = a source path must be absolute
 core-library-source-exists = already a source
@@ -1115,7 +1115,7 @@ core-library-scan-done =
         }{ $removed } missing
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.

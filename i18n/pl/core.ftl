@@ -1004,7 +1004,7 @@ core-transfer-wrong-format = to nie jest dokument { $format }
 
 core-transfer-imported = Wczytano bibliotekę z pliku.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = brak pliku { $id } w bibliotece
@@ -1044,7 +1044,7 @@ core-library-watched-removed =
        *[trash] przeniesiono do kosza
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1076,7 +1076,7 @@ core-library-runs-span = { $first } do { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } i { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = numer odcinka mieści się w zakresie od 0 do 10000
 core-library-fix-season-range = sezon może mieć numer najwyżej 200
@@ -1098,7 +1098,7 @@ core-library-fixed =
        *[other] { $title }: poprawiono odczyt { $count } plików.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = Ukryto { $title }.
@@ -1108,12 +1108,12 @@ core-library-back-many = Przywrócono seriale: { $count }.
 core-library-episode-count-set = { $title } ma teraz odcinków: { $count }.
 core-library-episode-count-cleared = Wyczyszczono liczbę odcinków { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Wyczyszczono notatki harmonogramu { $title }.
 core-library-schedule-saved = Zapisano notatki harmonogramu dla { $title }: { $count }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = ścieżka źródła musi być bezwzględna
 core-library-source-exists = to już jest źródło
@@ -1165,7 +1165,7 @@ core-library-scan-done =
         }brakuje: { $removed }
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.

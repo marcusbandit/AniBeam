@@ -10,18 +10,18 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::contract::*;
-use crate::i18n::tr;
-use crate::library::Library;
-use crate::library::{cards, history, readings};
-use crate::time;
+use crate::Library;
+use crate::{cards, history, readings};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::time;
 
 /// One file row as a fix needs it.
-pub(crate) struct Row {
+pub struct Row {
     id: u64,
-    pub(crate) series: u64,
+    pub series: u64,
     path: String,
-    pub(crate) reading: FileReading,
+    pub reading: FileReading,
     key: String,
 }
 
@@ -56,7 +56,7 @@ fn row(tx: &Transaction, file: u64) -> Result<Option<Row>, CoreError> {
 }
 
 /// The file row at `path`, whichever series holds it; a path is one file.
-pub(crate) fn row_at(tx: &Transaction, path: &str) -> Result<Option<Row>, CoreError> {
+pub fn row_at(tx: &Transaction, path: &str) -> Result<Option<Row>, CoreError> {
     Ok(tx
         .query_row(&format!("{ROW} WHERE path = ?1"), params![path], read_row)
         .optional()?)
@@ -64,10 +64,7 @@ pub(crate) fn row_at(tx: &Transaction, path: &str) -> Result<Option<Row>, CoreEr
 
 /// The `was` stored with the fix at `path`: None when the path has no fix, Some(None)
 /// when its `was` does not read as a reading this build can hold.
-pub(crate) fn stored_was(
-    tx: &Transaction,
-    path: &str,
-) -> Result<Option<Option<FileReading>>, CoreError> {
+pub fn stored_was(tx: &Transaction, path: &str) -> Result<Option<Option<FileReading>>, CoreError> {
     let was: Option<String> = tx
         .query_row(
             "SELECT was FROM file_fixes WHERE path = ?1",
@@ -84,7 +81,7 @@ pub(crate) fn stored_was(
 
 /// Writes `target` onto `row` when it reads otherwise, and answers the move its history
 /// has to make, for `history::follow` once every row carries its new key.
-pub(crate) fn retarget(
+pub fn retarget(
     tx: &Transaction,
     row: &Row,
     target: &FileReading,
@@ -102,7 +99,7 @@ pub(crate) fn retarget(
 
 /// A reading the library can hold: a real episode number, a season and an
 /// index of sane size.
-pub(crate) fn check(reading: &FileReading) -> Result<(), CoreError> {
+pub fn check(reading: &FileReading) -> Result<(), CoreError> {
     match *reading {
         FileReading::Episode { number, season } => {
             if !number.is_finite() || !(0.0..=10_000.0).contains(&number) {
@@ -261,9 +258,9 @@ pub fn fix_files(
             format!("{n} files")
         };
         let said = if undo {
-            crate::words!("core-library-fix-undone", count = n, title = &title)
+            anibeam_contract::words!("core-library-fix-undone", count = n, title = &title)
         } else {
-            crate::words!("core-library-fixed", count = n, title = &title)
+            anibeam_contract::words!("core-library-fixed", count = n, title = &title)
         };
         library.services.bus.say(
             Level::Info,
@@ -290,7 +287,7 @@ pub fn fix_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::Store;
+    use anibeam_foundation::store::Store;
 
     fn setup() -> (tempfile::TempDir, std::sync::Arc<Store>, u64, Vec<u64>) {
         let dir = tempfile::tempdir().unwrap();

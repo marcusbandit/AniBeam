@@ -859,7 +859,7 @@ core-transfer-wrong-format = não é um documento { $format }
 
 core-transfer-imported = Sua biblioteca foi carregada do arquivo.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = nenhum arquivo { $id } na biblioteca
 core-library-file-elsewhere-not-removed = o arquivo { $id } pertence a outra série, então nada foi removido
@@ -907,7 +907,7 @@ core-library-watched-removed =
         }
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     O único arquivo aqui é lido como { $read ->
@@ -929,7 +929,7 @@ core-library-fix-numbered-on = Os episódios { $from } parecem os { $to } deste 
 core-library-runs-span = { $first } a { $last }
 core-library-runs-list = { $init } e { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = um número de episódio vai de 0 a 10000
 core-library-fix-season-range = uma temporada vai até 200
@@ -946,7 +946,7 @@ core-library-fixed =
        *[other] Corrigida a leitura de { $count } arquivos de { $title }.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } ocultada.
 core-library-back-one = { $title } voltou.
@@ -955,12 +955,12 @@ core-library-back-many = { $count } séries voltaram.
 core-library-episode-count-set = { $title } agora tem { $count } episódios.
 core-library-episode-count-cleared = Contagem de episódios de { $title } apagada.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Notas de programação de { $title } apagadas.
 core-library-schedule-saved = { $count } notas de programação salvas para { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = o caminho de uma fonte precisa ser absoluto
 core-library-source-exists = já é uma fonte
@@ -1002,7 +1002,7 @@ core-library-scan-done =
         }{ $removed } sumidas
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = sem resposta em { $span }
 core-library-agent-stopped-code = parou com o código { $code }

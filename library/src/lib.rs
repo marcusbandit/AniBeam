@@ -17,7 +17,7 @@ pub mod delete;
 pub mod detail;
 pub mod fixes;
 pub mod franchises;
-pub(crate) mod history;
+pub mod history;
 pub(crate) mod hostview;
 pub mod labels;
 pub mod readings;
@@ -34,5 +34,5 @@ pub mod trash;
 pub mod walk;
 pub mod watcher;
 
-pub(crate) use team::Incoming;
+pub use team::Incoming;
 pub use team::Library;

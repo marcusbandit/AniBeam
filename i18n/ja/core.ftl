@@ -817,7 +817,7 @@ core-transfer-wrong-format = { $format }形式のファイルではありませ�
 
 core-transfer-imported = ファイルからライブラリを読み込みました。
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = ライブラリにファイル{ $id }はありません
@@ -842,7 +842,7 @@ core-library-watched-removed =
        *[trash] ゴミ箱に移動しました
     }。
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -863,7 +863,7 @@ core-library-runs-span = { $first }〜{ $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init }、{ $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 話数は0〜10000の範囲です
 core-library-fix-season-range = シーズンは200までです
@@ -873,7 +873,7 @@ core-library-file-elsewhere-not-fixed = ファイル{ $id }は別の作品のも
 core-library-fix-undone = { $title }のファイル{ $count }個を、名前からの読み取りに戻しました。
 core-library-fixed = { $title }のファイル{ $count }個の読み取り方を修正しました。
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = { $title }を非表示にしました。
@@ -883,12 +883,12 @@ core-library-back-many = { $count }作品を再表示しました。
 core-library-episode-count-set = { $title }の話数を{ $count }話にしました。
 core-library-episode-count-cleared = { $title }の話数をクリアしました。
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = { $title }の放送予定メモをクリアしました。
 core-library-schedule-saved = { $title }の放送予定メモを{ $count }件保存しました。
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = フォルダのパスは絶対パスにしてください
 core-library-source-exists = すでに追加されています
@@ -924,7 +924,7 @@ core-library-scan-done =
         }見つからない作品{ $removed }件
     }。
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.

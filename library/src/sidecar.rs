@@ -3,12 +3,12 @@
 
 use std::path::Path;
 
-use crate::contract::Sidecar;
+use anibeam_contract::Sidecar;
 
 pub const SUBTITLE_EXTENSIONS: [&str; 4] = ["srt", "vtt", "ass", "ssa"];
 
 pub fn is_subtitle(name: &str) -> bool {
-    crate::foundation::names::has_extension(name, &SUBTITLE_EXTENSIONS)
+    anibeam_foundation::names::has_extension(name, &SUBTITLE_EXTENSIONS)
 }
 
 /// The part between the video's base name and the subtitle extension: the
@@ -69,7 +69,7 @@ pub fn match_sidecars(video_path: &Path, candidates: &[String]) -> Vec<Sidecar> 
 /// A file's sidecar subtitles, off the JSON column they live in. A row that
 /// does not parse is a file with no sidecars rather than a card or a
 /// session that cannot be built.
-pub(crate) fn sidecars_of(raw: &str) -> Vec<Sidecar> {
+pub fn sidecars_of(raw: &str) -> Vec<Sidecar> {
     match serde_json::from_str::<Vec<Sidecar>>(raw) {
         Ok(v) => v,
         Err(e) => {

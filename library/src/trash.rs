@@ -13,7 +13,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::contract::*;
+use anibeam_contract::*;
 
 /// One path offered for the trash, and where it came from.
 #[derive(Clone, Debug, PartialEq)]
@@ -31,11 +31,14 @@ pub enum Candidate {
 /// A refusal of the whole request, `why` naming the catalog message that says what is
 /// wrong with `path`.
 fn refuse(path: &str, why: &str) -> CoreError {
-    CoreError::invalid("files", crate::i18n::tr(why, &[("path", path.into())]))
+    CoreError::invalid(
+        "files",
+        anibeam_contract::i18n::tr(why, &[("path", path.into())]),
+    )
 }
 
 fn clean(path: &str) -> PathBuf {
-    PathBuf::from(crate::paths::trim_separators(path.trim()))
+    PathBuf::from(anibeam_foundation::paths::trim_separators(path.trim()))
 }
 
 fn has_parent_step(p: &Path) -> bool {

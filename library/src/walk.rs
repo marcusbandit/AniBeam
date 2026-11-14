@@ -17,9 +17,9 @@ use super::classifier::{
 use super::labels::extra_label;
 use super::sidecar::{is_subtitle, match_sidecars};
 use super::{BRACKETS, SPACES};
-use crate::contract::ExtraKind;
-use crate::contract::{CoreError, SeriesKind, Sidecar};
-use crate::foundation::names::{is_video, title_key};
+use anibeam_contract::ExtraKind;
+use anibeam_contract::{CoreError, SeriesKind, Sidecar};
+use anibeam_foundation::names::{is_video, title_key};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScannedFile {
@@ -442,7 +442,10 @@ fn file_meta(p: &Path) -> (u64, i64) {
         .map(|m| {
             (
                 m.len(),
-                m.modified().ok().map(crate::time::to_secs).unwrap_or(0),
+                m.modified()
+                    .ok()
+                    .map(anibeam_foundation::time::to_secs)
+                    .unwrap_or(0),
             )
         })
         .unwrap_or((0, 0))

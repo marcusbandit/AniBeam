@@ -5,11 +5,11 @@
 
 use rusqlite::{Connection, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::library::cards;
-use crate::library::schedule_text::{SPAN_MAX, fold, parse};
-use crate::time as clock;
+use crate::cards;
+use crate::schedule_text::{SPAN_MAX, fold, parse};
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time as clock;
 
 /// The highest episode number a note may name.
 const EPISODE_MAX: u32 = 10_000;
@@ -195,12 +195,12 @@ pub fn set_notes(
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let (said, what) = if count == 0 {
         (
-            crate::words!("core-library-schedule-cleared", title = &title),
+            anibeam_contract::words!("core-library-schedule-cleared", title = &title),
             format!("{title}'s schedule notes cleared"),
         )
     } else {
         (
-            crate::words!("core-library-schedule-saved", count = count, title = &title),
+            anibeam_contract::words!("core-library-schedule-saved", count = count, title = &title),
             format!("{title}'s schedule set by hand"),
         )
     };

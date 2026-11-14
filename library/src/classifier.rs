@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::contract::ExtraKind;
+use anibeam_contract::ExtraKind;
 
 use super::{BRACKETS, SPACES};
 
@@ -604,7 +604,7 @@ pub fn file_episode_title(file_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::ExtraKind;
+    use anibeam_contract::ExtraKind;
 
     fn ep(name: &str) -> Classified {
         classify(name)

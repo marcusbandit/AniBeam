@@ -8,16 +8,16 @@ use std::path::Path;
 use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
-use crate::contract::*;
-use crate::foundation::titles;
-use crate::foundation::watch::MARK_FRACTION;
-use crate::i18n::tr;
-use crate::library::cards::{next_up, upcoming};
-use crate::library::classifier;
-use crate::library::labels;
-use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
-use crate::store::sql::placeholders;
-use crate::time;
+use crate::cards::{next_up, upcoming};
+use crate::classifier;
+use crate::labels;
+use crate::snapshot::{FileRow, MediaRow, Snapshot, season_of};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
+use anibeam_foundation::watch::MARK_FRACTION;
 
 impl Snapshot {
     /// The series page. Takes the connection because the character images
@@ -195,7 +195,7 @@ impl Snapshot {
                     if row.provider == Some(Provider::Tvmaze) {
                         d.to_string()
                     } else {
-                        crate::html::plain_text(d)
+                        anibeam_foundation::html::plain_text(d)
                     }
                 })
                 .unwrap_or_default(),
@@ -394,7 +394,7 @@ impl Snapshot {
             // The list kept on this device is the owner's alone, as `load_for` reads it.
             let kept_here: Option<String> = r
                 .get::<_, Option<String>>(8)?
-                .filter(|_| self.profile == crate::foundation::trust::OWNER);
+                .filter(|_| self.profile == anibeam_foundation::trust::OWNER);
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
@@ -961,7 +961,7 @@ mod tests {
         // Two people on one host (#852): the owner watches the recommended
         // show, the friend has finished it. Each page says its reader's own.
         let dir = tempfile::tempdir().unwrap();
-        let store = crate::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let store = anibeam_foundation::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
         let sql = |batch: &'static str| {
             store
                 .write(move |c| {
@@ -993,7 +993,7 @@ mod tests {
                 })
                 .unwrap()
         };
-        let owner = crate::foundation::trust::OWNER;
+        let owner = anibeam_foundation::trust::OWNER;
         assert_eq!(status(owner, Tracker::Anilist), Some(ListStatus::Watching));
         assert_eq!(status(2, Tracker::Anilist), Some(ListStatus::Completed));
         assert_eq!(status(owner, Tracker::Mal), Some(ListStatus::Paused));
