@@ -188,9 +188,17 @@ QtObject {
         target: Door
         function onPreferencesChanged() { root.savedName = "" }
         function onRoomChanged(room) {
+            var was = root.info ? String(root.info.fetch || "") : ""
             root.info = room && room.code ? room : null
-            if (!root.info) root.episode = null
-            else root.settle()
+            if (!root.info) { root.episode = null; return }
+            root.settle()
+            // A Get media that stopped short says why in the line the core logged with it,
+            // which the bridge sets before it passes the room on
+            if (root.info.fetch === "Failed" && was !== "Failed") {
+                var l = Door.latestPlain
+                if (l && l.plain_words) root.error = words.t(l.plain_words.id, l.plain_words.args)
+                else if (l && l.plain) root.error = String(l.plain)
+            }
         }
         function onRoomEpisode(ep, series, file) {
             root.episode = { episode: ep, series: series, file: file }
