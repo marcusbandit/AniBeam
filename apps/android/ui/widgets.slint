@@ -222,13 +222,29 @@ export component Button inherits Rectangle {
     }
 }
 
+// Buttons side by side while they fit, the ones past the edge wrapping onto a line under
+// them on a narrow screen, so a row of buttons never runs off its pane (#874). ListRow's
+// shape: its height is its own layout's at the width set outright, so a row that wraps
+// inside an `if` or a `for` still pushes what follows it down.
+export component ButtonRow inherits Rectangle {
+    height: row.preferred-height;
+    row := FlexboxLayout {
+        width: parent.width;
+        spacing: Theme.gap;
+        alignment: start;
+        @children
+    }
+}
+
 // Words that act, quieter than a button: the second choice under a primary one.
 export component TextButton inherits Rectangle {
     in property <string> text;
     in property <color> ink: Theme.dim;
+    // The widest it grows; a longer label is cut short with an ellipsis.
+    in property <length> widest: 10000px;
     callback clicked();
     height: 10 * Theme.unit;
-    min-width: label.preferred-width + 6 * Theme.unit;
+    min-width: Math.min(label.preferred-width + 6 * Theme.unit, root.widest);
     border-radius: self.height / 2;
     background: touch.pressed ? Theme.raised : transparent;
     label := Text {
@@ -238,6 +254,7 @@ export component TextButton inherits Rectangle {
         font-family: Theme.strong-face;
         horizontal-alignment: center;
         vertical-alignment: center;
+        overflow: elide;
     }
     touch := TouchArea { clicked => { root.clicked(); } }
 }

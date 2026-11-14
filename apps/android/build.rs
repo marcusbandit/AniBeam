@@ -42,7 +42,13 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=GLESv2");
         println!("cargo:rerun-if-changed={}", dir.join(".tag").display());
     }
-    slint_build::compile("ui/app.slint").unwrap();
+    // A debug build, the tests' among them, keeps each element's name, which lets a test find
+    // the elements of a page laid out headless and measure them (#874).
+    let mut config = slint_build::CompilerConfiguration::new();
+    if std::env::var("PROFILE").as_deref() == Ok("debug") {
+        config = config.with_debug_info(true);
+    }
+    slint_build::compile_with_config("ui/app.slint", config).unwrap();
 }
 
 include!("../../core/src/changelog_files.rs");

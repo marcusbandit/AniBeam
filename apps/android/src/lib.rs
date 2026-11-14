@@ -30,6 +30,8 @@ mod listmove;
 mod local;
 mod look;
 mod mpv;
+#[cfg(test)]
+mod narrow;
 mod notes;
 mod notify;
 mod phone;
