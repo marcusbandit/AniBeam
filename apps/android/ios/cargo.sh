@@ -4,8 +4,9 @@
 # Slint's scripts/build_for_ios_with_cargo.bash, for arm64 only.
 set -euo pipefail
 
-# Xcode's PATH has no cargo; rustup's reads the checkout's rust-toolchain.toml.
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH:$HOME/.cargo/bin"
+# Xcode's PATH has no cargo. Rustup's comes first, ahead of any Homebrew or other cargo in
+# /usr/local/bin, so the checkout's rust-toolchain.toml and its iOS targets apply.
+export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 app="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ "${LLVM_TARGET_TRIPLE_SUFFIX:-}" == "-simulator" ]]; then
