@@ -429,7 +429,7 @@ core-core-guest-not-interested = Non mi interessa su quel computer è la lista d
 core-core-guest-recommended = i consigli su quel computer sono basati sulla lista del suo proprietario
 core-core-nothing-picked = niente di scelto
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } non è un provider di abbinamento
 core-prefs-provider-count = { $provider } compare { $count } volte; ogni provider compare una volta
@@ -507,7 +507,7 @@ core-update-cannot-copy = Impossibile copiare la nuova app accanto a questa: { $
 core-calendar-season-episode = { $title } - Stagione { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = nessuna cartella home
 

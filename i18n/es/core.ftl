@@ -429,7 +429,7 @@ core-core-guest-not-interested = No me interesa en ese ordenador es la lista de 
 core-core-guest-recommended = las recomendaciones de ese ordenador salen de la lista de su dueño
 core-core-nothing-picked = no hay nada elegido
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } no es un proveedor de reconocimiento
 core-prefs-provider-count = { $provider } aparece { $count } veces; cada proveedor aparece una vez
@@ -507,7 +507,7 @@ core-update-cannot-copy = No se pudo copiar la nueva app junto a esta: { $error 
 core-calendar-season-episode = { $title } - Temporada { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no hay carpeta personal
 

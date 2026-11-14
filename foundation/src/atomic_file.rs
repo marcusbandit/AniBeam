@@ -20,8 +20,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
-use crate::contract::CoreError;
 use crate::sync::recover;
+use anibeam_contract::CoreError;
 
 /// A write that failed, with the path the failing step touched: the parent folder, the
 /// temporary sibling or the target.

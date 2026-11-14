@@ -1,7 +1,7 @@
 //! The one transport every team sends through (#854): a request, a response, and the
 //! trait the real client and the tests' fake both answer. `Services` holds it, so it
 //! lives below the network team, which holds the real client, the fake, the limiter and
-//! one client per provider over it, and hands these names on as `crate::net::...`.
+//! one client per provider over it, and hands these names on as `anibeam_core::net::...`.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// A boxed future, so `Http` stays object safe and the fake and the real
 /// client can be swapped behind one `Arc<dyn Http>`.

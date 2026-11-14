@@ -417,7 +417,7 @@ core-core-guest-not-interested = 那台电脑上的“不感兴趣”是它主�
 core-core-guest-recommended = 那台电脑上的推荐是根据它主人的列表生成的
 core-core-nothing-picked = 未选择任何内容
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } 不是匹配服务
 core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服务只能出现一次
@@ -495,7 +495,7 @@ core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $err
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 没有主目录
 

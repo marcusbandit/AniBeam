@@ -2,7 +2,7 @@ use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 use std::sync::LazyLock;
 
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// Each migration is one SQL file under sql/, listed in order. A migration
 /// that has reached main is never edited; a fix is the next migration.

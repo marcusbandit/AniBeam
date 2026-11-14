@@ -447,7 +447,7 @@ core-core-guest-not-interested = そのパソコンの「興味なし」は持�
 core-core-guest-recommended = そのパソコンのおすすめは、持ち主のリストから作られています
 core-core-nothing-picked = 何も選ばれていません
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }は照合元ではありません
 core-prefs-provider-count = { $provider }が{ $count }回出てきます。各照合元は1回だけにしてください
@@ -531,7 +531,7 @@ core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピー
 core-calendar-season-episode = { $title } - シーズン{ $season } 第{ $number }話
 core-calendar-episode = { $title } - 第{ $number }話
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = ホームディレクトリがありません
 

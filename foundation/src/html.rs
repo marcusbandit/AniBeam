@@ -118,7 +118,7 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
 /// The character a named entity stands for, its name without `&` and `;`: the names
 /// TVmaze's summaries, AniList's descriptions and feed fields use. `nbsp` is a plain
 /// space, since the text is for reading.
-pub(crate) fn entity(name: &str) -> Option<char> {
+pub fn entity(name: &str) -> Option<char> {
     Some(match name {
         "amp" => '&',
         "lt" => '<',

@@ -1,12 +1,13 @@
 //! Anibeam's core: every rule, used by every shell through the contract in
-//! `contract`, which hands on the `anibeam-contract` crate below it.
+//! `contract`, which hands on the `anibeam-contract` crate below it. The
+//! plumbing every team shares is the `anibeam-foundation` crate, handed on
+//! here module by module under the names it had in the core.
 
 pub(crate) mod act;
 pub mod agent;
 pub mod aired;
 pub mod airing_now;
 pub(crate) mod app;
-pub mod atomic_file;
 pub mod calendar;
 pub mod cast;
 pub mod changelog;
@@ -19,9 +20,7 @@ pub mod first_run;
 pub mod foundation;
 pub mod franchise;
 pub mod host;
-pub mod html;
 pub mod images;
-pub mod jobs;
 pub mod launch;
 pub mod library;
 pub mod metadata;
@@ -31,26 +30,23 @@ pub mod metadata;
 #[doc(hidden)]
 pub mod net;
 pub mod paths;
-pub(crate) mod percent;
 pub mod phone;
 pub mod playback;
-pub mod prefs;
 pub mod presence;
 pub(crate) mod process;
-pub mod profiles;
 pub mod recommended;
-pub mod redact;
 pub mod releases;
 pub mod repos;
 pub mod room;
 pub mod stats;
-pub mod store;
-pub(crate) mod sync;
-pub mod time;
 pub mod trackers;
 pub mod transfer;
 pub mod update;
-pub mod words;
+
+pub use anibeam_foundation::{
+    atomic_file, html, jobs, prefs, profiles, redact, store, time, words,
+};
+pub(crate) use anibeam_foundation::{percent, sync};
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

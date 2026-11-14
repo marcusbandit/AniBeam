@@ -11,8 +11,8 @@ use std::time::Duration;
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use tokio::sync::oneshot;
 
-use crate::contract::CoreError;
 use crate::sync::recover;
+use anibeam_contract::CoreError;
 
 type Task = Box<dyn FnOnce(&mut Connection) + Send + 'static>;
 

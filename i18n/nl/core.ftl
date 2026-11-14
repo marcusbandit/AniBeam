@@ -432,7 +432,7 @@ core-core-guest-not-interested = Niet interessant op die computer is de lijst va
 core-core-guest-recommended = de aanbevelingen op die computer komen uit de lijst van de eigenaar
 core-core-nothing-picked = niets gekozen
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is geen bron voor koppelen
 core-prefs-provider-count = { $provider } staat er { $count } keer in; elke bron staat er één keer in
@@ -510,7 +510,7 @@ core-update-cannot-copy = Kon de nieuwe app niet naast deze kopiëren: { $error 
 core-calendar-season-episode = { $title } - Seizoen { $season } Aflevering { $number }
 core-calendar-episode = { $title } - Aflevering { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = geen thuismap
 

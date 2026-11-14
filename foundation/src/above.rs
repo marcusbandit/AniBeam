@@ -13,11 +13,11 @@ use std::sync::{Arc, OnceLock, Weak};
 pub struct Above<T: ?Sized>(OnceLock<Weak<T>>);
 
 impl<T: ?Sized> Above<T> {
-    pub(crate) fn set(&self, team: Weak<T>) {
+    pub fn set(&self, team: Weak<T>) {
         let _ = self.0.set(team);
     }
 
-    pub(crate) fn get(&self) -> Option<Arc<T>> {
+    pub fn get(&self) -> Option<Arc<T>> {
         self.0.get().and_then(Weak::upgrade)
     }
 }
