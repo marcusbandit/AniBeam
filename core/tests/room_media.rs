@@ -456,7 +456,7 @@ fn every_source_off_says_so_rather_than_that_none_has_it() {
             .unwrap();
     }
     room_with_ben_missing(&ann, &ben);
-    room(ben.core.call(Call::RoomGetMedia)).unwrap();
+    room(ben.core.call(Call::RoomGetMedia { whole_show: false })).unwrap();
     common::wait_for(
         &ben.c,
         |e| {
