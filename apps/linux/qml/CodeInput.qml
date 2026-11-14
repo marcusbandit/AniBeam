@@ -1,6 +1,7 @@
 // A room code: six boxes, one character each. Whatever is typed or pasted becomes the code,
 // upper case, from the room alphabet only; a pasted room link gives its code. The boxes draw a
-// hidden one line input, so typing, paste, backspace and selection behave as in any field.
+// one line input that fills them with its own text and caret transparent, so typing, paste,
+// backspace and selection behave as in any field, and a screen reader finds a text field.
 import QtQuick
 
 Item {
@@ -10,9 +11,14 @@ Item {
     property int length: 6
     property bool invalid: false
     property string accessibleName: ""
-    // All boxes filled
+    // All boxes filled, once per code: more keys on a full field send nothing again
     signal filled(string code)
+    // Return or Enter, unless the code in the boxes already went out as `filled`
+    signal submitted(string code)
+    // The full code `filled` last sent, so neither signal sends it twice
+    property string sent: ""
 
+    // The core's room::code::ALPHABET and LEN (room/src/code.rs); change them there and here
     readonly property string alphabet: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     readonly property real gap: theme.space(2)
     readonly property real box: Math.min(theme.controlHeight * 1.25, (width - gap * (length - 1)) / length)
@@ -22,12 +28,12 @@ Item {
 
     function focusInput() { input.forceActiveFocus() }
 
-    // Upper case, the part after "room/" of a link, and nothing outside the alphabet
+    // A link's code read the way the relay reads one (code_from_query in room/src/page.rs): no
+    // query or fragment, the last path segment that is not empty. Then upper case, and nothing
+    // outside the alphabet. A stray "/" typed after a few characters leaves them alone.
     function clean(raw) {
-        var s = String(raw).toUpperCase()
-        var at = s.lastIndexOf("ROOM/")
-        if (at >= 0) s = s.slice(at + 5)
-        else if (s.indexOf("/") >= 0) s = s.slice(s.lastIndexOf("/") + 1)
+        var parts = String(raw).split(/[?#]/)[0].split("/").filter(function(p) { return p.trim() !== "" })
+        var s = parts.length ? parts[parts.length - 1].toUpperCase() : ""
         var out = ""
         for (var i = 0; i < s.length && out.length < root.length; i++)
             if (root.alphabet.indexOf(s[i]) >= 0) out += s[i]
@@ -36,8 +42,16 @@ Item {
 
     TextInput {
         id: input
-        // Off screen in effect: the boxes draw it
-        width: 1; height: 1; opacity: 0
+        objectName: "code-input-text"
+        // The size of the boxes and fully opaque, so the accessibility tree reports it as
+        // showing; its text, caret and selection are transparent, since the boxes draw them
+        anchors.fill: parent
+        verticalAlignment: TextInput.AlignVCenter
+        clip: true
+        color: "transparent"
+        selectionColor: "transparent"
+        selectedTextColor: "transparent"
+        cursorDelegate: Item {}
         Accessible.role: Accessible.EditableText
         Accessible.name: theme.spokenName(root.accessibleName, "", root, "")
         inputMethodHints: Qt.ImhUppercaseOnly | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
@@ -45,8 +59,10 @@ Item {
         onTextChanged: {
             var c = root.clean(text)
             if (c !== text) { text = c; cursorPosition = c.length; return }
-            if (c.length === root.length) root.filled(c)
+            if (c.length < root.length) root.sent = ""
+            else if (c !== root.sent) { root.sent = c; root.filled(c) }
         }
+        onAccepted: if (text !== root.sent) root.submitted(text)
         // The caret always sits at the end: boxes fill left to right
         onCursorPositionChanged: if (cursorPosition !== text.length) cursorPosition = text.length
     }

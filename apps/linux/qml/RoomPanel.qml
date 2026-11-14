@@ -218,8 +218,7 @@ Item {
                             accessibleName: words.t("room-panel-join-label")
                             invalid: room.error !== "" && room.busy === ""
                             onFilled: root.joinTyped()
-                            Keys.onReturnPressed: root.joinTyped()
-                            Keys.onEnterPressed: root.joinTyped()
+                            onSubmitted: root.joinTyped()
                         }
                         Button {
                             id: joinButton

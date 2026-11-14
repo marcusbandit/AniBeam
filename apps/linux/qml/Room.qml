@@ -243,13 +243,10 @@ QtObject {
             var now = root.info.episode ? String(root.info.episode.episode_key) : ""
             if (root.episode && String(root.episode.episode.episode_key) !== now) root.episode = null
             root.settle()
-            // A Get media that stopped short says why in the line the core logged with it,
-            // which the bridge sets before it passes the room on
-            if (root.info.fetch === "Failed" && was !== "Failed") {
-                var l = Door.latestPlain
-                if (l && l.plain_words) root.error = words.t(l.plain_words.id, l.plain_words.args)
-                else if (l && l.plain) root.error = String(l.plain)
-            }
+            // A Get media that stopped short carries why in the room itself
+            var why = root.info.fetch_error
+            if (root.info.fetch === "Failed" && was !== "Failed" && why && why.id)
+                root.error = words.t(why.id, why.args || {})
         }
         function onRoomEpisode(ep, series, file) {
             root.episode = { episode: ep, series: series, file: file }

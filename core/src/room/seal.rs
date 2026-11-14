@@ -1,6 +1,8 @@
-//! Sealed payloads between two members of a room (#889). The relay passes them
-//! on and can read none of them: not a torrent link, an info hash, a file name
-//! or a match id.
+//! Sealed payloads between two members of a room (#889). A relay that only
+//! passes messages on can read none of them: not a torrent link, an info hash,
+//! a file name or a match id. The public keys come through the relay's member
+//! list unchecked, though, so a relay that swapped them could open and change
+//! what it passes on; authenticating them is #982.
 //!
 //! Each member makes a key pair when it joins a room and says the public half in
 //! its hello, so the room's member list carries everyone's. Two members agree on

@@ -168,6 +168,8 @@ struct Active {
     gate: RoomGate,
     gate_at: f64,
     started: bool,
+    /// Why the last Get media stopped short, until the next one starts.
+    fetch_error: Option<Words>,
     tx: mpsc::UnboundedSender<ClientMsg>,
     cancel: CancellationToken,
     kick: Arc<Notify>,
@@ -195,6 +197,7 @@ impl Active {
             fetch: self.fetch,
             can_fetch: self.can_fetch(),
             gate: self.gate,
+            fetch_error: self.fetch_error.clone(),
         })
     }
 
@@ -274,6 +277,7 @@ impl Active {
         }
         self.fetch = RoomFetch::Idle;
         self.progress = None;
+        self.fetch_error = None;
     }
 
     fn is_host(&self) -> bool {
@@ -662,6 +666,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         gate: RoomGate::Off,
         gate_at: 0.0,
         started: false,
+        fetch_error: None,
         tx,
         cancel: cancel.clone(),
         kick: kick.clone(),
@@ -1425,7 +1430,8 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             }
             ServerMsg::Sealed { from, data } => {
                 // Sealed to this member's key by the sender's: one that does not
-                // open was not for this pair, or was changed on the way
+                // open was not for this pair, or was changed on the way. The
+                // sender's key is the one the relay listed, unchecked (#982)
                 let theirs = a
                     .members
                     .iter()
@@ -1563,6 +1569,7 @@ mod tests {
             gate: RoomGate::Off,
             gate_at: 0.0,
             started: false,
+            fetch_error: None,
             tx,
             cancel: CancellationToken::new(),
             kick: Arc::new(Notify::new()),

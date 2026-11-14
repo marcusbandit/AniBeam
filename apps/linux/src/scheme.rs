@@ -1,7 +1,7 @@
 //! `anibeam://` links reach the app (#888). An install made before rooms wrote its
 //! desktop entry without `x-scheme-handler/anibeam`, so a browser's "Open in Anibeam"
 //! went nowhere. At launch the user's own entry for this app gets the MimeType line
-//! and a `%U` on its Exec when they are missing, the desktop's cache is rebuilt, and
+//! and a `%U` on its Exec when it has no field code for files or links yet, the desktop's cache is rebuilt, and
 //! the entry becomes the handler when nothing else is.
 //!
 //! Only the user's entry is touched (`$XDG_DATA_HOME/applications`), never a system
@@ -27,8 +27,10 @@ pub fn ensure() {
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 const MIME: &str = "x-scheme-handler/anibeam";
 
-/// `entry` with the MimeType and the `%U` it needs, or `None` when it has both. Only the
-/// `[Desktop Entry]` group changes; actions and other groups keep their own Exec lines.
+/// `entry` with the MimeType and the `%U` it needs, or `None` when it has both. An Exec
+/// that already takes files or links (`%f`, `%F`, `%u` or `%U`) stays as it is: the spec
+/// allows one of the four. Only the `[Desktop Entry]` group changes; actions and other
+/// groups keep their own Exec lines.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 fn patch(entry: &str) -> Option<String> {
     let mut out: Vec<String> = Vec::new();
@@ -65,7 +67,10 @@ fn patch(entry: &str) -> Option<String> {
                 changed = true;
             }
         } else if let Some(value) = line.strip_prefix("Exec=") {
-            if ["%u", "%U"].iter().any(|code| value.contains(code)) {
+            if ["%f", "%F", "%u", "%U"]
+                .iter()
+                .any(|code| value.contains(code))
+            {
                 out.push(line.to_owned());
             } else {
                 out.push(format!("Exec={} %U", value.trim_end()));
@@ -207,15 +212,7 @@ pub(crate) mod linux {
             return;
         };
         if let Some(patched) = patch(&text) {
-            // Written beside it and moved over it, so a reader never sees half a file
-            let tmp = dir.join(format!(".{name}.anibeam-tmp"));
-            let written = std::fs::write(&tmp, patched).is_ok()
-                && std::fs::metadata(&path)
-                    .and_then(|m| std::fs::set_permissions(&tmp, m.permissions()))
-                    .is_ok()
-                && std::fs::rename(&tmp, &path).is_ok();
-            if !written {
-                let _ = std::fs::remove_file(&tmp);
+            if !replace(&path, &patched) {
                 return;
             }
             quiet(Command::new("update-desktop-database").arg(&dir));
@@ -238,6 +235,28 @@ pub(crate) mod linux {
         let dir = applications()?;
         let name = pick(&dir)?;
         Some(dir.join(name))
+    }
+
+    /// Puts `text` in the file at `path`: written beside the file and moved over it, so a
+    /// reader never sees half a file. An entry that is a symlink (into a dotfiles checkout,
+    /// say) gets its target written and stays a link.
+    pub(super) fn replace(path: &Path, text: &str) -> bool {
+        let Ok(target) = path.canonicalize() else {
+            return false;
+        };
+        let (Some(dir), Some(name)) = (target.parent(), target.file_name()) else {
+            return false;
+        };
+        let tmp = dir.join(format!(".{}.anibeam-tmp", name.to_string_lossy()));
+        let written = std::fs::write(&tmp, text).is_ok()
+            && std::fs::metadata(&target)
+                .and_then(|m| std::fs::set_permissions(&tmp, m.permissions()))
+                .is_ok()
+            && std::fs::rename(&tmp, &target).is_ok();
+        if !written {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        written
     }
 
     pub(crate) fn quiet(cmd: &mut Command) {
@@ -272,9 +291,18 @@ mod tests {
             patched,
             "[Desktop Entry]\nExec=env A=1 /x/anibeam %U\nMimeType=x-scheme-handler/anibeam;\n"
         );
+        for code in ["%f", "%F", "%u", "%U"] {
+            assert_eq!(
+                patch(&format!(
+                    "[Desktop Entry]\nExec=anibeam {code}\nMimeType=x-scheme-handler/anibeam;\n"
+                )),
+                None,
+                "{code}"
+            );
+        }
         assert_eq!(
-            patch("[Desktop Entry]\nExec=anibeam %u\nMimeType=x-scheme-handler/anibeam;\n"),
-            None
+            patch("[Desktop Entry]\nExec=anibeam %F\n").unwrap(),
+            "[Desktop Entry]\nExec=anibeam %F\nMimeType=x-scheme-handler/anibeam;\n"
         );
     }
 
@@ -298,6 +326,36 @@ mod tests {
             "[Desktop Entry]\nExec=a %U\nMimeType=x-scheme-handler/anibeam;\n\n[Desktop Action play]\nExec=a --play\n"
         );
         assert_eq!(patch("Name=x\n"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_symlinked_entry_stays_a_link() {
+        let home = tempfile::tempdir().unwrap();
+        let dotfiles = home.path().join("dotfiles");
+        let apps = home.path().join("applications");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        std::fs::create_dir_all(&apps).unwrap();
+        let real = dotfiles.join("entry.desktop");
+        let link = apps.join("entry.desktop");
+        std::fs::write(&real, OLD).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(linux::replace(&link, "patched\n"));
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "patched\n");
+        assert_eq!(std::fs::read_dir(&apps).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(&dotfiles).unwrap().count(), 1);
+
+        let plain = apps.join("plain.desktop");
+        std::fs::write(&plain, OLD).unwrap();
+        assert!(linux::replace(&plain, "again\n"));
+        assert_eq!(std::fs::read_to_string(&plain).unwrap(), "again\n");
+        assert!(!linux::replace(&apps.join("missing.desktop"), "x"));
     }
 
     #[test]
