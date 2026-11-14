@@ -730,12 +730,18 @@ component EditKey inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     callback clicked();
-    width: 9 * Theme.unit;
-    height: self.width;
-    border-radius: self.height / 2;
-    background: touch.pressed ? Theme.pressed : transparent;
+    // The disc is drawn at 9 units; the key takes touches the field's full height.
+    width: 10 * Theme.unit;
     accessible-role: button;
     accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    Rectangle {
+        width: 9 * Theme.unit;
+        height: self.width;
+        border-radius: self.height / 2;
+        background: touch.pressed ? Theme.pressed : transparent;
+    }
     Image {
         width: 4.5 * Theme.unit;
         height: self.width;
@@ -758,9 +764,12 @@ component LineInput inherits Rectangle {
     in property <string> font-family: Theme.face;
     in property <bool> secret;
     out property <bool> has-focus: input.has-focus;
+    // How much of the width the keys take while they show, so a placeholder can stop short.
+    out property <length> keys-width: root.editing ? keys.preferred-width + Theme.unit : 0;
     callback accepted(string);
     callback edited(string);
-    property <bool> editing: input.has-focus;
+    // A field too narrow to keep some text beside the keys goes without them.
+    property <bool> editing: input.has-focus && root.width - keys.preferred-width >= 24 * Theme.unit;
     // Where the cursor last stood in the text, so a box that narrows or widens (the keys
     // coming and going) can bring it back into view.
     property <length> cursor-x;
@@ -774,7 +783,7 @@ component LineInput inherits Rectangle {
     }
     box := Rectangle {
         x: 0;
-        width: root.width - (root.editing ? keys.preferred-width + Theme.unit : 0);
+        width: root.width - root.keys-width;
         height: root.height;
         clip: true;
         changed width => { root.follow(); }
@@ -800,10 +809,8 @@ component LineInput inherits Rectangle {
     keys := HorizontalLayout {
         visible: root.editing;
         x: root.width - self.preferred-width;
-        y: (root.height - self.height) / 2;
         width: self.preferred-width;
-        height: 9 * Theme.unit;
-        alignment: end;
+        height: root.height;
         EditKey {
             icon: @image-url("icons/text-select.svg");
             label: Tr.t("common-select-all");
@@ -847,7 +854,7 @@ export component SearchField inherits Rectangle {
     property <length> text-x: Theme.unit * 12.5;
     if root.text == "": Text {
         x: root.text-x;
-        width: parent.width - self.x - Theme.pad;
+        width: parent.width - self.x - max(Theme.pad, input.keys-width);
         height: parent.height;
         text: root.placeholder;
         color: Theme.faint;
@@ -904,7 +911,7 @@ export component Field inherits Rectangle {
     border-color: input.has-focus ? Theme.line-strong : Theme.line;
     if root.text == "": Text {
         x: Theme.unit * 4;
-        width: parent.width - 8 * Theme.unit;
+        width: parent.width - 8 * Theme.unit - input.keys-width;
         height: parent.height;
         text: root.placeholder;
         color: Theme.faint;
