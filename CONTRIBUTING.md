@@ -47,9 +47,12 @@ in one part of the window can name it instead: `home`, `library`, `series`,
 `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
 `apps/android` is the phone app for Android and the iPhone alike, so its scope
-says which phones a change reaches: `android` for Android only, `ios` for the
-iPhone only, and `phone core` for both, which is any change to the shared
-phone code: `feat(phone core): the phone app opens on the iPhone`.
+says whose code a change touches. `android` covers Android's own files only:
+`android/` and `src/platform/android.rs`. `ios` covers the iPhone's own only:
+`ios/`, `src/platform/ios.rs` and the `*ios*` scripts. Anything else in
+`apps/android` builds into both phones and is `phone core`, even when only one
+phone shows the difference: `feat(phone core): the phone app builds and opens
+on the iPhone simulator`.
 
 A `docs` change names the document: `readme`, `contributing`, `context`,
 `spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
