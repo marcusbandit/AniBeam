@@ -1241,6 +1241,7 @@ core-room-service = 一緒に見る
 core-room-not-found = そのコードのルームはありません。終了した可能性があります。
 core-room-full = そのルームは満員です。
 core-room-proto = そのリレーは別のバージョンのルームを使っています。参加するには{ -app-name }を更新してください。
+core-room-needs-episode = そのリレーはルームを作るのにエピソードが必要です。プレーヤーから作るか、リレーを更新してください。
 core-room-unreachable = リレーに接続できませんでした: { $message }
 core-room-refused = リレーに拒否されました: { $message }
 core-room-not-in = ルームに参加していません。

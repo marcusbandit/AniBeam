@@ -1275,6 +1275,7 @@ core-room-service = Samen kijken
 core-room-not-found = Geen kamer met die code. Misschien is hij gesloten.
 core-room-full = Die kamer is vol.
 core-room-proto = Die relay draait een andere versie van kamers. Werk { -app-name } bij om mee te doen.
+core-room-needs-episode = Die relay heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler of werk de relay bij.
 core-room-unreachable = Kon de relay niet bereiken: { $message }
 core-room-refused = De relay weigerde: { $message }
 core-room-not-in = Je zit niet in een kamer.

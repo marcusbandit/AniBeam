@@ -783,9 +783,12 @@ pub enum Call {
     CastStatus,
     // Watch together (#846). One room at a time; every room call answers `Room`.
     /// Makes a room on the relay for the episode `session` plays, and joins it as the
-    /// host with that session attached. A room already joined is left first.
+    /// host with that session attached. With no session the room starts with nothing
+    /// picked (#922), and the first session the host attaches picks its episode. A
+    /// room already joined is left first.
     RoomCreate {
-        session: u64,
+        #[serde(default)]
+        session: Option<u64>,
     },
     /// Joins a room by its code, as typed: case, spaces and dashes do not matter. What to
     /// open follows as `RoomEpisode`. A room already joined is left first.
@@ -793,7 +796,8 @@ pub enum Call {
         code: String,
     },
     /// The playback session the room drives from now on. From the host, a session on
-    /// another episode moves the whole room there.
+    /// another episode moves the whole room there, and in a room with nothing picked
+    /// yet it picks that episode.
     RoomAttach {
         session: u64,
     },
@@ -813,7 +817,18 @@ pub enum Call {
     /// host's app answers, sealed so the relay cannot read it, with the torrent it came
     /// from or the release's name, and this core downloads it through the downloads
     /// engine. `RoomChanged` follows it: `fetch`, then everyone's view of the progress.
-    RoomGetMedia,
+    /// With `whole_show`, the rest of the show follows the episode (#922): the same
+    /// release group and resolution as the host's, through the downloads engine.
+    RoomGetMedia {
+        #[serde(default)]
+        whole_show: bool,
+    },
+    /// The host's answer to the ready gate (#922): start for everyone now, or with
+    /// `wait`, start on its own once everyone has the episode open.
+    RoomStart {
+        #[serde(default)]
+        wait: bool,
+    },
 }
 
 /// The variant name of a call, for messages: the externally tagged JSON key.

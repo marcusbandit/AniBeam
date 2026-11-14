@@ -1274,6 +1274,7 @@ core-room-service = Gemeinsam schauen
 core-room-not-found = Kein Raum hat diesen Code. Vielleicht wurde er geschlossen.
 core-room-full = Dieser Raum ist voll.
 core-room-proto = Dieses Relay nutzt eine andere Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
+core-room-needs-episode = Dieses Relay braucht eine Folge, um einen Raum zu starten. Starte ihn im Player oder aktualisiere das Relay.
 core-room-unreachable = Relay nicht erreichbar: { $message }
 core-room-refused = Das Relay hat abgelehnt: { $message }
 core-room-not-in = Du bist in keinem Raum.

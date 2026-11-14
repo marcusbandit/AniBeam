@@ -21,6 +21,7 @@ pub fn of_session(s: &Session) -> proto::EpisodeRef {
         episode_title: s.episode_title.clone(),
         duration: s.duration,
         opening_start: s.opening_start,
+        film: s.is_film,
     }
 }
 
@@ -37,6 +38,7 @@ pub fn to_contract(e: &proto::EpisodeRef) -> EpisodeRef {
         episode_title: e.episode_title.clone(),
         duration: e.duration,
         opening_start: e.opening_start,
+        film: e.film,
     }
 }
 
@@ -179,6 +181,7 @@ mod tests {
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         }
     }
 

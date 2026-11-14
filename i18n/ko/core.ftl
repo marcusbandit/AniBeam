@@ -1181,6 +1181,7 @@ core-room-service = 함께 보기
 core-room-not-found = 그 코드의 방이 없어요. 닫혔을 수 있어요.
 core-room-full = 방이 꽉 찼어요.
 core-room-proto = 그 릴레이는 다른 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+core-room-needs-episode = 그 릴레이는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들거나 릴레이를 업데이트하세요.
 core-room-unreachable = 릴레이에 연결하지 못했어요: { $message }
 core-room-refused = 릴레이가 거부했어요: { $message }
 core-room-not-in = 방에 있지 않아요.

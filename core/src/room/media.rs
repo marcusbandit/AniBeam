@@ -18,6 +18,13 @@
 //! library to take the file in, points the show at the room's match when it
 //! arrived as a show the library did not know, and says `RoomEpisode` with the
 //! file, so the shell opens it and the member is ready.
+//!
+//! A member can ask for the whole show with the episode (#922). The episode
+//! goes first as above; once its torrent is in the client, the member's sources
+//! are searched for the rest of the host's release, the same group and
+//! resolution, and every episode this library lacks goes to the downloads
+//! engine in one pick, which rolls a long show the way any pick does. A film,
+//! or an episode that came as a batch, has no rest to fetch.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -123,7 +130,7 @@ impl Why {
 // ---------------------------------------------------------------------------
 
 /// `RoomGetMedia`: seals an ask to the host's app and waits for its answer.
-pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
+pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomInfo>, CoreError> {
     let mut out = Vec::new();
     let info = {
         let mut slot = playback.rooms.lock();
@@ -146,6 +153,7 @@ pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
             .ok_or_else(|| error("cannot_fetch", crate::words!("core-room-media-cannot")))?;
         a.send(ClientMsg::Seal { to: host, data });
         let id = begin(a, RoomFetch::Asking);
+        a.whole_show = whole_show && !e.film;
         // An app from before Get media, or one gone quiet, never answers
         let (owner, serial) = (a.playback.clone(), a.serial);
         playback.services.handle.spawn(async move {
@@ -252,6 +260,7 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, offer: Offer) {
         let Some((id, token)) = a.fetching.clone() else {
             return;
         };
+        let whole_show = a.whole_show;
         a.fetch = if offer.magnet.is_some() {
             RoomFetch::Downloading
         } else {
@@ -275,14 +284,14 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, offer: Offer) {
                 a.changed(),
             )
         };
-        Some((id, token, e, say))
+        Some((id, token, e, say, whole_show))
     };
-    let Some((id, token, e, say)) = started else {
+    let Some((id, token, e, say, whole_show)) = started else {
         return;
     };
     emit(&playback.services, vec![say]);
     playback.services.handle.spawn(async move {
-        let run = fetch(&owner, serial, id, &offer, &e);
+        let run = fetch(&owner, serial, id, &offer, &e, whole_show);
         let result = tokio::select! {
             _ = token.cancelled() => return,
             r = run => r,
@@ -361,6 +370,7 @@ async fn fetch(
     id: u64,
     offer: &Offer,
     e: &proto::EpisodeRef,
+    whole_show: bool,
 ) -> Result<(), Why> {
     let local = playback
         .services
@@ -380,6 +390,8 @@ async fn fetch(
     };
     let known = crate::foundation::magnet::hash(&release.link);
     let title = release.title.clone();
+    // A batch brings the rest of the show with it
+    let rest = whole_show && !facts::read(&release).batch;
     let since = crate::time::now_secs();
     let (tell, told) = oneshot::channel();
     let options = DownloadOptions {
@@ -405,6 +417,14 @@ async fn fetch(
     let added = told
         .await
         .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
+    if rest {
+        let (playback, offer, e) = (playback.clone(), offer.clone(), e.clone());
+        playback
+            .services
+            .handle
+            .clone()
+            .spawn(async move { rest_of_show(&playback, &offer, &e, local.series).await });
+    }
     // A link the client fetches itself names no hash up front: the torrent is
     // then found by its name among those added since
     let hash = known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()));
@@ -741,6 +761,139 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
 }
 
 // ---------------------------------------------------------------------------
+// The rest of the show (#922)
+// ---------------------------------------------------------------------------
+
+/// Searches the member's sources for the rest of the host's release and hands
+/// every episode this library lacks to the downloads engine. What it cannot
+/// find is only logged: the room's episode is what the member waits on.
+async fn rest_of_show(
+    playback: &Arc<Playback>,
+    offer: &Offer,
+    e: &proto::EpisodeRef,
+    series: Option<u64>,
+) {
+    let have = series
+        .and_then(|s| playback.services.store.read(move |c| held(c, s)).ok())
+        .unwrap_or_default();
+    let backend = match DownloadsBackend::open(&playback.downloads).await {
+        Ok(b) => b,
+        Err(err) => {
+            tracing::warn!("room: no sources for the rest of the show: {err}");
+            return;
+        }
+    };
+    let mut found = Vec::new();
+    for query in show_queries(offer, e) {
+        match backend.search(&query, None, true).await {
+            Ok(raw) => {
+                found = rest(&raw.items, offer, e, &have);
+                if !found.is_empty() {
+                    tracing::info!("room: the rest of the show with {query:?}");
+                    break;
+                }
+            }
+            Err(err) => tracing::debug!("room: search {query:?} failed: {err}"),
+        }
+    }
+    if found.is_empty() {
+        tracing::info!("room: no more of the host's release in the sources");
+        return;
+    }
+    let count = found.len();
+    let options = DownloadOptions {
+        series,
+        provider: found[0].source.clone(),
+        ..Default::default()
+    };
+    match downloads::download_telling(
+        &playback.downloads,
+        found,
+        Some(e.series_title.clone()),
+        options,
+        None,
+    ) {
+        Ok(_) => tracing::info!("room: {count} more episodes of the show handed on"),
+        Err(err) => tracing::warn!("room: the rest of the show did not start: {err}"),
+    }
+}
+
+/// The episode numbers a library series holds.
+fn held(c: &rusqlite::Connection, series: u64) -> Result<Vec<f64>, CoreError> {
+    let mut stmt =
+        c.prepare("SELECT number FROM files WHERE series_id = ?1 AND number IS NOT NULL")?;
+    let rows = stmt
+        .query_map([series as i64], |r| r.get::<_, f64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// What to search for the whole show: the group and the show as the release
+/// names it, then the show alone, then the room's title. No episode number.
+pub fn show_queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
+    let mut show = titles::show_name(&offer.name);
+    if show.is_empty() {
+        show = titles::show_name(&offer.file);
+    }
+    let mut out = Vec::new();
+    if !show.is_empty() {
+        if !offer.group.is_empty() {
+            out.push(format!("{} {show}", offer.group.trim()));
+        }
+        out.push(show);
+    }
+    out.push(e.series_title.trim().to_string());
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|q| !q.trim().is_empty() && seen.insert(q.to_lowercase()));
+    out
+}
+
+/// The other episodes of the host's release among search results: single
+/// episodes of the same show, group and resolution (each where the host's
+/// release names one), the room's episode and those already `have` left out,
+/// one release per episode, the best seeded, in episode order.
+pub fn rest(items: &[Release], offer: &Offer, e: &proto::EpisodeRef, have: &[f64]) -> Vec<Release> {
+    let mut show = titles::show_name(&offer.name);
+    if show.is_empty() {
+        show = titles::show_name(&offer.file);
+    }
+    let season = facts::read_name(&offer.name).season;
+    let near = |a: f64, b: f64| (a - b).abs() < 0.01;
+    let mut best: std::collections::BTreeMap<i64, &Release> = std::collections::BTreeMap::new();
+    for r in items {
+        let f = facts::read(r);
+        let Some(n) = f.episode.filter(|_| !f.batch) else {
+            continue;
+        };
+        if e.number.is_some_and(|w| near(w, n)) || have.iter().any(|h| near(*h, n)) {
+            continue;
+        }
+        if !offer.group.is_empty() && !f.group.eq_ignore_ascii_case(&offer.group) {
+            continue;
+        }
+        if !offer.resolution.is_empty() && !f.resolution.eq_ignore_ascii_case(&offer.resolution) {
+            continue;
+        }
+        if !show.is_empty() && !titles::show_name(&r.title).eq_ignore_ascii_case(&show) {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (season, f.season)
+            && a != b
+        {
+            continue;
+        }
+        let key = (n * 100.0).round() as i64;
+        let better = best
+            .get(&key)
+            .is_none_or(|old| r.seeders.unwrap_or(0) > old.seeders.unwrap_or(0));
+        if better {
+            best.insert(key, r);
+        }
+    }
+    best.into_values().cloned().collect()
+}
+
+// ---------------------------------------------------------------------------
 // The host answers
 // ---------------------------------------------------------------------------
 
@@ -939,6 +1092,7 @@ mod tests {
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         }
     }
 
@@ -1069,6 +1223,38 @@ mod tests {
             release("[Lantern] Cowboy Bebop - 05 (480p)", &magnet(2)),
         ];
         assert_eq!(pick(&items, &host, &ep(5.0)), None);
+    }
+
+    #[test]
+    fn the_rest_of_the_show_is_the_host_s_release_without_what_is_here() {
+        let host = offer("[Lantern] Cowboy Bebop - 05 (1080p)");
+        let items = vec![
+            release("[Lantern] Cowboy Bebop - 01 (1080p)", &magnet(1)),
+            Release {
+                seeders: Some(40),
+                ..release("[Lantern] Cowboy Bebop - 02 (1080p)", &magnet(2))
+            },
+            Release {
+                seeders: Some(3),
+                ..release("[Lantern] Cowboy Bebop - 02 (1080p) [v2]", &magnet(3))
+            },
+            release("[Lantern] Cowboy Bebop - 03 (1080p)", &magnet(4)),
+            release("[Lantern] Cowboy Bebop - 05 (1080p)", &magnet(5)),
+            release("[Lantern] Cowboy Bebop - 06 (720p)", &magnet(6)),
+            release("[Other] Cowboy Bebop - 07 (1080p)", &magnet(7)),
+            release("[Lantern] Cowboy Bebop (01-26) (1080p) [Batch]", &magnet(8)),
+            release("[Lantern] Trigun - 08 (1080p)", &magnet(9)),
+            release("[Lantern] Cowboy Bebop - 09 (1080p)", &magnet(10)),
+        ];
+        let got: Vec<String> = rest(&items, &host, &ep(5.0), &[3.0])
+            .into_iter()
+            .map(|r| r.link)
+            .collect();
+        assert_eq!(got, vec![magnet(1), magnet(2), magnet(10)]);
+        assert_eq!(
+            show_queries(&host, &ep(5.0)),
+            vec!["Lantern Cowboy Bebop", "Cowboy Bebop"]
+        );
     }
 
     #[test]

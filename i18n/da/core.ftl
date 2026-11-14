@@ -1274,6 +1274,7 @@ core-room-service = Se sammen
 core-room-not-found = Intet rum har den kode. Det er måske lukket.
 core-room-full = Det rum er fuldt.
 core-room-proto = Det relæ kører en anden version af rum. Opdater { -app-name } for at gå ind i det.
+core-room-needs-episode = Det relæ skal have et afsnit for at starte et rum. Start det fra afspilleren, eller opdater relæet.
 core-room-unreachable = Kunne ikke nå relæet: { $message }
 core-room-refused = Relæet sagde nej: { $message }
 core-room-not-in = Du er ikke i et rum.

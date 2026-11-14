@@ -11,6 +11,10 @@
 //   is the room's episode.
 // - A name comes first: the core refuses Create and Join without one, so the action waits
 //   while the panel asks, and runs once the name is saved.
+// - A room can start with nothing picked (#922): Create without a session. The first episode
+//   the host opens picks it, the same way the host's next episode moves the room.
+// - The host's first play of an episode waits while someone is not ready (#922): the core
+//   holds the player and sets the gate, and startAnyway() or waitForEveryone() answers it.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -20,6 +24,8 @@ QtObject {
     property var info: null
     readonly property bool inRoom: info !== null
     readonly property bool host: inRoom && info.host === true
+    // Whether the host has picked what the room watches (#922)
+    readonly property bool picked: inRoom && info.episode !== null && info.episode !== undefined
     // "create" or "join" while one waits on the relay
     property string busy: ""
     // The last thing that went wrong, as a sentence that says what to do; cleared by the next try
@@ -82,9 +88,11 @@ QtObject {
         pending = p
         busy = kind
     }
+    // `session` is the player's, or null for a room with nothing picked yet
     function create(session) {
         if (busy !== "") return
         error = ""
+        if (session === undefined) session = null
         if (needsName) { waiting = { kind: "create", session: session }; return }
         callAsync("create", "RoomCreate", { session: session })
     }
@@ -124,9 +132,22 @@ QtObject {
     function nudgeOffset(d) { if (inRoom) setOffset(info.offset + d) }
     // Get media (#889): the host's app passes this member its torrent or its release, and the
     // core downloads it; the episode opens once it is in the library (RoomEpisode)
-    function getMedia() {
+    // With wholeShow the rest of the host's release follows the episode (#922)
+    function getMedia(wholeShow) {
         error = ""
-        var r = Door.call("RoomGetMedia", {})
+        var r = Door.call("RoomGetMedia", { whole_show: wholeShow === true })
+        if (r.error) { error = errorText(r.error); return }
+        if (r.reply && r.reply.room) info = r.reply.room
+    }
+    // Whether Get media asks this episode or the whole show first: a series' numbered
+    // episode does, a film or an extra does not
+    readonly property bool asksWholeShow: picked && !info.episode.film
+                                          && info.episode.number !== null && info.episode.number !== undefined
+    // The ready gate's two answers
+    function startAnyway() { gateAnswer(false) }
+    function waitForEveryone() { gateAnswer(true) }
+    function gateAnswer(wait) {
+        var r = Door.call("RoomStart", { wait: wait })
         if (r.error) { error = errorText(r.error); return }
         if (r.reply && r.reply.room) info = r.reply.room
     }
@@ -167,6 +188,7 @@ QtObject {
         if (!e) return ""
         if (e.kind === "Service") {
             var ids = { not_found: "room-error-not-found", full: "room-error-full", unreachable: "room-error-unreachable",
+                        needs_episode: "room-error-needs-episode",
                         refused: "room-error-refused", proto: "room-error-proto", not_in_room: "room-error-not-in-room",
                         cannot_fetch: "room-error-cannot-fetch" }
             if (ids[e.code]) return words.t(ids[e.code])

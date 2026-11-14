@@ -570,6 +570,7 @@ core-room-service = Watch together
 core-room-not-found = No room has that code. It may have closed.
 core-room-full = That room is full.
 core-room-proto = That relay runs another version of rooms. Update { -app-name } to join it.
+core-room-needs-episode = That relay needs an episode to start a room. Start it from the player, or update the relay.
 # $message is the network's own words.
 core-room-unreachable = Could not reach the relay: { $message }
 core-room-refused = The relay said no: { $message }
