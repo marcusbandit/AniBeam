@@ -27,6 +27,7 @@ use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::Finished;
 use crate::metadata::record::{self, StubWrite};
@@ -201,10 +202,10 @@ fn list_of(
 /// that began an AniList fetch made every page reload a network request.
 /// `refreshing` names a refresh that is already running, so a page can
 /// still say one is on its way.
-pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let list = core.store.read(|c| list(c, &images_dir))?;
-    let refreshing = core
+pub fn list_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| list(c, &images_dir))?;
+    let refreshing = services
         .jobs
         .list()
         .into_iter()
@@ -214,9 +215,9 @@ pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
 }
 
 /// `ListPlanning`: the planning list off the cache, at once.
-pub fn planning_call(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let list = core.store.read(|c| planning(c, &images_dir))?;
+pub fn planning_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| planning(c, &images_dir))?;
     Ok(Reply::Planning { list })
 }
 
@@ -228,7 +229,7 @@ pub const STALE_AFTER_SECS: i64 = 5 * 60;
 /// filled) or `force` says so, `Ok` when it is fresh or there is no account
 /// to ask. A refresh already running is handed back rather than doubled.
 pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
-    let (connected, fetched_at) = core.store.read(|c| {
+    let (connected, fetched_at) = core.services.store.read(|c| {
         Ok((
             is_connected(c)?,
             settings::get::<i64>(c, settings::WATCHING_FETCHED_AT)?,
@@ -278,13 +279,14 @@ struct Row {
 /// while one runs hands back the running job's id. Refuses only when there
 /// is no account to ask, which the call itself has already ruled out.
 pub fn start_refresh(core: &Arc<Core>) -> Result<u64, CoreError> {
-    if !core.store.read(is_connected)? {
+    if !core.services.store.read(is_connected)? {
         return Err(CoreError::NotConnected {
             tracker: Tracker::Anilist,
         });
     }
     let owner = core.clone();
     Ok(core
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshWatching, move |_| async move {
@@ -298,6 +300,7 @@ async fn run(core: Arc<Core>) -> Result<Finished, CoreError> {
 
 async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     let account = core
+        .services
         .store
         .write_async(move |c| accounts::load_row(c, Tracker::Anilist))
         .await?
@@ -324,7 +327,8 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     let covers = covers_of(&[ListStatus::Watching, ListStatus::Repeating]);
     let planned = covers_of(&[ListStatus::Planning]);
     let now = time::now_secs();
-    core.store
+    core.services
+        .store
         .tx_async(move |tx| write(tx, &rows, now, started))
         .await?;
     // Every watching cover before the job reports, so the page's posters
@@ -347,8 +351,9 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
         });
     }
 
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let list = core
+        .services
         .store
         .write_async(move |c| list(c, &images_dir))
         .await?;

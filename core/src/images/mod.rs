@@ -23,6 +23,7 @@ use tokio::sync::Semaphore;
 use crate::atomic_file;
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::net::{Http, HttpRequest};
@@ -630,13 +631,18 @@ async fn fetch_one(
 pub fn start_fill(core: &Arc<Core>) -> u64 {
     // A coalesced call is not a fill starting, so it must not reset the
     // gate the reads consult.
-    let coalesced = core.jobs.running(JobKind::FillImages).is_some();
+    let coalesced = core.services.jobs.running(JobKind::FillImages).is_some();
     let owner = core.clone();
     let id = core
+        .services
         .jobs
         .clone()
         .start(JobKind::FillImages, move |ctx| async move {
-            let urls = owner.store.write_async(|c| missing_urls(c)).await?;
+            let urls = owner
+                .services
+                .store
+                .write_async(|c| missing_urls(c))
+                .await?;
             let total = urls.len() as u64;
             let (mut fetched, mut failed) = (0u64, 0u64);
             let mut touched: HashSet<u64> = HashSet::new();
@@ -664,6 +670,7 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
                 if !arrived.is_empty() {
                     touched.extend(
                         owner
+                            .services
                             .store
                             .write_async(move |c| series_for_urls(c, &arrived))
                             .await?,
@@ -674,8 +681,9 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
             if !touched.is_empty() {
                 let mut ids: Vec<u64> = touched.into_iter().collect();
                 ids.sort_unstable();
-                let dir = owner.paths.images_dir();
+                let dir = owner.services.paths.images_dir();
                 let cards = owner
+                    .services
                     .store
                     .write_async(move |c| cards::cards_for(c, &dir, &ids))
                     .await?;
@@ -708,7 +716,7 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
 /// `GetStorage`: two counts off one table, answered off the reader
 /// connection rather than as a job.
 pub(crate) fn storage_call(core: &Core) -> Result<Reply, CoreError> {
-    let (image_count, image_bytes) = core.store.read(|c| core.images.storage(c))?;
+    let (image_count, image_bytes) = core.services.store.read(|c| core.images.storage(c))?;
     Ok(Reply::Storage {
         image_count,
         image_bytes,
@@ -717,9 +725,10 @@ pub(crate) fn storage_call(core: &Core) -> Result<Reply, CoreError> {
 
 /// Clear images: every row and every file, and a card for every matched
 /// series so a shell showing posters drops them at once.
-pub fn start_clear(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start_clear(services: &Arc<Services>) -> u64 {
+    let owner = services.clone();
+    services
+        .jobs
         .clone()
         .start(JobKind::ClearImages, move |ctx| async move {
             let removed = owner
@@ -774,7 +783,12 @@ pub fn start_clear(core: &Arc<Core>) -> u64 {
 pub(crate) async fn sweep_after(core: &Core, what: &str) {
     let cache = core.images.clone();
     let now = crate::time::now_secs();
-    match core.store.write_async(move |c| cache.sweep(c, now)).await {
+    match core
+        .services
+        .store
+        .write_async(move |c| cache.sweep(c, now))
+        .await
+    {
         Ok(report) => tracing::debug!(
             "image sweep after {what}: {} rows removed, {} evicted, {} files removed",
             report.removed_rows,

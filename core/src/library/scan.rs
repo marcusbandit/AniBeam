@@ -12,6 +12,7 @@ use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, pa
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
@@ -576,7 +577,7 @@ pub fn arm_settle(core: &Arc<Core>, series_id: u64) {
         previous.abort();
     }
     let weak = Arc::downgrade(core);
-    let handle = core.handle.spawn(async move {
+    let handle = core.services.handle.spawn(async move {
         tokio::time::sleep(SETTLE).await;
         let Some(core) = weak.upgrade() else { return };
         {
@@ -712,7 +713,10 @@ fn is_unique_violation(e: &rusqlite::Error) -> bool {
 
 pub fn list_sources_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::Sources {
-        sources: core.store.read(|c| list_sources(c, &core.library))?,
+        sources: core
+            .services
+            .store
+            .read(|c| list_sources(c, &core.library))?,
     })
 }
 
@@ -733,7 +737,7 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     let insert = path.clone();
     // The overlap check and the insert share one transaction, so two calls
     // racing each other cannot both find the tree free.
-    let id = core.store.tx(move |tx| {
+    let id = core.services.store.tx(move |tx| {
         // Two sources that overlap walk the same tree and both claim every
         // file in it: the second one's series hit `UNIQUE (kind, path)` and
         // fail the reconcile, and every full scan after that fails the same
@@ -778,7 +782,7 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
         series_count: 0,
         movie_folders: Vec::new(),
     };
-    core.bus.say(
+    core.services.bus.say(
         Level::Info,
         Stage::Library,
         crate::words!("core-library-source-added", folder = folder_of(&path)),
@@ -814,7 +818,7 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
     let path = normalise(path);
     let available = Path::new(&path).is_dir();
     let to = path.clone();
-    let from = core.store.tx(move |tx| {
+    let from = core.services.store.tx(move |tx| {
         let from: Option<String> = tx
             .query_row(
                 "SELECT path FROM sources WHERE id = ?1",
@@ -879,6 +883,7 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
         core.unwatch_source(&from);
     }
     let moved = core
+        .services
         .store
         .read(|c| load_source(c, &core.library, source))?
         .ok_or(CoreError::NotFound {
@@ -889,7 +894,7 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
         return Ok(Reply::Source { source: moved });
     }
     // Not a change a person made, so not one the activity log shows.
-    core.bus.debug(
+    core.services.bus.debug(
         Stage::Library,
         format!("source moved: {from} to {path}"),
         EventBody::SourceChanged {
@@ -904,7 +909,7 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
 /// Deletes the row; every series under it goes with it through the
 /// cascade, and both removals are announced.
 pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
-    let (path, ids) = core.store.tx(move |tx| {
+    let (path, ids) = core.services.store.tx(move |tx| {
         let path: Option<String> = tx
             .query_row(
                 "SELECT path FROM sources WHERE id = ?1",
@@ -930,14 +935,14 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
     core.unwatch_source(&path);
     let shows = ids.len();
     if !ids.is_empty() {
-        core.bus.info(
+        core.services.bus.info(
             Stage::Library,
             format!("source removed with {} series", ids.len()),
             EventBody::SeriesRemoved { ids },
         );
     }
     let folder = folder_of(&path);
-    core.bus.say(
+    core.services.bus.say(
         Level::Info,
         Stage::Library,
         if shows == 0 {
@@ -957,8 +962,8 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
 
 /// Drops a missing series for good, history and match included. A series
 /// still on disk is refused: the scan would only bring it back.
-pub fn forget_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let name = core.store.tx(move |tx| {
+pub fn forget_series(services: &Services, series: u64) -> Result<Reply, CoreError> {
+    let name = services.store.tx(move |tx| {
         let row: Option<(String, Option<i64>)> = tx
             .query_row(
                 "SELECT folder_name, missing_since FROM series WHERE id = ?1",
@@ -978,7 +983,7 @@ pub fn forget_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         tx.execute("DELETE FROM series WHERE id = ?1", params![series as i64])?;
         Ok(name)
     })?;
-    core.bus.say(
+    services.bus.say(
         Level::Info,
         Stage::Library,
         crate::words!("core-library-series-forgotten", name = &name),
@@ -1002,7 +1007,7 @@ pub fn scan(core: &Core, source: Option<u64>) -> Result<Reply, CoreError> {
 /// right now is refused rather than walked, so the series is never marked
 /// missing by a scan that could not look.
 pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let row: Option<(String, bool)> = core.store.read(|c| {
+    let row: Option<(String, bool)> = core.services.store.read(|c| {
         Ok(c.query_row(
             "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
             params![series as i64],
@@ -1031,7 +1036,7 @@ pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
     let mut there = Vec::new();
     let mut away = None;
     for &id in series {
-        let row: Option<(String, bool)> = core.store.read(|c| {
+        let row: Option<(String, bool)> = core.services.store.read(|c| {
             Ok(c.query_row(
                 "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
                 params![id as i64],
@@ -1076,7 +1081,8 @@ async fn set_available(
     path: &str,
     available: bool,
 ) -> Result<(), CoreError> {
-    core.store
+    core.services
+        .store
         .write_async(move |c| {
             c.execute(
                 "UPDATE sources SET available = ?2 WHERE id = ?1",
@@ -1086,6 +1092,7 @@ async fn set_available(
         })
         .await?;
     let Some((row_path, row_available)) = core
+        .services
         .store
         .write_async(move |c| source_row(c, source_id))
         .await?
@@ -1093,6 +1100,7 @@ async fn set_available(
         return Ok(());
     };
     let count = core
+        .services
         .store
         .write_async(move |c| series_count(c, source_id))
         .await?;
@@ -1171,7 +1179,7 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
     // written, and nobody would ever drain it. Asking again once the slot is
     // free is what closes that window; the queued scope is what the new job
     // walks.
-    if core.jobs.running(JobKind::Scan).is_none() {
+    if core.services.jobs.running(JobKind::Scan).is_none() {
         return spawn(core, ScanScope::Paths(Vec::new())).0;
     }
     id
@@ -1181,7 +1189,7 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
 /// the call above can hand it over twice without recursion.
 fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
     let owner = core.clone();
-    owner.jobs.clone().start_reporting(JobKind::Scan, {
+    owner.services.jobs.clone().start_reporting(JobKind::Scan, {
         let core = owner.clone();
         move |ctx| async move {
             let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
@@ -1201,7 +1209,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     all.dedup();
                     scope = ScanScope::Paths(all);
                 }
-                let plan = resolve(&core, &scope).await?;
+                let plan = resolve(&core.services, &scope).await?;
                 // Any other scope takes off the queue only what its own walk
                 // covers anyway, so a scan of a source does not leave a
                 // redundant follow-up pass behind it. What it does not cover
@@ -1296,6 +1304,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // is emptied by Forget or by RemoveSource.
                     if scanned.is_empty() {
                         let held = core
+                            .services
                             .store
                             .write_async(move |c| series_count(c, source_id))
                             .await?;
@@ -1333,6 +1342,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // problem: the pass carries on to the next rather than
                     // abandoning a library because one drive misbehaved.
                     let r = match core
+                        .services
                         .store
                         .tx_async(move |tx| {
                             reconcile_source(tx, source_id, &scanned, only.as_deref(), now)
@@ -1378,8 +1388,9 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                         .copied()
                         .collect();
                     if !touched.is_empty() {
-                        let dir = core.paths.images_dir();
+                        let dir = core.services.paths.images_dir();
                         let cards = core
+                            .services
                             .store
                             .write_async(move |c| cards::cards_for(c, &dir, &touched))
                             .await?;
@@ -1395,6 +1406,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
                     if !ids.is_empty() {
                         let unmatched = core
+                            .services
                             .store
                             .write_async(move |c| never_attempted(c, &ids))
                             .await?;
@@ -1454,8 +1466,8 @@ fn covered_by(plan: &Plan, path: &str) -> bool {
 /// Turns a scope into the sources to walk and the paths to limit the work
 /// to. A scoped scan still walks its source in full, since a folder's
 /// classification only makes sense in the source's context.
-async fn resolve(core: &Arc<Core>, scope: &ScanScope) -> Result<Plan, CoreError> {
-    let sources = core.store.write_async(|c| all_targets(c)).await?;
+async fn resolve(services: &Arc<Services>, scope: &ScanScope) -> Result<Plan, CoreError> {
+    let sources = services.store.write_async(|c| all_targets(c)).await?;
     let plan = match scope {
         ScanScope::All => Plan {
             targets: sources,
@@ -1472,7 +1484,7 @@ async fn resolve(core: &Arc<Core>, scope: &ScanScope) -> Result<Plan, CoreError>
         }
         ScanScope::Series(id) => {
             let id = *id;
-            let row: Option<(u64, String)> = core
+            let row: Option<(u64, String)> = services
                 .store
                 .write_async(move |c| {
                     Ok(c.query_row(

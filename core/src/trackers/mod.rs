@@ -7,11 +7,12 @@ pub mod local;
 pub mod move_up;
 pub mod oauth;
 pub mod on_hold;
-pub mod secrets;
 pub mod watching;
 pub mod writes;
 
-pub use secrets::{Secrets, StoreKind};
+/// Where the tokens live moved down to the foundation with `Services`, which
+/// holds it (#854); the shells and tests still name it here.
+pub use crate::foundation::secrets::{Secrets, StoreKind};
 
 /// How long one tracker request may take. Per request, never per call: the
 /// limiter's 429 schedule sits under this and keeps its own bounds, so a

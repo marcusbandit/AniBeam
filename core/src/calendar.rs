@@ -18,6 +18,7 @@ use crate::atomic_file;
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::Subscription;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::library::snapshot::{AiringRow, SeriesRow, Snapshot};
 use crate::prefs;
@@ -251,8 +252,9 @@ fn fold(line: &str) -> String {
     out
 }
 
-fn enabled(core: &Core) -> bool {
-    core.store
+fn enabled(services: &Services) -> bool {
+    services
+        .store
         .read(prefs::load_preferences)
         .map(|p| p.calendar_feed)
         .unwrap_or(false)
@@ -269,14 +271,14 @@ fn without_stamps(text: &str) -> String {
 
 /// Writes the file unless what is on disk already says the same. Ok(true)
 /// when it wrote.
-fn write_file(core: &Core) -> Result<bool, CoreError> {
-    let images_dir = core.paths.images_dir();
+fn write_file(services: &Services) -> Result<bool, CoreError> {
+    let images_dir = services.paths.images_dir();
     let now = time::now_secs();
-    let text = core.store.read(|c| {
+    let text = services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, time::now(), None)?;
         Ok(render(&entries(&snap, now), now))
     })?;
-    let target = core.paths.calendar_path();
+    let target = services.paths.calendar_path();
     if let Ok(old) = std::fs::read_to_string(&target)
         && without_stamps(&old) == without_stamps(&text)
     {
@@ -294,10 +296,10 @@ fn write_file(core: &Core) -> Result<bool, CoreError> {
 /// caches.
 pub(crate) fn write(core: &Core) {
     let _file = recover(&core.calendar.file);
-    if !enabled(core) {
+    if !enabled(&core.services) {
         return;
     }
-    match write_file(core) {
+    match write_file(&core.services) {
         Ok(wrote) => {
             core.calendar.failing.store(false, Ordering::SeqCst);
             if wrote {
@@ -306,7 +308,7 @@ pub(crate) fn write(core: &Core) {
         }
         Err(e) => {
             if !core.calendar.failing.swap(true, Ordering::SeqCst) {
-                core.bus.warn(
+                core.services.bus.warn(
                     Stage::System,
                     format!("the calendar file could not be written: {e}"),
                     EventBody::Notice,
@@ -321,12 +323,12 @@ pub(crate) fn write(core: &Core) {
 pub(crate) fn remove(core: &Core) {
     let _file = recover(&core.calendar.file);
     core.calendar.failing.store(false, Ordering::SeqCst);
-    let path = core.paths.calendar_path();
+    let path = core.services.paths.calendar_path();
     match std::fs::remove_file(&path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            core.bus.warn(
+            core.services.bus.warn(
                 Stage::System,
                 format!("the calendar file could not be removed: {e}"),
                 EventBody::Notice,
@@ -404,14 +406,14 @@ impl EventListener for AfterChange {
         // Off the emitting thread: the bus calls listeners inline, and a
         // job's runner should not wait on a file write.
         let weak = self.core.clone();
-        core.handle.spawn(async move {
+        core.services.handle.spawn(async move {
             tokio::time::sleep(SETTLE).await;
             let Some(core) = weak.upgrade() else {
                 return;
             };
             // Cleared before the write, so a change during it queues the next.
             core.calendar.queued.store(false, Ordering::SeqCst);
-            let handle = core.handle.clone();
+            let handle = core.services.handle.clone();
             let _ = handle.spawn_blocking(move || write(&core)).await;
         });
     }

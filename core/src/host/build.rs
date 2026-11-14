@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use crate::contract::*;
 use crate::core::Core;
 use crate::downloads;
+use crate::foundation::services::Services;
 use crate::library::snapshot::Snapshot;
 use crate::time;
 
@@ -63,10 +64,10 @@ fn tag_of(path: &str) -> Option<String> {
 
 /// The whole library read once, on the reader connection, with one profile's
 /// progress (#631). Blocking: the caller runs it off the async threads.
-pub fn library_part(core: &Core, profile: u64) -> Result<LibraryPart, CoreError> {
-    let images_dir = core.paths.images_dir();
+pub fn library_part(services: &Services, profile: u64) -> Result<LibraryPart, CoreError> {
+    let images_dir = services.paths.images_dir();
     let now = time::now();
-    let hosted = core
+    let hosted = services
         .store
         .read(|c| Ok(Snapshot::load_for(c, profile, &images_dir, now, None)?.host_series()))?;
     let mut part = LibraryPart::default();
@@ -193,7 +194,7 @@ pub async fn snapshot(
 ) -> Result<(wire::Snapshot, LibraryPart), CoreError> {
     let reader = core.clone();
     let library = async move {
-        tokio::task::spawn_blocking(move || library_part(&reader, profile))
+        tokio::task::spawn_blocking(move || library_part(&reader.services, profile))
             .await
             .map_err(|e| CoreError::internal(format!("library read: {e}")))?
     };

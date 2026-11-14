@@ -100,17 +100,18 @@ pub(crate) fn site_name(t: Tracker) -> &'static str {
 /// the calling thread, so a connect with no client id fails the call
 /// rather than a job nobody is watching.
 pub fn connect(core: &Core, t: Tracker) -> Result<u64, CoreError> {
-    let (client_id, client_secret) = accounts::effective_credentials(core, t)?;
+    let (client_id, client_secret) = accounts::effective_credentials(&core.services, t)?;
     // A new connect supersedes whatever is in flight: the listener holds
     // one fixed port, so two flows cannot both be waiting on it, and a
     // stalled flow (a closed tab, a provider error page that never
     // redirected) must not lock the user out of trying again.
-    if let Some(running) = core.jobs.running(JobKind::ConnectTracker) {
-        let _ = core.jobs.cancel(running);
+    if let Some(running) = core.services.jobs.running(JobKind::ConnectTracker) {
+        let _ = core.services.jobs.cancel(running);
     }
     let owner = core.owner()?;
     let port = core.oauth_port.load(Ordering::SeqCst);
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ConnectTracker, move |ctx| async move {
@@ -209,7 +210,7 @@ async fn run(
         }
     };
     let username = signed_in?;
-    let trackers = accounts::state_async(&core).await?;
+    let trackers = accounts::state_async(&core.services).await?;
     ctx.emit(
         Level::Debug,
         "trackers changed",
@@ -308,9 +309,9 @@ async fn sign_in(
         }
     };
 
-    let store = accounts::save_tokens(core, t, &tokens).await?;
+    let store = accounts::save_tokens(&core.services, t, &tokens).await?;
     accounts::save_connection(
-        core,
+        &core.services,
         t,
         user_id,
         &username,

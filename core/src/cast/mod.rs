@@ -75,6 +75,7 @@ mod imp {
     use super::{castv2, dlna};
     use crate::contract::*;
     use crate::core::Core;
+    use crate::foundation::services::Services;
     use crate::sync::recover;
 
     #[derive(Default)]
@@ -145,7 +146,7 @@ mod imp {
             }
             d.iter().map(|x| x.device.clone()).collect::<Vec<_>>()
         };
-        core.bus.debug(
+        core.services.bus.debug(
             Stage::Playback,
             "cast devices",
             EventBody::CastDevicesChanged { devices: list },
@@ -160,14 +161,14 @@ mod imp {
         }
         let Some(arc) = core.arc() else { return };
         let cast_core = arc.clone();
-        let chromecasts = core.handle.spawn_blocking(move || {
+        let chromecasts = core.services.handle.spawn_blocking(move || {
             let c = cast_core.clone();
             if let Err(e) = discover::chromecasts(Duration::from_secs(6), move |f| found(&c, f)) {
                 tracing::warn!("cast: {e}");
             }
         });
         let dlna_core = arc.clone();
-        core.handle.spawn(async move {
+        core.services.handle.spawn(async move {
             let c = dlna_core.clone();
             let extra = discover::dev().renderers;
             if !extra.is_empty() {
@@ -183,8 +184,9 @@ mod imp {
         });
     }
 
-    fn file_path(core: &Core, file: u64) -> Result<PathBuf, CoreError> {
-        core.store
+    fn file_path(services: &Services, file: u64) -> Result<PathBuf, CoreError> {
+        services
+            .store
             .read(|c| {
                 c.query_row("SELECT path FROM files WHERE id = ?1", [file as i64], |r| {
                     r.get::<_, String>(0)
@@ -224,12 +226,12 @@ mod imp {
         )
     }
 
-    fn emit(core: &Core, state: &CastState, moved_only: bool) {
+    fn emit(services: &Services, state: &CastState, moved_only: bool) {
         let body = EventBody::CastChanged {
             state: state.clone(),
         };
         if moved_only {
-            core.bus.debug(Stage::Playback, "cast position", body);
+            services.bus.debug(Stage::Playback, "cast position", body);
         } else {
             let device = &state.device;
             let said = match state.state {
@@ -260,7 +262,8 @@ mod imp {
             } else {
                 Level::Info
             };
-            core.bus
+            services
+                .bus
                 .emit_said(level, Stage::Playback, said, what, None, body);
         }
     }
@@ -284,7 +287,7 @@ mod imp {
             })
         };
         if let Some((state, moved_only)) = out {
-            emit(core, &state, moved_only);
+            emit(&core.services, &state, moved_only);
         }
     }
 
@@ -350,7 +353,7 @@ mod imp {
                     .ok_or_else(|| {
                         CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
                     })?;
-                let path = file_path(core, file)?;
+                let path = file_path(&core.services, file)?;
                 stop(core);
                 let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
                 let token = format!(
@@ -383,7 +386,7 @@ mod imp {
                     pieces: None,
                     hevc_doubt: false,
                 });
-                emit(core, &state, false);
+                emit(&core.services, &state, false);
                 let subs = match subtitle {
                     CastSubtitle::None => None,
                     CastSubtitle::Track { number } => Some(Subs::Track(number)),
@@ -392,7 +395,7 @@ mod imp {
                 let arc = core
                     .arc()
                     .ok_or_else(|| CoreError::internal("the core is closing"))?;
-                core.handle.spawn(async move {
+                core.services.handle.spawn(async move {
                     if let Err(e) = begin(
                         &arc,
                         id,
@@ -470,11 +473,11 @@ mod imp {
                     pieces: None,
                     hevc_doubt: false,
                 });
-                emit(core, &state, false);
+                emit(&core.services, &state, false);
                 let arc = core
                     .arc()
                     .ok_or_else(|| CoreError::internal("the core is closing"))?;
-                core.handle.spawn(async move {
+                core.services.handle.spawn(async move {
                     let begun = match found.device.kind {
                         CastKind::Chromecast => {
                             relay(
@@ -544,7 +547,7 @@ mod imp {
         f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
     ) {
         let Some(arc) = core.arc() else { return };
-        core.handle.spawn(async move {
+        core.services.handle.spawn(async move {
             if let Err(e) = f.await {
                 fail(&arc, id, e);
             }
@@ -613,14 +616,14 @@ mod imp {
         let mut state = session.state.clone();
         if !matches!(state.state, CastPlayState::Ended | CastPlayState::Failed) {
             state.state = CastPlayState::Stopped;
-            emit(core, &state, false);
+            emit(&core.services, &state, false);
         }
         match session.control {
             // Dropping the controller stops the media receiver on the TV.
             Control::Cast(c) => drop(c),
             Control::Dlna { client, poll } => {
                 poll.abort();
-                core.handle.spawn(async move {
+                core.services.handle.spawn(async move {
                     let _ = client.stop().await;
                 });
             }
@@ -753,6 +756,7 @@ mod imp {
         let poll_core = core.clone();
         let poll_client = client.clone();
         let poll = core
+            .services
             .handle
             .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
             .abort_handle();
@@ -762,7 +766,7 @@ mod imp {
             None => {
                 poll.abort();
                 drop(s);
-                core.handle.spawn(async move {
+                core.services.handle.spawn(async move {
                     let _ = client.stop().await;
                 });
             }
@@ -933,6 +937,7 @@ mod imp {
                 let poll_core = core.clone();
                 let poll_client = client.clone();
                 let poll = core
+                    .services
                     .handle
                     .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
                     .abort_handle();

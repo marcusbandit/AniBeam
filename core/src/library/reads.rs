@@ -9,6 +9,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::images;
 use crate::library::cards;
 use crate::library::snapshot::Snapshot;
@@ -77,7 +78,7 @@ fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
         .snapshot_cache
         .load(std::sync::atomic::Ordering::Relaxed)
     {
-        return load_fresh(core);
+        return load_fresh(&core.services);
     }
     // Read before the load, so a change that lands during it leaves the
     // load stamped with the generation it may not have seen.
@@ -88,7 +89,7 @@ fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
     {
         return Ok(kept.loaded.clone());
     }
-    let loaded = load_fresh(core)?;
+    let loaded = load_fresh(&core.services)?;
     *core.kept_load.lock().unwrap() = Some(KeptLoad {
         generation,
         at: std::time::Instant::now(),
@@ -97,10 +98,10 @@ fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
     Ok(loaded)
 }
 
-fn load_fresh(core: &Core) -> Result<Loaded, CoreError> {
-    let images_dir = core.paths.images_dir();
+fn load_fresh(services: &Services) -> Result<Loaded, CoreError> {
+    let images_dir = services.paths.images_dir();
     let now = time::now();
-    core.store.read(|c| {
+    services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, now, None)?;
         let posters = snap
             .series
@@ -145,6 +146,7 @@ pub fn list_series(
     direction: Direction,
 ) -> Result<Reply, CoreError> {
     let show_watched = core
+        .services
         .store
         .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
     let Loaded {
@@ -203,6 +205,7 @@ pub fn list_library(
     direction: Direction,
 ) -> Result<Reply, CoreError> {
     let show_watched = core
+        .services
         .store
         .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
     let Loaded {
@@ -243,9 +246,9 @@ pub fn list_library(
 }
 
 pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = core.services.paths.images_dir();
     let now = time::now();
-    let (detail, gaps, poster) = core.store.read(|c| {
+    let (detail, gaps, poster) = core.services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, now, Some(&[series]))?;
         let poster = snap
             .row(series)
@@ -268,8 +271,8 @@ pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     }
 }
 
-pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreError> {
-    let changed = core.store.write(move |c| {
+pub fn set_hidden(services: &Services, series: u64, hidden: bool) -> Result<Reply, CoreError> {
+    let changed = services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET hidden = ?1 WHERE id = ?2",
             params![i64::from(hidden), series as i64],
@@ -281,13 +284,13 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
             id: series,
         });
     }
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let images_dir = services.paths.images_dir();
+    let cards = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let what = if hidden { "hidden" } else { "shown" };
-    core.bus.debug(
+    services.bus.debug(
         Stage::Library,
         format!("{title} {what}"),
         EventBody::SeriesChanged { series: cards },
@@ -298,9 +301,13 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
 /// Hides or shows several series at once (#208): one write, one card push
 /// and one line in the activity log for the lot. The caller has checked
 /// every id is there.
-pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Reply, CoreError> {
+pub fn set_hidden_many(
+    services: &Services,
+    series: &[u64],
+    hidden: bool,
+) -> Result<Reply, CoreError> {
     let ids = series.to_vec();
-    core.store.tx(move |tx| {
+    services.store.tx(move |tx| {
         for id in &ids {
             tx.execute(
                 "UPDATE series SET hidden = ?1 WHERE id = ?2",
@@ -309,8 +316,8 @@ pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Repl
         }
         Ok(())
     })?;
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let images_dir = services.paths.images_dir();
+    let cards = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, series))?;
     let n = cards.len();
@@ -321,7 +328,7 @@ pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Repl
         (_, false) => crate::words!("core-library-back-many", count = n),
     };
     let what = if hidden { "hidden" } else { "shown" };
-    core.bus.say(
+    services.bus.say(
         Level::Info,
         Stage::Library,
         plain,
@@ -334,10 +341,14 @@ pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Repl
 /// Sets or clears the episode count the person gave a series (#239). For a
 /// TVmaze match it is the length of the card's season, and keeps that season
 /// (#283).
-pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result<Reply, CoreError> {
+pub fn set_episode_count(
+    services: &Services,
+    series: u64,
+    count: Option<u32>,
+) -> Result<Reply, CoreError> {
     let count = count.filter(|n| *n > 0);
-    let images_dir = core.paths.images_dir();
-    let season = core
+    let images_dir = services.paths.images_dir();
+    let season = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?
         .first()
@@ -347,7 +358,7 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
         })?
         .count_season
         .filter(|_| count.is_some());
-    let changed = core.store.write(move |c| {
+    let changed = services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET episodes_set = ?1, episodes_set_season = ?2 WHERE id = ?3",
             params![count.map(i64::from), season.map(i64::from), series as i64],
@@ -359,7 +370,7 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
             id: series,
         });
     }
-    let cards = core
+    let cards = services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
@@ -371,7 +382,7 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
         Some(n) => crate::words!("core-library-episode-count-set", title = &title, count = n),
         None => crate::words!("core-library-episode-count-cleared", title = &title),
     };
-    core.bus.say(
+    services.bus.say(
         Level::Info,
         Stage::Library,
         said,
@@ -384,14 +395,14 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
 /// The metadata table. The counts are over the visible set, so they answer
 /// "how many of what you can see", and only this call reveals hidden rows.
 pub fn list_metadata(
-    core: &Core,
+    services: &Services,
     filter: MetadataFilter,
     query: &str,
     reveal_hidden: bool,
 ) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = services.paths.images_dir();
     let now = time::now();
-    let visible: Vec<MetadataRow> = core.store.read(|c| {
+    let visible: Vec<MetadataRow> = services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, now, None)?;
         Ok(snap
             .series
@@ -424,8 +435,8 @@ pub fn list_metadata(
 
 /// A path back to what the library calls it: a series first, since a film's
 /// path is both, then a file.
-pub fn lookup(core: &Core, path: &str) -> Result<Reply, CoreError> {
-    core.store.read(|c| {
+pub fn lookup(services: &Services, path: &str) -> Result<Reply, CoreError> {
+    services.store.read(|c| {
         if let Some(series) = series_at(c, path)? {
             return Ok(Reply::Lookup {
                 series: Some(series),

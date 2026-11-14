@@ -44,6 +44,7 @@ use tokio_util::sync::CancellationToken;
 use self::sync::{Clock, Drift, LocalTick};
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::prefs;
 use crate::store::settings;
 
@@ -284,9 +285,10 @@ impl Say {
     }
 }
 
-fn emit(core: &Core, out: Vec<Say>) {
+fn emit(services: &Services, out: Vec<Say>) {
     for s in out {
-        core.bus
+        services
+            .bus
             .emit_said(s.level, Stage::Playback, s.words, s.message, None, s.body);
     }
 }
@@ -350,8 +352,8 @@ pub(crate) fn relay_ok(relay: &str) -> bool {
 }
 
 /// The name and the relay from the preferences, or why they cannot be used.
-fn who(core: &Core) -> Result<(String, String), CoreError> {
-    let p = core.store.read(prefs::load_preferences)?;
+fn who(services: &Services) -> Result<(String, String), CoreError> {
+    let p = services.store.read(prefs::load_preferences)?;
     let name = clean_name(&p.room_name).ok_or_else(|| {
         CoreError::invalid("room_name", crate::i18n::tr("core-room-no-name", &[]))
     })?;
@@ -422,11 +424,12 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
         what: Entity::Session,
         id: session,
     })?;
-    let (name, relay) = who(core)?;
+    let (name, relay) = who(&core.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
     let episode = episode::of_session(&s);
     leave(core);
     let created = core
+        .services
         .handle
         .block_on(async {
             tokio::time::timeout(JOIN_WAIT, socket::create(&client, &relay, &episode)).await
@@ -445,7 +448,7 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
             session: Some((s.id, s.file)),
         },
     )?;
-    core.bus.emit_said(
+    core.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-created", code = &info.code)),
@@ -467,7 +470,7 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
 fn join(core: &Core, code: &str) -> Result<RoomInfo, CoreError> {
     let code = anibeam_room::code::normalize(code)
         .ok_or_else(|| CoreError::invalid("code", crate::i18n::tr("core-room-bad-code", &[])))?;
-    let (name, relay) = who(core)?;
+    let (name, relay) = who(&core.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
     leave(core);
     let info = start(
@@ -482,7 +485,7 @@ fn join(core: &Core, code: &str) -> Result<RoomInfo, CoreError> {
             session: None,
         },
     )?;
-    core.bus.emit_said(
+    core.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-joined", code = &info.code)),
@@ -550,7 +553,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
         kick: kick.clone(),
         core: Arc::downgrade(&owner),
     });
-    core.handle.spawn(socket::run(
+    core.services.handle.spawn(socket::run(
         Arc::downgrade(&owner),
         socket::Start {
             serial,
@@ -567,6 +570,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
     ));
     drop(owner);
     let waited = core
+        .services
         .handle
         .block_on(async { tokio::time::timeout(JOIN_WAIT, answer).await });
     let result = match waited {
@@ -598,7 +602,7 @@ fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
         what: Entity::Session,
         id: session,
     })?;
-    let stored = core.store.read(|c| stored_offset(c, s.file))?;
+    let stored = core.services.store.read(|c| stored_offset(c, s.file))?;
     let mut out = Vec::new();
     let info = {
         let mut slot = core.rooms.lock();
@@ -656,7 +660,7 @@ fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
         ));
         a.info()
     };
-    emit(core, out);
+    emit(&core.services, out);
     Ok(info)
 }
 
@@ -709,7 +713,7 @@ fn command(core: &Core, action: RoomAction, position: f64) -> Result<Option<Room
                 if !a.flush_armed {
                     a.flush_armed = true;
                     let (owner, serial) = (a.core.clone(), a.serial);
-                    core.handle.spawn(async move {
+                    core.services.handle.spawn(async move {
                         tokio::time::sleep_until(tokio::time::Instant::from_std(due)).await;
                         if let Some(core) = owner.upgrade() {
                             flush_seek(&core, serial);
@@ -781,9 +785,11 @@ fn set_offset(core: &Core, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
         (a.file.filter(|_| keep), a.info())
     };
     if let Some(file) = file {
-        core.store.write(move |c| save_offset(c, file, offset))?;
+        core.services
+            .store
+            .write(move |c| save_offset(c, file, offset))?;
     }
-    emit(core, out);
+    emit(&core.services, out);
     Ok(info)
 }
 
@@ -795,7 +801,7 @@ fn leave(core: &Core) {
     };
     a.send(ClientMsg::Bye);
     a.cancel.cancel();
-    core.bus.emit_said(
+    core.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-left")),
@@ -874,7 +880,7 @@ pub(crate) fn tick(core: &Core, session: u64, position: f64, paused: bool) {
             apply(session, a.state.playing, c.seek_to, c.speed)
         }
     };
-    emit(core, vec![out]);
+    emit(&core.services, vec![out]);
 }
 
 /// The session closed: the room stops driving it, and the others see this member
@@ -892,7 +898,7 @@ pub(crate) fn closed(core: &Core, session: u64) {
         a.send(ClientMsg::Status { ready: a.ready });
         Say::debug(format!("Room: session {session} closed"), a.changed())
     };
-    emit(core, vec![out]);
+    emit(&core.services, vec![out]);
 }
 
 /// The skip windows job found where the attached session's opening starts: the
@@ -925,7 +931,7 @@ pub(crate) fn opening_known(core: &Core, session: u64, start: f64) {
             a.changed(),
         ));
     }
-    emit(core, out);
+    emit(&core.services, out);
 }
 
 // ---------------------------------------------------------------------------
@@ -1001,7 +1007,7 @@ fn on_welcome(core: &Core, serial: u64, you: MemberId, room: RoomView, server_ms
             ));
         }
     }
-    emit(core, out);
+    emit(&core.services, out);
     if let Some(e) = to_match {
         find(core, serial, e);
     }
@@ -1010,7 +1016,7 @@ fn on_welcome(core: &Core, serial: u64, you: MemberId, room: RoomView, server_ms
 
 /// Looks for the room's episode in this library and says what it found.
 fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
-    let local = match core.store.read(|c| episode::find_local(c, &e)) {
+    let local = match core.services.store.read(|c| episode::find_local(c, &e)) {
         Ok(local) => local,
         Err(err) => {
             tracing::warn!("room: could not look for the episode: {err}");
@@ -1058,7 +1064,7 @@ fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
             a.changed(),
         ));
     }
-    emit(core, out);
+    emit(&core.services, out);
 }
 
 fn on_pong(core: &Core, serial: u64, c: u64, s: u64) {
@@ -1177,7 +1183,7 @@ fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
             _ => {}
         }
     }
-    emit(core, out);
+    emit(&core.services, out);
     if let Some(e) = to_match {
         find(core, serial, e);
     }
@@ -1203,7 +1209,7 @@ fn on_lost(core: &Core, serial: u64) -> bool {
             a.changed(),
         )
     };
-    emit(core, vec![out]);
+    emit(&core.services, vec![out]);
     true
 }
 
@@ -1222,7 +1228,7 @@ fn finish(core: &Core, serial: u64) {
         return;
     };
     a.cancel.cancel();
-    core.bus.emit_said(
+    core.services.bus.emit_said(
         Level::Warn,
         Stage::Playback,
         Some(crate::words!("core-room-closed")),

@@ -78,7 +78,7 @@ fn pull(
     core: &Arc<Core>,
     base: &str,
 ) -> anibeam_core::host::history::Merged {
-    rt.block_on(anibeam_core::host::history::pull(core, base))
+    rt.block_on(anibeam_core::host::history::pull(core.services(), base))
         .unwrap()
 }
 

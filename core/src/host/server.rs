@@ -167,7 +167,7 @@ async fn trusted(
     // both stay off the async threads.
     let served = st.clone();
     let judged = tokio::task::spawn_blocking(move || {
-        core.host.keys.mine(&core.paths.device_key_path());
+        core.host.keys.mine(&core.services.paths.device_key_path());
         let verdict = core.host.verdict(from.ip());
         let proof = core
             .host
@@ -212,6 +212,7 @@ async fn trusted(
         let now = time::now_secs();
         let learned = me.is_some();
         let profile = core
+            .services
             .store
             .write(move |c| crate::profiles::resolve(c, &asker, me.as_ref(), now))?;
         // The owner is remembered only once their Tailscale user is known, so
@@ -320,7 +321,7 @@ async fn hello(
     let key = st
         .core
         .upgrade()
-        .and_then(|c| c.host.keys.mine(&c.paths.device_key_path()));
+        .and_then(|c| c.host.keys.mine(&c.services.paths.device_key_path()));
     let streaming = st.core.upgrade().is_some_and(|c| c.host.streaming());
     let relayed = st
         .core
@@ -335,13 +336,13 @@ async fn hello(
         .and_then(|(user, id)| crate::profiles::shown(&user, id));
     let named = match (fresh, st.core.upgrade(), id) {
         (Some(named), _, _) => Some(named),
-        (None, Some(core), Some(id)) => {
-            tokio::task::spawn_blocking(move || core.store.read(|c| crate::profiles::named(c, id)))
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .flatten()
-        }
+        (None, Some(core), Some(id)) => tokio::task::spawn_blocking(move || {
+            core.services.store.read(|c| crate::profiles::named(c, id))
+        })
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .flatten(),
         _ => None,
     };
     let hello = wire::Hello {
@@ -490,7 +491,7 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
         .upgrade()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let part = tokio::task::spawn_blocking(move || {
-        build::library_part(&core, crate::foundation::trust::OWNER)
+        build::library_part(&core.services, crate::foundation::trust::OWNER)
     })
     .await
     .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
@@ -578,7 +579,7 @@ async fn history_document(
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let built = tokio::task::spawn_blocking(move || {
-        let doc = history::document(&core);
+        let doc = history::document(&core.services);
         history::pull_back(&core, from.ip());
         doc
     })

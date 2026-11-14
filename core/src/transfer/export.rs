@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::atomic_file;
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::Finished;
 use crate::library::classifier;
@@ -56,8 +56,8 @@ struct Row {
 /// The whole document, built off the reader connection and the secrets
 /// store. Synchronous, and it reads the keyring when `private` is set, so
 /// the job runs it through `spawn_blocking` rather than on a tokio worker.
-pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, CoreError> {
-    let (sources, rows, preferences, fixes) = core.store.read(|c| {
+pub fn build(services: &Services, private: bool, now: SystemTime) -> Result<Document, CoreError> {
+    let (sources, rows, preferences, fixes) = services.store.read(|c| {
         Ok((
             source_paths(c)?,
             series_rows(c)?,
@@ -100,7 +100,7 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
         return Ok(doc);
     }
 
-    let (main, anilist, mal, history, settings) = core.store.read(|c| {
+    let (main, anilist, mal, history, settings) = services.store.read(|c| {
         Ok((
             prefs::load_main_tracker(c)?,
             accounts::load_row(c, Tracker::Anilist)?,
@@ -111,8 +111,8 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     })?;
     doc.accounts = Some(Accounts {
         main: main.as_str().to_string(),
-        anilist: account(core, Tracker::Anilist, anilist)?,
-        mal: account(core, Tracker::Mal, mal)?,
+        anilist: account(services, Tracker::Anilist, anilist)?,
+        mal: account(services, Tracker::Mal, mal)?,
         extra: HashMap::new(),
     });
     // There is no TMDB key in the native line, and no other key either, so
@@ -137,8 +137,8 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
 
 /// The history section alone, for another AniBeam computer to merge
 /// (`host::history`). No accounts, so no keyring read.
-pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
-    core.store.read(|c| {
+pub(crate) fn history_section(services: &Services) -> Result<History, CoreError> {
+    services.store.read(|c| {
         let rows = series_rows(c)?;
         history(c, &rows)
     })
@@ -147,9 +147,10 @@ pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
 /// Starts the Export job. The document is built on a blocking thread for
 /// the keyring's sake, then written through a `.tmp` sibling and a rename,
 /// so a reader either sees the whole file or the one that was there.
-pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start(services: &Arc<Services>, path: String, private: bool) -> u64 {
+    let owner = services.clone();
+    services
+        .jobs
         .clone()
         .start(JobKind::Export, move |_ctx| async move {
             let builder = owner.clone();
@@ -369,7 +370,7 @@ fn match_entry(row: &Row) -> Option<MatchEntry> {
 /// A connected tracker with its tokens, or nothing at all: a disconnected
 /// one is null rather than a partial record.
 fn account(
-    core: &Core,
+    services: &Services,
     t: Tracker,
     row: Option<accounts::Row>,
 ) -> Result<Option<Account>, CoreError> {
@@ -377,7 +378,7 @@ fn account(
         return Ok(None);
     };
     let hint = row.secret_store;
-    let secrets = core.secrets();
+    let secrets = services.secrets();
     let read = |key: String| -> Result<Option<String>, CoreError> {
         Ok(secrets.get(&key, hint)?.map(|(value, _)| value))
     };

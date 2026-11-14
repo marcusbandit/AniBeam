@@ -24,6 +24,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::{Arg, tr};
 use crate::jobs::{Finished, JobCtx};
 use crate::library::history::How;
@@ -210,7 +211,7 @@ pub fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
 /// floored, since a tracker counts whole episodes and 12.5 is still the
 /// twelfth.
 pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+    let target = core.services.store.read(|c| targets(c, series))?;
     if !episode.is_finite() || episode.floor() < 1.0 {
         return Err(CoreError::invalid(
             "episode",
@@ -221,10 +222,11 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
         ));
     }
     let episode = episode.floor() as u32;
-    let main = guard(core, &target)?;
+    let main = guard(&core.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover.
     let again = core
+        .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?
         && rewatching().insert(series);
@@ -235,6 +237,7 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     // itself, which is what actually decides.
     if !again
         && core
+            .services
             .store
             .read(|c| cached_progress(c, &target, main))?
             .is_some_and(|current| current >= episode)
@@ -346,12 +349,12 @@ pub fn set_progress(
     progress: u32,
     season: Option<u32>,
 ) -> Result<Option<u64>, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+    let target = core.services.store.read(|c| targets(c, series))?;
     if !target.matched() {
-        mark_here(core, series, progress, season.unwrap_or(1))?;
+        mark_here(&core.services, series, progress, season.unwrap_or(1))?;
         return Ok(None);
     }
-    guard(core, &target)?;
+    guard(&core.services, &target)?;
     start(
         core,
         JobKind::SetProgress,
@@ -366,10 +369,15 @@ pub fn set_progress(
 /// every one past it is not, and the card is pushed so the page redraws. A
 /// half episode goes with the whole one before it, so 12.5 is watched with
 /// 12, the way a tracker's count reads it. An episode 0 is never touched.
-fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(), CoreError> {
+fn mark_here(
+    services: &Services,
+    series: u64,
+    progress: u32,
+    season: u32,
+) -> Result<(), CoreError> {
     let now = time::now_secs();
     let past = f64::from(progress) + 1.0;
-    core.store.tx(move |tx| {
+    services.store.tx(move |tx| {
         // Each episode this marks for the first time is a hand-set finish in
         // the watch log, which Stats leaves out (#593). One already watched
         // keeps its own finishes and gains none.
@@ -409,11 +417,11 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
         )?;
         Ok(())
     })?;
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let images_dir = services.paths.images_dir();
+    let cards = services
         .store
         .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))?;
-    core.bus.debug(
+    services.bus.debug(
         Stage::Library,
         "watched episodes set here",
         EventBody::SeriesChanged { series: cards },
@@ -429,7 +437,7 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
 /// instead (#213), at once and with no job: None then, where a tracker
 /// write answers with its job.
 pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<u64>, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+    let target = core.services.store.read(|c| targets(c, series))?;
     let score = score.unwrap_or(0.0);
     if !(0.0..=10.0).contains(&score) {
         return Err(CoreError::invalid(
@@ -440,13 +448,14 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<
             ),
         ));
     }
-    if kept_here(core, &target)? {
+    if kept_here(&core.services, &target)? {
         let now = time::now_secs();
         // Nought is unrated here as it is on a tracker.
         let rated = (score > 0.0).then_some(score);
-        core.store
+        core.services
+            .store
             .write(move |c| local::set_score(c, series, rated, now))?;
-        push_card(core, series, "score kept here");
+        push_card(&core.services, series, "score kept here");
         return Ok(None);
     }
     start(core, JobKind::Score, target, Action::Score { score }).map(Some)
@@ -469,12 +478,13 @@ pub fn set_list_status(
             tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
-    let target = core.store.read(|c| targets(c, series))?;
-    if kept_here(core, &target)? {
+    let target = core.services.store.read(|c| targets(c, series))?;
+    if kept_here(&core.services, &target)? {
         let now = time::now_secs();
-        core.store
+        core.services
+            .store
             .write(move |c| local::set_status(c, series, status, now))?;
-        push_card(core, series, "list status kept here");
+        push_card(&core.services, series, "list status kept here");
         return Ok(None);
     }
     start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
@@ -535,8 +545,8 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
 }
 
 /// The series the library has for an AniList id, when it has one.
-fn series_of(core: &Core, anilist_id: u64) -> Result<Option<u64>, CoreError> {
-    core.store.read(|c| {
+fn series_of(services: &Services, anilist_id: u64) -> Result<Option<u64>, CoreError> {
+    services.store.read(|c| {
         Ok(c.query_row(
             "SELECT MIN(id) FROM series WHERE anilist_id = ?1 AND missing_since IS NULL",
             params![anilist_id as i64],
@@ -554,7 +564,7 @@ pub fn set_show_list_status(
     anilist_id: u64,
     status: ListStatus,
 ) -> Result<Option<u64>, CoreError> {
-    if let Some(series) = series_of(core, anilist_id)? {
+    if let Some(series) = series_of(&core.services, anilist_id)? {
         return set_list_status(core, series, status);
     }
     if status == ListStatus::Repeating {
@@ -563,15 +573,15 @@ pub fn set_show_list_status(
             tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
-    let target = core.store.read(|c| show_targets(c, anilist_id))?;
-    guard(core, &target)?;
+    let target = core.services.store.read(|c| show_targets(c, anilist_id))?;
+    guard(&core.services, &target)?;
     start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
 }
 
 /// A score out of 10 for a show the library does not have, on every
 /// connected tracker; nought clears it.
 pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option<u64>, CoreError> {
-    if let Some(series) = series_of(core, anilist_id)? {
+    if let Some(series) = series_of(&core.services, anilist_id)? {
         return set_score(core, series, Some(score));
     }
     if !(0.0..=10.0).contains(&score) {
@@ -583,8 +593,8 @@ pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option
             ),
         ));
     }
-    let target = core.store.read(|c| show_targets(c, anilist_id))?;
-    guard(core, &target)?;
+    let target = core.services.store.read(|c| show_targets(c, anilist_id))?;
+    guard(&core.services, &target)?;
     start(core, JobKind::Score, target, Action::Score { score }).map(Some)
 }
 
@@ -592,10 +602,10 @@ pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option
 /// tracker match, or no account is connected behind the ids it has. A
 /// hidden series is still refused, since hiding is about its tracker sync
 /// and a person who hid it asked for nothing to go out.
-fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
+fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
     // `guard` answers NoMatch before it looks at the hidden flag, which a
     // series with no ids has nothing else to say about.
-    let hidden = core.store.read(|c| {
+    let hidden = services.store.read(|c| {
         Ok(c.query_row(
             "SELECT hidden FROM series WHERE id = ?1",
             params![target.series as i64],
@@ -607,7 +617,7 @@ fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
             reason: Refusal::Hidden,
         });
     }
-    match guard(core, target) {
+    match guard(services, target) {
         Ok(_) => Ok(false),
         Err(CoreError::Refused {
             reason: Refusal::NoMatch,
@@ -620,14 +630,14 @@ fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
 /// The series' card pushed after a write here, so the page redraws. The
 /// write has already landed by now, so a card that cannot be read is a
 /// line in the log rather than a failure of the call.
-fn push_card(core: &Core, series: u64, line: &str) {
-    let images_dir = core.paths.images_dir();
-    match core
+fn push_card(services: &Services, series: u64, line: &str) {
+    let images_dir = services.paths.images_dir();
+    match services
         .store
         .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))
     {
         Ok(cards) => {
-            core.bus.debug(
+            services.bus.debug(
                 Stage::Library,
                 line.to_string(),
                 EventBody::SeriesChanged { series: cards },
@@ -654,8 +664,8 @@ pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError
             ),
         ));
     }
-    let target = core.store.read(|c| targets(c, series))?;
-    guard(core, &target)?;
+    let target = core.services.store.read(|c| targets(c, series))?;
+    guard(&core.services, &target)?;
     let notes = cache::note_of(Some(notes));
     start(core, JobKind::Notes, target, Action::Notes { notes })
 }
@@ -704,17 +714,17 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
     let mut left_out = LeftOut::default();
     let now = time::now_secs();
     for &id in series {
-        let target = core.store.read(|c| targets(c, id))?;
-        match kept_here(core, &target) {
+        let target = core.services.store.read(|c| targets(c, id))?;
+        match kept_here(&core.services, &target) {
             Ok(false) => reachable.push(target),
             Ok(true) => {
-                core.store.write(move |c| match write {
+                core.services.store.write(move |c| match write {
                     ManyWrite::Score(score) => {
                         local::set_score(c, id, score.filter(|s| *s > 0.0), now)
                     }
                     ManyWrite::Status(status) => local::set_status(c, id, status, now),
                 })?;
-                push_card(core, id, "kept here");
+                push_card(&core.services, id, "kept here");
                 left_out.kept += 1;
             }
             Err(e) => {
@@ -742,7 +752,7 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
         _ => JobKind::SetStatus,
     };
     let owner = core.owner()?;
-    let jobs = owner.jobs.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(Some(jobs.start(kind, move |ctx| async move {
         run_many(owner, ctx, reachable, action, left_out).await
     })))
@@ -778,7 +788,7 @@ async fn run_many(
                 reason = outcomes.iter().find_map(|o| o.message.clone());
             }
         }
-        if let Some(card) = card_for(&core, target.series).await? {
+        if let Some(card) = card_for(&core.services, target.series).await? {
             ctx.changed(card);
         }
     }
@@ -870,8 +880,8 @@ fn sites_of(landed: impl Iterator<Item = Tracker>) -> Option<&'static str> {
 /// nothing to write to, a series the user hid, and no account behind
 /// either id. Answers with the main tracker, which is the one the
 /// `NotConnected` refusal names and the one the monotonic guard reads.
-fn guard(core: &Core, target: &Targets) -> Result<Tracker, CoreError> {
-    core.store.read(|c| {
+fn guard(services: &Services, target: &Targets) -> Result<Tracker, CoreError> {
+    services.store.read(|c| {
         if !target.matched() {
             return Err(CoreError::Refused {
                 reason: Refusal::NoMatch,
@@ -970,7 +980,7 @@ fn start_holding(
     slot: Option<RewatchSlot>,
 ) -> Result<u64, CoreError> {
     let owner = core.owner()?;
-    let jobs = owner.jobs.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
         let _slot = slot;
         run(owner, ctx, target, action).await
@@ -987,7 +997,7 @@ async fn run(
     // The cache was patched by each write above, so the card built here
     // already carries the new number. The runner flushes this before the
     // terminal event.
-    if let Some(card) = card_for(&core, target.series).await? {
+    if let Some(card) = card_for(&core.services, target.series).await? {
         ctx.changed(card);
     }
     Ok(finished(&target, action, outcomes))
@@ -1012,6 +1022,7 @@ async fn write_all(
             continue;
         };
         let row = core
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -1247,8 +1258,8 @@ pub(crate) async fn attempt(
             let status = watched_status(&entry, target.completes(progress));
             let extras = plan(&entry, status, true, rewatch, today);
             let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
-            record_progress(core, t, media_id, progress, status, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+            record_progress(&core.services, t, media_id, progress, status, stamp).await?;
+            record_repeat(&core.services, t, media_id, &extras).await?;
             // The terminal event carries every tracker's outcome, so a
             // line per tracker here would say the same thing twice.
             ctx.emit(
@@ -1276,8 +1287,8 @@ pub(crate) async fn attempt(
             };
             let extras = plan(&entry, status, progress > 0, false, today);
             let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
-            record_progress(core, t, media_id, progress, status, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+            record_progress(&core.services, t, media_id, progress, status, stamp).await?;
+            record_repeat(&core.services, t, media_id, &extras).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -1306,8 +1317,8 @@ pub(crate) async fn attempt(
             };
             let (sent, stamp) =
                 send_score(core, t, media_id, &token, score, completed, &extras).await?;
-            record_score(core, t, media_id, sent, completed, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+            record_score(&core.services, t, media_id, sent, completed, stamp).await?;
+            record_repeat(&core.services, t, media_id, &extras).await?;
             let tail = if completed { " + completed" } else { "" };
             ctx.emit(
                 Level::Debug,
@@ -1339,7 +1350,7 @@ pub(crate) async fn attempt(
             let stamp = send_list_status(core, t, media_id, &token, status, fill, &extras).await?;
             // A series not on the list yet has no cached entry to patch, so
             // the entry is upserted with the progress the tracker now has.
-            record_progress(core, t, media_id, progress, status, stamp).await?;
+            record_progress(&core.services, t, media_id, progress, status, stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -1374,7 +1385,7 @@ pub(crate) async fn attempt(
                 });
             }
             let stamp = send_notes(core, t, media_id, &token, notes.as_deref()).await?;
-            record_notes(core, t, media_id, notes.clone(), stamp).await?;
+            record_notes(&core.services, t, media_id, notes.clone(), stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!("{} notes saved (mediaId {media_id})", t.as_str()),
@@ -1935,7 +1946,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
 /// The account's `synced_at` and the entry's progress, in one transaction:
 /// two tables move together or neither does.
 pub(crate) async fn record_progress(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
     media_id: u64,
     progress: u32,
@@ -1943,7 +1954,8 @@ pub(crate) async fn record_progress(
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_progress(tx, t, media_id, progress, Some(status), stamp, now)
@@ -1955,7 +1967,7 @@ pub(crate) async fn record_progress(
 /// rating of nothing, and a status is only written when the rating
 /// completed the entry.
 async fn record_score(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
     media_id: u64,
     score: f64,
@@ -1965,7 +1977,8 @@ async fn record_score(
     let now = time::now_secs();
     let rated = (score > 0.0).then_some(score);
     let status = completed.then_some(ListStatus::Completed);
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_score(tx, t, media_id, rated, status, stamp, now)
@@ -1975,7 +1988,7 @@ async fn record_score(
 
 /// The rewatch count a write sent, when it sent one.
 async fn record_repeat(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
     media_id: u64,
     extras: &Extras,
@@ -1984,21 +1997,23 @@ async fn record_repeat(
         return Ok(());
     };
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat, now))
         .await
 }
 
 /// The same for a notes write.
 async fn record_notes(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
     media_id: u64,
     notes: Option<String>,
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_notes(tx, t, media_id, notes.as_deref(), stamp, now)
@@ -2009,14 +2024,15 @@ async fn record_notes(
 /// The same for a status On hold sent, with the tracker's stamp for it
 /// when the reply carried one.
 pub(crate) async fn record_status(
-    core: &Arc<Core>,
+    services: &Arc<Services>,
     t: Tracker,
     media_id: u64,
     status: ListStatus,
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_status(tx, t, media_id, status, stamp, now)

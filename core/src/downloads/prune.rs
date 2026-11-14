@@ -233,8 +233,8 @@ async fn check(
     if rules.iter().all(|r| r.show.is_none()) {
         return Ok(());
     }
-    let home = super::home::AnirssHome::of(&core.paths);
-    let (enabled, last) = core.store.read(move |c| {
+    let home = super::home::AnirssHome::of(&core.services.paths);
+    let (enabled, last) = core.services.store.read(move |c| {
         Ok((
             settings::load_stored(c, &home)?.prune_finished_feeds,
             kv::get::<i64>(c, LAST_CHECK)?,
@@ -244,7 +244,7 @@ async fn check(
     if !enabled || last.is_some_and(|t| t <= now && now - t < CHECK_EVERY) {
         return Ok(());
     }
-    let (due, _) = core.store.read(|c| plan(c, true, rules, now))?;
+    let (due, _) = core.services.store.read(|c| plan(c, true, rules, now))?;
     if !due.is_empty() {
         // Nothing is removed while the torrent client is down: the shell
         // would show a library it cannot act on
@@ -254,14 +254,16 @@ async fn check(
     }
     // Recorded before the removals, so the re-read each one prompts
     // finds the day already checked
-    core.store.write(move |c| kv::set(c, LAST_CHECK, &now))?;
+    core.services
+        .store
+        .write(move |c| kv::set(c, LAST_CHECK, &now))?;
     for d in due {
         match backend
             .remove(std::slice::from_ref(&d.rule), false, false, false)
             .await
         {
             Ok(_) => {
-                core.bus.say(
+                core.services.bus.say(
                     Level::Info,
                     Stage::Downloads,
                     crate::words!("core-downloads-pruned", title = &d.title),
@@ -274,7 +276,7 @@ async fn check(
                 );
             }
             Err(e) => {
-                core.bus.say(
+                core.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
                     crate::words!("core-downloads-prune-failed", title = &d.title),

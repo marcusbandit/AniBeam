@@ -55,6 +55,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::foundation::magnet;
 use crate::foundation::names::{is_video, title_key};
+use crate::foundation::services::Services;
 use crate::store::settings as kv;
 use crate::time::now_secs;
 
@@ -102,7 +103,7 @@ pub trait RollClient: Sync {
     fn recheck(&self, hashes: &[String]) -> impl Future<Output = Result<(), CoreError>> + Send;
     /// Whether the client's files are on this machine, so a batch file can
     /// be deleted from the disk here.
-    fn files_here(&self, core: &Core) -> bool;
+    fn files_here(&self, services: &Services) -> bool;
     /// Adds held singles the window reached, answering a hash for each
     /// release it took, in order, when it can.
     fn add(
@@ -145,8 +146,8 @@ impl RollClient for QbtClient {
     fn recheck(&self, hashes: &[String]) -> impl Future<Output = Result<(), CoreError>> + Send {
         QbtClient::recheck(self, hashes)
     }
-    fn files_here(&self, core: &Core) -> bool {
-        settings::read(core)
+    fn files_here(&self, services: &Services) -> bool {
+        settings::read(services)
             .map(|s| settings::files_here(&s))
             .unwrap_or(false)
     }
@@ -798,7 +799,7 @@ pub fn watched_since(
     Ok(found.is_some())
 }
 
-fn seen_watched(core: &Core, path: &str, under: bool, since: i64) -> bool {
+fn seen_watched(services: &Services, path: &str, under: bool, since: i64) -> bool {
     let mut paths = vec![path.to_string()];
     if let Ok(real) = std::fs::canonicalize(path) {
         let real = real.to_string_lossy().into_owned();
@@ -807,7 +808,8 @@ fn seen_watched(core: &Core, path: &str, under: bool, since: i64) -> bool {
         }
     }
     paths.into_iter().any(|p| {
-        core.store
+        services
+            .store
             .read(move |c| watched_since(c, &p, under, since))
             .unwrap_or(false)
     })
@@ -828,8 +830,9 @@ pub fn file_path(save_path: &str, name: &str) -> Option<PathBuf> {
 
 // Storage ------------------------------------------------------------------------
 
-pub fn load(core: &Core) -> Result<Vec<Roll>, CoreError> {
-    core.store
+pub fn load(services: &Services) -> Result<Vec<Roll>, CoreError> {
+    services
+        .store
         .read(|c| Ok(kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default()))
 }
 
@@ -842,7 +845,7 @@ fn users_part(r: &Roll) -> (u32, bool, Option<Key>, bool) {
 /// while the pass ran is kept as it is, and one the user changed meanwhile
 /// (`SetRoll`, `RollMore`) keeps the change: the pass's copy takes the
 /// user's settings, and a roll the pass would drop stays for the next pass.
-fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), CoreError> {
+fn save_changes(services: &Services, before: &[Roll], after: &[Roll]) -> Result<(), CoreError> {
     let mut changes: HashMap<u64, (Roll, Option<Roll>)> = HashMap::new();
     for b in before {
         match after.iter().find(|a| a.id == b.id) {
@@ -858,7 +861,7 @@ fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), Core
     if changes.is_empty() {
         return Ok(());
     }
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         let cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
         let next: Vec<Roll> = cur
             .into_iter()
@@ -883,8 +886,9 @@ fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), Core
 }
 
 /// Saves new rolls, numbering them after the stored ones.
-pub(crate) async fn add_rolls(core: &Arc<Core>, rolls: Vec<Roll>) -> Result<(), CoreError> {
-    core.store
+pub(crate) async fn add_rolls(services: &Arc<Services>, rolls: Vec<Roll>) -> Result<(), CoreError> {
+    services
+        .store
         .write_async(move |c| {
             let mut cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
             let mut next = cur.iter().map(|r| r.id).max().unwrap_or(0);
@@ -899,8 +903,12 @@ pub(crate) async fn add_rolls(core: &Arc<Core>, rolls: Vec<Roll>) -> Result<(), 
 }
 
 /// Changes one stored roll in place.
-fn edit(core: &Core, id: u64, f: impl FnOnce(&mut Roll) + Send + 'static) -> Result<(), CoreError> {
-    core.store.write(move |c| {
+fn edit(
+    services: &Services,
+    id: u64,
+    f: impl FnOnce(&mut Roll) + Send + 'static,
+) -> Result<(), CoreError> {
+    services.store.write(move |c| {
         let mut cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
         let Some(r) = cur.iter_mut().find(|r| r.id == id) else {
             return Err(CoreError::invalid(
@@ -923,7 +931,7 @@ static PASS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mu
 /// client to change something, so a caller that shows the torrents reads them again.
 pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torrent]) -> bool {
     let _one = PASS.lock().await;
-    let before = match load(core) {
+    let before = match load(&core.services) {
         Ok(r) if !r.is_empty() => r,
         Ok(_) => return false,
         Err(e) => {
@@ -931,7 +939,7 @@ pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torre
             return false;
         }
     };
-    let here = client.files_here(core);
+    let here = client.files_here(&core.services);
     let mut rolls = before.clone();
     bind(&mut rolls, torrents);
     let now = now_secs();
@@ -943,7 +951,7 @@ pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torre
         }
     }
     rolls.retain(|r| !drop.contains(&r.id) && !finished(r, now));
-    if let Err(e) = save_changes(core, &before, &rolls) {
+    if let Err(e) = save_changes(&core.services, &before, &rolls) {
         tracing::warn!("rolling downloads not saved: {e}");
     }
     changed
@@ -1051,11 +1059,13 @@ async fn step<C: RollClient>(
             let seen = match u.file {
                 Some(f) => {
                     started(f)
-                        && file_path(&t.save_path, &u.name)
-                            .is_some_and(|p| seen_watched(core, &p.to_string_lossy(), false, since))
+                        && file_path(&t.save_path, &u.name).is_some_and(|p| {
+                            seen_watched(&core.services, &p.to_string_lossy(), false, since)
+                        })
                 }
                 None => {
-                    !t.content_path.is_empty() && seen_watched(core, &t.content_path, true, since)
+                    !t.content_path.is_empty()
+                        && seen_watched(&core.services, &t.content_path, true, since)
                 }
             };
             u.watched = seen;
@@ -1200,7 +1210,7 @@ async fn step<C: RollClient>(
         if !acted.is_empty() {
             line.push_str(&format!(", {}", acted.join(", ")));
         }
-        core.bus.say(
+        core.services.bus.say(
             Level::Info,
             Stage::Downloads,
             crate::words!(
@@ -1247,12 +1257,12 @@ pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], 
             }
         }
     }
-    if let Err(e) = add_rolls(core, rolls).await {
+    if let Err(e) = add_rolls(&core.services, rolls).await {
         tracing::warn!("rolling downloads not saved: {e}");
         return;
     }
     let core = core.clone();
-    let handle = core.handle.clone();
+    let handle = core.services.handle.clone();
     handle.spawn(async move {
         for _ in 0..60 {
             tokio::time::sleep(Duration::from_secs(3)).await;
@@ -1265,7 +1275,7 @@ pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], 
                 }
                 Err(e) => tracing::debug!("rolling read failed: {e}"),
             }
-            match load(&core) {
+            match load(&core.services) {
                 Ok(r) if r.iter().all(settled) => break,
                 Ok(_) => {}
                 Err(_) => break,
@@ -1288,11 +1298,11 @@ pub fn nudge(core: &Core) {
     if !core.downloads.unattended_allowed() {
         return;
     }
-    if load(core).map(|r| r.is_empty()).unwrap_or(true) {
+    if load(&core.services).map(|r| r.is_empty()).unwrap_or(true) {
         return;
     }
     let Ok(owner) = core.owner() else { return };
-    let handle = owner.handle.clone();
+    let handle = owner.services.handle.clone();
     handle.spawn(async move { pass_now(&owner).await });
 }
 
@@ -1341,7 +1351,7 @@ pub fn set(
             crate::i18n::tr("core-downloads-roll-ahead", &[]),
         ));
     }
-    edit(core, id, move |r| {
+    edit(&core.services, id, move |r| {
         if let Some(a) = ahead {
             r.ahead = a.min(MAX_AHEAD);
         }
@@ -1357,22 +1367,22 @@ pub fn set(
 }
 
 /// `GetRollingSettings`: the rolling part of the downloads settings.
-pub(crate) fn settings_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn settings_call(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::RollingSettings {
-        rolling: super::settings::read(core)?.rolling,
+        rolling: super::settings::read(services)?.rolling,
     })
 }
 
 /// `SetRollingSettings`: the rolling part of the downloads settings, the
 /// rest left as stored. Out-of-range numbers are brought into range, the
 /// way the desktop's sliders hold them.
-pub fn set_settings(core: &Core, mut rolling: RollingSettings) -> Result<Reply, CoreError> {
+pub fn set_settings(services: &Services, mut rolling: RollingSettings) -> Result<Reply, CoreError> {
     rolling.ahead = rolling.ahead.clamp(1, MAX_AHEAD);
     rolling.over = rolling.over.max(1);
     rolling.keep_watched = rolling.keep_watched.min(MAX_AHEAD);
-    let home = super::home::AnirssHome::of(&core.paths);
+    let home = super::home::AnirssHome::of(&services.paths);
     let saved = rolling.clone();
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         let mut s = settings::load_stored(c, &home)?;
         s.rolling = saved;
         settings::save(c, &s)
@@ -1388,7 +1398,7 @@ pub fn roll_more(core: &Core, id: u64, count: u32) -> Result<Reply, CoreError> {
             crate::i18n::tr("core-downloads-roll-nothing", &[]),
         ));
     }
-    edit(core, id, move |r| more(r, count.min(MAX_AHEAD)))?;
+    edit(&core.services, id, move |r| more(r, count.min(MAX_AHEAD)))?;
     kick(core);
     Ok(Reply::Ok)
 }
@@ -1396,14 +1406,14 @@ pub fn roll_more(core: &Core, id: u64, count: u32) -> Result<Reply, CoreError> {
 /// A pass for a change the user asked for, in any shell.
 fn kick(core: &Core) {
     if let Ok(owner) = core.owner() {
-        let handle = owner.handle.clone();
+        let handle = owner.services.handle.clone();
         handle.spawn(async move { pass_now(&owner).await });
     }
 }
 
 /// Fills each torrent's roll, for the downloads page.
-pub fn annotate(core: &Core, torrents: &mut [Torrent]) {
-    let Ok(rolls) = load(core) else { return };
+pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
+    let Ok(rolls) = load(services) else { return };
     if rolls.is_empty() {
         return;
     }

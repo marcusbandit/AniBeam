@@ -13,8 +13,8 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use super::home::AnirssHome;
-use crate::Core;
 use crate::contract::*;
+use crate::foundation::services::Services;
 use crate::releases::BestfitConfig;
 use crate::store::settings;
 use crate::trackers::Secrets;
@@ -73,9 +73,9 @@ pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSetti
 }
 
 /// `load_stored` for `core`, off the home its paths give anirss.
-pub fn read(core: &Core) -> Result<DownloadSettings, CoreError> {
-    let home = AnirssHome::of(&core.paths);
-    core.store.read(move |c| load_stored(c, &home))
+pub fn read(services: &Services) -> Result<DownloadSettings, CoreError> {
+    let home = AnirssHome::of(&services.paths);
+    services.store.read(move |c| load_stored(c, &home))
 }
 
 pub fn load(
@@ -563,8 +563,8 @@ pub fn anirss_config_qbt(path: &Path) -> Option<(String, String)> {
 
 /// The config of the anirss `core` runs: in the person's own home, or in a
 /// sandboxed run's own (`AnirssHome`).
-pub fn anirss_config_path(core: &Core) -> Option<PathBuf> {
-    AnirssHome::of(&core.paths).config_path()
+pub fn anirss_config_path(services: &Services) -> Option<PathBuf> {
+    AnirssHome::of(&services.paths).config_path()
 }
 
 /// The qBittorrent password anirss's CLI saved (`qbt.pass` in its state

@@ -24,6 +24,7 @@ use rusqlite::{Connection, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::Subscription;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::prefs;
 use crate::store::settings;
@@ -116,9 +117,9 @@ const MARK_STEP: i64 = 10 * 60;
 
 /// Says every followed episode out since the mark, moves the mark to now, and
 /// answers the next broadcast to wake for. The caller holds `saying`.
-fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
+fn announce(services: &Services) -> Result<Option<i64>, CoreError> {
     let now = time::now_secs();
-    let (out, next) = core.store.tx(move |tx| {
+    let (out, next) = services.store.tx(move |tx| {
         let mark = settings::get::<i64>(tx, settings::EPISODES_OUT_AT)?;
         let from = match mark {
             Some(mark) => mark.max(now - CATCH_UP_SECS),
@@ -147,7 +148,7 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
             "episode out: {} {} (anilist {})",
             ep.title, ep.episode, ep.anilist_id
         );
-        core.bus.say(
+        services.bus.say(
             Level::Info,
             Stage::Metadata,
             plain,
@@ -164,7 +165,7 @@ pub(crate) fn arm(core: &Arc<Core>) {
     // Held until the alarm is set, so a second arm with an older answer for
     // the next broadcast cannot replace a newer alarm.
     let _one = recover(&core.aired.saying);
-    let next = match announce(core) {
+    let next = match announce(&core.services) {
         Ok(next) => next,
         Err(e) => {
             tracing::warn!("episode out: {e}");
@@ -178,10 +179,10 @@ pub(crate) fn arm(core: &Arc<Core>) {
     let Some(at) = next else { return };
     let wait = Duration::from_secs((at - time::now_secs()).max(0) as u64 + 1).min(LONGEST_SLEEP);
     let weak = Arc::downgrade(core);
-    *alarm = Some(core.handle.spawn(async move {
+    *alarm = Some(core.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
         let Some(core) = weak.upgrade() else { return };
-        let handle = core.handle.clone();
+        let handle = core.services.handle.clone();
         let _ = handle.spawn_blocking(move || arm(&core)).await;
     }));
 }
@@ -201,7 +202,7 @@ pub(crate) fn listen(core: &Arc<Core>) {
     });
     *recover(&core.aired.listener) = Some(core.subscribe(listener));
     let owner = core.clone();
-    core.handle.spawn_blocking(move || arm(&owner));
+    core.services.handle.spawn_blocking(move || arm(&owner));
 }
 
 pub(crate) fn stop(core: &Core) {
@@ -228,11 +229,11 @@ impl EventListener for AfterChange {
             return;
         }
         let weak = self.core.clone();
-        core.handle.spawn(async move {
+        core.services.handle.spawn(async move {
             tokio::time::sleep(SETTLE).await;
             let Some(core) = weak.upgrade() else { return };
             core.aired.queued.store(false, Ordering::SeqCst);
-            let handle = core.handle.clone();
+            let handle = core.services.handle.clone();
             let _ = handle.spawn_blocking(move || arm(&core)).await;
         });
     }

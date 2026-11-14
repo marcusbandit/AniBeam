@@ -222,6 +222,7 @@ pub(crate) fn record_matters(conn: &Connection, series: u64) -> Result<bool, Cor
 /// For the places a match changes outside a job: clearing one, say.
 pub(crate) fn reread_if_record_matters(core: &crate::core::Core, series: u64) {
     if core
+        .services
         .store
         .read(|c| record_matters(c, series))
         .unwrap_or(false)

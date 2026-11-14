@@ -25,7 +25,7 @@ pub(crate) fn act_on_series(
         ));
     }
     // One read for every id, however many were picked
-    let there: HashSet<u64> = core.store.read(|c| {
+    let there: HashSet<u64> = core.services.store.read(|c| {
         let sql = format!(
             "SELECT id FROM series WHERE id IN ({})",
             crate::store::sql::placeholders(picks.len())
@@ -47,7 +47,7 @@ pub(crate) fn act_on_series(
         });
     }
     match action {
-        SeriesAction::Hide { hidden } => reads::set_hidden_many(core, &picks, hidden),
+        SeriesAction::Hide { hidden } => reads::set_hidden_many(&core.services, &picks, hidden),
         SeriesAction::Rescan => scan::rescan_many(core, &picks),
         // Every pick kept on this device is Ok with no job (#213)
         SeriesAction::Score { score } => {
