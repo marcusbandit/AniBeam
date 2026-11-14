@@ -507,16 +507,16 @@ core-host-not-an-address = { $text } to nie adres z portem
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } to nie klucz urządzenia
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = przekroczono czas po { $ms } ms
 core-net-rate-limited = { $provider } ogranicza liczbę zapytań
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: przed chwilą przekroczono czas; { -app-name } czeka { $seconds } s, zanim zapyta ponownie
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = brak danych
 
@@ -977,7 +977,7 @@ core-metadata-progress-imdb-ratings = oceny IMDb
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Wspólne postacie
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = pobieranie obrazów

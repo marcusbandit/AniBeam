@@ -195,7 +195,7 @@ fn digits(field: &[u8]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use crate::FakeHttp;
     use flate2::Compression;
     use flate2::write::GzEncoder;
     use std::io::Write;

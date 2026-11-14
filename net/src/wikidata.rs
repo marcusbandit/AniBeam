@@ -13,8 +13,8 @@ use serde::Deserialize;
 
 use super::imdb::title_id;
 use super::{Fault, Http, HttpRequest, null_to_default};
-use crate::contract::Provider;
-use crate::percent;
+use anibeam_contract::Provider;
+use anibeam_foundation::percent;
 
 pub const SPARQL_API: &str = "https://query.wikidata.org/sparql";
 
@@ -129,7 +129,7 @@ fn plain_id(value: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use crate::FakeHttp;
     use serde_json::json;
 
     fn term(value: &str) -> serde_json::Value {

@@ -471,16 +471,16 @@ core-host-not-an-address = { $text } ist keine Adresse mit Port
 
 core-host-not-a-key = { $key } ist kein Geräteschlüssel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = Zeitüberschreitung nach { $ms } ms
 core-net-rate-limited = { $provider } drosselt die Anfragen
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: eben eine Zeitüberschreitung; { -app-name } wartet { $seconds } s, bevor es wieder fragt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = keine Daten
 
@@ -838,7 +838,7 @@ core-metadata-progress-imdb-ratings = IMDb-Bewertungen
 
 core-franchise-relation-character = Gemeinsame Charaktere
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = Bilder werden geladen
 

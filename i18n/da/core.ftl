@@ -471,16 +471,16 @@ core-host-not-an-address = { $text } er ikke en adresse og port
 
 core-host-not-a-key = { $key } er ikke en enhedsnøgle
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = fik timeout efter { $ms } ms
 core-net-rate-limited = { $provider } begrænser antallet af forespørgsler
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: fik timeout for et øjeblik siden; { -app-name } venter { $seconds } s, før den spørger igen
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = ingen data
 
@@ -838,7 +838,7 @@ core-metadata-progress-imdb-ratings = IMDb-bedømmelser
 
 core-franchise-relation-character = Fælles figurer
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = henter billeder
 

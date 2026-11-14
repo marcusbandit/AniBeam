@@ -34,7 +34,8 @@ A Cargo workspace. The members most work touches:
 
 - **`contract/`** (`anibeam-contract`): the door every shell talks through: calls, records, events and errors, plus the catalog lookup (`i18n`). It sits below the core, which re-exports all of it, so shells keep naming `anibeam_core::...`. Tracker #854 splits the rest of the core the same way.
 - **`foundation/`** (`anibeam-foundation`): what every team shares: the store (SQLite, migrations in `src/store/sql/`), the event bus, jobs, paths, prefs, profiles, secrets, redact, `Services`, and small helpers more than one team reads. It depends on the contract and the two leaf crates `host-api` and `room`; the core hands each module on under its old path, so `anibeam_core::store` and `crate::foundation::services` still resolve.
-- **`core/`** (`anibeam-core`): everything that is not drawing. `library/` scans and reads the library, `metadata/` matches and fetches, `net/` holds one client per provider behind `net/limiter.rs`, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. Integration tests live in `core/tests/`.
+- **`net/`** (`anibeam-net`): the net team: one client per provider behind `src/limiter.rs`, the fronted and DoH clients, the fake transport the tests use, the image cache, and the build's version, which its user agents send. It depends on foundation and the contract only; the core hands it on as `anibeam_core::net`, `anibeam_core::images` and `anibeam_core::VERSION`.
+- **`core/`** (`anibeam-core`): everything that is not drawing. `library/` scans and reads the library, `metadata/` matches and fetches, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. Integration tests live in `core/tests/`.
 - **`apps/linux/`** (`anibeam`): the QML shell, bridged to the core through cxx-qt 0.10. Rust bridges in `src/bridge/`, QML in `qml/`, the libmpv item in `cpp/`, themes in `themes/`, the bundled `mpv.conf`.
 - **`apps/cli/`** (`anibeam-cli`): a terminal shell, and the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`, `import`, `export`, `events --follow`, `call <Name> --json '{...}'`.
 
@@ -42,7 +43,7 @@ A Cargo workspace. The members most work touches:
 
 ### Cross-cutting constraints
 
-- **Rate limiting**: every provider call (AniList, MAL, Jikan, TVmaze, AniSkip and the rest of `core/src/net/`) goes through the shared limiter in `core/src/net/limiter.rs`. Never call a provider around it.
+- **Rate limiting**: every provider call (AniList, MAL, Jikan, TVmaze, AniSkip and the rest of `net/src/`) goes through the shared limiter in `net/src/limiter.rs`. Never call a provider around it.
 - **The activity log is signal-only**: log state changes, never per-asset, per-candidate or per-browse chatter.
 - **Franchise closure**: `core/src/franchise/closure.rs` draws CHARACTER and OTHER edges but never walks them, so a crossover cameo (Isekai Quartet) cannot glue unrelated franchises together. Cross-franchise hops are pointers, not embedded copies.
 - **Scores keep their source's scale**: `average_score` is stored as the provider gave it and normalised at read time. Don't convert it on write.

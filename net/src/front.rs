@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 use super::doh::Doh;
-use crate::contract::CoreError;
-use crate::sync::{recover_read, recover_write};
+use anibeam_contract::CoreError;
+use anibeam_foundation::sync::{recover_read, recover_write};
 
 /// Each fronted host and the name its connections carry instead, as the installed
 /// definitions say. Shared by the client that decides what is fronted and the resolver that

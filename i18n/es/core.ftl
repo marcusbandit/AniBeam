@@ -469,16 +469,16 @@ core-host-not-an-address = { $text } no es una dirección y un puerto
 
 core-host-not-a-key = { $key } no es una clave de dispositivo
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = tiempo agotado tras { $ms } ms
 core-net-rate-limited = { $provider } limitó las peticiones
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: se agotó el tiempo hace un momento; { -app-name } espera { $seconds } s antes de volver a preguntar
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = sin datos
 
@@ -839,7 +839,7 @@ core-metadata-progress-imdb-ratings = valoraciones de IMDb
 
 core-franchise-relation-character = Personajes en común
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = descargando imágenes
 

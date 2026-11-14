@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::limiter::ProviderClient;
 use super::{HttpRequest, null_to_default};
-use crate::contract::{CoreError, Provider, SkipKind, SkipSource, SkipWindow};
+use anibeam_contract::{CoreError, Provider, SkipKind, SkipSource, SkipWindow};
 
 pub const ANISKIP_API: &str = "https://api.aniskip.com/v2";
 
@@ -90,8 +90,8 @@ impl AniSkipClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::limiter::ProviderClient;
-    use crate::net::{FakeHttp, Upstream};
+    use crate::limiter::ProviderClient;
+    use crate::{FakeHttp, Upstream};
     use std::sync::Arc;
     use std::time::Duration;
 

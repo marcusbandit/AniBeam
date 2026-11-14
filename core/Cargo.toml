@@ -16,6 +16,7 @@ crate-type = ["lib"]
 uniffi.workspace = true
 anibeam-contract = { workspace = true, features = ["sqlite"] }
 anibeam-foundation.workspace = true
+anibeam-net.workspace = true
 anibeam-recs.workspace = true
 anibeam-room.workspace = true
 serde.workspace = true
@@ -26,8 +27,6 @@ rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 notify = "8.2"
 notify-debouncer-full = "0.7"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
-governor = "0.10"
-backon = { version = "1.6", features = ["tokio-sleep"] }
 regex = "1"
 # anirss's title patterns use lookaround, which `regex` does not do.
 fancy-regex = "0.14"
@@ -76,14 +75,6 @@ anibeam-relay = { path = "../apps/relay" }
 # target tables cannot read build.rs's `phone_os`, so they name the phone's systems.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 trash = "5"
-
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-# Fronted requests keep the bot shield's cookies (net/mod.rs, Front).
-reqwest = { version = "0.13", default-features = false, features = ["cookies"] }
-
-# Android's bundled TLS roots (net/mod.rs): its platform verifier needs JNI.
-[target.'cfg(target_os = "android")'.dependencies]
-webpki-root-certs = "1"
 
 [[example]]
 name = "cast_hls"

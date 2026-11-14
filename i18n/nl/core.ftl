@@ -472,16 +472,16 @@ core-host-not-an-address = { $text } is geen adres met poort
 
 core-host-not-a-key = { $key } is geen apparaatsleutel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = time-out na { $ms }ms
 core-net-rate-limited = { $provider } remt verzoeken af
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: zojuist een time-out; { -app-name } wacht { $seconds } s voordat het weer vraagt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = geen gegevens
 
@@ -839,7 +839,7 @@ core-metadata-progress-imdb-ratings = IMDb-beoordelingen
 
 core-franchise-relation-character = Gedeelde personages
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = afbeeldingen ophalen
 

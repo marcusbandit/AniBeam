@@ -4,7 +4,7 @@
 
 use super::limiter::ProviderClient;
 use super::{Body, HttpRequest, HttpResponse, Method};
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 pub struct MalClient {
     client: ProviderClient,
@@ -87,8 +87,8 @@ fn bearer(token: &str) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::limiter::ProviderClient;
-    use crate::net::{Body, FakeHttp, Method, Upstream};
+    use crate::limiter::ProviderClient;
+    use crate::{Body, FakeHttp, Method, Upstream};
     use std::sync::Arc;
     use std::time::Duration;
 
