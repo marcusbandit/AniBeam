@@ -24,15 +24,17 @@
       const from = card.dataset.asset === "apk" ? phone : desktop;
       if (from) card.href = from.assets[card.dataset.asset] || from.url;
     }
-    // The iPhone's tile follows the channel like the others: Stable adds the stable source and
-    // links the stable phone release's IPA, Nightly the nightly source and the phone nightly's IPA. It is there only when that release holds one,
-    // so nothing shows before the first IPA, and only the nightly's is called a test build.
+    // The iPhone's tile: the one AniBeam source carries both channels, so its row does not follow
+    // the toggle. The IPA and the one-off installs do: they are the picked channel's build, shown
+    // only when that release holds an IPA, and only the nightly's is called a test build. The tile
+    // itself is there when either channel has an IPA, so nothing shows before the first one.
     const ipa = (nightly ? rel.phone_nightly : rel.phone)?.assets?.ipa;
     const tile = document.getElementById("dl-iphone");
     if (tile) {
-      tile.hidden = !ipa;
+      tile.hidden = !(rel.phone?.assets?.ipa || rel.phone_nightly?.assets?.ipa);
+      for (const a of tile.querySelectorAll("[data-source]")) a.href = AB.sourceLink(a.dataset.source);
+      for (const el of tile.querySelectorAll("[data-ipa], [data-build]")) el.hidden = !ipa;
       if (ipa) {
-        for (const a of tile.querySelectorAll("[data-source]")) a.href = AB.sourceLink(a.dataset.source, channel);
         for (const a of tile.querySelectorAll("[data-install]")) a.href = AB.installLink(a.dataset.install, ipa);
         tile.querySelector("[data-ipa]").href = ipa;
       }

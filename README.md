@@ -83,11 +83,9 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 | Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
 | iPhone | Add the AniBeam source to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
 
-**iPhone** (unsigned, for sideloading). Pick the app you sideload with and add the AniBeam source: AniBeam then sits in its library and the app offers each new build as an update. Nightly is the newest build from main, and its source carries newer releases too. Both can be added side by side.
+**iPhone** (unsigned, for sideloading). Pick the app you sideload with and add the AniBeam source: AniBeam and AniBeam Nightly then sit in its library, can be installed side by side, and the app offers each new build as an update. Nightly is the newest build from main.
 
-Stable: [Add source to AltStore](https://anibeam.app/install/?to=altstore&source=stable) · [Add source to SideStore](https://anibeam.app/install/?to=sidestore&source=stable) · [Add source to LiveContainer](https://anibeam.app/install/?to=livecontainer&source=stable)
-
-Nightly: [Add source to AltStore](https://anibeam.app/install/?to=altstore&source=nightly) · [Add source to SideStore](https://anibeam.app/install/?to=sidestore&source=nightly) · [Add source to LiveContainer](https://anibeam.app/install/?to=livecontainer&source=nightly)
+[Add the AniBeam source to AltStore](https://anibeam.app/install/?to=altstore&source=1) · [SideStore](https://anibeam.app/install/?to=sidestore&source=1) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&source=1)
 
 To install one build without a source, once, in [AltStore](https://anibeam.app/install/?to=altstore&channel=stable), [SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) or [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable) (nightly: [AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)). A channel with no IPA yet says so on that page.
 
