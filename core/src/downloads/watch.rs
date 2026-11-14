@@ -2,7 +2,7 @@
 //!
 //! Following a show is a subscription: the torrent client's RSS
 //! auto-downloader holds the rule, with the group and quality the person
-//! picked, and keeps reading the feed on its own, even while AniBeam is
+//! picked, and keeps reading the feed on its own, even while Anibeam is
 //! closed. What it does not know is when an episode is due. This module
 //! does: for each followed show it sets one timer for the episode that airs
 //! next, and one for an episode that aired in the last three days and is not
@@ -262,7 +262,7 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
 
 /// A client to ask the feeds through, only one that runs without the core
 /// starting it: the one this session already reached, or the person's own
-/// (Existing). AniBeam's own managed client is never started for this.
+/// (Existing). Anibeam's own managed client is never started for this.
 async fn running_client(core: &Arc<Core>) -> Option<Arc<super::qbt::QbtClient>> {
     if let Some(client) = core.downloads.state().qbt.clone() {
         return Some(client);

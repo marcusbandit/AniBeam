@@ -1,4 +1,4 @@
-// Keyboard: every key AniBeam answers to, read off KeyHelp (never shown here) so the list
+// Keyboard: every key Anibeam answers to, read off KeyHelp (never shown here) so the list
 // is the one ? shows: the player's two groups, then the frame's two, the keys as chips at
 // the right of what they do.
 import QtQuick

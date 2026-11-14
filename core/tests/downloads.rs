@@ -332,7 +332,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     assert!(search.best_fit.available);
 
     // An anirss from before the server mode: `--serve` is a usage error,
-    // and the status names the version and the one AniBeam needs.
+    // and the status names the version and the one Anibeam needs.
     let old_path = bin.path().join("anirss-old");
     std::fs::write(
         &old_path,
@@ -353,7 +353,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.6.0"),
+            .starts_with("anirss 0.3.4 is too old for Anibeam, which needs 0.6.0"),
         "{}",
         status.anirss.message
     );
@@ -364,7 +364,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status.anirss.message
     );
 
-    // One that serves but does not list the feature AniBeam relies on is
+    // One that serves but does not list the feature Anibeam relies on is
     // stopped and reported, not used: it would carry one client's login to
     // another. An anirss from before 0.5.0 lists no features at all.
     save(&core, settings("anirss"), None, None);
@@ -623,7 +623,7 @@ fn anibeams_own_never_starts_at_a_local_clients_port() {
     s.torrent_url = "http://localhost:8080".to_string();
     save(&core, s, None, None);
 
-    // Picking AniBeam's own in Settings while the address is still the
+    // Picking Anibeam's own in Settings while the address is still the
     // user's own qBittorrent on this machine moves it off that port.
     let mut s = downloads_status(&core).settings;
     s.torrent_mode = TorrentMode::Managed;
@@ -658,7 +658,7 @@ fn anibeams_own_never_starts_at_a_remote_clients_address() {
     s.torrent_url = "http://192.0.2.10:8080".to_string();
     save(&core, s, None, Some("seedbox-pw"));
 
-    // Switching to AniBeam's own from a client elsewhere gives it an address
+    // Switching to Anibeam's own from a client elsewhere gives it an address
     // on this machine, and its user; the saved client stays on the list.
     assert_eq!(use_client(&core, None).unwrap(), Reply::Ok);
     let st = downloads_status(&core).settings;
@@ -679,7 +679,7 @@ fn anibeams_own_never_starts_at_a_remote_clients_address() {
     assert_eq!(st.torrent_url, "http://192.0.2.10:8080");
     assert!(st.has_torrent_password);
 
-    // A settings save that picks AniBeam's own with the remote address still
+    // A settings save that picks Anibeam's own with the remote address still
     // in the field gets the same treatment; a loopback one is kept.
     let mut s = st.clone();
     s.torrent_mode = TorrentMode::Managed;
@@ -1795,7 +1795,7 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
 }
 
 /// A fresh install settles the torrent client on first use: a qBittorrent
-/// that answers at the address is the user's, and with none AniBeam starts
+/// that answers at the address is the user's, and with none Anibeam starts
 /// its own (a fake qbittorrent-nox here) and points the settings at it.
 /// Both cases live in one test because the bundled binary is named through
 /// a process-wide variable.

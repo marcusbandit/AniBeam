@@ -1,4 +1,4 @@
-//! The mpv options every AniBeam player sets, whichever shell draws it: the ones the app
+//! The mpv options every Anibeam player sets, whichever shell draws it: the ones the app
 //! owns, and the subtitle defaults as options. The desktop and the phone share these so a
 //! file plays the same on both.
 

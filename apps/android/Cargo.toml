@@ -1,6 +1,6 @@
 [package]
 name = "anibeam-android"
-description = "AniBeam for Android: what airs next and what the host has on disk"
+description = "Anibeam for Android: what airs next and what the host has on disk"
 version = "2.4.3"
 edition = "2024"
 rust-version = "1.95"

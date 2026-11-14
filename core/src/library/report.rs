@@ -471,12 +471,12 @@ fn cap(text: &str, max: usize) -> String {
 
 fn prompt(f: &Facts) -> String {
     let mut lines = vec![
-        "You are triaging a bug report for AniBeam, an open source anime library app (https://github.com/marcusbandit/AniBeam). AniBeam reads each video file's name to decide whether it is an episode, and which number, or an extra: an opening, ending, preview, special or other. A user found files it read wrong and corrected them by hand with the app's quick fix. Find why the name reader got these wrong, and propose the smallest change to its rules that reads them right without breaking what its tests cover.".to_string(),
+        "You are triaging a bug report for Anibeam, an open source anime library app (https://github.com/marcusbandit/AniBeam). Anibeam reads each video file's name to decide whether it is an episode, and which number, or an extra: an opening, ending, preview, special or other. A user found files it read wrong and corrected them by hand with the app's quick fix. Find why the name reader got these wrong, and propose the smallest change to its rules that reads them right without breaking what its tests cover.".to_string(),
         String::new(),
         format!("Series: {}. {}", f.title, record_line(f)),
         format!("Folder: {}", f.folder),
         String::new(),
-        "Files, how AniBeam read them, and what the user says they are:".to_string(),
+        "Files, how Anibeam read them, and what the user says they are:".to_string(),
     ];
     for x in &f.files {
         lines.push(format!(
@@ -488,7 +488,7 @@ fn prompt(f: &Facts) -> String {
     }
     lines.extend([
         String::new(),
-        "Past the name, AniBeam applies one rule: a series whose record is format SPECIAL or OVA and that holds no regular episode reads its numbered specials as its episodes.".to_string(),
+        "Past the name, Anibeam applies one rule: a series whose record is format SPECIAL or OVA and that holds no regular episode reads its numbered specials as its episodes.".to_string(),
         String::new(),
         "The name reader, core/src/library/classifier.rs:".to_string(),
         String::new(),
@@ -572,12 +572,12 @@ fn body(f: &Facts, shown: usize, triage: Option<(&str, &str)>) -> String {
         MARKER.to_string(),
         if f.files.len() == 1 {
             format!(
-                "AniBeam read this file of **{}** wrong, and it was fixed by hand with the app's quick fix.",
+                "Anibeam read this file of **{}** wrong, and it was fixed by hand with the app's quick fix.",
                 f.title
             )
         } else {
             format!(
-                "AniBeam read these files of **{}** wrong, and they were fixed by hand with the app's quick fix.",
+                "Anibeam read these files of **{}** wrong, and they were fixed by hand with the app's quick fix.",
                 f.title
             )
         },
@@ -589,7 +589,7 @@ fn body(f: &Facts, shown: usize, triage: Option<(&str, &str)>) -> String {
             facts.join(", ")
         },
         String::new(),
-        "| File | AniBeam read | Fixed to |".to_string(),
+        "| File | Anibeam read | Fixed to |".to_string(),
         "| --- | --- | --- |".to_string(),
     ];
     for x in f.files.iter().take(shown) {
@@ -636,7 +636,7 @@ fn body(f: &Facts, shown: usize, triage: Option<(&str, &str)>) -> String {
         String::new(),
         "</details>".to_string(),
         String::new(),
-        format!("AniBeam {} on {}", f.app, os_word()),
+        format!("Anibeam {} on {}", f.app, os_word()),
     ]);
     out.join("\n")
 }

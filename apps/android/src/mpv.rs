@@ -58,7 +58,7 @@ pub enum Format {
 /// The options set before mpv starts, the phone's own: the picture goes through the render
 /// API, decoding uses MediaCodec with a copy back, which works with any GL context, and
 /// sound goes to AudioTrack. No GL interop for hardware frames: the copy does not need it,
-/// and the AImageReader one wants a Surface the render API never gives it. AniBeam's owned
+/// and the AImageReader one wants a Surface the render API never gives it. Anibeam's owned
 /// options and the subtitle table follow at load.
 pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("gpu-hwdec-interop", "no"),

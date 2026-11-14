@@ -76,7 +76,7 @@ impl RootInterface for MprisPlayer {
         Ok(false)
     }
     async fn identity(&self) -> fdo::Result<String> {
-        Ok("AniBeam".into())
+        Ok("Anibeam".into())
     }
     async fn desktop_entry(&self) -> fdo::Result<String> {
         Ok(crate::APP_ID.into())

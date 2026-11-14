@@ -8,7 +8,7 @@
 // switched on. Under the field the sources: a chip per provider, lit when on and greyed when
 // off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
 // through a pod behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
-// small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
+// small sheet, whether to start Jackett; Anibeam starts it on that confirm and never before,
 // and the core refuses a search that would start it behind your back.
 //
 // With nothing searched the page is four lenses: Gaps in your library (aired episodes not
@@ -53,7 +53,7 @@ Item {
     readonly property var torrent: status ? status.torrent : null
     readonly property bool anirssReady: !!anirss && anirss.state === "Ready"
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
-    // AniBeam itself searches: nothing waits on the search helper (#549)
+    // Anibeam itself searches: nothing waits on the search helper (#549)
     readonly property bool nativeEngine: !!status && !!status.settings && status.settings.engine === "Native"
     // Searches, subscriptions and the rules list can go ahead
     readonly property bool searchReady: nativeEngine || anirssReady
@@ -70,7 +70,7 @@ Item {
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
     readonly property bool remoteAnirss: !nativeEngine && !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
-    // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
+    // tell apart (the saved ones and Anibeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
         var s = status ? status.settings : null
         if (!s || savedClients.length === 0) return clientName
@@ -667,7 +667,7 @@ Item {
         if (r.error) { frame.fail(r.error, page.reload); return }
         page.status = r.reply.status
     }
-    // The helper the settings point at is not the one AniBeam comes with: a remote server, or
+    // The helper the settings point at is not the one Anibeam comes with: a remote server, or
     // a command typed into Settings. When that one does not answer, the fix is going back.
     readonly property bool helperChanged: !!status && !!status.settings
         && (status.settings.anirss_mode === "Remote" || status.settings.anirss_command !== "anirss")
@@ -689,7 +689,7 @@ Item {
         page.connecting = true
     }
     function loadRules() { frame.readDownloadsRules() }
-    // The client chip's menu: every saved client and AniBeam's own, the one in use ticked,
+    // The client chip's menu: every saved client and Anibeam's own, the one in use ticked,
     // then the settings. A pick switches the downloads to it and reconnects.
     function clientMenu() {
         var s = page.status ? page.status.settings : null
@@ -2897,7 +2897,7 @@ Item {
         }
     }
 
-    // The confirm before AniBeam starts a source's service; over everything on the page
+    // The confirm before Anibeam starts a source's service; over everything on the page
     StartSourceSheet {
         id: startSheet
         z: 20

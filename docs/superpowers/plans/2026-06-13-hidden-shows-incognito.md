@@ -402,7 +402,7 @@ Add a new `<Section>` (place it just before the `Playback` section, ~L369), reus
           <div className="pref-row">
             <div>
               <div className="pref-label">Show hidden shows</div>
-              <div className="pref-help">Reveal incognito series across all pages. Resets off when AniBeam restarts.</div>
+              <div className="pref-help">Reveal incognito series across all pages. Resets off when Anibeam restarts.</div>
             </div>
             <Toggle on={showHidden} onChange={setShowHidden} ariaLabel="Toggle hidden shows" />
           </div>

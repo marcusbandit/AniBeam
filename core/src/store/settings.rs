@@ -10,7 +10,7 @@ pub const MAIN_TRACKER: &str = "main_tracker";
 pub const AUTO_MATCH_VERSION: &str = "auto_match_version";
 pub const WATCHING_FETCHED_AT: &str = "watching_fetched_at";
 pub const PROVIDER_ORDER: &str = "provider_order";
-/// The AniBeams this one is paired with, by public key (`host::keys`). Per
+/// The Anibeams this one is paired with, by public key (`host::keys`). Per
 /// machine, like the Tailscale switches: an export never carries it.
 pub const PAIRED_DEVICES: &str = "paired_devices";
 /// Unix seconds: every followed episode that aired up to here has been said (#212).
@@ -24,7 +24,7 @@ pub const IMDB_RATINGS_LAST_MODIFIED: &str = "imdb_ratings_last_modified";
 pub const IMDB_LINKS_FETCHED_AT: &str = "imdb_links_fetched_at";
 /// The downloads settings (`downloads::settings`), secrets left out.
 pub const DOWNLOADS: &str = "downloads";
-/// The endpoint names AniBeam wrote into anirss from repos (#143), so a sync only ever
+/// The endpoint names Anibeam wrote into anirss from repos (#143), so a sync only ever
 /// changes its own and never one written by hand.
 pub const ANIRSS_SYNCED_ENDPOINTS: &str = "anirss_synced_endpoints";
 /// Set once the phone's subscriptions kept before #149 have had their secrets swapped for

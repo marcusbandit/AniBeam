@@ -1,6 +1,6 @@
 // Downloads: the torrent client first (which one, which of the person's saved clients,
-// where, the login, a test), then how searches run (the search helper, anirss, or AniBeam
-// itself) and, for the helper, how AniBeam reaches it and its state, Rolling
+// where, the login, a test), then how searches run (the search helper, anirss, or Anibeam
+// itself) and, for the helper, how Anibeam reaches it and its state, Rolling
 // downloads, finished shows, the search sources anirss was configured with and the endpoint
 // repos. Edits sit in a draft until Save: the secrets only cross once, and saving stops a
 // running sidecar (its environment carries the password), so a save is one deliberate act
@@ -36,7 +36,7 @@ SettingsTab {
     }
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     // The engine the draft picks. A stored engine this build does not know comes in as
-    // AniBeam itself, the default (#552), and the core keeps it stored until the search
+    // Anibeam itself, the default (#552), and the core keeps it stored until the search
     // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]

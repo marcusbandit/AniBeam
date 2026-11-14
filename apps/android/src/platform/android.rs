@@ -34,7 +34,7 @@ fn android_main(android: slint::android::AndroidApp) {
     .expect("the Slint Android backend starts");
 
     if let Err(e) = crate::run(data_dir, commands, inbox) {
-        eprintln!("AniBeam stopped: {e}");
+        eprintln!("Anibeam stopped: {e}");
     }
 }
 

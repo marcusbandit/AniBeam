@@ -90,7 +90,7 @@ event-problem-trackers = Er ging iets mis met je lijsten. Ontwikkelaarsopties he
 event-problem-franchise = Er ging iets mis met verwante series. Ontwikkelaarsopties hebben de details.
 event-problem-playback = Er ging iets mis met afspelen. Ontwikkelaarsopties hebben de details.
 event-problem-store = Er ging iets mis met het opslaan van je gegevens. Ontwikkelaarsopties hebben de details.
-event-problem-system = Er ging iets mis met AniBeam. Ontwikkelaarsopties hebben de details.
+event-problem-system = Er ging iets mis met Anibeam. Ontwikkelaarsopties hebben de details.
 event-problem-downloads = Er ging iets mis met downloads. Ontwikkelaarsopties hebben de details.
 
 ## Fouten (contract::CoreError)
@@ -115,8 +115,8 @@ core-error-io = Kon een bestand niet lezen of schrijven: { $message }
 core-error-storage = Kon je bibliotheek niet opslaan: { $message }
 core-error-keyring = Kon de wachtwoordopslag van het systeem niet bereiken: { $message }
 core-error-unsupported = { $what } wordt nog niet ondersteund.
-core-error-version = Deze export komt van een nieuwere AniBeam (formaat { $found }). Werk AniBeam bij om hem te importeren.
-core-error-internal = AniBeam liep tegen een interne fout aan: { $message }
+core-error-version = Deze export komt van een nieuwere Anibeam (formaat { $found }). Werk Anibeam bij om hem te importeren.
+core-error-internal = Anibeam liep tegen een interne fout aan: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -576,7 +576,7 @@ core-trackers-page-failed = Het inloggen is niet afgerond
 core-trackers-page-go-back = Ga terug naar { $app } en probeer het opnieuw.
 core-trackers-page-finishing-title = { $app }, bijna klaar
 core-trackers-page-finishing = Bijna klaar
-core-trackers-page-finishing-body = { $site } heeft geantwoord en AniBeam rondt het inloggen af. Ga terug naar { $app }, dat meldt wanneer het klaar is.
+core-trackers-page-finishing-body = { $site } heeft geantwoord en Anibeam rondt het inloggen af. Ga terug naar { $app }, dat meldt wanneer het klaar is.
 core-trackers-page-cancelled-title = { $app }, inloggen geannuleerd
 core-trackers-page-cancelled = Dit inloggen is geannuleerd
 core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } als je dat wilde.
@@ -1021,8 +1021,8 @@ core-downloads-anirss-slow-start = anirss startte niet binnen { $seconds } secon
 core-downloads-anirss-slow-start-said = anirss startte niet binnen { $seconds } seconden: { $said }
 core-downloads-anirss-install-mac = Installeer anirss { $version } of nieuwer met: { $command }
 core-downloads-anirss-install-linux = Installeer anirss { $version } of nieuwer: het anirss-pakket in de AUR, of { $command }
-core-downloads-anirss-too-old = anirss { $version } is te oud voor AniBeam, dat { $minimum } of nieuwer nodig heeft. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } kan de login van elke torrentclient niet apart houden, en dat heeft AniBeam nodig om van client te wisselen; anirss { $minimum } en nieuwer kunnen dat wel. { $update }.
+core-downloads-anirss-too-old = anirss { $version } is te oud voor Anibeam, dat { $minimum } of nieuwer nodig heeft. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } kan de login van elke torrentclient niet apart houden, en dat heeft Anibeam nodig om van client te wisselen; anirss { $minimum } en nieuwer kunnen dat wel. { $update }.
 core-downloads-anirss-update-mac = Werk het bij met: { $command }
 core-downloads-anirss-update-linux = Werk het anirss-pakket bij, of voer uit: { $command }
 
@@ -1050,19 +1050,19 @@ core-downloads-anirss-missing = { $install }. Of laat Instellingen naar een draa
 core-downloads-anirss-command-missing = { $command } is niet gevonden. { $install }. Of laat Instellingen naar een draaiende server wijzen.
 core-downloads-anirss-start-failed = { $command } kon niet starten: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Het zei: { $message }
-core-downloads-no-torrent-client = Geen qBittorrent antwoordt op { $address }, en AniBeam heeft er zelf geen om te draaien. Installeer qBittorrent en zet de Web UI aan, of installeer qbittorrent-nox, dat AniBeam dan voor je draait
-core-downloads-own-client-gone = De qBittorrent van AniBeam is weg: qbittorrent-nox is niet geïnstalleerd. Installeer AniBeam opnieuw, of laat Instellingen naar je eigen qBittorrent wijzen
+core-downloads-no-torrent-client = Geen qBittorrent antwoordt op { $address }, en Anibeam heeft er zelf geen om te draaien. Installeer qBittorrent en zet de Web UI aan, of installeer qbittorrent-nox, dat Anibeam dan voor je draait
+core-downloads-own-client-gone = De qBittorrent van Anibeam is weg: qbittorrent-nox is niet geïnstalleerd. Installeer Anibeam opnieuw, of laat Instellingen naar je eigen qBittorrent wijzen
 core-downloads-no-port = geen poort in { $address }
 core-downloads-own-client-settings = kan de instellingen van qBittorrent niet schrijven: { $error }
 core-downloads-own-client-start-failed = { $command } kon niet starten: { $error }
-core-downloads-own-client-slow-start = De qBittorrent van AniBeam is niet gestart
-core-downloads-own-client-slow-start-said = De qBittorrent van AniBeam is niet gestart: { $said }
+core-downloads-own-client-slow-start = De qBittorrent van Anibeam is niet gestart
+core-downloads-own-client-slow-start-said = De qBittorrent van Anibeam is niet gestart: { $said }
 core-downloads-not-ready = Downloads zijn niet klaar. Controleer Downloads in Instellingen.
 core-downloads-ready = Downloads zijn klaar.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads zoeken nu met AniBeam zelf, dat de { $count } bron in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
-       *[other] Downloads zoeken nu met AniBeam zelf, dat de { $count } bronnen in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
+        [one] Downloads zoeken nu met Anibeam zelf, dat de { $count } bron in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
+       *[other] Downloads zoeken nu met Anibeam zelf, dat de { $count } bronnen in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
     }
 core-downloads-client-connected = De downloadapp is gekoppeld.
 core-downloads-client-not-connected = De downloadapp is niet gekoppeld. Controleer het adres in Instellingen.
@@ -1263,7 +1263,7 @@ core-releases-episode-range = { $from } t/m { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

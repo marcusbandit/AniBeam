@@ -1,5 +1,5 @@
 // The first run: a fresh install opens here instead of on an empty library. Six steps, one
-// idea each: what AniBeam is, the folder the anime lives in, the tracker, how Downloads gets
+// idea each: what Anibeam is, the folder the anime lives in, the tracker, how Downloads gets
 // its torrent client, watch together and the name a room shows (#846), and a closing screen
 // that says what got set up and offers each skipped step again. It takes the whole window, the rail included, as two panes of the mosaic: the
 // steps at the left, the step itself at the right.
@@ -64,7 +64,7 @@ Item {
     property var shelfCards: []
     property int seriesCount: 0
     readonly property int posterCount: shelfCards.filter(function(c) { return c.poster !== "" }).length
-    // "Auto" lets AniBeam pick (a qBittorrent that answers, else its own); "Existing" is the
+    // "Auto" lets Anibeam pick (a qBittorrent that answers, else its own); "Existing" is the
     // user's own, finished in Settings, Downloads once this closes
     property string torrentMode: "Auto"
     // "Add a repo after setup": finishing opens Settings, Downloads at the repo field
@@ -227,7 +227,7 @@ Item {
         height: parent.height - theme.grout * 2
         padding: theme.space(7)
 
-        Label { id: mark; text: "AniBeam"; role: "display"; font.pointSize: theme.typeHeading * 1.15 }
+        Label { id: mark; text: "Anibeam"; role: "display"; font.pointSize: theme.typeHeading * 1.15 }
         Label {
             id: about
             anchors.top: mark.bottom; anchors.topMargin: theme.space(1)

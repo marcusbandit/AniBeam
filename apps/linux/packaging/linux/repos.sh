@@ -105,7 +105,7 @@ rm -rf "$staging"
 sign --armor --detach-sign --output "$rpm/repodata/repomd.xml.asc" "$rpm/repodata/repomd.xml"
 cat > "$rpm/anibeam.repo" <<REPO
 [anibeam]
-name=AniBeam
+name=Anibeam
 baseurl=$base/rpm
 enabled=1
 gpgcheck=1

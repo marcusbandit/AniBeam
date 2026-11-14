@@ -149,7 +149,7 @@ cargo build --release                   # needs qmake6 on PATH, lld installed
 QT_FORCE_STDERR_LOGGING=1 target/release/anibeam-spike
 cd packaging && makepkg -f              # writes anibeam-spike-0.1.0-1-x86_64.pkg.tar.zst
 sudo pacman -U anibeam-spike-0.1.0-1-x86_64.pkg.tar.zst
-gtk-launch anibeam-spike                # or pick "AniBeam cxx-qt spike" in the launcher
+gtk-launch anibeam-spike                # or pick "Anibeam cxx-qt spike" in the launcher
 sudo pacman -Rns anibeam-spike          # when done
 ```
 

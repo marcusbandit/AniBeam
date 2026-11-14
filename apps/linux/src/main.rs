@@ -123,7 +123,7 @@ fn main() {
                     Ok(Some(lock)) => Some(lock),
                     _ => {
                         eprintln!(
-                            "anibeam: the host service let the library go, but another AniBeam took it first"
+                            "anibeam: the host service let the library go, but another Anibeam took it first"
                         );
                         std::process::exit(1);
                     }
@@ -150,7 +150,7 @@ fn main() {
         match result {
             Ok(()) => std::process::exit(0),
             Err(e) => {
-                eprintln!("anibeam: another AniBeam is running and {e}");
+                eprintln!("anibeam: another Anibeam is running and {e}");
                 std::process::exit(1);
             }
         }

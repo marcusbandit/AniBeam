@@ -502,7 +502,7 @@ pub fn day(date: &str) -> String {
 }
 
 enum Line {
-    /// `# AniBeam for Android`
+    /// `# Anibeam for Android`
     Title,
     /// `## 2.0.8 · 2026-10-24` or `## 2.5.0 · Quality of life · 2026-11-02`, read
     /// leniently; `exact` when it is written just so.
@@ -635,7 +635,7 @@ fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
 mod tests {
     use super::*;
 
-    const NOTES: &str = "# AniBeam for Android
+    const NOTES: &str = "# Anibeam for Android
 
 <!--
 How to write a line.

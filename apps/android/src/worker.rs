@@ -142,7 +142,7 @@ impl<F: Fn(Event)> Worker<F> {
         match self.syncer.fetch_snapshot(&address, now) {
             Ok(cache) => {
                 eprintln!(
-                    "AniBeam sync: {} answered, {} series, {} subscriptions",
+                    "Anibeam sync: {} answered, {} series, {} subscriptions",
                     address.display(),
                     cache.snapshot.series.len(),
                     cache.snapshot.subscriptions.len()
@@ -161,12 +161,12 @@ impl<F: Fn(Event)> Worker<F> {
                 });
             }
             Err(error) => {
-                eprintln!("AniBeam sync: {} did not: {error:?}", address.display());
+                eprintln!("Anibeam sync: {} did not: {error:?}", address.display());
                 if let Some(cache) = store.cache()
                     && let Some(anilist) = self.syncer.refresh_anilist_if_due(&cache, now)
                 {
                     eprintln!(
-                        "AniBeam sync: asked AniList, {} shows, error {:?}",
+                        "Anibeam sync: asked AniList, {} shows, error {:?}",
                         anilist.shows.len(),
                         anilist.error
                     );

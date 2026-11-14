@@ -3,15 +3,15 @@
 New issues on this repo get a triage pass from an agent, the way T3 Code's issue flow works: the
 agent reproduces the report on current `main` and lands one outcome, either a fix PR or a comment
 that says what it tried and exactly what it still needs. The steps are the `issue-triage` skill
-(`~/.claude/skills/issue-triage/SKILL.md`, synced to every box). This file adds AniBeam's part:
+(`~/.claude/skills/issue-triage/SKILL.md`, synced to every box). This file adds Anibeam's part:
 how an issue reaches triage, and how to reproduce one here.
 
 ## How an issue gets here
 
 On the owner's desktop, the "Issue triage" T3 scheduled task runs `~/.local/share/issue-triage/check.sh`
-every 10 minutes. AniBeam is opted in by its line in `repos.txt` beside the script, and
+every 10 minutes. Anibeam is opted in by its line in `repos.txt` beside the script, and
 `check.sh` says in its header exactly what it hands out. For each issue it reports, the task
-launches a thread titled `Triage: AniBeam #<n>` on Claude Opus, in a fresh worktree of
+launches a thread titled `Triage: Anibeam #<n>` on Claude Opus, in a fresh worktree of
 `origin/main`, and that thread runs the skill. A later pass on the same issue goes to the same
 thread.
 
@@ -47,7 +47,7 @@ cannot filter webhook deliveries yet, so every label change would start a run.
 Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates a
 triage label when someone deletes it.
 
-## Reproducing in AniBeam
+## Reproducing in Anibeam
 
 - Sandbox: `--root /tmp/triage-<n>/root` on every `anibeam` and `anibeam-cli` run, and synthetic
   files under `/tmp/triage-<n>/lib`. Empty `.mkv` files scan like real ones. A report that only

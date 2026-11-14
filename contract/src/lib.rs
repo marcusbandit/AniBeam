@@ -1,4 +1,4 @@
-//! AniBeam's contract: the door every shell talks through. The calls and their replies,
+//! Anibeam's contract: the door every shell talks through. The calls and their replies,
 //! the records they carry, the events the core sends and the errors it answers with, plus
 //! the catalog of words (`i18n`) the contract's own messages come from.
 //!

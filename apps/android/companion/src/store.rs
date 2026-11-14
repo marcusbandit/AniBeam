@@ -29,13 +29,13 @@ pub struct Cache {
     pub address: String,
     /// The host's own name, from its hello ("desktop").
     pub host: String,
-    /// The host's AniBeam version.
+    /// The host's Anibeam version.
     #[serde(default)]
     pub host_version: String,
     /// The phone's clock when it arrived.
     pub synced_at: i64,
     pub snapshot: Snapshot,
-    /// The other AniBeams the host saw on the tailnet at that sync. Empty
+    /// The other Anibeams the host saw on the tailnet at that sync. Empty
     /// from a host older than the list.
     #[serde(default)]
     pub peers: Vec<crate::api::PeerHost>,

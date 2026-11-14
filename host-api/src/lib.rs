@@ -1,4 +1,4 @@
-//! What an AniBeam host serves over a tailnet, and what the phone app reads.
+//! What an Anibeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
 //! addresses only. Every device on the tailnet is answered unless the person
@@ -41,14 +41,14 @@
 //! put it there. The reply comes once the host's job is done, so it says
 //! whether the torrents went in.
 //!
-//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other Anibeams
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
 //!
 //! A host that lists [`FEATURE_HISTORY`] answers [`HISTORY`]: its watch
 //! history, resume points and matches as an `anibeam-export` document (the
 //! desktop's own export format, without sources, accounts, fixes or
-//! preferences), for another AniBeam computer to merge with its own.
+//! preferences), for another Anibeam computer to merge with its own.
 //!
 //! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
 //! client may sign each request with its own key ([`proof`], with the `proof`
@@ -72,7 +72,7 @@ pub const DEFAULT_PORT: u16 = 8790;
 pub const HELLO: &str = "/api/v1/hello";
 /// `GET`: [`Snapshot`].
 pub const SNAPSHOT: &str = "/api/v1/snapshot";
-/// What [`Hello::app`] says, so a client knows it reached AniBeam and not
+/// What [`Hello::app`] says, so a client knows it reached Anibeam and not
 /// something else on the port.
 pub const APP: &str = "anibeam";
 
@@ -178,7 +178,7 @@ pub struct Hello {
     pub app: String,
     /// The host's [`API_VERSION`].
     pub api: u32,
-    /// The AniBeam version, as its About page shows it.
+    /// The Anibeam version, as its About page shows it.
     pub version: String,
     /// The machine's name, for a client to show ("desk").
     pub host: String,
@@ -230,9 +230,9 @@ pub struct Profile {
     pub owner: bool,
 }
 
-/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// `GET` [`PEERS`]: the other Anibeams the host sees on the tailnet, for a
 /// client that cannot list tailnet devices itself. Only devices the host
-/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// trusts and that answered their hello as Anibeam a moment ago; neither the
 /// host nor the device asking is among them. A host that cannot read its
 /// tailnet answers `503` instead of an empty list, so a client keeps the list
 /// it had.
@@ -242,7 +242,7 @@ pub struct Peers {
     pub hosts: Vec<PeerHost>,
 }
 
-/// One AniBeam on the tailnet.
+/// One Anibeam on the tailnet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerHost {
     /// Its machine name, from its own hello.
@@ -250,7 +250,7 @@ pub struct PeerHost {
     pub name: String,
     /// `http://<tailnet address>:<port>`, where it answered.
     pub url: String,
-    /// Its AniBeam version.
+    /// Its Anibeam version.
     #[serde(default)]
     pub version: String,
 }

@@ -92,7 +92,7 @@ event-problem-trackers = Что-то пошло не так с вашими сп
 event-problem-franchise = Что-то пошло не так со связанными сериалами. Подробности в параметрах разработчика.
 event-problem-playback = Что-то пошло не так с воспроизведением. Подробности в параметрах разработчика.
 event-problem-store = Что-то пошло не так при сохранении данных. Подробности в параметрах разработчика.
-event-problem-system = Что-то пошло не так в AniBeam. Подробности в параметрах разработчика.
+event-problem-system = Что-то пошло не так в Anibeam. Подробности в параметрах разработчика.
 event-problem-downloads = Что-то пошло не так с загрузками. Подробности в параметрах разработчика.
 
 ## Ошибки (contract::CoreError)
@@ -119,8 +119,8 @@ core-error-io = Не удалось прочитать или записать �
 core-error-storage = Не удалось сохранить библиотеку: { $message }
 core-error-keyring = Нет доступа к системному хранилищу паролей: { $message }
 core-error-unsupported = { $what } пока не поддерживается.
-core-error-version = Этот экспорт из более новой версии AniBeam (формат { $found }). Обновите AniBeam, чтобы импортировать его.
-core-error-internal = Внутренняя ошибка AniBeam: { $message }
+core-error-version = Этот экспорт из более новой версии Anibeam (формат { $found }). Обновите Anibeam, чтобы импортировать его.
+core-error-internal = Внутренняя ошибка Anibeam: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -626,7 +626,7 @@ core-trackers-oauth-port-failed = не удалось открыть порт { 
 core-trackers-oauth-port-busy = порт { $port } на этом компьютере занят другой программой. Подождите немного и попробуйте снова или закройте ту программу, если порт не освобождается.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } вернул ошибку: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } подключён к { $app }
 core-trackers-page-close-tab = Эту вкладку можно закрыть.
@@ -635,7 +635,7 @@ core-trackers-page-failed = Вход не завершился
 core-trackers-page-go-back = Вернитесь в { $app } и попробуйте снова.
 core-trackers-page-finishing-title = { $app }, вход завершается
 core-trackers-page-finishing = Вход завершается
-core-trackers-page-finishing-body = { $site } ответил, и AniBeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
+core-trackers-page-finishing-body = { $site } ответил, и Anibeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
 core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
@@ -1217,8 +1217,8 @@ core-downloads-anirss-slow-start-said = anirss не запустился за { 
 core-downloads-anirss-install-mac = Установите anirss { $version } или новее командой: { $command }
 core-downloads-anirss-install-linux = Установите anirss { $version } или новее: пакет anirss в AUR или { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } слишком старый для AniBeam, нужен { $minimum } или новее. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а AniBeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
+core-downloads-anirss-too-old = anirss { $version } слишком старый для Anibeam, нужен { $minimum } или новее. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а Anibeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
 core-downloads-anirss-update-mac = Обновите его командой: { $command }
 core-downloads-anirss-update-linux = Обновите пакет anirss или выполните: { $command }
 
@@ -1251,23 +1251,23 @@ core-downloads-anirss-command-missing = { $command } не найден. { $insta
 core-downloads-anirss-start-failed = Не удалось запустить { $command }: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } Его ответ: { $message }
-core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у AniBeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и AniBeam будет запускать его сам
-core-downloads-own-client-gone = qBittorrent от AniBeam пропал: qbittorrent-nox не установлен. Переустановите AniBeam или укажите в настройках свой qBittorrent
+core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у Anibeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и Anibeam будет запускать его сам
+core-downloads-own-client-gone = qBittorrent от Anibeam пропал: qbittorrent-nox не установлен. Переустановите Anibeam или укажите в настройках свой qBittorrent
 core-downloads-no-port = в { $address } нет порта
 core-downloads-own-client-settings = не удалось записать настройки qBittorrent: { $error }
 core-downloads-own-client-start-failed = Не удалось запустить { $command }: { $error }
-core-downloads-own-client-slow-start = qBittorrent от AniBeam не запустился
+core-downloads-own-client-slow-start = qBittorrent от Anibeam не запустился
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = qBittorrent от AniBeam не запустился: { $said }
+core-downloads-own-client-slow-start-said = qBittorrent от Anibeam не запустился: { $said }
 core-downloads-not-ready = Загрузки не готовы. Проверьте раздел «Загрузки» в настройках.
 core-downloads-ready = Загрузки готовы.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [few] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [many] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-       *[other] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [one] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [few] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [many] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+       *[other] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
     }
 core-downloads-client-connected = Торрент-клиент подключён.
 core-downloads-client-not-connected = Торрент-клиент не подключён. Проверьте его адрес в настройках.
@@ -1523,7 +1523,7 @@ core-releases-episode-range = с { $from } по { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

@@ -179,7 +179,7 @@ Window {
     }
     Component { id: frameComponent; Frame { hostWindow: window } }
     Component { id: tokensPage; TokensPage {} }
-    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "AniBeam"
+    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "Anibeam"
 
     // --shoot <png>: one capture of the frame after settle, then quit. grabToImage renders
     // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are

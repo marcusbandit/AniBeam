@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: sign-rpm.sh <file.rpm>...
-# Signs AniBeam's .rpm with the project key, in place, so the file the release carries is the
+# Signs Anibeam's .rpm with the project key, in place, so the file the release carries is the
 # one dnf checks (#788). The dnf repo on anibeam.app points at the release's own file rather
 # than a copy, so the signature has to be on it before it is uploaded.
 #   ANIBEAM_REPO_GPG_KEY      the armored private signing key (an Actions secret)

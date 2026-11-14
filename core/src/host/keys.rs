@@ -1,4 +1,4 @@
-//! This AniBeam's own key, the keys it is paired with, and the proofs it has
+//! This Anibeam's own key, the keys it is paired with, and the proofs it has
 //! already seen (#555). The scheme itself is `anibeam_host_api::proof`.
 //!
 //! The key is made once and kept in its own owner-only file beside the
@@ -29,7 +29,7 @@ const SEEN_MAX: usize = 100_000;
 /// so a broken file is not read on every request.
 const RETRY_AFTER: Duration = Duration::from_secs(60);
 
-/// One AniBeam this one is paired with.
+/// One Anibeam this one is paired with.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Paired {
     /// Its public key, in hex.

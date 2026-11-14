@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's core: every rule in one crate, used by every shell"
+description = "Anibeam's core: every rule in one crate, used by every shell"
 build = "build.rs"
 
 [lib]

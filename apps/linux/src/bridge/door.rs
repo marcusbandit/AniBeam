@@ -350,7 +350,7 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn test_torrent_client(self: &Door) -> QJsonObject;
-        /// Switches to the saved torrent client `id`; an empty id is AniBeam's own.
+        /// Switches to the saved torrent client `id`; an empty id is Anibeam's own.
         #[qinvokable]
         fn use_torrent_client(self: &Door, id: &QString) -> QJsonObject;
         /// Any call by name, the CLI's door.

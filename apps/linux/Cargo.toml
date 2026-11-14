@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
+description = "Anibeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
 build = "build.rs"
 
 [[bin]]

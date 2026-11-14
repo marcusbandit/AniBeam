@@ -395,7 +395,7 @@ pub struct Torrent {
     #[serde(default)]
     pub resolution: String,
     /// The anirss endpoint (a keyed source or a filtered-rss one) this torrent was picked on, when
-    /// AniBeam added it; qBittorrent keeps no such thing, so older
+    /// Anibeam added it; qBittorrent keeps no such thing, so older
     /// torrents carry none.
     #[serde(default)]
     pub provider: String,
@@ -552,14 +552,14 @@ impl TorrentClient {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum TorrentMode {
     /// Not settled yet. The first connect picks `Existing` when a qBittorrent
-    /// Web UI answers at the address, else `Managed` when AniBeam can run
+    /// Web UI answers at the address, else `Managed` when Anibeam can run
     /// one, and saves the choice.
     #[default]
     Auto,
     /// The user's own client, at `torrent_url`.
     Existing,
-    /// The qbittorrent-nox AniBeam runs itself: a profile of its own under
-    /// AniBeam's data, the Web UI on loopback and open to it without a login.
+    /// The qbittorrent-nox Anibeam runs itself: a profile of its own under
+    /// Anibeam's data, the Web UI on loopback and open to it without a login.
     Managed,
 }
 

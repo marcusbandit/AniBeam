@@ -13,7 +13,7 @@ body:
 
         No agent? Use the **Bug report** form instead.
 
-        A way AniBeam could harm the people who use it is not an issue: report it privately,
+        A way Anibeam could harm the people who use it is not an issue: report it privately,
         as [SECURITY.md](https://github.com/marcusbandit/AniBeam/blob/main/SECURITY.md) says.
 
   - type: textarea
@@ -44,7 +44,7 @@ body:
     id: area
     attributes:
       label: Area
-      description: The part of AniBeam the problem is in.
+      description: The part of Anibeam the problem is in.
       options:
         - Library and scanning
         - Matching and metadata
@@ -63,7 +63,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: The AniBeam version the problem happened on, from `anibeam --version` or Settings > Data > About, or "unknown".
+      description: The Anibeam version the problem happened on, from `anibeam --version` or Settings > Data > About, or "unknown".
       placeholder: 2.0.0
     validations:
       required: true
@@ -71,7 +71,7 @@ body:
   - type: dropdown
     id: install
     attributes:
-      label: How AniBeam is installed
+      label: How Anibeam is installed
       options:
         - Download from a GitHub release
         - AUR or PKGBUILD package

@@ -1,7 +1,7 @@
-//! The home anirss sees (#637). An installed AniBeam shares the person's own home, so it
+//! The home anirss sees (#637). An installed Anibeam shares the person's own home, so it
 //! reads the anirss they set up and the qBittorrent password anirss saved. Any other paths,
 //! a `--root` run, a test or the phone, get a home of their own at `<state>/home`: the core
-//! reads anirss's config and saved password from there, AniBeam's own qBittorrent saves into
+//! reads anirss's config and saved password from there, Anibeam's own qBittorrent saves into
 //! it, and every anirss the core starts gets it as `HOME` and its XDG homes, so a sandboxed
 //! run never reads, writes or logs in with the person's own setup.
 
@@ -13,7 +13,7 @@ use crate::CorePaths;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnirssHome {
-    /// The person's own home: an installed AniBeam on its XDG paths.
+    /// The person's own home: an installed Anibeam on its XDG paths.
     Shared,
     /// A home inside the run's own state directory.
     Sandbox(PathBuf),
@@ -68,7 +68,7 @@ impl AnirssHome {
         Some(base.join("anirss"))
     }
 
-    /// Where AniBeam's own qBittorrent saves: `~/Downloads/Anime`.
+    /// Where Anibeam's own qBittorrent saves: `~/Downloads/Anime`.
     pub fn save_dir(&self) -> Option<PathBuf> {
         Some(self.dir()?.join("Downloads").join("Anime"))
     }

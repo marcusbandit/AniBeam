@@ -59,7 +59,7 @@ pub struct Downloads {
     /// One sidecar start at a time: two jobs that both find it down must
     /// not each spawn one.
     connecting: tokio::sync::Mutex<()>,
-    /// The same for settling the torrent client and starting AniBeam's own.
+    /// The same for settling the torrent client and starting Anibeam's own.
     torrent_setup: tokio::sync::Mutex<()>,
     /// One rule written or removed at a time on the core's own engine:
     /// picking a free rule name is check-then-act.
@@ -203,7 +203,7 @@ async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> 
 // The clients ----------------------------------------------------------------
 
 /// An anirss client with what it was built from: the settings generation, and
-/// whether it is AniBeam's own sidecar rather than a server the person runs. A
+/// whether it is Anibeam's own sidecar rather than a server the person runs. A
 /// read writes into the state only while that generation is current (#523).
 struct Reached {
     client: AnirssClient,
@@ -493,9 +493,9 @@ async fn qbt_client(core: &Arc<Core>) -> Result<Arc<QbtClient>, CoreError> {
 /// one is there.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Settles whose torrent client the downloads use and, when it is AniBeam's
+/// Settles whose torrent client the downloads use and, when it is Anibeam's
 /// own, has it running. A fresh install decides here, once: a qBittorrent
-/// that answers at the address wins, else AniBeam sets up its own, and the
+/// that answers at the address wins, else Anibeam sets up its own, and the
 /// choice is saved.
 async fn ensure_torrent(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
     let _one_at_a_time = core.downloads.torrent_setup.lock().await;
@@ -513,7 +513,7 @@ async fn decide_torrent(
     core: &Arc<Core>,
     mut s: DownloadSettings,
 ) -> Result<DownloadSettings, CoreError> {
-    // AniBeam's own, set up on an earlier day, is still AniBeam's: asked to
+    // Anibeam's own, set up on an earlier day, is still Anibeam's: asked to
     // pick again, it must not mistake its own Web UI for the user's client.
     let own_port = managed::configured_port(&managed::profile_dir(&core.paths.data_dir));
     if let Some(port) = own_port {
@@ -552,7 +552,7 @@ async fn decide_torrent(
     let message = if is_own && (answered || managed::binary().is_some()) {
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_username = managed::USERNAME.to_string();
-        "Downloads use AniBeam's own qBittorrent".to_string()
+        "Downloads use Anibeam's own qBittorrent".to_string()
     } else if answered {
         s.torrent_mode = TorrentMode::Existing;
         // The client it found becomes a saved one, the first on the list
@@ -568,7 +568,7 @@ async fn decide_torrent(
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_url = format!("http://127.0.0.1:{port}");
         s.torrent_username = managed::USERNAME.to_string();
-        "qBittorrent is a dependency of Downloads and none was running, so AniBeam set up its own"
+        "qBittorrent is a dependency of Downloads and none was running, so Anibeam set up its own"
             .to_string()
     } else {
         return Err(service(
@@ -591,7 +591,7 @@ async fn decide_torrent(
     Ok(s)
 }
 
-/// Where AniBeam's own qBittorrent listens: the port an earlier setup chose,
+/// Where Anibeam's own qBittorrent listens: the port an earlier setup chose,
 /// else a free one.
 fn own_address(core: &Core) -> Result<String, CoreError> {
     let port = match managed::configured_port(&managed::profile_dir(&core.paths.data_dir)) {
@@ -603,7 +603,7 @@ fn own_address(core: &Core) -> Result<String, CoreError> {
     Ok(format!("http://127.0.0.1:{port}"))
 }
 
-/// AniBeam's own qBittorrent, started when its Web UI does not answer.
+/// Anibeam's own qBittorrent, started when its Web UI does not answer.
 async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), CoreError> {
     let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", core.http.clone());
     let answers = || async {
@@ -655,7 +655,7 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
     loop {
         tokio::time::sleep(managed::READY_POLL).await;
         if answers().await {
-            tracing::info!("started AniBeam's qBittorrent on port {port}");
+            tracing::info!("started Anibeam's qBittorrent on port {port}");
             return Ok(());
         }
         if started.elapsed() > managed::READY_TIMEOUT {
@@ -809,7 +809,7 @@ pub(crate) struct AnirssView {
 /// why not when they do not (#499).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum EndpointSync {
-    /// AniBeam's own sidecar, in a run that may change the owner's setup.
+    /// Anibeam's own sidecar, in a run that may change the owner's setup.
     #[default]
     Syncs,
     /// A server the person runs themselves (Remote mode), which keeps its own config.
@@ -831,7 +831,7 @@ pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
     })
 }
 
-/// Whether the endpoints installed from repos go into this anirss: AniBeam's own sidecar,
+/// Whether the endpoints installed from repos go into this anirss: Anibeam's own sidecar,
 /// in a run that may change the owner's setup, while the settings it was built from are
 /// still the ones in use. A server the person runs themselves keeps its own config, and a
 /// sandbox root or a drive never writes into the real one. Decided from how the client was
@@ -843,7 +843,7 @@ fn syncs_into(core: &Core, reached: &Reached) -> bool {
 
 /// Whether the endpoints installed from repos go into the anirss `reached` reaches, and why
 /// not when they do not (#499), from how its client was built (#523): a server the person
-/// runs is theirs, and AniBeam's own syncs only in a run that may change the owner's setup
+/// runs is theirs, and Anibeam's own syncs only in a run that may change the owner's setup
 /// and while the settings it came from are still the ones in use.
 fn endpoint_sync(core: &Core, reached: &Reached) -> EndpointSync {
     sync_of(
@@ -921,7 +921,7 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
 static HELPER_SOURCES_SAID: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// On AniBeam itself with no sources of its own while the search helper's
+/// On Anibeam itself with no sources of its own while the search helper's
 /// own config names some (#552): someone moved off anirss by the new
 /// default is told once, in plain words, where their sources went.
 fn say_helper_sources(core: &Arc<Core>) {
@@ -961,7 +961,7 @@ async fn read_native_endpoints(core: &Arc<Core>) -> Result<(), CoreError> {
 /// than written under the new settings (#523), and nothing more is asked of it.
 async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreError> {
     let client = &reached.client;
-    // No feature is asked of a server the user runs: AniBeam never points it
+    // No feature is asked of a server the user runs: Anibeam never points it
     // at a client, so it reads its own config and keeps its own logins.
     let health = client.health().await?;
     let mut endpoints = client.endpoints().await?;
@@ -1005,7 +1005,7 @@ async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreEr
 /// start, not the one a save may have picked since.
 fn describe(status: &DownloadsStatus, native: bool, anirss_failure: Option<&str>) -> String {
     let anirss = match anirss_failure {
-        _ if native => "searches run in AniBeam itself".to_string(),
+        _ if native => "searches run in Anibeam itself".to_string(),
         Some(m) => format!("anirss is not available: {m}"),
         None => format!("anirss {} ready", status.anirss.version),
     };
@@ -3249,7 +3249,7 @@ pub fn set_settings(
     anirss_token: Option<&str>,
     torrent_password: Option<&str>,
 ) -> Result<Reply, CoreError> {
-    // AniBeam's own listens on this machine; an address left over from a
+    // Anibeam's own listens on this machine; an address left over from a
     // client elsewhere would have it started at somebody else's port.
     // The same for one of the user's own on this machine: its port is theirs.
     if settings.torrent_mode == TorrentMode::Managed && !settings::fits_managed(&settings) {
@@ -3269,7 +3269,7 @@ pub fn set_settings(
     }
     // A password is the one secret where whitespace can be the point, so
     // it is not trimmed; only an empty one is a removal. It is the password
-    // of the client in use; AniBeam's own has none to set.
+    // of the client in use; Anibeam's own has none to set.
     if let Some(key) = settings::active_password_key(&settings) {
         match torrent_password {
             Some("") => {
@@ -3292,7 +3292,7 @@ pub fn set_settings(
     if let Some(engine) = engine {
         let on = match engine {
             DownloadsEngine::Anirss => "anirss",
-            DownloadsEngine::Native => "AniBeam's own engine",
+            DownloadsEngine::Native => "Anibeam's own engine",
         };
         core.bus.info(
             Stage::Downloads,
@@ -3314,7 +3314,7 @@ pub fn set_settings(
     Ok(Reply::Ok)
 }
 
-/// Switches the downloads to the saved client `id`, or to AniBeam's own
+/// Switches the downloads to the saved client `id`, or to Anibeam's own
 /// when there is none. The rest of the settings stay as they are.
 pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     let mut s = settings::read(core)?;
@@ -3348,7 +3348,7 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
             s.torrent_url = own_address(core)?;
             s.torrent_username = managed::USERNAME.to_string();
             s.torrent_mode = TorrentMode::Managed;
-            "AniBeam's own qBittorrent".to_string()
+            "Anibeam's own qBittorrent".to_string()
         }
     };
     settings::validate(&mut s, &[])?;
@@ -3425,7 +3425,7 @@ pub(crate) async fn host_read(
         Ok(rules)
     };
     let torrents = async {
-        // A client the user runs is only asked; AniBeam's own, or a mode
+        // A client the user runs is only asked; Anibeam's own, or a mode
         // not decided yet, waits for the user to open Downloads here.
         let held = core.downloads.state().qbt.clone();
         let client = match held {
@@ -3508,7 +3508,7 @@ mod tests {
     }
 
     /// Reads an anirss with one endpoint installed, under settings saved with `saved` and a
-    /// client built as AniBeam's own when `own`: what the view says of syncing, and whether
+    /// client built as Anibeam's own when `own`: what the view says of syncing, and whether
     /// anything was written into that anirss.
     fn read_endpoint_sync(saved: AnirssMode, own: bool) -> (EndpointSync, bool) {
         let dir = tempfile::tempdir().unwrap();
@@ -3574,7 +3574,7 @@ mod tests {
     }
 
     /// A server the person runs (Remote mode) is read as one the desktop never syncs
-    /// endpoints into, and gets none, where AniBeam's own anirss gets the same endpoint
+    /// endpoints into, and gets none, where Anibeam's own anirss gets the same endpoint
     /// written (#499).
     #[test]
     fn a_remote_anirss_reads_as_one_the_desktop_never_syncs_into() {
@@ -3582,7 +3582,7 @@ mod tests {
             read_endpoint_sync(AnirssMode::Remote, false),
             (EndpointSync::Theirs, false)
         );
-        // The same endpoint is written into AniBeam's own, so the check above can fail.
+        // The same endpoint is written into Anibeam's own, so the check above can fail.
         assert_eq!(
             read_endpoint_sync(AnirssMode::Sidecar, true),
             (EndpointSync::Syncs, true)
@@ -3592,7 +3592,7 @@ mod tests {
     /// A save that has written the other mode but not bumped the generation yet does not
     /// flip the note: it follows the client the read went to, not the settings read again
     /// (#499, #523). A server the person runs stays theirs and gets nothing written, and
-    /// AniBeam's own stays one the desktop syncs into.
+    /// Anibeam's own stays one the desktop syncs into.
     #[test]
     fn a_settings_save_racing_a_read_does_not_flip_the_endpoint_note() {
         assert_eq!(
@@ -3700,7 +3700,7 @@ mod tests {
 
     /// Repo endpoints go into an anirss by how its client was built, never by the settings
     /// read again: a save writes the new mode before it bumps the generation, and in that
-    /// gap a remote server's client must not be taken for AniBeam's own (#523).
+    /// gap a remote server's client must not be taken for Anibeam's own (#523).
     #[test]
     fn endpoints_sync_only_into_our_own_anirss_under_the_settings_it_came_from() {
         let dir = tempfile::tempdir().unwrap();
@@ -3722,7 +3722,7 @@ mod tests {
         assert!(syncs_into(&core, &own));
         assert!(!syncs_into(&core, &remote));
 
-        // Half a save: the settings already say AniBeam's own, the bump has not landed.
+        // Half a save: the settings already say Anibeam's own, the bump has not landed.
         let mut s = settings::read(&core).unwrap();
         s.anirss_mode = AnirssMode::Sidecar;
         core.store.write(move |c| settings::save(c, &s)).unwrap();

@@ -1,6 +1,6 @@
 //! A show's schedule, looked up by the coding agent on this computer (#419).
 //!
-//! AniBeam runs a real session of the agent the person already has, the way
+//! Anibeam runs a real session of the agent the person already has, the way
 //! T3 Code does: Claude Code over its own stream protocol (`--input-format
 //! stream-json --output-format stream-json`), a live session with a message
 //! stream rather than a one-shot `claude -p`. The session runs in an empty
@@ -83,7 +83,7 @@ pub struct Brief {
 /// The first message: the show, what is known, and the shape of the answer.
 pub fn prompt(b: &Brief, today: &str) -> String {
     let mut out = String::new();
-    out.push_str("You are helping AniBeam, a local anime library app, fill in the release schedule of one show.\n\n");
+    out.push_str("You are helping Anibeam, a local anime library app, fill in the release schedule of one show.\n\n");
     out.push_str(&format!("Show: {}\n", b.title));
     if !b.other_titles.is_empty() {
         out.push_str(&format!("Also known as: {}\n", b.other_titles.join("; ")));

@@ -9,7 +9,7 @@
 //! them over in the environment, as the API docs ask of a client that
 //! launches the server: the startup banner is coloured prose, not a thing
 //! to parse. The qBittorrent password rides along as `ANIRSS_QBT_PASSWORD`
-//! so the one saved in AniBeam is the one anirss logs in with.
+//! so the one saved in Anibeam is the one anirss logs in with.
 
 use std::collections::VecDeque;
 use std::process::Stdio;
@@ -44,8 +44,8 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The first anirss release with everything this client needs: 0.4.0 brought
 /// `--serve` (0.3.4 and older exit on the flag), 0.4.1 the qBittorrent address
-/// from the environment, 0.4.2 a client that needs no login, which AniBeam's
-/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints AniBeam
+/// from the environment, 0.4.2 a client that needs no login, which Anibeam's
+/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints Anibeam
 /// puts in through `POST` and `DELETE /endpoints` (`repos::sync_anirss`). It names
 /// the release to install in the hints and the oldest the AUR package may ask for
 /// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
@@ -58,7 +58,7 @@ pub const MIN_VERSION: &str = "0.6.0";
 pub const SAVE_PATH_SINCE: &str = "0.7.1";
 
 /// The feature a sidecar has to list in `/health`: an address only the
-/// environment names keeps its own session and saved password. AniBeam points
+/// environment names keeps its own session and saved password. Anibeam points
 /// its sidecar at the client in use through `ANIRSS_QBT_URL`, and an anirss
 /// without it sends that client the session cookie and saved password of the
 /// qBittorrent its own config names. That fails at nothing, so no call can
@@ -66,7 +66,7 @@ pub const SAVE_PATH_SINCE: &str = "0.7.1";
 /// pointed anywhere and needs no such thing.
 pub const SIDECAR_FEATURE: &str = "qbt_env_session";
 
-/// The feature an anirss lists when it takes endpoints from AniBeam (`POST` and `DELETE
+/// The feature an anirss lists when it takes endpoints from Anibeam (`POST` and `DELETE
 /// /endpoints`), 0.6.0 and newer. Whether the desktop syncs its installed endpoints into
 /// anirss follows this, never the version string, which a checkout or a fork can set to
 /// anything (#476).
@@ -1262,7 +1262,7 @@ mod tests {
             "the bundles pin different anirss releases: {bundled:?}"
         );
         let version = &bundled[0];
-        // A fresh install searches on AniBeam's own engine (#552), so the Downloads page drive
+        // A fresh install searches on Anibeam's own engine (#552), so the Downloads page drive
         // never starts anirss; the Linux smoke's helpers step runs the bundled one instead.
         let linux = std::fs::read_to_string(packaging.join("linux/smoke.sh")).unwrap();
         assert!(

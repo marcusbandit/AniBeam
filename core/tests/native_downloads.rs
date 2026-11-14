@@ -469,7 +469,7 @@ fn list_rules_lists_every_rule_with_counts() {
     std::fs::write(alpha.join("01.mkv"), b"x").unwrap();
     std::fs::write(alpha.join("S1").join("02.mkv"), b"x").unwrap();
     let alpha = alpha.to_string_lossy().into_owned();
-    // A rule anirss or a person wrote is listed as well as one of AniBeam's
+    // A rule anirss or a person wrote is listed as well as one of Anibeam's
     r.http.push_for(
         "rss/rules",
         200,

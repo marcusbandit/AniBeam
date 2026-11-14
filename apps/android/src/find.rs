@@ -227,7 +227,7 @@ fn with(f: impl FnOnce(&mut Find)) {
 }
 
 /// A core error as a person reads it. A source that cannot be reached gets the reason it
-/// most likely is: the network blocks it. AniBeam already looks names up privately, so
+/// most likely is: the network blocks it. Anibeam already looks names up privately, so
 /// what is left is a block on the address, or the site being down.
 fn words(e: &CoreError) -> String {
     Why::of(e).say()

@@ -74,7 +74,7 @@ fn as_sentence(message: &str) -> String {
     out
 }
 
-/// The services AniBeam runs or talks to on this machine for downloads, by the name a
+/// The services Anibeam runs or talks to on this machine for downloads, by the name a
 /// person knows them under. Anything else named in a `Service` error is a search source
 /// or a site, which keeps its own name.
 enum Service {
@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(plain(&mal).fix, Fix::Settings("accounts"));
         assert_eq!(
             plain(&mal).said,
-            "MyAnimeList turned down AniBeam's sign-in."
+            "MyAnimeList turned down Anibeam's sign-in."
         );
         let tvmaze = CoreError::Provider {
             provider: Provider::Tvmaze,
