@@ -10,7 +10,7 @@ pub fn log(line: &str) {
 
 /// No browser to open: the link is logged.
 pub fn open_url(url: &str) {
-    crate::local::log(&format!("open {url}"));
+    log(&format!("open {url}"));
 }
 
 /// Nothing can be picked here.
@@ -106,7 +106,7 @@ pub fn fold() -> (Option<f32>, bool) {
 /// The crease is never reported: the answer `Crease.at` gives on a phone without the window
 /// extensions.
 pub fn crease() -> crate::crease::Reading {
-    crate::crease::decode(crate::crease::SILENT)
+    crate::crease::Reading::Silent
 }
 
 /// The window's brightness, halfway.
