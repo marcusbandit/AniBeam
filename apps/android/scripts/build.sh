@@ -119,6 +119,8 @@ fi
 triple() { case "$1" in x86_64) echo x86_64-linux-android ;; arm64-v8a) echo aarch64-linux-android ;; esac; }
 
 scripts/fetch-mpv.sh
+# Fetched before the long compile, so a failed download stops the build at once.
+(( bundle )) && bundletool=$(scripts/fetch-bundletool.sh)
 # rust-toolchain.toml pins the version for the whole repo, and that toolchain starts with only
 # the host's standard library, so add the targets this build needs to it. A no-op once they
 # are there; a desktop checkout never downloads Android's standard library.
@@ -161,7 +163,6 @@ key_alias="${ANIBEAM_KEY_ALIAS:-androiddebugkey}"
 if (( bundle )); then
   # The App Bundle: the same manifest, resources, dex and libraries as the APK, laid out as
   # bundletool's base module. aapt2 writes the resources as protobuf for it.
-  bundletool=$(scripts/fetch-bundletool.sh)
   "$BT/aapt2" link --proto-format -o "$stage/proto.zip" -I "$PLATFORM_JAR" --manifest "$manifest" \
     --version-code "$version_code" --version-name "$version_name" "$stage/res.zip"
   module="$stage/base"
@@ -187,8 +188,9 @@ JSON
   rm -f "$aab"
   ANIBEAM_SIGN_PASS="$pass" "$JAVA_HOME/bin/jarsigner" -keystore "$keystore" \
     -storepass:env ANIBEAM_SIGN_PASS -keypass:env ANIBEAM_SIGN_PASS \
-    -signedjar "$aab" "$stage/unsigned.aab" "$key_alias" > /dev/null
+    -signedjar "$aab" "$stage/unsigned.aab" "$key_alias"
   echo "build.sh: $aab (versionCode $version_code, versionName $version_name, ${abis[*]})"
+  [[ " ${abis[*]} " == *" arm64-v8a "* ]] || echo "build.sh: emulator only, a phone cannot run this bundle; Play needs arm64-v8a"
   if (( dist )); then
     if ! unzip -l "$aab" "base/lib/arm64-v8a/libanibeam.so" >/dev/null 2>&1; then
       echo "build.sh: $aab has no arm64-v8a code; refusing to put it in dist/" >&2

@@ -94,8 +94,8 @@ jobs:
         run: |
           export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" JAVA_HOME="$JAVA_HOME_17_X64"
           scripts/build.sh --dist
-          # The Play flavor recompiles only the app crate; its dependencies come from the
-          # APK's build above.
+          # The bundle reuses the crates the APK's build above compiled. Once the app reads
+          # ANIBEAM_FLAVOR, the Play flavor recompiles the app crate and nothing else.
           scripts/build.sh --bundle --dist
           ls -la dist
 

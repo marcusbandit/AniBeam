@@ -127,7 +127,8 @@ scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same lim
 `--bundle` builds the Play flavor (`ANIBEAM_FLAVOR=play`) with a pinned bundletool
 (`scripts/fetch-bundletool.sh`) and signs it with jarsigner and the APK's key. To try it on the
 emulator: `java -jar "$(scripts/fetch-bundletool.sh)" build-apks --local-testing --bundle
-build/AniBeam-release.aab --output build/AniBeam.apks`, then `install-apks --apks build/AniBeam.apks`.
+build/AniBeam-release.aab --output build/AniBeam.apks`, then the same `java -jar` with
+`install-apks --apks build/AniBeam.apks`.
 
 `build.sh` runs inside a systemd scope capped at 6 GB with swap forbidden
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
