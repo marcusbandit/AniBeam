@@ -1314,6 +1314,7 @@ core-room-media-nothing = O anfitrião não tem uma cópia do episódio para com
 core-room-media-torrent = Baixando o episódio pelo torrent do anfitrião.
 core-room-media-searching = Procurando o lançamento do anfitrião nas suas fontes.
 core-room-media-not-found = Nenhuma das suas fontes tem o lançamento do anfitrião.
+core-room-media-no-sources = Todas as fontes estão desativadas. Ative uma para buscar.
 core-room-media-no-start = Não foi possível iniciar o download: { $message }
 core-room-media-client = o cliente de torrent não aceitou
 core-room-media-lost = O cliente de torrent perdeu o download do episódio.

@@ -1203,6 +1203,7 @@ core-room-media-nothing = 호스트에게 공유할 에피소드 사본이 없�
 core-room-media-torrent = 호스트의 토렌트로 에피소드를 내려받고 있어요.
 core-room-media-searching = 내 소스에서 호스트의 릴리스를 찾고 있어요.
 core-room-media-not-found = 내 소스 중 호스트의 릴리스가 있는 곳이 없어요.
+core-room-media-no-sources = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
 core-room-media-no-start = 다운로드를 시작할 수 없었어요: { $message }
 core-room-media-client = 토렌트 클라이언트가 받지 않았어요
 core-room-media-lost = 토렌트 클라이언트가 에피소드 다운로드를 놓쳤어요.

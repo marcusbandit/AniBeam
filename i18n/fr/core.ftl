@@ -1308,6 +1308,7 @@ core-room-media-nothing = L'hôte n'a aucune copie de l'épisode à partager.
 core-room-media-torrent = Téléchargement de l'épisode depuis le torrent de l'hôte.
 core-room-media-searching = Recherche de la sortie de l'hôte dans vos sources.
 core-room-media-not-found = Aucune de vos sources n'a la sortie de l'hôte.
+core-room-media-no-sources = Chaque source est désactivée. Activez-en une pour chercher.
 core-room-media-no-start = Impossible de lancer le téléchargement : { $message }
 core-room-media-client = le client torrent ne l'a pas accepté
 core-room-media-lost = Le client torrent a perdu le téléchargement de l'épisode.

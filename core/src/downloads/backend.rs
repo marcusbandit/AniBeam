@@ -76,6 +76,12 @@ impl DownloadsBackend {
         }
     }
 
+    /// Whether a search here has nowhere to look: the native engine with every
+    /// source switched off. anirss keeps its own list, so it always has one.
+    pub fn has_no_sources(&self) -> bool {
+        matches!(self, DownloadsBackend::Native(native, _) if native.endpoints.is_empty())
+    }
+
     /// One search with fallback. Native fills in the seeders a feed left
     /// out, as anirss's own search does before it answers.
     pub async fn search(

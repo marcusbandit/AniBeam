@@ -1263,6 +1263,7 @@ core-room-media-nothing = ホストには共有できるエピソードのコピ
 core-room-media-torrent = ホストのトレントからエピソードをダウンロードしています。
 core-room-media-searching = あなたのソースでホストのリリースを検索しています。
 core-room-media-not-found = あなたのソースにホストのリリースはありませんでした。
+core-room-media-no-sources = すべてのソースがオフです。検索するにはどれかをオンにしてください。
 core-room-media-no-start = ダウンロードを開始できませんでした: { $message }
 core-room-media-client = トレントクライアントが受け付けませんでした
 core-room-media-lost = トレントクライアントがエピソードのダウンロードを見失いました。

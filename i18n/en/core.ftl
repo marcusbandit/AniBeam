@@ -593,6 +593,7 @@ core-room-media-nothing = The host has no copy of the episode to share.
 core-room-media-torrent = Downloading the episode from the host's torrent.
 core-room-media-searching = Searching your sources for the host's release.
 core-room-media-not-found = None of your sources has the host's release.
+core-room-media-no-sources = Every source is switched off. Switch one on to search.
 core-room-media-no-start = Could not start the download: { $message }
 core-room-media-client = the torrent client did not take it
 core-room-media-lost = The torrent client lost the episode's download.

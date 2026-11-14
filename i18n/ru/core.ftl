@@ -1557,6 +1557,7 @@ core-room-media-nothing = У ведущего нет копии серии, ко
 core-room-media-torrent = Серия скачивается по торренту ведущего.
 core-room-media-searching = Поиск релиза ведущего в ваших источниках.
 core-room-media-not-found = Ни в одном из ваших источников нет релиза ведущего.
+core-room-media-no-sources = Все источники выключены. Включите один, чтобы искать.
 core-room-media-no-start = Не удалось начать загрузку: { $message }
 core-room-media-client = торрент-клиент его не принял
 core-room-media-lost = Торрент-клиент потерял загрузку серии.
