@@ -176,7 +176,7 @@ pub fn validate_subtitle_defaults(d: &SubtitleDefaults) -> Result<(), CoreError>
 pub fn relay_ok(relay: &str) -> bool {
     let relay = relay.trim();
     (relay.starts_with("https://") || relay.starts_with("http://"))
-        && reqwest::Url::parse(relay)
+        && url::Url::parse(relay)
             .ok()
             .and_then(|u| u.host_str().map(|h| !h.is_empty()))
             .unwrap_or(false)

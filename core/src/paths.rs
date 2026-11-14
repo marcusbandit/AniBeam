@@ -5,6 +5,9 @@
 
 pub use anibeam_foundation::paths::*;
 
+// uniffi's remote form restates the record's fields: it builds and reads the struct
+// field by field, so a field this list lacks, adds or types differently fails to
+// compile. The doc below is the bindings' docstring, kept as it was on the core's type.
 /// Where the core keeps its files. Every field is a directory path as a
 /// String, per the contract's closed type set; the accessors return PathBuf
 /// for the code inside the crate.

@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Anibeam's foundation: the store, the event bus, the jobs, the paths, the prefs and the secrets every team of the core shares"
-build = "build.rs"
 
 [lib]
 name = "anibeam_foundation"
@@ -28,8 +27,8 @@ keyring-core = "1.0"
 regex = "1"
 tracing = "0.1"
 if-addrs = "0.13"
-# Only for `Url::parse` on the relay address in the preferences.
-reqwest = { version = "0.13", default-features = false }
+# The relay address in the preferences is read with the parser the HTTP client uses.
+url = "2"
 
 # The machine's keyring: the Secret Service over D-Bus on Linux, the login keychain on a
 # Mac, the Credential Manager on Windows. `keychain` rather than `protected`: the
