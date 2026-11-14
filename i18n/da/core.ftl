@@ -1150,7 +1150,7 @@ core-downloads-name-not-folder = { $name } er ikke et mappenavn
 core-downloads-pruned = Afmeldte { $title }, den er færdig med at blive sendt.
 core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i Indstillinger.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } er ikke en almindelig absolut sti, så intet blev fjernet
 core-downloads-refuse-root = { $path } er filsystemets rod, så intet blev fjernet

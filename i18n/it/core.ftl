@@ -1160,7 +1160,7 @@ core-downloads-name-not-folder = { $name } non è un nome di cartella
 core-downloads-pruned = Iscrizione a { $title } annullata, ha finito di andare in onda.
 core-downloads-prune-failed = Impossibile annullare l'iscrizione a { $title }. Controlla Download nelle Impostazioni.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } non è un semplice percorso assoluto, quindi non è stato rimosso nulla
 core-downloads-refuse-root = { $path } è la radice del filesystem, quindi non è stato rimosso nulla

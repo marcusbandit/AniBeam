@@ -1317,7 +1317,7 @@ core-downloads-name-not-folder = { $name } is not a folder name
 core-downloads-pruned = Unsubscribed from { $title }, it finished airing.
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is not a plain absolute path, so nothing was removed
 core-downloads-refuse-root = { $path } is the filesystem root, so nothing was removed

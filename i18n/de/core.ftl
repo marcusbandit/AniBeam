@@ -1150,7 +1150,7 @@ core-downloads-name-not-folder = { $name } ist kein Ordnername
 core-downloads-pruned = Abo von { $title } beendet, die Serie ist zu Ende gelaufen.
 core-downloads-prune-failed = Abo von { $title } konnte nicht beendet werden. Prüfe Downloads in den Einstellungen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } ist kein einfacher absoluter Pfad, also wurde nichts entfernt
 core-downloads-refuse-root = { $path } ist die Wurzel des Dateisystems, also wurde nichts entfernt

@@ -1384,7 +1384,7 @@ core-downloads-name-not-folder = { $name } не подходит как имя �
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
 core-downloads-prune-failed = Не удалось отписаться от «{ $title }». Проверьте раздел «Загрузки» в настройках.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } не является простым абсолютным путём, поэтому ничего не удалено
 core-downloads-refuse-root = { $path } это корень файловой системы, поэтому ничего не удалено

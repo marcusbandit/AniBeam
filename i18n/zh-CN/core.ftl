@@ -971,7 +971,7 @@ core-downloads-name-not-folder = { $name } 不是文件夹名称
 core-downloads-pruned = 《{ $title }》已完结，已取消订阅。
 core-downloads-prune-failed = 无法取消订阅《{ $title }》。请检查设置中的“下载”。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } 不是普通的绝对路径，未移除任何内容
 core-downloads-refuse-root = { $path } 是文件系统根目录，未移除任何内容

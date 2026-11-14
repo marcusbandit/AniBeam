@@ -1162,7 +1162,7 @@ core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
 core-downloads-pruned = Désabonné de { $title }, sa diffusion est terminée.
 core-downloads-prune-failed = Impossible de se désabonner de { $title }. Vérifiez Téléchargements dans les réglages.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } n'est pas un simple chemin absolu, donc rien n'a été retiré
 core-downloads-refuse-root = { $path } est la racine du système de fichiers, donc rien n'a été retiré

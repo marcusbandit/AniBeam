@@ -299,35 +299,8 @@ pub fn strip_season(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anibeam_foundation::store::sql::as_i64;
+    use anibeam_foundation::store::testing::*;
     use rusqlite::params;
-
-    /// A migrated database in memory, foreign keys on, as the franchise
-    /// team's tests open one: a relation's other end must have a row.
-    fn conn() -> Connection {
-        let mut c = Connection::open_in_memory().unwrap();
-        c.pragma_update(None, "foreign_keys", "ON").unwrap();
-        anibeam_foundation::store::migrations::apply(&mut c).unwrap();
-        c
-    }
-
-    /// One media row the library lacks, its edges already crawled.
-    fn media(c: &Connection, id: u64, fetched: bool) {
-        c.execute(
-            "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, relations_fetched_at)
-             VALUES (?1, 'ANIME', ?2, ?3)",
-            params![as_i64(id), format!("T{id}"), fetched.then_some(1_000i64)],
-        )
-        .unwrap();
-    }
-
-    fn edge(c: &Connection, from: u64, to: u64, relation: &str) {
-        c.execute(
-            "INSERT OR REPLACE INTO relations (from_id, to_id, relation) VALUES (?1, ?2, ?3)",
-            params![as_i64(from), as_i64(to), relation],
-        )
-        .unwrap();
-    }
 
     fn member(series: u64, anilist_id: u64, title: &str, released: &str) -> Member {
         Member {

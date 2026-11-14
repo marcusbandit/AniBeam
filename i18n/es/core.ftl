@@ -1172,7 +1172,7 @@ core-downloads-name-not-folder = { $name } no es un nombre de carpeta
 core-downloads-pruned = Ya no estás suscrito a { $title }, terminó de emitirse.
 core-downloads-prune-failed = No se pudo cancelar la suscripción a { $title }. Revisa Descargas en Ajustes.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } no es una ruta absoluta simple, así que no se quitó nada
 core-downloads-refuse-root = { $path } es la raíz del sistema de archivos, así que no se quitó nada

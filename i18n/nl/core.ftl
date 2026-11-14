@@ -1151,7 +1151,7 @@ core-downloads-name-not-folder = { $name } is geen mapnaam
 core-downloads-pruned = Abonnement op { $title } opgezegd, de uitzending is afgelopen.
 core-downloads-prune-failed = Kon het abonnement op { $title } niet opzeggen. Controleer Downloads in Instellingen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is geen gewoon absoluut pad, dus er is niets weggehaald
 core-downloads-refuse-root = { $path } is de root van het bestandssysteem, dus er is niets weggehaald

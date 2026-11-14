@@ -1094,7 +1094,7 @@ core-downloads-name-not-folder = { $name }はフォルダ名ではありませ�
 core-downloads-pruned = 放送が終了したため、{ $title }の購読を解除しました。
 core-downloads-prune-failed = { $title }の購読を解除できませんでした。設定の「ダウンロード」を確認してください。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path }は通常の絶対パスではないので、何も削除しませんでした
 core-downloads-refuse-root = { $path }はファイルシステムのルートなので、何も削除しませんでした

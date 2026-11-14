@@ -1168,7 +1168,7 @@ core-downloads-name-not-folder = { $name } não é um nome de pasta
 core-downloads-pruned = Deixou de seguir { $title }, a exibição terminou.
 core-downloads-prune-failed = Não foi possível deixar de seguir { $title }. Confira Downloads nas Configurações.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } não é um caminho absoluto simples, então nada foi removido
 core-downloads-refuse-root = { $path } é a raiz do sistema de arquivos, então nada foi removido

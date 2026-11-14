@@ -1383,7 +1383,7 @@ core-downloads-name-not-folder = { $name } to nie nazwa folderu
 core-downloads-pruned = Anulowano subskrypcję { $title }, emisja się zakończyła.
 core-downloads-prune-failed = Nie udało się anulować subskrypcji { $title }. Sprawdź Pobieranie w Ustawieniach.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } nie jest zwykłą ścieżką bezwzględną, więc niczego nie usunięto
 core-downloads-refuse-root = { $path } to katalog główny systemu plików, więc niczego nie usunięto
