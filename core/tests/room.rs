@@ -445,6 +445,49 @@ fn a_missing_episode_is_said_and_the_host_moves_everyone_on() {
 }
 
 #[test]
+fn a_member_s_player_on_the_old_episode_does_not_take_the_new_one() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0, 2.0], true);
+    // Dee has episode 1 only.
+    let dee = person(&relay, "Dee", &[1.0], true);
+    let ann_1 = open(&ann, ann.files[0]);
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_1),
+    }))
+    .unwrap();
+    room(dee.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let dee_1 = open(&dee, dee.files[0]);
+    room(dee.core.call(Call::RoomAttach { session: dee_1 }));
+
+    // Ann moves on to episode 2, which Dee lacks.
+    let ann_2 = open(&ann, ann.files[1]);
+    room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
+    common::wait_for(
+        &dee.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if file.is_none() && episode.episode_key == "2")
+        },
+        WAIT,
+    );
+    // Dee's player, still on episode 1, asks to attach again, as the shell can while
+    // the move reaches it: the room stays on episode 2 without her.
+    let after = room(dee.core.call(Call::RoomAttach { session: dee_1 })).unwrap();
+    assert_eq!(after.session, None);
+    assert!(after.can_fetch, "Get media stays on offer");
+    common::wait_for(
+        &ann.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomChanged { room: Some(r) }
+                if r.members.iter().any(|m| m.name == "Dee" && m.ready == RoomReady::Missing))
+        },
+        WAIT,
+    );
+}
+
+#[test]
 fn a_dropped_connection_comes_back_and_leaving_is_for_good() {
     let relay = relay();
     let ann = person(&relay, "Ann", &[1.0], true);

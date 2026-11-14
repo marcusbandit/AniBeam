@@ -51,6 +51,19 @@ pub fn same(a: &proto::EpisodeRef, b: &proto::EpisodeRef) -> bool {
         && a.tvmaze_id == b.tvmaze_id
 }
 
+/// Whether a member's session plays the room's episode: a show id in common, and
+/// the same key or, when the keys differ, the same number, as a copy filed under
+/// its season ("S03E06" for "6") is.
+pub fn plays(mine: &proto::EpisodeRef, room: &proto::EpisodeRef) -> bool {
+    let shared = |a: Option<i64>, b: Option<i64>| a.is_some() && a == b;
+    let show = shared(mine.anilist_id, room.anilist_id)
+        || shared(mine.mal_id, room.mal_id)
+        || shared(mine.tvmaze_id, room.tvmaze_id);
+    let episode = mine.episode_key == room.episode_key
+        || matches!((mine.number, room.number), (Some(a), Some(b)) if (a - b).abs() < 0.001);
+    show && episode
+}
+
 /// What this library has of a room's episode.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Local {
