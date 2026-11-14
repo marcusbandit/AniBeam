@@ -60,7 +60,7 @@ pub fn of(conn: &Connection, paths: &[&str]) -> Result<HashMap<String, Origin>, 
 /// the release reads as the torrent the way it would read as the file
 /// (`facts::same_release`, with the torrent's name in the file's place).
 pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts) -> bool {
-    match crate::downloads::replace::magnet_hash(link) {
+    match crate::foundation::magnet::hash(link) {
         Some(hash) => hash.eq_ignore_ascii_case(&origin.hash),
         None => super::facts::same_release(title, facts, &origin.name),
     }

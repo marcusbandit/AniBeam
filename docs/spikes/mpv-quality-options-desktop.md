@@ -5,7 +5,7 @@ matrix whose laptop half is [mpv-quality-options-laptop.md](mpv-quality-options-
 laptop could not upscale and had no 144 Hz panel; this machine has both, so it answers the two
 questions that document left open.
 
-Run on 2026-09-04 on banditbox: Arch, kernel 7.1.5-arch1, Hyprland 0.56.1, RTX 3090 on
+Run on 2026-09-04 on the desktop: Arch, kernel 7.1.5-arch1, Hyprland 0.56.1, RTX 3090 on
 nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0, mpvqt 1.2.0, libplacebo
 7.360.1. Every run played fullscreen on HDMI-A-1, the 5120 by 1440 panel at 144 Hz with VRR on,
 on its own workspace while the owner was away from the desk. `QSG_RENDER_LOOP=threaded` on every

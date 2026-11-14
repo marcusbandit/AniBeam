@@ -18,6 +18,7 @@
 use std::net::IpAddr;
 
 use super::addr;
+use crate::foundation::trust::{Asker, TailnetUser};
 
 /// A device on the tailnet, as `tailscale status --json` names it.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,17 +41,6 @@ pub struct Peer {
     pub tagged: bool,
 }
 
-/// A person on the tailnet: the Tailscale user a device belongs to.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TailnetUser {
-    /// Tailscale's stable user id.
-    pub id: String,
-    /// "someone@example.com", or a GitHub login.
-    pub login: String,
-    /// The name Tailscale shows for them.
-    pub name: String,
-}
-
 /// This machine's tailnet addresses and every other device on it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tailnet {
@@ -61,16 +51,6 @@ pub struct Tailnet {
     pub me_user: Option<String>,
     /// Every user the status names, by id.
     pub users: Vec<TailnetUser>,
-}
-
-impl TailnetUser {
-    /// What to call them: their Tailscale name, or their login when it gives none. None
-    /// with neither, so no screen shows a bare user id (#633).
-    pub fn shown(&self) -> Option<&str> {
-        [self.name.trim(), self.login.trim()]
-            .into_iter()
-            .find(|s| !s.is_empty())
-    }
 }
 
 impl Tailnet {
@@ -86,17 +66,6 @@ impl Tailnet {
     pub fn owner(&self) -> Option<&TailnetUser> {
         self.me_user.as_deref().and_then(|id| self.user(id))
     }
-}
-
-/// Whose request it is (#631).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Asker {
-    /// This machine, or a device of the person it belongs to.
-    Owner,
-    /// A device of someone else on the tailnet.
-    Person(TailnetUser),
-    /// A tailnet device the host cannot tie to a person.
-    Unknown,
 }
 
 /// Who is asking from `from`. `tailnet` is None when `tailscale status` has never been
@@ -329,7 +298,7 @@ mod tests {
     /// #631: a status with people in it. The phone is the owner's, the tablet a
     /// friend's, and the laptop names no user.
     const PEOPLE: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+        "Self": {"ID": "nSelf", "UserID": 100, "TailscaleIPs": ["100.64.0.1"]},
         "Peer": {
             "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
             "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},
@@ -347,7 +316,7 @@ mod tests {
         assert_eq!(t.owner().map(|u| u.name.as_str()), Some("Owner"));
         assert_eq!(asker(ip("127.0.0.1"), Some(&t)), Asker::Owner);
         assert_eq!(
-            asker(ip("100.65.105.9"), Some(&t)),
+            asker(ip("100.64.0.1"), Some(&t)),
             Asker::Owner,
             "this machine"
         );
@@ -382,7 +351,7 @@ mod tests {
     #[test]
     fn a_tagged_machine_cannot_tell_people_apart() {
         let status = br#"{
-            "Self": {"ID": "nSelf", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.65.105.9"]},
+            "Self": {"ID": "nSelf", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.64.0.1"]},
             "Peer": {
                 "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
                 "nodekey:bb": {"ID": "nTv", "HostName": "tv", "UserID": 9, "Tags": ["tag:tv"], "TailscaleIPs": ["100.70.1.5"]}
@@ -416,12 +385,12 @@ mod tests {
     }
 
     const STATUS: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9", "fd7a:115c:a1e0::9"]},
+        "Self": {"ID": "nSelf", "HostName": "desk", "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::9"]},
         "Peer": {
             "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                            "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
-            "nodekey:bb": {"ID": "nLaptop", "HostName": "", "DNSName": "kangaeru.tail24c6a9.ts.net.",
-                           "OS": "linux", "Online": false, "TailscaleIPs": ["100.80.3.4"]},
+            "nodekey:bb": {"ID": "nLaptop", "HostName": "", "DNSName": "laptop.example-tailnet.ts.net.",
+                           "OS": "linux", "Online": false, "TailscaleIPs": ["100.64.0.6"]},
             "nodekey:cc": {"HostName": "no-id", "TailscaleIPs": ["100.90.0.1"]}
         }
     }"#;
@@ -429,9 +398,9 @@ mod tests {
     #[test]
     fn the_status_names_every_device_with_an_id() {
         let t = read_status(STATUS).unwrap();
-        assert_eq!(t.me, vec![ip("100.65.105.9"), ip("fd7a:115c:a1e0::9")]);
+        assert_eq!(t.me, vec![ip("100.64.0.1"), ip("fd7a:115c:a1e0::9")]);
         let names: Vec<_> = t.peers.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["kangaeru", "pixel"]);
+        assert_eq!(names, ["laptop", "pixel"]);
         let phone = t.peer(ip("fd7a:115c:a1e0::2")).unwrap();
         assert_eq!(
             (phone.id.as_str(), phone.os.as_str(), phone.online),
@@ -464,14 +433,11 @@ mod tests {
 
     #[test]
     fn this_machines_own_addresses_are_known_without_a_status_read() {
-        let mine = local_tailnet(&[ip("192.168.1.5"), ip("100.65.105.9"), ip("::1")]);
-        assert_eq!(mine.me, vec![ip("100.65.105.9")]);
+        let mine = local_tailnet(&[ip("192.168.1.5"), ip("100.64.0.1"), ip("::1")]);
+        assert_eq!(mine.me, vec![ip("100.64.0.1")]);
         assert!(mine.peers.is_empty());
         let off = vec!["nPhone".to_string()];
-        assert_eq!(
-            decide(ip("100.65.105.9"), &off, Some(&mine)),
-            Verdict::Serve
-        );
+        assert_eq!(decide(ip("100.64.0.1"), &off, Some(&mine)), Verdict::Serve);
         // Anyone else is still unplaceable while a device is off.
         assert_eq!(
             decide(ip("100.70.1.2"), &off, Some(&mine)),
@@ -485,14 +451,14 @@ mod tests {
         let off = vec!["nPhone".to_string()];
         assert_eq!(decide(ip("127.0.0.1"), &off, None), Verdict::Serve);
         assert_eq!(decide(ip("::1"), &off, Some(&t)), Verdict::Serve);
-        assert_eq!(decide(ip("100.65.105.9"), &off, Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.1"), &off, Some(&t)), Verdict::Serve);
     }
 
     #[test]
     fn every_tailnet_device_is_trusted_by_default() {
         let t = read_status(STATUS).unwrap();
         assert_eq!(decide(ip("100.70.1.2"), &[], Some(&t)), Verdict::Serve);
-        assert_eq!(decide(ip("100.80.3.4"), &[], Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.6"), &[], Some(&t)), Verdict::Serve);
         // One the status has not caught up with yet, and no status at all.
         assert_eq!(decide(ip("100.99.9.9"), &[], Some(&t)), Verdict::Serve);
         assert_eq!(decide(ip("100.70.1.2"), &[], None), Verdict::Serve);
@@ -507,7 +473,7 @@ mod tests {
         assert_eq!(decide(ip("fd7a:115c:a1e0::2"), &off, Some(&t)), refused);
         assert_eq!(decide(ip("::ffff:100.70.1.2"), &off, Some(&t)), refused);
         // The others stay trusted.
-        assert_eq!(decide(ip("100.80.3.4"), &off, Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.6"), &off, Some(&t)), Verdict::Serve);
     }
 
     #[test]

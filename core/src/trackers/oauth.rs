@@ -108,9 +108,7 @@ pub fn connect(core: &Core, t: Tracker) -> Result<u64, CoreError> {
     if let Some(running) = core.jobs.running(JobKind::ConnectTracker) {
         let _ = core.jobs.cancel(running);
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     let port = core.oauth_port.load(Ordering::SeqCst);
     Ok(owner
         .jobs

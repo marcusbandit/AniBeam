@@ -40,6 +40,20 @@ fn sources_path(core: &Core) -> PathBuf {
     PathBuf::from(&core.paths.config_dir).join("phone-sources.json")
 }
 
+/// `PhoneSources`: the sources saved here, as the call's reply.
+pub(crate) fn sources_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneSources {
+        sources: sources(core),
+    })
+}
+
+/// `PhoneSearchSources`: [`search_sources`] as the call's reply.
+pub(crate) fn search_sources_call(core: &Core) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneSources {
+        sources: search_sources(core),
+    })
+}
+
 /// The phone ships with no source of its own (#152): endpoints come from a repo the person
 /// adds, or by hand. This list is only what someone saved here before repos existed.
 /// Each kind is read under its shape name, should the file still hold one from before #602.
@@ -522,7 +536,7 @@ pub fn download(
                         })
                         .map(|(_, f)| f.size)
                         .sum(),
-                    None => crate::downloads::facts::size_bytes(&i.size).unwrap_or(1_500_000_000),
+                    None => crate::foundation::size::size_bytes(&i.size).unwrap_or(1_500_000_000),
                 })
                 .sum();
             if used + pending + size > limit {

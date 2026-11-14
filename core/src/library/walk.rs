@@ -16,13 +16,10 @@ use super::classifier::{
 };
 use super::labels::extra_label;
 use super::sidecar::{is_subtitle, match_sidecars};
-use super::{BRACKETS, SPACES, has_extension};
+use super::{BRACKETS, SPACES};
 use crate::contract::ExtraKind;
 use crate::contract::{CoreError, SeriesKind, Sidecar};
-
-pub const VIDEO_EXTENSIONS: [&str; 9] = [
-    "mkv", "mp4", "avi", "mov", "webm", "m4v", "ts", "wmv", "flv",
-];
+use crate::foundation::names::{is_video, title_key};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScannedFile {
@@ -42,10 +39,6 @@ pub struct ScannedSeries {
     pub name: String,
     pub season_hint: Option<u32>,
     pub files: Vec<ScannedFile>,
-}
-
-pub fn is_video(name: &str) -> bool {
-    has_extension(name, &VIDEO_EXTENSIONS)
 }
 
 /// Dot entries and the names a downloader gives an unfinished file.
@@ -364,14 +357,6 @@ fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
     let l = state.list(dir);
     let only_one = l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d));
     only_one.then_some(key)
-}
-
-fn title_key(title: &str) -> String {
-    title
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
 }
 
 /// A folder a show keeps beside its episodes: `Season 1`, `Specials`, `OVA`

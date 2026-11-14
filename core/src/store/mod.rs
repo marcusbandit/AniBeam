@@ -106,10 +106,6 @@ impl Store {
         }))
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     fn send_task(&self, task: Task) -> Result<(), CoreError> {
         let sender = self
             .tx

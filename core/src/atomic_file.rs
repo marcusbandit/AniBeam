@@ -172,8 +172,8 @@ mod tests {
     #[test]
     fn the_tmp_file_is_a_sibling_of_the_target() {
         assert_eq!(
-            tmp_sibling(Path::new("/home/bandit/export.json")).unwrap(),
-            PathBuf::from("/home/bandit/export.json.tmp")
+            tmp_sibling(Path::new("/home/user/export.json")).unwrap(),
+            PathBuf::from("/home/user/export.json.tmp")
         );
         assert_eq!(
             tmp_sibling(Path::new("rules.json")).unwrap(),

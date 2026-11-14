@@ -62,6 +62,11 @@ pub fn available() -> Option<String> {
     find().map(|(_, name)| name.to_string())
 }
 
+/// `ScheduleAgent`: the agent this machine has, if any.
+pub(crate) fn available_call() -> Result<Reply, CoreError> {
+    Ok(Reply::Agent { name: available() })
+}
+
 /// What the first message tells the agent about the show.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Brief {

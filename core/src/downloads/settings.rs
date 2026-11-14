@@ -332,8 +332,8 @@ pub fn files_here(s: &DownloadSettings) -> bool {
 fn is_this_machine(host: &str) -> bool {
     names_this_machine(
         host,
-        &crate::host::server::hostname(),
-        crate::host::addr::local_addresses,
+        &crate::foundation::machine::hostname(),
+        crate::foundation::machine::local_addresses,
         |name| remembered(&LOOKUPS, name, Instant::now(), bounded_lookup),
     )
 }
@@ -399,7 +399,7 @@ fn bounded_lookup(name: &str) -> Option<Vec<IpAddr>> {
 /// Whether `host` is this machine, named `hostname` and holding `locals`. An address
 /// counts when it is loopback, unspecified or one of `locals`, and a name when it is the
 /// bare hostname. A longer name that only starts with it, a tailnet's
-/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`, counts only when it
+/// `desk.example-tailnet.ts.net` or a lookalike `desk.example.net`, counts only when it
 /// resolves here, since the core trashes files at the paths that client reports (#446).
 /// Only such a name is looked up, and `locals` is listed only when an address needs it.
 fn names_this_machine(
@@ -703,62 +703,52 @@ mod tests {
         let locals = || -> Vec<IpAddr> {
             vec![
                 "192.168.1.20".parse().unwrap(),
-                "100.65.105.9".parse().unwrap(),
+                "100.64.0.1".parse().unwrap(),
             ]
         };
         let asked = std::cell::RefCell::new(Vec::new());
         let dns = |name: &str| -> Option<Vec<IpAddr>> {
             asked.borrow_mut().push(name.to_string());
             match name {
-                "banditbox.tail1234.ts.net" => Some(vec!["100.65.105.9".parse().unwrap()]),
-                "banditbox.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
+                "desk.example-tailnet.ts.net" => Some(vec!["100.64.0.1".parse().unwrap()]),
+                "desk.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
                 _ => None,
             }
         };
-        let here = |host: &str| names_this_machine(host, "banditbox", locals, dns);
-        assert!(here("banditbox"));
-        assert!(here("BanditBox."));
-        assert!(here("banditbox.tail1234.ts.net"));
-        assert!(here("BANDITBOX.TAIL1234.TS.NET."));
+        let here = |host: &str| names_this_machine(host, "desk", locals, dns);
+        assert!(here("desk"));
+        assert!(here("Desk."));
+        assert!(here("desk.example-tailnet.ts.net"));
+        assert!(here("DESK.EXAMPLE-TAILNET.TS.NET."));
         assert!(here("192.168.1.20"));
         assert!(here("127.0.0.1") && here("::1") && here("::ffff:127.0.0.1") && here("0.0.0.0"));
         // A lookalike whose first label is this machine's name is somebody
         // else's box, and so is a name that resolves nowhere (#446).
-        assert!(!here("banditbox.example.net"));
-        assert!(!here("banditbox.nowhere.invalid"));
+        assert!(!here("desk.example.net"));
+        assert!(!here("desk.nowhere.invalid"));
         assert!(!here("seedbox.example.net"));
         assert!(!here("203.0.113.7"));
         // Only a name that starts like this machine's is looked up.
         assert!(
-            asked.borrow().iter().all(|n| n.starts_with("banditbox.")),
+            asked.borrow().iter().all(|n| n.starts_with("desk.")),
             "{:?}",
             asked.borrow()
         );
         // No hostname, no match; a dotted hostname still knows its bare name.
-        assert!(!names_this_machine("banditbox", "", locals, dns));
-        assert!(names_this_machine(
-            "banditbox",
-            "banditbox.local",
-            locals,
-            dns
-        ));
-        assert!(names_this_machine(
-            "banditbox.local",
-            "banditbox.local",
-            locals,
-            dns
-        ));
+        assert!(!names_this_machine("desk", "", locals, dns));
+        assert!(names_this_machine("desk", "desk.local", locals, dns));
+        assert!(names_this_machine("desk.local", "desk.local", locals, dns));
     }
 
     #[test]
     fn a_failed_lookup_keeps_the_last_answer() {
         let cache = Lookups::default();
         let at = Instant::now();
-        let tailnet = vec!["100.65.105.9".parse::<IpAddr>().unwrap()];
-        let found = |_: &str| Some(vec!["100.65.105.9".parse().unwrap()]);
+        let tailnet = vec!["100.64.0.1".parse::<IpAddr>().unwrap()];
+        let found = |_: &str| Some(vec!["100.64.0.1".parse().unwrap()]);
         let fails = |_: &str| None;
         let never = |_: &str| -> Option<Vec<IpAddr>> { panic!("looked up within LOOKUP_FOR") };
-        let name = "banditbox.tail1234.ts.net";
+        let name = "desk.example-tailnet.ts.net";
         assert_eq!(remembered(&cache, "other.example", at, fails), None);
         assert_eq!(remembered(&cache, name, at, found), Some(tailnet.clone()));
         assert_eq!(

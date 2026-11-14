@@ -31,6 +31,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::metadata::apply::card_for;
@@ -41,11 +42,6 @@ use crate::trackers::{NO_TOKEN, accounts, cache, no_token, writes};
 
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
-
-/// The days a preference may ask for. Under a week would move a show the
-/// user skipped one weekend; over a year is the same as never.
-pub const MIN_DAYS: u32 = 7;
-pub const MAX_DAYS: u32 = 365;
 
 /// Whether On hold runs in this build at all: the desktop's, never the
 /// phone's (the module comment says why).
@@ -134,7 +130,7 @@ pub fn wants_sweep(before: &Preferences, after: &Preferences) -> bool {
 /// The days a stored preference asks for, inside the bounds `SetPreferences`
 /// keeps: a blob written some other way is held to them too.
 fn bounded(days: u32) -> u32 {
-    days.clamp(MIN_DAYS, MAX_DAYS)
+    days.clamp(ON_HOLD_MIN_DAYS, ON_HOLD_MAX_DAYS)
 }
 
 // The read -------------------------------------------------------------------
@@ -1112,9 +1108,9 @@ mod tests {
 
     #[test]
     fn the_days_stay_inside_their_bounds() {
-        assert_eq!(bounded(0), MIN_DAYS);
+        assert_eq!(bounded(0), ON_HOLD_MIN_DAYS);
         assert_eq!(bounded(60), 60);
-        assert_eq!(bounded(10_000), MAX_DAYS);
+        assert_eq!(bounded(10_000), ON_HOLD_MAX_DAYS);
     }
 
     #[test]

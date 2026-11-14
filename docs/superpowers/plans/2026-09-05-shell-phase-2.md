@@ -5295,7 +5295,7 @@ The `RecordModel` delegate reads `cards.at(index)` for the whole card rather tha
 
 - [ ] **Step 2: Build and capture against the real library**
 
-Run against a sandbox seeded with the real posters: `ANIBEAM_ROOT=/tmp/sandbox` where the sandbox was made by `mkdir -p /tmp/sandbox && anibeam-cli --root /tmp/sandbox call AddSource --json '{"path":"/mnt/wd_general/media/Anime"}' --wait && anibeam-cli --root /tmp/sandbox call RefreshAll --wait` (the second call fetches posters into the sandbox's own cache; it takes a while and needs the network; the sandbox is reused by every later task).
+Run against a sandbox seeded with the real posters: `ANIBEAM_ROOT=/tmp/sandbox` where the sandbox was made by `mkdir -p /tmp/sandbox && anibeam-cli --root /tmp/sandbox call AddSource --json '{"path":"/mnt/media/anime"}' --wait && anibeam-cli --root /tmp/sandbox call RefreshAll --wait` (the second call fetches posters into the sandbox's own cache; it takes a while and needs the network; the sandbox is reused by every later task).
 
 Run: `ANIBEAM_ROOT=/tmp/sandbox apps/linux/scripts/shoot.sh library --page library`
 Expected: the grid at medium posters, the count chip reading `45 series`, every card with its `EP NN` or `Movie` chip, the fraction chip coloured by state, the strip, the scores, the meta line; the Airing section above the grid when any series is releasing.
@@ -9508,7 +9508,7 @@ Expected: the window maps with the icon from the entry, no `Could not register a
 
 - [ ] **Step 3: Install on the laptop**
 
-Run: `ssh kangaeru 'cd ~/Projects/WebApps/AniBeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh kangaeru gtk-launch com.marcusrosado.AniBeam`
+Run: `ssh <laptop-host> 'cd ~/Projects/WebApps/AniBeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh <laptop-host> gtk-launch com.marcusrosado.AniBeam`
 Expected: the same package builds on the AMD laptop against its Qt 6.11.2; playback lands on `vaapi` (`hwdec-current`); the theme reads the laptop's kitty chain.
 
 - [ ] **Step 4: Hand the switch line to the owner**

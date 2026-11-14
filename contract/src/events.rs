@@ -65,9 +65,6 @@ pub enum EventBody {
         changed: u64,
         removed: u64,
     },
-    SubscriptionsListed {
-        result: SubscriptionsResult,
-    },
     SearchFinished {
         results: Vec<SearchResult>,
     },
@@ -316,9 +313,6 @@ pub enum EventBody {
     DownloadsUnavailable {
         what: String,
         error: CoreError,
-    },
-    RemovalPlanned {
-        plans: Vec<RemovePlan>,
     },
     SubscriptionRemoved {
         name: String,

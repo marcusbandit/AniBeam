@@ -196,17 +196,21 @@ fn a_show_finished_for_sixteen_days_loses_its_feed_and_only_its_feed() {
     assert!(body_of(&sent[0]).contains("\"names\":[\"Show 1\"]"));
     assert!(body_of(&sent[1]).contains("\"names\":[\"Show 5\"]"));
 
-    // The user's own removal, files and torrents kept, is the same call
+    // The user's own removal of the subscription, files and torrents kept,
+    // is the same call
     http.push_for(
         "/subscriptions/remove",
         200,
         json!({"dry_run": false, "plans": []}).to_string(),
     );
     let job = match core
-        .call(Call::RemoveSubscription {
-            name: "Show 1".to_string(),
+        .call(Call::RemoveShow {
+            title: "Show 1".to_string(),
+            rule: Some("Show 1".to_string()),
+            hashes: Vec::new(),
             torrents: false,
             files: false,
+            series: None,
         })
         .unwrap()
     {

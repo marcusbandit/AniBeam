@@ -19,8 +19,8 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
-use crate::library::titles;
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
 use crate::prefs;
 use crate::time;

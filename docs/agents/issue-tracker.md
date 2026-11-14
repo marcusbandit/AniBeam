@@ -66,7 +66,7 @@ What an agent does, on top of what the workflow does:
 
 ### Schedules
 
-Two T3 scheduled tasks on banditbox keep the state true:
+Two T3 scheduled tasks on the owner's desktop keep the state true:
 
 - **AniBeam issue sweep**, daily at 07:30, against `marcusbandit/AniBeam`. Every open issue is on the
   board; the board's Status matches the labels (`in progress` is In progress, `in review` is In

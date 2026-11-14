@@ -1239,7 +1239,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = a movie link must be a magnet or an http(s) URL
 core-downloads-added-movie = Added a movie to your downloads.
-core-downloads-unsubscribed = Unsubscribed from { $name }.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } is the library folder of { $name }, with episodes this subscription did not download: remove the subscription without its files, or remove { $name } from its page
 core-downloads-no-torrents-named = no torrents named
@@ -1454,13 +1453,3 @@ core-releases-episodes-phrase =
     }
 # A run of episode numbers
 core-releases-episode-range = { $from } to { $to }
-
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = anirss on this platform
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = its answer could not be read ({ $message })
-core-subscriptions-stopped = it stopped without saying why
-# $said is what anirss printed
-core-subscriptions-stopped-said = it stopped: { $said }

@@ -9,7 +9,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::net::Http;
 
-use super::{BestfitConfig, Endpoint, bestfit, endpoints, refinement, stats};
+use super::{BestfitConfig, Endpoint, endpoints, refinement, stats};
 
 /// The release groups `installed` trust, in their order, each once, told apart without case.
 pub fn trusted_groups(installed: &[crate::repos::Runnable]) -> Vec<String> {
@@ -342,11 +342,6 @@ impl Native {
             ));
         }
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
-    }
-
-    /// The release best fit would pick.
-    pub fn best_item(&self, items: &[Release]) -> Option<Release> {
-        bestfit::best_item(items, &self.bestfit).cloned()
     }
 }
 

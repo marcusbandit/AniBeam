@@ -41,6 +41,8 @@ use super::qbt::QbtClient;
 use super::{facts, trash};
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::magnet;
+use crate::foundation::names::title_key;
 use crate::store::{Store, settings};
 use crate::time::now_secs;
 
@@ -96,67 +98,6 @@ pub struct Source {
 static TICK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 // Reading names -----------------------------------------------------------------
-
-/// The info-hash a magnet link names, as lowercase hex (the base32 form is
-/// converted). None for anything that is not a magnet with a hash.
-pub fn magnet_hash(link: &str) -> Option<String> {
-    let query = link.trim().strip_prefix("magnet:?")?;
-    for part in query.split('&') {
-        let Some(v) = part
-            .get(..3)
-            .filter(|key| key.eq_ignore_ascii_case("xt="))
-            .map(|_| &part[3..])
-        else {
-            continue;
-        };
-        let lower = v.to_ascii_lowercase();
-        let Some(h) = lower
-            .strip_prefix("urn:btih:")
-            .or_else(|| lower.strip_prefix("urn%3abtih%3a"))
-        else {
-            continue;
-        };
-        if h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Some(h.to_string());
-        }
-        if h.len() == 32 {
-            return base32_hex(h);
-        }
-    }
-    None
-}
-
-fn base32_hex(s: &str) -> Option<String> {
-    let mut bits: u64 = 0;
-    let mut n = 0;
-    let mut out = String::new();
-    for c in s.chars() {
-        let v = match c {
-            'a'..='z' => c as u64 - 'a' as u64,
-            '2'..='7' => c as u64 - '2' as u64 + 26,
-            _ => return None,
-        };
-        bits = (bits << 5) | v;
-        n += 5;
-        if n >= 8 {
-            n -= 8;
-            out.push_str(&format!("{:02x}", (bits >> n) & 0xff));
-            bits &= (1 << n) - 1;
-        }
-    }
-    (out.len() == 40).then_some(out)
-}
-
-/// A title or torrent name as letters and digits only, without the file
-/// extension a client adds or drops, so the two compare.
-pub fn title_key(s: &str) -> String {
-    let lower = s.trim().to_lowercase();
-    let stem = [".mkv", ".mp4", ".avi", ".torrent"]
-        .iter()
-        .find_map(|e| lower.strip_suffix(e))
-        .unwrap_or(&lower);
-    stem.chars().filter(|c| c.is_alphanumeric()).collect()
-}
 
 /// The torrent's name is the release's title, give or take an extension or
 /// punctuation. A containment counts only for names long enough to be
@@ -541,7 +482,7 @@ pub fn prepare(
             id: 0,
             created_at: now,
             title: item.title.clone(),
-            hash: magnet_hash(&item.link).unwrap_or_default(),
+            hash: magnet::hash(&item.link).unwrap_or_default(),
             sequential: options.sequential,
             series: options.series,
             replace: entries,
@@ -963,26 +904,6 @@ mod tests {
             series: Some(1),
             replace: Vec::new(),
         }
-    }
-
-    #[test]
-    fn a_magnet_gives_its_hash_in_hex_or_base32() {
-        let hex = "0123456789abcdef0123456789abcdef01234567";
-        assert_eq!(
-            magnet_hash(&format!("magnet:?xt=urn:btih:{}&dn=x", hex.to_uppercase())).as_deref(),
-            Some(hex)
-        );
-        // 20 bytes of 0x00 .. 0x13 in base32
-        assert_eq!(
-            magnet_hash("magnet:?dn=a&xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&tr=x")
-                .as_deref(),
-            Some("000102030405060708090a0b0c0d0e0f10111213")
-        );
-        assert_eq!(
-            magnet_hash("https://tracker.example/download/1.torrent"),
-            None
-        );
-        assert_eq!(magnet_hash("magnet:?xt=urn:btih:short"), None);
     }
 
     #[test]

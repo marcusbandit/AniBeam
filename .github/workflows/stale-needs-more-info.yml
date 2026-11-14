@@ -3,7 +3,7 @@ name: Close stale needs more info issues
 # Triage labels an issue "needs more info" when it cannot reproduce the report and asks the
 # reporter for what is missing (docs/agents/triage.md). This closes the issue once 7 days pass
 # with no comment since the label went on. The label stays on an answered issue, because the
-# triage watcher on banditbox finds answers through it; the reply pass takes it off.
+# triage watcher on the owner's desktop finds answers through it; the reply pass takes it off.
 on:
   schedule:
     - cron: "17 6 * * *"

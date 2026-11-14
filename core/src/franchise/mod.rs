@@ -26,6 +26,14 @@ pub mod layout;
 
 use closure::{Closure, Node};
 
+/// `GetFranchiseGraph`: the graph is drawn off the tables as they stand, and
+/// the crawl behind it fills in whatever the walk found missing.
+pub(crate) fn graph_call(core: &Core, series: u64) -> Result<Reply, CoreError> {
+    Ok(Reply::Graph {
+        layout: graph(&core.owner()?, series)?,
+    })
+}
+
 /// The franchise a series page draws: the closure around the series'
 /// AniList id, laid out, with a card's worth of columns on every node.
 ///

@@ -16,6 +16,13 @@ use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::trackers::{accounts, writes};
 
+/// `PreviewListMove`: [`preview`] off the reader connection.
+pub(crate) fn preview_call(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
+    Ok(Reply::ListMove {
+        rows: core.store.read(|c| preview(c, t))?,
+    })
+}
+
 /// What the preview shows for one series: what is kept here, and what the
 /// tracker has now (none for a show not on its list).
 ///
@@ -51,7 +58,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
                 (r.get(6)?, r.get(7)?, r.get(8)?);
             Ok(MoveRow {
                 series: r.get::<_, i64>(0)? as u64,
-                title: crate::library::titles::resolve(
+                title: crate::foundation::titles::resolve(
                     lang,
                     romaji.as_deref(),
                     english.as_deref(),
@@ -100,9 +107,7 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
     if !connected {
         return Err(CoreError::NotConnected { tracker: t });
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core.owner()?;
     let jobs = owner.jobs.clone();
     Ok(jobs.start(JobKind::MoveLists, move |ctx| async move {
         run(owner, ctx, t, series).await

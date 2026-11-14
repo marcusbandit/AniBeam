@@ -1032,7 +1032,6 @@ core-downloads-nothing-selected = ダウンロードするものが選ばれて�
 core-downloads-added = ダウンロードに{ $count }件追加しました。
 core-downloads-movie-link = 映画のリンクはmagnetかhttp(s)のURLにしてください
 core-downloads-added-movie = ダウンロードに映画を追加しました。
-core-downloads-unsubscribed = { $name }の購読を解除しました。
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder }は{ $name }のライブラリフォルダで、この購読がダウンロードしていないエピソードがあります。ファイルを残して購読を削除するか、作品ページから{ $name }を削除してください
 core-downloads-no-torrents-named = トレントが指定されていません
@@ -1227,16 +1226,6 @@ core-releases-group-batch = { $group }のバッチ
 core-releases-episodes-phrase = 第{ $list }話
 # A run of episode numbers
 core-releases-episode-range = { $from }〜{ $to }
-
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = このプラットフォームのanirss
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = 応答を読み取れませんでした（{ $message }）
-core-subscriptions-stopped = 理由を示さずに停止しました
-# $said is what anirss printed
-core-subscriptions-stopped-said = 停止しました: { $said }
 
 ## Names that stay the same in every language
 

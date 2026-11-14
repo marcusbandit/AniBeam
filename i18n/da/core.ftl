@@ -1085,7 +1085,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = et filmlink skal være et magnet- eller http(s)-link
 core-downloads-added-movie = Føjede en film til dine downloads.
-core-downloads-unsubscribed = Afmeldte abonnementet på { $name }.
 core-downloads-library-folder = { $folder } er biblioteksmappen for { $name } med afsnit, som dette abonnement ikke downloadede: fjern abonnementet uden dets filer, eller fjern { $name } fra dens side
 core-downloads-no-torrents-named = ingen torrents angivet
 core-downloads-paused =
@@ -1260,13 +1259,6 @@ core-releases-episodes-phrase =
        *[other] Afsnit { $list }
     }
 core-releases-episode-range = { $from } til { $to }
-
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = anirss på denne platform
-core-subscriptions-unreadable = dens svar kunne ikke læses ({ $message })
-core-subscriptions-stopped = den stoppede uden at sige hvorfor
-core-subscriptions-stopped-said = den stoppede: { $said }
 
 ## Names that stay the same in every language
 

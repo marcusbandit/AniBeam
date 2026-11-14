@@ -717,6 +717,16 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
     id
 }
 
+/// `GetStorage`: two counts off one table, answered off the reader
+/// connection rather than as a job.
+pub(crate) fn storage_call(core: &Core) -> Result<Reply, CoreError> {
+    let (image_count, image_bytes) = core.store.read(|c| core.images.storage(c))?;
+    Ok(Reply::Storage {
+        image_count,
+        image_bytes,
+    })
+}
+
 /// Clear images: every row and every file, and a card for every matched
 /// series so a shell showing posters drops them at once.
 pub fn start_clear(core: &Arc<Core>) -> u64 {
