@@ -35,30 +35,51 @@
 </main>
 
 <script>
-// ?to=altstore|sidestore|livecontainer&url=<IPA url>. Only an IPA on this project's releases is
-// passed on, so the page cannot send anyone to another address.
+// ?to=altstore|sidestore|livecontainer with either &url=<IPA url> (a PR test build) or
+// &channel=stable|nightly (the IPA the site's releases.json lists for that channel). Only an IPA
+// on this project's releases is passed on, so the page cannot send anyone to another address.
 const SCHEMES = { altstore: "altstore", sidestore: "sidestore", livecontainer: "livecontainer" };
+const KEYS = { stable: "phone", nightly: "phone_nightly" };
 const PREFIX = "https://github.com/marcusbandit/AniBeam/releases/download/";
-function target(search) {
+const okIpa = (ipa) => typeof ipa === "string" && ipa.startsWith(PREFIX) && ipa.endsWith(".ipa") && !/[\s<>"]/.test(ipa);
+const done = (ipa, scheme) => okIpa(ipa)
+  ? { ipa, redirect: scheme + "://install?url=" + encodeURIComponent(ipa) }
+  : { error: "That is not an Anibeam IPA link." };
+// Which IPA: from the address (url=), or from the release list (channel=), null until it is read.
+function wanted(search) {
   const q = new URLSearchParams(search);
   const scheme = SCHEMES[q.get("to")];
-  const ipa = q.get("url") || "";
   if (!scheme) return { error: "Unknown app. Use AltStore, SideStore or LiveContainer." };
-  if (!ipa.startsWith(PREFIX) || !ipa.endsWith(".ipa") || /[\s<>"]/.test(ipa)) return { error: "That is not an Anibeam IPA link." };
-  return { ipa, redirect: scheme + "://install?url=" + encodeURIComponent(ipa) };
+  if (q.get("url")) return done(q.get("url"), scheme);
+  const key = KEYS[q.get("channel")];
+  if (!key) return { error: "That is not an Anibeam IPA link." };
+  return { scheme, key, channel: q.get("channel") };
+}
+function fromReleases(w, releases) {
+  const rel = releases && releases[w.key];
+  const ipa = rel && rel.assets && rel.assets.ipa;
+  if (!ipa) return { none: true, channel: w.channel };
+  return done(ipa, w.scheme);
 }
 if (typeof document !== "undefined") {
-  const r = target(location.search);
   const msg = document.getElementById("msg");
-  if (r.error) {
-    msg.textContent = r.error;
-  } else {
+  const dl = document.getElementById("dl");
+  const go = (r) => {
+    if (r.error) { msg.textContent = r.error; return; }
+    if (r.none) {
+      msg.textContent = "There is no " + r.channel + " iPhone build yet. Check the download page later.";
+      dl.textContent = "Open the download page";
+      dl.hidden = false;
+      return;
+    }
     msg.textContent = "Opening the app. If nothing happens, install it first, or download the IPA and open it there.";
-    const dl = document.getElementById("dl");
     dl.href = r.ipa;
     dl.hidden = false;
     location.href = r.redirect;
-  }
+  };
+  const w = wanted(location.search);
+  if (!w.key) go(w);
+  else fetch("../releases.json").then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => go(fromReleases(w, j)));
 }
 </script>
 
