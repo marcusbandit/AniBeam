@@ -38,11 +38,14 @@ jni = "0.21"
 ndk-context = "0.1"
 
 # The iPhone draws through winit, and reads the hinge, its settings and its notifications
-# from UIKit and Foundation (platform/ios.rs).
+# from UIKit and Foundation (platform/ios.rs). Its player hands mpv's frames to Slint as wgpu
+# textures over IOSurfaces (video/metal.rs), which wants Slint's wgpu 30 API and Metal.
 [target.'cfg(target_os = "ios")'.dependencies]
-slint = { version = "1.18", default-features = false, features = ["backend-winit"] }
+slint = { version = "1.18", default-features = false, features = ["backend-winit", "unstable-wgpu-30"] }
 objc2 = "0.6"
-objc2-core-foundation = "0.3"
+objc2-core-foundation = { version = "0.3", features = ["CFDictionary", "CFNumber", "CFString"] }
+objc2-io-surface = "0.3"
+objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLDevice", "MTLPixelFormat", "MTLResource", "MTLTexture", "MTLTypes", "objc2-io-surface"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSError", "NSLocale", "NSNotification", "NSOperation", "NSString", "NSURL", "NSValue"] }
 block2 = "0.6"
 

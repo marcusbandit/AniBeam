@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds the iPhone app: generates the Xcode project from ios/project.yml with xcodegen,
-# then builds it unsigned, for the iOS Simulator or, as an IPA, for a device. Needs Xcode,
-# xcodegen and the aarch64-apple-ios-sim (or, for the IPA, aarch64-apple-ios) Rust target.
+# Builds the iPhone app: fetches the player's libmpv (scripts/fetch-mpv-ios.sh), generates
+# the Xcode project from ios/project.yml with xcodegen, then builds it unsigned, for the iOS
+# Simulator or, as an IPA, for a device. Needs Xcode, xcodegen and the aarch64-apple-ios-sim
+# (or, for the IPA, aarch64-apple-ios) Rust target.
 #
 #   scripts/build-ios.sh            a Debug build for the simulator
 #   scripts/build-ios.sh Release    a Release build for the simulator
@@ -35,6 +36,13 @@ case "$release_version" in
     [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || build_number=1
     ;;
 esac
+
+# The player's libmpv, linked statically (build.rs); fetched once, then only when its pin
+# changes.
+"$here/scripts/fetch-mpv-ios.sh" || {
+  echo "build-ios.sh: could not fetch libmpv for iOS (scripts/fetch-mpv-ios.sh)" >&2
+  exit 1
+}
 
 xcodegen generate --spec "$here/ios/project.yml" --quiet
 

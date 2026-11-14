@@ -58,6 +58,22 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app
           brew install xcodegen
 
+      # The player's libmpv and the libraries under it, MPVKit's static xcframeworks: about
+      # 350 MB of zips, so the unpacked archives are cached on the pin in the fetch script,
+      # without the zips. A cache hit leaves the fetch with nothing to do.
+      - name: Cache libmpv for iOS
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/android/vendor/mpv-ios
+            !apps/android/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+
+      - name: Fetch libmpv for iOS
+        run: |
+          scripts/fetch-mpv-ios.sh
+          rm -rf vendor/mpv-ios/zips
+
       - name: Build
         run: |
           scripts/build-ios.sh ipa
