@@ -11,10 +11,10 @@ use std::time::Duration;
 use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::jobs::{Finished, JobCtx};
+use crate::library::Library;
 use crate::library::cards;
 use crate::library::history;
 use crate::library::readings;
@@ -566,22 +566,24 @@ pub fn reconcile_source(
 
 /// Pushes a series' settle timer out by another four seconds, replacing the
 /// one already armed. When it finally fires, the folder has stopped
-/// changing and `Core::settle_fired` decides what to do about it; Task 16
+/// changing and `Library::settle_fired` decides what to do about it; Task 16
 /// makes that an auto-match.
 ///
 /// The task holds a `Weak`, never an `Arc`: a timer must not be the reason
 /// the core is still alive.
-pub fn arm_settle(core: &Arc<Core>, series_id: u64) {
-    let mut settle = recover(&core.library.settle);
+pub fn arm_settle(library: &Arc<Library>, series_id: u64) {
+    let mut settle = recover(&library.state.settle);
     if let Some(previous) = settle.remove(&series_id) {
         previous.abort();
     }
-    let weak = Arc::downgrade(core);
-    let handle = core.services.handle.spawn(async move {
+    let weak = Arc::downgrade(library);
+    let handle = library.services.handle.spawn(async move {
         tokio::time::sleep(SETTLE).await;
-        let Some(core) = weak.upgrade() else { return };
+        let Some(library) = weak.upgrade() else {
+            return;
+        };
         {
-            let mut armed = recover(&core.library.settle);
+            let mut armed = recover(&library.state.settle);
             // `abort` cannot reach a timer that is already past its sleep,
             // so a re-arm landing in that window would otherwise fire the
             // old timer as well. The map says which one is the live timer.
@@ -590,7 +592,7 @@ pub fn arm_settle(core: &Arc<Core>, series_id: u64) {
                 _ => return,
             };
         }
-        core.settle_fired(series_id);
+        library.settle_fired(series_id);
     });
     settle.insert(series_id, handle);
 }
@@ -711,33 +713,33 @@ fn is_unique_violation(e: &rusqlite::Error) -> bool {
 
 // The calls -------------------------------------------------------------
 
-pub fn list_sources_call(core: &Core) -> Result<Reply, CoreError> {
+pub fn list_sources_call(library: &Library) -> Result<Reply, CoreError> {
     Ok(Reply::Sources {
-        sources: core
+        sources: library
             .services
             .store
-            .read(|c| list_sources(c, &core.library))?,
+            .read(|c| list_sources(c, &library.state))?,
     })
 }
 
 /// Inserts the row, says so, and starts a scan scoped to it. A path that
 /// is not a directory right now is still a source, just an unavailable
 /// one; the job leaves everything under it alone.
-pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
+pub fn add_source(library: &Arc<Library>, path: &str) -> Result<Reply, CoreError> {
     if !Path::new(path).is_absolute() {
         return Err(CoreError::invalid(
             "path",
             tr("core-library-source-not-absolute", &[]),
         ));
     }
-    let owner = core.owner()?;
+    let owner = library.clone();
     let path = normalise(path);
     let available = Path::new(&path).is_dir();
     let now = time::now_secs();
     let insert = path.clone();
     // The overlap check and the insert share one transaction, so two calls
     // racing each other cannot both find the tree free.
-    let id = core.services.store.tx(move |tx| {
+    let id = library.services.store.tx(move |tx| {
         // Two sources that overlap walk the same tree and both claim every
         // file in it: the second one's series hit `UNIQUE (kind, path)` and
         // fail the reconcile, and every full scan after that fails the same
@@ -782,7 +784,7 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
         series_count: 0,
         movie_folders: Vec::new(),
     };
-    core.services.bus.say(
+    library.services.bus.say(
         Level::Info,
         Stage::Library,
         crate::words!("core-library-source-added", folder = folder_of(&path)),
@@ -796,7 +798,7 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     // the running job comes back for it before it finishes; when no scan is
     // running, the scan the next line starts covers the path and takes it
     // straight back off the queue.
-    core.library.push_pending(vec![path.clone()]);
+    library.state.push_pending(vec![path.clone()]);
     start(&owner, ScanScope::Source(id));
     Ok(Reply::Source { source })
 }
@@ -807,18 +809,18 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
 /// takes the new one, so matches and history stay. Refused as `add_source`
 /// refuses a path: not absolute, or overlapping another source. A scan of
 /// the source follows, which watches the new folder.
-pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreError> {
+pub fn move_source(library: &Arc<Library>, source: u64, path: &str) -> Result<Reply, CoreError> {
     if !Path::new(path).is_absolute() {
         return Err(CoreError::invalid(
             "path",
             tr("core-library-source-not-absolute", &[]),
         ));
     }
-    let owner = core.owner()?;
+    let owner = library.clone();
     let path = normalise(path);
     let available = Path::new(&path).is_dir();
     let to = path.clone();
-    let from = core.services.store.tx(move |tx| {
+    let from = library.services.store.tx(move |tx| {
         let from: Option<String> = tx
             .query_row(
                 "SELECT path FROM sources WHERE id = ?1",
@@ -879,13 +881,13 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
     })?;
     let unchanged = from == path;
     if !unchanged {
-        core.library.forget_source(source);
-        core.unwatch_source(&from);
+        library.state.forget_source(source);
+        library.unwatch_source(&from);
     }
-    let moved = core
+    let moved = library
         .services
         .store
-        .read(|c| load_source(c, &core.library, source))?
+        .read(|c| load_source(c, &library.state, source))?
         .ok_or(CoreError::NotFound {
             what: Entity::Source,
             id: source,
@@ -894,22 +896,22 @@ pub fn move_source(core: &Core, source: u64, path: &str) -> Result<Reply, CoreEr
         return Ok(Reply::Source { source: moved });
     }
     // Not a change a person made, so not one the activity log shows.
-    core.services.bus.debug(
+    library.services.bus.debug(
         Stage::Library,
         format!("source moved: {from} to {path}"),
         EventBody::SourceChanged {
             source: moved.clone(),
         },
     );
-    core.library.push_pending(vec![path]);
+    library.state.push_pending(vec![path]);
     start(&owner, ScanScope::Source(source));
     Ok(Reply::Source { source: moved })
 }
 
 /// Deletes the row; every series under it goes with it through the
 /// cascade, and both removals are announced.
-pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
-    let (path, ids) = core.services.store.tx(move |tx| {
+pub fn remove_source(library: &Library, source: u64) -> Result<Reply, CoreError> {
+    let (path, ids) = library.services.store.tx(move |tx| {
         let path: Option<String> = tx
             .query_row(
                 "SELECT path FROM sources WHERE id = ?1",
@@ -931,18 +933,18 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
         tx.execute("DELETE FROM sources WHERE id = ?1", params![source as i64])?;
         Ok((path, ids))
     })?;
-    core.library.forget_source(source);
-    core.unwatch_source(&path);
+    library.state.forget_source(source);
+    library.unwatch_source(&path);
     let shows = ids.len();
     if !ids.is_empty() {
-        core.services.bus.info(
+        library.services.bus.info(
             Stage::Library,
             format!("source removed with {} series", ids.len()),
             EventBody::SeriesRemoved { ids },
         );
     }
     let folder = folder_of(&path);
-    core.services.bus.say(
+    library.services.bus.say(
         Level::Info,
         Stage::Library,
         if shows == 0 {
@@ -993,21 +995,21 @@ pub fn forget_series(services: &Services, series: u64) -> Result<Reply, CoreErro
     Ok(Reply::Ok)
 }
 
-pub fn scan(core: &Core, source: Option<u64>) -> Result<Reply, CoreError> {
+pub fn scan(library: &Arc<Library>, source: Option<u64>) -> Result<Reply, CoreError> {
     let scope = match source {
         Some(id) => ScanScope::Source(id),
         None => ScanScope::All,
     };
     Ok(Reply::Started {
-        job: start(&core.owner()?, scope),
+        job: start(library, scope),
     })
 }
 
 /// Rescans one series in its source's context. A source that is not there
 /// right now is refused rather than walked, so the series is never marked
 /// missing by a scan that could not look.
-pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let row: Option<(String, bool)> = core.services.store.read(|c| {
+pub fn rescan_series(library: &Arc<Library>, series: u64) -> Result<Reply, CoreError> {
+    let row: Option<(String, bool)> = library.services.store.read(|c| {
         Ok(c.query_row(
             "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
             params![series as i64],
@@ -1023,7 +1025,7 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         return Err(CoreError::Unavailable { path });
     }
     Ok(Reply::Started {
-        job: start(&core.owner()?, ScanScope::Series(series)),
+        job: start(library, ScanScope::Series(series)),
     })
 }
 
@@ -1032,11 +1034,11 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
 /// scan job to drain, so the activity log gets the one line a scan ends
 /// with. A series whose source is not there right now is left out; when
 /// none is there, the call is refused as a single rescan would be.
-pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
+pub fn rescan_many(library: &Arc<Library>, series: &[u64]) -> Result<Reply, CoreError> {
     let mut there = Vec::new();
     let mut away = None;
     for &id in series {
-        let row: Option<(String, bool)> = core.services.store.read(|c| {
+        let row: Option<(String, bool)> = library.services.store.read(|c| {
             Ok(c.query_row(
                 "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
                 params![id as i64],
@@ -1062,10 +1064,10 @@ pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
     // The rest go on the queue before the scan starts, so the job the first
     // one starts (or the one already running) walks them before it ends.
     for &id in rest {
-        core.library.remember_scope(ScanScope::Series(id));
+        library.state.remember_scope(ScanScope::Series(id));
     }
     Ok(Reply::Started {
-        job: start(&core.owner()?, ScanScope::Series(first)),
+        job: start(library, ScanScope::Series(first)),
     })
 }
 
@@ -1075,13 +1077,14 @@ pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
 /// actually turns over, so the log line is a state change rather than a
 /// report of every pass.
 async fn set_available(
-    core: &Arc<Core>,
+    library: &Library,
     ctx: &JobCtx,
     source_id: u64,
     path: &str,
     available: bool,
 ) -> Result<(), CoreError> {
-    core.services
+    library
+        .services
         .store
         .write_async(move |c| {
             c.execute(
@@ -1091,7 +1094,7 @@ async fn set_available(
             Ok(())
         })
         .await?;
-    let Some((row_path, row_available)) = core
+    let Some((row_path, row_available)) = library
         .services
         .store
         .write_async(move |c| source_row(c, source_id))
@@ -1099,7 +1102,7 @@ async fn set_available(
     else {
         return Ok(());
     };
-    let count = core
+    let count = library
         .services
         .store
         .write_async(move |c| series_count(c, source_id))
@@ -1109,7 +1112,7 @@ async fn set_available(
         path: row_path,
         available: row_available,
         series_count: count,
-        movie_folders: core.library.movie_folders_for(source_id),
+        movie_folders: library.state.movie_folders_for(source_id),
     };
     let message = if available {
         format!("source available again: {path}")
@@ -1166,31 +1169,31 @@ fn scan_line(added: u64, changed: u64, removed: u64) -> Option<String> {
 /// scope it asked for is queued for that job's drain rather than dropped:
 /// the running pass resolved its own targets before this call happened, so
 /// its id is not an answer to this question.
-pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
+pub fn start(library: &Arc<Library>, scope: ScanScope) -> u64 {
     let requested = scope.clone();
-    let (id, started) = spawn(core, scope);
+    let (id, started) = spawn(library, scope);
     if started {
         return id;
     }
-    core.library.remember_scope(requested);
+    library.state.remember_scope(requested);
     // A job is registered until its own task takes it out, which happens
     // after its last look at the queue. So the scan this call was handed the
     // id of may have finished asking by the time the scope above was
     // written, and nobody would ever drain it. Asking again once the slot is
     // free is what closes that window; the queued scope is what the new job
     // walks.
-    if core.services.jobs.running(JobKind::Scan).is_none() {
-        return spawn(core, ScanScope::Paths(Vec::new())).0;
+    if library.services.jobs.running(JobKind::Scan).is_none() {
+        return spawn(library, ScanScope::Paths(Vec::new())).0;
     }
     id
 }
 
 /// The job body itself, handed to the registry. Separate from `start` so
 /// the call above can hand it over twice without recursion.
-fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
-    let owner = core.clone();
+fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
+    let owner = library.clone();
     owner.services.jobs.clone().start_reporting(JobKind::Scan, {
-        let core = owner.clone();
+        let library = owner.clone();
         move |ctx| async move {
             let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
             let mut reply_source = None;
@@ -1203,19 +1206,19 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                 // while an earlier scan was walking. An empty list means "just
                 // the queue", which is how the watcher asks for one.
                 if let ScanScope::Paths(handed) = &scope {
-                    let mut all = core.library.take_pending();
+                    let mut all = library.state.take_pending();
                     all.extend(handed.iter().cloned());
                     all.sort_unstable();
                     all.dedup();
                     scope = ScanScope::Paths(all);
                 }
-                let plan = resolve(&core.services, &scope).await?;
+                let plan = resolve(&library.services, &scope).await?;
                 // Any other scope takes off the queue only what its own walk
                 // covers anyway, so a scan of a source does not leave a
                 // redundant follow-up pass behind it. What it does not cover
                 // stays queued for the drain.
                 if !matches!(scope, ScanScope::Paths(_)) {
-                    recover(&core.library.pending_paths).retain(|p| !covered_by(&plan, p));
+                    recover(&library.state.pending_paths).retain(|p| !covered_by(&plan, p));
                 }
                 if first_pass {
                     reply_source = plan.reply_source;
@@ -1244,7 +1247,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // a pass, for a drive that never came back.
                     if !Path::new(&path).is_dir() {
                         if target.available {
-                            set_available(&core, &ctx, source_id, &path, false).await?;
+                            set_available(&library, &ctx, source_id, &path, false).await?;
                         }
                         continue;
                     }
@@ -1254,7 +1257,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // directory under the root: that is disk work at library
                     // scale and belongs to a job. Idempotent per root, so every
                     // later scan asking again costs a string compare.
-                    let owner = core.clone();
+                    let owner = library.clone();
                     let root = path.clone();
                     let watched = tokio::task::spawn_blocking(move || owner.install_watch(&root))
                         .await
@@ -1291,7 +1294,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                                 EventBody::Notice,
                             );
                             if target.available {
-                                set_available(&core, &ctx, source_id, &path, false).await?;
+                                set_available(&library, &ctx, source_id, &path, false).await?;
                             }
                             continue;
                         }
@@ -1303,7 +1306,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // far more expensive way to be wrong. An emptied source
                     // is emptied by Forget or by RemoveSource.
                     if scanned.is_empty() {
-                        let held = core
+                        let held = library
                             .services
                             .store
                             .write_async(move |c| series_count(c, source_id))
@@ -1319,14 +1322,14 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                                 EventBody::Notice,
                             );
                             if target.available {
-                                set_available(&core, &ctx, source_id, &path, false).await?;
+                                set_available(&library, &ctx, source_id, &path, false).await?;
                             }
                             continue;
                         }
                     }
                     // The read worked, so now the source really is back.
                     if !target.available {
-                        set_available(&core, &ctx, source_id, &path, true).await?;
+                        set_available(&library, &ctx, source_id, &path, true).await?;
                     }
                     let root = path.clone();
                     let movie_folders = tokio::task::spawn_blocking(move || {
@@ -1334,14 +1337,14 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     })
                     .await
                     .map_err(|e| CoreError::internal(e.to_string()))?;
-                    core.library.set_movie_folders(source_id, movie_folders);
+                    library.state.set_movie_folders(source_id, movie_folders);
 
                     let only = only_under.clone();
                     let now = time::now_secs();
                     // One source failing to reconcile is one source's
                     // problem: the pass carries on to the next rather than
                     // abandoning a library because one drive misbehaved.
-                    let r = match core
+                    let r = match library
                         .services
                         .store
                         .tx_async(move |tx| {
@@ -1388,8 +1391,8 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                         .copied()
                         .collect();
                     if !touched.is_empty() {
-                        let dir = core.services.paths.images_dir();
-                        let cards = core
+                        let dir = library.services.paths.images_dir();
+                        let cards = library
                             .services
                             .store
                             .write_async(move |c| cards::cards_for(c, &dir, &touched))
@@ -1405,16 +1408,16 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     // none.
                     let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
                     if !ids.is_empty() {
-                        let unmatched = core
+                        let unmatched = library
                             .services
                             .store
                             .write_async(move |c| never_attempted(c, &ids))
                             .await?;
                         for id in unmatched
                             .into_iter()
-                            .filter(|id| !core.library.is_matching(*id))
+                            .filter(|id| !library.state.is_matching(*id))
                         {
-                            arm_settle(&core, id);
+                            arm_settle(&library, id);
                         }
                     }
                 }
@@ -1424,7 +1427,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                 // the only way to reach it: Scan runs one at a time, so
                 // asking for a new job from here would only be handed this
                 // one's own id back.
-                let Some(next) = core.library.take_next_scope() else {
+                let Some(next) = library.state.take_next_scope() else {
                     break;
                 };
                 scope = next;
@@ -1432,8 +1435,10 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
 
             // The torrent each new file came from, while the client that
             // fetched it still lists it (#241)
-            if added + changed > 0 {
-                crate::downloads::origins::after_scan(&core);
+            if added + changed > 0
+                && let Some(downloads) = library.downloads.get()
+            {
+                crate::downloads::origins::after_scan(&downloads);
             }
             Ok(Finished {
                 plain: scan_words(added, changed, removed),

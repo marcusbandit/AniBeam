@@ -10,13 +10,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::foundation::services::Services;
 use crate::releases::native::Native;
 use crate::releases::stats;
@@ -49,7 +48,7 @@ fn not_found(message: String) -> CoreError {
 /// show already in the library. The name defaults to the show's, from the
 /// first release; the same show from another endpoint gains ` @endpoint`.
 pub(super) async fn subscribe(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     native: &Native,
     query: &str,
     endpoint: &str,
@@ -72,10 +71,10 @@ pub(super) async fn subscribe(
     }
     let name = paths::name_for(name, items, query)?;
     let spec = native.preview(query, endpoint, items).await?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(&core.services, &qbt).await?;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
     // Naming is check-then-act: one subscription at a time
-    let _one = core.downloads.rules.lock().await;
+    let _one = downloads.rules.lock().await;
     let name = unique_name(&qbt, &name, &spec).await?;
     let save_path = save_path
         .map(str::to_string)
@@ -174,7 +173,7 @@ pub(super) fn rule_def(spec: &SubscriptionSpec, save_path: &str, tags: &[String]
 /// given: the folder of a show already in the library (anirss
 /// `download_items`).
 pub(super) async fn download(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     items: &[Release],
     name: Option<&str>,
     save_path: Option<&str>,
@@ -187,22 +186,29 @@ pub(super) async fn download(
     }
     let name = paths::name_for(name, items, FALLBACK_NAME)?;
     let links = checked_links(items.iter().map(|i| i.link.as_str()))?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(&core.services, &qbt).await?;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
     let save_path = match save_path {
         Some(p) => p.to_string(),
         None => paths::join(&saving.save_base, &name),
     };
-    add_links(&core.services, &qbt, &links, &save_path, &saving).await
+    add_links(&downloads.services, &qbt, &links, &save_path, &saving).await
 }
 
 /// One torrent straight into the films' folder, with no folder of its own
 /// (anirss `movie`).
-pub(super) async fn movie(core: &Arc<Core>, link: &str) -> Result<AddedTorrents, CoreError> {
+pub(super) async fn movie(downloads: &Downloads, link: &str) -> Result<AddedTorrents, CoreError> {
     let links = checked_links([link])?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(&core.services, &qbt).await?;
-    add_links(&core.services, &qbt, &links, &saving.movie_path, &saving).await
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
+    add_links(
+        &downloads.services,
+        &qbt,
+        &links,
+        &saving.movie_path,
+        &saving,
+    )
+    .await
 }
 
 /// The upload's file name: the link's last path segment, decoded.
@@ -334,8 +340,10 @@ async fn add_links(
 /// ignored, each with the torrents saving into its folder and the files in
 /// it (anirss `list_subscriptions`). Files are counted only when the client
 /// saves on this machine; a path on another is someone else's folder.
-pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRule>, CoreError> {
-    let qbt = super::qbt_client(core).await?;
+pub(super) async fn subscriptions(
+    downloads: &Downloads,
+) -> Result<Vec<SubscriptionRule>, CoreError> {
+    let qbt = super::qbt_client(downloads).await?;
     let rules = qbt.rules().await?;
     let rules: Vec<(String, Value)> = rules
         .as_object()
@@ -348,7 +356,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
     for t in qbt.torrents().await? {
         *counts.entry(paths::norm(&t.save_path)).or_default() += 1;
     }
-    let here = files_here(&core.services)?;
+    let here = files_here(&downloads.services)?;
     let mut out: Vec<SubscriptionRule> = rules
         .iter()
         .map(|(name, rule)| {
@@ -417,7 +425,7 @@ struct Plan {
 /// function deciding both so they cannot disagree. Files are only taken
 /// from strictly inside the save folders.
 pub(super) async fn remove(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     names: &[String],
     torrents: bool,
     files: bool,
@@ -435,19 +443,19 @@ pub(super) async fn remove(
             crate::i18n::tr("core-downloads-native-no-names", &[]),
         ));
     }
-    let here = files_here(&core.services)?;
+    let here = files_here(&downloads.services)?;
     if files && !torrents && !here {
         return Err(CoreError::invalid(
             "files",
             crate::i18n::tr("core-downloads-native-files-elsewhere", &[]),
         ));
     }
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(&core.services, &qbt).await?;
-    let _one = core.downloads.rules.lock().await;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
+    let _one = downloads.rules.lock().await;
     let plans = plan(&qbt, &unique, torrents, files, here, &saving.save_base).await?;
     if files {
-        confined(&core.services, &plans, &saving, here)?;
+        confined(&downloads.services, &plans, &saving, here)?;
     }
     if !dry_run {
         execute(&qbt, &plans, torrents, files, here).await?;

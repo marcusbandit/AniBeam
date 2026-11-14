@@ -902,7 +902,7 @@ fn a_tvmaze_match_round_trips_through_export_and_the_backfill_fills_it() {
     );
 
     push_show(&http2);
-    let job = anibeam_core::metadata::apply::backfill_stubs(&fresh);
+    let job = anibeam_core::metadata::apply::backfill_stubs(fresh.metadata());
     let done = common::wait_job(&c2, job);
     assert!(
         matches!(done.body, EventBody::RefreshFinished { refreshed: 1, .. }),

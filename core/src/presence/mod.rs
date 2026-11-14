@@ -23,8 +23,8 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::events::EventBus;
+use crate::playback::Playback;
 use crate::prefs;
 use crate::sync::recover;
 
@@ -526,17 +526,23 @@ impl Drop for Presence {
 }
 
 /// One tick of a session, after the sessions lock is let go.
-pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, position: f64, paused: bool) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn tick(
+    playback: &Arc<Playback>,
+    session: u64,
+    activity: &Activity,
+    position: f64,
+    paused: bool,
+) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
-    let mut inner = recover(&core.presence.inner);
+    let mut inner = recover(&playback.presence.inner);
     // A tick runs after the sessions lock is let go, so its session's close
     // can come in between. `close` takes the session out of the map before
     // it reaches presence, and this looks in the map under the presence
     // lock: a tick that lost that race finds its session gone and shows
     // nothing, and one that won is decided before the close, which clears.
-    if !core.sessions.is_open(session) {
+    if !playback.sessions.is_open(session) {
         return;
     }
     let actions = decide(
@@ -549,50 +555,50 @@ pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, position: f64
         },
         crate::time::now_secs() as u64,
     );
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
 }
 
-pub(crate) fn close(core: &Core, session: u64) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn close(playback: &Arc<Playback>, session: u64) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
-    feed(core, Input::Close { session });
+    feed(playback, Input::Close { session });
 }
 
 /// The switch at launch, from the stored preference.
-pub(crate) fn sync(core: &Core) {
-    let on = core
+pub(crate) fn sync(playback: &Arc<Playback>) {
+    let on = playback
         .services
         .store
         .read(prefs::load_preferences)
         .map(|p| p.discord_presence)
         .unwrap_or(false);
-    set_enabled(core, on);
+    set_enabled(playback, on);
 }
 
 /// `GetPresence`: whether this build can show what plays on Discord, and
 /// whether it is talking to a Discord client right now.
-pub(crate) fn status_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
     Ok(Reply::Presence {
-        available: core.presence.available(),
-        connected: core.presence.connected(),
+        available: playback.presence.available(),
+        connected: playback.presence.connected(),
     })
 }
 
 /// The switch. On shows the session playing now, if there is one; off
 /// clears and lets the connection go. A build that cannot reach Discord
 /// stays off whatever is asked.
-pub(crate) fn set_enabled(core: &Core, on: bool) {
-    let p = &core.presence;
+pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
+    let p = &playback.presence;
     if on && !p.available() {
         return;
     }
     // Read before the presence lock is taken: presence takes the sessions
     // lock inside its own, never the other way round.
-    let playing = on.then(|| core.sessions.playing()).flatten();
+    let playing = on.then(|| playback.sessions.playing()).flatten();
     let mut inner = recover(&p.inner);
     // Checked again under the presence lock, as a tick is.
-    let playing = playing.filter(|s| core.sessions.is_open(s.id));
+    let playing = playing.filter(|s| playback.sessions.is_open(s.id));
     p.enabled.store(on, Ordering::Relaxed);
     let input = match &playing {
         Some(s) => Input::Enable(Some((
@@ -618,12 +624,12 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
         );
     }
     let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
 }
 
 /// Clears what Discord shows and ends the worker, waiting a moment for it.
-pub(crate) fn shutdown(core: &Core) {
-    let p = &core.presence;
+pub(crate) fn shutdown(playback: &Playback) {
+    let p = &playback.presence;
     p.enabled.store(false, Ordering::Relaxed);
     let worker = {
         let mut inner = recover(&p.inner);
@@ -636,17 +642,17 @@ pub(crate) fn shutdown(core: &Core) {
     }
 }
 
-fn feed(core: &Core, input: Input) {
-    let mut inner = recover(&core.presence.inner);
+fn feed(playback: &Arc<Playback>, input: Input) {
+    let mut inner = recover(&playback.presence.inner);
     let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
 }
 
 /// Carries the actions out under the presence lock, so two callers' sends
 /// reach the worker in the order their decisions were made. Nothing here
 /// blocks: a send only overwrites the desired state, and the timer is a
 /// spawned task.
-fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
+fn run(playback: &Arc<Playback>, inner: &Inner, actions: Vec<Action>) {
     for action in actions {
         let change: Box<dyn FnOnce(&mut Desired)> = match action {
             Action::Set(activity) => Box::new(move |d| d.want = Some(activity)),
@@ -659,7 +665,7 @@ fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
                 session,
                 generation,
             } => {
-                arm(core, session, generation);
+                arm(playback, session, generation);
                 continue;
             }
         };
@@ -670,26 +676,26 @@ fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
 }
 
 /// The one-shot pause timer.
-fn arm(core: &Core, session: u64, generation: u64) {
-    let Some(owner) = core.arc() else { return };
+fn arm(playback: &Arc<Playback>, session: u64, generation: u64) {
+    let owner = playback.clone();
     let weak = Arc::downgrade(&owner);
     drop(owner);
-    let wait = Duration::from_millis(core.presence.pause_clear_ms.load(Ordering::Relaxed));
-    core.services.handle.spawn(async move {
+    let wait = Duration::from_millis(playback.presence.pause_clear_ms.load(Ordering::Relaxed));
+    playback.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
-        if let Some(core) = weak.upgrade() {
-            elapsed(&core, session, generation);
+        if let Some(playback) = weak.upgrade() {
+            elapsed(&playback, session, generation);
         }
     });
 }
 
 /// The pause timer's handler.
-pub(crate) fn elapsed(core: &Core, session: u64, generation: u64) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn elapsed(playback: &Arc<Playback>, session: u64, generation: u64) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
     feed(
-        core,
+        playback,
         Input::Elapsed {
             session,
             generation,

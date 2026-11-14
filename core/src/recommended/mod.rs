@@ -30,10 +30,10 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
+use crate::metadata::Metadata;
 use crate::prefs;
 use crate::time;
 use mine::Mine;
@@ -314,8 +314,8 @@ pub fn list_call(services: &Services, scope: RecommendedScope) -> Result<Reply, 
 /// The `RefreshRecommended` call: the job when the last whole read is older
 /// than `STALE_AFTER_SECS` (or there never was one) or `force` says so, `Ok`
 /// when it is fresh. A run AniList stopped short is never fresh. One runs at a time; a second ask joins it.
-pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
-    let read_at: Option<i64> = core.services.store.read(|c| {
+pub fn refresh_call(metadata: &Arc<Metadata>, force: bool) -> Result<Reply, CoreError> {
+    let read_at: Option<i64> = metadata.services.store.read(|c| {
         Ok(
             c.query_row("SELECT read_at FROM rec_state WHERE id = 1", [], |r| {
                 r.get(0)
@@ -329,14 +329,15 @@ pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
         return Ok(Reply::Ok);
     }
     Ok(Reply::Started {
-        job: start(&core.owner()?),
+        job: start(metadata),
     })
 }
 
 /// Starts the fit, or answers with the one running.
-pub fn start(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.services
+pub fn start(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshRecommended, move |ctx| async move {
@@ -387,8 +388,8 @@ fn finished(message: String) -> Finished {
     }
 }
 
-async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
-    let mine = core.services.store.read(Mine::read)?;
+async fn refresh(metadata: Arc<Metadata>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
+    let mine = metadata.services.store.read(Mine::read)?;
     let now = time::now_secs();
     let empty = |state: RecommendedState| {
         move |tx: &rusqlite::Transaction| {
@@ -397,7 +398,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         }
     };
     if mine.entries.is_empty() {
-        core.services
+        metadata
+            .services
             .store
             .tx_async(empty(RecommendedState::NoList))
             .await?;
@@ -406,7 +408,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         ));
     }
     let Some((mean, signals)) = signals(&mine.entries, &DropReasons::new()) else {
-        core.services
+        metadata
+            .services
             .store
             .tx_async(empty(RecommendedState::NoScores))
             .await?;
@@ -415,7 +418,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         ));
     };
 
-    let mut net = sync::Net::new(core.clone(), ctx.clone());
+    let mut net = sync::Net::new(metadata.clone(), ctx.clone());
     let mut whole = true;
     let found = match sync::read(&mut net, &mine, &signals, mean).await {
         Ok(found) => found,
@@ -428,7 +431,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
                 format!("Recommended for you stopped reading AniList: {why}"),
                 EventBody::Notice,
             );
-            core.services.store.read(sync::saved)?
+            metadata.services.store.read(sync::saved)?
         }
         Err(sync::Halt::Fail(e)) => return Err(e),
     };
@@ -437,7 +440,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
 
     let (catalog, neighbours) = {
         let people = found.people.clone();
-        core.services
+        metadata
+            .services
             .store
             .read(|c| Ok((sync::catalog(c)?, sync::neighbours(c, &people)?)))?
     };
@@ -458,7 +462,8 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         .flat_map(|r| std::iter::once(r.id).chain(r.why.near.iter().map(|n| n.id)))
         .collect();
     let saved = found.clone();
-    core.services
+    metadata
+        .services
         .store
         .tx_async(move |tx| {
             tx.execute("DELETE FROM rec_ranked", [])?;
@@ -480,7 +485,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         .await?;
 
     // Every cover before the event, so the tiles draw local files.
-    let urls: Vec<String> = core.services.store.read(|c| {
+    let urls: Vec<String> = metadata.services.store.read(|c| {
         let media = media_of(c, &covers_for)?;
         Ok(covers_for
             .iter()
@@ -492,7 +497,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
             })
             .collect())
     })?;
-    for (url, outcome) in core.images.ensure(&urls).await {
+    for (url, outcome) in metadata.net.images.ensure(&urls).await {
         if let Err(e) = outcome {
             tracing::debug!("a recommended cover {url} was not fetched: {e}");
         }
@@ -507,10 +512,10 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
 /// so a fit that exists is made again. The first one waits for Home to ask
 /// (`RefreshRecommended`), so a list nobody looks recommendations up for
 /// never sends the recommender's reads.
-pub fn after_tracker_refresh(core: &Arc<Core>) {
-    match core.services.store.read(state_of) {
+pub fn after_tracker_refresh(metadata: &Arc<Metadata>) {
+    match metadata.services.store.read(state_of) {
         Ok((_, Some(_))) => {
-            start(core);
+            start(metadata);
         }
         Ok((_, None)) => {}
         Err(e) => tracing::debug!("Recommended for you was not refitted: {e}"),

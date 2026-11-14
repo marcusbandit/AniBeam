@@ -19,9 +19,9 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::secrets::StoreKind;
 use crate::foundation::services::Services;
+use crate::host::Host;
 use crate::i18n::tr;
 use crate::images;
 use crate::jobs::{Finished, JobCtx};
@@ -47,7 +47,7 @@ const SECTIONS: u64 = 5;
 /// Reads and parses on the calling thread, so a file this core is too old
 /// to read is `Err(Version)` before any job starts and an unreadable path
 /// is refused the same way. Everything after that is the job's.
-pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
+pub fn start(host: &Arc<Host>, path: &str) -> Result<u64, CoreError> {
     // The spec lists no synchronous `Io` for this call, and the argument
     // that failed is the path, so an unreadable file is refused as one.
     let bytes = std::fs::read(path).map_err(|e| CoreError::Invalid {
@@ -55,7 +55,7 @@ pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
         message: e.to_string(),
     })?;
     let (doc, ignored) = format::parse(&bytes)?;
-    let owner = core.owner()?;
+    let owner = host.clone();
     let started = owner.clone();
     Ok(started
         .services
@@ -67,7 +67,7 @@ pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
 }
 
 async fn run(
-    core: Arc<Core>,
+    host: Arc<Host>,
     ctx: Arc<JobCtx>,
     doc: Document,
     ignored: Vec<String>,
@@ -100,10 +100,10 @@ async fn run(
         &tr("core-transfer-progress-sources", &[]),
     );
     let now = time::now_secs();
-    let sources = import_sources(&core.services, sources, now, &mut summary).await?;
+    let sources = import_sources(&host.services, sources, now, &mut summary).await?;
 
     ctx.progress(1, Some(SECTIONS), &tr("core-transfer-progress-series", &[]));
-    let (touched, unscanned) = import_series(&core.services, series, now, &mut summary).await?;
+    let (touched, unscanned) = import_series(&host.services, series, now, &mut summary).await?;
 
     ctx.progress(
         2,
@@ -111,7 +111,7 @@ async fn run(
         &tr("core-transfer-progress-history", &[]),
     );
     if let Some(history) = history {
-        import_history(&core.services, history, &mut summary).await?;
+        import_history(&host.services, history, &mut summary).await?;
     }
 
     ctx.progress(
@@ -128,7 +128,7 @@ async fn run(
     }
     let imported_accounts = accounts.is_some();
     if let Some(accounts) = accounts {
-        import_accounts(&core.services, accounts, now, &mut summary).await?;
+        import_accounts(&host.services, accounts, now, &mut summary).await?;
     }
 
     ctx.progress(
@@ -137,7 +137,7 @@ async fn run(
         &tr("core-transfer-progress-preferences", &[]),
     );
     let imported_preferences = match preferences {
-        Some(entry) => Some(import_preferences(&core.services, entry).await?),
+        Some(entry) => Some(import_preferences(&host.services, entry).await?),
         None => None,
     };
     ctx.progress(
@@ -151,11 +151,11 @@ async fn run(
     // import itself starts one only for a series with a fixed file the
     // library does not hold yet, so that file comes in with its fix.
     for id in sources {
-        let state = core.clone();
-        if let Some(source) = core
+        let state = host.clone();
+        if let Some(source) = host
             .services
             .store
-            .write_async(move |c| scan::load_source(c, &state.library, id))
+            .write_async(move |c| scan::load_source(c, &state.library.state, id))
             .await?
         {
             ctx.emit(
@@ -166,8 +166,8 @@ async fn run(
         }
     }
     if !touched.is_empty() {
-        let images_dir = core.services.paths.images_dir();
-        let cards = core
+        let images_dir = host.services.paths.images_dir();
+        let cards = host
             .services
             .store
             .write_async(move |c| cards::cards_for(c, &images_dir, &touched))
@@ -175,7 +175,7 @@ async fn run(
         ctx.changed_all(cards);
     }
     if imported_accounts {
-        let state = accounts::state_async(&core.services).await?;
+        let state = accounts::state_async(&host.services).await?;
         ctx.emit(
             Level::Debug,
             "trackers changed",
@@ -190,9 +190,9 @@ async fn run(
         );
     }
     for series in unscanned {
-        let _ = scan::rescan_series(&core, series);
+        let _ = scan::rescan_series(&host.library, series);
     }
-    images::sweep_after(&core, "an import").await;
+    images::sweep_after(&host.net, "an import").await;
 
     let message = format!(
         "imported: {} sources, {} series, {} matches, {} views, {} completed, {} resume points, {} accounts, {} fixes, {} fields ignored",

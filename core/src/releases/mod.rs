@@ -19,7 +19,10 @@ pub mod quirks;
 pub mod refinement;
 pub mod rules;
 pub mod stats;
+mod team;
 pub mod titles;
+
+pub use team::Releases;
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).

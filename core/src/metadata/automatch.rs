@@ -36,12 +36,12 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::library::scan::LibraryState;
+use crate::metadata::Metadata;
 use crate::metadata::apply::provider_stopped;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::similarity::best_title_score;
@@ -209,8 +209,11 @@ impl Drop for InFlight<'_> {
 /// The series with a settle timer still armed. Their folders are still
 /// being copied into, so a match now would be a match against a half
 /// arrived folder; the timer's own firing is what brings them here.
-fn armed(core: &Core) -> Vec<u64> {
-    recover(&core.library.settle).keys().copied().collect()
+fn armed(metadata: &Metadata) -> Vec<u64> {
+    recover(&metadata.library.state.settle)
+        .keys()
+        .copied()
+        .collect()
 }
 
 /// The next series worth a search: never matched, never attempted, its
@@ -273,7 +276,7 @@ struct Hit {
 /// matched, so TVmaze never grabs an anime during a brief AniList outage.
 /// Only `Ok(None)` means every provider answered with a miss.
 async fn attempt(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     folder: &str,
     kind: SeriesKind,
@@ -281,8 +284,8 @@ async fn attempt(
 ) -> Result<Option<Hit>, (Provider, CoreError)> {
     for &provider in order {
         let outcome = match provider {
-            Provider::Tvmaze => attempt_tvmaze(core, series, folder).await,
-            _ => attempt_anilist(core, series, folder, kind).await,
+            Provider::Tvmaze => attempt_tvmaze(metadata, series, folder).await,
+            _ => attempt_anilist(metadata, series, folder, kind).await,
         };
         match outcome {
             Ok(Some(hit)) => return Ok(Some(hit)),
@@ -313,12 +316,12 @@ fn is_later_film(m: &Media) -> bool {
 
 /// AniList's turn: the search, the pick, and, on a hit, the whole record.
 async fn attempt_anilist(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     folder: &str,
     kind: SeriesKind,
 ) -> Result<Option<Hit>, CoreError> {
-    let mut results = core.anilist.search(folder, RESULTS).await?;
+    let mut results = metadata.net.anilist.search(folder, RESULTS).await?;
     let mut query = folder.to_string();
     // A first film searched with its number either finds nothing or a later film of
     // the same name, which scores high enough to win; either way the bare name goes next.
@@ -326,7 +329,7 @@ async fn attempt_anilist(
         && let Some(stripped) = without_first_film_number(folder)
         && pick(folder, kind, &results).is_none_or(|(m, _)| is_later_film(m))
     {
-        results = core.anilist.search(&stripped, RESULTS).await?;
+        results = metadata.net.anilist.search(&stripped, RESULTS).await?;
         query = stripped;
     }
     let Some((media, score)) = pick(&query, kind, &results) else {
@@ -338,7 +341,7 @@ async fn attempt_anilist(
     // An auto-match is never confirmed: the user has not seen it, and only
     // their own pick or an import earns that flag.
     fetch::fetch_and_write(
-        core,
+        metadata,
         series,
         anilist_id,
         Some(media),
@@ -355,13 +358,17 @@ async fn attempt_anilist(
 
 /// TVmaze's turn. The search hit carries no episodes or images, so a hit
 /// costs one more request for the show itself.
-async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
-    let results = core.tvmaze.search(folder).await?;
+async fn attempt_tvmaze(
+    metadata: &Metadata,
+    series: u64,
+    folder: &str,
+) -> Result<Option<Hit>, CoreError> {
+    let results = metadata.net.tvmaze.search(folder).await?;
     let Some((show, score)) = pick_show(folder, &results) else {
         return Ok(None);
     };
     let title = show.name.clone().unwrap_or_else(|| "?".to_string());
-    fetch::fetch_and_write_tvmaze(core, series, show.id, false, time::now_secs()).await?;
+    fetch::fetch_and_write_tvmaze(metadata, series, show.id, false, time::now_secs()).await?;
     Ok(Some(Hit {
         provider: Provider::Tvmaze,
         score,
@@ -373,9 +380,9 @@ async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option
 /// a second call while one is running is handed the running job's id: a
 /// series that settles mid-run is picked up by the run already going,
 /// because it is no longer armed by the time the loop asks again.
-pub fn start(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.services.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
+pub fn start(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata.services.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
         // 1. The backfill. A series carrying an AniList id with no provider
         //    beside it is an import, or a row from a build that wrote the
         //    id alone; either way it is matched and the column should say
@@ -425,7 +432,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             let mut skip = armed(&owner);
             skip.extend(seen.iter().copied());
             // A series Find a match is searching right now is that job's (#208)
-            skip.extend(recover(&owner.library.match_in_flight).iter().copied());
+            skip.extend(recover(&owner.library.state.match_in_flight).iter().copied());
             skip.sort_unstable();
             skip.dedup();
             let Some((series, folder, kind)) = owner.services.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
@@ -433,7 +440,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             ctx.progress(matched + unmatched, None, &folder);
 
             let outcome = {
-                let _in_flight = InFlight::begin(&owner.library, series);
+                let _in_flight = InFlight::begin(&owner.library.state, series);
                 attempt(&owner, series, &folder, kind, &order).await
             };
             match outcome {
@@ -482,7 +489,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             }
         }
 
-        images::sweep_after(&owner, "auto-match").await;
+        images::sweep_after(&owner.net, "auto-match").await;
 
         let said = match (matched, unmatched) {
             (0, 0) => None,
@@ -507,9 +514,9 @@ pub fn start(core: &Arc<Core>) -> u64 {
 /// series that has a match is counted and left as it is, one gone from disk
 /// is left out, and one the automatic run is searching right now is left
 /// to it.
-pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
-    let owner = core.clone();
-    core.services.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
+pub fn start_for(metadata: &Arc<Metadata>, series: Vec<u64>) -> u64 {
+    let owner = metadata.clone();
+    metadata.services.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
         let picked = series.clone();
         // (id, folder, kind, has a match, missing, cleared by the user)
         type Row = (u64, String, SeriesKind, bool, bool, bool);
@@ -544,7 +551,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
         let had = rows.iter().filter(|r| r.3).count() as u64;
         let busy: Vec<u64> = rows
             .iter()
-            .filter(|r| !r.3 && !r.4 && owner.library.is_matching(r.0))
+            .filter(|r| !r.3 && !r.4 && owner.library.state.is_matching(r.0))
             .map(|r| r.0)
             .collect();
         let todo: Vec<Row> = rows
@@ -560,7 +567,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
             ctx.checkpoint()?;
             ctx.progress(matched + unmatched + failed, Some(total), &folder);
             let outcome = {
-                let _in_flight = InFlight::begin(&owner.library, series);
+                let _in_flight = InFlight::begin(&owner.library.state, series);
                 attempt(&owner, series, &folder, kind, &order).await
             };
             match outcome {
@@ -599,7 +606,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
             }
         }
         if matched > 0 {
-            images::sweep_after(&owner, "match").await;
+            images::sweep_after(&owner.net, "match").await;
         }
         Ok(Finished {
             plain: Some(find_line(matched, unmatched, failed, had, busy.len() as u64, hit_pair, miss_name)),
@@ -667,9 +674,9 @@ fn find_line(
 /// of the auto-match's way until the manual picker gives it one. That is
 /// an attempt with no version beside it, which the version guard never
 /// resets, unlike a miss, which always carries the version that made it.
-pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
+pub fn clear_match(metadata: &Metadata, series: u64) -> Result<Reply, CoreError> {
     let now = time::now_secs();
-    let changed = core.services.store.write(move |c| {
+    let changed = metadata.services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                     tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
@@ -684,19 +691,19 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
             id: series,
         });
     }
-    let images_dir = core.services.paths.images_dir();
-    let cards = core
+    let images_dir = metadata.services.paths.images_dir();
+    let cards = metadata
         .services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
-    core.services.bus.debug(
+    metadata.services.bus.debug(
         Stage::Metadata,
         format!("match cleared: {title}"),
         EventBody::SeriesChanged { series: cards },
     );
     // No record, no record rule: specials it read as episodes read as specials again.
-    crate::library::readings::reread_if_record_matters(core, series);
+    crate::library::readings::reread_if_record_matters(&metadata.library, series);
     Ok(Reply::Ok)
 }
 

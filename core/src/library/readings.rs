@@ -220,15 +220,18 @@ pub(crate) fn record_matters(conn: &Connection, series: u64) -> Result<bool, Cor
 
 /// Rescans `series` when its rows disagree with its record (`record_matters`).
 /// For the places a match changes outside a job: clearing one, say.
-pub(crate) fn reread_if_record_matters(core: &crate::core::Core, series: u64) {
-    if core
+pub(crate) fn reread_if_record_matters(
+    library: &std::sync::Arc<crate::library::Library>,
+    series: u64,
+) {
+    if library
         .services
         .store
         .read(|c| record_matters(c, series))
         .unwrap_or(false)
     {
         // A source away right now gets its scan when it is back.
-        let _ = super::scan::rescan_series(core, series);
+        let _ = super::scan::rescan_series(library, series);
     }
 }
 

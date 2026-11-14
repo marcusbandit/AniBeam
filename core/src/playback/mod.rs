@@ -6,4 +6,7 @@
 pub mod options;
 pub mod session;
 pub mod skip;
+mod team;
 pub mod tracks;
+
+pub use team::Playback;

@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::images;
+use crate::library::Library;
 use crate::library::cards;
 use crate::library::snapshot::Snapshot;
 use crate::library::sort;
@@ -67,30 +67,32 @@ const KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Every card, with what a torrent is still writing laid over them (the
 /// overlay is live state, so it goes on after the cache, never into it).
-fn load_all(core: &Core) -> Result<Loaded, CoreError> {
-    let mut loaded = load_kept(core)?;
-    crate::downloads::overlay(core, &mut loaded.cards);
+fn load_all(library: &Library) -> Result<Loaded, CoreError> {
+    let mut loaded = load_kept(library)?;
+    if let Some(downloads) = library.downloads.get() {
+        crate::downloads::overlay(&downloads, &mut loaded.cards);
+    }
     Ok(loaded)
 }
 
-fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
-    if !core
+fn load_kept(library: &Library) -> Result<Loaded, CoreError> {
+    if !library
         .snapshot_cache
         .load(std::sync::atomic::Ordering::Relaxed)
     {
-        return load_fresh(&core.services);
+        return load_fresh(&library.services);
     }
     // Read before the load, so a change that lands during it leaves the
     // load stamped with the generation it may not have seen.
-    let generation = core.generation();
-    if let Some(kept) = core.kept_load.lock().unwrap().as_ref()
+    let generation = library.services.bus.generation();
+    if let Some(kept) = library.kept_load.lock().unwrap().as_ref()
         && kept.generation == generation
         && kept.at.elapsed() < KEEP_FOR
     {
         return Ok(kept.loaded.clone());
     }
-    let loaded = load_fresh(&core.services)?;
-    *core.kept_load.lock().unwrap() = Some(KeptLoad {
+    let loaded = load_fresh(&library.services)?;
+    *library.kept_load.lock().unwrap() = Some(KeptLoad {
         generation,
         at: std::time::Instant::now(),
         loaded: loaded.clone(),
@@ -117,8 +119,8 @@ fn load_fresh(services: &Services) -> Result<Loaded, CoreError> {
     })
 }
 
-fn load_cards(core: &Core) -> Result<Vec<SeriesCard>, CoreError> {
-    Ok(load_all(core)?.cards)
+fn load_cards(library: &Library) -> Result<Vec<SeriesCard>, CoreError> {
+    Ok(load_all(library)?.cards)
 }
 
 /// What every card read owes the image cache: the posters it handed out are
@@ -126,26 +128,24 @@ fn load_cards(core: &Core) -> Result<Vec<SeriesCard>, CoreError> {
 /// and a read that found a gap asks for a fill. The bump is queued on the
 /// writer thread with no reply waited for, and the fill is coalesced and
 /// rate-gated, so neither costs the read anything.
-fn after_read(core: &Core, gaps: &[u64], used: Vec<String>) {
-    core.images.bump_used(used);
-    if gaps.is_empty() || !core.images.fill_is_due() {
+fn after_read(library: &Library, gaps: &[u64], used: Vec<String>) {
+    library.net.images.bump_used(used);
+    if gaps.is_empty() || !library.net.images.fill_is_due() {
         return;
     }
-    if let Some(owner) = core.arc() {
-        images::start_fill(&owner);
-    }
+    images::start_fill(&library.net);
 }
 
 /// The home grid. `reveal_hidden` is the shell's own tab visibility: the
 /// Hidden tab always lists what it holds.
 pub fn list_series(
-    core: &Core,
+    library: &Library,
     tab: Tab,
     query: &str,
     sort_key: Sort,
     direction: Direction,
 ) -> Result<Reply, CoreError> {
-    let show_watched = core
+    let show_watched = library
         .services
         .store
         .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
@@ -153,11 +153,11 @@ pub fn list_series(
         mut cards,
         gaps,
         posters,
-    } = load_all(core)?;
+    } = load_all(library)?;
     cards.retain(|c| in_tab(c, tab, show_watched) && sort::matches_query(c, query));
     sort::sort_cards(&mut cards, sort_key, direction);
     after_read(
-        core,
+        library,
         &gaps,
         cards
             .iter()
@@ -172,8 +172,8 @@ pub fn list_series(
 /// even while a stale status still says releasing — the tracker is the
 /// firmer answer, and the airing refresh's status write clears the rest.
 /// A dropped series is out too: its next episode is nothing to wait for.
-pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreError> {
-    let series = airing_rail(load_cards(core)?)
+pub fn list_airing(library: &Library, offset: u64, limit: u64) -> Result<Reply, CoreError> {
+    let series = airing_rail(load_cards(library)?)
         .into_iter()
         .skip(offset as usize)
         .take(limit as usize)
@@ -198,13 +198,13 @@ fn airing_rail(mut cards: Vec<SeriesCard>) -> Vec<SeriesCard> {
 /// rail and every tab's count, all off one snapshot rather than the four or
 /// five whole-library reads the page used to make per reload.
 pub fn list_library(
-    core: &Core,
+    library: &Library,
     tab: Tab,
     query: &str,
     sort_key: Sort,
     direction: Direction,
 ) -> Result<Reply, CoreError> {
-    let show_watched = core
+    let show_watched = library
         .services
         .store
         .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
@@ -212,7 +212,7 @@ pub fn list_library(
         cards: all,
         gaps,
         posters,
-    } = load_all(core)?;
+    } = load_all(library)?;
     let count = |t: Tab| all.iter().filter(|c| in_tab(c, t, show_watched)).count() as u64;
     let counts = TabCounts {
         all: count(Tab::All),
@@ -237,7 +237,7 @@ pub fn list_library(
             used.push(url.clone());
         }
     }
-    after_read(core, &gaps, used);
+    after_read(library, &gaps, used);
     Ok(Reply::Library {
         series,
         airing,
@@ -245,10 +245,10 @@ pub fn list_library(
     })
 }
 
-pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let images_dir = core.services.paths.images_dir();
+pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
+    let images_dir = library.services.paths.images_dir();
     let now = time::now();
-    let (detail, gaps, poster) = core.services.store.read(|c| {
+    let (detail, gaps, poster) = library.services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, now, Some(&[series]))?;
         let poster = snap
             .row(series)
@@ -258,8 +258,10 @@ pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     })?;
     match detail {
         Some(mut detail) => {
-            crate::downloads::overlay_detail(core, &mut detail);
-            after_read(core, &gaps, poster.into_iter().collect());
+            if let Some(downloads) = library.downloads.get() {
+                crate::downloads::overlay_detail(&downloads, &mut detail);
+            }
+            after_read(library, &gaps, poster.into_iter().collect());
             Ok(Reply::SeriesDetail {
                 detail: Box::new(detail),
             })

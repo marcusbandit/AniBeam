@@ -16,10 +16,10 @@ use rusqlite::{Connection, params};
 use super::closure::{self, Closure};
 use super::{as_i64, as_u64};
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::images;
 use crate::jobs::{Finished, JobCtx};
+use crate::metadata::Metadata;
 use crate::metadata::apply::{is_rate_limited, provider_unreachable};
 use crate::metadata::fetch::message_of;
 use crate::metadata::record::{self, StubWrite};
@@ -43,9 +43,10 @@ const REFRESH_THROTTLE: Duration = Duration::from_secs(60);
 ///
 /// Crawl runs one at a time, so a second call while one is running is
 /// handed the running job's id and starts nothing.
-pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
-    let owner = core.clone();
-    core.services
+pub fn start(metadata: &Arc<Metadata>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
+    let owner = metadata.clone();
+    metadata
+        .services
         .jobs
         .clone()
         .start(JobKind::Crawl, move |ctx| async move {
@@ -56,9 +57,10 @@ pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
 /// Starts the Crawl job over every owned series whose node still owes its
 /// edges. A seed whose component an earlier seed already closed no longer
 /// owes anything by the time its turn comes, so it costs nothing.
-pub fn start_gap_crawl(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.services
+pub fn start_gap_crawl(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata
+        .services
         .jobs
         .clone()
         .start(JobKind::Crawl, move |ctx| async move {
@@ -70,15 +72,15 @@ pub fn start_gap_crawl(core: &Arc<Core>) -> u64 {
 /// The read path's crawl: a series page asks for its franchise, and this
 /// is what goes and gets whatever is missing behind it. At most once a
 /// minute per root, so opening the same page again changes nothing.
-pub fn maybe_crawl_for_read(core: &Arc<Core>, seed: u64, root: u64) {
-    let mut recent = recover(&core.crawl_recent);
+pub fn maybe_crawl_for_read(metadata: &Arc<Metadata>, seed: u64, root: u64) {
+    let mut recent = recover(&metadata.crawl_recent);
     if !record_crawl(&mut recent, root, Instant::now()) {
         return;
     }
     // Dropped before the job starts: nothing the job does should be able
     // to wait on this gate.
     drop(recent);
-    start(core, vec![seed], true);
+    start(metadata, vec![seed], true);
 }
 
 /// Whether this root is due a read-driven crawl, recording the instant when
@@ -98,7 +100,7 @@ fn record_crawl(recent: &mut HashMap<u64, Instant>, root: u64, at: Instant) -> b
 /// what it is owed, one node is fetched, and the closure is taken again so
 /// a member the fetch turned up joins the same walk.
 async fn run(
-    core: &Core,
+    metadata: &Metadata,
     ctx: &Arc<JobCtx>,
     seeds: Vec<u64>,
     refetch_seeds: bool,
@@ -123,7 +125,7 @@ async fn run(
         loop {
             ctx.checkpoint()?;
             let now = time::now_secs();
-            let graph = core
+            let graph = metadata
                 .services
                 .store
                 .write_async(move |c| closure::close(c, seed, closure::CAP, now))
@@ -136,17 +138,17 @@ async fn run(
             };
             let Some(id) = next else { break };
 
-            let (done, total) = core.services.store.write_async(progress).await?;
+            let (done, total) = metadata.services.store.write_async(progress).await?;
             ctx.progress(done, Some(total), &format!("AniList {id}"));
 
-            match core.anilist.enrichment_raw(id).await {
+            match metadata.net.anilist.enrichment_raw(id).await {
                 // The reply and the JSON behind it. The raw half is not
                 // written: a crawl asks for the series page alone, and
                 // that partial bundle must never displace the four-part
                 // one a full fetch left in `raw`.
                 Ok((Some(enrichment), _raw)) => {
-                    write_node(&core.services, id, &enrichment, time::now_secs()).await?;
-                    fetch_covers(core, &enrichment).await;
+                    write_node(&metadata.services, id, &enrichment, time::now_secs()).await?;
+                    fetch_covers(metadata, &enrichment).await;
                     fetched += 1;
                     ctx.emit(
                         Level::Debug,
@@ -160,7 +162,7 @@ async fn run(
                     tracing::debug!("AniList has no entry for {id}");
                     failed += 1;
                     first_failure.get_or_insert_with(|| format!("AniList has no entry for {id}"));
-                    stamp_empty(&core.services, id, time::now_secs()).await?;
+                    stamp_empty(&metadata.services, id, time::now_secs()).await?;
                 }
                 // AniList saying stop. The node keeps owing its edges and
                 // is left alone for a minute rather than counted as done.
@@ -169,7 +171,7 @@ async fn run(
                 // per-node chatter in a log meant to carry state changes.
                 Err(e) if is_rate_limited(&e) => {
                     let wait = retry_after(&e);
-                    defer(&core.services, id, time::now_secs() + wait).await?;
+                    defer(&metadata.services, id, time::now_secs() + wait).await?;
                     parked.insert(id);
                     deferred += 1;
                     tracing::debug!("the crawl deferred {id} for {wait}s after a rate limit");
@@ -186,13 +188,13 @@ async fn run(
                     tracing::debug!("the crawl failed at {id}: {}", message_of(&e));
                     failed += 1;
                     first_failure.get_or_insert_with(|| message_of(&e));
-                    stamp_empty(&core.services, id, time::now_secs()).await?;
+                    stamp_empty(&metadata.services, id, time::now_secs()).await?;
                 }
             }
         }
     }
 
-    images::sweep_after(core, "a crawl").await;
+    images::sweep_after(&metadata.net, "a crawl").await;
 
     // One line for every node that failed, ahead of the terminal event, so
     // an outage says so once and names what it looked like.
@@ -321,7 +323,7 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
 /// and a boundary node owns none, so a stub the crawl wrote would draw
 /// blank for ever. A failure is that one url's own and is bookkeeping,
 /// not a state change.
-async fn fetch_covers(core: &Core, enrichment: &Enrichment) {
+async fn fetch_covers(metadata: &Metadata, enrichment: &Enrichment) {
     let mut urls: Vec<String> = enrichment
         .cover_image
         .as_ref()
@@ -338,7 +340,7 @@ async fn fetch_covers(core: &Core, enrichment: &Enrichment) {
     if urls.is_empty() {
         return;
     }
-    for (url, outcome) in core.images.ensure(&urls).await {
+    for (url, outcome) in metadata.net.images.ensure(&urls).await {
         if let Err(e) = outcome {
             tracing::debug!("the crawl could not fetch {url}: {e}");
         }

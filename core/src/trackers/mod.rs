@@ -7,8 +7,11 @@ pub mod local;
 pub mod move_up;
 pub mod oauth;
 pub mod on_hold;
+mod team;
 pub mod watching;
 pub mod writes;
+
+pub use team::Trackers;
 
 /// Where the tokens live moved down to the foundation with `Services`, which
 /// holds it (#854); the shells and tests still name it here.

@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use super::qbt::QbtClient;
 use super::{facts, trash};
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::foundation::magnet;
 use crate::foundation::names::title_key;
 use crate::foundation::services::Services;
@@ -522,7 +522,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
 /// for a while so a followup binds without waiting for the page. Failures
 /// are logged; the add already happened and must not read as failed.
 pub async fn after_add(
-    core: &Arc<Core>,
+    downloads: &Arc<Downloads>,
     client: &Arc<QbtClient>,
     items: &[Release],
     options: &DownloadOptions,
@@ -546,7 +546,7 @@ pub async fn after_add(
         .filter(|f| !f.hash.is_empty())
         .map(|f| f.hash.clone())
         .collect();
-    let saved = core.services.store.write_async(move |c| {
+    let saved = downloads.services.store.write_async(move |c| {
         let mut cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
         let mut next = cur.iter().map(|f| f.id).max().unwrap_or(0);
         for mut f in followups {
@@ -576,7 +576,7 @@ pub async fn after_add(
         .collect();
     if !options.cancel.is_empty() && !replacing.is_empty() {
         cancel_in_flight(
-            &core.services,
+            &downloads.services,
             client,
             &options.cancel,
             &replacing,
@@ -584,19 +584,19 @@ pub async fn after_add(
         )
         .await;
     }
-    let (core, client) = (core.clone(), client.clone());
+    let (downloads, client) = (downloads.clone(), client.clone());
     let wants_ticks = options.sequential || !replacing.is_empty();
     if wants_ticks {
-        let handle = core.services.handle.clone();
+        let handle = downloads.services.handle.clone();
         handle.spawn(async move {
             // The client may take a moment to list a torrent it was just given
             for _ in 0..15 {
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 match client.torrents().await {
-                    Ok(torrents) => tick(&core.services, &client, &torrents).await,
+                    Ok(torrents) => tick(&downloads.services, &client, &torrents).await,
                     Err(e) => tracing::debug!("followup read failed: {e}"),
                 }
-                match load(&core.services) {
+                match load(&downloads.services) {
                     Ok(f) if f.iter().all(|f| !f.hash.is_empty()) => break,
                     Ok(_) => {}
                     Err(_) => break,
