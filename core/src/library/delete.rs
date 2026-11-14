@@ -11,6 +11,7 @@ use std::sync::Arc;
 use rusqlite::params;
 
 use crate::contract::*;
+use crate::downloads::Downloads;
 use crate::i18n::tr;
 use crate::library::Library;
 
@@ -86,6 +87,16 @@ fn paths(
     Ok(out)
 }
 
+/// The downloads team, which a delete asks what is still being written and hands the
+/// torrents of the trashed files. Missing only while the core goes away, and then nothing
+/// is deleted: a file is never trashed without asking.
+fn downloads_of(library: &Library) -> Result<Arc<Downloads>, CoreError> {
+    library
+        .downloads
+        .get()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))
+}
+
 pub fn delete_episodes(
     library: &Arc<Library>,
     series: u64,
@@ -94,6 +105,7 @@ pub fn delete_episodes(
     if files.is_empty() {
         return Ok(Reply::Ok);
     }
+    let downloads = downloads_of(library)?;
     let (rows, sources, title) = library.services.store.read(|c| {
         let mut rows = Vec::new();
         for id in &files {
@@ -140,9 +152,7 @@ pub fn delete_episodes(
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    if let Some(downloads) = library.downloads.get() {
-        crate::downloads::drop_torrents_of(&downloads, gone(&targets));
-    }
+    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let line = format!(
             "{} {} of {title} {}",
@@ -199,7 +209,7 @@ type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
 pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Reply, CoreError> {
     let images_dir = library.services.paths.images_dir();
     let now = crate::time::now();
-    let downloads = library.downloads.get();
+    let downloads = downloads_of(library)?;
     let (picked, sources) = library.services.store.read(|c| {
         let snap = super::snapshot::Snapshot::load(c, &images_dir, now, None)?;
         let mut picked: Vec<Picked> = Vec::new();
@@ -218,9 +228,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
                 // Gone already (an earlier delete the rescan has not caught up with) is not
                 // counted as going now
                 if !take
-                    || downloads
-                        .as_ref()
-                        .is_some_and(|d| crate::downloads::is_writing(d, &f.path))
+                    || crate::downloads::is_writing(&downloads, &f.path)
                     || !Path::new(&f.path).exists()
                 {
                     continue;
@@ -269,9 +277,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
         });
     }
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    if let Some(downloads) = library.downloads.get() {
-        crate::downloads::drop_torrents_of(&downloads, gone(&targets));
-    }
+    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
             format!(

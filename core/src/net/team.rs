@@ -4,7 +4,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::contract::CoreError;
 use crate::foundation::services::Services;
 use crate::images::ImageCache;
 use crate::net::Upstream;
@@ -40,16 +39,16 @@ pub struct Net {
 }
 
 impl Net {
-    /// The clients over the services' one transport, and the image cache.
-    /// Creating the cache directory is opening, the same as creating the
-    /// data directory the database file lives in; nothing here touches the
+    /// The clients over the services' one transport, and the image cache
+    /// over the directory `Core::open` created. Nothing here touches the
     /// network.
-    pub(crate) fn open(services: Arc<Services>) -> Result<Net, CoreError> {
-        let images_dir = services.paths.images_dir();
-        std::fs::create_dir_all(&images_dir)
-            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
+    pub(crate) fn new(services: Arc<Services>) -> Net {
         let http = &services.http;
-        let images = ImageCache::new(services.store.clone(), images_dir, http.clone());
+        let images = ImageCache::new(
+            services.store.clone(),
+            services.paths.images_dir(),
+            http.clone(),
+        );
         let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
             Upstream::Anilist,
             http.clone(),
@@ -78,7 +77,7 @@ impl Net {
             http.clone(),
             TVMAZE_GAP,
         )));
-        Ok(Net {
+        Net {
             services,
             anilist,
             jikan,
@@ -86,6 +85,6 @@ impl Net {
             mal,
             tvmaze,
             images,
-        })
+        }
     }
 }

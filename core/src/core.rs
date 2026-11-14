@@ -120,6 +120,12 @@ impl Core {
     ) -> Result<Arc<Core>, CoreError> {
         let store = Store::open(&paths.db_path())?;
         let bus = EventBus::new(store.clone())?;
+        // Creating the cache directory is opening, the same as creating the
+        // data directory the database file lives in. Before the runtime, so
+        // that nothing after it can fail and drop a live runtime here.
+        let images_dir = paths.images_dir();
+        std::fs::create_dir_all(&images_dir)
+            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .thread_name("anibeam-core")
@@ -139,7 +145,7 @@ impl Core {
         });
         // Each team over the ones below it, bottom up.
         let closed = Arc::new(AtomicBool::new(false));
-        let net = Arc::new(Net::open(services.clone())?);
+        let net = Arc::new(Net::new(services.clone()));
         let library = Arc::new(Library::new(services.clone(), net.clone(), closed.clone()));
         let metadata = Arc::new(Metadata::new(
             services.clone(),
@@ -1038,6 +1044,11 @@ impl Core {
 
 impl Drop for Core {
     fn drop(&mut self) {
+        // A team can outlive the core in a task that still holds it. The
+        // watcher went quiet when its `Weak<Core>` stopped upgrading; now
+        // that it holds the library, the core stops it on the way out.
+        self.closed.store(true, Ordering::SeqCst);
+        self.library.stop_watcher();
         // A plain drop of a `Runtime` from inside a runtime context panics,
         // and a shell that forgets to call `shutdown` should still exit
         // cleanly; hand any runtime still present to the background path
