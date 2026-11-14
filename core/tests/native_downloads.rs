@@ -672,7 +672,8 @@ fn remove_call(
         .build()
         .unwrap();
     rt.block_on(async {
-        let backend = anibeam_core::downloads::backend::DownloadsBackend::open(&r.core).await?;
+        let backend =
+            anibeam_core::downloads::backend::DownloadsBackend::open(r.core.downloads()).await?;
         backend
             .remove(&["Show".to_string()], torrents, files, dry_run)
             .await

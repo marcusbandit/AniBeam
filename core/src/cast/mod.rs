@@ -31,7 +31,7 @@ pub mod server;
 pub mod vtt;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::playback::Playback;
 
 #[derive(Default)]
 pub struct Cast {
@@ -40,14 +40,14 @@ pub struct Cast {
 }
 
 /// Every `Cast*` call.
-pub fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
+pub fn call(playback: &std::sync::Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
     #[cfg(feature = "cast")]
     {
-        imp::call(core, call)
+        imp::call(playback, call)
     }
     #[cfg(not(feature = "cast"))]
     {
-        let _ = core;
+        let _ = playback;
         match call {
             Call::CastDevices => Ok(Reply::CastDevices {
                 devices: Vec::new(),
@@ -74,8 +74,8 @@ mod imp {
     use super::server::{self as served, Piece, Registry, Relay, Served};
     use super::{castv2, dlna};
     use crate::contract::*;
-    use crate::core::Core;
     use crate::foundation::services::Services;
+    use crate::playback::Playback;
     use crate::sync::recover;
 
     #[derive(Default)]
@@ -124,8 +124,8 @@ mod imp {
         hevc_doubt: bool,
     }
 
-    fn inner(core: &Core) -> Arc<Inner> {
-        core.cast.inner.clone()
+    fn inner(playback: &Playback) -> Arc<Inner> {
+        playback.cast.inner.clone()
     }
 
     fn devices(inner: &Inner) -> Vec<CastDevice> {
@@ -135,8 +135,8 @@ mod imp {
             .collect()
     }
 
-    fn found(core: &Arc<Core>, f: Found) {
-        let inner = inner(core);
+    fn found(playback: &Playback, f: Found) {
+        let inner = inner(playback);
         let list = {
             let mut d = recover(&inner.devices);
             match d.iter_mut().find(|x| x.device.id == f.device.id) {
@@ -146,7 +146,7 @@ mod imp {
             }
             d.iter().map(|x| x.device.clone()).collect::<Vec<_>>()
         };
-        core.services.bus.debug(
+        playback.services.bus.debug(
             Stage::Playback,
             "cast devices",
             EventBody::CastDevicesChanged { devices: list },
@@ -154,21 +154,21 @@ mod imp {
     }
 
     /// Looks around the network for a few seconds, once at a time.
-    fn look(core: &Core) {
-        let inner = inner(core);
+    fn look(playback: &Arc<Playback>) {
+        let inner = inner(playback);
         if inner.looking.swap(true, Ordering::AcqRel) {
             return;
         }
-        let Some(arc) = core.arc() else { return };
+        let arc = playback.clone();
         let cast_core = arc.clone();
-        let chromecasts = core.services.handle.spawn_blocking(move || {
+        let chromecasts = playback.services.handle.spawn_blocking(move || {
             let c = cast_core.clone();
             if let Err(e) = discover::chromecasts(Duration::from_secs(6), move |f| found(&c, f)) {
                 tracing::warn!("cast: {e}");
             }
         });
         let dlna_core = arc.clone();
-        core.services.handle.spawn(async move {
+        playback.services.handle.spawn(async move {
             let c = dlna_core.clone();
             let extra = discover::dev().renderers;
             if !extra.is_empty() {
@@ -269,8 +269,8 @@ mod imp {
     }
 
     /// Changes the session `id`'s state, if it is still the session, and says so.
-    fn update(core: &Core, id: u64, f: impl FnOnce(&mut Session)) {
-        let inner = inner(core);
+    fn update(playback: &Playback, id: u64, f: impl FnOnce(&mut Session)) {
+        let inner = inner(playback);
         let out = {
             let mut s = recover(&inner.session);
             let Some(session) = s.as_mut().filter(|s| s.id == id) else {
@@ -287,7 +287,7 @@ mod imp {
             })
         };
         if let Some((state, moved_only)) = out {
-            emit(&core.services, &state, moved_only);
+            emit(&playback.services, &state, moved_only);
         }
     }
 
@@ -303,8 +303,8 @@ mod imp {
         crate::i18n::tr("core-cast-not-handed", &[("error", e.to_string().into())])
     }
 
-    fn fail(core: &Core, id: u64, error: String) {
-        update(core, id, |s| {
+    fn fail(playback: &Playback, id: u64, error: String) {
+        update(playback, id, |s| {
             s.state.state = CastPlayState::Failed;
             s.state.error = Some(error);
         });
@@ -324,11 +324,11 @@ mod imp {
             })
     }
 
-    pub fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
-        let inner = inner(core);
+    pub fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
+        let inner = inner(playback);
         match call {
             Call::CastDevices => {
-                look(core);
+                look(playback);
                 Ok(Reply::CastDevices {
                     devices: devices(&inner),
                 })
@@ -353,8 +353,8 @@ mod imp {
                     .ok_or_else(|| {
                         CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
                     })?;
-                let path = file_path(&core.services, file)?;
-                stop(core);
+                let path = file_path(&playback.services, file)?;
+                stop(playback);
                 let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
                 let token = format!(
                     "{:016x}{:016x}",
@@ -386,16 +386,14 @@ mod imp {
                     pieces: None,
                     hevc_doubt: false,
                 });
-                emit(&core.services, &state, false);
+                emit(&playback.services, &state, false);
                 let subs = match subtitle {
                     CastSubtitle::None => None,
                     CastSubtitle::Track { number } => Some(Subs::Track(number)),
                     CastSubtitle::File { path } => Some(Subs::File(PathBuf::from(path))),
                 };
-                let arc = core
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("the core is closing"))?;
-                core.services.handle.spawn(async move {
+                let arc = playback.clone();
+                playback.services.handle.spawn(async move {
                     if let Err(e) = begin(
                         &arc,
                         id,
@@ -442,7 +440,7 @@ mod imp {
                 } else {
                     format!("{name}?{query}")
                 };
-                stop(core);
+                stop(playback);
                 let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
                 let token = format!(
                     "{:016x}{:016x}",
@@ -473,11 +471,9 @@ mod imp {
                     pieces: None,
                     hevc_doubt: false,
                 });
-                emit(&core.services, &state, false);
-                let arc = core
-                    .arc()
-                    .ok_or_else(|| CoreError::internal("the core is closing"))?;
-                core.services.handle.spawn(async move {
+                emit(&playback.services, &state, false);
+                let arc = playback.clone();
+                playback.services.handle.spawn(async move {
                     let begun = match found.device.kind {
                         CastKind::Chromecast => {
                             relay(
@@ -495,17 +491,17 @@ mod imp {
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
-            Call::CastPlay => control(core, |c, id| match c {
+            Call::CastPlay => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Play),
-                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.play().await }),
+                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.play().await }),
             }),
-            Call::CastPause => control(core, |c, id| match c {
+            Call::CastPause => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Pause),
-                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.pause().await }),
+                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.pause().await }),
             }),
-            Call::CastSeek { to } => seek(core, to),
+            Call::CastSeek { to } => seek(playback, to),
             Call::CastStop => {
-                stop(core);
+                stop(playback);
                 Ok(Reply::Ok)
             }
             _ => Err(CoreError::internal("not a cast call")),
@@ -519,8 +515,8 @@ mod imp {
 
     /// Runs `f` with the session's controller and id. The session lock is held for the
     /// call, so `f` must not take it again: a DLNA action only spawns its request.
-    fn control(core: &Core, f: impl FnOnce(Ctl<'_>, u64)) -> Result<Reply, CoreError> {
-        let inner = inner(core);
+    fn control(playback: &Playback, f: impl FnOnce(Ctl<'_>, u64)) -> Result<Reply, CoreError> {
+        let inner = inner(playback);
         let s = recover(&inner.session);
         let Some(session) = s.as_ref() else {
             return Err(CoreError::invalid(
@@ -542,20 +538,20 @@ mod imp {
     }
 
     fn spawn_dlna(
-        core: &Core,
+        playback: &Arc<Playback>,
         id: u64,
         f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
     ) {
-        let Some(arc) = core.arc() else { return };
-        core.services.handle.spawn(async move {
+        let arc = playback.clone();
+        playback.services.handle.spawn(async move {
             if let Err(e) = f.await {
                 fail(&arc, id, e);
             }
         });
     }
 
-    fn seek(core: &Core, to: f64) -> Result<Reply, CoreError> {
-        let inner = inner(core);
+    fn seek(playback: &std::sync::Arc<Playback>, to: f64) -> Result<Reply, CoreError> {
+        let inner = inner(playback);
         let (mode, base, title, id, prepared, pieces) = {
             let mut s = recover(&inner.session);
             let Some(s) = s.as_mut() else {
@@ -589,26 +585,26 @@ mod imp {
                     (None, None) => ("stream.mp4", "video/mp4", to),
                 };
                 let url = format!("{base}/{name}?t={to:.3}");
-                update(core, id, |s| s.mode = Mode::Progressive { offset });
-                control(core, |c, id| {
+                update(playback, id, |s| s.mode = Mode::Progressive { offset });
+                control(playback, |c, id| {
                     if let Ctl::Dlna(d) = c {
                         let meta = dlna::didl(&url, kind, &title, None);
-                        spawn_dlna(core, id, async move {
+                        spawn_dlna(playback, id, async move {
                             d.set_uri(&url, &meta).await?;
                             d.play().await
                         });
                     }
                 })
             }
-            _ => control(core, |c, id| match c {
+            _ => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Seek(to)),
-                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.seek(to).await }),
+                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.seek(to).await }),
             }),
         }
     }
 
-    fn stop(core: &Core) {
-        let inner = inner(core);
+    fn stop(playback: &Playback) {
+        let inner = inner(playback);
         let Some(session) = recover(&inner.session).take() else {
             return;
         };
@@ -616,14 +612,14 @@ mod imp {
         let mut state = session.state.clone();
         if !matches!(state.state, CastPlayState::Ended | CastPlayState::Failed) {
             state.state = CastPlayState::Stopped;
-            emit(&core.services, &state, false);
+            emit(&playback.services, &state, false);
         }
         match session.control {
             // Dropping the controller stops the media receiver on the TV.
             Control::Cast(c) => drop(c),
             Control::Dlna { client, poll } => {
                 poll.abort();
-                core.services.handle.spawn(async move {
+                playback.services.handle.spawn(async move {
                     let _ = client.stop().await;
                 });
             }
@@ -635,7 +631,7 @@ mod imp {
     /// server, every request passed on to `dir`.
     #[allow(clippy::too_many_arguments)]
     async fn relay(
-        core: &Arc<Core>,
+        playback: &Arc<Playback>,
         id: u64,
         found: Found,
         dir: String,
@@ -645,7 +641,7 @@ mod imp {
         start: f64,
         duration: f64,
     ) -> Result<(), String> {
-        let inner = inner(core);
+        let inner = inner(playback);
         let port = server(&inner).await?.port();
         let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
         let host = discover::dev()
@@ -664,7 +660,7 @@ mod imp {
                 }),
             },
         );
-        update(core, id, |s| s.base = base.clone());
+        update(playback, id, |s| s.base = base.clone());
         let load = castv2::Load {
             url: format!("{base}/{playlist}"),
             content_type: "application/x-mpegurl".to_string(),
@@ -674,7 +670,7 @@ mod imp {
             title,
             subtitles: None,
         };
-        let status_core = core.clone();
+        let status_core = playback.clone();
         let controller = castv2::start(found.addr, load, move |st| {
             on_cast_status(&status_core, id, st)
         });
@@ -692,7 +688,7 @@ mod imp {
     /// TV reads. A seek starts that stream again (`seek`).
     #[allow(clippy::too_many_arguments)]
     async fn relay_dlna(
-        core: &Arc<Core>,
+        playback: &Arc<Playback>,
         id: u64,
         found: Found,
         dir: String,
@@ -701,7 +697,7 @@ mod imp {
         title: String,
         start: f64,
     ) -> Result<(), String> {
-        let inner = inner(core);
+        let inner = inner(playback);
         let client = Arc::new(dlna::Client::new(
             found.control.clone().ok_or_else(no_control)?,
         ));
@@ -744,7 +740,7 @@ mod imp {
         let offset = pieces
             .get(served::piece_at(&pieces, start))
             .map_or(0.0, |p| p.start);
-        update(core, id, |s| {
+        update(playback, id, |s| {
             s.base = base.clone();
             s.pieces = Some(pieces.clone());
             s.mode = Mode::Progressive { offset };
@@ -753,9 +749,9 @@ mod imp {
         let meta = dlna::didl(&url, "video/mp2t", &title, None);
         client.set_uri(&url, &meta).await?;
         client.play().await?;
-        let poll_core = core.clone();
+        let poll_core = playback.clone();
         let poll_client = client.clone();
-        let poll = core
+        let poll = playback
             .services
             .handle
             .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
@@ -766,7 +762,7 @@ mod imp {
             None => {
                 poll.abort();
                 drop(s);
-                core.services.handle.spawn(async move {
+                playback.services.handle.spawn(async move {
                     let _ = client.stop().await;
                 });
             }
@@ -781,7 +777,7 @@ mod imp {
 
     #[allow(clippy::too_many_arguments)]
     async fn begin(
-        core: &Arc<Core>,
+        playback: &Arc<Playback>,
         id: u64,
         found: Found,
         path: PathBuf,
@@ -791,7 +787,7 @@ mod imp {
         audio_track: Option<u64>,
         subs: Option<Subs>,
     ) -> Result<(), String> {
-        let inner = inner(core);
+        let inner = inner(playback);
         let port = server(&inner).await?.port();
         let peer: IpAddr = found.addr.ip();
         let ip = discover::local_ip_for(peer).ok_or_else(no_route)?;
@@ -834,7 +830,7 @@ mod imp {
             .as_ref()
             .map(|p| p.duration_ms() as f64 / 1000.0)
             .unwrap_or(0.0);
-        update(core, id, |s| {
+        update(playback, id, |s| {
             s.base = base.clone();
             s.prepared = prepared.clone();
             s.hevc_doubt = hevc_doubt;
@@ -859,11 +855,11 @@ mod imp {
                     title,
                     subtitles: None,
                 };
-                let status_core = core.clone();
+                let status_core = playback.clone();
                 let controller = castv2::start(found.addr, load, move |st| {
                     on_cast_status(&status_core, id, st)
                 });
-                update(core, id, |s| {
+                update(playback, id, |s| {
                     s.mode = if hls { Mode::Hls } else { Mode::Direct }
                 });
                 let mut s = recover(&inner.session);
@@ -934,9 +930,9 @@ mod imp {
                         }
                     }
                 };
-                let poll_core = core.clone();
+                let poll_core = playback.clone();
                 let poll_client = client.clone();
-                let poll = core
+                let poll = playback
                     .services
                     .handle
                     .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
@@ -954,8 +950,8 @@ mod imp {
         Ok(())
     }
 
-    fn on_cast_status(core: &Core, id: u64, st: castv2::Status) {
-        update(core, id, |s| {
+    fn on_cast_status(playback: &Playback, id: u64, st: castv2::Status) {
+        update(playback, id, |s| {
             let next = match (st.player.as_str(), st.idle_reason.as_deref()) {
                 ("PLAYING", _) => CastPlayState::Playing,
                 ("PAUSED", _) => CastPlayState::Paused,
@@ -989,7 +985,7 @@ mod imp {
         });
     }
 
-    async fn poll_dlna(core: Arc<Core>, id: u64, client: Arc<dlna::Client>) {
+    async fn poll_dlna(playback: Arc<Playback>, id: u64, client: Arc<dlna::Client>) {
         let mut seen_playing = false;
         let mut misses = 0;
         loop {
@@ -998,7 +994,7 @@ mod imp {
                 Ok((state, at, duration)) => {
                     misses = 0;
                     let mut finished = false;
-                    update(&core, id, |s| {
+                    update(&playback, id, |s| {
                         let offset = match s.mode {
                             Mode::Progressive { offset } => offset,
                             _ => 0.0,
@@ -1044,7 +1040,7 @@ mod imp {
                 Err(e) => {
                     misses += 1;
                     if misses >= 5 {
-                        fail(&core, id, e);
+                        fail(&playback, id, e);
                         return;
                     }
                 }
@@ -1067,6 +1063,7 @@ mod imp {
         use axum::routing::{get, post};
 
         use super::*;
+
         use crate::CorePaths;
         use crate::trackers::Secrets;
 
@@ -1177,7 +1174,7 @@ mod imp {
             let paths = CorePaths::under(dir.path());
             let secrets = Secrets::file_only(paths.secrets_path());
             let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
-            inner(&core).devices.lock().unwrap().push(Found {
+            inner(&core.playback).devices.lock().unwrap().push(Found {
                 device: CastDevice {
                     id: "dlna:fake".into(),
                     name: "Fake TV".into(),
@@ -1306,7 +1303,7 @@ mod imp {
             let paths = CorePaths::under(dir.path());
             let secrets = Secrets::file_only(paths.secrets_path());
             let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
-            inner(&core).devices.lock().unwrap().push(Found {
+            inner(&core.playback).devices.lock().unwrap().push(Found {
                 device: CastDevice {
                     id: "dlna:fake".into(),
                     name: "Fake TV".into(),

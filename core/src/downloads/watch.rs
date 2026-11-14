@@ -24,7 +24,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use rusqlite::{Connection, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::foundation::services::Services;
 use crate::sync::recover;
 
@@ -148,14 +148,14 @@ pub fn standing(conn: &Connection, d: &Due) -> Result<Standing, CoreError> {
 /// every enabled rule whose folder is a library show, each feed of a show
 /// kept. Replaces what was there, since the rules are the truth about what
 /// is followed.
-pub async fn remember(core: &Arc<Core>, rules: &[SubscriptionRule]) {
+pub async fn remember(downloads: &Arc<Downloads>, rules: &[SubscriptionRule]) {
     let follows: Vec<(u64, String)> = rules
         .iter()
         .filter(|r| r.rule_enabled)
         .filter_map(|r| r.show.as_ref().map(|s| (s.series_id, r.feed_url.clone())))
         .collect();
     let now = crate::time::now_secs();
-    let saved = core
+    let saved = downloads
         .services
         .store
         .tx_async(move |tx| {
@@ -170,7 +170,7 @@ pub async fn remember(core: &Arc<Core>, rules: &[SubscriptionRule]) {
         })
         .await;
     match saved {
-        Ok(()) => arm(core),
+        Ok(()) => arm(downloads),
         Err(e) => tracing::warn!("followed shows not kept: {e}"),
     }
 }
@@ -198,27 +198,27 @@ impl Drop for Slot {
 /// Sets a timer for every followed episode that has none yet. Called at
 /// launch, after the rules are read, after a schedule changes, and when a
 /// watch ends, so the episode after it gets one.
-pub fn arm(core: &Core) {
+pub fn arm(downloads: &Arc<Downloads>) {
     let now = crate::time::now_secs();
-    let found = match core.services.store.read(|c| due(c, now)) {
+    let found = match downloads.services.store.read(|c| due(c, now)) {
         Ok(found) => found,
         Err(e) => {
             tracing::debug!("followed episodes not read: {e}");
             return;
         }
     };
-    let Ok(owner) = core.owner() else { return };
+    let owner = downloads.clone();
     for d in found {
         let key = (d.series, d.episode, d.aired_at);
         if !armed().insert(key) {
             continue;
         }
-        let core = owner.clone();
+        let downloads = owner.clone();
         owner.services.handle.spawn(async move {
             let _slot = Slot(key);
-            let ended = watch(&core, &d).await;
+            let ended = watch(&downloads, &d).await;
             if ended {
-                arm(&core);
+                arm(&downloads);
             }
         });
     }
@@ -231,7 +231,7 @@ const NAP: u64 = 10 * 60;
 
 /// One episode's watch, step by step. True when it ended on its own (the
 /// episode arrived, or the watch gave up), so the next one can be armed.
-async fn watch(core: &Arc<Core>, d: &Due) -> bool {
+async fn watch(downloads: &Downloads, d: &Due) -> bool {
     for (at, step) in steps_ahead(d.aired_at, crate::time::now_secs()) {
         // The runtime ends this sleep with the core, so a shutdown needs
         // nothing of its own here.
@@ -243,7 +243,7 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
             tokio::time::sleep(std::time::Duration::from_secs((left as u64).min(NAP))).await;
         }
         let read = d.clone();
-        let now = match core
+        let now = match downloads
             .services
             .store
             .write_async(move |c| standing(c, &read))
@@ -258,9 +258,9 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
         match (now, step) {
             (Standing::Arrived, _) => return true,
             (Standing::Stale, _) => return false,
-            (Standing::Missing, Step::Refresh | Step::Check) => refresh(core, d.series).await,
+            (Standing::Missing, Step::Refresh | Step::Check) => refresh(downloads, d.series).await,
             (Standing::Missing, Step::GiveUp) => {
-                give_up(&core.services, d).await;
+                give_up(&downloads.services, d).await;
                 return true;
             }
         }
@@ -271,23 +271,23 @@ async fn watch(core: &Arc<Core>, d: &Due) -> bool {
 /// A client to ask the feeds through, only one that runs without the core
 /// starting it: the one this session already reached, or the person's own
 /// (Existing). Anibeam's own managed client is never started for this.
-async fn running_client(core: &Arc<Core>) -> Option<Arc<super::qbt::QbtClient>> {
-    if let Some(client) = core.downloads.state().qbt.clone() {
+async fn running_client(downloads: &Downloads) -> Option<Arc<super::qbt::QbtClient>> {
+    if let Some(client) = downloads.state().qbt.clone() {
         return Some(client);
     }
-    let settings = super::load_settings(&core.services).await.ok()?;
+    let settings = super::load_settings(&downloads.services).await.ok()?;
     if settings.torrent_mode != TorrentMode::Existing {
         return None;
     }
-    super::qbt_client(core).await.ok()
+    super::qbt_client(downloads).await.ok()
 }
 
 /// Asks the client to read every feed that follows the show, now.
-async fn refresh(core: &Arc<Core>, series: u64) {
-    let Some(client) = running_client(core).await else {
+async fn refresh(downloads: &Downloads, series: u64) {
+    let Some(client) = running_client(downloads).await else {
         return;
     };
-    let feeds: Vec<String> = match core
+    let feeds: Vec<String> = match downloads
         .services
         .store
         .write_async(move |c| {
@@ -360,6 +360,7 @@ pub fn missed_line(title: &str, episode: u32) -> crate::contract::Words {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Core;
 
     const H: i64 = 3600;
 
@@ -539,7 +540,9 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        core.services.handle.block_on(remember(&core, &[]));
+        core.services
+            .handle
+            .block_on(remember(&core.downloads, &[]));
         assert!(
             core.services
                 .store

@@ -43,8 +43,8 @@ use tokio_util::sync::CancellationToken;
 
 use self::sync::{Clock, Drift, LocalTick};
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
+use crate::playback::Playback;
 use crate::prefs;
 use crate::store::settings;
 
@@ -154,7 +154,7 @@ struct Active {
     cancel: CancellationToken,
     kick: Arc<Notify>,
     /// For the task that sends a held seek.
-    core: Weak<Core>,
+    playback: Weak<Playback>,
 }
 
 impl Active {
@@ -385,18 +385,18 @@ fn save_offset(conn: &Connection, file: u64, offset: f64) -> Result<(), CoreErro
 // The calls
 // ---------------------------------------------------------------------------
 
-pub(crate) fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
+pub(crate) fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
     let room = match call {
-        Call::RoomCreate { session } => Some(create(core, session)?),
-        Call::RoomJoin { code } => Some(join(core, &code)?),
-        Call::RoomAttach { session } => attach(core, session)?,
-        Call::RoomCommand { action, position } => command(core, action, position)?,
-        Call::RoomSetOffset { offset } => set_offset(core, offset)?,
+        Call::RoomCreate { session } => Some(create(playback, session)?),
+        Call::RoomJoin { code } => Some(join(playback, &code)?),
+        Call::RoomAttach { session } => attach(playback, session)?,
+        Call::RoomCommand { action, position } => command(playback, action, position)?,
+        Call::RoomSetOffset { offset } => set_offset(playback, offset)?,
         Call::RoomLeave => {
-            leave(core);
+            leave(playback);
             None
         }
-        Call::RoomStatus => core.rooms.lock().as_ref().and_then(Active::info),
+        Call::RoomStatus => playback.rooms.lock().as_ref().and_then(Active::info),
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
@@ -419,16 +419,16 @@ struct Begin {
     session: Option<(u64, u64)>,
 }
 
-fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
-    let s = core.sessions.get(session).ok_or(CoreError::NotFound {
+fn create(playback: &Arc<Playback>, session: u64) -> Result<RoomInfo, CoreError> {
+    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
         what: Entity::Session,
         id: session,
     })?;
-    let (name, relay) = who(&core.services)?;
+    let (name, relay) = who(&playback.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
     let episode = episode::of_session(&s);
-    leave(core);
-    let created = core
+    leave(playback);
+    let created = playback
         .services
         .handle
         .block_on(async {
@@ -437,7 +437,7 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
         .map_err(|_| socket::Fail::Unreachable("timed out".into()).to_error())?
         .map_err(|f| f.to_error())?;
     let info = start(
-        core,
+        playback,
         Begin {
             client,
             relay: relay.clone(),
@@ -448,7 +448,7 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
             session: Some((s.id, s.file)),
         },
     )?;
-    core.services.bus.emit_said(
+    playback.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-created", code = &info.code)),
@@ -467,14 +467,14 @@ fn create(core: &Core, session: u64) -> Result<RoomInfo, CoreError> {
     Ok(info)
 }
 
-fn join(core: &Core, code: &str) -> Result<RoomInfo, CoreError> {
+fn join(playback: &Arc<Playback>, code: &str) -> Result<RoomInfo, CoreError> {
     let code = anibeam_room::code::normalize(code)
         .ok_or_else(|| CoreError::invalid("code", crate::i18n::tr("core-room-bad-code", &[])))?;
-    let (name, relay) = who(&core.services)?;
+    let (name, relay) = who(&playback.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
-    leave(core);
+    leave(playback);
     let info = start(
-        core,
+        playback,
         Begin {
             client,
             relay: relay.clone(),
@@ -485,7 +485,7 @@ fn join(core: &Core, code: &str) -> Result<RoomInfo, CoreError> {
             session: None,
         },
     )?;
-    core.services.bus.emit_said(
+    playback.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-joined", code = &info.code)),
@@ -503,9 +503,9 @@ fn join(core: &Core, code: &str) -> Result<RoomInfo, CoreError> {
 }
 
 /// Starts the room's task and waits for its first welcome.
-fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
-    let owner = core.owner()?;
-    let serial = core.rooms.next.fetch_add(1, Ordering::SeqCst) + 1;
+fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
+    let owner = playback.clone();
+    let serial = playback.rooms.next.fetch_add(1, Ordering::SeqCst) + 1;
     let (tx, rx) = mpsc::unbounded_channel();
     let cancel = CancellationToken::new();
     let kick = Arc::new(Notify::new());
@@ -518,7 +518,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
         at_ms: 0,
         rev: 0,
     };
-    *core.rooms.lock() = Some(Active {
+    *playback.rooms.lock() = Some(Active {
         serial,
         relay: b.relay.clone(),
         code: b.code.clone(),
@@ -551,9 +551,9 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
         tx,
         cancel: cancel.clone(),
         kick: kick.clone(),
-        core: Arc::downgrade(&owner),
+        playback: Arc::downgrade(&owner),
     });
-    core.services.handle.spawn(socket::run(
+    playback.services.handle.spawn(socket::run(
         Arc::downgrade(&owner),
         socket::Start {
             serial,
@@ -569,7 +569,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
         },
     ));
     drop(owner);
-    let waited = core
+    let waited = playback
         .services
         .handle
         .block_on(async { tokio::time::timeout(JOIN_WAIT, answer).await });
@@ -579,7 +579,7 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
         Ok(Err(_)) => Err(socket::Fail::Unreachable("the connection closed".into()).to_error()),
         Err(_) => Err(socket::Fail::Unreachable("timed out".into()).to_error()),
     };
-    let mut slot = core.rooms.lock();
+    let mut slot = playback.rooms.lock();
     let ours = slot.as_ref().is_some_and(|a| a.serial == serial);
     match result {
         Ok(()) => slot
@@ -597,15 +597,15 @@ fn start(core: &Core, b: Begin) -> Result<RoomInfo, CoreError> {
     }
 }
 
-fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
-    let s = core.sessions.get(session).ok_or(CoreError::NotFound {
+fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreError> {
+    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
         what: Entity::Session,
         id: session,
     })?;
-    let stored = core.services.store.read(|c| stored_offset(c, s.file))?;
+    let stored = playback.services.store.read(|c| stored_offset(c, s.file))?;
     let mut out = Vec::new();
     let info = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         let room_episode = a.episode.clone().ok_or_else(not_in_room)?;
         a.drift = Drift::default();
@@ -660,11 +660,15 @@ fn attach(core: &Core, session: u64) -> Result<Option<RoomInfo>, CoreError> {
         ));
         a.info()
     };
-    emit(&core.services, out);
+    emit(&playback.services, out);
     Ok(info)
 }
 
-fn command(core: &Core, action: RoomAction, position: f64) -> Result<Option<RoomInfo>, CoreError> {
+fn command(
+    playback: &Playback,
+    action: RoomAction,
+    position: f64,
+) -> Result<Option<RoomInfo>, CoreError> {
     if !position.is_finite() || !(0.0..=proto::MAX_POSITION).contains(&position) {
         return Err(CoreError::invalid(
             "position",
@@ -678,7 +682,7 @@ fn command(core: &Core, action: RoomAction, position: f64) -> Result<Option<Room
             ),
         ));
     }
-    let mut slot = core.rooms.lock();
+    let mut slot = playback.rooms.lock();
     let a = slot.as_mut().ok_or_else(not_in_room)?;
     if a.you.is_none() {
         return Err(not_in_room());
@@ -712,11 +716,11 @@ fn command(core: &Core, action: RoomAction, position: f64) -> Result<Option<Room
                 a.held_seek = Some(canonical);
                 if !a.flush_armed {
                     a.flush_armed = true;
-                    let (owner, serial) = (a.core.clone(), a.serial);
-                    core.services.handle.spawn(async move {
+                    let (owner, serial) = (a.playback.clone(), a.serial);
+                    playback.services.handle.spawn(async move {
                         tokio::time::sleep_until(tokio::time::Instant::from_std(due)).await;
-                        if let Some(core) = owner.upgrade() {
-                            flush_seek(&core, serial);
+                        if let Some(playback) = owner.upgrade() {
+                            flush_seek(&playback, serial);
                         }
                     });
                 }
@@ -737,8 +741,8 @@ fn command(core: &Core, action: RoomAction, position: f64) -> Result<Option<Room
 }
 
 /// Sends the seek `command` held back, once `SEEK_GAP` is up.
-fn flush_seek(core: &Core, serial: u64) {
-    let mut slot = core.rooms.lock();
+fn flush_seek(playback: &Playback, serial: u64) {
+    let mut slot = playback.rooms.lock();
     let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
         return;
     };
@@ -748,7 +752,7 @@ fn flush_seek(core: &Core, serial: u64) {
     }
 }
 
-fn set_offset(core: &Core, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
+fn set_offset(playback: &Playback, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
     if !offset.is_finite() || offset.abs() > MAX_OFFSET {
         return Err(CoreError::invalid(
             "offset",
@@ -764,7 +768,7 @@ fn set_offset(core: &Core, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
     }
     let mut out = Vec::new();
     let (file, info) = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         a.offset = offset;
         a.offset_fixed = true;
@@ -785,23 +789,24 @@ fn set_offset(core: &Core, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
         (a.file.filter(|_| keep), a.info())
     };
     if let Some(file) = file {
-        core.services
+        playback
+            .services
             .store
             .write(move |c| save_offset(c, file, offset))?;
     }
-    emit(&core.services, out);
+    emit(&playback.services, out);
     Ok(info)
 }
 
 /// Leaves the room for good: the relay frees the place at once.
-fn leave(core: &Core) {
-    let taken = core.rooms.lock().take();
+fn leave(playback: &Playback) {
+    let taken = playback.rooms.lock().take();
     let Some(a) = taken else {
         return;
     };
     a.send(ClientMsg::Bye);
     a.cancel.cancel();
-    core.services.bus.emit_said(
+    playback.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-left")),
@@ -812,8 +817,8 @@ fn leave(core: &Core) {
 }
 
 /// The core is closing: say goodbye, quietly.
-pub(crate) fn shutdown(core: &Core) {
-    if let Some(a) = core.rooms.lock().take() {
+pub(crate) fn shutdown(playback: &Playback) {
+    if let Some(a) = playback.rooms.lock().take() {
         a.send(ClientMsg::Bye);
         a.cancel.cancel();
     }
@@ -826,13 +831,13 @@ pub(crate) fn shutdown(core: &Core) {
 /// One tick of a playback session. Only the attached session's count. A player
 /// that disagrees with the room on playing is put right, unless this member's
 /// own command is still out, which the relay's answer settles.
-pub(crate) fn tick(core: &Core, session: u64, position: f64, paused: bool) {
+pub(crate) fn tick(playback: &Playback, session: u64, position: f64, paused: bool) {
     if !position.is_finite() {
         return;
     }
-    let gap = Duration::from_millis(core.rooms.gap_ms.load(Ordering::Relaxed));
+    let gap = Duration::from_millis(playback.rooms.gap_ms.load(Ordering::Relaxed));
     let out = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -880,14 +885,14 @@ pub(crate) fn tick(core: &Core, session: u64, position: f64, paused: bool) {
             apply(session, a.state.playing, c.seek_to, c.speed)
         }
     };
-    emit(&core.services, vec![out]);
+    emit(&playback.services, vec![out]);
 }
 
 /// The session closed: the room stops driving it, and the others see this member
 /// is no longer ready.
-pub(crate) fn closed(core: &Core, session: u64) {
+pub(crate) fn closed(playback: &Playback, session: u64) {
     let out = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -898,15 +903,15 @@ pub(crate) fn closed(core: &Core, session: u64) {
         a.send(ClientMsg::Status { ready: a.ready });
         Say::debug(format!("Room: session {session} closed"), a.changed())
     };
-    emit(&core.services, vec![out]);
+    emit(&playback.services, vec![out]);
 }
 
 /// The skip windows job found where the attached session's opening starts: the
 /// suggestion follows, and moves the offset when none was stored or set.
-pub(crate) fn opening_known(core: &Core, session: u64, start: f64) {
+pub(crate) fn opening_known(playback: &Playback, session: u64, start: f64) {
     let mut out = Vec::new();
     {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -931,7 +936,7 @@ pub(crate) fn opening_known(core: &Core, session: u64, start: f64) {
             a.changed(),
         ));
     }
-    emit(&core.services, out);
+    emit(&playback.services, out);
 }
 
 // ---------------------------------------------------------------------------
@@ -940,11 +945,17 @@ pub(crate) fn opening_known(core: &Core, session: u64, start: f64) {
 
 /// The relay welcomed this member, first or again. False when the room is no
 /// longer this core's.
-fn on_welcome(core: &Core, serial: u64, you: MemberId, room: RoomView, server_ms: u64) -> bool {
+fn on_welcome(
+    playback: &Playback,
+    serial: u64,
+    you: MemberId,
+    room: RoomView,
+    server_ms: u64,
+) -> bool {
     let mut out = Vec::new();
     let to_match;
     {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1007,16 +1018,16 @@ fn on_welcome(core: &Core, serial: u64, you: MemberId, room: RoomView, server_ms
             ));
         }
     }
-    emit(&core.services, out);
+    emit(&playback.services, out);
     if let Some(e) = to_match {
-        find(core, serial, e);
+        find(playback, serial, e);
     }
     true
 }
 
 /// Looks for the room's episode in this library and says what it found.
-fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
-    let local = match core.services.store.read(|c| episode::find_local(c, &e)) {
+fn find(playback: &Playback, serial: u64, e: proto::EpisodeRef) {
+    let local = match playback.services.store.read(|c| episode::find_local(c, &e)) {
         Ok(local) => local,
         Err(err) => {
             tracing::warn!("room: could not look for the episode: {err}");
@@ -1025,7 +1036,7 @@ fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
     };
     let mut out = Vec::new();
     {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return;
         };
@@ -1064,11 +1075,16 @@ fn find(core: &Core, serial: u64, e: proto::EpisodeRef) {
             a.changed(),
         ));
     }
-    emit(&core.services, out);
+    emit(&playback.services, out);
 }
 
-fn on_pong(core: &Core, serial: u64, c: u64, s: u64) {
-    if let Some(a) = core.rooms.lock().as_mut().filter(|a| a.serial == serial) {
+fn on_pong(playback: &Playback, serial: u64, c: u64, s: u64) {
+    if let Some(a) = playback
+        .rooms
+        .lock()
+        .as_mut()
+        .filter(|a| a.serial == serial)
+    {
         a.clock.pong(c, s, local_ms());
     }
 }
@@ -1108,11 +1124,11 @@ fn take_state(a: &mut Active, state: PlayState, by: MemberId) -> Option<Say> {
 
 /// Every other message from the relay. False when the room is no longer this
 /// core's.
-fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
+fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
     let mut out = Vec::new();
     let mut to_match = None;
     {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1183,18 +1199,18 @@ fn on_message(core: &Core, serial: u64, msg: ServerMsg) -> bool {
             _ => {}
         }
     }
-    emit(&core.services, out);
+    emit(&playback.services, out);
     if let Some(e) = to_match {
-        find(core, serial, e);
+        find(playback, serial, e);
     }
     true
 }
 
 /// The connection dropped and the task is trying again. Said once per outage.
 /// False when the room is no longer this core's.
-fn on_lost(core: &Core, serial: u64) -> bool {
+fn on_lost(playback: &Playback, serial: u64) -> bool {
     let out = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1209,15 +1225,15 @@ fn on_lost(core: &Core, serial: u64) -> bool {
             a.changed(),
         )
     };
-    emit(&core.services, vec![out]);
+    emit(&playback.services, vec![out]);
     true
 }
 
 /// The room is gone: the relay closed it or refused this member, or two minutes
 /// of trying again came to nothing.
-fn finish(core: &Core, serial: u64) {
+fn finish(playback: &Playback, serial: u64) {
     let taken = {
-        let mut slot = core.rooms.lock();
+        let mut slot = playback.rooms.lock();
         if slot.as_ref().is_some_and(|a| a.serial == serial) {
             slot.take()
         } else {
@@ -1228,7 +1244,7 @@ fn finish(core: &Core, serial: u64) {
         return;
     };
     a.cancel.cancel();
-    core.services.bus.emit_said(
+    playback.services.bus.emit_said(
         Level::Warn,
         Stage::Playback,
         Some(crate::words!("core-room-closed")),
@@ -1291,7 +1307,7 @@ mod tests {
             tx,
             cancel: CancellationToken::new(),
             kick: Arc::new(Notify::new()),
-            core: Weak::new(),
+            playback: Weak::new(),
         }
     }
 

@@ -48,14 +48,14 @@ pub(crate) fn act_on_series(
     }
     match action {
         SeriesAction::Hide { hidden } => reads::set_hidden_many(&core.services, &picks, hidden),
-        SeriesAction::Rescan => scan::rescan_many(core, &picks),
+        SeriesAction::Rescan => scan::rescan_many(&core.library, &picks),
         // Every pick kept on this device is Ok with no job (#213)
         SeriesAction::Score { score } => {
-            writes::start_many(core, &picks, ManyWrite::Score(score)).map(started_or_ok)
+            writes::start_many(&core.trackers, &picks, ManyWrite::Score(score)).map(started_or_ok)
         }
         SeriesAction::ListStatus { status } => {
-            writes::start_many(core, &picks, ManyWrite::Status(status)).map(started_or_ok)
+            writes::start_many(&core.trackers, &picks, ManyWrite::Status(status)).map(started_or_ok)
         }
-        SeriesAction::FindMatch => Ok(started(automatch::start_for(&core.owner()?, picks))),
+        SeriesAction::FindMatch => Ok(started(automatch::start_for(&core.metadata, picks))),
     }
 }

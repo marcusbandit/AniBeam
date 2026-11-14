@@ -34,6 +34,7 @@ use tokio_util::sync::CancellationToken;
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::EventBus;
+use crate::foundation::services::Services;
 use crate::foundation::trust::{Asker, TailnetUser};
 use crate::prefs;
 use crate::sync::recover;
@@ -61,7 +62,16 @@ const TAILNET_FOR: Duration = Duration::from_secs(30);
 /// more often than this.
 const TAILNET_AGAIN: Duration = Duration::from_secs(5);
 
+/// The host team (#854): the tailnet host the phone reads, its keys and
+/// trust, and the history pulled from other computers.
 pub struct Host {
+    pub(crate) services: Arc<Services>,
+    pub(crate) net: Arc<crate::net::Net>,
+    pub(crate) library: Arc<crate::library::Library>,
+    pub(crate) downloads: Arc<crate::downloads::Downloads>,
+    /// The front door the phone's requests go through: the server answers
+    /// them with `Core::call_as`, the same router a shell calls.
+    pub(crate) core: crate::foundation::above::Above<Core>,
     status: Arc<Status>,
     run: Mutex<Option<Run>>,
     /// A bind override a test sets on one core, where the env var would be
@@ -129,8 +139,19 @@ fn off() -> HostStatus {
 }
 
 impl Host {
-    pub fn new(bus: Arc<EventBus>) -> Host {
+    pub(crate) fn new(
+        services: Arc<Services>,
+        net: Arc<crate::net::Net>,
+        library: Arc<crate::library::Library>,
+        downloads: Arc<crate::downloads::Downloads>,
+    ) -> Host {
+        let bus = services.bus.clone();
         Host {
+            services,
+            net,
+            library,
+            downloads,
+            core: crate::foundation::above::Above::default(),
             status: Arc::new(Status {
                 now: Mutex::new(off()),
                 bus,
@@ -271,13 +292,13 @@ impl Host {
 
     /// Starts or stops the supervisor to match the preference, or keeps it
     /// running while the host is held.
-    pub fn follow(&self, core: &Core, preference: bool) {
-        self.set_enabled(core, preference || self.held.load(Ordering::SeqCst));
+    pub fn follow(self: &Arc<Self>, preference: bool) {
+        self.set_enabled(preference || self.held.load(Ordering::SeqCst));
     }
 
     /// Starts or stops the supervisor. Calling it with what already holds
     /// does nothing.
-    fn set_enabled(&self, core: &Core, on: bool) {
+    fn set_enabled(self: &Arc<Self>, on: bool) {
         let mut run = recover(&self.run);
         if on == run.is_some() {
             return;
@@ -292,7 +313,6 @@ impl Host {
             self.status.put(None, off());
             return;
         }
-        let Some(owner) = core.arc() else { return };
         let cancel = CancellationToken::new();
         self.status.put(
             Some(&cancel),
@@ -305,8 +325,9 @@ impl Host {
         let bind = recover(&self.bind)
             .clone()
             .or_else(|| std::env::var(BIND_ENV).ok());
-        let task = core.services.handle.spawn(supervise(
-            Arc::downgrade(&owner),
+        let task = self.services.handle.spawn(supervise(
+            Arc::downgrade(self),
+            self.core.weak(),
             self.status.clone(),
             cancel.clone(),
             bind,
@@ -325,12 +346,12 @@ impl Host {
 
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
-pub fn sync(core: &Core) {
-    keys::load(core);
-    let on = match core.services.store.read(prefs::load_preferences) {
+pub fn sync(host: &Arc<Host>) {
+    keys::load(host);
+    let on = match host.services.store.read(prefs::load_preferences) {
         Ok(p) => {
-            core.host.set_streaming(p.stream_over_tailscale);
-            core.host.set_switched_off(p.tailnet_switched_off);
+            host.set_streaming(p.stream_over_tailscale);
+            host.set_switched_off(p.tailnet_switched_off);
             p.share_over_tailscale
         }
         Err(e) => {
@@ -343,48 +364,47 @@ pub fn sync(core: &Core) {
             false
         }
     };
-    core.host.follow(core, on);
+    host.follow(on);
 }
 
 /// The devices on the tailnet for Settings, each with whether it is trusted and
 /// whose profile it gets, and the people they belong to, as last read. It never
 /// waits: a fresh read runs on a worker and arrives as `TailnetDevicesChanged`.
-pub fn devices(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
-    if let Some(arc) = core.arc() {
-        core.services.handle.spawn_blocking(move || {
-            arc.host.tailnet(true);
-            let (devices, people) = listed(&arc);
-            arc.services.bus.debug(
-                Stage::System,
-                "tailnet devices",
-                EventBody::TailnetDevicesChanged { devices, people },
-            );
-        });
-    }
-    listed(core)
+pub fn devices(host: &Arc<Host>) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
+    let arc = host.clone();
+    host.services.handle.spawn_blocking(move || {
+        arc.tailnet(true);
+        let (devices, people) = listed(&arc);
+        arc.services.bus.debug(
+            Stage::System,
+            "tailnet devices",
+            EventBody::TailnetDevicesChanged { devices, people },
+        );
+    });
+    listed(host)
 }
 
 /// `GetHost`: the host's state as last known.
-pub(crate) fn status_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn status_call(host: &Host) -> Result<Reply, CoreError> {
     Ok(Reply::Host {
-        status: core.host.status(),
+        status: host.status(),
     })
 }
 
 /// `ListTailnetDevices`: [`devices`] as the call's reply.
-pub(crate) fn devices_call(core: &Core) -> Result<Reply, CoreError> {
-    let (devices, people) = devices(core);
+pub(crate) fn devices_call(host: &Arc<Host>) -> Result<Reply, CoreError> {
+    let (devices, people) = devices(host);
     Ok(Reply::TailnetDevices { devices, people })
 }
 
 /// `SetTailnetDeviceTrust`: switches one device off or back on, the only
 /// write that changes which devices are off.
 pub(crate) fn set_device_trust(
-    core: &Core,
+    host: &Host,
     device: String,
     trusted: bool,
 ) -> Result<Reply, CoreError> {
-    let preferences = core.services.store.write(move |c| {
+    let preferences = host.services.store.write(move |c| {
         let mut p = prefs::load_preferences(c)?;
         p.tailnet_switched_off.retain(|d| *d != device);
         if !trusted {
@@ -393,36 +413,32 @@ pub(crate) fn set_device_trust(
         prefs::save_preferences(c, &p)?;
         Ok(p)
     })?;
-    core.host
-        .set_switched_off(preferences.tailnet_switched_off.clone());
-    crate::app::preferences_changed(&core.services, preferences)
+    host.set_switched_off(preferences.tailnet_switched_off.clone());
+    crate::app::preferences_changed(&host.services, preferences)
 }
 
 /// Whether Tailscale carries the path to `from` through a relay, as the last
 /// read says. Hello asks it, so it never waits on `tailscale`: a read older
 /// than `TAILNET_AGAIN` is made on a worker for the next ask, and before any
 /// read the answer is no, which plays the file as a host without this would.
-pub fn relayed(core: &Core, from: std::net::IpAddr) -> bool {
+pub fn relayed(host: &Arc<Host>, from: std::net::IpAddr) -> bool {
     let from = trust::canonical(from);
     // Only a tailnet address has a path Tailscale can relay.
     if !addr::is_tailscale(&from) {
         return false;
     }
-    if let Some(arc) = core.arc() {
-        core.services.handle.spawn_blocking(move || {
-            arc.host.tailnet(true);
-        });
-    }
-    core.host
-        .tailnet_now()
+    let arc = host.clone();
+    host.services.handle.spawn_blocking(move || {
+        arc.tailnet(true);
+    });
+    host.tailnet_now()
         .and_then(|t| t.peer(from).map(|p| p.relayed))
         .unwrap_or(false)
 }
 
-fn listed(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
-    let off = recover(&core.host.off).clone();
-    core.host
-        .tailnet_now()
+fn listed(host: &Host) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
+    let off = recover(&host.off).clone();
+    host.tailnet_now()
         .map(|t| listing(&t, &off))
         .unwrap_or_default()
 }
@@ -588,6 +604,7 @@ impl Serving {
 }
 
 async fn supervise(
+    host: Weak<Host>,
     core: Weak<Core>,
     status: Arc<Status>,
     cancel: CancellationToken,
@@ -652,9 +669,9 @@ async fn supervise(
                             // trusted Anibeam that is up. Not on an address a
                             // test or the env var chose, which is no tailnet.
                             if bind.is_none()
-                                && let Some(core) = core.upgrade()
+                                && let Some(host) = host.upgrade()
                             {
-                                history::pull_all(&core);
+                                history::pull_all(&host);
                             }
                         }
                         Err(message) => status.put(Some(&cancel), waiting(&message)),
@@ -898,7 +915,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        sync(&core);
+        sync(&core.host);
         assert!(
             !core.host.streaming(),
             "a failed read turned streaming back on"
@@ -926,7 +943,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        sync(&core);
+        sync(&core.host);
         // A held host keeps serving through a failed read, so the list it
         // had must still stand: never fall back to trusting everyone.
         assert_eq!(*recover(&core.host.off), ["nPhone"]);

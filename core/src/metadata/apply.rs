@@ -15,12 +15,12 @@ use std::sync::Arc;
 use rusqlite::{OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
+use crate::metadata::Metadata;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::link::{self, Link};
 use crate::metadata::record;
@@ -54,7 +54,12 @@ const MAX_RESULTS: u32 = 50;
 /// Starts the Search job on one match provider: AniList or TVmaze. MAL is
 /// a tracker rather than a matching provider and TMDB has no client at
 /// all, so neither can be searched.
-pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Result<u64, CoreError> {
+pub fn search(
+    metadata: &Arc<Metadata>,
+    provider: Provider,
+    query: &str,
+    limit: u32,
+) -> Result<u64, CoreError> {
     if !MATCH_PROVIDERS.contains(&provider) {
         return Err(CoreError::Unsupported {
             what: tr(
@@ -71,7 +76,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
         ));
     }
     let per_page = limit.clamp(1, MAX_RESULTS);
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
         .services
         .jobs
@@ -81,6 +86,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
                 // TVmaze has no page size; it answers with its best ten
                 // or so, and the limit is applied here instead.
                 Provider::Tvmaze => owner
+                    .net
                     .tvmaze
                     .search(&query)
                     .await?
@@ -89,6 +95,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
                     .map(show_result)
                     .collect(),
                 _ => owner
+                    .net
                     .anilist
                     .search(&query, per_page)
                     .await?
@@ -120,7 +127,7 @@ enum Pasted {
 /// and needs no request; a MyAnimeList link goes through AniList's
 /// `Media(idMal:)`, because a MAL id alone is not something a series page
 /// can be drawn from, and an IMDb link goes through TVmaze's lookup.
-pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
+pub fn resolve_link(metadata: &Arc<Metadata>, url: &str) -> Result<u64, CoreError> {
     let pasted = match link::parse(url)
         .ok_or_else(|| CoreError::invalid("url", tr("core-metadata-not-a-link", &[])))?
     {
@@ -130,7 +137,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
         Link::Imdb { id } => Pasted::Imdb(id),
         Link::Unknown => return Err(CoreError::invalid("url", tr(UNREADABLE, &[]))),
     };
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
         .services
         .jobs
@@ -139,14 +146,19 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
             let target = match pasted {
                 Pasted::Anilist(id) => MatchTarget::Anilist { id, season: None },
                 Pasted::Mal(mal_id) => {
-                    let id = owner.anilist.resolve_by_mal(mal_id).await?.ok_or_else(|| {
-                        CoreError::provider(Provider::Anilist, Some(404), tr(NO_MAL_ENTRY, &[]))
-                    })?;
+                    let id = owner
+                        .net
+                        .anilist
+                        .resolve_by_mal(mal_id)
+                        .await?
+                        .ok_or_else(|| {
+                            CoreError::provider(Provider::Anilist, Some(404), tr(NO_MAL_ENTRY, &[]))
+                        })?;
                     MatchTarget::Anilist { id, season: None }
                 }
                 Pasted::Tvmaze(id) => MatchTarget::Tvmaze { id },
                 Pasted::Imdb(imdb) => {
-                    let id = owner.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
+                    let id = owner.net.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
                         CoreError::provider(Provider::Tvmaze, Some(404), tr(NO_IMDB_SHOW, &[]))
                     })?;
                     MatchTarget::Tvmaze { id }
@@ -174,9 +186,13 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
 /// stored: the titles come from the media row, and the folder already
 /// carries its own season. Electron's ` (Season N)` display suffix leaves
 /// with its `title` field.
-pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64, CoreError> {
-    let folder = folder_name(&core.services, series)?;
-    let owner = core.owner()?;
+pub fn apply_match(
+    metadata: &Arc<Metadata>,
+    series: u64,
+    target: MatchTarget,
+) -> Result<u64, CoreError> {
+    let folder = folder_name(&metadata.services, series)?;
+    let owner = metadata.clone();
     Ok(owner
         .services
         .jobs
@@ -207,7 +223,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         body: EventBody::MatchApplied { series },
                     });
                 }
-                MatchTarget::Mal { id } => match owner.anilist.resolve_by_mal(id).await? {
+                MatchTarget::Mal { id } => match owner.net.anilist.resolve_by_mal(id).await? {
                     Some(anilist_id) => (anilist_id, Some(id)),
                     None => {
                         let now = time::now_secs();
@@ -317,8 +333,11 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
 
 /// Starts the Refresh job for one series: the same fetch the match ran,
 /// against the id the series already carries.
-pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
-    let target = core.services.store.read(|c| refresh_target(c, series))?;
+pub fn refresh_series(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreError> {
+    let target = metadata
+        .services
+        .store
+        .read(|c| refresh_target(c, series))?;
     let Some(target) = target else {
         return Err(CoreError::NotFound {
             what: Entity::Series,
@@ -338,7 +357,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
             what: tr("core-metadata-refresh-unsupported", &[]),
         });
     };
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
         .services
         .jobs
@@ -366,7 +385,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
                     (0, 1)
                 }
             };
-            images::sweep_after(&owner, "a refresh").await;
+            images::sweep_after(&owner.net, "a refresh").await;
             Ok(Finished {
                 plain: Some(if failed == 0 {
                     crate::words!("core-metadata-updated", show = &folder)
@@ -390,8 +409,8 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
 
 /// Starts the RefreshAll job: every series carrying an AniList or a TVmaze
 /// id, one at a time, paced by each provider's limiter.
-pub fn refresh_all(core: &Arc<Core>) -> u64 {
-    start_refresh_walk(core, JobKind::RefreshAll, "refresh", ALL_MATCHED_SQL)
+pub fn refresh_all(metadata: &Arc<Metadata>) -> u64 {
+    start_refresh_walk(metadata, JobKind::RefreshAll, "refresh", ALL_MATCHED_SQL)
 }
 
 /// Starts the stub backfill: every series whose media row was never
@@ -399,8 +418,8 @@ pub fn refresh_all(core: &Arc<Core>) -> u64 {
 /// import. The native form of Electron's `backfillRelationsForLibrary`,
 /// and Task 31 queues it once at launch. A TVmaze match with no show row
 /// behind it, which is what an import leaves, is one of these too.
-pub fn backfill_stubs(core: &Arc<Core>) -> u64 {
-    start_refresh_walk(core, JobKind::Refresh, "backfill", STUBS_SQL)
+pub fn backfill_stubs(metadata: &Arc<Metadata>) -> u64 {
+    start_refresh_walk(metadata, JobKind::Refresh, "backfill", STUBS_SQL)
 }
 
 // The walk ------------------------------------------------------------------
@@ -429,18 +448,26 @@ enum RecordId {
 
 /// The fetch behind either id, writing against `series`.
 async fn fetch_id(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     id: RecordId,
     confirmed: bool,
 ) -> Result<(), CoreError> {
     match id {
         RecordId::Anilist(anilist_id) => {
-            fetch::fetch_and_write(core, series, anilist_id, None, confirmed, time::now_secs())
-                .await
+            fetch::fetch_and_write(
+                metadata,
+                series,
+                anilist_id,
+                None,
+                confirmed,
+                time::now_secs(),
+            )
+            .await
         }
         RecordId::Tvmaze(show_id) => {
-            fetch::fetch_and_write_tvmaze(core, series, show_id, confirmed, time::now_secs()).await
+            fetch::fetch_and_write_tvmaze(metadata, series, show_id, confirmed, time::now_secs())
+                .await
         }
     }
 }
@@ -462,13 +489,14 @@ struct Candidate {
 /// The list is read once, up front, so the loop is finite whatever the
 /// fetches write back to the series rows.
 fn start_refresh_walk(
-    core: &Arc<Core>,
+    metadata: &Arc<Metadata>,
     kind: JobKind,
     label: &'static str,
     sql: &'static str,
 ) -> u64 {
-    let owner = core.clone();
-    core.services
+    let owner = metadata.clone();
+    metadata
+        .services
         .jobs
         .clone()
         .start(kind, move |ctx| async move {
@@ -510,7 +538,7 @@ fn start_refresh_walk(
             // Both walks write records, so both bring covers, banners and
             // portraits in, and both owe the sweep that keeps the directory
             // from only ever growing.
-            images::sweep_after(&owner, label).await;
+            images::sweep_after(&owner.net, label).await;
             let said = match (refreshed, failed) {
                 (0, 0) => None,
                 (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),

@@ -8,7 +8,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::foundation::services::Services;
 use crate::i18n::tr;
 use crate::net::HttpRequest;
@@ -264,14 +264,14 @@ async fn host(
 }
 
 /// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
-pub(crate) fn run_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneNetCheck {
-        checks: core.services.handle.block_on(run(core)),
+        checks: downloads.services.handle.block_on(run(downloads)),
     })
 }
 
 /// Every check, hosts side by side so the whole run takes about as long as the slowest.
-pub async fn run(core: &Core) -> Vec<NetCheck> {
+pub async fn run(downloads: &std::sync::Arc<Downloads>) -> Vec<NetCheck> {
     let client = match crate::net::resolver_client() {
         Ok(c) => c,
         Err(e) => {
@@ -284,10 +284,8 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         }
     };
     let doh = crate::net::doh::Doh::new(client);
-    let Ok(owner) = core.owner() else {
-        return Vec::new();
-    };
-    let mut hosts = searched_hosts(&core.services);
+    let owner = downloads.clone();
+    let mut hosts = searched_hosts(&downloads.services);
     hosts.extend(
         ALWAYS
             .iter()
@@ -298,7 +296,8 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         .into_iter()
         .map(|(name, url, port)| {
             let (owner, doh) = (owner.clone(), doh.clone());
-            core.services
+            downloads
+                .services
                 .handle
                 .spawn(async move { host(&owner.services, &doh, &name, &url, port).await })
         })

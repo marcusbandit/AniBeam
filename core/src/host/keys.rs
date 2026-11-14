@@ -18,7 +18,7 @@ use anibeam_host_api::proof::{self, DeviceKey, ProofError};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::CoreError;
-use crate::core::Core;
+use crate::host::Host;
 use crate::store::settings;
 use crate::sync::recover;
 
@@ -204,13 +204,13 @@ fn load_or_make(path: &Path) -> Option<DeviceKey> {
 }
 
 /// Reads the paired keys from the store into the host.
-pub fn load(core: &Core) {
-    match core
+pub fn load(host: &Host) {
+    match host
         .services
         .store
         .read(|c| settings::get_or_default::<Vec<Paired>>(c, settings::PAIRED_DEVICES))
     {
-        Ok(list) => core.host.keys.set_paired(list),
+        Ok(list) => host.keys.set_paired(list),
         // The list stays as it was rather than forgetting every pairing.
         Err(e) => tracing::warn!("host: the paired devices could not be read: {e}"),
     }
@@ -218,7 +218,7 @@ pub fn load(core: &Core) {
 
 /// Pairs with the device whose public key is `key`, under `name`, or renames
 /// it when already paired. Kept in the store.
-pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
+pub fn pair(host: &Host, key: &str, name: &str) -> Result<(), CoreError> {
     let Some(bytes) = proof::unhex::<32>(key) else {
         return Err(CoreError::Invalid {
             field: "key".into(),
@@ -229,27 +229,27 @@ pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
         key: proof::hex(&bytes),
         name: name.to_string(),
     };
-    let list = core.services.store.write(move |c| {
+    let list = host.services.store.write(move |c| {
         let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
         list.retain(|p| p.key != entry.key);
         list.push(entry);
         settings::set(c, settings::PAIRED_DEVICES, &list)?;
         Ok(list)
     })?;
-    core.host.keys.set_paired(list);
+    host.keys.set_paired(list);
     Ok(())
 }
 
 /// Forgets the pairing with `key`.
-pub fn unpair(core: &Core, key: &str) -> Result<(), CoreError> {
+pub fn unpair(host: &Host, key: &str) -> Result<(), CoreError> {
     let key = key.to_ascii_lowercase();
-    let list = core.services.store.write(move |c| {
+    let list = host.services.store.write(move |c| {
         let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
         list.retain(|p| p.key != key);
         settings::set(c, settings::PAIRED_DEVICES, &list)?;
         Ok(list)
     })?;
-    core.host.keys.set_paired(list);
+    host.keys.set_paired(list);
     Ok(())
 }
 

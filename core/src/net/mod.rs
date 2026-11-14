@@ -19,8 +19,11 @@ pub mod imdb;
 pub mod jikan;
 pub mod limiter;
 pub mod mal;
+mod team;
 pub mod tvmaze;
 pub mod wikidata;
+
+pub use team::Net;
 
 /// A boxed future, so `Http` stays object safe and the fake and the real
 /// client can be swapped behind one `Arc<dyn Http>`.

@@ -2,7 +2,7 @@
 //! turned into scan triggers on notify's own thread.
 //!
 //! The handler here does no work of its own beyond classifying: it upgrades
-//! its `Weak<Core>`, hands the triggers to `Core::on_watch_triggers`, and
+//! its `Weak<Library>`, hands the triggers to `Library::on_watch_triggers`, and
 //! returns. Everything after that is a Scan job on the runtime, so notify's
 //! event thread is never the thing waiting on a disk walk.
 
@@ -17,8 +17,8 @@ use notify_debouncer_full::{
 };
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::names::is_video;
+use crate::library::Library;
 use crate::library::walk::is_ignored_name;
 use crate::sync::recover;
 
@@ -306,12 +306,14 @@ fn drop_watch(debouncer: Option<&mut Debouncer<Backend, RecommendedCache>>, path
 }
 
 impl Watcher {
-    pub fn new(core: Weak<Core>) -> Result<Watcher, CoreError> {
+    pub fn new(library: Weak<Library>) -> Result<Watcher, CoreError> {
         let roots: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let handler_roots = roots.clone();
         let handler = move |result: DebounceEventResult| {
             // The core is already going away: there is nothing left to tell.
-            let Some(core) = core.upgrade() else { return };
+            let Some(library) = library.upgrade() else {
+                return;
+            };
             match result {
                 Ok(events) => {
                     let roots = recover(&handler_roots).clone();
@@ -320,11 +322,11 @@ impl Watcher {
                     if triggers.is_empty() {
                         return;
                     }
-                    core.on_watch_triggers(triggers);
+                    library.on_watch_triggers(triggers);
                 }
                 Err(errors) => {
                     for e in errors {
-                        core.services.bus.warn(
+                        library.services.bus.warn(
                             Stage::Library,
                             format!("watcher error: {e}"),
                             EventBody::Notice,
@@ -333,7 +335,7 @@ impl Watcher {
                         // on is arbitrary, so the library is re-read once
                         // and the user has the warning above to act on.
                         if matches!(e.kind, notify::ErrorKind::MaxFilesWatch) {
-                            core.on_watch_triggers(vec![Trigger::Rescan]);
+                            library.on_watch_triggers(vec![Trigger::Rescan]);
                         }
                     }
                 }

@@ -25,8 +25,8 @@ use anibeam_host_api as wire;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
+use crate::host::Host;
 use crate::library::cards;
 use crate::paths::normalise;
 use crate::sync::recover;
@@ -468,23 +468,22 @@ pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> 
 
 /// The device a pull is from, by its Tailscale id when the last read knows
 /// its address, so its IPv4 and IPv6 addresses count as one computer.
-fn device(core: &Core, base: &str) -> String {
+fn device(host: &Host, base: &str) -> String {
     let ip = base
         .strip_prefix("http://")
         .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
         .map(|a| super::trust::canonical(a.ip()));
     ip.and_then(|ip| {
-        core.host
-            .tailnet_now()
+        host.tailnet_now()
             .and_then(|t| t.peer(ip).map(|p| p.id.clone()))
     })
     .unwrap_or_else(|| base.to_string())
 }
 
 /// Whether the computer at `base` is due a pull, marking it pulled when it is.
-fn due(core: &Core, base: &str) -> bool {
-    let key = device(core, base);
-    let mut pulled = recover(&core.host.pulled);
+fn due(host: &Host, base: &str) -> bool {
+    let key = device(host, base);
+    let mut pulled = recover(&host.pulled);
     if pulled
         .get(&key)
         .is_some_and(|at| at.elapsed() < AGAIN_AFTER)
@@ -497,27 +496,27 @@ fn due(core: &Core, base: &str) -> bool {
 
 /// Pulls from `base` once it is due. A pull that fails leaves it due again, so
 /// the next ask from that computer, or the next start, tries once more.
-async fn pull_if_due(core: &Arc<Core>, base: &str) {
-    if !due(core, base) {
+async fn pull_if_due(host: &Host, base: &str) {
+    if !due(host, base) {
         return;
     }
-    if let Err(e) = pull(&core.services, base).await {
+    if let Err(e) = pull(&host.services, base).await {
         tracing::debug!("history: pulling from {base} failed: {e}");
-        recover(&core.host.pulled).remove(&device(core, base));
+        recover(&host.pulled).remove(&device(host, base));
     }
 }
 
 /// Pulls from every trusted Anibeam on the tailnet that is due, on a worker.
-pub fn pull_all(core: &Core) {
-    let Some(core) = core.arc() else { return };
-    let handle = core.services.handle.clone();
+pub fn pull_all(host: &Arc<Host>) {
+    let host = host.clone();
+    let handle = host.services.handle.clone();
     handle.spawn(async move {
-        let reader = core.clone();
+        let reader = host.clone();
         let asked = tokio::task::spawn_blocking(move || {
-            let tailnet = reader.host.tailnet(false)?;
+            let tailnet = reader.tailnet(false)?;
             Some(super::peers::candidates(
                 &tailnet,
-                &reader.host.switched_off(),
+                &reader.switched_off(),
                 wire::DEFAULT_PORT,
             ))
         })
@@ -526,14 +525,14 @@ pub fn pull_all(core: &Core) {
         .flatten()
         .unwrap_or_default();
         for found in super::peers::find(asked).await {
-            pull_if_due(&core, &found.url).await;
+            pull_if_due(&host, &found.url).await;
         }
     });
 }
 
 /// Pulls back from the computer at `from` that just asked for this one's
 /// history, when it is due.
-pub fn pull_back(core: &Core, from: IpAddr) {
+pub fn pull_back(host: &Arc<Host>, from: IpAddr) {
     let from = super::trust::canonical(from);
     if !super::addr::is_tailscale(&from) {
         return;
@@ -542,9 +541,9 @@ pub fn pull_back(core: &Core, from: IpAddr) {
         "http://{}",
         std::net::SocketAddr::new(from, wire::DEFAULT_PORT)
     );
-    let Some(core) = core.arc() else { return };
-    let handle = core.services.handle.clone();
-    handle.spawn(async move { pull_if_due(&core, &base).await });
+    let host = host.clone();
+    let handle = host.services.handle.clone();
+    handle.spawn(async move { pull_if_due(&host, &base).await });
 }
 
 #[cfg(test)]

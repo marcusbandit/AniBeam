@@ -12,12 +12,12 @@
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use rusqlite::{Connection, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::downloads::qbt::QbtClient;
 use crate::foundation::services::Services;
 use crate::store::sql::placeholders;
@@ -188,15 +188,15 @@ pub async fn record_from(
 /// finished torrents are read again, since one of them may hold the new
 /// files. Not a job; a failure is a debug line and the files stay
 /// unrecorded until the next read.
-pub fn after_scan(core: &Core) {
+pub fn after_scan(downloads: &Arc<Downloads>) {
     seen().clear();
     #[cfg(feature = "phone")]
-    crate::phone::after_scan(core);
-    let Some(client) = core.downloads.state().qbt.clone() else {
+    crate::phone::after_scan(downloads);
+    let Some(client) = downloads.state().qbt.clone() else {
         return;
     };
-    let Ok(owner) = core.owner() else { return };
-    core.services.handle.spawn(async move {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
         let torrents = match client.torrents().await {
             Ok(t) => t,
             Err(e) => {
@@ -267,8 +267,8 @@ fn slashes(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Core;
     use crate::net::FakeHttp;
-    use std::sync::Arc;
 
     fn origin(hash: &str, name: &str) -> Origin {
         Origin {

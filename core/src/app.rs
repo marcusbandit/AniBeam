@@ -66,17 +66,15 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
     core.host.set_streaming(preferences.stream_over_tailscale);
     core.host
         .set_switched_off(preferences.tailnet_switched_off.clone());
-    core.host.follow(core, preferences.share_over_tailscale);
-    crate::presence::set_enabled(core, preferences.discord_presence);
+    core.host.follow(preferences.share_over_tailscale);
+    crate::presence::set_enabled(&core.playback, preferences.discord_presence);
     if before.calendar_feed != preferences.calendar_feed {
-        crate::calendar::set_enabled(core, preferences.calendar_feed);
+        crate::calendar::set_enabled(&core.metadata, preferences.calendar_feed);
     }
     // On hold switched on: the entries due now move without
     // waiting for the next launch.
-    if on_hold::wants_sweep(&before, &preferences)
-        && let Some(owner) = core.arc()
-    {
-        on_hold::kick(&owner);
+    if on_hold::wants_sweep(&before, &preferences) {
+        on_hold::kick(&core.trackers);
     }
     preferences_changed(&core.services, preferences)
 }

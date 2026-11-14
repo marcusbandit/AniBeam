@@ -12,9 +12,9 @@ use std::sync::Arc;
 use rusqlite::{Connection, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
+use crate::trackers::Trackers;
 use crate::trackers::{accounts, writes};
 
 /// `PreviewListMove`: [`preview`] off the reader connection.
@@ -94,14 +94,14 @@ fn changes_something(row: &MoveRow) -> bool {
 
 /// Starts the move: refused at once when the tracker is not connected, and
 /// when the person picked nothing.
-pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError> {
+pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError> {
     if series.is_empty() {
         return Err(CoreError::invalid(
             "series",
             crate::i18n::tr("core-trackers-move-none-picked", &[]),
         ));
     }
-    let connected = core
+    let connected = trackers
         .services
         .store
         .read(|c| accounts::load_row(c, t))?
@@ -109,7 +109,7 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
     if !connected {
         return Err(CoreError::NotConnected { tracker: t });
     }
-    let owner = core.owner()?;
+    let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
     Ok(jobs.start(JobKind::MoveLists, move |ctx| async move {
         run(owner, ctx, t, series).await
@@ -122,12 +122,12 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
 /// the menus use, to this tracker alone; one the tracker refuses is that
 /// series' failure, never the job's.
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     t: Tracker,
     picked: Vec<u64>,
 ) -> Result<Finished, CoreError> {
-    let rows: Vec<MoveRow> = core
+    let rows: Vec<MoveRow> = trackers
         .services
         .store
         .write_async(move |c| preview(c, t))
@@ -135,7 +135,7 @@ async fn run(
         .into_iter()
         .filter(|r| picked.contains(&r.series))
         .collect();
-    let user_id = core
+    let user_id = trackers
         .services
         .store
         .write_async(move |c| accounts::load_row(c, t))
@@ -148,7 +148,7 @@ async fn run(
         ctx.progress(n as u64, Some(total), &row.title);
         let series = row.series;
         // A series gone since the preview is that series' failure alone.
-        let Ok(target) = core
+        let Ok(target) = trackers
             .services
             .store
             .write_async(move |c| writes::targets(c, series))
@@ -174,7 +174,7 @@ async fn run(
             .filter(|s| Some(*s) != row.tracker_status && !rewatch)
         {
             let action = writes::Action::Status { status };
-            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
                 true => landed = true,
                 false => refused = true,
             }
@@ -183,7 +183,7 @@ async fn run(
             && !refused
         {
             let action = writes::Action::Score { score };
-            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
                 true => landed = true,
                 false => refused = true,
             }
@@ -192,7 +192,8 @@ async fn run(
             // The tracker now has the newer word, whether or not its reply
             // carried a stamp, so the preview never offers this row again.
             let now = crate::time::now_secs();
-            core.services
+            trackers
+                .services
                 .store
                 .write_async(move |c| {
                     c.execute(
@@ -207,7 +208,7 @@ async fn run(
         } else if refused {
             failed += 1;
         }
-        if let Ok(Some(card)) = crate::metadata::apply::card_for(&core.services, series).await {
+        if let Ok(Some(card)) = crate::metadata::apply::card_for(&trackers.services, series).await {
             ctx.changed(card);
         }
     }
@@ -246,7 +247,7 @@ async fn run(
 /// activity log, the way any tracker write's failure does, with the
 /// tracker's own words sanitised, and the move goes on.
 async fn sent(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     t: Tracker,
     target: &writes::Targets,
@@ -254,7 +255,7 @@ async fn sent(
     user_id: Option<u64>,
     action: writes::Action,
 ) -> bool {
-    match writes::attempt(core, ctx, t, target, media_id, user_id, &action).await {
+    match writes::attempt(trackers, ctx, t, target, media_id, user_id, &action).await {
         Ok(outcome) => outcome.ok,
         Err(e) => {
             let site = super::oauth::site_name(t);

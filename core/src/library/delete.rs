@@ -6,12 +6,14 @@
 //! library at once.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rusqlite::params;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::i18n::tr;
+use crate::library::Library;
 
 /// One file row as the delete needs it.
 struct Row {
@@ -85,11 +87,26 @@ fn paths(
     Ok(out)
 }
 
-pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Reply, CoreError> {
+/// The downloads team, which a delete asks what is still being written and hands the
+/// torrents of the trashed files. Missing only while the core goes away, and then nothing
+/// is deleted: a file is never trashed without asking.
+fn downloads_of(library: &Library) -> Result<Arc<Downloads>, CoreError> {
+    library
+        .downloads
+        .get()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))
+}
+
+pub fn delete_episodes(
+    library: &Arc<Library>,
+    series: u64,
+    files: Vec<u64>,
+) -> Result<Reply, CoreError> {
     if files.is_empty() {
         return Ok(Reply::Ok);
     }
-    let (rows, sources, title) = core.services.store.read(|c| {
+    let downloads = downloads_of(library)?;
+    let (rows, sources, title) = library.services.store.read(|c| {
         let mut rows = Vec::new();
         for id in &files {
             let row = c
@@ -135,7 +152,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_torrents_of(core, gone(&targets));
+    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let line = format!(
             "{} {} of {title} {}",
@@ -147,7 +164,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
                 "moved to the trash"
             }
         );
-        core.services.bus.say(
+        library.services.bus.say(
             Level::Info,
             Stage::Library,
             crate::words!(
@@ -160,7 +177,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
             EventBody::Notice,
         );
     }
-    let scan = super::scan::rescan_series(core, series);
+    let scan = super::scan::rescan_series(library, series);
     moved?;
     scan
 }
@@ -189,10 +206,11 @@ type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
 /// (`SeriesCard::finished_watched`), its extras too. To the trash, as `delete_episodes`
 /// does, and a file a torrent is still writing stays. Every path is checked first and one
 /// that fails refuses the lot. Each series it touched is scanned again.
-pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreError> {
-    let images_dir = core.services.paths.images_dir();
+pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Reply, CoreError> {
+    let images_dir = library.services.paths.images_dir();
     let now = crate::time::now();
-    let (picked, sources) = core.services.store.read(|c| {
+    let downloads = downloads_of(library)?;
+    let (picked, sources) = library.services.store.read(|c| {
         let snap = super::snapshot::Snapshot::load(c, &images_dir, now, None)?;
         let mut picked: Vec<Picked> = Vec::new();
         for row in &snap.series {
@@ -210,7 +228,7 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
                 // Gone already (an earlier delete the rescan has not caught up with) is not
                 // counted as going now
                 if !take
-                    || crate::downloads::is_writing(core, &f.path)
+                    || crate::downloads::is_writing(&downloads, &f.path)
                     || !Path::new(&f.path).exists()
                 {
                     continue;
@@ -259,7 +277,7 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
         });
     }
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_torrents_of(core, gone(&targets));
+    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
             format!(
@@ -298,13 +316,14 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
                 place = trash_where()
             )
         };
-        core.services
+        library
+            .services
             .bus
             .say(Level::Info, Stage::Library, plain, line, EventBody::Notice);
     }
     // A trash that fails part way has still moved what it moved: every series is read again
     for (series, _, _) in &picked {
-        let _ = super::scan::rescan_series(core, *series);
+        let _ = super::scan::rescan_series(library, *series);
     }
     moved?;
     Ok(Reply::Deleted {

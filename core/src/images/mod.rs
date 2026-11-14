@@ -22,10 +22,10 @@ use tokio::sync::Semaphore;
 
 use crate::atomic_file;
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::jobs::Finished;
 use crate::library::cards;
+use crate::net::Net;
 use crate::net::{Http, HttpRequest};
 use crate::store::Store;
 use crate::store::sql::placeholders;
@@ -628,12 +628,12 @@ async fn fetch_one(
 /// The fill: every url an owned series, its recommendations or the tracker
 /// lists would draw, that has no row yet. It runs one at a time, so a read
 /// asking for a second one is handed the running job's id.
-pub fn start_fill(core: &Arc<Core>) -> u64 {
+pub fn start_fill(net: &Arc<Net>) -> u64 {
     // A coalesced call is not a fill starting, so it must not reset the
     // gate the reads consult.
-    let coalesced = core.services.jobs.running(JobKind::FillImages).is_some();
-    let owner = core.clone();
-    let id = core
+    let coalesced = net.services.jobs.running(JobKind::FillImages).is_some();
+    let owner = net.clone();
+    let id = net
         .services
         .jobs
         .clone()
@@ -708,15 +708,15 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
             })
         });
     if !coalesced {
-        core.images.mark_fill_started();
+        net.images.mark_fill_started();
     }
     id
 }
 
 /// `GetStorage`: two counts off one table, answered off the reader
 /// connection rather than as a job.
-pub(crate) fn storage_call(core: &Core) -> Result<Reply, CoreError> {
-    let (image_count, image_bytes) = core.services.store.read(|c| core.images.storage(c))?;
+pub(crate) fn storage_call(net: &Net) -> Result<Reply, CoreError> {
+    let (image_count, image_bytes) = net.services.store.read(|c| net.images.storage(c))?;
     Ok(Reply::Storage {
         image_count,
         image_bytes,
@@ -780,10 +780,10 @@ pub fn start_clear(services: &Arc<Services>) -> u64 {
 /// the directory from only ever growing. Its report is bookkeeping rather
 /// than a state change, so it goes to the trace log and never to the
 /// activity log, and a failure costs nothing but disk.
-pub(crate) async fn sweep_after(core: &Core, what: &str) {
-    let cache = core.images.clone();
+pub(crate) async fn sweep_after(net: &Net, what: &str) {
+    let cache = net.images.clone();
     let now = crate::time::now_secs();
-    match core
+    match net
         .services
         .store
         .write_async(move |c| cache.sweep(c, now))

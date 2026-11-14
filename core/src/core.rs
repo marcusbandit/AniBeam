@@ -1,160 +1,77 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::agent;
 use crate::airing_now;
 use crate::app;
 use crate::cast;
 use crate::contract::*;
-use crate::downloads;
+use crate::downloads::{self, Downloads};
 use crate::events::{EventBus, Subscription};
 use crate::feed;
 use crate::foundation::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::foundation::services::Services;
 use crate::franchise;
-use crate::host;
-use crate::images::{self, ImageCache};
+use crate::host::{self, Host};
+use crate::images;
 use crate::jobs::{Jobs, started, started_or_ok};
 use crate::launch;
-use crate::library::scan::{self, LibraryState, ScanScope};
-use crate::library::watcher::{self, Trigger, Watcher};
-use crate::library::{act, delete, fixes, reads, report, schedule};
-use crate::metadata::{OUTAGE_WINDOW, airing, apply, automatch};
-use crate::net::anilist::AnilistClient;
-use crate::net::aniskip::AniSkipClient;
-use crate::net::jikan::JikanClient;
-use crate::net::limiter::ProviderClient;
-use crate::net::mal::MalClient;
-use crate::net::tvmaze::TvmazeClient;
-use crate::net::{Http, ReqwestHttp, Upstream};
+use crate::library::scan;
+use crate::library::watcher::Watcher;
+use crate::library::{Library, act, delete, fixes, reads, report, schedule};
+use crate::metadata::{Metadata, airing, apply, automatch};
+use crate::net::{Http, Net, ReqwestHttp};
 use crate::paths::CorePaths;
 use crate::phone;
-use crate::playback::session::{self, Sessions};
-use crate::playback::skip;
+use crate::playback::session;
+use crate::playback::{Playback, skip};
 use crate::presence;
 use crate::recommended;
+use crate::releases::Releases;
 use crate::repos;
 use crate::room;
 use crate::stats;
 use crate::store::Store;
-use crate::sync::recover;
-use crate::trackers::accounts;
-use crate::trackers::cache;
-use crate::trackers::move_up;
-use crate::trackers::oauth;
-use crate::trackers::watching;
-use crate::trackers::writes;
+use crate::trackers::{Trackers, accounts, cache, move_up, oauth, watching, writes};
 use crate::transfer;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
+///
+/// It holds the shared plumbing and one struct per team (#854). Each team
+/// holds the teams below it, and `call` hands every call to the team that
+/// owns it.
 #[derive(uniffi::Object)]
 pub struct Core {
     /// The store, the bus, the jobs registry, the paths, the runtime
     /// handle, the transport and the secrets: what every team shares.
     pub(crate) services: Arc<Services>,
-    /// The poster, banner and portrait files under `<cache_dir>/images`,
-    /// and the row per file that says what is there. Reads consult it,
-    /// jobs fill it, and the sweep keeps it from growing without end.
-    pub(crate) images: Arc<ImageCache>,
-    /// The library's in-memory state: the movie folders each source's walk
-    /// found, the watcher's queue of paths, and the settle timers. The core
-    /// is already the `Arc`, so this is a plain field.
-    pub(crate) library: LibraryState,
-    /// Built by `start` and dropped first by `shutdown`. `None` before
-    /// `start` and after `shutdown`, so a call that arrives on either side
-    /// of the core's life finds nothing to watch with rather than failing.
-    pub(crate) watcher: Mutex<Option<Arc<Watcher>>>,
+    pub(crate) net: Arc<Net>,
+    pub(crate) library: Arc<Library>,
+    pub(crate) metadata: Arc<Metadata>,
+    pub(crate) trackers: Arc<Trackers>,
+    pub(crate) releases: Arc<Releases>,
+    pub(crate) downloads: Arc<Downloads>,
+    pub(crate) playback: Arc<Playback>,
+    /// The tailnet host: the read-only API the phone app reads, served on
+    /// this machine's Tailscale addresses while the preference is on.
+    pub(crate) host: Arc<Host>,
     /// The launch's one-shot listener, held here so it lives as long as it
     /// is waiting and no longer: it takes itself out the moment the
     /// catch-up scan finishes, and `shutdown` takes it out if it never
     /// does. Dropping the handle unsubscribes.
-    launch: Mutex<Option<Arc<Subscription>>>,
-    /// The calendar feed's listener and file lock (`calendar`).
-    pub(crate) calendar: crate::calendar::Calendar,
-    pub(crate) aired: crate::aired::Aired,
-    /// Airing now's read in flight per season, so a second ask for the same
-    /// season joins it and the other season's read runs beside it.
-    pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
-    /// The show page reads of the last few minutes, by AniList id: the job
-    /// and when it started. A page opened twice joins the first opening's
-    /// read, and a read that failed waits before it is tried again (#779).
-    pub(crate) show_reads: Mutex<HashMap<u64, (u64, i64)>>,
-    /// The least time, in milliseconds, between two of the recommender's
-    /// requests to AniList, on top of the shared limiter: its first read is
-    /// some seventy requests, and AniList's limit while degraded is thirty
-    /// a minute (#732). A test shortens it.
-    pub(crate) recommender_gap_ms: AtomicU64,
+    launch: Arc<launch::Slot>,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
     /// rather than as a bare field, and `Drop` below hands it to
     /// `shutdown_background` if `shutdown` was never called.
     pub(crate) runtime: Mutex<Option<tokio::runtime::Runtime>>,
-    /// The provider clients. Tasks 16 onwards are the callers; the fields
-    /// are built here so every job shares one limiter per upstream.
-    pub(crate) anilist: Arc<AnilistClient>,
-    pub(crate) jikan: Arc<JikanClient>,
-    pub(crate) aniskip: Arc<AniSkipClient>,
-    pub(crate) mal: Arc<MalClient>,
-    pub(crate) tvmaze: Arc<TvmazeClient>,
-    /// The loopback port the OAuth listener binds while a connect is in
-    /// flight. Fixed rather than ephemeral: both providers only redirect
-    /// to a URL registered on their developer panel, so the port is part
-    /// of that registration. A test moves it out of the way.
-    pub(crate) oauth_port: AtomicU16,
-    /// How long, in milliseconds, the browser's callback request is held
-    /// open for the sign-in to finish before the tab is let go. A test
-    /// shortens it.
-    pub(crate) sign_in_hold_ms: AtomicU64,
-    /// When the core last said out loud that Jikan was not answering.
-    /// Jikan is the episode-title side-fetch, so an outage costs a series
-    /// its titles rather than its match, and a job walking a whole library
-    /// through one must not write a warning per series into the log.
-    pub(crate) jikan_outage: Mutex<Option<Instant>>,
-    /// Every open playback session, and the counter that names the next
-    /// one. A session lives in memory for one run of the player: the rows
-    /// its rules write are the record, and none of it survives a restart.
-    pub(crate) sessions: Arc<Sessions>,
-    /// When each franchise root was last crawled on a page's behalf. A
-    /// series page asks for its franchise every time it opens, and the
-    /// crawl behind that read runs at most once a minute per root, so
-    /// opening the same page twice costs AniList nothing the second time.
-    pub(crate) crawl_recent: Mutex<HashMap<u64, Instant>>,
-    /// The downloads connection: the anirss sidecar, the torrent client's
-    /// session and the last status read. Built empty; nothing starts
-    /// until a downloads call asks.
-    pub(crate) downloads: Arc<crate::downloads::Downloads>,
-    /// The tailnet host: the read-only API the phone app reads, served on
-    /// this machine's Tailscale addresses while the preference is on.
-    pub(crate) host: crate::host::Host,
-    /// Discord rich presence: what the player shows on Discord while the
-    /// switch is on. Holds no thread or socket until it is first switched on.
-    pub(crate) presence: crate::presence::Presence,
-    /// The phone's own sources and torrent engine (`Phone*` calls).
-    #[cfg_attr(not(feature = "phone"), allow(dead_code))]
-    pub(crate) phone: crate::phone::Phone,
-    /// Repo indexes fetched for a preview and not trusted yet.
-    pub(crate) repos: crate::repos::Pending,
-    /// The watch together room this core is in, if any (`Room*` calls).
-    pub(crate) rooms: crate::room::Rooms,
-    /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
-    #[cfg_attr(not(feature = "cast"), allow(dead_code))]
-    pub(crate) cast: crate::cast::Cast,
-    /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
-    /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
-    /// upgrades it.
-    me: Weak<Core>,
-    /// Off unless a shell turns it on: the whole-library load is kept for
-    /// the rest of its state generation (`library::reads`). Off by default
-    /// because a test that writes rows behind the core's back emits no
-    /// event and would read its own stale load.
-    pub(crate) snapshot_cache: AtomicBool,
-    pub(crate) kept_load: Mutex<Option<crate::library::reads::KeptLoad>>,
     started: AtomicBool,
-    closed: AtomicBool,
+    /// Shared with the library, whose watcher stops taking triggers the
+    /// moment the core starts shutting down.
+    closed: Arc<AtomicBool>,
 }
 
 /// One client, one timeout, every provider. This is the ceiling on a
@@ -170,22 +87,6 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// ready". `earlier_starts` reads the version back out of it.
 const READY_BEFORE: &str = "AniBeam core ";
 const READY_AFTER: &str = " ready";
-
-/// The loopback port both providers redirect back to. Registered on their
-/// developer panels, so it is a constant rather than a preference.
-const DEFAULT_OAUTH_PORT: u16 = 53682;
-/// A minute: long past any sign-in that is going well, and short of the
-/// point where a browser gives up on the request itself.
-const DEFAULT_SIGN_IN_HOLD_MS: u64 = 60_000;
-
-/// The gap each upstream is paced to, from its published limit.
-const ANILIST_GAP: Duration = Duration::from_millis(800);
-const JIKAN_GAP: Duration = Duration::from_millis(1100);
-const ANISKIP_GAP: Duration = Duration::from_millis(250);
-const MAL_GAP: Duration = Duration::from_millis(500);
-/// TVmaze allows 20 calls in any 10 seconds per IP, which is one every
-/// 500 ms; the extra 50 keeps a run from sitting right on the line.
-const TVMAZE_GAP: Duration = Duration::from_millis(550);
 
 impl Core {
     /// `open` with the transport handed in, so a test drives every provider
@@ -220,11 +121,11 @@ impl Core {
         let store = Store::open(&paths.db_path())?;
         let bus = EventBus::new(store.clone())?;
         // Creating the cache directory is opening, the same as creating the
-        // data directory the database file lives in.
+        // data directory the database file lives in. Before the runtime, so
+        // that nothing after it can fail and drop a live runtime here.
         let images_dir = paths.images_dir();
         std::fs::create_dir_all(&images_dir)
             .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
-        let images = ImageCache::new(store.clone(), images_dir, http.clone());
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .thread_name("anibeam-core")
@@ -233,36 +134,6 @@ impl Core {
             .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
         let handle = runtime.handle().clone();
         let jobs = Jobs::new(handle.clone(), bus.clone());
-        let host = crate::host::Host::new(bus.clone());
-        let presence = crate::presence::Presence::new(bus.clone());
-        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
-            Upstream::Anilist,
-            http.clone(),
-            ANILIST_GAP,
-        )));
-        let jikan = Arc::new(JikanClient::new(ProviderClient::new(
-            Upstream::Jikan,
-            http.clone(),
-            JIKAN_GAP,
-        )));
-        let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(
-            Upstream::AniSkip,
-            http.clone(),
-            ANISKIP_GAP,
-        )));
-        // Every MAL call is a tracker call with a user waiting on it, so
-        // this client caps each request rather than each call site doing
-        // it; AniList is shared with the metadata jobs and takes its cap
-        // per call instead.
-        let mal = Arc::new(MalClient::new(
-            ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)
-                .with_attempt_timeout(crate::trackers::TRACKER_TIMEOUT),
-        ));
-        let tvmaze = Arc::new(TvmazeClient::new(ProviderClient::new(
-            Upstream::Tvmaze,
-            http.clone(),
-            TVMAZE_GAP,
-        )));
         let services = Arc::new(Services {
             paths,
             store,
@@ -272,54 +143,68 @@ impl Core {
             http,
             secrets,
         });
-        let core = Arc::new_cyclic(|me| Core {
-            services,
-            images,
-            library: LibraryState::default(),
-            watcher: Mutex::new(None),
-            launch: Mutex::new(None),
-            calendar: crate::calendar::Calendar::default(),
-            aired: crate::aired::Aired::default(),
-            airing_reads: Mutex::new(HashMap::new()),
-            show_reads: Mutex::new(HashMap::new()),
-            recommender_gap_ms: AtomicU64::new(crate::recommended::GAP_MS),
-            runtime: Mutex::new(Some(runtime)),
-            anilist,
-            jikan,
-            aniskip,
-            mal,
-            tvmaze,
-            oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
-            sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
-            jikan_outage: Mutex::new(None),
-            sessions: Arc::new(Sessions::default()),
-            crawl_recent: Mutex::new(HashMap::new()),
-            downloads: Arc::new(crate::downloads::Downloads::default()),
-            phone: crate::phone::Phone::default(),
-            repos: crate::repos::Pending::default(),
-            cast: crate::cast::Cast::default(),
-            rooms: crate::room::Rooms::default(),
-            host,
-            presence,
-            me: me.clone(),
-            snapshot_cache: AtomicBool::new(false),
-            kept_load: Mutex::new(None),
-            started: AtomicBool::new(false),
-            closed: AtomicBool::new(false),
-        });
+        // Each team over the ones below it, bottom up.
+        let closed = Arc::new(AtomicBool::new(false));
+        let net = Arc::new(Net::new(services.clone()));
+        let library = Arc::new(Library::new(services.clone(), net.clone(), closed.clone()));
+        let metadata = Arc::new(Metadata::new(
+            services.clone(),
+            net.clone(),
+            library.clone(),
+        ));
+        let trackers = Arc::new(Trackers::new(
+            services.clone(),
+            net.clone(),
+            metadata.clone(),
+        ));
+        let releases = Arc::new(Releases::new(services.clone()));
+        let downloads = Arc::new(Downloads::new(services.clone(), net.clone()));
+        let playback = Arc::new(Playback::new(
+            services.clone(),
+            net.clone(),
+            trackers.clone(),
+            downloads.clone(),
+        ));
+        let host = Arc::new(Host::new(
+            services.clone(),
+            net.clone(),
+            library.clone(),
+            downloads.clone(),
+        ));
+        // The calls that still go up a team, until they become events (#854).
+        library.downloads.set(&downloads);
+        library.metadata.set(&metadata);
+        metadata.downloads.set(&downloads);
+        releases.downloads.set(&downloads);
         // Every SeriesChanged, from whichever job or scan, carries what is
         // still downloading, the same as a list read does
-        let weak = Arc::downgrade(&core);
-        core.services
+        let weak = Arc::downgrade(&downloads);
+        services
             .bus
             .set_cards_hook(Arc::new(move |cards: &mut [SeriesCard]| {
-                if let Some(core) = weak.upgrade() {
-                    crate::downloads::overlay(&core, cards);
+                if let Some(downloads) = weak.upgrade() {
+                    crate::downloads::overlay(&downloads, cards);
                 }
             }));
+        let core = Arc::new(Core {
+            services,
+            net,
+            library,
+            metadata,
+            trackers,
+            releases,
+            downloads,
+            playback,
+            host,
+            launch: Arc::new(launch::Slot::default()),
+            runtime: Mutex::new(Some(runtime)),
+            started: AtomicBool::new(false),
+            closed,
+        });
+        core.host.core.set(&core);
         // Here rather than in `launch`: a job that moves the schedule can
         // finish in a core that was never started, as the CLI's are.
-        crate::calendar::listen(&core);
+        crate::calendar::listen(&core.metadata);
         // Before anything reads an installed endpoint: a kind saved under a site's name gets
         // its shape name (#602).
         if let Err(e) = crate::repos::rename_old_kinds(&core.services) {
@@ -330,19 +215,6 @@ impl Core {
             );
         }
         Ok(core)
-    }
-
-    /// `None` once the core is shutting down; callers treat that as "the
-    /// core is going away" and end quietly rather than panicking.
-    pub(crate) fn arc(&self) -> Option<Arc<Core>> {
-        self.me.upgrade()
-    }
-
-    /// The `Arc<Core>` a job body needs of its own. A core already shutting
-    /// down has none to give, and says so rather than panicking.
-    pub(crate) fn owner(&self) -> Result<Arc<Core>, CoreError> {
-        self.arc()
-            .ok_or_else(|| CoreError::internal("core is shutting down"))
     }
 
     /// Where the tailnet host listens for this core alone, in place of the
@@ -368,7 +240,7 @@ impl Core {
     pub fn hold_host(&self, held: bool) {
         self.host.hold(held);
         if self.started.load(Ordering::SeqCst) {
-            crate::host::sync(self);
+            crate::host::sync(&self.host);
         }
     }
 
@@ -378,21 +250,21 @@ impl Core {
     /// contract and not exported to any shell.
     #[doc(hidden)]
     pub fn set_presence_transport(&self, transport: Box<dyn crate::presence::Transport>) {
-        self.presence.set_transport(transport);
+        self.playback.presence.set_transport(transport);
     }
 
     /// Clears Discord presence after a pause of `wait` instead of
     /// `presence::PAUSE_CLEAR`. Not part of the contract.
     #[doc(hidden)]
     pub fn set_presence_pause_clear(&self, wait: std::time::Duration) {
-        self.presence.set_pause_clear(wait);
+        self.playback.presence.set_pause_clear(wait);
     }
 
     /// Looks at a quiet Discord connection after `wait` instead of
     /// `presence::CHECK`. Not part of the contract.
     #[doc(hidden)]
     pub fn set_presence_check(&self, wait: std::time::Duration) {
-        self.presence.set_check(wait);
+        self.playback.presence.set_check(wait);
     }
 
     /// Feeds Discord presence one tick of `session` directly, as a tick
@@ -406,28 +278,28 @@ impl Core {
         position: f64,
         paused: bool,
     ) {
-        crate::presence::tick(self, session, activity, position, paused);
+        crate::presence::tick(&self.playback, session, activity, position, paused);
     }
 
     /// Corrects a watch together player at most once per `gap` instead of once a
     /// second. Not part of the contract.
     #[doc(hidden)]
     pub fn set_room_correction_gap(&self, gap: std::time::Duration) {
-        self.rooms.set_correction_gap(gap);
+        self.playback.rooms.set_correction_gap(gap);
     }
 
     /// Drops the room's connection without a goodbye, as a lost network would.
     /// Not part of the contract.
     #[doc(hidden)]
     pub fn room_drop_connection(&self) {
-        self.rooms.drop_connection();
+        self.playback.rooms.drop_connection();
     }
 
     /// Returns once every Discord presence send asked for so far has been
     /// handled. Not part of the contract.
     #[doc(hidden)]
     pub fn presence_flush(&self) {
-        self.presence.flush();
+        self.playback.presence.flush();
     }
 
     /// Moves the OAuth listener off the registered port, so two tests
@@ -436,14 +308,15 @@ impl Core {
     /// Not part of the contract and not exported to any shell.
     #[doc(hidden)]
     pub fn set_oauth_port(&self, port: u16) {
-        self.oauth_port.store(port, Ordering::SeqCst);
+        self.trackers.oauth_port.store(port, Ordering::SeqCst);
     }
 
     /// Shortens the recommender's own wait between two AniList requests, so
     /// a test of its whole read takes no minutes. Not part of the contract.
     #[doc(hidden)]
     pub fn set_recommender_gap(&self, gap: std::time::Duration) {
-        self.recommender_gap_ms
+        self.metadata
+            .recommender_gap_ms
             .store(gap.as_millis() as u64, Ordering::SeqCst);
     }
 
@@ -452,7 +325,8 @@ impl Core {
     /// minute's wait. Not part of the contract either.
     #[doc(hidden)]
     pub fn set_sign_in_hold(&self, hold: std::time::Duration) {
-        self.sign_in_hold_ms
+        self.trackers
+            .sign_in_hold_ms
             .store(hold.as_millis() as u64, Ordering::SeqCst);
     }
 
@@ -514,141 +388,28 @@ impl Core {
         &self.services
     }
 
-    fn watcher(&self) -> MutexGuard<'_, Option<Arc<Watcher>>> {
-        recover(&self.watcher)
+    /// The metadata team, for the tests that start its jobs directly.
+    #[doc(hidden)]
+    pub fn metadata(&self) -> &Arc<Metadata> {
+        &self.metadata
     }
 
-    fn launch(&self) -> MutexGuard<'_, Option<Arc<Subscription>>> {
-        recover(&self.launch)
+    /// The host team, for the tests that drive its router and its keys.
+    #[doc(hidden)]
+    pub fn host(&self) -> &Arc<Host> {
+        &self.host
     }
 
-    pub(crate) fn set_launch_listener(&self, sub: Arc<Subscription>) {
-        *self.launch() = Some(sub);
+    /// The playback team, for the tests that report to a session directly.
+    #[doc(hidden)]
+    pub fn playback(&self) -> &Arc<Playback> {
+        &self.playback
     }
 
-    /// Takes the launch listener out and drops it, which unsubscribes it.
-    /// Called by the listener itself once it has fired, and by `shutdown`
-    /// for the launch that never got its scan.
-    pub(crate) fn take_launch_listener(&self) {
-        // Taken out of the mutex and dropped by this `let` rather than
-        // inside the lock's own statement: the drop unsubscribes, which
-        // takes the bus's listener lock, and that should never happen with
-        // this one held.
-        let sub = self.launch().take();
-        drop(sub);
-    }
-
-    /// Installs the recursive watch on a source. Called by the Scan job,
-    /// off the runtime's blocking pool, because notify installs one by
-    /// walking every directory under the root. Nothing to do before `start`
-    /// has built the watcher: the launch's catch-up scan is what puts the
-    /// first watch on every source.
-    pub(crate) fn install_watch(&self, path: &str) -> Result<(), CoreError> {
-        // Cloned out of the slot and the guard dropped before the walk:
-        // the watcher keeps its own lock around the notify call, so this
-        // one is held for a clone and nothing more.
-        let watcher = self.watcher().clone();
-        match watcher {
-            Some(watcher) => watcher.watch(path),
-            None => Ok(()),
-        }
-    }
-
-    pub(crate) fn unwatch_source(&self, path: &str) {
-        let watcher = self.watcher().clone();
-        if let Some(watcher) = watcher {
-            watcher.unwatch(path);
-        }
-    }
-
-    /// The watcher's whole reach into the core, called on notify's own
-    /// thread: it queues the paths and asks for a scan, both of which are
-    /// a lock and a spawn. Everything that touches the disk happens in the
-    /// job that comes out of it.
-    pub(crate) fn on_watch_triggers(self: &Arc<Self>, triggers: Vec<Trigger>) {
-        if self.closed.load(Ordering::SeqCst) {
-            return;
-        }
-        let mut paths: Vec<String> = Vec::new();
-        let mut rescan = false;
-        for trigger in triggers {
-            match trigger {
-                Trigger::Rescan => rescan = true,
-                // A file speaks for the folder it is in: that is the series
-                // the reconcile has to look at, whether the file arrived or
-                // went away.
-                Trigger::Ingest(p) | Trigger::Removed(p) => {
-                    paths.push(watcher::parent_series_path(&p))
-                }
-                Trigger::NewDirectory(p) => paths.push(p),
-                // Comes back through here as an Ingest once it is written.
-                Trigger::Settling(p) => self.settle_file(p),
-            }
-        }
-        if paths.is_empty() && !rescan {
-            return;
-        }
-        self.library.push_pending(paths);
-        // A full scan covers every queued path, so the job takes them off
-        // the queue itself rather than being asked for them twice.
-        let scope = if rescan {
-            ScanScope::All
-        } else {
-            ScanScope::Paths(Vec::new())
-        };
-        scan::start(self, scope);
-    }
-
-    /// Waits, on the runtime, for a file a backend without close-write
-    /// reported to stop growing, then hands it back as an ordinary ingest.
-    /// One wait per path: a file being copied reports again and again.
-    fn settle_file(self: &Arc<Self>, path: String) {
-        if !recover(&self.library.settling).insert(path.clone()) {
-            return;
-        }
-        let core = Arc::downgrade(self);
-        self.services.handle.spawn(async move {
-            let written = watcher::size_holds(
-                std::path::Path::new(&path),
-                watcher::SETTLE_POLL,
-                watcher::SETTLE_HOLD,
-            )
-            .await;
-            let Some(core) = core.upgrade() else { return };
-            recover(&core.library.settling).remove(&path);
-            if written {
-                core.on_watch_triggers(vec![Trigger::Ingest(path)]);
-            }
-        });
-    }
-
-    /// A folder has stopped changing, so it is worth a match. The entry
-    /// goes first: the candidate query skips whatever is still armed, so a
-    /// job already running picks this series up on its next time round the
-    /// loop precisely because it no longer is.
-    pub(crate) fn settle_fired(&self, series_id: u64) {
-        recover(&self.library.settle).remove(&series_id);
-        let Some(core) = self.arc() else { return };
-        automatch::start(&core);
-    }
-
-    /// Warns that Jikan is not answering, at most once every ten minutes.
-    /// Every caller reports every failure; this is what decides which of
-    /// them the user is told about.
-    pub(crate) fn report_jikan_outage(&self, message: &str) {
-        let mut last = recover(&self.jikan_outage);
-        if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
-            return;
-        }
-        *last = Some(Instant::now());
-        // Dropped before the emit: a listener runs on this thread, and
-        // nothing it does should be able to deadlock on this gate.
-        drop(last);
-        self.services.bus.warn(
-            Stage::Metadata,
-            format!("Jikan is not answering: {message}"),
-            EventBody::Notice,
-        );
+    /// The downloads team, for the tests that open its backend directly.
+    #[doc(hidden)]
+    pub fn downloads(&self) -> &Arc<Downloads> {
+        &self.downloads
     }
 }
 
@@ -695,8 +456,8 @@ impl Core {
         // every directory under a root, which is disk work at library
         // scale, so it belongs to the scan below and to every scan after
         // it rather than to this thread.
-        match Watcher::new(self.me.clone()) {
-            Ok(watcher) => *self.watcher() = Some(Arc::new(watcher)),
+        match Watcher::new(Arc::downgrade(&self.library)) {
+            Ok(watcher) => self.library.set_watcher(watcher),
             Err(e) => {
                 self.services.bus.warn(
                     Stage::Library,
@@ -705,13 +466,12 @@ impl Core {
                 );
             }
         }
-        let core = self.owner()?;
         // The host follows the stored preference from the first moment, so
         // a phone can reach a machine that was left sharing.
-        crate::host::sync(self);
-        crate::presence::sync(self);
+        crate::host::sync(&self.host);
+        crate::presence::sync(&self.playback);
         // Off this thread: storing a secret can be a keyring round trip.
-        let lifting = core.clone();
+        let lifting = self.releases.clone();
         self.services.handle.spawn_blocking(move || {
             let lift = crate::repos::lift_stored_secrets(&lifting);
             #[cfg(feature = "phone")]
@@ -729,8 +489,8 @@ impl Core {
         });
         // A started core says when a followed episode airs (#212); the CLI's,
         // never started, leaves that to the window.
-        crate::aired::listen(&core);
-        launch::start(&core)
+        crate::aired::listen(&self.metadata);
+        launch::start(self, &self.launch)
     }
 
     /// A call from a device on the tailnet, answered as `profile` (#631): the
@@ -751,7 +511,7 @@ impl Core {
         match &call {
             Call::OpenPlayback { file } => {
                 return Ok(Reply::Playback {
-                    session: Box::new(session::open_for(self, *file, profile)?),
+                    session: Box::new(session::open_for(&self.playback, *file, profile)?),
                 });
             }
             Call::Tick { session, .. }
@@ -760,6 +520,7 @@ impl Core {
                 // A session already gone goes on as it would for the owner: a
                 // second close is quiet. Only another person's is not found.
                 if self
+                    .playback
                     .sessions
                     .profile_of(*session)
                     .is_some_and(|owner| owner != profile)
@@ -830,21 +591,25 @@ impl Core {
                 year,
                 utc_offset,
                 month_starts,
-            } => stats::get_call(self, year, utc_offset, &month_starts),
+            } => stats::get_call(&self.services, year, utc_offset, &month_starts),
             Call::ScheduleAgent => agent::available_call(),
             Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
 
             // Library: sources, scans, the library's reads and its files
-            Call::ListSources => scan::list_sources_call(self),
-            Call::AddSource { path } => scan::add_source(self, &path),
-            Call::RemoveSource { source } => scan::remove_source(self, source),
-            Call::MoveSource { source, path } => scan::move_source(self, source, &path),
+            Call::ListSources => scan::list_sources_call(&self.library),
+            Call::AddSource { path } => scan::add_source(&self.library, &path),
+            Call::RemoveSource { source } => scan::remove_source(&self.library, source),
+            Call::MoveSource { source, path } => scan::move_source(&self.library, source, &path),
             Call::ForgetSeries { series } => scan::forget_series(&self.services, series),
-            Call::Scan { source } => scan::scan(self, source),
-            Call::RescanSeries { series } => scan::rescan_series(self, series),
-            Call::DeleteEpisodes { series, files } => delete::delete_episodes(self, series, files),
-            Call::DeleteWatched { finished_shows } => delete::delete_watched(self, finished_shows),
-            Call::FixFiles { series, fixes } => fixes::fix_files(self, series, fixes),
+            Call::Scan { source } => scan::scan(&self.library, source),
+            Call::RescanSeries { series } => scan::rescan_series(&self.library, series),
+            Call::DeleteEpisodes { series, files } => {
+                delete::delete_episodes(&self.library, series, files)
+            }
+            Call::DeleteWatched { finished_shows } => {
+                delete::delete_watched(&self.library, finished_shows)
+            }
+            Call::FixFiles { series, fixes } => fixes::fix_files(&self.library, series, fixes),
             Call::ReportFix { series, files, app } => {
                 report::report_fix(&self.services, series, files, app)
             }
@@ -857,17 +622,17 @@ impl Core {
                 sort,
                 direction,
                 reveal_hidden: _,
-            } => reads::list_series(self, tab, &query, sort, direction),
-            Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            } => reads::list_series(&self.library, tab, &query, sort, direction),
+            Call::ListAiring { offset, limit } => reads::list_airing(&self.library, offset, limit),
             Call::ListLibrary {
                 tab,
                 query,
                 sort,
                 direction,
                 reveal_hidden: _,
-            } => reads::list_library(self, tab, &query, sort, direction),
-            Call::ListFeed { sort } => feed::list_call(self, sort),
-            Call::GetSeries { series } => reads::get_series(self, series),
+            } => reads::list_library(&self.library, tab, &query, sort, direction),
+            Call::ListFeed { sort } => feed::list_call(&self.services, sort),
+            Call::GetSeries { series } => reads::get_series(&self.library, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(&self.services, series, hidden),
             Call::ActOnSeries { series, action } => act::act_on_series(self, series, action),
             Call::ParseSchedule { text } => Ok(schedule::parse_call(&text)),
@@ -887,7 +652,7 @@ impl Core {
             Call::Lookup { path } => reads::lookup(&self.services, &path),
 
             // Net: the image cache
-            Call::GetStorage => images::storage_call(self),
+            Call::GetStorage => images::storage_call(&self.net),
             Call::ClearImages => Ok(started(images::start_clear(&self.services))),
 
             // Metadata: matching, airing, Airing now, Recommended, franchises
@@ -895,30 +660,38 @@ impl Core {
                 provider,
                 query,
                 limit,
-            } => apply::search(self, provider, &query, limit).map(started),
-            Call::ResolveLink { url } => apply::resolve_link(self, &url).map(started),
+            } => apply::search(&self.metadata, provider, &query, limit).map(started),
+            Call::ResolveLink { url } => apply::resolve_link(&self.metadata, &url).map(started),
             Call::ApplyMatch { series, target } => {
-                apply::apply_match(self, series, target).map(started)
+                apply::apply_match(&self.metadata, series, target).map(started)
             }
-            Call::RefreshSeries { series } => apply::refresh_series(self, series).map(started),
-            Call::RefreshAll => Ok(started(apply::refresh_all(&self.owner()?))),
-            Call::AutoMatch => Ok(started(automatch::start(&self.owner()?))),
-            Call::RefreshAiring { series } => airing::start_refresh(self, series).map(started),
-            Call::ClearMatch { series } => automatch::clear_match(self, series),
-            Call::ListAiringNow { season } => airing_now::list_call(self, season),
+            Call::RefreshSeries { series } => {
+                apply::refresh_series(&self.metadata, series).map(started)
+            }
+            Call::RefreshAll => Ok(started(apply::refresh_all(&self.metadata))),
+            Call::AutoMatch => Ok(started(automatch::start(&self.metadata))),
+            Call::RefreshAiring { series } => {
+                airing::start_refresh(&self.metadata, series).map(started)
+            }
+            Call::ClearMatch { series } => automatch::clear_match(&self.metadata, series),
+            Call::ListAiringNow { season } => airing_now::list_call(&self.metadata, season),
             Call::RefreshAiringNow { season, force } => {
-                airing_now::refresh_call(self, season, force)
+                airing_now::refresh_call(&self.metadata, season, force)
             }
             Call::SetNotInterested {
                 anilist_id,
                 not_interested,
             } => airing_now::set_not_interested(&self.services, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(&self.services),
-            Call::PlanToWatch { anilist_id } => airing_now::plan_to_watch(self, anilist_id),
+            Call::PlanToWatch { anilist_id } => {
+                airing_now::plan_to_watch(&self.trackers, anilist_id)
+            }
             Call::ListRecommended { scope } => recommended::list_call(&self.services, scope),
-            Call::RefreshRecommended { force } => recommended::refresh_call(self, force),
-            Call::GetShowPage { anilist_id } => recommended::page::get_call(self, anilist_id),
-            Call::GetFranchiseGraph { series } => franchise::graph_call(self, series),
+            Call::RefreshRecommended { force } => recommended::refresh_call(&self.metadata, force),
+            Call::GetShowPage { anilist_id } => {
+                recommended::page::get_call(&self.metadata, anilist_id)
+            }
+            Call::GetFranchiseGraph { series } => franchise::graph_call(&self.metadata, series),
 
             // Trackers: accounts, list writes, Watching and the list moves
             Call::GetTrackers => {
@@ -934,64 +707,68 @@ impl Core {
                 &client_id,
                 client_secret.as_deref(),
             ),
-            Call::ConnectTracker { tracker } => oauth::connect(self, tracker).map(started),
+            Call::ConnectTracker { tracker } => {
+                oauth::connect(&self.trackers, tracker).map(started)
+            }
             Call::DisconnectTracker { tracker } => accounts::disconnect(&self.services, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(&self.services, tracker),
             Call::MarkEpisode { series, episode } => {
-                writes::mark(self, series, episode).map(started)
+                writes::mark(&self.trackers, series, episode).map(started)
             }
             Call::SetProgress {
                 series,
                 progress,
                 season,
-            } => writes::set_progress(self, series, progress, season).map(started_or_ok),
+            } => writes::set_progress(&self.trackers, series, progress, season).map(started_or_ok),
             Call::SetScore { series, score } => {
-                writes::set_score(self, series, score).map(started_or_ok)
+                writes::set_score(&self.trackers, series, score).map(started_or_ok)
             }
             Call::SetListStatus { series, status } => {
-                writes::set_list_status(self, series, status).map(started_or_ok)
+                writes::set_list_status(&self.trackers, series, status).map(started_or_ok)
             }
             Call::SetSeriesNotes { series, notes } => {
-                writes::set_notes(self, series, &notes).map(started)
+                writes::set_notes(&self.trackers, series, &notes).map(started)
             }
             Call::SetShowListStatus { anilist_id, status } => {
-                writes::set_show_list_status(self, anilist_id, status).map(started_or_ok)
+                writes::set_show_list_status(&self.trackers, anilist_id, status).map(started_or_ok)
             }
             Call::SetShowScore { anilist_id, score } => {
-                writes::set_show_score(self, anilist_id, score).map(started_or_ok)
+                writes::set_show_score(&self.trackers, anilist_id, score).map(started_or_ok)
             }
             Call::PreviewListMove { tracker } => move_up::preview_call(&self.services, tracker),
             Call::MoveLists { tracker, series } => {
-                move_up::start(self, tracker, series).map(started)
+                move_up::start(&self.trackers, tracker, series).map(started)
             }
             Call::RefreshProgress { tracker } => Ok(started(cache::start_refresh(
-                &self.owner()?,
+                &self.trackers,
                 tracker,
                 false,
             ))),
             Call::ListWatching => watching::list_call(&self.services),
             Call::ListPlanning => watching::planning_call(&self.services),
-            Call::RefreshWatching { force } => watching::refresh_call(self, force),
+            Call::RefreshWatching { force } => watching::refresh_call(&self.trackers, force),
 
             // Downloads: the status is a read off the state, the rest are
             // jobs over anirss or the torrent client, except the list reads
             // the page polls, which answer through events
-            Call::GetDownloads => downloads::status(self).map(|status| Reply::Downloads { status }),
-            Call::ConnectDownloads => downloads::connect(self).map(started),
+            Call::GetDownloads => {
+                downloads::status(&self.downloads).map(|status| Reply::Downloads { status })
+            }
+            Call::ConnectDownloads => downloads::connect(&self.downloads).map(started),
             Call::SearchReleases { query, endpoint } => {
-                downloads::search(self, query, endpoint).map(started)
+                downloads::search(&self.downloads, query, endpoint).map(started)
             }
             Call::RefineReleases {
                 query,
                 endpoint,
                 items,
                 op,
-            } => downloads::refine(self, query, endpoint, items, op).map(started),
+            } => downloads::refine(&self.downloads, query, endpoint, items, op).map(started),
             Call::PreviewSubscription {
                 query,
                 endpoint,
                 items,
-            } => downloads::preview(self, query, endpoint, items).map(started),
+            } => downloads::preview(&self.downloads, query, endpoint, items).map(started),
             Call::Subscribe {
                 query,
                 endpoint,
@@ -999,23 +776,31 @@ impl Core {
                 name,
                 wire_query,
                 series,
-            } => downloads::subscribe(self, query, endpoint, items, name, wire_query, series)
-                .map(started),
+            } => downloads::subscribe(
+                &self.downloads,
+                query,
+                endpoint,
+                items,
+                name,
+                wire_query,
+                series,
+            )
+            .map(started),
             Call::DownloadReleases { items, name } => {
-                downloads::download(self, items, name).map(started)
+                downloads::download(&self.downloads, items, name).map(started)
             }
             Call::DownloadReleasesWith {
                 items,
                 name,
                 options,
-            } => downloads::download_with(self, items, name, options).map(started),
-            Call::DownloadMovie { link } => downloads::movie(self, link).map(started),
-            Call::ListSubscriptionRules => downloads::list_rules(self),
-            Call::ListTorrents => downloads::list_torrents(self),
+            } => downloads::download_with(&self.downloads, items, name, options).map(started),
+            Call::DownloadMovie { link } => downloads::movie(&self.downloads, link).map(started),
+            Call::ListSubscriptionRules => downloads::list_rules(&self.downloads),
+            Call::ListTorrents => downloads::list_torrents(&self.downloads),
             Call::ReadFeed { url, tag } => downloads::read_feed(&self.services, url, tag),
-            Call::ReadRule { name } => downloads::read_rule(self, name),
+            Call::ReadRule { name } => downloads::read_rule(&self.downloads, name),
             Call::RepairSubscription { name } => {
-                downloads::repair_subscription(self, name).map(started)
+                downloads::repair_subscription(&self.downloads, name).map(started)
             }
             Call::RemoveShow {
                 title,
@@ -1024,18 +809,28 @@ impl Core {
                 torrents,
                 files,
                 series,
-            } => downloads::remove_show(self, title, rule, hashes, torrents, files, series)
-                .map(started),
+            } => downloads::remove_show(
+                &self.downloads,
+                title,
+                rule,
+                hashes,
+                torrents,
+                files,
+                series,
+            )
+            .map(started),
             Call::ControlTorrents { hashes, action } => {
-                downloads::control(self, hashes, action).map(started)
+                downloads::control(&self.downloads, hashes, action).map(started)
             }
             Call::SetRoll {
                 id,
                 ahead,
                 on,
                 delete_watched,
-            } => downloads::rolling::set(self, id, ahead, on, delete_watched),
-            Call::RollMore { id, count } => downloads::rolling::roll_more(self, id, count),
+            } => downloads::rolling::set(&self.downloads, id, ahead, on, delete_watched),
+            Call::RollMore { id, count } => {
+                downloads::rolling::roll_more(&self.downloads, id, count)
+            }
             Call::GetRollingSettings => downloads::rolling::settings_call(&self.services),
             Call::SetRollingSettings { rolling } => {
                 downloads::rolling::set_settings(&self.services, rolling)
@@ -1045,49 +840,51 @@ impl Core {
                 anirss_token,
                 torrent_password,
             } => downloads::set_settings(
-                self,
+                &self.downloads,
                 settings,
                 anirss_token.as_deref(),
                 torrent_password.as_deref(),
             ),
-            Call::UseTorrentClient { id } => downloads::use_client(self, id),
-            Call::TestTorrentClient => downloads::test_torrent_client(self).map(started),
-            Call::CheckEndpoints => downloads::check_endpoints(self).map(started),
-            Call::StartEndpoint { name } => downloads::start_endpoint(self, name).map(started),
+            Call::UseTorrentClient { id } => downloads::use_client(&self.downloads, id),
+            Call::TestTorrentClient => downloads::test_torrent_client(&self.downloads).map(started),
+            Call::CheckEndpoints => downloads::check_endpoints(&self.downloads).map(started),
+            Call::StartEndpoint { name } => {
+                downloads::start_endpoint(&self.downloads, name).map(started)
+            }
             Call::InspectRelease { link } => downloads::inspect_release(&self.services, link),
 
             // Releases: endpoint repos and the endpoints installed from them
             Call::ListRepoEndpoints => {
-                repos::catalog(self).map(|catalog| Reply::EndpointCatalog { catalog })
+                repos::catalog(&self.releases).map(|catalog| Reply::EndpointCatalog { catalog })
             }
-            Call::AddEndpointRepo { url } => repos::add_repo(self, url),
-            Call::TrustEndpointRepo { url, key } => repos::trust_repo(self, url, key),
-            Call::RemoveEndpointRepo { url } => repos::remove_repo(self, url),
-            Call::RefreshEndpointRepos => repos::refresh(self),
+            Call::AddEndpointRepo { url } => repos::add_repo(&self.releases, url),
+            Call::TrustEndpointRepo { url, key } => repos::trust_repo(&self.releases, url, key),
+            Call::RemoveEndpointRepo { url } => repos::remove_repo(&self.releases, url),
+            Call::RefreshEndpointRepos => repos::refresh(&self.releases),
             Call::InstallEndpoint {
                 repo,
                 id,
                 credentials,
-            } => repos::install(self, repo, id, credentials),
+            } => repos::install(&self.releases, repo, id, credentials),
             Call::UpdateEndpoint {
                 install,
                 credentials,
-            } => repos::update(self, install, credentials),
-            Call::RemoveEndpoint { install } => repos::remove(self, install),
+            } => repos::update(&self.releases, install, credentials),
+            Call::RemoveEndpoint { install } => repos::remove(&self.releases, install),
             Call::SetEndpointCredentials {
                 install,
                 credentials,
-            } => repos::set_credentials(self, install, credentials),
+            } => repos::set_credentials(&self.releases, install, credentials),
             Call::SetEndpointEnabled { install, enabled } => {
-                repos::set_enabled(self, install, enabled)
+                repos::set_enabled(&self.releases, install, enabled)
             }
             Call::AddCustomEndpoint {
                 name,
                 url,
                 credentials,
-            } => repos::add_custom(self, name, url, credentials),
+            } => repos::add_custom(&self.releases, name, url, credentials),
             Call::EditCustomEndpoint { install, name, url } => {
-                repos::edit_custom(self, install, name, url)
+                repos::edit_custom(&self.releases, install, name, url)
             }
 
             // Downloads on the phone: its own sources and torrent engine
@@ -1099,7 +896,9 @@ impl Core {
                 endpoint,
                 fallback,
             } => phone::search(&self.services, query, endpoint, fallback),
-            Call::PhoneFindShows { query, limit } => phone::find_shows(self, query, limit),
+            Call::PhoneFindShows { query, limit } => {
+                phone::find_shows(&self.downloads, query, limit)
+            }
             Call::PhoneRefine {
                 query,
                 endpoint,
@@ -1111,56 +910,60 @@ impl Core {
                 name,
                 limit_bytes,
                 rolling,
-            } => phone::download(self, items, name, limit_bytes, rolling),
+            } => phone::download(&self.downloads, items, name, limit_bytes, rolling),
             Call::PhoneSubscribe {
                 query,
                 endpoint,
                 items,
                 name,
-            } => phone::subscribe(self, query, endpoint, items, name),
-            Call::PhoneRules => phone::rules(self),
-            Call::PhoneUnsubscribe { names, files } => phone::unsubscribe(self, names, files),
-            Call::PhoneTorrents => phone::torrents(self),
-            Call::PhoneNetCheck => phone::check::run_call(self),
-            Call::PhoneControl { hashes, action } => phone::control(self, hashes, action),
-            Call::SetPhoneHeld { held } => phone::set_held(self, held),
+            } => phone::subscribe(&self.downloads, query, endpoint, items, name),
+            Call::PhoneRules => phone::rules(&self.downloads),
+            Call::PhoneUnsubscribe { names, files } => {
+                phone::unsubscribe(&self.downloads, names, files)
+            }
+            Call::PhoneTorrents => phone::torrents(&self.downloads),
+            Call::PhoneNetCheck => phone::check::run_call(&self.downloads),
+            Call::PhoneControl { hashes, action } => {
+                phone::control(&self.downloads, hashes, action)
+            }
+            Call::SetPhoneHeld { held } => phone::set_held(&self.downloads, held),
 
             // Host: the tailnet host, export and import
-            Call::GetHost => host::status_call(self),
-            Call::ListTailnetDevices => host::devices_call(self),
+            Call::GetHost => host::status_call(&self.host),
+            Call::ListTailnetDevices => host::devices_call(&self.host),
             Call::SetTailnetDeviceTrust { device, trusted } => {
-                host::set_device_trust(self, device, trusted)
+                host::set_device_trust(&self.host, device, trusted)
             }
             Call::Export { path, private } => Ok(started(transfer::export::start(
                 &self.services,
                 path,
                 private,
             ))),
-            Call::Import { path } => transfer::import::start(self, &path).map(started),
+            Call::Import { path } => transfer::import::start(&self.host, &path).map(started),
 
             // Playback: the player's session, Discord, casting and rooms
-            Call::OpenPlayback { file } => session::open_call(self, file),
+            Call::OpenPlayback { file } => session::open_call(&self.playback, file),
             Call::ReportChapters {
                 session,
                 chapters,
                 duration,
-            } => skip::start(self, session, chapters, duration).map(started),
+            } => skip::start(&self.playback, session, chapters, duration).map(started),
             Call::Tick {
                 session,
                 position,
                 paused,
-            } => session::tick(self, session, position, paused).map(|()| Reply::Ok),
+            } => session::tick(&self.playback, session, position, paused).map(|()| Reply::Ok),
             Call::ClosePlayback {
                 session,
                 position,
                 reason,
-            } => session::close(self, session, position, reason).map(|()| Reply::Ok),
+            } => session::close(&self.playback, session, position, reason).map(|()| Reply::Ok),
             Call::SetTrackChoice {
                 series,
                 audio,
                 subtitle,
             } => session::set_track_choice(&self.services, series, audio, subtitle),
-            Call::GetPresence => presence::status_call(self),
+            Call::GetPresence => presence::status_call(&self.playback),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }
@@ -1168,14 +971,14 @@ impl Core {
             | Call::CastPause
             | Call::CastSeek { .. }
             | Call::CastStop
-            | Call::CastStatus) => cast::call(self, c),
+            | Call::CastStatus) => cast::call(&self.playback, c),
             c @ (Call::RoomCreate { .. }
             | Call::RoomJoin { .. }
             | Call::RoomAttach { .. }
             | Call::RoomCommand { .. }
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
-            | Call::RoomStatus) => room::call(self, c),
+            | Call::RoomStatus) => room::call(&self.playback, c),
         }
     }
 
@@ -1183,9 +986,9 @@ impl Core {
     /// (at most 30 seconds), so reads in one beat share one snapshot. For a
     /// shell whose every write goes through calls; off by default.
     pub fn set_snapshot_cache(&self, on: bool) {
-        self.snapshot_cache.store(on, Ordering::Relaxed);
+        self.library.snapshot_cache.store(on, Ordering::Relaxed);
         if !on {
-            *self.kept_load.lock().unwrap() = None;
+            *self.library.kept_load.lock().unwrap() = None;
         }
     }
 
@@ -1205,25 +1008,21 @@ impl Core {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
-        // First, and taken out of the mutex before it is stopped: the
-        // debouncer's thread dispatches into this core, so it has to be
-        // gone before the runtime and the store are.
-        let watcher = self.watcher().take();
-        if let Some(watcher) = watcher {
-            watcher.stop();
-        }
+        // First: the debouncer's thread dispatches into the library, so it
+        // has to be gone before the runtime and the store are.
+        self.library.stop_watcher();
         // A launch whose scan never finished has no list left to run.
-        self.take_launch_listener();
-        crate::calendar::stop(self);
-        crate::aired::stop(self);
+        launch::take(&self.launch);
+        crate::calendar::stop(&self.metadata);
+        crate::aired::stop(&self.metadata);
         // The anirss sidecar goes with the core that started it.
         self.downloads.stop();
         self.host.stop();
         // Discord drops the activity when the socket closes anyway; this
         // clears it first and ends the worker.
-        crate::presence::shutdown(self);
+        crate::presence::shutdown(&self.playback);
         // A room says goodbye, so the others see this member leave at once.
-        crate::room::shutdown(self);
+        crate::room::shutdown(&self.playback);
         self.services.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
@@ -1245,6 +1044,11 @@ impl Core {
 
 impl Drop for Core {
     fn drop(&mut self) {
+        // A team can outlive the core in a task that still holds it. The
+        // watcher went quiet when its `Weak<Core>` stopped upgrading; now
+        // that it holds the library, the core stops it on the way out.
+        self.closed.store(true, Ordering::SeqCst);
+        self.library.stop_watcher();
         // A plain drop of a `Runtime` from inside a runtime context panics,
         // and a shell that forgets to call `shutdown` should still exit
         // cleanly; hand any runtime still present to the background path

@@ -108,7 +108,7 @@ fn a_paired_device_is_answered_where_its_address_alone_is_not() {
     let unpaired = phone.sign(&host, now(), "n1", "GET", HELLO);
     assert_eq!(get(&rt, &lan, HELLO, Some(unpaired)).0, 403);
 
-    anibeam_core::host::keys::pair(&core, &phone.public(), "pixel").unwrap();
+    anibeam_core::host::keys::pair(core.host(), &phone.public(), "pixel").unwrap();
     let paired = phone.sign(&host, now(), "n2", "GET", HELLO);
     assert_eq!(get(&rt, &lan, HELLO, Some(paired.clone())).0, 200);
 
@@ -133,7 +133,7 @@ fn a_paired_device_is_answered_where_its_address_alone_is_not() {
     assert_eq!(get(&rt, &lan, snapshot, Some(for_hello)).0, 403);
 
     // Unpairing closes it again.
-    anibeam_core::host::keys::unpair(&core, &phone.public()).unwrap();
+    anibeam_core::host::keys::unpair(core.host(), &phone.public()).unwrap();
     let after = phone.sign(&host, now(), "n6", "GET", HELLO);
     assert_eq!(get(&rt, &lan, HELLO, Some(after)).0, 403);
 }
@@ -164,7 +164,7 @@ fn a_switched_off_device_stays_off_even_when_paired() {
     let tailnet = serve_as(&rt, &core, "100.70.1.2");
     let host = hello(&rt, &tailnet).key;
     let phone = DeviceKey::from_seed([7; 32]);
-    anibeam_core::host::keys::pair(&core, &phone.public(), "pixel").unwrap();
+    anibeam_core::host::keys::pair(core.host(), &phone.public(), "pixel").unwrap();
     core.call(Call::SetTailnetDeviceTrust {
         device: "nPhone".into(),
         trusted: false,
@@ -181,7 +181,7 @@ fn an_address_the_host_cannot_place_stays_refused_even_when_paired() {
     core.set_tailscale_status(Some(STATUS.to_vec()));
     let host = hello(&rt, &serve_as(&rt, &core, "100.70.1.2")).key;
     let phone = DeviceKey::from_seed([7; 32]);
-    anibeam_core::host::keys::pair(&core, &phone.public(), "pixel").unwrap();
+    anibeam_core::host::keys::pair(core.host(), &phone.public(), "pixel").unwrap();
     core.call(Call::SetTailnetDeviceTrust {
         device: "nPhone".into(),
         trusted: false,

@@ -154,7 +154,7 @@ fn every_tailnet_device_is_answered_until_it_is_switched_off() {
     let paths = CorePaths::under(dir.path());
     let secrets = anibeam_core::trackers::Secrets::file_only(paths.secrets_path());
     let again = Core::open_with_secrets(paths, secrets).unwrap();
-    anibeam_core::host::sync(&again);
+    anibeam_core::host::sync(again.host());
     again.set_tailscale_status(Some(STATUS.to_vec()));
     let reopened = serve_as(&rt, &again, "100.70.1.2");
     assert_eq!(get(&rt, &format!("{reopened}{hello}")).0, 403);

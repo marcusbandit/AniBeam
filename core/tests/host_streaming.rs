@@ -139,7 +139,7 @@ fn with_streaming_off_only_the_library_answers() {
     let paths = CorePaths::under(dir.path());
     let secrets = anibeam_core::trackers::Secrets::file_only(paths.secrets_path());
     let again = Core::open_with_secrets(paths, secrets).unwrap();
-    anibeam_core::host::sync(&again);
+    anibeam_core::host::sync(again.host());
     let reopened = serve(&rt, &again);
     assert_eq!(
         get(&rt, &format!("{reopened}{}", wire::file_path(1))).0,

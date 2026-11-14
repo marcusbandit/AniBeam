@@ -326,7 +326,7 @@ async fn hello(
     let relayed = st
         .core
         .upgrade()
-        .is_some_and(|core| super::relayed(&core, from.ip()));
+        .is_some_and(|core| super::relayed(&core.host, from.ip()));
     // Whose progress this device gets (#633): named as the tailnet names them now, or as
     // the profile was last seen when the tailnet does not say.
     let id = profile.map(|p| p.0.0);
@@ -467,7 +467,7 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
         .core
         .upgrade()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let (snapshot, library) = build::snapshot(&core, &st.host, profile).await?;
+    let (snapshot, library) = build::snapshot(&core.host, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
     // The posters are everyone's; the owner's read keeps their table fresh.
     if profile == crate::foundation::trust::OWNER {
@@ -580,7 +580,7 @@ async fn history_document(
     };
     let built = tokio::task::spawn_blocking(move || {
         let doc = history::document(&core.services);
-        history::pull_back(&core, from.ip());
+        history::pull_back(&core.host, from.ip());
         doc
     })
     .await;

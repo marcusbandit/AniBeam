@@ -18,13 +18,14 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::jobs::{Finished, JobCtx};
+use crate::metadata::Metadata;
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
 use crate::prefs;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::{accounts, as_u32, no_token, writes};
 
 /// How old a season may be before `RefreshAiringNow` without `force` goes
@@ -277,24 +278,25 @@ pub fn list(
 
 /// The `ListAiringNow` call: the cached season at once, and the id of a
 /// refresh already running so the page can say one is on its way.
-pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
-    let images_dir = core.services.paths.images_dir();
+pub fn list_call(metadata: &Metadata, pick: SeasonPick) -> Result<Reply, CoreError> {
+    let images_dir = metadata.services.paths.images_dir();
     let now = time::now_secs();
-    let listed = core
+    let listed = metadata
         .services
         .store
         .read(|c| list(c, &images_dir, pick, now))?;
     Ok(Reply::AiringNow {
         now: listed,
-        refreshing: running(core, pick),
+        refreshing: running(metadata, pick),
     })
 }
 
 /// This season's read while it is still running.
-fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
+fn running(metadata: &Metadata, pick: SeasonPick) -> Option<u64> {
     let key = season_of(pick, time::now_secs()).key;
-    let id = *core.airing_reads.lock().unwrap().get(&key)?;
-    core.services
+    let id = *metadata.airing_reads.lock().unwrap().get(&key)?;
+    metadata
+        .services
         .jobs
         .list()
         .into_iter()
@@ -306,10 +308,14 @@ fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
 /// never read) or `force` says so, `Ok` when it is fresh. One read runs per
 /// season: a second ask for a season being read joins that read, and the
 /// other season's read runs beside it. Its event names the season.
-pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply, CoreError> {
+pub fn refresh_call(
+    metadata: &Arc<Metadata>,
+    pick: SeasonPick,
+    force: bool,
+) -> Result<Reply, CoreError> {
     let now = time::now_secs();
     let key = season_of(pick, now).key;
-    let fetched_at: Option<i64> = core.services.store.read(|c| {
+    let fetched_at: Option<i64> = metadata.services.store.read(|c| {
         c.query_row(
             "SELECT fetched_at FROM season_fetches WHERE season = ?1",
             params![key],
@@ -322,14 +328,19 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let mut reads = core.airing_reads.lock().unwrap();
+    let mut reads = metadata.airing_reads.lock().unwrap();
     if let Some(id) = reads.get(&key).copied()
-        && core.services.jobs.list().into_iter().any(|j| j.id == id)
+        && metadata
+            .services
+            .jobs
+            .list()
+            .into_iter()
+            .any(|j| j.id == id)
     {
         return Ok(Reply::Started { job: id });
     }
-    let owner = core.owner()?;
-    let job = core
+    let owner = metadata.clone();
+    let job = metadata
         .services
         .jobs
         .clone()
@@ -387,13 +398,13 @@ pub struct AiredRow {
 /// so its rows are held to the same list here.
 const FORMATS: [&str; 3] = ["TV", "TV_SHORT", "ONA"];
 
-async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreError> {
+async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, CoreError> {
     let now = time::now_secs();
     let season = season_of(pick, now);
-    let shows = fetch_shows(&core, &season).await?;
+    let shows = fetch_shows(&metadata, &season).await?;
     // The strip belongs to what is on air, so only that read asks for it.
     let aired = if pick == SeasonPick::Now {
-        fetch_aired(&core, now).await?
+        fetch_aired(&metadata, now).await?
     } else {
         Vec::new()
     };
@@ -413,17 +424,18 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
     let count = shows.len();
     let next_key = season_of(SeasonPick::Next, now).key;
     let key = season.key.clone();
-    core.services
+    metadata
+        .services
         .store
         .tx_async(move |tx| write(tx, &key, &next_key, &shows, &aired, now))
         .await?;
     // Every cover before the event, so the cards draw local files.
-    for (url, outcome) in core.images.ensure(&covers).await {
+    for (url, outcome) in metadata.net.images.ensure(&covers).await {
         if let Err(e) = outcome {
             tracing::debug!("an Airing now cover {url} was not fetched: {e}");
         }
     }
-    for (url, outcome) in core.images.ensure(&banners).await {
+    for (url, outcome) in metadata.net.images.ensure(&banners).await {
         if let Err(e) = outcome {
             tracing::debug!("an Airing now banner {url} was not fetched: {e}");
         }
@@ -438,11 +450,12 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
 
 /// Every page of the season, most popular first, each show once: AniList
 /// can hand a show back on two pages when the order shifts mid-read.
-async fn fetch_shows(core: &Arc<Core>, season: &Season) -> Result<Vec<SeasonRow>, CoreError> {
+async fn fetch_shows(metadata: &Metadata, season: &Season) -> Result<Vec<SeasonRow>, CoreError> {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut rows: Vec<SeasonRow> = Vec::new();
     for page in 1..=MAX_PAGES {
-        let data = core
+        let data = metadata
+            .net
             .anilist
             .graphql(SEASON_PAGE_QUERY, season_variables(season, page), None)
             .await?;
@@ -459,10 +472,11 @@ async fn fetch_shows(core: &Arc<Core>, season: &Season) -> Result<Vec<SeasonRow>
 }
 
 /// The episodes out in the window, newest first.
-async fn fetch_aired(core: &Arc<Core>, now: i64) -> Result<Vec<AiredRow>, CoreError> {
+async fn fetch_aired(metadata: &Metadata, now: i64) -> Result<Vec<AiredRow>, CoreError> {
     let mut out: Vec<AiredRow> = Vec::new();
     for page in 1..=MAX_PAGES {
-        let data = core
+        let data = metadata
+            .net
             .anilist
             .graphql(
                 AIRED_PAGE_QUERY,
@@ -778,8 +792,8 @@ pub fn list_not_interested(services: &Services) -> Result<Reply, CoreError> {
 /// rule every tracker write keeps, or when no connected tracker has an id
 /// for it (a MAL-only account and a show AniList gives no MAL id), and
 /// `NotConnected` when no tracker is connected at all.
-pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let (targets, title) = core.services.store.read(|c| {
+pub fn plan_to_watch(trackers: &Arc<Trackers>, anilist_id: u64) -> Result<Reply, CoreError> {
+    let (targets, title) = trackers.services.store.read(|c| {
         let lang = prefs::load_preferences(c)?.title_language;
         let found = c
             .query_row(
@@ -858,8 +872,8 @@ pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     if targets.is_empty() {
         return Ok(Reply::Ok);
     }
-    let owner = core.owner()?;
-    let job = core
+    let owner = trackers.clone();
+    let job = trackers
         .services
         .jobs
         .clone()
@@ -885,7 +899,7 @@ fn status_words(status: ListStatus) -> &'static str {
 /// an entry made somewhere else since the list was read is left as it is
 /// there, and the cache takes it, so the card says where the show stands.
 async fn plan(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     title: String,
     targets: Vec<(Tracker, u64, Option<u64>)>,
@@ -896,15 +910,15 @@ async fn plan(
     for (t, media_id, user_id) in targets {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&core, t)
+            let token = accounts::access_token(&trackers, t)
                 .await?
                 .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
+            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
             if let Some(live) = live
                 && let Some(status) = live.status
             {
                 writes::record_progress(
-                    &core.services,
+                    &trackers.services,
                     t,
                     media_id,
                     live.progress,
@@ -915,9 +929,16 @@ async fn plan(
                 return Ok::<Option<ListStatus>, CoreError>(Some(status));
             }
             let stamp =
-                writes::send_status(&core, t, media_id, &token, ListStatus::Planning).await?;
-            writes::record_progress(&core.services, t, media_id, 0, ListStatus::Planning, stamp)
-                .await?;
+                writes::send_status(&trackers, t, media_id, &token, ListStatus::Planning).await?;
+            writes::record_progress(
+                &trackers.services,
+                t,
+                media_id,
+                0,
+                ListStatus::Planning,
+                stamp,
+            )
+            .await?;
             Ok(None)
         };
         match attempt.await {

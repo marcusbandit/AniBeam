@@ -29,5 +29,8 @@ pub mod schedule_text;
 pub mod sidecar;
 pub mod snapshot;
 pub mod sort;
+mod team;
 pub mod walk;
 pub mod watcher;
+
+pub use team::Library;

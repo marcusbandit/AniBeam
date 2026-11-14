@@ -27,12 +27,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::i18n::tr;
 use crate::jobs::{Finished, JobCtx};
 use crate::net::anilist::VIEWER_QUERY;
 use crate::percent::decode;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::accounts::{self, Tokens};
 use crate::trackers::{TRACKER_TIMEOUT, cache};
 
@@ -99,17 +99,17 @@ pub(crate) fn site_name(t: Tracker) -> &'static str {
 /// Starts the ConnectTracker job. The credentials are resolved here, on
 /// the calling thread, so a connect with no client id fails the call
 /// rather than a job nobody is watching.
-pub fn connect(core: &Core, t: Tracker) -> Result<u64, CoreError> {
-    let (client_id, client_secret) = accounts::effective_credentials(&core.services, t)?;
+pub fn connect(trackers: &Arc<Trackers>, t: Tracker) -> Result<u64, CoreError> {
+    let (client_id, client_secret) = accounts::effective_credentials(&trackers.services, t)?;
     // A new connect supersedes whatever is in flight: the listener holds
     // one fixed port, so two flows cannot both be waiting on it, and a
     // stalled flow (a closed tab, a provider error page that never
     // redirected) must not lock the user out of trying again.
-    if let Some(running) = core.services.jobs.running(JobKind::ConnectTracker) {
-        let _ = core.services.jobs.cancel(running);
+    if let Some(running) = trackers.services.jobs.running(JobKind::ConnectTracker) {
+        let _ = trackers.services.jobs.cancel(running);
     }
-    let owner = core.owner()?;
-    let port = core.oauth_port.load(Ordering::SeqCst);
+    let owner = trackers.clone();
+    let port = trackers.oauth_port.load(Ordering::SeqCst);
     Ok(owner
         .services
         .jobs
@@ -131,7 +131,7 @@ enum Callback {
 }
 
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     t: Tracker,
     client_id: String,
@@ -185,9 +185,9 @@ async fn run(
     // off a run of 429s could outlast the browser's own patience, so past
     // the hold the tab is let go with a page that sends the user back to
     // Anibeam, and the sign-in carries on to an outcome the app reports.
-    let hold = Duration::from_millis(core.sign_in_hold_ms.load(Ordering::SeqCst));
+    let hold = Duration::from_millis(trackers.sign_in_hold_ms.load(Ordering::SeqCst));
     let signing_in = sign_in(
-        &core,
+        &trackers,
         t,
         callback,
         &verifier,
@@ -210,17 +210,17 @@ async fn run(
         }
     };
     let username = signed_in?;
-    let trackers = accounts::state_async(&core.services).await?;
+    let now = accounts::state_async(&trackers.services).await?;
     ctx.emit(
         Level::Debug,
         "trackers changed",
-        EventBody::TrackersChanged { state: trackers },
+        EventBody::TrackersChanged { state: now },
     );
     // The account has a list and the core has none of it, so the fetch is
     // started here rather than waited for by the first page that wants a
     // number. Forced, because a connection that has just happened cannot
     // be inside anybody's freshness window.
-    cache::start_refresh(&core, Some(t), true);
+    cache::start_refresh(&trackers, Some(t), true);
     Ok(Finished {
         plain: Some(crate::words!(
             "core-trackers-oauth-connected",
@@ -241,7 +241,7 @@ async fn run(
 /// and the profile read, then the tokens and the row saved. The username
 /// is what the finished job reports.
 async fn sign_in(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     callback: Callback,
     verifier: &str,
@@ -254,7 +254,8 @@ async fn sign_in(
             access_token,
             expires_at,
         } => {
-            let profile = core
+            let profile = trackers
+                .net
                 .anilist
                 .graphql_within(
                     VIEWER_QUERY,
@@ -280,7 +281,7 @@ async fn sign_in(
         }
         Callback::Mal { code } => {
             let tokens = exchange(
-                core,
+                trackers,
                 &code,
                 verifier,
                 client_id,
@@ -288,7 +289,8 @@ async fn sign_in(
                 redirect_url,
             )
             .await?;
-            let profile = core
+            let profile = trackers
+                .net
                 .mal
                 .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
                 .await?;
@@ -309,9 +311,9 @@ async fn sign_in(
         }
     };
 
-    let store = accounts::save_tokens(&core.services, t, &tokens).await?;
+    let store = accounts::save_tokens(&trackers.services, t, &tokens).await?;
     accounts::save_connection(
-        &core.services,
+        &trackers.services,
         t,
         user_id,
         &username,
@@ -336,7 +338,7 @@ fn page_message(e: &CoreError) -> String {
 /// started the flow; the secret rides along only for an app registered as
 /// "web", and a refusal for want of one says so in words a user can act on.
 async fn exchange(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     code: &str,
     verifier: &str,
     client_id: &str,
@@ -353,7 +355,8 @@ async fn exchange(
             ("redirect_uri", redirect_url),
         ],
     );
-    let response = core
+    let response = trackers
+        .net
         .mal
         .post_form_within(accounts::MAL_TOKEN_URL, form, TRACKER_TIMEOUT)
         .await?;

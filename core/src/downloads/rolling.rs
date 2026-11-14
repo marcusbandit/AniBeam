@@ -52,7 +52,7 @@ use super::qbt::QbtClient;
 use super::replace::names_match;
 use super::{facts, settings};
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::foundation::magnet;
 use crate::foundation::names::{is_video, title_key};
 use crate::foundation::services::Services;
@@ -108,7 +108,7 @@ pub trait RollClient: Sync {
     /// release it took, in order, when it can.
     fn add(
         &self,
-        core: &Arc<Core>,
+        downloads: &Arc<Downloads>,
         items: &[Release],
         roll: &Roll,
     ) -> impl Future<Output = Result<Vec<String>, CoreError>> + Send;
@@ -153,11 +153,11 @@ impl RollClient for QbtClient {
     }
     async fn add(
         &self,
-        core: &Arc<Core>,
+        downloads: &Arc<Downloads>,
         items: &[Release],
         roll: &Roll,
     ) -> Result<Vec<String>, CoreError> {
-        let backend = super::backend::DownloadsBackend::open(core).await?;
+        let backend = super::backend::DownloadsBackend::open(downloads).await?;
         let added = backend
             .download(
                 items,
@@ -165,7 +165,7 @@ impl RollClient for QbtClient {
                 super::still_there(roll.home.as_deref()),
             )
             .await?;
-        super::move_home(core, items, &added, roll.home.as_deref());
+        super::move_home(downloads, items, &added, roll.home.as_deref());
         Ok(added.hashes)
     }
 }
@@ -929,9 +929,13 @@ static PASS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mu
 
 /// One pass over the stored rolls against a fresh torrent read. True when it asked the
 /// client to change something, so a caller that shows the torrents reads them again.
-pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torrent]) -> bool {
+pub async fn tick<C: RollClient>(
+    downloads: &Arc<Downloads>,
+    client: &C,
+    torrents: &[Torrent],
+) -> bool {
     let _one = PASS.lock().await;
-    let before = match load(&core.services) {
+    let before = match load(&downloads.services) {
         Ok(r) if !r.is_empty() => r,
         Ok(_) => return false,
         Err(e) => {
@@ -939,19 +943,19 @@ pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torre
             return false;
         }
     };
-    let here = client.files_here(&core.services);
+    let here = client.files_here(&downloads.services);
     let mut rolls = before.clone();
     bind(&mut rolls, torrents);
     let now = now_secs();
     let mut drop = HashSet::new();
     let mut changed = false;
     for roll in rolls.iter_mut() {
-        if step(core, client, roll, torrents, here, &mut changed).await == Step::Drop {
+        if step(downloads, client, roll, torrents, here, &mut changed).await == Step::Drop {
             drop.insert(roll.id);
         }
     }
     rolls.retain(|r| !drop.contains(&r.id) && !finished(r, now));
-    if let Err(e) = save_changes(&core.services, &before, &rolls) {
+    if let Err(e) = save_changes(&downloads.services, &before, &rolls) {
         tracing::warn!("rolling downloads not saved: {e}");
     }
     changed
@@ -964,7 +968,7 @@ enum Step {
 }
 
 async fn step<C: RollClient>(
-    core: &Arc<Core>,
+    downloads: &Arc<Downloads>,
     client: &C,
     roll: &mut Roll,
     torrents: &[Torrent],
@@ -1060,12 +1064,12 @@ async fn step<C: RollClient>(
                 Some(f) => {
                     started(f)
                         && file_path(&t.save_path, &u.name).is_some_and(|p| {
-                            seen_watched(&core.services, &p.to_string_lossy(), false, since)
+                            seen_watched(&downloads.services, &p.to_string_lossy(), false, since)
                         })
                 }
                 None => {
                     !t.content_path.is_empty()
-                        && seen_watched(&core.services, &t.content_path, true, since)
+                        && seen_watched(&downloads.services, &t.content_path, true, since)
                 }
             };
             u.watched = seen;
@@ -1111,7 +1115,7 @@ async fn step<C: RollClient>(
             .iter()
             .map(|&p| roll.parts[p].release.clone())
             .collect();
-        match client.add(core, &items, roll).await {
+        match client.add(downloads, &items, roll).await {
             Ok(hashes) => {
                 *changed = true;
                 for &p in &m.add {
@@ -1210,7 +1214,7 @@ async fn step<C: RollClient>(
         if !acted.is_empty() {
             line.push_str(&format!(", {}", acted.join(", ")));
         }
-        core.services.bus.say(
+        downloads.services.bus.say(
             Level::Info,
             Stage::Downloads,
             crate::words!(
@@ -1243,7 +1247,12 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 /// After the torrents were added: save the rolls and keep reading the
 /// client for a while, so each finds its torrent and a batch has its files
 /// held back before much of them downloads.
-pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], hashes: &[String]) {
+pub async fn after_add(
+    downloads: &Arc<Downloads>,
+    mut rolls: Vec<Roll>,
+    now: &[Release],
+    hashes: &[String],
+) {
     if rolls.is_empty() {
         return;
     }
@@ -1257,25 +1266,25 @@ pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], 
             }
         }
     }
-    if let Err(e) = add_rolls(&core.services, rolls).await {
+    if let Err(e) = add_rolls(&downloads.services, rolls).await {
         tracing::warn!("rolling downloads not saved: {e}");
         return;
     }
-    let core = core.clone();
-    let handle = core.services.handle.clone();
+    let downloads = downloads.clone();
+    let handle = downloads.services.handle.clone();
     handle.spawn(async move {
         for _ in 0..60 {
             tokio::time::sleep(Duration::from_secs(3)).await;
-            let Ok(client) = super::qbt_client(&core).await else {
+            let Ok(client) = super::qbt_client(&downloads).await else {
                 continue;
             };
             match client.torrents().await {
                 Ok(torrents) => {
-                    tick(&core, client.as_ref(), &torrents).await;
+                    tick(&downloads, client.as_ref(), &torrents).await;
                 }
                 Err(e) => tracing::debug!("rolling read failed: {e}"),
             }
-            match load(&core.services) {
+            match load(&downloads.services) {
                 Ok(r) if r.iter().all(settled) => break,
                 Ok(_) => {}
                 Err(_) => break,
@@ -1294,14 +1303,17 @@ fn settled(r: &Roll) -> bool {
 }
 
 /// An episode was watched to the end: move the windows on.
-pub fn nudge(core: &Core) {
-    if !core.downloads.unattended_allowed() {
+pub fn nudge(downloads: &Arc<Downloads>) {
+    if !downloads.unattended_allowed() {
         return;
     }
-    if load(&core.services).map(|r| r.is_empty()).unwrap_or(true) {
+    if load(&downloads.services)
+        .map(|r| r.is_empty())
+        .unwrap_or(true)
+    {
         return;
     }
-    let Ok(owner) = core.owner() else { return };
+    let owner = downloads.clone();
     let handle = owner.services.handle.clone();
     handle.spawn(async move { pass_now(&owner).await });
 }
@@ -1309,18 +1321,18 @@ pub fn nudge(core: &Core) {
 /// A pass with a fresh read, then a torrent read for the page. Where the
 /// read runs the pass itself, the read alone. On the phone, a pass over its
 /// own engine.
-async fn pass_now(core: &Arc<Core>) {
+async fn pass_now(downloads: &Arc<Downloads>) {
     #[cfg(feature = "phone")]
     {
-        crate::phone::roll_pass(core).await;
+        crate::phone::roll_pass(downloads).await;
     }
     #[cfg(not(feature = "phone"))]
     {
-        if core.downloads.unattended_allowed() {
-            let _ = super::list_torrents(core);
+        if downloads.unattended_allowed() {
+            let _ = super::list_torrents(downloads);
             return;
         }
-        let client = match super::qbt_client(core).await {
+        let client = match super::qbt_client(downloads).await {
             Ok(c) => c,
             Err(e) => {
                 tracing::debug!("rolling pass skipped: {e}");
@@ -1329,17 +1341,17 @@ async fn pass_now(core: &Arc<Core>) {
         };
         match client.torrents().await {
             Ok(torrents) => {
-                tick(core, client.as_ref(), &torrents).await;
+                tick(downloads, client.as_ref(), &torrents).await;
             }
             Err(e) => tracing::debug!("rolling read failed: {e}"),
         }
-        let _ = super::list_torrents(core);
+        let _ = super::list_torrents(downloads);
     }
 }
 
 /// `SetRoll`: how far ahead, whether watched episodes go, or stop rolling.
 pub fn set(
-    core: &Core,
+    downloads: &Arc<Downloads>,
     id: u64,
     ahead: Option<u32>,
     on: Option<bool>,
@@ -1351,7 +1363,7 @@ pub fn set(
             crate::i18n::tr("core-downloads-roll-ahead", &[]),
         ));
     }
-    edit(&core.services, id, move |r| {
+    edit(&downloads.services, id, move |r| {
         if let Some(a) = ahead {
             r.ahead = a.min(MAX_AHEAD);
         }
@@ -1362,7 +1374,7 @@ pub fn set(
             r.released = true;
         }
     })?;
-    kick(core);
+    kick(downloads);
     Ok(Reply::Ok)
 }
 
@@ -1391,24 +1403,25 @@ pub fn set_settings(services: &Services, mut rolling: RollingSettings) -> Result
 }
 
 /// `RollMore`: fetch `count` more episodes now.
-pub fn roll_more(core: &Core, id: u64, count: u32) -> Result<Reply, CoreError> {
+pub fn roll_more(downloads: &Arc<Downloads>, id: u64, count: u32) -> Result<Reply, CoreError> {
     if count == 0 {
         return Err(CoreError::invalid(
             "count",
             crate::i18n::tr("core-downloads-roll-nothing", &[]),
         ));
     }
-    edit(&core.services, id, move |r| more(r, count.min(MAX_AHEAD)))?;
-    kick(core);
+    edit(&downloads.services, id, move |r| {
+        more(r, count.min(MAX_AHEAD))
+    })?;
+    kick(downloads);
     Ok(Reply::Ok)
 }
 
 /// A pass for a change the user asked for, in any shell.
-fn kick(core: &Core) {
-    if let Ok(owner) = core.owner() {
-        let handle = owner.services.handle.clone();
-        handle.spawn(async move { pass_now(&owner).await });
-    }
+fn kick(downloads: &Arc<Downloads>) {
+    let owner = downloads.clone();
+    let handle = owner.services.handle.clone();
+    handle.spawn(async move { pass_now(&owner).await });
 }
 
 /// Fills each torrent's roll, for the downloads page.

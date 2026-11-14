@@ -240,7 +240,7 @@ pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Re
     let Some(core) = st.core.upgrade() else {
         return not_found();
     };
-    match crate::playback::session::windows_of(&core, session) {
+    match crate::playback::session::windows_of(&core.playback, session) {
         Ok(windows) => match serde_json::to_vec(&windows) {
             Ok(body) => json(StatusCode::OK, body),
             Err(_) => not_found(),

@@ -9,6 +9,7 @@
 //! paths for the other. `services` also names net's `Http` trait, which
 //! comes down here when the crates are pulled out.
 
+pub mod above;
 pub mod machine;
 pub mod magnet;
 pub mod names;

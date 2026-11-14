@@ -16,13 +16,13 @@ use std::time::{Duration, SystemTime};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::foundation::secrets::{Secrets, StoreKind};
 use crate::foundation::services::Services;
 use crate::library::cards;
 use crate::net::HttpResponse;
 use crate::prefs;
 use crate::time;
+use crate::trackers::Trackers;
 
 /// The one url the code exchange and the refresh both post to.
 pub(crate) const MAL_TOKEN_URL: &str = "https://myanimelist.net/v1/oauth2/token";
@@ -342,15 +342,15 @@ pub fn set_main(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
 ///
 /// Async because a job is the only caller: the keyring reads and writes go
 /// through the blocking pool.
-pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>, CoreError> {
-    let row = core
+pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<String>, CoreError> {
+    let row = trackers
         .services
         .store
         .write_async(move |c| load_row(c, t))
         .await?
         .unwrap_or_default();
     let hint = row.secret_store;
-    let token = with_secrets(&core.services, move |s| s.get(&access_key(t), hint))
+    let token = with_secrets(&trackers.services, move |s| s.get(&access_key(t), hint))
         .await?
         .map(|(value, _)| value);
     let Some(token) = token else { return Ok(None) };
@@ -359,17 +359,17 @@ pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>
     if t != Tracker::Mal || !due_for_refresh(row.expires_at, time::now()) {
         return Ok(Some(token));
     }
-    let refresh = with_secrets(&core.services, move |s| s.get(&refresh_key(t), hint))
+    let refresh = with_secrets(&trackers.services, move |s| s.get(&refresh_key(t), hint))
         .await?
         .map(|(value, _)| value);
     let Some(refresh) = refresh else {
         return Ok(Some(token));
     };
-    match refresh_mal(core, &refresh).await {
+    match refresh_mal(trackers, &refresh).await {
         Ok(fresh) => Ok(Some(fresh)),
         Err(e) => {
             tracing::debug!("the MAL refresh failed: {e}");
-            core.services.bus.say(
+            trackers.services.bus.say(
                 Level::Warn,
                 Stage::Trackers,
                 crate::words!("core-trackers-mal-reconnect"),
@@ -390,21 +390,22 @@ fn due_for_refresh(expires_at: Option<SystemTime>, now: SystemTime) -> bool {
 
 /// The refresh grant. MAL hands back a whole new pair, so both tokens and
 /// the new expiry are stored before the caller sees the access token.
-async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreError> {
-    let (client_id, client_secret) = credentials_async(&core.services, Tracker::Mal).await?;
+async fn refresh_mal(trackers: &Trackers, refresh: &str) -> Result<String, CoreError> {
+    let (client_id, client_secret) = credentials_async(&trackers.services, Tracker::Mal).await?;
     let form = token_form(
         &client_id,
         client_secret.as_deref(),
         [("grant_type", "refresh_token"), ("refresh_token", refresh)],
     );
-    let response = core.mal.post_form(MAL_TOKEN_URL, form).await?;
+    let response = trackers.net.mal.post_form(MAL_TOKEN_URL, form).await?;
     if !response.is_success() {
         return Err(token_failure(&response, client_secret.is_some()));
     }
     let tokens = parse_tokens(&response.body, time::now())?;
-    let store = save_tokens(&core.services, Tracker::Mal, &tokens).await?;
+    let store = save_tokens(&trackers.services, Tracker::Mal, &tokens).await?;
     let expires_at = time::opt_to_secs(tokens.expires_at);
-    core.services
+    trackers
+        .services
         .store
         .write_async(move |c| {
             c.execute(

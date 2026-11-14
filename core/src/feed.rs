@@ -240,10 +240,12 @@ pub fn list(
 /// `ListFeed`: pure over one snapshot load, scope None, so there is nothing
 /// to write and no job. The shell saves its own sort preference separately
 /// through `SetPreferences`.
-pub(crate) fn list_call(core: &crate::core::Core, sort: FeedSort) -> Result<Reply, CoreError> {
-    let images_dir = core.services.paths.images_dir();
-    let cards = core
-        .services
+pub(crate) fn list_call(
+    services: &crate::foundation::services::Services,
+    sort: FeedSort,
+) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let cards = services
         .store
         .read(|c| list(c, &images_dir, sort, time::now()))?;
     Ok(Reply::Feed { cards })

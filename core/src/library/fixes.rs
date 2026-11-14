@@ -6,11 +6,13 @@
 //! puts the replaced reading back, then a scan reads the name again, and the
 //! history follows whatever it reads today.
 
+use std::sync::Arc;
+
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::i18n::tr;
+use crate::library::Library;
 use crate::library::{cards, history, readings};
 use crate::time;
 
@@ -215,7 +217,11 @@ pub(crate) fn write_fixes(
     Ok(moves.len())
 }
 
-pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply, CoreError> {
+pub fn fix_files(
+    library: &Arc<Library>,
+    series: u64,
+    fixes: Vec<FileFix>,
+) -> Result<Reply, CoreError> {
     if fixes.is_empty() {
         return Ok(Reply::Ok);
     }
@@ -226,7 +232,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
     let undo = fixes.iter().all(|f| f.reading.is_none());
     let undoes = fixes.iter().any(|f| f.reading.is_none());
     let n = fixes.len();
-    let changed = core.services.store.tx(move |tx| {
+    let changed = library.services.store.tx(move |tx| {
         let found: Option<i64> = tx
             .query_row(
                 "SELECT id FROM series WHERE id = ?1",
@@ -243,8 +249,8 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
         write_fixes(tx, series, &fixes, now)
     })?;
     if changed > 0 {
-        let images_dir = core.services.paths.images_dir();
-        let cards = core
+        let images_dir = library.services.paths.images_dir();
+        let cards = library
             .services
             .store
             .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
@@ -259,7 +265,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
         } else {
             crate::words!("core-library-fixed", count = n, title = &title)
         };
-        core.services.bus.say(
+        library.services.bus.say(
             Level::Info,
             Stage::Library,
             said,
@@ -275,7 +281,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
     // today than when it was fixed; the scan reads it and its history follows.
     // A source away right now reads it when it is back: the fixes took effect
     // either way, so that is no error of this call.
-    if undoes && let Ok(reply) = super::scan::rescan_series(core, series) {
+    if undoes && let Ok(reply) = super::scan::rescan_series(library, series) {
         return Ok(reply);
     }
     Ok(Reply::Ok)
