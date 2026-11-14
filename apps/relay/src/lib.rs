@@ -57,12 +57,16 @@ const QUEUE: usize = 256;
 pub struct Options {
     /// How long a socket may stay open without saying hello.
     pub hello_wait: Duration,
+    /// The time in ms since the epoch, as every limit and room timer reads
+    /// it. Tests stop it so a rate holds however slow the machine is.
+    pub clock: fn() -> u64,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             hello_wait: Duration::from_millis(HELLO_MS),
+            clock: now_ms,
         }
     }
 }
@@ -216,7 +220,7 @@ async fn create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: Bytes,
 ) -> Response {
-    let now = now_ms();
+    let now = relay.now();
     let mut inner = relay.lock();
     if !inner.allow(addr.ip(), Kind::Create, now) {
         return (
@@ -281,7 +285,7 @@ async fn join(
     Path(raw): Path<String>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
-    let now = now_ms();
+    let now = relay.now();
     let room_code = {
         let mut inner = relay.lock();
         if !inner.allow(addr.ip(), Kind::Open, now) {
@@ -310,7 +314,8 @@ async fn join_page(
     };
     let view = {
         let mut inner = relay.lock();
-        if !inner.allow(addr.ip(), Kind::Page, now_ms()) {
+        let now = (inner.options.clock)();
+        if !inner.allow(addr.ip(), Kind::Page, now) {
             return (StatusCode::TOO_MANY_REQUESTS, "too many pages").into_response();
         }
         inner.rooms.get(&room_code).map(|e| e.room.view())
@@ -328,23 +333,23 @@ async fn join_page(
 /// not, and one that has not said hello by the deadline is closed.
 async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
     let (tx, mut rx) = mpsc::channel(QUEUE);
-    let (conn, hello_wait) = {
+    let (conn, hello_wait, clock) = {
         let mut inner = relay.lock();
         let conn = ConnId(inner.next_conn);
         inner.next_conn += 1;
-        let hello_wait = inner.options.hello_wait;
+        let Options { hello_wait, clock } = inner.options;
         let conn = inner.rooms.get_mut(&room_code).map(|entry| {
             entry.sockets.insert(conn, tx);
             conn
         });
-        (conn, hello_wait)
+        (conn, hello_wait, clock)
     };
     let Some(conn) = conn else {
         // The room closed between the upgrade and now.
         let _ = socket.send(Message::Close(None)).await;
         return;
     };
-    let mut window = Window::new(now_ms());
+    let mut window = Window::new(clock());
     let deadline = tokio::time::sleep(hello_wait);
     tokio::pin!(deadline);
     let mut awaiting_hello = true;
@@ -380,7 +385,7 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
                     Some(Ok(Message::Close(_)) | Err(_)) | None => break,
                 };
-                match window.hit(now_ms()) {
+                match window.hit(clock()) {
                     Verdict::Pass => relay.on_text(&room_code, conn, text.as_str()),
                     // Leaving is never dropped, however fast the socket was.
                     _ if is_bye(text.as_str()) => relay.on_text(&room_code, conn, text.as_str()),
@@ -399,6 +404,10 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
 }
 
 impl Relay {
+    fn now(&self) -> u64 {
+        (self.lock().options.clock)()
+    }
+
     fn is_member(&self, room_code: &str, conn: ConnId) -> bool {
         self.lock()
             .rooms
@@ -407,7 +416,7 @@ impl Relay {
     }
 
     fn on_text(&self, room_code: &str, conn: ConnId, text: &str) {
-        let now = now_ms();
+        let now = self.now();
         let mut inner = self.lock();
         if let Some(entry) = inner.rooms.get_mut(room_code) {
             let outs = entry.room.handle_text(conn, text, now);
@@ -416,7 +425,7 @@ impl Relay {
     }
 
     fn on_close(&self, room_code: &str, conn: ConnId) {
-        let now = now_ms();
+        let now = self.now();
         let mut inner = self.lock();
         if let Some(entry) = inner.rooms.get_mut(room_code) {
             entry.sockets.remove(&conn);
@@ -436,8 +445,8 @@ async fn tick_loop(relay: Weak<Mutex<Inner>>) {
         let Some(relay) = relay.upgrade() else {
             return;
         };
-        let now = now_ms();
         let mut inner = lock(&relay);
+        let now = (inner.options.clock)();
         for entry in inner.rooms.values_mut() {
             let outs = entry.room.tick(now);
             entry.send(outs);
