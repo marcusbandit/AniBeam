@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fails when the tree names a download site (#277, #606): AniBeam ships no sources, and a site
+# Fails when the tree names a download site (#277, #606): Anibeam ships no sources, and a site
 # exists only as a definition in an endpoint repo the person attaches. CONTRIBUTING.md has the
 # rule under Sources.
 #

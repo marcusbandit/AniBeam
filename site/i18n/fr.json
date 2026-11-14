@@ -82,10 +82,11 @@
  "{n} episodes": "{n} épisodes",
  "Movie": "Film",
  "iPhone": "iPhone",
- "Add to AltStore": "Ajouter à AltStore",
- "Add to SideStore": "Ajouter à SideStore",
- "Add to LiveContainer": "Ajouter à LiveContainer",
+ "Add source to AltStore": "Ajouter la source à AltStore",
+ "Add source to SideStore": "Ajouter la source à SideStore",
+ "Add source to LiveContainer": "Ajouter la source à LiveContainer",
  "Download IPA": "Télécharger l'IPA",
  "Nightly test build, unsigned, for sideloading": "Version de test nightly, non signée, pour le sideloading",
-  "Unsigned, for sideloading": "Non signé, pour le sideloading"
+ "Unsigned, for sideloading": "Non signé, pour le sideloading",
+ "Or install this build once in": "Ou installer cette version une seule fois dans"
 }

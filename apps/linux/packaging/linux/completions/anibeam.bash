@@ -1,4 +1,4 @@
-# bash completion for the AniBeam desktop app.
+# bash completion for the Anibeam desktop app.
 
 _anibeam() {
   local cur prev

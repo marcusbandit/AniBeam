@@ -39,19 +39,19 @@ scan-summary-open-library = 라이브러리 열기
 
 ## UpdateNotice
 
-update-notice-check-failed = AniBeam이 업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도하세요.
-update-notice-up-to-date = AniBeam이 최신 버전이에요
-update-notice-downloading = AniBeam { $version } 다운로드 중
-update-notice-ready = AniBeam { $version } 준비 완료
+update-notice-check-failed = Anibeam이 업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도하세요.
+update-notice-up-to-date = Anibeam이 최신 버전이에요
+update-notice-downloading = Anibeam { $version } 다운로드 중
+update-notice-ready = Anibeam { $version } 준비 완료
 update-notice-failed = 업데이트 실패
-update-notice-on-aur = AniBeam { $version }이(가) AUR에 올라왔어요
-update-notice-out = AniBeam { $version } 출시
-update-notice-out-titled = AniBeam { $version } “{ $title }” 출시
+update-notice-on-aur = Anibeam { $version }이(가) AUR에 올라왔어요
+update-notice-out = Anibeam { $version } 출시
+update-notice-out-titled = Anibeam { $version } “{ $title }” 출시
 update-notice-progress = { $percent }%  ·  { $total } MB 중 { $got } MB
 update-notice-restart-hint = 지금 다시 시작하거나 다음 실행 때 적용돼요
 update-notice-from-source = 소스로 빌드한 사본이에요: pull 후 다시 빌드하세요
 update-notice-no-download = 이 컴퓨터용 다운로드가 없어요
-update-notice-install-hint = 업데이트를 누르면 설치하고 AniBeam을 다시 시작해요
+update-notice-install-hint = 업데이트를 누르면 설치하고 Anibeam을 다시 시작해요
 update-notice-retry = 다시 시도
 update-notice-update = 업데이트
 update-notice-restart = 다시 시작
@@ -91,7 +91,7 @@ activity-drawer-copy-tip = 클릭해서 줄 복사
 activity-drawer-fold = 접기
 activity-drawer-empty-technical = 아직 기록된 내용이 없어요.
 activity-drawer-empty-problems = 문제 없음. 모두 잘 됐어요.
-activity-drawer-empty = 아직 보고할 내용이 없어요. AniBeam이 한 일이 여기에 표시돼요.
+activity-drawer-empty = 아직 보고할 내용이 없어요. Anibeam이 한 일이 여기에 표시돼요.
 
 ## ActivityColumn
 
@@ -137,14 +137,14 @@ activity-column-cube-progress = { $number }화: { $percent }%
 
 ## Frame
 
-frame-window-title = { $page } - AniBeam
+frame-window-title = { $page } - Anibeam
 frame-strip-ready = 준비됨
 frame-strip-progress = { $doing }, { $total }개 중 { $done }개
 frame-strip-idle = 실행 중인 작업 없음
 frame-strip-time-format = HH:mm
 frame-finish-sign-in = 먼저 { $tracker } 로그인을 마치세요
 frame-did-not-work = 실패했어요.
-frame-could-not-open = AniBeam이 열지 못했어요. 복사해서 직접 여세요.
+frame-could-not-open = Anibeam이 열지 못했어요. 복사해서 직접 여세요.
 frame-copy = 복사
 frame-copied = 복사됨
 frame-status-refused = { $tracker }이(가) 받지 않았어요
@@ -333,12 +333,12 @@ home-add-folder-body = 애니가 있는 폴더를 추가하면 홈에 보고 있
 home-add-folder-button = 폴더 추가
 home-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
 home-empty-title = 아직 작품이 없어요
-home-empty-scanned-body = AniBeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
+home-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
 home-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요.
 home-scan-all = 모두 스캔
 home-library-settings = 라이브러리 설정
 home-failed-title = 홈을 불러오지 못했어요
-home-failed-body = 지금은 AniBeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
+home-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
 
 ## Onboarding
 
@@ -363,7 +363,7 @@ onboarding-choose-folder = 애니 폴더 선택
 onboarding-about = 1분이면 설정 끝. 라이브러리는 알아서 완성돼요.
 onboarding-step-later = 나중에
 onboarding-skip-setup = 설정 건너뛰기
-onboarding-title-welcome = AniBeam에 오신 걸 환영해요
+onboarding-title-welcome = Anibeam에 오신 걸 환영해요
 onboarding-title-library = 애니는 어디에 있나요?
 onboarding-title-lists = 애니 목록 연결
 onboarding-title-downloads = 다운로드 방식
@@ -373,14 +373,14 @@ onboarding-title-later = { $count ->
     [2] 준비 완료, 나중에 할 일 둘
    *[other] 준비 완료, 나중에 할 일 셋
 }
-onboarding-body-welcome = AniBeam은 애니를 한곳에 모아 줘요. 디스크에 있는 작품을 찾아 바로 여기서 재생하고, 보는 대로 AniList나 MyAnimeList를 업데이트해요.
-onboarding-body-library = 작품을 보관하는 폴더를 고르세요. 그 안의 폴더 하나하나가 포스터, 에피소드, 이어 볼 위치를 가진 작품이 돼요. AniBeam은 폴더를 읽기만 하고, 파일을 옮기거나 이름을 바꾸지 않아요.
-onboarding-body-lists = 한 번만 로그인하면 여기서 다 본 에피소드가 입력할 필요 없이 목록에 기록돼요. 로그인은 브라우저에서 하므로 AniBeam은 비밀번호를 보지 않아요.
+onboarding-body-welcome = Anibeam은 애니를 한곳에 모아 줘요. 디스크에 있는 작품을 찾아 바로 여기서 재생하고, 보는 대로 AniList나 MyAnimeList를 업데이트해요.
+onboarding-body-library = 작품을 보관하는 폴더를 고르세요. 그 안의 폴더 하나하나가 포스터, 에피소드, 이어 볼 위치를 가진 작품이 돼요. Anibeam은 폴더를 읽기만 하고, 파일을 옮기거나 이름을 바꾸지 않아요.
+onboarding-body-lists = 한 번만 로그인하면 여기서 다 본 에피소드가 입력할 필요 없이 목록에 기록돼요. 로그인은 브라우저에서 하므로 Anibeam은 비밀번호를 보지 않아요.
 onboarding-body-downloads = 다운로드 페이지에서 작품을 구독하면 새 에피소드가 방영되는 대로 라이브러리에 들어와요. 이를 위해 두 가지가 필요해요: 검색할 곳과 받아 올 토렌트 클라이언트.
 onboarding-body-ready = 여기 있는 모든 것은 나중에 설정에서 바꿀 수 있고, 설정, 정보에서 이 설정을 다시 할 수 있어요.
 onboarding-skip-step = 지금은 건너뛰기
 onboarding-get-started = 시작하기
-onboarding-open-app = AniBeam 열기
+onboarding-open-app = Anibeam 열기
 onboarding-continue = 계속
 onboarding-payoff-library = 내 라이브러리
 onboarding-payoff-library-line = 폴더 속 모든 작품의 포스터, 에피소드, 다음 볼 화.
@@ -399,22 +399,22 @@ onboarding-shelf-more = 더 보기
 onboarding-preview-show = 내 작품
 onboarding-preview-finished = 여기서 3화 시청 완료
 onboarding-preview-on-list = 내 목록: 3화 시청
-onboarding-preview-set-by = 엔딩 크레딧이 나오는 순간 AniBeam이 기록
+onboarding-preview-set-by = 엔딩 크레딧이 나오는 순간 Anibeam이 기록
 onboarding-lists-connected = 연결됐어요. 이제 여기서 본 작품이 목록에 기록돼요.
 onboarding-lists-no-account = 아직 계정이 없나요? 둘 다 무료이고 하나면 충분해요. 설정, 계정에서 언제든 연결을 끊을 수 있어요.
 onboarding-search-title = 검색할 곳
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-search-none = AniBeam에는 자체 소스가 없어요. 소스 저장소에서 추가해요: 누군가 공유해 준 링크를 설정, 다운로드에 붙여넣으면 돼요.
+onboarding-search-none = Anibeam에는 자체 소스가 없어요. 소스 저장소에서 추가해요: 누군가 공유해 준 링크를 설정, 다운로드에 붙여넣으면 돼요.
 onboarding-sources-after = 설정 후에 열려요
 onboarding-sources-add = 설정 후 저장소 추가
 onboarding-fetch-title = 받아 오는 곳
-onboarding-fetch-auto = AniBeam에 맡기기
+onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천
-onboarding-fetch-auto-line = AniBeam이 자체 qBittorrent를 백그라운드에서 조용히 실행해요. 설치할 것도, 입력할 것도 없어요.
+onboarding-fetch-auto-line = Anibeam이 자체 qBittorrent를 백그라운드에서 조용히 실행해요. 설치할 것도, 입력할 것도 없어요.
 onboarding-fetch-existing = 이미 qBittorrent를 쓰고 있어요
-onboarding-fetch-existing-line = AniBeam이 실행 중인 qBittorrent에 연결해요. 다음으로 설정에서 주소와 로그인 정보를 입력하세요.
+onboarding-fetch-existing-line = Anibeam이 실행 중인 qBittorrent에 연결해요. 다음으로 설정에서 주소와 로그인 정보를 입력하세요.
 onboarding-ready-library = 라이브러리
 onboarding-ready-library-none = 아직 폴더가 없어요. 원할 때 설정, 라이브러리에서 추가하세요.
 onboarding-ready-library-series = { $count ->
@@ -435,7 +435,7 @@ onboarding-ready-downloads-line = { $sources ->
    *[other] 소스 { $sources }개
 }, { $client ->
     [own] 내 qBittorrent.
-   *[bundled] AniBeam 자체 qBittorrent.
+   *[bundled] Anibeam 자체 qBittorrent.
 } { $next ->
     [ready] 모두 준비됐어요.
     [opens] 다음으로 설정, 다운로드가 열려요.
@@ -679,7 +679,7 @@ library-none-here =
         [hidden] 여기에 숨긴 작품이 없어요
        *[shows] 여기에 작품이 없어요
     }
-library-load-failed-body = 지금은 AniBeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
+library-load-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
 library-no-matches-body = 철자를 확인하거나 전체에서 라이브러리 전체를 검색하세요.
 library-none-in-genre-body = 이 보기에는 그 장르의 작품이 없어요. 모든 장르에서 나머지를 볼 수 있어요.
 library-none-in-tab-body = 라이브러리에 아직 이런 작품이 없어요. 전체에서 모두 볼 수 있어요.
@@ -701,14 +701,14 @@ library-find-match-tip = 선택한 작품 중 매칭이 없는 것을 하나씩 
 library-all-matched = 선택한 작품이 모두 매칭돼 있어요
 library-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
 library-empty-title = 라이브러리가 비어 있어요
-library-empty-scanned-body = AniBeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-library-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요. AniBeam 내보내기 파일을 가져와도 돼요.
+library-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
+library-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요. Anibeam 내보내기 파일을 가져와도 돼요.
 library-scan-all = 모두 스캔
 library-add-folder = 폴더 추가
 library-settings = 라이브러리 설정
 library-import = 가져오기
-library-import-title = AniBeam 내보내기 파일 가져오기
-library-import-filter-export = AniBeam 내보내기 (*.json)
+library-import-title = Anibeam 내보내기 파일 가져오기
+library-import-filter-export = Anibeam 내보내기 (*.json)
 library-import-filter-all = 모든 파일 (*)
 library-import-started = 가져오기 시작됨
 
@@ -772,8 +772,8 @@ metadata-count =
     }
 metadata-search-placeholder = 제목 필터
 metadata-find-rest = 나머지 찾기
-metadata-find-rest-started = AniBeam이 아직 모르는 폴더를 조회하는 중
-metadata-find-rest-tip = AniBeam이 아직 모르는 폴더를 모두 설정에 지정된 순서대로 각 작품 정보 사이트에서 조회해요
+metadata-find-rest-started = Anibeam이 아직 모르는 폴더를 조회하는 중
+metadata-find-rest-tip = Anibeam이 아직 모르는 폴더를 모두 설정에 지정된 순서대로 각 작품 정보 사이트에서 조회해요
 metadata-refresh-all = 모두 새로고침
 metadata-refresh-all-started = 모든 작품의 정보 업데이트 중
 metadata-refresh-all-tip = 인식된 모든 작품의 정보를 다시 가져와요
@@ -789,9 +789,9 @@ metadata-nothing-under =
         [MissingFiles] 누락에 해당하는 항목 없음
        *[other] { $filter }에 해당하는 항목 없음
     }
-metadata-load-failed-body = 지금은 AniBeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
-metadata-empty-scanned-body = AniBeam이 지켜보는 폴더에서 작품을 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-metadata-empty-body = 라이브러리가 비어 있어요. 애니가 있는 폴더를 추가하면 AniBeam이 스캔해요.
+metadata-load-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
+metadata-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품을 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
+metadata-empty-body = 라이브러리가 비어 있어요. 애니가 있는 폴더를 추가하면 Anibeam이 스캔해요.
 metadata-no-matches-body = 이 보기에는 그 단어가 들어간 제목이 없어요.
 metadata-nothing-under-body = 지금은 이 필터에 맞는 작품이 없어요. 전체에서 나머지를 볼 수 있어요.
 metadata-scan-all = 모두 스캔
@@ -801,8 +801,8 @@ metadata-show-all = 모두 보기
 metadata-refreshing = { $title } 새로고침 중
 metadata-refresh-tip = 이 작품의 정보를 다시 가져오기
 metadata-forget-armed = 제거
-metadata-forget-confirm-tip = 한 번 더 클릭하면 이 작품과 시청 기록을 AniBeam에서 제거해요
-metadata-forget-tip = 폴더가 디스크에 더 이상 없어요: 이 작품과 기록을 AniBeam에서 제거해요
+metadata-forget-confirm-tip = 한 번 더 클릭하면 이 작품과 시청 기록을 Anibeam에서 제거해요
+metadata-forget-tip = 폴더가 디스크에 더 이상 없어요: 이 작품과 기록을 Anibeam에서 제거해요
 
 ## AiringPage.qml
 
@@ -1154,9 +1154,9 @@ series-add-notes = 메모 추가
 series-notes-tip = 목록 항목에 붙는 메모, { $sites }에 저장돼요
 series-unhide = 숨김 해제
 series-hide = 숨기기
-series-hidden-toast = { $title }을(를) 여기서 숨겼고, AniBeam이 AniList와 MyAnimeList 동기화를 멈춰요
+series-hidden-toast = { $title }을(를) 여기서 숨겼고, Anibeam이 AniList와 MyAnimeList 동기화를 멈춰요
 series-unhidden-toast = { $title }이(가) 다시 보이고, 동기화도 재개돼요
-series-hide-tip-tracked = 여기 모든 페이지에서 숨기고, AniBeam이 AniList와 MyAnimeList 동기화를 멈춰요
+series-hide-tip-tracked = 여기 모든 페이지에서 숨기고, Anibeam이 AniList와 MyAnimeList 동기화를 멈춰요
 series-hide-tip = 모든 목록에서 숨겨요
 series-fixes = 수정
 series-fixes-tip = 파일, 에피소드 수, 매칭을 수정하거나 다시 스캔
@@ -1411,7 +1411,7 @@ source-row-counts-movies =
        *[other] 작품 { $count }개, 영화 폴더 { $movies }개
     }
 source-row-unavailable = 사용할 수 없음
-    .tip = AniBeam이 이 폴더에 접근할 수 없어요. 연결되지 않았거나 마운트되지 않은 드라이브에 있다면 연결하세요. AniBeam이 다시 찾아요. 옮겼다면 여기서 제거하고 새 위치를 추가하세요.
+    .tip = Anibeam이 이 폴더에 접근할 수 없어요. 연결되지 않았거나 마운트되지 않은 드라이브에 있다면 연결하세요. Anibeam이 다시 찾아요. 옮겼다면 여기서 제거하고 새 위치를 추가하세요.
 source-row-rescan = 다시 스캔
 source-row-remove-question = { $name }과(와) 작품 { $count }개, 그 기록을 제거할까요?
 
@@ -1419,12 +1419,12 @@ source-row-remove-question = { $name }과(와) 작품 { $count }개, 그 기록�
 
 start-source-title = { $name }용 { $service }을(를) 시작할까요?
 start-source-busy = { $service } 시작 중. 응답하면 { $name }이(가) 켜져요. 최대 1분 걸릴 수 있어요.
-start-source-body = { $service }은(는) AniBeam 대신 { $name }을(를) 검색하는 서비스예요. 시작하면 이 컴퓨터의 백그라운드에서 실행되고, AniBeam을 닫아도 계속 실행돼요.
+start-source-body = { $service }은(는) Anibeam 대신 { $name }을(를) 검색하는 서비스예요. 시작하면 이 컴퓨터의 백그라운드에서 실행되고, Anibeam을 닫아도 계속 실행돼요.
 start-source-starting = 시작 중
 
 ## SearchProgress
 
-search-progress-why-helper = AniBeam이 검색 도우미를 시작하는 중이에요. 1~2초 걸려요.
+search-progress-why-helper = Anibeam이 검색 도우미를 시작하는 중이에요. 1~2초 걸려요.
 search-progress-why-starting = { $endpoint }은(는) 검색할 때 시작하는 도우미를 거쳐요. 첫 검색은 최대 { $seconds }초 기다리고, 그다음부터는 바로 해요.
 search-progress-why-reading = 릴리스를 그룹별로 나누고 라이브러리와 비교하는 중이에요.
 search-progress-why-ondemand = 새 검색마다 도우미가 { $endpoint }을(를) 새로 읽어요. 보통 10~20초 걸려요.
@@ -1613,8 +1613,8 @@ downloads-cancel-all = 모두 취소
 downloads-summary-connecting = 연결 중.
 downloads-summary-client-on = { $client } { $version } 연결됨.
 downloads-summary-client-off = { $client }이(가) 연결되지 않았어요. 설정의 다운로드에서 주소와 비밀번호를 확인하세요.
-downloads-summary-native = AniBeam이 소스를 직접 검색해요.
-downloads-summary-native-with = AniBeam이 소스를 직접 검색해요. { $client }
+downloads-summary-native = Anibeam이 소스를 직접 검색해요.
+downloads-summary-native-with = Anibeam이 소스를 직접 검색해요. { $client }
 downloads-summary-starting = 다운로드 시작 중.
 downloads-summary-not-running = 다운로드가 실행 중이 아니에요.
 downloads-summary-not-started = 다운로드가 아직 시작되지 않았어요.
@@ -1786,12 +1786,12 @@ downloads-preview-from-named = 소스: { $host } ({ $name })
 downloads-preview-must = 포함해야 함: { $terms }
 downloads-preview-must-not = 포함하면 안 됨: { $terms }
 downloads-helper-changed = 다운로드가 응답하지 않는 도우미로 설정돼 있어요
-downloads-helper-missing = 이 AniBeam에는 다운로드 기능이 없어요
+downloads-helper-missing = 이 Anibeam에는 다운로드 기능이 없어요
 downloads-helper-failed = 다운로드를 시작하지 못했어요
-downloads-helper-changed-body = 검색과 다운로드는 작은 도우미 프로그램을 거쳐요. 설정이 AniBeam 자체 도우미가 아닌 다른 도우미를 가리키고 있고, 그 도우미가 응답하지 않아요. 되돌리면 저절로 시작해요.
+downloads-helper-changed-body = 검색과 다운로드는 작은 도우미 프로그램을 거쳐요. 설정이 Anibeam 자체 도우미가 아닌 다른 도우미를 가리키고 있고, 그 도우미가 응답하지 않아요. 되돌리면 저절로 시작해요.
 downloads-helper-missing-body = 검색과 다운로드에 쓰는 도우미 프로그램 없이 빌드됐어요. 릴리스 페이지의 설치 파일에는 들어 있어요. 이 사본에 추가하는 방법은 설정, 다운로드에 있어요.
 downloads-helper-failed-body = 검색과 다운로드에 쓰는 도우미 프로그램이 준비되기 전에 멈췄어요. 대부분 다시 시작하면 해결돼요.
-downloads-helper-use-own = AniBeam 자체 도우미 사용
+downloads-helper-use-own = Anibeam 자체 도우미 사용
 downloads-helper-start-again = 다시 시작
 downloads-helper-show-how = 방법 보기
 downloads-helper-what-went-wrong = 무엇이 잘못됐나요
@@ -1818,10 +1818,10 @@ downloads-card-next-span =
        *[no] { $episode }~{ $through }화 { $time } 후
     }
 downloads-rules-unread = 구독을 읽지 못했어요.
-downloads-lens-following-line = AniBeam이 지켜보는 피드를 채우는 작품별로 보여 줘요.
+downloads-lens-following-line = Anibeam이 지켜보는 피드를 채우는 작품별로 보여 줘요.
 downloads-none-yet = 아직 없음.
 downloads-reading = 읽는 중.
-downloads-rules-error = AniBeam이 구독을 읽지 못했어요. 잠시 후 다시 시도하세요.
+downloads-rules-error = Anibeam이 구독을 읽지 못했어요. 잠시 후 다시 시도하세요.
 downloads-removing-to-go = 제거 중, { $count }개 남음
 downloads-unsubscribe-all = { $count }개 모두 구독 해지
 downloads-unsubscribe = 구독 해지
@@ -1876,7 +1876,7 @@ track-picker-off = 끔
 roll-controls-window = { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화
 roll-controls-window-watched = { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화, { $watched }화 시청
 roll-controls-more = { $count }화 더 받기
-roll-controls-more-tip = 다음 에피소드를 지금 다운로드해요. 따라잡으면 AniBeam이 다시 다음 몇 화를 미리 받아 둬요.
+roll-controls-more-tip = 다음 에피소드를 지금 다운로드해요. 따라잡으면 Anibeam이 다시 다음 몇 화를 미리 받아 둬요.
 roll-controls-fewer-tip = 미리 받을 화수 하나 줄이기
 roll-controls-ahead = { $count }화 앞
 roll-controls-further-tip = 미리 받을 화수 하나 늘리기
@@ -1972,8 +1972,8 @@ player-not-now = 나중에
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 소스 목록
-endpoint-repos-panel-helper = 소스 목록은 주소로 추가하는, 서명된 검색 장소 모음이에요. 저장하기 전에 AniBeam이 서명을 확인하고 키를 보여 주며, 그다음 원하는 소스를 설치하면 돼요. 설치한 소스는 위의 검색 소스에 추가돼요.
-endpoint-repos-panel-could-not-start = AniBeam이 시작하지 못했어요. 잠시 후 다시 시도하세요.
+endpoint-repos-panel-helper = 소스 목록은 주소로 추가하는, 서명된 검색 장소 모음이에요. 저장하기 전에 Anibeam이 서명을 확인하고 키를 보여 주며, 그다음 원하는 소스를 설치하면 돼요. 설치한 소스는 위의 검색 소스에 추가돼요.
+endpoint-repos-panel-could-not-start = Anibeam이 시작하지 못했어요. 잠시 후 다시 시도하세요.
 endpoint-repos-panel-needs-value = { $name }에 값이 필요해요
 endpoint-repos-panel-values-of = { $name }의 값
 endpoint-repos-panel-secret-note = 이 기기의 비밀 저장소에 보관되고, 라이브러리나 내보내기에는 들어가지 않아요.
@@ -2043,8 +2043,8 @@ schedule-agent-looking = { $agent }이(가) 날짜를 찾고 있어요. 저장�
 schedule-agent-stopped = { $agent }이(가) 멈췄어요: { $error }
 schedule-stop = 중지
 schedule-paste-placeholder = 방영 목록, 표, 게시글 붙여넣기
-schedule-paste-helper = AniBeam이 읽은 내용은 아래 에피소드에 표시돼요.
-schedule-agent-hint = 이 컴퓨터에 Claude Code가 있으면 AniBeam이 대신 날짜를 찾아 달라고 요청할 수 있어요.
+schedule-paste-helper = Anibeam이 읽은 내용은 아래 에피소드에 표시돼요.
+schedule-agent-hint = 이 컴퓨터에 Claude Code가 있으면 Anibeam이 대신 날짜를 찾아 달라고 요청할 수 있어요.
 schedule-show-more = 에피소드 더 보기
 schedule-pick-hint = 에피소드를 클릭해 날짜를 지정하세요. Shift+클릭으로 범위를 선택해요.
 schedule-picked-one = { $number }화:
@@ -2096,8 +2096,8 @@ connect-did-not-finish = 로그인을 마치지 못했어요
 connect-finish-in-browser = 브라우저에서 마무리하세요
 connect-signed-in-anilist = { $account } 계정으로 로그인했어요. 목록은 시청 중 페이지에 있어요.
 connect-signed-in-mal = { $account } 계정으로 로그인했어요. 보는 대로 에피소드가 거기에 기록돼요.
-connect-setup-lead = { $name }은(는) 직접 만든 앱을 통해 AniBeam에 로그인해요. 한 번만, 1분 정도 걸려요.
-connect-page-open = 브라우저에 { $name } 로그인 페이지가 열렸어요. 거기서 AniBeam을 승인하면 이 창은 저절로 닫혀요.
+connect-setup-lead = { $name }은(는) 직접 만든 앱을 통해 Anibeam에 로그인해요. 한 번만, 1분 정도 걸려요.
+connect-page-open = 브라우저에 { $name } 로그인 페이지가 열렸어요. 거기서 Anibeam을 승인하면 이 창은 저절로 닫혀요.
 connect-page-opening = 브라우저에서 { $name } 로그인 페이지를 여는 중이에요.
 connect-open-watching = 시청 중 열기
 connect-done = 완료
@@ -2117,7 +2117,7 @@ connect-step-paste-id-anilist = AniList에서는 Client ID라고 해요: 새 클
 connect-step-paste-id-mal = MyAnimeList에서는 Client ID라고 해요: 새 앱 페이지에 있는 긴 문자열이에요.
 connect-client-id = 클라이언트 ID
 connect-client-secret-web = 클라이언트 시크릿(웹 앱만)
-connect-step-connect-body = 브라우저가 열리고 { $name }이(가) 로그인과 AniBeam 승인을 요청하면, AniBeam이 응답을 받아요.
+connect-step-connect-body = 브라우저가 열리고 { $name }이(가) 로그인과 Anibeam 승인을 요청하면, Anibeam이 응답을 받아요.
 
 ## SettingsPage
 
@@ -2171,7 +2171,7 @@ settings-status-subtitles =
         [Force] 모든 파일에 내 스타일
        *[ScaleOnly] 스타일 파일은 모양 유지
     }
-settings-status-keys = AniBeam이 반응하는 모든 키
+settings-status-keys = Anibeam이 반응하는 모든 키
 settings-status-downloads-unread = 아직 읽지 않음
 settings-status-downloads-answered = qBittorrent 응답함
 settings-status-downloads-missing = 검색 도우미 미설치
@@ -2330,12 +2330,12 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = 다운로드
-settings-downloads-lead = 받은 항목을 AniBeam이 어디로 보내고, 릴리스 피드를 어떻게 검색하는지 정해요.
+settings-downloads-lead = 받은 항목을 Anibeam이 어디로 보내고, 릴리스 피드를 어떻게 검색하는지 정해요.
 settings-downloads-keep-none = 에피소드를 다 보면 바로 전 에피소드가 삭제돼요.
 settings-downloads-keep-line = 방금 다 본 에피소드 앞에 남겨 둘 시청한 에피소드 수예요. { $count }(으)로 하면 { $finishing }화를 다 볼 때 1화가 삭제돼요.
 settings-downloads-anirss-ready = 실행 중, 버전 { $version }, 주소 { $url }.
 settings-downloads-anirss-starting = 검색 도우미 시작 중.
-settings-downloads-anirss-missing = 검색 도우미가 설치되지 않았어요. AniBeam을 다시 설치하거나 명령에 직접 쓰는 anirss를 지정하세요.
+settings-downloads-anirss-missing = 검색 도우미가 설치되지 않았어요. Anibeam을 다시 설치하거나 명령에 직접 쓰는 anirss를 지정하세요.
 settings-downloads-anirss-failed = 검색 도우미가 멈췄어요. 다시 시도하면 시작해요. 무슨 말을 남겼는지는 세부 정보에 있어요.
 settings-downloads-anirss-idle = 아직 시작되지 않았어요. 다운로드 페이지에서 처음 검색할 때 시작해요.
 settings-downloads-torrent-trying = { $client } 시도 중.
@@ -2343,12 +2343,12 @@ settings-downloads-torrent-answered = { $client } { $version } 응답함.
 settings-downloads-torrent-failed = { $client }에 연결되지 않았어요. 위의 주소와 비밀번호를 확인하고 다시 테스트하세요.
 settings-downloads-torrent-untried = 아직 시도하지 않았어요.
 settings-downloads-mode-existing = 직접 실행하는 qBittorrent, Web UI가 켜져 있어야 해요.
-settings-downloads-mode-managed = AniBeam이 자체 qBittorrent를 실행해 ~/Downloads/Anime에 저장해요. AniBeam을 종료해도 계속 실행되어 구독한 작품을 계속 받아요.
+settings-downloads-mode-managed = Anibeam이 자체 qBittorrent를 실행해 ~/Downloads/Anime에 저장해요. Anibeam을 종료해도 계속 실행되어 구독한 작품을 계속 받아요.
 settings-downloads-mode-auto = 아래 주소에서 응답하는 qBittorrent를 쓰고, 없으면 자체 qBittorrent를 실행해요.
 settings-downloads-password-saved = 이 클라이언트의 비밀번호가 여기에 저장돼 있어요.
 settings-downloads-password-anirss = 검색 도우미가 저장한 비밀번호를 쓰고 있어요. 여기에 저장하면 더 이상 의존하지 않아요.
 settings-downloads-password-none = 저장된 비밀번호가 없어요. 이 기기에 대해 로그인을 생략하는 클라이언트라면 필요 없어요.
-settings-downloads-mismatch = 검색 도우미는 { $helperUrl }와(과), AniBeam은 { $url }와(과) 통신해요. 직접 실행하는 검색 도우미는 자체 config.toml에서 주소를 읽으므로, 여기서 클라이언트를 바꿔도 따라오지 않아요.
+settings-downloads-mismatch = 검색 도우미는 { $helperUrl }와(과), Anibeam은 { $url }와(과) 통신해요. 직접 실행하는 검색 도우미는 자체 config.toml에서 주소를 읽으므로, 여기서 클라이언트를 바꿔도 따라오지 않아요.
 settings-downloads-torrent-title = 토렌트 클라이언트
 settings-downloads-torrent-helper = 다운로드를 맡는 qBittorrent예요. 비밀번호는 시스템 비밀번호 저장소에 보관돼요.
 settings-downloads-which-client = 클라이언트
@@ -2370,29 +2370,29 @@ settings-downloads-secret-unset = 설정 안 됨
 settings-downloads-connection = 연결
 settings-downloads-open-config = 설정 파일 열기
 settings-downloads-details = 세부 정보
-settings-downloads-details-torrent = AniBeam이 시도했을 때 { $client }의 응답이에요.
+settings-downloads-details-torrent = Anibeam이 시도했을 때 { $client }의 응답이에요.
 settings-downloads-test-trying = 시도 중
 settings-downloads-test-save = 저장하고 테스트
 settings-downloads-test = 테스트
 settings-downloads-searching = 검색
 settings-downloads-search-helper = 검색 도우미
-settings-downloads-searching-helper = AniBeam이 소스를 직접 검색하고 선택한 항목을 토렌트 클라이언트로 보내요. 검색 도우미는 필요 없어요.
-settings-downloads-search-helper-helper = AniBeam에서 검색과 구독을 맡는 부분으로, anirss라는 프로그램이에요. AniBeam이 대신 실행하니, 직접 실행하는 경우에만 바꾸세요.
+settings-downloads-searching-helper = Anibeam이 소스를 직접 검색하고 선택한 항목을 토렌트 클라이언트로 보내요. 검색 도우미는 필요 없어요.
+settings-downloads-search-helper-helper = Anibeam에서 검색과 구독을 맡는 부분으로, anirss라는 프로그램이에요. Anibeam이 대신 실행하니, 직접 실행하는 경우에만 바꾸세요.
 settings-downloads-runs-in = 검색 실행 위치
-settings-downloads-runs-in-native-helper = 구독은 여전히 토렌트 클라이언트로 가므로 AniBeam이 닫혀 있어도 새 에피소드가 들어와요.
-settings-downloads-runs-in-helper = AniBeam이 실행하거나 직접 실행하는 별도 프로그램인 검색 도우미.
-settings-downloads-engine-native = AniBeam 자체
+settings-downloads-runs-in-native-helper = 구독은 여전히 토렌트 클라이언트로 가므로 Anibeam이 닫혀 있어도 새 에피소드가 들어와요.
+settings-downloads-runs-in-helper = Anibeam이 실행하거나 직접 실행하는 별도 프로그램인 검색 도우미.
+settings-downloads-engine-native = Anibeam 자체
 settings-downloads-how-runs = 실행 방식
-settings-downloads-how-runs-sidecar = AniBeam이 열릴 때 시작하고 종료할 때 멈춰요.
+settings-downloads-how-runs-sidecar = Anibeam이 열릴 때 시작하고 종료할 때 멈춰요.
 settings-downloads-how-runs-remote = 이미 실행 중인 것을 아래 주소와 키로 사용해요.
-settings-downloads-runs-sidecar = AniBeam이 실행
+settings-downloads-runs-sidecar = Anibeam이 실행
 settings-downloads-runs-remote = 직접 실행
 settings-downloads-command = 명령
 settings-downloads-command-helper = PATH의 이름이나 전체 경로. ~/.local/bin도 검색해요.
 settings-downloads-server-address-helper = /api/v1을 뺀 서버 기본 주소.
 settings-downloads-key = 키
 settings-downloads-key-saved-helper = 키가 저장돼 있어요. 새 키를 입력하면 바뀌고, 칸을 비우면 제거돼요.
-settings-downloads-key-helper = 검색 도우미가 시작할 때 보여 준 키예요. 이 키로 AniBeam이 접속해요.
+settings-downloads-key-helper = 검색 도우미가 시작할 때 보여 준 키예요. 이 키로 Anibeam이 접속해요.
 settings-downloads-details-anirss = 검색 도우미가 멈출 때 남긴 말이에요.
 settings-downloads-starting = 시작 중
 settings-downloads-reconnect = 다시 연결
@@ -2422,7 +2422,7 @@ settings-downloads-sources-empty = 아직 설정된 소스가 없어요
 settings-downloads-sources-connect = 목록을 보려면 검색 도우미를 연결하세요
 settings-downloads-sources-empty-helper = 아래에서 소스 목록을 추가하면 그 소스가 여기에 표시돼요.
 settings-downloads-config-file = 검색 도우미 설정 파일
-settings-downloads-config-native-helper = 저장 폴더, 태그, 최적 일치 규칙이 들어 있고, AniBeam이 도우미를 실행할 때 이를 따라요. 도우미 자체 소스는 도우미만 써요.
+settings-downloads-config-native-helper = 저장 폴더, 태그, 최적 일치 규칙이 들어 있고, Anibeam이 도우미를 실행할 때 이를 따라요. 도우미 자체 소스는 도우미만 써요.
 settings-downloads-config-helper = 소스, 저장 폴더, 태그, 최적 일치 규칙이 들어 있어요.
 settings-downloads-unsaved = 저장 안 된 변경 사항
 settings-downloads-unsaved-helper = 저장하면 새 설정으로 검색 도우미가 다시 시작돼요.
@@ -2516,7 +2516,7 @@ settings-developer-copy-events = 이벤트 복사
 ## SettingsKeysTab
 
 settings-keys-title = 키보드
-settings-keys-lead = AniBeam이 반응하는 모든 키예요. 어디서든 ?를 누르면 그 자리에서 쓸 수 있는 키가 보여요.
+settings-keys-lead = Anibeam이 반응하는 모든 키예요. 어디서든 ?를 누르면 그 자리에서 쓸 수 있는 키가 보여요.
 settings-keys-player = 플레이어에서
 settings-keys-player-around = 플레이어 이동
 settings-keys-around = 이동
@@ -2583,7 +2583,7 @@ key-help-pick-all = 보이는 모든 카드 선택
 ## SettingsAboutTab
 
 settings-about-title = 정보
-settings-about-lead = 지금 쓰는 AniBeam 버전과 새 버전 소식을 받는 방식이에요.
+settings-about-lead = 지금 쓰는 Anibeam 버전과 새 버전 소식을 받는 방식이에요.
 settings-about-update-failed = 업데이트를 마치지 못했어요. 다시 시도하거나 릴리스 페이지에서 받으세요.
 settings-about-update-ready = { $version } 설치 준비 완료.
 settings-about-update-command = { $version } 출시. 다음 명령으로 업데이트하세요: { $command }
@@ -2591,7 +2591,7 @@ settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } 출시. 소스로 빌드한 사본이에요: pull 후 다시 빌드하세요.
 settings-about-update-elsewhere = { $version } 출시, 이 컴퓨터용 다운로드는 없어요.
 settings-about-version = 버전
-settings-about-build = AniBeam { $build }
+settings-about-build = Anibeam { $build }
 settings-about-whats-new = 새로운 기능
 settings-about-install = { $version } 설치
 settings-about-setup = 설정 안내
@@ -2616,7 +2616,7 @@ settings-about-series-helper = AniList와 TVmaze. 스킵 구간은 AniSkip 제�
 settings-playback-title = 재생
 settings-playback-lead = 플레이어가 알아서 하는 일이에요. 필요할 때만 손대면 돼요.
 settings-playback-skipping = 스킵
-settings-playback-skipping-helper = 파일 챕터를, 없으면 시청자들이 공유한 스킵 구간을 써요. 플레이어에서 되돌리면 AniBeam을 닫을 때까지 꺼져요.
+settings-playback-skipping-helper = 파일 챕터를, 없으면 시청자들이 공유한 스킵 구간을 써요. 플레이어에서 되돌리면 Anibeam을 닫을 때까지 꺼져요.
 settings-playback-skip-intros = 오프닝 스킵
 settings-playback-skip-outros = 엔딩 스킵
 settings-playback-skip-outros-helper = 엔딩에 도달하면 에피소드를 시청함으로 표시해요.
@@ -2628,11 +2628,11 @@ settings-playback-languages-helper = 언어 코드, 원하는 순서대로. 파�
 settings-playback-subtitle-languages = 자막 언어
 settings-playback-audio-languages = 오디오 언어
 settings-playback-discord = 보는 작품을 Discord에 표시
-settings-playback-discord-check-failed = 지금은 AniBeam이 Discord를 확인하지 못했어요. 잠시 후 다시 시도하세요.
+settings-playback-discord-check-failed = 지금은 Anibeam이 Discord를 확인하지 못했어요. 잠시 후 다시 시도하세요.
 settings-playback-discord-helper = 재생하는 동안 작품, 에피소드, 포스터가 Discord 프로필에 보여요. 꺼져 있거나 Discord가 닫혀 있으면 아무것도 보내지 않아요.
 settings-playback-discord-unavailable = 이 빌드에는 Discord 애플리케이션이 없어요.
 settings-playback-discord-connected = Discord에 연결됨
-settings-playback-discord-not-connected = 연결 안 됨. 에피소드를 재생하고 Discord가 열려 있으면 AniBeam이 연결해요
+settings-playback-discord-not-connected = 연결 안 됨. 에피소드를 재생하고 Discord가 열려 있으면 Anibeam이 연결해요
 settings-playback-advanced = 고급
 settings-playback-my-mpv = 내 mpv 설정 사용
 settings-playback-my-mpv-helper = mpv.conf를 읽어요. 시작할 때만 동작하는 옵션은 건너뛰고, 스크립트는 불러오지 않아요.
@@ -2664,7 +2664,7 @@ settings-accounts-lead = AniList나 MyAnimeList를 연결하면 다 본 에피�
 settings-accounts-syncing = 목록 동기화 중
 settings-accounts-synced = 목록 동기화됨
 settings-accounts-lists = 애니 목록
-settings-accounts-lists-helper = 없어도 AniBeam은 이 컴퓨터에서 본 것을 기억해요. AniList나 MyAnimeList 목록이 있으면 휴대전화와 프로필로도 이어져요.
+settings-accounts-lists-helper = 없어도 Anibeam은 이 컴퓨터에서 본 것을 기억해요. AniList나 MyAnimeList 목록이 있으면 휴대전화와 프로필로도 이어져요.
 settings-accounts-progress = 진행 상황
 settings-accounts-main-list = 기본 목록
 settings-accounts-main-list-helper = 카드에는 이 목록의 진행 상황이 보여요. 다른 목록도 모든 업데이트를 받아요.
@@ -2673,7 +2673,7 @@ settings-accounts-local-lists-helper = 작품 { $count }개의 상태나 점수�
 settings-accounts-review-move = 확인하고 옮기기
 settings-accounts-nothing-to-move = 옮길 항목 없음
 settings-accounts-sync-now = 지금 동기화
-settings-accounts-sync-now-helper = 연결된 모든 목록을 다시 읽어요. AniBeam이 시작할 때도 해요.
+settings-accounts-sync-now-helper = 연결된 모든 목록을 다시 읽어요. Anibeam이 시작할 때도 해요.
 settings-accounts-sync = 동기화
 settings-accounts-move-on-hold = 보류로 옮기기
 settings-accounts-move-on-hold-helper = 한동안 손대지 않은 시청 중 작품을 목록에서 보류로 옮겨요. 재생하면 다시 돌아와요. 다음 에피소드를 기다리는 작품은 그대로 둬요.
@@ -2684,7 +2684,7 @@ settings-accounts-days-unit = 일
 ## SettingsPhoneTab
 
 settings-phone-title = 휴대전화 앱
-settings-phone-lead = 휴대전화의 AniBeam으로 어디서든 이 라이브러리를 재생하고, 방영 중인 작품을 보고, 다운로드를 확인할 수 있어요.
+settings-phone-lead = 휴대전화의 Anibeam으로 어디서든 이 라이브러리를 재생하고, 방영 중인 작품을 보고, 다운로드를 확인할 수 있어요.
 settings-phone-online = 온라인
 settings-phone-offline = 오프라인
 settings-phone-untrusted = 이 컴퓨터에서 받는 것 없음
@@ -2697,8 +2697,8 @@ settings-phone-stream-off = 내 기기에서 라이브러리와 방영 중인 �
 settings-phone-host-service = 호스트 서비스
 settings-phone-not-running = 실행 안 됨
 settings-phone-running = 실행 중
-settings-phone-service-off-helper = 명령을 한 번 실행하면 로그인할 때부터 창을 열지 않아도 내 기기가 AniBeam에 접근해요.
-settings-phone-service-on-helper = 창을 열지 않아도 내 기기가 AniBeam에 접근해요. 이 창이 열려 있는 동안은 서비스 대신 창이 공유해요.
+settings-phone-service-off-helper = 명령을 한 번 실행하면 로그인할 때부터 창을 열지 않아도 내 기기가 Anibeam에 접근해요.
+settings-phone-service-on-helper = 창을 열지 않아도 내 기기가 Anibeam에 접근해요. 이 창이 열려 있는 동안은 서비스 대신 창이 공유해요.
 settings-phone-copy-command = 명령 복사
 settings-phone-command-copied = 명령 복사됨
 settings-phone-nobody = 받는 것 없음: Tailscale에 소유자 이름이 없어요
@@ -2734,13 +2734,13 @@ settings-help-folders-example =
 settings-help-no-folder = 아직 추가한 폴더가 없어요
 settings-help-reads-folders =
     { $count ->
-       *[other] AniBeam이 폴더 { $count }개를 읽어요
+       *[other] Anibeam이 폴더 { $count }개를 읽어요
     }
 settings-help-add-folder-helper = 작품 하나하나가 아니라 작품들이 들어 있는 폴더를 추가하세요.
 settings-help-add-folder = 폴더 추가
 settings-help-open-folders = 폴더 열기
 settings-help-match = 작품이 왜 인식되지 않았나요?
-settings-help-match-helper = AniBeam은 폴더 이름으로 먼저 AniList, 다음으로 TVmaze에서 작품을 찾아요. 단어가 더 붙었거나, 오타가 있거나, 다른 언어로 된 이름이면 놓칠 수 있어요. 작품 정보에서 직접 골라 주세요. 직접 고른 것은 절대 바뀌지 않아요.
+settings-help-match-helper = Anibeam은 폴더 이름으로 먼저 AniList, 다음으로 TVmaze에서 작품을 찾아요. 단어가 더 붙었거나, 오타가 있거나, 다른 언어로 된 이름이면 놓칠 수 있어요. 작품 정보에서 직접 골라 주세요. 직접 고른 것은 절대 바뀌지 않아요.
 settings-help-all-recognised = 모든 작품이 인식됐어요
 settings-help-unrecognised =
     { $count ->
@@ -2748,7 +2748,7 @@ settings-help-unrecognised =
     }
 settings-help-open-show-info = 작품 정보 열기
 settings-help-connect = AniList는 어떻게 연결하나요?
-settings-help-connect-helper = 연결하면 다 본 에피소드가 목록에 기록돼서 휴대전화와 프로필도 최신 상태를 유지해요. AniList는 처음 한 번 작은 앱을 직접 만들어야 해요. AniBeam이 안내하고 1분 정도 걸려요. MyAnimeList도 같은 방식이에요.
+settings-help-connect-helper = 연결하면 다 본 에피소드가 목록에 기록돼서 휴대전화와 프로필도 최신 상태를 유지해요. AniList는 처음 한 번 작은 앱을 직접 만들어야 해요. Anibeam이 안내하고 1분 정도 걸려요. MyAnimeList도 같은 방식이에요.
 settings-help-both-connected = 둘 다 연결됨
 settings-help-anilist-connected = AniList 연결됨
 settings-help-mal-connected = MyAnimeList 연결됨
@@ -2756,7 +2756,7 @@ settings-help-none-connected = 아직 둘 다 연결 안 됨
 settings-help-connect-anilist = AniList 연결
 settings-help-connect-mal = MyAnimeList 연결
 settings-help-downloads = 다운로드가 왜 비어 있나요?
-settings-help-downloads-helper = AniBeam에는 검색할 곳이 들어 있지 않아요. 설정의 다운로드에서 소스 목록을 추가하고 원하는 소스를 설치하세요. 다운로드하려면 토렌트 클라이언트도 필요해요: AniBeam이 자체 클라이언트를 실행하거나, 이미 쓰는 qBittorrent를 사용할 수 있어요.
+settings-help-downloads-helper = Anibeam에는 검색할 곳이 들어 있지 않아요. 설정의 다운로드에서 소스 목록을 추가하고 원하는 소스를 설치하세요. 다운로드하려면 토렌트 클라이언트도 필요해요: Anibeam이 자체 클라이언트를 실행하거나, 이미 쓰는 qBittorrent를 사용할 수 있어요.
 settings-help-sources = 소스와 토렌트 클라이언트
 settings-help-open-downloads = 다운로드 설정 열기
 settings-help-data = 내 데이터는 어디에 있나요?
@@ -2870,12 +2870,12 @@ settings-data-remove-images =
     { $count ->
        *[other] 이미지 { $count }개를 삭제할까요?
     }
-settings-data-files = AniBeam 파일 위치
+settings-data-files = Anibeam 파일 위치
 settings-data-files-database = 라이브러리 데이터베이스
 settings-data-files-data = 데이터
 settings-data-files-settings = 설정
 settings-data-files-cache = 캐시
-settings-data-backup-filter = AniBeam 백업 (*.json)
+settings-data-backup-filter = Anibeam 백업 (*.json)
 settings-data-all-files-filter = 모든 파일 (*)
 settings-data-backing-up = 백업 중
 settings-data-restoring = 복원 중
@@ -2883,7 +2883,7 @@ settings-data-restoring = 복원 중
 ## SettingsLibraryTab
 
 settings-library-title = 라이브러리
-settings-library-lead = AniBeam이 지켜보는 폴더와, 그 안에 무엇이 있는지 알아내는 방식이에요.
+settings-library-lead = Anibeam이 지켜보는 폴더와, 그 안에 무엇이 있는지 알아내는 방식이에요.
 settings-library-not-scanned = 아직 스캔 안 됨
 settings-library-scan-nothing-changed = 변경 없음
 settings-library-scan-added = { $count }개 추가
@@ -2901,9 +2901,9 @@ settings-library-folders = 폴더
 settings-library-folders-helper = 이 폴더 안의 각 폴더가 작품이 돼요. Movies 폴더 바로 아래 파일은 영화예요.
 settings-library-rescan-started = 다시 스캔 시작됨
 settings-library-load-failed = 폴더를 읽지 못했어요
-settings-library-load-failed-helper = AniBeam이 폴더 목록을 읽지 못했어요. 잠시 후 다시 시도하세요.
+settings-library-load-failed-helper = Anibeam이 폴더 목록을 읽지 못했어요. 잠시 후 다시 시도하세요.
 settings-library-no-folders = 아직 폴더 없음
-settings-library-no-folders-helper = 애니가 있는 폴더를 AniBeam에 알려 주세요. 작품과 영화는 알아서 찾아요.
+settings-library-no-folders-helper = 애니가 있는 폴더를 Anibeam에 알려 주세요. 작품과 영화는 알아서 찾아요.
 settings-library-scanned = { $when } 스캔함
 settings-library-add-a-folder = 폴더 추가
 settings-library-scan-all = 모두 스캔
@@ -2914,11 +2914,11 @@ settings-library-matching-helper = 새 폴더는 이 순서로 조회하고 처�
 settings-library-try-later = 나중에 시도
 settings-library-try-first = 먼저 시도
 settings-library-check-matches = 매칭 확인
-settings-library-check-matches-helper = 작품 정보 페이지에서 AniBeam이 찾은 정보와 함께 모든 작품을 보고, 잘못된 것을 고칠 수 있어요.
+settings-library-check-matches-helper = 작품 정보 페이지에서 Anibeam이 찾은 정보와 함께 모든 작품을 보고, 잘못된 것을 고칠 수 있어요.
 settings-library-open-show-info = 작품 정보 열기
 settings-library-hidden-shows = 숨긴 작품
 settings-library-show-hidden = 숨긴 작품 보기
-settings-library-show-hidden-helper = AniBeam을 닫을 때까지 숨긴 작품을 모든 페이지에 다시 보여 줘요.
+settings-library-show-hidden-helper = Anibeam을 닫을 때까지 숨긴 작품을 모든 페이지에 다시 보여 줘요.
 settings-library-hidden-from-airing = 방영 중에서 숨긴 작품
 settings-library-hidden-from-airing-helper = 관심 없음으로 표시한 작품이에요. 되돌리기 전까지 방영 중에 나오지 않아요.
 settings-library-hidden-from-airing-empty = 아직 없어요. 방영 중에서 관심 없음으로 표시한 작품이 여기 모이고, 언제든 되돌릴 수 있어요.
@@ -2971,7 +2971,7 @@ settings-appearance-icon-dark = 다크
 settings-appearance-icon-dark-name = 다크 앱 아이콘
 settings-appearance-size-motion = 크기와 움직임
 settings-appearance-text-size = 글자 크기
-settings-appearance-text-size-helper = AniBeam 전체의 글자 크기예요. 시스템의 글자 크기 설정에 더해져요.
+settings-appearance-text-size-helper = Anibeam 전체의 글자 크기예요. 시스템의 글자 크기 설정에 더해져요.
 settings-appearance-density = 밀도
 settings-appearance-density-helper = 요소 사이 여백, 촘촘하게부터 여유 있게까지.
 settings-appearance-density-compact = 촘촘
@@ -3053,7 +3053,7 @@ feed-sort-recent = 최근 공개
 feed-sort-upcoming = 공개 예정
 feed-failed-title = 피드를 불러오지 못했어요
 feed-empty-title = 아직 아무것도 없어요
-feed-failed-body = 지금은 AniBeam이 피드를 읽지 못했어요. 잠시 후 다시 시도하세요.
+feed-failed-body = 지금은 Anibeam이 피드를 읽지 못했어요. 잠시 후 다시 시도하세요.
 feed-empty-body-folders = 에피소드가 방영되고 들어오는 대로 피드가 채워져요. 방영 중에서 이번 시즌 작품을 볼 수 있어요.
 feed-empty-body = 애니가 있는 폴더를 추가하면 피드가 에피소드로 채워져요.
 feed-add-folder = 폴더 추가
@@ -3235,7 +3235,7 @@ status-dot-on-list = 내 목록: { $status }
 ## TrackerNudge
 
 tracker-nudge-title = 애니 목록 연결
-tracker-nudge-body = 보는 대로 AniBeam이 AniList나 MyAnimeList에 에피소드를 기록해요.
+tracker-nudge-body = 보는 대로 Anibeam이 AniList나 MyAnimeList에 에피소드를 기록해요.
 tracker-nudge-connect-anilist = AniList 연결
 tracker-nudge-connect-mal = MyAnimeList 연결
 tracker-nudge-not-now = 나중에

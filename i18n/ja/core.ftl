@@ -80,7 +80,7 @@ event-problem-trackers = リストで問題が発生しました。詳細は開�
 event-problem-franchise = 関連作品で問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-playback = 再生で問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-store = データの保存で問題が発生しました。詳細は開発者向けオプションにあります。
-event-problem-system = AniBeamで問題が発生しました。詳細は開発者向けオプションにあります。
+event-problem-system = Anibeamで問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-downloads = ダウンロードで問題が発生しました。詳細は開発者向けオプションにあります。
 
 ## Errors (contract::CoreError)
@@ -107,8 +107,8 @@ core-error-io = ファイルを読み書きできませんでした: { $message 
 core-error-storage = ライブラリを保存できませんでした: { $message }
 core-error-keyring = システムのパスワード保管庫に接続できませんでした: { $message }
 core-error-unsupported = { $what }にはまだ対応していません。
-core-error-version = このエクスポートは新しいAniBeamのものです（形式 { $found }）。読み込むにはAniBeamを更新してください。
-core-error-internal = AniBeamで内部エラーが発生しました: { $message }
+core-error-version = このエクスポートは新しいAnibeamのものです（形式 { $found }）。読み込むにはAnibeamを更新してください。
+core-error-internal = Anibeamで内部エラーが発生しました: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -591,7 +591,7 @@ core-trackers-oauth-port-failed = このパソコンのポート{ $port }を開�
 core-trackers-oauth-port-busy = このパソコンのポート{ $port }は別のプログラムが使用中です。少し待ってからもう一度試すか、使用中のままならそのプログラムを閉じてください。
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site }がエラーを返しました: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site }と{ $app }を連携しました
 core-trackers-page-close-tab = このタブは閉じてかまいません。
@@ -600,7 +600,7 @@ core-trackers-page-failed = ログインが完了しませんでした
 core-trackers-page-go-back = { $app }に戻って、もう一度お試しください。
 core-trackers-page-finishing-title = { $app }、処理中
 core-trackers-page-finishing = 処理中です
-core-trackers-page-finishing-body = { $site }から応答があり、AniBeamがログインを仕上げています。{ $app }に戻ると、完了したときに表示されます。
+core-trackers-page-finishing-body = { $site }から応答があり、Anibeamがログインを仕上げています。{ $app }に戻ると、完了したときに表示されます。
 core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
 core-trackers-page-cancelled = このログインはキャンセルされました
 core-trackers-page-cancelled-body = このタブは閉じてかまいません。必要なら{ $app }からやり直してください。
@@ -963,8 +963,8 @@ core-downloads-anirss-slow-start-said = anirssが{ $seconds }秒以内に起動�
 core-downloads-anirss-install-mac = anirss { $version }以降をインストールしてください: { $command }
 core-downloads-anirss-install-linux = anirss { $version }以降をインストールしてください: AURのanirssパッケージ、または{ $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version }はAniBeamには古すぎます。{ $minimum }以降が必要です。{ $update }。
-core-downloads-anirss-lacks-feature = anirss { $version }はトレントクライアントごとのログイン情報を分けて保持できません。AniBeamがクライアントを切り替えるにはこれが必要で、anirss { $minimum }以降なら対応しています。{ $update }。
+core-downloads-anirss-too-old = anirss { $version }はAnibeamには古すぎます。{ $minimum }以降が必要です。{ $update }。
+core-downloads-anirss-lacks-feature = anirss { $version }はトレントクライアントごとのログイン情報を分けて保持できません。Anibeamがクライアントを切り替えるにはこれが必要で、anirss { $minimum }以降なら対応しています。{ $update }。
 core-downloads-anirss-update-mac = 次のコマンドで更新してください: { $command }
 core-downloads-anirss-update-linux = anirssパッケージを更新するか、次を実行してください: { $command }
 
@@ -997,18 +997,18 @@ core-downloads-anirss-command-missing = { $command }が見つかりませんで�
 core-downloads-anirss-start-failed = { $command }を起動できませんでした: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld }応答: { $message }
-core-downloads-no-torrent-client = { $address }で応答するqBittorrentがなく、AniBeam自身が起動できるものもありません。qBittorrentをインストールしてWeb UIをオンにするか、qbittorrent-noxをインストールしてください。AniBeamが代わりに起動します
-core-downloads-own-client-gone = AniBeamのqBittorrentがありません: qbittorrent-noxがインストールされていません。AniBeamを再インストールするか、設定で自分のqBittorrentを指定してください
+core-downloads-no-torrent-client = { $address }で応答するqBittorrentがなく、Anibeam自身が起動できるものもありません。qBittorrentをインストールしてWeb UIをオンにするか、qbittorrent-noxをインストールしてください。Anibeamが代わりに起動します
+core-downloads-own-client-gone = AnibeamのqBittorrentがありません: qbittorrent-noxがインストールされていません。Anibeamを再インストールするか、設定で自分のqBittorrentを指定してください
 core-downloads-no-port = { $address }にポートがありません
 core-downloads-own-client-settings = qBittorrentの設定を書き込めません: { $error }
 core-downloads-own-client-start-failed = { $command }を起動できませんでした: { $error }
-core-downloads-own-client-slow-start = AniBeamのqBittorrentが起動しませんでした
+core-downloads-own-client-slow-start = AnibeamのqBittorrentが起動しませんでした
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = AniBeamのqBittorrentが起動しませんでした: { $said }
+core-downloads-own-client-slow-start-said = AnibeamのqBittorrentが起動しませんでした: { $said }
 core-downloads-not-ready = ダウンロードの準備ができていません。設定の「ダウンロード」を確認してください。
 core-downloads-ready = ダウンロードの準備ができました。
 # $count is how many sources anirss's own config names
-core-downloads-helper-sources = ダウンロードの検索はAniBeam自身で行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーを選んでください。
+core-downloads-helper-sources = ダウンロードの検索はAnibeam自身で行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーを選んでください。
 core-downloads-client-connected = ダウンロードアプリに接続しました。
 core-downloads-client-not-connected = ダウンロードアプリに接続していません。設定でアドレスを確認してください。
 core-downloads-not-on-demand = { $name }はオンデマンドのエンドポイントではありません
@@ -1229,7 +1229,7 @@ core-releases-episode-range = { $from }〜{ $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

@@ -33,7 +33,7 @@ pub fn engine(services: &Services) -> Result<DownloadsEngine, CoreError> {
 }
 
 /// What best fit ranks by on the desktop's native engine: the preferences saved in the
-/// config of the anirss AniBeam runs, as anirss itself ranks (#545). A remote anirss keeps
+/// config of the anirss Anibeam runs, as anirss itself ranks (#545). A remote anirss keeps
 /// its config on its own machine, and a missing file leaves the core's own ranking: None.
 fn saved_bestfit(services: &Services) -> Result<Option<BestfitConfig>, CoreError> {
     let mode = settings::read(services)?.anirss_mode;

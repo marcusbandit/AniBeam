@@ -1,7 +1,7 @@
 //! The UI thread: the window, what it shows, and the clock that keeps it current.
 //!
 //! Two sources feed the pages. This phone's own core is the default for everything; another
-//! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
+//! Anibeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
 use anibeam_core::i18n::tr;
@@ -1326,7 +1326,7 @@ impl App {
                             return;
                         };
                         app.check_text = std::iter::once(format!(
-                            "AniBeam {} connection check",
+                            "Anibeam {} connection check",
                             env!("ANIBEAM_PHONE_VERSION")
                         ))
                         .chain(checks.iter().map(|c| {
@@ -2268,7 +2268,7 @@ pub fn run(
     // Before anything talks to a computer, so every request can carry the phone's proof.
     match Store::open(&data_dir).and_then(|s| s.device_key()) {
         Ok(key) => anibeam_companion::client::use_device_key(key),
-        Err(e) => eprintln!("AniBeam: no device key, requests go unsigned: {e}"),
+        Err(e) => eprintln!("Anibeam: no device key, requests go unsigned: {e}"),
     }
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
@@ -2492,7 +2492,7 @@ pub fn run(
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {
         with_app(|app| {
-            let copied = crate::platform::copy_text("AniBeam connection check", &app.check_text);
+            let copied = crate::platform::copy_text("Anibeam connection check", &app.check_text);
             app.data().set_check_summary(if copied {
                 tr!("more-check-copied").into()
             } else {

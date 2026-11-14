@@ -6,7 +6,7 @@
 //! A Chromecast gets HLS: the Matroska file is read once for its keyframes and subtitles,
 //! then cut into fragmented MP4 segments as they are asked for, so the TV seeks anywhere. A
 //! DLNA TV gets the file as it is, which most take, and the same fragments as one
-//! progressive stream when it refuses. An episode another AniBeam converts as it plays is
+//! progressive stream when it refuses. An episode another Anibeam converts as it plays is
 //! passed on from here: as HLS to a Chromecast, and to a DLNA TV as its MPEG-TS pieces joined
 //! into one progressive stream. The session's position comes back once a second as
 //! `CastChanged`, which is what the shell ticks the playback session with.

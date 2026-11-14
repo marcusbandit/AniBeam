@@ -15,7 +15,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Project board
 
-Every open issue sits on the AniBeam project, https://github.com/users/marcusbandit/projects/1 (owner `marcusbandit`, number 1). Its Status column is what the owner reads to see where work stands, so keep it true:
+Every open issue sits on the Anibeam project, https://github.com/users/marcusbandit/projects/1 (owner `marcusbandit`, number 1). Its Status column is what the owner reads to see where work stands, so keep it true:
 
 | Status      | When                                                     |
 | ----------- | -------------------------------------------------------- |
@@ -74,7 +74,7 @@ Two T3 scheduled tasks on the owner's desktop keep the state true:
   `in progress` issue with no branch, PR or commit in 14 days loses the label and goes back to
   Backlog with a comment; an open issue whose closing PR merged is closed. It only reads
   GitHub, so it needs no worktree.
-- **AniBeam backlog review**, Mondays at 09:00, a new thread per run: the full pass in
+- **Anibeam backlog review**, Mondays at 09:00, a new thread per run: the full pass in
   [`backlog-review.md`](backlog-review.md).
 
 ## Triage

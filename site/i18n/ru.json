@@ -82,10 +82,11 @@
  "{n} episodes": "Серий: {n}",
  "Movie": "Фильм",
  "iPhone": "iPhone",
- "Add to AltStore": "Добавить в AltStore",
- "Add to SideStore": "Добавить в SideStore",
- "Add to LiveContainer": "Добавить в LiveContainer",
+ "Add source to AltStore": "Добавить источник в AltStore",
+ "Add source to SideStore": "Добавить источник в SideStore",
+ "Add source to LiveContainer": "Добавить источник в LiveContainer",
  "Download IPA": "Скачать IPA",
  "Nightly test build, unsigned, for sideloading": "Тестовая сборка nightly, без подписи, для сайдлоада",
-  "Unsigned, for sideloading": "Без подписи, для сайдлоада"
+ "Unsigned, for sideloading": "Без подписи, для сайдлоада",
+ "Or install this build once in": "Или установить эту сборку один раз в"
 }
