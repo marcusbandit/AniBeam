@@ -22,7 +22,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
 use crate::contract::*;
-use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
+use crate::net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
 use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
@@ -504,6 +504,17 @@ impl AnirssClient {
                 ),
             )
         })
+    }
+}
+
+/// The endpoint writes the releases below sync the installed endpoints with (#854).
+impl crate::repos::AnirssEndpoints for AnirssClient {
+    fn put_endpoint(&self, spec: Value) -> BoxFuture<'_, Result<(), CoreError>> {
+        Box::pin(AnirssClient::put_endpoint(self, spec))
+    }
+
+    fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>> {
+        Box::pin(AnirssClient::delete_endpoint(self, name))
     }
 }
 

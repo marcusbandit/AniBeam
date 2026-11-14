@@ -32,8 +32,8 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::events::EventBus;
+use crate::foundation::above::Above;
 use crate::foundation::services::Services;
 use crate::foundation::trust::{Asker, TailnetUser};
 use crate::prefs;
@@ -62,6 +62,19 @@ const TAILNET_FOR: Duration = Duration::from_secs(30);
 /// more often than this.
 const TAILNET_AGAIN: Duration = Duration::from_secs(5);
 
+/// What the host asks of the core above it (#854): a call answered as the
+/// profile a client speaks for, through the same router a shell calls, and
+/// the skip windows of a session open there. `Core` implements it and
+/// `Core::open` links it to `Host::front`, so the host names no team above
+/// it.
+pub(crate) trait Front: Send + Sync {
+    /// `Core::call_as`.
+    fn answer(&self, profile: u64, call: Call) -> Result<Reply, CoreError>;
+    /// The skip windows found so far for an open session
+    /// (`playback::session::windows_of`).
+    fn skip_windows(&self, session: u64) -> Result<Vec<SkipWindow>, CoreError>;
+}
+
 /// The host team (#854): the tailnet host the phone reads, its keys and
 /// trust, and the history pulled from other computers.
 pub struct Host {
@@ -70,8 +83,9 @@ pub struct Host {
     pub(crate) library: Arc<crate::library::Library>,
     pub(crate) downloads: Arc<crate::downloads::Downloads>,
     /// The front door the phone's requests go through: the server answers
-    /// them with `Core::call_as`, the same router a shell calls.
-    pub(crate) core: crate::foundation::above::Above<Core>,
+    /// them with `Core::call_as`, the same router a shell calls, through the
+    /// host's own trait.
+    pub(crate) front: Above<dyn Front>,
     status: Arc<Status>,
     run: Mutex<Option<Run>>,
     /// A bind override a test sets on one core, where the env var would be
@@ -151,7 +165,7 @@ impl Host {
             net,
             library,
             downloads,
-            core: crate::foundation::above::Above::default(),
+            front: Above::default(),
             status: Arc::new(Status {
                 now: Mutex::new(off()),
                 bus,
@@ -327,7 +341,6 @@ impl Host {
             .or_else(|| std::env::var(BIND_ENV).ok());
         let task = self.services.handle.spawn(supervise(
             Arc::downgrade(self),
-            self.core.weak(),
             self.status.clone(),
             cancel.clone(),
             bind,
@@ -605,7 +618,6 @@ impl Serving {
 
 async fn supervise(
     host: Weak<Host>,
-    core: Weak<Core>,
     status: Arc<Status>,
     cancel: CancellationToken,
     bind: Option<String>,
@@ -654,7 +666,7 @@ async fn supervise(
                     if let Some(old) = serving.take() {
                         old.stop().await;
                     }
-                    match listen(&core, wanted).await {
+                    match listen(&host, wanted).await {
                         Ok(now) => {
                             status.put(Some(&cancel), now.status());
                             serving = Some(now);
@@ -691,12 +703,12 @@ async fn supervise(
 
 /// Binds every wanted address and serves on each that took. Fails with the
 /// sentence for the status only when none did.
-async fn listen(core: &Weak<Core>, wanted: Vec<SocketAddr>) -> Result<Serving, String> {
+async fn listen(host: &Weak<Host>, wanted: Vec<SocketAddr>) -> Result<Serving, String> {
     let mut serving = Serving {
         wanted: wanted.clone(),
         took: Vec::new(),
         bound: Vec::new(),
-        router: server::router(core.clone()),
+        router: server::router(host.clone()),
         name: None,
         token: CancellationToken::new(),
         tasks: Vec::new(),
@@ -802,6 +814,7 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Core;
 
     /// The owner has this machine, a phone and a tagged server's worth of trust; Sam has
     /// a tablet and a laptop, Alex a phone with no name in Tailscale, and one device

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicU64};
 
 use crate::foundation::services::Services;
-use crate::metadata::Metadata;
 use crate::net::Net;
 
 /// The loopback port both providers redirect back to. Registered on their
@@ -18,7 +17,6 @@ const DEFAULT_SIGN_IN_HOLD_MS: u64 = 60_000;
 pub struct Trackers {
     pub(crate) services: Arc<Services>,
     pub(crate) net: Arc<Net>,
-    pub(crate) metadata: Arc<Metadata>,
     /// The loopback port the OAuth listener binds while a connect is in
     /// flight. Fixed rather than ephemeral: both providers only redirect
     /// to a URL registered on their developer panel, so the port is part
@@ -31,11 +29,10 @@ pub struct Trackers {
 }
 
 impl Trackers {
-    pub(crate) fn new(services: Arc<Services>, net: Arc<Net>, metadata: Arc<Metadata>) -> Trackers {
+    pub(crate) fn new(services: Arc<Services>, net: Arc<Net>) -> Trackers {
         Trackers {
             services,
             net,
-            metadata,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
         }

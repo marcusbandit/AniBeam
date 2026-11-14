@@ -22,15 +22,19 @@ use tokio::sync::Semaphore;
 
 use crate::atomic_file;
 use crate::contract::*;
-use crate::foundation::services::Services;
 use crate::jobs::Finished;
-use crate::library::cards;
 use crate::net::Net;
 use crate::net::{Http, HttpRequest};
 use crate::store::Store;
 use crate::store::sql::placeholders;
 use crate::sync::recover;
 use crate::time;
+
+/// How the cache reads the cards of the series whose images changed, for the
+/// `SeriesChanged` that tells the shells. It is the library's
+/// `cards::cards_for`, which `Core::open` hands the net team, so the cache
+/// names no team above it (#854).
+pub(crate) type CardsFor = fn(&Connection, &Path, &[u64]) -> Result<Vec<SeriesCard>, CoreError>;
 
 /// Fetches in flight at once.
 const CONCURRENCY: usize = 4;
@@ -682,10 +686,11 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
                 let mut ids: Vec<u64> = touched.into_iter().collect();
                 ids.sort_unstable();
                 let dir = owner.services.paths.images_dir();
+                let cards_for = owner.cards_for;
                 let cards = owner
                     .services
                     .store
-                    .write_async(move |c| cards::cards_for(c, &dir, &ids))
+                    .write_async(move |c| cards_for(c, &dir, &ids))
                     .await?;
                 ctx.emit(
                     Level::Debug,
@@ -725,9 +730,10 @@ pub(crate) fn storage_call(net: &Net) -> Result<Reply, CoreError> {
 
 /// Clear images: every row and every file, and a card for every matched
 /// series so a shell showing posters drops them at once.
-pub fn start_clear(services: &Arc<Services>) -> u64 {
-    let owner = services.clone();
-    services
+pub fn start_clear(net: &Net) -> u64 {
+    let owner = net.services.clone();
+    let cards_for = net.cards_for;
+    net.services
         .jobs
         .clone()
         .start(JobKind::ClearImages, move |ctx| async move {
@@ -758,7 +764,7 @@ pub fn start_clear(services: &Arc<Services>) -> u64 {
                 let images_dir = dir.clone();
                 let cards = owner
                     .store
-                    .write_async(move |c| cards::cards_for(c, &images_dir, &ids))
+                    .write_async(move |c| cards_for(c, &images_dir, &ids))
                     .await?;
                 ctx.emit(
                     Level::Debug,

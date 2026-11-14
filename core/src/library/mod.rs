@@ -34,4 +34,5 @@ pub mod trash;
 pub mod walk;
 pub mod watcher;
 
+pub(crate) use team::Incoming;
 pub use team::Library;

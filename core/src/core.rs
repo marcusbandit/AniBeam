@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use crate::act;
@@ -146,18 +146,14 @@ impl Core {
         });
         // Each team over the ones below it, bottom up.
         let closed = Arc::new(AtomicBool::new(false));
-        let net = Arc::new(Net::new(services.clone()));
+        let net = Arc::new(Net::new(services.clone(), crate::library::cards::cards_for));
         let library = Arc::new(Library::new(services.clone(), net.clone(), closed.clone()));
         let metadata = Arc::new(Metadata::new(
             services.clone(),
             net.clone(),
             library.clone(),
         ));
-        let trackers = Arc::new(Trackers::new(
-            services.clone(),
-            net.clone(),
-            metadata.clone(),
-        ));
+        let trackers = Arc::new(Trackers::new(services.clone(), net.clone()));
         let releases = Arc::new(Releases::new(services.clone()));
         let downloads = Arc::new(Downloads::new(services.clone(), net.clone()));
         let playback = Arc::new(Playback::new(
@@ -172,11 +168,17 @@ impl Core {
             library.clone(),
             downloads.clone(),
         ));
-        // The calls that still go up a team, until they become events (#854).
-        library.downloads.set(&downloads);
-        library.metadata.set(&metadata);
-        metadata.downloads.set(&downloads);
-        releases.downloads.set(&downloads);
+        // Nothing below names a team above it (#854). What a team asks of
+        // the one above goes through a trait of its own, linked here; what it
+        // only tells it is a signal on the bus, heard here.
+        library
+            .incoming
+            .set(Arc::downgrade(&downloads) as Weak<dyn crate::library::Incoming>);
+        releases
+            .searcher
+            .set(Arc::downgrade(&downloads) as Weak<dyn crate::releases::Searcher>);
+        metadata.listen();
+        crate::downloads::watch::listen(&downloads);
         // Every SeriesChanged, from whichever job or scan, carries what is
         // still downloading, the same as a list read does
         let weak = Arc::downgrade(&downloads);
@@ -202,7 +204,9 @@ impl Core {
             started: AtomicBool::new(false),
             closed,
         });
-        core.host.core.set(&core);
+        core.host
+            .front
+            .set(Arc::downgrade(&core) as Weak<dyn host::Front>);
         // Here rather than in `launch`: a job that moves the schedule can
         // finish in a core that was never started, as the CLI's are.
         crate::calendar::listen(&core.metadata);
@@ -237,6 +241,14 @@ impl Core {
     #[doc(hidden)]
     pub fn set_host_bind(&self, bind: Option<String>) {
         self.host.set_bind(bind);
+    }
+
+    /// The tailnet host's router over this core's host team, for a test that
+    /// drives it without a socket. Not part of the contract and not exported
+    /// to any shell.
+    #[doc(hidden)]
+    pub fn host_router(&self) -> axum::Router {
+        host::server::router(Arc::downgrade(&self.host))
     }
 
     /// The `tailscale status --json` document this core's host reads in place
@@ -666,7 +678,7 @@ impl Core {
 
             // Net: the image cache
             Call::GetStorage => images::storage_call(&self.net),
-            Call::ClearImages => Ok(started(images::start_clear(&self.services))),
+            Call::ClearImages => Ok(started(images::start_clear(&self.net))),
 
             // Metadata: matching, airing, Airing now, Recommended, franchises
             Call::SearchProvider {
@@ -1052,6 +1064,18 @@ impl Core {
         }
         self.services.store.checkpoint();
         self.services.store.close();
+    }
+}
+
+/// What the host below asks of the front door (#854): the phone's calls,
+/// answered as the profile that sent them, and a session's skip windows.
+impl host::Front for Core {
+    fn answer(&self, profile: u64, call: Call) -> Result<Reply, CoreError> {
+        self.call_as(profile, call)
+    }
+
+    fn skip_windows(&self, session: u64) -> Result<Vec<SkipWindow>, CoreError> {
+        session::windows_of(&self.playback, session)
     }
 }
 

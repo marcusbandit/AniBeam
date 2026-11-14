@@ -25,6 +25,7 @@ use rusqlite::{Connection, params};
 
 use crate::contract::*;
 use crate::downloads::Downloads;
+use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::sync::recover;
 
@@ -193,6 +194,20 @@ impl Drop for Slot {
     fn drop(&mut self) {
         armed().remove(&self.0);
     }
+}
+
+/// Arms the timers again when the metadata below says an airing refresh
+/// moved a schedule (#854), which may be a new time for a followed show's
+/// next episode. Set once, by `Core::open`.
+pub(crate) fn listen(downloads: &Arc<Downloads>) {
+    let weak = Arc::downgrade(downloads);
+    downloads.services.bus.on_signal(Arc::new(move |signal| {
+        if signal == Signal::SchedulesMoved
+            && let Some(downloads) = weak.upgrade()
+        {
+            arm(&downloads);
+        }
+    }));
 }
 
 /// Sets a timer for every followed episode that has none yet. Called at
@@ -509,6 +524,25 @@ mod tests {
             core.services.store.read(|c| standing(c, &moved)).unwrap(),
             Standing::Stale
         );
+        core.shutdown();
+    }
+
+    /// An airing refresh that moved a schedule says so on the bus, and the
+    /// timers are armed before `signal` returns, where the refresh used to
+    /// call `arm` itself (#854).
+    #[test]
+    fn a_moved_schedule_arms_the_followed_episodes() {
+        let (_dir, core) = core();
+        let now = crate::time::now_secs();
+        followed(&core, now);
+        let next = (1, 4, now + 86_400);
+        let missed = (1, 2, now - 86_400);
+        assert!(!armed().contains(&next));
+        core.services.bus.signal(Signal::SchedulesMoved);
+        {
+            let armed = armed();
+            assert!(armed.contains(&next) && armed.contains(&missed));
+        }
         core.shutdown();
     }
 

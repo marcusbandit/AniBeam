@@ -17,10 +17,12 @@ use axum::response::{IntoResponse, Response};
 use rusqlite::{OptionalExtension, params};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
+use super::Front;
 use super::convert::{self, Converter, Key, Source};
 use super::server::{Served, error};
 use crate::contract::{Call, CoreError, Sidecar, call_name};
 use crate::foundation::range::{Range, byte_range};
+use crate::foundation::services::Services;
 use crate::sync::recover;
 
 /// The parts of the host only streaming uses, made on first use.
@@ -33,8 +35,8 @@ pub struct Streams {
 
 /// The file and its sidecars, by row id.
 fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
-    let core = st.core.upgrade()?;
-    core.services
+    let team = st.live()?;
+    team.services
         .store
         .read(|c| {
             Ok(c.query_row(
@@ -200,10 +202,10 @@ pub async fn subtitle(
 }
 
 pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Response {
-    let Some(core) = st.core.upgrade() else {
+    let Some(front) = st.live().and_then(|team| team.front.get()) else {
         return not_found();
     };
-    match crate::playback::session::windows_of(&core.playback, session) {
+    match front.skip_windows(session) {
         Ok(windows) => match serde_json::to_vec(&windows) {
             Ok(body) => json(StatusCode::OK, body),
             Err(_) => not_found(),
@@ -303,13 +305,13 @@ pub async fn hls(
         path,
         probe: (*probe).clone(),
     };
-    let Some(core) = st.core.upgrade() else {
+    let Some(team) = st.live() else {
         return not_found();
     };
     let converter = st
         .streams
         .converter
-        .get_or_init(|| Converter::new(std::path::Path::new(&core.services.paths.cache_dir)));
+        .get_or_init(|| Converter::new(std::path::Path::new(&team.services.paths.cache_dir)));
     match converter.piece(&key, &source, i).await {
         Some(bytes) => ([(header::CONTENT_TYPE, "video/mp2t")], Body::from(bytes)).into_response(),
         None => error(StatusCode::SERVICE_UNAVAILABLE, "the conversion failed"),
@@ -342,7 +344,8 @@ const DOWNLOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 /// the torrents went in, not only that a job started. The listener is up before the call,
 /// so a job that ends at once is not missed.
 pub(crate) fn run_to_end(
-    core: &crate::Core,
+    services: &Services,
+    front: &dyn Front,
     profile: u64,
     call: Call,
     wait: std::time::Duration,
@@ -355,8 +358,8 @@ pub(crate) fn run_to_end(
         }
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let sub = crate::events::Subscription::new(core.services.bus.clone(), Arc::new(Relay(tx)));
-    let job = match core.call_as(profile, call) {
+    let sub = crate::events::Subscription::new(services.bus.clone(), Arc::new(Relay(tx)));
+    let job = match front.answer(profile, call) {
         Ok(Reply::Started { job }) => job,
         other => {
             sub.unsubscribe();
@@ -422,18 +425,21 @@ pub async fn call(
     if download && profile != crate::foundation::trust::OWNER {
         return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
-    let Some(core) = st.core.upgrade() else {
+    let Some((team, front)) = st
+        .live()
+        .and_then(|team| team.front.get().map(|front| (team, front)))
+    else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let hiding = matches!(name.as_str(), "SetNotInterested" | "ListNotInterested");
-    if !hiding && !download && !core.host.streaming() {
+    if !hiding && !download && !team.streaming() {
         return error(StatusCode::FORBIDDEN, super::server::STREAMING_OFF);
     }
     let reply = tokio::task::spawn_blocking(move || {
         if download {
-            run_to_end(&core, profile, call, DOWNLOAD_WAIT)
+            run_to_end(&team.services, &*front, profile, call, DOWNLOAD_WAIT)
         } else {
-            core.call_as(profile, call)
+            front.answer(profile, call)
         }
     })
     .await;

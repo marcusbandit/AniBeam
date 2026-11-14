@@ -11,8 +11,8 @@ use std::sync::Arc;
 use rusqlite::params;
 
 use crate::contract::*;
-use crate::downloads::Downloads;
 use crate::i18n::tr;
+use crate::library::Incoming;
 use crate::library::Library;
 
 /// One file row as the delete needs it.
@@ -90,9 +90,9 @@ fn paths(
 /// The downloads team, which a delete asks what is still being written and hands the
 /// torrents of the trashed files. Missing only while the core goes away, and then nothing
 /// is deleted: a file is never trashed without asking.
-fn downloads_of(library: &Library) -> Result<Arc<Downloads>, CoreError> {
+fn downloads_of(library: &Library) -> Result<Arc<dyn Incoming>, CoreError> {
     library
-        .downloads
+        .incoming
         .get()
         .ok_or_else(|| CoreError::internal("core is shutting down"))
 }
@@ -152,7 +152,7 @@ pub fn delete_episodes(
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = super::trash::move_to_trash(&targets);
-    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
+    downloads.files_gone(gone(&targets));
     if moved.is_ok() {
         let line = format!(
             "{} {} of {title} {}",
@@ -227,10 +227,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
                 let take = w.file(f) || (finished_shows && !f.is_episode);
                 // Gone already (an earlier delete the rescan has not caught up with) is not
                 // counted as going now
-                if !take
-                    || crate::downloads::is_writing(&downloads, &f.path)
-                    || !Path::new(&f.path).exists()
-                {
+                if !take || downloads.is_writing(&f.path) || !Path::new(&f.path).exists() {
                     continue;
                 }
                 bytes += f.size;
@@ -277,7 +274,7 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
         });
     }
     let moved = super::trash::move_to_trash(&targets);
-    crate::downloads::drop_torrents_of(&downloads, gone(&targets));
+    downloads.files_gone(gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
             format!(

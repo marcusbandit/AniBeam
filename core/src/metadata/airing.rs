@@ -30,6 +30,7 @@ use std::time::Duration;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
+use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::Metadata;
@@ -422,8 +423,8 @@ pub fn start_refresh(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreE
                 ctx.changed(card);
             }
             // A new date for a followed show's next episode is a new timer (#215)
-            if updated && let Some(downloads) = owner.downloads.get() {
-                crate::downloads::watch::arm(&downloads);
+            if updated {
+                owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {
                 plain: None,
@@ -472,10 +473,8 @@ pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
                     }
                 }
             }
-            if updated > 0
-                && let Some(downloads) = owner.downloads.get()
-            {
-                crate::downloads::watch::arm(&downloads);
+            if updated > 0 {
+                owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {
                 plain: None,

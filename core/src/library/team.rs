@@ -4,17 +4,32 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::contract::CoreError;
-use crate::downloads::Downloads;
+use crate::contract::{CoreError, SeriesCard, SeriesDetail};
+use crate::events::Signal;
 use crate::foundation::above::Above;
 use crate::foundation::services::Services;
 use crate::library::reads::KeptLoad;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
-use crate::metadata::Metadata;
-use crate::metadata::automatch;
 use crate::net::Net;
 use crate::sync::recover;
+
+/// What the library asks of the team that brings files into it, the
+/// downloads above it (#854). The downloads implement it and `Core::open`
+/// links them to `Library::incoming`, so the library names no team above it.
+pub(crate) trait Incoming: Send + Sync {
+    /// Lays what a torrent is still writing over these cards.
+    fn overlay(self: Arc<Self>, cards: &mut [SeriesCard]);
+    /// The same over one series' detail, its episodes marked as well.
+    fn overlay_detail(self: Arc<Self>, detail: &mut SeriesDetail);
+    /// Whether a torrent is still writing this file.
+    fn is_writing(&self, path: &str) -> bool;
+    /// These files went to the trash: a torrent that held one leaves the
+    /// client too (#266).
+    fn files_gone(self: Arc<Self>, gone: Vec<std::path::PathBuf>);
+    /// A scan brought files in: where each came from is recorded (#241).
+    fn files_arrived(self: Arc<Self>);
+}
 
 pub struct Library {
     pub(crate) services: Arc<Services>,
@@ -37,10 +52,8 @@ pub struct Library {
     pub(crate) snapshot_cache: AtomicBool,
     pub(crate) kept_load: Mutex<Option<KeptLoad>>,
     /// What is still downloading, for the cards, and the torrents a delete
-    /// takes with it.
-    pub(crate) downloads: Above<Downloads>,
-    /// The match a settled folder asks for.
-    pub(crate) metadata: Above<Metadata>,
+    /// takes with it: the downloads, through the library's own trait.
+    pub(crate) incoming: Above<dyn Incoming>,
 }
 
 impl Library {
@@ -53,8 +66,7 @@ impl Library {
             closed,
             snapshot_cache: AtomicBool::new(false),
             kept_load: Mutex::new(None),
-            downloads: Above::default(),
-            metadata: Above::default(),
+            incoming: Above::default(),
         }
     }
 
@@ -171,9 +183,6 @@ impl Library {
     /// loop precisely because it no longer is.
     pub(crate) fn settle_fired(&self, series_id: u64) {
         recover(&self.state.settle).remove(&series_id);
-        let Some(metadata) = self.metadata.get() else {
-            return;
-        };
-        automatch::start(&metadata);
+        self.services.bus.signal(Signal::FolderSettled);
     }
 }

@@ -29,9 +29,29 @@ pub struct EventBus {
     /// the live state a card read from the database cannot know (what a
     /// torrent is still writing), whichever job or scan built the cards.
     cards_hook: RwLock<Option<CardsHook>>,
+    /// Every hook a team set for the signals of the teams below it.
+    signal_hooks: RwLock<Vec<SignalHook>>,
 }
 
 pub type CardsHook = Arc<dyn Fn(&mut [SeriesCard]) + Send + Sync>;
+
+/// What a team tells the teams above it (#854), said on the bus rather than
+/// called, so the team below names none of them. A signal stays inside the
+/// core: it is not an `Event`, no shell hears it and nothing stores it. Every
+/// hook hears it inline, on the thread that says it, before `signal`
+/// returns, so it lands where the call it replaced did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Signal {
+    /// An airing refresh moved a schedule: the downloads arm the followed
+    /// shows' episode timers again.
+    SchedulesMoved,
+    /// A library folder stopped changing and is worth a match.
+    FolderSettled,
+    /// A tracker list was read again: Recommended fits again.
+    TrackersChanged,
+}
+
+pub(crate) type SignalHook = Arc<dyn Fn(Signal) + Send + Sync>;
 
 impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
@@ -48,12 +68,29 @@ impl EventBus {
             listeners: RwLock::new(Vec::new()),
             store,
             cards_hook: RwLock::new(None),
+            signal_hooks: RwLock::new(Vec::new()),
         }))
     }
 
     /// Sets the hook every `SeriesChanged` passes through.
     pub fn set_cards_hook(&self, hook: CardsHook) {
         *self.cards_hook.write().unwrap() = Some(hook);
+    }
+
+    /// Adds a hook for the life of the bus. `Core::open` sets one per team
+    /// that listens, holding its team by a `Weak`, so the bus never keeps a
+    /// team alive.
+    pub(crate) fn on_signal(&self, hook: SignalHook) {
+        self.signal_hooks.write().unwrap().push(hook);
+    }
+
+    /// Tells every hook, in the order they were set, and returns once they
+    /// all have. The list is copied out first, so a hook may set another.
+    pub(crate) fn signal(&self, signal: Signal) {
+        let hooks: Vec<SignalHook> = self.signal_hooks.read().unwrap().clone();
+        for hook in hooks {
+            hook(signal);
+        }
     }
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
@@ -723,6 +760,30 @@ mod tests {
         assert_eq!(bus.generation(), g1, "progress alone is not a change");
         bus.debug(Stage::System, "a debug line", EventBody::Notice);
         assert!(bus.generation() > g1, "a debug-level event still counts");
+    }
+
+    /// A signal reaches every hook before `signal` returns, in the order the
+    /// hooks were set, and never reaches a shell: no listener hears it, no
+    /// row is stored and the generation stays where it was (#854).
+    #[test]
+    fn a_signal_reaches_every_hook_inline_and_nothing_else() {
+        let (_d, bus) = bus();
+        let c = Arc::new(Collector::default());
+        bus.subscribe(c.clone());
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        for n in [1, 2] {
+            let heard = heard.clone();
+            bus.on_signal(Arc::new(move |s| heard.lock().unwrap().push((n, s))));
+        }
+        let generation = bus.generation();
+        bus.signal(Signal::SchedulesMoved);
+        assert_eq!(
+            *heard.lock().unwrap(),
+            [(1, Signal::SchedulesMoved), (2, Signal::SchedulesMoved)]
+        );
+        assert!(c.events().is_empty());
+        assert_eq!(bus.generation(), generation);
+        assert!(bus.recent(10).unwrap().is_empty());
     }
 
     #[test]

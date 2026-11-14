@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::foundation::services::Services;
-use crate::images::ImageCache;
+use crate::images::{CardsFor, ImageCache};
 use crate::net::Upstream;
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
@@ -36,13 +36,16 @@ pub struct Net {
     /// and the row per file that says what is there. Reads consult it,
     /// jobs fill it, and the sweep keeps it from growing without end.
     pub(crate) images: Arc<ImageCache>,
+    /// The library's card read, for the `SeriesChanged` that follows a
+    /// change to the images.
+    pub(crate) cards_for: CardsFor,
 }
 
 impl Net {
     /// The clients over the services' one transport, and the image cache
-    /// over the directory `Core::open` created. Nothing here touches the
-    /// network.
-    pub(crate) fn new(services: Arc<Services>) -> Net {
+    /// over the directory `Core::open` created, which also hands in the
+    /// library's card read. Nothing here touches the network.
+    pub(crate) fn new(services: Arc<Services>, cards_for: CardsFor) -> Net {
         let http = &services.http;
         let images = ImageCache::new(
             services.store.clone(),
@@ -85,6 +88,7 @@ impl Net {
             mal,
             tvmaze,
             images,
+            cards_for,
         }
     }
 }

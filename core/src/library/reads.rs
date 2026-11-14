@@ -69,8 +69,8 @@ const KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 /// overlay is live state, so it goes on after the cache, never into it).
 fn load_all(library: &Library) -> Result<Loaded, CoreError> {
     let mut loaded = load_kept(library)?;
-    if let Some(downloads) = library.downloads.get() {
-        crate::downloads::overlay(&downloads, &mut loaded.cards);
+    if let Some(incoming) = library.incoming.get() {
+        incoming.overlay(&mut loaded.cards);
     }
     Ok(loaded)
 }
@@ -258,8 +258,8 @@ pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
     })?;
     match detail {
         Some(mut detail) => {
-            if let Some(downloads) = library.downloads.get() {
-                crate::downloads::overlay_detail(&downloads, &mut detail);
+            if let Some(incoming) = library.incoming.get() {
+                incoming.overlay_detail(&mut detail);
             }
             after_read(library, &gaps, poster.into_iter().collect());
             Ok(Reply::SeriesDetail {
