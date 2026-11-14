@@ -446,11 +446,12 @@ Item {
                                         onClicked: if (room.asksWholeShow) root.choosing = true; else root.getMedia(false)
                                     }
                                     // This episode, or the whole show of the host's release
-                                    Row {
+                                    // under the name, the second button under the first when both do not fit
+                                    Flow {
                                         id: choiceRow
                                         objectName: "room-panel-get-choice"
                                         visible: member.choice
-                                        anchors.left: nameRow.left
+                                        anchors.left: nameRow.left; anchors.right: parent.right
                                         anchors.top: avatar.bottom; anchors.topMargin: theme.space(2)
                                         spacing: theme.space(2)
                                         Button {
