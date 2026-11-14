@@ -9,7 +9,7 @@
 /// escape stands for itself rather than failing. Bytes that do not make
 /// UTF-8 become the replacement character, so a mangled query is still a
 /// string rather than a panic.
-pub(crate) fn decode(value: &str) -> String {
+pub fn decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -41,7 +41,7 @@ pub(crate) fn decode(value: &str) -> String {
 /// A query string value, percent-encoded: the unreserved characters stand
 /// for themselves and every other byte of the UTF-8 is `%XX`. A space is
 /// `%20` rather than `+`, which every server reads the same way.
-pub(crate) fn encode(value: &str) -> String {
+pub fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {

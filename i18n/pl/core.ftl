@@ -463,7 +463,7 @@ core-core-guest-not-interested = „Nie interesuje” na tamtym komputerze to li
 core-core-guest-recommended = polecane na tamtym komputerze wynikają z listy jego właściciela
 core-core-nothing-picked = nic nie wybrano
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } nie jest dostawcą dopasowań
 core-prefs-provider-count = { $provider } występuje { $count } razy; każdy dostawca występuje raz
@@ -547,7 +547,7 @@ core-update-cannot-copy = Nie udało się skopiować nowej aplikacji obok tej: {
 core-calendar-season-episode = { $title } - Sezon { $season } Odcinek { $number }
 core-calendar-episode = { $title } - Odcinek { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = brak katalogu domowego
 

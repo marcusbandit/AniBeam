@@ -184,11 +184,11 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-contract",
+ "anibeam-foundation",
  "anibeam-host-api",
  "anibeam-recs",
  "anibeam-room",
  "anyhow",
- "apple-native-keyring-store",
  "axum",
  "backon",
  "base64",
@@ -199,8 +199,6 @@ dependencies = [
  "futures-core",
  "futures-util",
  "governor",
- "if-addrs 0.13.4",
- "keyring-core",
  "librqbit",
  "matroska-demuxer",
  "mdns-sd",
@@ -211,7 +209,6 @@ dependencies = [
  "reqwest",
  "roxmltree 0.20.0",
  "rusqlite",
- "rusqlite_migration",
  "rustix 1.1.5",
  "rustls",
  "serde",
@@ -228,6 +225,30 @@ dependencies = [
  "uniffi",
  "walkdir",
  "webpki-root-certs",
+]
+
+[[package]]
+name = "anibeam-foundation"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-host-api",
+ "anibeam-room",
+ "apple-native-keyring-store",
+ "directories",
+ "if-addrs 0.13.4",
+ "keyring-core",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rusqlite_migration",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
 ]

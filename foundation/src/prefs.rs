@@ -4,10 +4,10 @@
 
 use rusqlite::Connection;
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
+use crate::services::Services;
 use crate::store::settings;
+use crate::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
+use anibeam_contract::*;
 
 pub fn load_preferences(conn: &Connection) -> Result<Preferences, CoreError> {
     settings::get_or_default(conn, settings::PREFERENCES)
@@ -76,7 +76,7 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
     if let Some(p) = order.iter().find(|p| !MATCH_PROVIDERS.contains(p)) {
         return Err(CoreError::invalid(
             "order",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-not-a-provider",
                 &[("provider", p.label().into())],
             ),
@@ -87,7 +87,7 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
         if n != 1 {
             return Err(CoreError::invalid(
                 "order",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-prefs-provider-count",
                     &[("provider", p.label().into()), ("count", n.into())],
                 ),
@@ -103,7 +103,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
     if !(ON_HOLD_MIN_DAYS..=ON_HOLD_MAX_DAYS).contains(&p.on_hold_days) {
         return Err(CoreError::invalid(
             "on_hold_days",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-outside",
                 &[
                     ("value", p.on_hold_days.to_string().into()),
@@ -116,7 +116,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
     if anibeam_room::room::clean_name(&p.room_name).is_none() && !p.room_name.trim().is_empty() {
         return Err(CoreError::invalid(
             "room_name",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-room-name",
                 &[("max", anibeam_room::room::NAME_MAX.to_string().into())],
             ),
@@ -125,7 +125,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
     if !relay_ok(&p.room_relay) {
         return Err(CoreError::invalid(
             "room_relay",
-            crate::i18n::tr("core-prefs-room-relay", &[]),
+            anibeam_contract::i18n::tr("core-prefs-room-relay", &[]),
         ));
     }
     Ok(())
@@ -145,7 +145,7 @@ fn range(field: &str, v: f64, lo: f64, hi: f64) -> Result<(), CoreError> {
     } else {
         Err(CoreError::invalid(
             field,
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-outside",
                 &[
                     ("value", v.to_string().into()),
@@ -166,14 +166,14 @@ pub fn validate_subtitle_defaults(d: &SubtitleDefaults) -> Result<(), CoreError>
     if d.text_style.font.trim().is_empty() {
         return Err(CoreError::invalid(
             "font",
-            crate::i18n::tr("core-prefs-empty", &[]),
+            anibeam_contract::i18n::tr("core-prefs-empty", &[]),
         ));
     }
     Ok(())
 }
 
 /// Whether a relay address can be used: http or https, with a host.
-pub(crate) fn relay_ok(relay: &str) -> bool {
+pub fn relay_ok(relay: &str) -> bool {
     let relay = relay.trim();
     (relay.starts_with("https://") || relay.starts_with("http://"))
         && reqwest::Url::parse(relay)
@@ -184,7 +184,7 @@ pub(crate) fn relay_ok(relay: &str) -> bool {
 
 /// Tells every listener the preferences changed: the event a save sends, from
 /// `SetPreferences` and from the host's trust switch alike.
-pub(crate) fn changed(services: &Services, preferences: Preferences) -> Result<Reply, CoreError> {
+pub fn changed(services: &Services, preferences: Preferences) -> Result<Reply, CoreError> {
     services.bus.debug(
         Stage::Store,
         "preferences changed",

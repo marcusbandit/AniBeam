@@ -23,8 +23,8 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use keyring_core::api::{CredentialApi, CredentialStoreApi};
 use keyring_core::{Credential, CredentialStore, Entry, Error as KeyringError};
 
-use crate::contract::CoreError;
 use crate::sync::recover;
+use anibeam_contract::CoreError;
 
 /// Every entry the core writes is under this one service, so the key is
 /// the whole address of a secret: `anilist.access_token`,
@@ -34,7 +34,7 @@ const SERVICE: &str = "anibeam";
 
 /// The one line the core says when the machine has no keyring. It is said
 /// once, by whichever caller finished the probe, and never again.
-pub(crate) const KEYRING_UNAVAILABLE: &str = "secrets: keyring unavailable, using secrets.json";
+pub const KEYRING_UNAVAILABLE: &str = "secrets: keyring unavailable, using secrets.json";
 
 /// Which of the two stores a secret is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -43,7 +43,7 @@ pub enum StoreKind {
     File,
 }
 
-crate::contract::column_strings!(
+anibeam_contract::column_strings!(
     /// The value every store column holds.
     StoreKind {
         Keyring => "keyring",

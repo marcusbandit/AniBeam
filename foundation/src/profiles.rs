@@ -9,9 +9,9 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::CoreError;
-pub use crate::foundation::trust::OWNER;
-use crate::foundation::trust::{Asker, TailnetUser};
+pub use crate::trust::OWNER;
+use crate::trust::{Asker, TailnetUser};
+use anibeam_contract::CoreError;
 
 /// The profile to answer `asker` as, made on first sight for a person the host has not
 /// seen before, with their Tailscale name kept fresh. `me` is this computer's own

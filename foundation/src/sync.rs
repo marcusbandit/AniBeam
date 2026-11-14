@@ -9,19 +9,19 @@ use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// queue of paths, and a panic elsewhere leaves all of that perfectly
 /// usable. Propagating the poison instead would turn one panicking job
 /// into a core that answers nothing.
-pub(crate) fn recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+pub fn recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
     lock.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// A read guard on an `RwLock`, poisoned or not, for the same reason as
 /// [`recover`].
-pub(crate) fn recover_read<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+pub fn recover_read<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
     lock.read().unwrap_or_else(|e| e.into_inner())
 }
 
 /// A write guard on an `RwLock`, poisoned or not, for the same reason as
 /// [`recover`].
-pub(crate) fn recover_write<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+pub fn recover_write<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
     lock.write().unwrap_or_else(|e| e.into_inner())
 }
 

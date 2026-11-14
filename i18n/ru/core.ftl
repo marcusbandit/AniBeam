@@ -465,7 +465,7 @@ core-core-guest-not-interested = «Не интересно» на том ком�
 core-core-guest-recommended = рекомендации на том компьютере подобраны по списку его владельца
 core-core-nothing-picked = ничего не выбрано
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } не является источником данных
 core-prefs-provider-count = { $provider } указан несколько раз ({ $count }); каждый источник указывается один раз
@@ -549,7 +549,7 @@ core-update-cannot-copy = Не удалось скопировать новое 
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
 core-calendar-episode = { $title }, серия { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = нет домашней папки
 

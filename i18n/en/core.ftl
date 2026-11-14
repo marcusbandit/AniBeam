@@ -469,7 +469,7 @@ core-core-guest-not-interested = Not interested on that computer is its owner's 
 core-core-guest-recommended = the recommendations on that computer are learnt from its owner's list
 core-core-nothing-picked = nothing picked
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is not a match provider
 core-prefs-provider-count = { $provider } appears { $count } times; every provider appears once
@@ -555,7 +555,7 @@ core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
 core-calendar-episode = { $title } - Episode { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no home directory
 

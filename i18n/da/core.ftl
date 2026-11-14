@@ -431,7 +431,7 @@ core-core-guest-not-interested = Ikke interesseret på den computer er dens ejer
 core-core-guest-recommended = anbefalingerne på den computer er lært af dens ejers liste
 core-core-nothing-picked = intet valgt
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } er ikke en matchkilde
 core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde optræder én gang
@@ -509,7 +509,7 @@ core-update-cannot-copy = Kunne ikke kopiere den nye app ved siden af denne: { $
 core-calendar-season-episode = { $title } - Sæson { $season } Afsnit { $number }
 core-calendar-episode = { $title } - Afsnit { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = ingen hjemmemappe
 

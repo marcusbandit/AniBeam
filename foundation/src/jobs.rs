@@ -7,10 +7,10 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::runtime::Handle;
 use tokio_util::sync::CancellationToken;
 
-use crate::contract::*;
 use crate::events::EventBus;
 use crate::sync::recover;
 use crate::time;
+use anibeam_contract::*;
 
 /// The throttle window for both `JobProgress` and batched `SeriesChanged`:
 /// at most four events a second per job, latest value always flushed.
@@ -36,14 +36,14 @@ struct Running {
 
 /// The reply of a call that started a job: the job's id, which the shell
 /// follows through the job's events.
-pub(crate) fn started(job: u64) -> Reply {
+pub fn started(job: u64) -> Reply {
     Reply::Started { job }
 }
 
 /// The reply of a call that starts a job only when there is one to run, such
 /// as a tracker write for a series no connected tracker carries, which is kept
 /// on this device: Ok with no job (#213).
-pub(crate) fn started_or_ok(job: Option<u64>) -> Reply {
+pub fn started_or_ok(job: Option<u64>) -> Reply {
     job.map_or(Reply::Ok, started)
 }
 
@@ -764,7 +764,7 @@ mod tests {
         let (_d, _rt, jobs, c) = setup();
         let id = jobs.start(JobKind::Search, |_ctx| async move {
             Ok(Finished {
-                plain: Some(crate::words!("count-shows", count = 2u64)),
+                plain: Some(anibeam_contract::words!("count-shows", count = 2u64)),
                 level: Level::Info,
                 message: "found".into(),
                 body: EventBody::SearchFinished { results: vec![] },

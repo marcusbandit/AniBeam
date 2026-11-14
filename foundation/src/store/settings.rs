@@ -1,7 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 pub const PREFERENCES: &str = "preferences";
 pub const SUBTITLE_DEFAULTS: &str = "subtitle_defaults";
