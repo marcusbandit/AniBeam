@@ -8,7 +8,6 @@
 //! being the same, and the tag `Anime`, as anirss's defaults tag.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -96,7 +95,7 @@ pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
 
 /// The three settings as they stand: the blob, anirss's config, then
 /// qBittorrent's default folder, asked only when nothing else names one.
-pub async fn resolve(services: &Arc<Services>, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
+pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
     let stored: Chosen = services
         .store
         .read(|c| kv::get(c, KEY))?

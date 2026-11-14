@@ -1946,7 +1946,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
 /// The account's `synced_at` and the entry's progress, in one transaction:
 /// two tables move together or neither does.
 pub(crate) async fn record_progress(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     progress: u32,
@@ -1967,7 +1967,7 @@ pub(crate) async fn record_progress(
 /// rating of nothing, and a status is only written when the rating
 /// completed the entry.
 async fn record_score(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     score: f64,
@@ -1988,7 +1988,7 @@ async fn record_score(
 
 /// The rewatch count a write sent, when it sent one.
 async fn record_repeat(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     extras: &Extras,
@@ -2005,7 +2005,7 @@ async fn record_repeat(
 
 /// The same for a notes write.
 async fn record_notes(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     notes: Option<String>,
@@ -2024,7 +2024,7 @@ async fn record_notes(
 /// The same for a status On hold sent, with the tracker's stamp for it
 /// when the reply carried one.
 pub(crate) async fn record_status(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     status: ListStatus,

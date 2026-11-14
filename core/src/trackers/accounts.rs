@@ -500,7 +500,7 @@ pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreE
 /// Both tokens into the keyring, and where the access token landed, which
 /// is what the row's `secret_store` records.
 pub(crate) async fn save_tokens(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     tokens: &Tokens,
 ) -> Result<StoreKind, CoreError> {
@@ -520,7 +520,7 @@ pub(crate) async fn save_tokens(
 /// The row a finished flow leaves: who signed in, with which id, until
 /// when, and where their tokens went.
 pub(crate) async fn save_connection(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     user_id: Option<u64>,
     username: &str,
@@ -555,7 +555,7 @@ pub(crate) async fn save_connection(
 /// The facade is taken off the field rather than through `Services::secrets`,
 /// which would run the D-Bus probe on the calling task; whoever started
 /// the job has already been through the accessor.
-pub(crate) async fn with_secrets<T, F>(services: &Arc<Services>, f: F) -> Result<T, CoreError>
+pub(crate) async fn with_secrets<T, F>(services: &Services, f: F) -> Result<T, CoreError>
 where
     T: Send + 'static,
     F: FnOnce(&Secrets) -> Result<T, CoreError> + Send + 'static,

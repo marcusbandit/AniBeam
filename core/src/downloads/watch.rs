@@ -322,7 +322,7 @@ async fn refresh(core: &Arc<Core>, series: u64) {
 }
 
 /// The one line for an episode that never came, said once ever.
-async fn give_up(services: &Arc<Services>, d: &Due) {
+async fn give_up(services: &Services, d: &Due) {
     let (series, episode, now) = (d.series, d.episode, crate::time::now_secs());
     let first = services
         .store

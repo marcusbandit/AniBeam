@@ -1466,7 +1466,7 @@ fn covered_by(plan: &Plan, path: &str) -> bool {
 /// Turns a scope into the sources to walk and the paths to limit the work
 /// to. A scoped scan still walks its source in full, since a folder's
 /// classification only makes sense in the source's context.
-async fn resolve(services: &Arc<Services>, scope: &ScanScope) -> Result<Plan, CoreError> {
+async fn resolve(services: &Services, scope: &ScanScope) -> Result<Plan, CoreError> {
     let sources = services.store.write_async(|c| all_targets(c)).await?;
     let plan = match scope {
         ScanScope::All => Plan {

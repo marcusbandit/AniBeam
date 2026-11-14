@@ -549,7 +549,7 @@ async fn fetch_and_replace(
 /// cards: the numbers on all of them just changed, so they leave in one
 /// batch rather than one event each.
 async fn matched_cards(
-    services: &Arc<Services>,
+    services: &Services,
     refreshed: &[Tracker],
 ) -> Result<Vec<SeriesCard>, CoreError> {
     let images_dir = services.paths.images_dir();

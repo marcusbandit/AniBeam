@@ -220,7 +220,7 @@ async fn run(
 /// same state as an unplugged drive: its series stay dormant and attach
 /// when the path comes back.
 async fn import_sources(
-    services: &Arc<Services>,
+    services: &Services,
     entries: Vec<format::SourceEntry>,
     now: i64,
     summary: &mut ImportSummary,
@@ -289,7 +289,7 @@ async fn import_sources(
 /// section after it finds every file on its new key. Answers the series
 /// touched, and the ones with a fixed file the library does not hold yet.
 async fn import_series(
-    services: &Arc<Services>,
+    services: &Services,
     entries: Vec<SeriesEntry>,
     now: i64,
     summary: &mut ImportSummary,
@@ -690,7 +690,7 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
 /// path and the episode's number. The newer `at` wins on every one of
 /// them, so a re-import never rewinds what the library already knows.
 async fn import_history(
-    services: &Arc<Services>,
+    services: &Services,
     history: format::History,
     summary: &mut ImportSummary,
 ) -> Result<(), CoreError> {
@@ -704,7 +704,7 @@ async fn import_history(
 /// [`import_history`]'s merge, for a caller with no import summary: the
 /// views, completed episodes and resume points it wrote.
 pub(crate) async fn merge_history(
-    services: &Arc<Services>,
+    services: &Services,
     history: format::History,
 ) -> Result<(u64, u64, u64), CoreError> {
     services
@@ -861,7 +861,7 @@ fn resume_target(
 /// the transaction: a keyring that will not take a token should fail the
 /// section before it has changed a row.
 async fn import_accounts(
-    services: &Arc<Services>,
+    services: &Services,
     accounts: format::Accounts,
     now: i64,
     summary: &mut ImportSummary,
@@ -924,7 +924,7 @@ async fn import_accounts(
 /// Every call goes through the blocking pool: the keyring is synchronous
 /// zbus underneath and a tokio worker must never block on it.
 async fn write_secrets(
-    services: &Arc<Services>,
+    services: &Services,
     t: Tracker,
     account: &Account,
 ) -> Result<(Option<StoreKind>, bool), CoreError> {
@@ -957,7 +957,7 @@ async fn write_secrets(
 /// One secret, written only when the store holds something else. `None`
 /// when it already held exactly this, so nothing is counted as imported.
 async fn write_secret(
-    services: &Arc<Services>,
+    services: &Services,
     key: String,
     value: String,
     hint: Option<StoreKind>,
@@ -978,7 +978,7 @@ async fn write_secret(
 /// A value this core does not know keeps whatever the library had, rather
 /// than resetting the whole record over one word.
 async fn import_preferences(
-    services: &Arc<Services>,
+    services: &Services,
     entry: format::PrefsEntry,
 ) -> Result<Preferences, CoreError> {
     services

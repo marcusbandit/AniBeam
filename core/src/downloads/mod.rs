@@ -185,7 +185,7 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
     }
 }
 
-async fn load_settings(services: &Arc<Services>) -> Result<DownloadSettings, CoreError> {
+async fn load_settings(services: &Services) -> Result<DownloadSettings, CoreError> {
     let mut s = settings::read(services)?;
     let mut keys = vec![settings::ANIRSS_TOKEN.to_string()];
     keys.extend(settings::active_password_key(&s));
@@ -439,7 +439,7 @@ fn write_anirss_failure(st: &mut State, state: AnirssState, message: &str) {
 /// borrowed for the client at the address anirss's own config names: it is
 /// that server's password, and no other client's business.
 async fn resolve_password(
-    services: &Arc<Services>,
+    services: &Services,
     s: &DownloadSettings,
 ) -> Result<(Option<String>, &'static str), CoreError> {
     let Some(key) = settings::active_password_key(s) else {
@@ -614,7 +614,7 @@ fn own_address(services: &Services) -> Result<String, CoreError> {
 }
 
 /// AniBeam's own qBittorrent, started when its Web UI does not answer.
-async fn start_managed(services: &Arc<Services>, s: &DownloadSettings) -> Result<(), CoreError> {
+async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), CoreError> {
     let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", services.http.clone());
     let answers = || async {
         matches!(
@@ -1882,7 +1882,7 @@ async fn swap_feed(
 /// same for any endpoint whose feed carries a search. A feed that cannot be
 /// read rejects that word; the rule keeps every word either way.
 async fn tightest_feed(
-    services: &Arc<Services>,
+    services: &Services,
     ctx: &Arc<JobCtx>,
     feed_url: &str,
     words: &[String],

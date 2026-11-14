@@ -886,7 +886,7 @@ fn save_changes(services: &Services, before: &[Roll], after: &[Roll]) -> Result<
 }
 
 /// Saves new rolls, numbering them after the stored ones.
-pub(crate) async fn add_rolls(services: &Arc<Services>, rolls: Vec<Roll>) -> Result<(), CoreError> {
+pub(crate) async fn add_rolls(services: &Services, rolls: Vec<Roll>) -> Result<(), CoreError> {
     services
         .store
         .write_async(move |c| {

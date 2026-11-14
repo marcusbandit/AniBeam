@@ -12,7 +12,7 @@
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 
 use rusqlite::{Connection, params, params_from_iter};
 
@@ -86,7 +86,7 @@ fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
 /// client full of done torrents costs no request at all. Two torrents
 /// holding one path (a cross-seed) leave the first one read.
 pub async fn record_from(
-    services: &Arc<Services>,
+    services: &Services,
     client: Option<&QbtClient>,
     torrents: &[Torrent],
 ) -> Result<u64, CoreError> {
@@ -268,6 +268,7 @@ fn slashes(p: &str) -> String {
 mod tests {
     use super::*;
     use crate::net::FakeHttp;
+    use std::sync::Arc;
 
     fn origin(hash: &str, name: &str) -> Origin {
         Origin {

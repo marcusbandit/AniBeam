@@ -326,7 +326,7 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
 }
 
 /// Merges another computer's document into this library.
-pub async fn merge(services: &Arc<Services>, doc: Document) -> Result<Merged, CoreError> {
+pub async fn merge(services: &Services, doc: Document) -> Result<Merged, CoreError> {
     // A read, on the writer the async side has, so no runtime thread blocks.
     let here = services.store.write_async(|c| locals(c)).await?;
     let mapping = map(&doc.series, &here);
@@ -405,7 +405,7 @@ pub async fn merge(services: &Arc<Services>, doc: Document) -> Result<Merged, Co
 /// Pulls the history of the AniBeam at `base` (`http://<address>:<port>`)
 /// and merges it. Nothing is merged from something that is not AniBeam or
 /// does not serve its history.
-pub async fn pull(services: &Arc<Services>, base: &str) -> Result<Merged, CoreError> {
+pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> {
     let http = reqwest::Client::builder()
         .timeout(PULL_FOR)
         .redirect(reqwest::redirect::Policy::none())

@@ -609,7 +609,7 @@ pub async fn after_add(
 /// Stops the unfinished torrents the new ones stand in for, as far as
 /// `cancel_plan` allows.
 async fn cancel_in_flight(
-    services: &Arc<Services>,
+    services: &Services,
     client: &QbtClient,
     hashes: &[String],
     replacing: &BTreeSet<u32>,
@@ -658,7 +658,7 @@ fn plural_files(n: usize) -> String {
 /// Takes the torrent out of the client and what it wrote to the trash. The
 /// trash targets are checked first; if they are refused the torrent stays.
 async fn cancel_whole(
-    services: &Arc<Services>,
+    services: &Services,
     client: &QbtClient,
     t: &Torrent,
 ) -> Result<String, CoreError> {
@@ -695,7 +695,7 @@ async fn cancel_whole(
 // The tick ---------------------------------------------------------------------
 
 /// One pass over the stored followups against a fresh torrent read.
-pub async fn tick(services: &Arc<Services>, client: &QbtClient, torrents: &[Torrent]) {
+pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent]) {
     let _one = TICK.lock().await;
     let before = match load(services) {
         Ok(f) if !f.is_empty() => f,
@@ -792,7 +792,7 @@ pub async fn tick(services: &Arc<Services>, client: &QbtClient, torrents: &[Torr
 
 /// Trashes the old files of one episode and tidies the old torrents.
 async fn replace_episode(
-    services: &Arc<Services>,
+    services: &Services,
     client: &QbtClient,
     series: u64,
     entry: &Replacement,
