@@ -157,8 +157,6 @@ xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
 
 `scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
 LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
-A PR's test build comment carries Add to AltStore, SideStore and LiveContainer links: they open
-`site/install/`, which hands the IPA's release URL to the app's `<app>://install?url=` scheme.
 
 Info.plist asks for the local network (`NSLocalNetworkUsageDescription`), which the host
 and casting need, and declares `_googlecast._tcp` under `NSBonjourServices`. Finding devices
