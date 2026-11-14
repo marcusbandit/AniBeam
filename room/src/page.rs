@@ -200,7 +200,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
         format!("\n<p class=\"episode\">{episode}</p>")
     };
     // The app takes the link and comes up over the browser; when the page is still
-    // showing two seconds later, nothing took it (an install that never registered
+    // showing four seconds later and never lost focus, nothing took it (an install that never registered
     // anibeam://, or none at all), so the page turns to the code to type in by hand.
     let open = if room.is_some() {
         format!(
@@ -219,9 +219,10 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
     clearTimeout(timer);
     timer = setTimeout(function () {{
       if (document.visibilityState === "visible") main.classList.add("gone");
-    }}, 2000);
+    }}, 4000);
   }});
   document.addEventListener("visibilitychange", function () {{ if (document.hidden) clearTimeout(timer); }});
+  window.addEventListener("blur", function () {{ clearTimeout(timer); }});
   function copied() {{ copy.textContent = "Copied"; }}
   function select() {{
     var r = document.createRange(), s = window.getSelection();
