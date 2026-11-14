@@ -34,6 +34,7 @@ CHANNELS = {
         "subtitle": "AniBeam for iPhone",
         "description": "Releases of AniBeam for iPhone. Add this source and AniBeam shows up in your library with each new release as an update.",
         "app_subtitle": "Browse and play your anime library",
+        "icon": "img/icon.png",
     },
     "nightly": {
         "name": "AniBeam Nightly",
@@ -41,6 +42,9 @@ CHANNELS = {
         "subtitle": "The newest AniBeam for iPhone, built from main",
         "description": "The newest AniBeam builds for iPhone, built from main and less polished than a release. Newer releases appear here too.",
         "app_subtitle": "Nightly build of AniBeam",
+        # The website's nightly mark: rsvg-convert -w 512 -h 512 img/logo-nightly.svg
+        # -o img/icon-nightly.png after the logo changes.
+        "icon": "img/icon-nightly.png",
     },
 }
 APP_DESCRIPTION = ("AniBeam browses and plays your anime library, keeps your AniList and MyAnimeList "
@@ -109,7 +113,7 @@ def feed(channel, versions):
             "developerName": "marcusbandit",
             "subtitle": c["app_subtitle"],
             "localizedDescription": APP_DESCRIPTION,
-            "iconURL": f"{BASE}/img/icon.png",
+            "iconURL": f"{BASE}/{c['icon']}",
             "category": "entertainment",
             "versions": versions,
             "appPermissions": {"entitlements": [], "privacy": privacy()},
@@ -120,7 +124,7 @@ def feed(channel, versions):
         "sourceURL": f"{BASE}/altstore/{channel}.json",
         "subtitle": c["subtitle"],
         "description": c["description"],
-        "iconURL": f"{BASE}/img/icon.png",
+        "iconURL": f"{BASE}/{c['icon']}",
         "website": BASE,
         "nsfw": False,
         "apps": apps,
