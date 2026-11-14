@@ -60,9 +60,8 @@ pub struct Local {
 
 /// Finds the room's episode here: the series by its AniList id, then its MAL id,
 /// then its TVmaze id, and in those the file by the episode's history key, else
-/// by its number. A
-/// series that matches without the file is still named, so the shell can say the
-/// episode is missing from a show the person has.
+/// by its number (`by_number`). A series that matches without the file is still
+/// named, so the shell can say the episode is missing from a show the person has.
 pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, CoreError> {
     let mut candidates: Vec<u64> = Vec::new();
     let by = [
@@ -97,39 +96,81 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
     // The key first; then the episode by its number, since two copies of one
     // episode can carry different keys ("6" here, "S03E06" in a folder named for
     // its season)
-    let by_key = (
-        "SELECT id, episode_key FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
-        rusqlite::types::Value::from(e.episode_key.clone()),
-    );
-    let by_number = e.number.filter(|n| n.is_finite()).map(|n| {
-        (
-            "SELECT id, episode_key FROM files WHERE series_id = ?1 AND kind = 'episode'
-             AND abs(number - ?2) < 0.001 ORDER BY id LIMIT 1",
-            rusqlite::types::Value::from(n),
-        )
-    });
-    for (sql, want) in std::iter::once(by_key).chain(by_number) {
+    let mut found = None;
+    for &series in &candidates {
+        let file: Option<(i64, String)> = conn
+            .query_row(
+                "SELECT id, episode_key FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
+                params![series as i64, e.episode_key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if let Some(file) = file {
+            found = Some((series, file));
+            break;
+        }
+    }
+    if found.is_none()
+        && let Some(number) = e.number.filter(|n| n.is_finite())
+    {
         for &series in &candidates {
-            let file: Option<(i64, String)> = conn
-                .query_row(sql, params![series as i64, want], |r| {
-                    Ok((r.get(0)?, r.get(1)?))
-                })
-                .optional()?;
-            if let Some((file, key)) = file {
-                let opening = skip::cached(conn, series, &key, crate::time::now_secs())?
-                    .and_then(|windows| opening_of(&windows));
-                return Ok(Local {
-                    series: Some(series),
-                    file: Some(file as u64),
-                    opening,
-                });
+            if let Some(file) = by_number(conn, series, number, season_of(&e.episode_key))? {
+                found = Some((series, file));
+                break;
             }
         }
+    }
+    if let Some((series, (file, key))) = found {
+        let opening = skip::cached(conn, series, &key, crate::time::now_secs())?
+            .and_then(|windows| opening_of(&windows));
+        return Ok(Local {
+            series: Some(series),
+            file: Some(file as u64),
+            opening,
+        });
     }
     Ok(Local {
         series: candidates.first().copied(),
         file: None,
         opening: None,
+    })
+}
+
+/// The season a history key names: 3 for `S03E06`, None for a bare number,
+/// which is the first season or a file that names none.
+fn season_of(key: &str) -> Option<i64> {
+    let rest = key.strip_prefix(['S', 's'])?;
+    let (season, _) = rest.split_once(['E', 'e'])?;
+    season.parse().ok()
+}
+
+/// The file of one series with the episode's number. A file of the room's
+/// season when the key names one; else, or when none is of that season, only a
+/// file that is the one with that number, since several seasons in one folder
+/// each have an episode 6 and the lowest id is no answer.
+fn by_number(
+    conn: &Connection,
+    series: u64,
+    number: f64,
+    season: Option<i64>,
+) -> Result<Option<(i64, String)>, CoreError> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, episode_key, season FROM files WHERE series_id = ?1 AND kind = 'episode'
+         AND abs(number - ?2) < 0.001 ORDER BY id",
+    )?;
+    let files = stmt
+        .query_map(params![series as i64, number], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(want) = season
+        && let Some((id, key, _)) = files.iter().find(|(_, _, s)| *s == Some(want))
+    {
+        return Ok(Some((*id, key.clone())));
+    }
+    Ok(match files.as_slice() {
+        [(id, key, _)] => Some((*id, key.clone())),
+        _ => None,
     })
 }
 
@@ -211,6 +252,39 @@ mod tests {
         .unwrap();
         let found = find_local(&c, &episode(Some(21), None, "6")).unwrap();
         assert_eq!(found.file, Some(12));
+    }
+
+    fn file_of_season(c: &Connection, id: i64, season: i64, number: i64) {
+        let key = if season == 1 {
+            number.to_string()
+        } else {
+            format!("S{season:02}E{number:02}")
+        };
+        c.execute(
+            "INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at)
+             VALUES (?1, 1, ?2, 0, 0, 'episode', ?3, ?4, 'EP', ?5, '[]', 0)",
+            params![id, format!("/lib/1/{id}.mkv"), number, season, key],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_number_finds_the_room_s_season_and_never_guesses_between_seasons() {
+        let c = conn();
+        series(&c, 1, Some(21), None);
+        file_of_season(&c, 10, 2, 6);
+        file_of_season(&c, 12, 3, 6);
+        // The room names season 3 under a key this folder writes otherwise
+        let mut s3 = episode(Some(21), None, "6");
+        s3.episode_key = "S3E6".into();
+        assert_eq!(find_local(&c, &s3).unwrap().file, Some(12));
+        // A season none of them is, or none named: two files have episode 6
+        let mut s4 = s3.clone();
+        s4.episode_key = "S04E06".into();
+        assert_eq!(find_local(&c, &s4).unwrap().file, None);
+        assert_eq!(find_local(&c, &episode(Some(21), None, "6")).unwrap().file, None);
+        assert_eq!(season_of("S03E06"), Some(3));
+        assert_eq!(season_of("12.5"), None);
     }
 
     #[test]
