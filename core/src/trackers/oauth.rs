@@ -826,7 +826,7 @@ mod tests {
         assert!(matches!(&err, CoreError::Service { code, .. } if code == "port_busy"));
         // What the person reads, prefix and all.
         let shown = err.to_string();
-        assert!(!shown.contains("Anibeam"), "{shown}");
+        assert!(!shown.to_lowercase().contains("anibeam"), "{shown}");
         assert!(!shown.contains("file"), "{shown}");
         assert!(shown.starts_with("Signing in could not start: "), "{shown}");
         assert!(shown.contains(&format!("port {port}")), "{shown}");

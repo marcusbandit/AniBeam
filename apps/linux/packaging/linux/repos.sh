@@ -74,7 +74,7 @@ cp "${debs[@]}" "$apt/pool/main/"
     -o APT::FTPArchive::Release::Codename=stable \
     -o APT::FTPArchive::Release::Architectures=amd64 \
     -o APT::FTPArchive::Release::Components=main \
-    -o "APT::FTPArchive::Release::Description=AniBeam" \
+    -o "APT::FTPArchive::Release::Description=Anibeam" \
     release dists/stable > dists/stable/Release
 )
 sign --armor --detach-sign --output "$apt/dists/stable/Release.gpg" "$apt/dists/stable/Release"

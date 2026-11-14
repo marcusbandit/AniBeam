@@ -68,7 +68,7 @@ What an agent does, on top of what the workflow does:
 
 Two T3 scheduled tasks on the owner's desktop keep the state true:
 
-- **Anibeam issue sweep**, daily at 07:30, against `marcusbandit/AniBeam`. Every open issue is on the
+- **AniBeam issue sweep**, daily at 07:30, against `marcusbandit/AniBeam`. Every open issue is on the
   board; the board's Status matches the labels (`in progress` is In progress, `in review` is In
   review, neither is Backlog or Up next); every open issue has one category label; an
   `in progress` issue with no branch, PR or commit in 14 days loses the label and goes back to

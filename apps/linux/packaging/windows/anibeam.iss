@@ -44,6 +44,10 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; behind to be loaded by mistake.
 Type: filesandordirs; Name: "{app}\qml"
 Type: filesandordirs; Name: "{app}\anirss"
+; Shortcuts from before the name was spelled Anibeam. NTFS ignores case, so an update would
+; overwrite AniBeam.lnk in place and keep the old name; deleting them first lets [Icons] make new ones.
+Type: files; Name: "{autoprograms}\AniBeam.lnk"
+Type: files; Name: "{autodesktop}\AniBeam.lnk"
 
 [Icons]
 Name: "{autoprograms}\Anibeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"

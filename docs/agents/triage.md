@@ -11,7 +11,7 @@ how an issue reaches triage, and how to reproduce one here.
 On the owner's desktop, the "Issue triage" T3 scheduled task runs `~/.local/share/issue-triage/check.sh`
 every 10 minutes. Anibeam is opted in by its line in `repos.txt` beside the script, and
 `check.sh` says in its header exactly what it hands out. For each issue it reports, the task
-launches a thread titled `Triage: Anibeam #<n>` on Claude Opus, in a fresh worktree of
+launches a thread titled `Triage: AniBeam #<n>` on Claude Opus, in a fresh worktree of
 `origin/main`, and that thread runs the skill. A later pass on the same issue goes to the same
 thread.
 
