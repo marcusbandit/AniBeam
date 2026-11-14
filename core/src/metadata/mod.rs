@@ -13,9 +13,11 @@ pub mod link;
 pub mod record;
 pub mod similarity;
 
-/// How often the core is willing to say out loud that Jikan is down. Jikan
-/// is the episode-title side-fetch and nothing else, so an outage costs a
-/// series its titles rather than its match; a job walking a whole library
+/// How often the core is willing to say out loud that Jikan is down, and
+/// how long it leaves Jikan alone after a failure. Jikan is the
+/// episode-title side-fetch and nothing else, so an outage costs a series
+/// its titles rather than its match; a job walking a whole library
 /// through a Jikan outage would otherwise write one warning per series
-/// into an activity log that is meant to carry state changes only.
+/// into an activity log that is meant to carry state changes only, and
+/// wait out a timeout or a rate limit's backoff once per series.
 pub(crate) const OUTAGE_WINDOW: Duration = Duration::from_secs(600);

@@ -723,6 +723,27 @@ const EPISODE_UPSERT_FRESH: &str =
         title = coalesce(excluded.title, anilist_episodes.title),
         aired_at = coalesce(excluded.aired_at, anilist_episodes.aired_at)";
 
+/// [`write_episodes`] without the delete: the rows go in and nothing
+/// comes out. For a list that is missing a provider's half, whose silence
+/// about a future row says nothing about whether it was dropped.
+pub fn upsert_episodes(
+    tx: &Transaction,
+    anilist_id: u64,
+    rows: &[EpisodeRow],
+    keep_titles: bool,
+) -> Result<(), CoreError> {
+    let id = as_i64(anilist_id);
+    let sql = if keep_titles {
+        EPISODE_UPSERT_KEEP
+    } else {
+        EPISODE_UPSERT_FRESH
+    };
+    for r in rows {
+        tx.execute(sql, params![id, i64::from(r.number), r.title, r.aired_at])?;
+    }
+    Ok(())
+}
+
 /// The schedule and the titles for one series. `keep_titles` is the airing
 /// refresh's rule: that job asks AniList for dates alone, so a title
 /// already in the table is the best one there will ever be and nothing it
@@ -739,18 +760,11 @@ pub fn write_episodes(
     keep_titles: bool,
     now: i64,
 ) -> Result<(), CoreError> {
-    let id = as_i64(anilist_id);
-    let sql = if keep_titles {
-        EPISODE_UPSERT_KEEP
-    } else {
-        EPISODE_UPSERT_FRESH
-    };
-    for r in rows {
-        tx.execute(sql, params![id, i64::from(r.number), r.title, r.aired_at])?;
-    }
+    upsert_episodes(tx, anilist_id, rows, keep_titles)?;
     if rows.is_empty() {
         return Ok(());
     }
+    let id = as_i64(anilist_id);
     let mut binds: Vec<Value> = Vec::with_capacity(rows.len() + 2);
     binds.push(Value::from(id));
     binds.push(Value::from(now));

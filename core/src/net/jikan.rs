@@ -3,6 +3,7 @@
 //! carries no episode titles, so this fills them in.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -11,6 +12,11 @@ use super::{HttpRequest, Method, null_to_default};
 use crate::contract::{CoreError, Provider};
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
+
+/// How long one Jikan request may take. Jikan answers in a second or two
+/// when it is up, and a match waits on it, so a request that has not
+/// answered by now is an outage rather than a slow reply.
+pub const JIKAN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One episode as Jikan reports it. `mal_id` is the database row, never the
 /// episode number, so `episode` is the only key worth having.
@@ -40,11 +46,23 @@ pub struct JikanEpisode {
 
 pub struct JikanClient {
     client: ProviderClient,
+    timeout: Duration,
 }
 
 impl JikanClient {
     pub fn new(client: ProviderClient) -> JikanClient {
-        JikanClient { client }
+        JikanClient {
+            client,
+            timeout: JIKAN_TIMEOUT,
+        }
+    }
+
+    /// Tests shorten the cap on each request; production keeps
+    /// `JIKAN_TIMEOUT`.
+    #[doc(hidden)]
+    pub fn with_timeout(mut self, timeout: Duration) -> JikanClient {
+        self.timeout = timeout;
+        self
     }
 
     /// Every episode Jikan holds for that MAL id, in episode order. A 404
@@ -53,13 +71,16 @@ impl JikanClient {
     pub async fn episodes(&self, mal_id: u64) -> Result<Vec<JikanEpisode>, CoreError> {
         let response = self
             .client
-            .send(HttpRequest {
-                method: Method::Get,
-                url: format!("{JIKAN_API}/anime/{mal_id}/episodes"),
-                headers: vec![("Accept".to_string(), "application/json".to_string())],
-                body: None,
-                timeout: None,
-            })
+            .send_within(
+                HttpRequest {
+                    method: Method::Get,
+                    url: format!("{JIKAN_API}/anime/{mal_id}/episodes"),
+                    headers: vec![("Accept".to_string(), "application/json".to_string())],
+                    body: None,
+                    timeout: None,
+                },
+                self.timeout,
+            )
             .await?;
         if response.status == 404 {
             return Ok(Vec::new());
@@ -99,9 +120,9 @@ impl JikanClient {
 mod tests {
     use super::*;
     use crate::net::limiter::ProviderClient;
+    use crate::net::{BoxFuture, Http, HttpError, HttpResponse};
     use crate::net::{FakeHttp, Upstream};
     use std::sync::Arc;
-    use std::time::Duration;
 
     fn client(http: Arc<FakeHttp>) -> JikanClient {
         JikanClient::new(ProviderClient::new(
@@ -163,6 +184,32 @@ mod tests {
                     ..
                 }
             ),
+            "{err:?}"
+        );
+    }
+
+    /// A server that never answers.
+    struct Silent;
+
+    impl Http for Silent {
+        fn send(&self, _req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// A Jikan that never answers is a failure after the cap, not a match
+    /// left waiting on it.
+    #[tokio::test]
+    async fn a_request_that_never_answers_fails_at_the_cap() {
+        let client = JikanClient::new(ProviderClient::new(
+            Upstream::Jikan,
+            Arc::new(Silent),
+            Duration::from_millis(1),
+        ))
+        .with_timeout(Duration::from_millis(20));
+        let err = client.episodes(1).await.err().unwrap();
+        assert!(
+            matches!(&err, CoreError::Provider { status: None, message, .. } if message.contains("timed out")),
             "{err:?}"
         );
     }

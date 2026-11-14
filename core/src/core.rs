@@ -18,7 +18,7 @@ use crate::library::watcher::{self, Trigger, Watcher};
 use crate::metadata::{OUTAGE_WINDOW, airing, apply, automatch};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
-use crate::net::jikan::JikanClient;
+use crate::net::jikan::{JikanClient, JikanEpisode};
 use crate::net::limiter::ProviderClient;
 use crate::net::mal::MalClient;
 use crate::net::tvmaze::TvmazeClient;
@@ -115,10 +115,11 @@ pub struct Core {
     /// open for the sign-in to finish before the tab is let go. A test
     /// shortens it.
     pub(crate) sign_in_hold_ms: AtomicU64,
-    /// When the core last said out loud that Jikan was not answering.
-    /// Jikan is the episode-title side-fetch, so an outage costs a series
-    /// its titles rather than its match, and a job walking a whole library
-    /// through one must not write a warning per series into the log.
+    /// When Jikan last failed and the core said so out loud. Jikan is the
+    /// episode-title side-fetch, so an outage costs a series its titles
+    /// rather than its match, and a job walking a whole library through
+    /// one must neither write a warning per series into the log nor wait
+    /// on Jikan once per series: inside the window it is not asked at all.
     pub(crate) jikan_outage: Mutex<Option<Instant>>,
     /// Every open playback session, and the counter that names the next
     /// one. A session lives in memory for one run of the player: the rows
@@ -643,10 +644,37 @@ impl Core {
         automatch::start(&core);
     }
 
-    /// Warns that Jikan is not answering, at most once every ten minutes.
-    /// Every caller reports every failure; this is what decides which of
-    /// them the user is told about.
-    pub(crate) fn report_jikan_outage(&self, message: &str) {
+    /// Jikan's episodes for `mal_id`, or `None` when Jikan has nothing to
+    /// say: it failed just now, or it failed inside the last
+    /// `OUTAGE_WINDOW` and is not asked again until the window has passed.
+    /// A caller reads `None` as a Jikan half it does not have, which is not
+    /// the same as an empty list.
+    pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> Option<Vec<JikanEpisode>> {
+        if self.jikan_down() {
+            return None;
+        }
+        match self.jikan.episodes(mal_id).await {
+            Ok(episodes) => Some(episodes),
+            Err(e) => {
+                self.report_jikan_outage(&crate::metadata::fetch::message_of(&e));
+                None
+            }
+        }
+    }
+
+    /// Whether Jikan failed inside the outage window.
+    fn jikan_down(&self) -> bool {
+        self.jikan_outage
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some_and(|at| at.elapsed() < OUTAGE_WINDOW)
+    }
+
+    /// Warns that Jikan is not answering, at most once every ten minutes,
+    /// and starts the window in which it is not asked. A request already in
+    /// flight when the window opened can still fail inside it; this is what
+    /// keeps that failure out of the log.
+    fn report_jikan_outage(&self, message: &str) {
         let mut last = self.jikan_outage.lock().unwrap_or_else(|e| e.into_inner());
         if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
             return;
