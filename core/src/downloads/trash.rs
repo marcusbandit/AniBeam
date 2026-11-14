@@ -126,11 +126,7 @@ pub fn move_to_trash(paths: &[PathBuf]) -> Result<(), CoreError> {
     #[cfg(phone_os)]
     return delete_outright(paths);
     #[cfg(not(phone_os))]
-    trash::delete_all(paths).map_err(|e| CoreError::Service {
-        service: "trash".to_string(),
-        code: "failed".to_string(),
-        message: e.to_string(),
-    })
+    trash::delete_all(paths).map_err(|e| CoreError::service("trash", "failed", e.to_string()))
 }
 
 #[cfg_attr(not(phone_os), allow(dead_code))]
@@ -145,11 +141,11 @@ fn delete_outright(paths: &[PathBuf]) -> Result<(), CoreError> {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(CoreError::Service {
-                    service: "trash".to_string(),
-                    code: "failed".to_string(),
-                    message: format!("{}: {e}", p.display()),
-                });
+                return Err(CoreError::service(
+                    "trash",
+                    "failed",
+                    format!("{}: {e}", p.display()),
+                ));
             }
         }
     }

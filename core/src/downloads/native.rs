@@ -38,11 +38,7 @@ const FALLBACK_NAME: &str = "anirss";
 const FETCH_DEADLINE: Duration = Duration::from_secs(20);
 
 fn not_found(message: String) -> CoreError {
-    CoreError::Service {
-        service: SERVICE.to_string(),
-        code: "not_found".to_string(),
-        message,
-    }
+    CoreError::service(SERVICE, "not_found", message)
 }
 
 // Subscribing ------------------------------------------------------------------

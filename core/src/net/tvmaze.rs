@@ -11,7 +11,7 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, HttpResponse, Method, null_to_default};
+use super::{HttpRequest, HttpResponse, null_to_default};
 use crate::contract::{AiringStatus, CoreError, Provider};
 use crate::percent;
 
@@ -248,13 +248,7 @@ impl TvmazeClient {
 
     async fn get(&self, url: String) -> Result<HttpResponse, CoreError> {
         self.client
-            .send(HttpRequest {
-                method: Method::Get,
-                url,
-                headers: vec![("Accept".to_string(), "application/json".to_string())],
-                body: None,
-                timeout: None,
-            })
+            .send(HttpRequest::get(url).header("Accept", "application/json"))
             .await
     }
 
@@ -315,12 +309,11 @@ fn check(response: &HttpResponse) -> Result<(), CoreError> {
     if response.is_success() {
         return Ok(());
     }
-    Err(CoreError::Provider {
-        provider: Provider::Tvmaze,
-        status: Some(u32::from(response.status)),
-        message: format!("TVmaze {}: {}", response.status, response.text()),
-        retry_after: None,
-    })
+    Err(CoreError::provider(
+        Provider::Tvmaze,
+        Some(u32::from(response.status)),
+        format!("TVmaze {}: {}", response.status, response.text()),
+    ))
 }
 
 #[cfg(test)]

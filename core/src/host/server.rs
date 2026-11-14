@@ -21,6 +21,7 @@ use crate::contract::CoreError;
 use crate::core::Core;
 use crate::foundation::machine::hostname;
 use crate::foundation::trust::{Asker, TailnetUser};
+use crate::sync::recover;
 use crate::time;
 
 /// How long a built snapshot answers every request.
@@ -204,12 +205,7 @@ async fn trusted(
             Asker::Person(user) => user.id.clone(),
             Asker::Unknown => return Ok((verdict, proof, None, None)),
         };
-        let known = served
-            .profiles
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&key)
-            .copied();
+        let known = recover(&served.profiles).get(&key).copied();
         if let Some(id) = known {
             return Ok((verdict, proof, None, Some((id, who))));
         }
@@ -223,11 +219,7 @@ async fn trusted(
         if let Some(id) = profile
             && (!key.is_empty() || learned)
         {
-            served
-                .profiles
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(key, id);
+            recover(&served.profiles).insert(key, id);
         }
         Ok::<_, CoreError>((verdict, proof, None, profile.map(|id| (id, who))))
     })
@@ -463,13 +455,7 @@ async fn snapshot(
 /// while one is built, so a burst of clients waits for one build instead of
 /// starting many.
 async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
-    let slot = st
-        .snapshot
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .entry(profile)
-        .or_default()
-        .clone();
+    let slot = recover(&st.snapshot).entry(profile).or_default().clone();
     let mut slot = slot.lock().await;
     if let Some((at, body)) = slot.as_ref()
         && at.elapsed() < CACHE_FOR

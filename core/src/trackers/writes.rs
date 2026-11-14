@@ -35,6 +35,7 @@ use crate::net::anilist::{
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
 };
 use crate::prefs;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::{
     TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
@@ -309,7 +310,7 @@ static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSe
     std::sync::LazyLock::new(Default::default);
 
 fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
-    REWATCHING.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&REWATCHING)
 }
 
 /// A series' place in `REWATCHING`, given up when the job that holds it ends
@@ -1926,12 +1927,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
         .and_then(|body| body["message"].as_str().map(str::to_string))
         .filter(|message| !message.is_empty())
         .unwrap_or(text);
-    CoreError::Provider {
-        provider: Provider::Mal,
-        status: Some(u32::from(response.status)),
-        message,
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Mal, Some(u32::from(response.status)), message)
 }
 
 // What is left behind --------------------------------------------------------
@@ -2250,22 +2246,12 @@ mod tests {
     /// and the status still decides the line where there is one.
     #[test]
     fn an_error_is_sanitised_by_its_status_then_its_message() {
-        let limited = CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(429),
-            message: "AniList rate limited".into(),
-            retry_after: None,
-        };
+        let limited = CoreError::provider(Provider::Anilist, Some(429), "AniList rate limited");
         assert_eq!(
             sanitize_error(Tracker::Anilist, &limited),
             "AniList rate limited, try again in a minute."
         );
-        let refused = CoreError::Provider {
-            provider: Provider::Mal,
-            status: None,
-            message: "connection refused".into(),
-            retry_after: None,
-        };
+        let refused = CoreError::provider(Provider::Mal, None, "connection refused");
         assert_eq!(sanitize_error(Tracker::Mal, &refused), "connection refused");
         // Anything that is not a provider failure still reads as one line.
         assert_eq!(

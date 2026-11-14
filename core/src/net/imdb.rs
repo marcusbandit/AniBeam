@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use flate2::read::GzDecoder;
 
-use super::{Fault, Http, HttpRequest, Method};
+use super::{Fault, Http, HttpRequest};
 
 pub const RATINGS_URL: &str = "https://datasets.imdbws.com/title.ratings.tsv.gz";
 
@@ -45,13 +45,11 @@ pub async fn fetch(http: &dyn Http, since: Option<&str>) -> Result<Dump, Fault> 
         .map(|at| vec![("If-Modified-Since".to_string(), at.to_string())])
         .unwrap_or_default();
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: RATINGS_URL.to_string(),
-            headers,
-            body: None,
-            timeout: Some(DUMP_TIMEOUT),
-        })
+        .send(
+            HttpRequest::get(RATINGS_URL)
+                .headers(headers)
+                .timeout(DUMP_TIMEOUT),
+        )
         .await?;
     match response.status {
         304 => Ok(Dump::Unchanged),

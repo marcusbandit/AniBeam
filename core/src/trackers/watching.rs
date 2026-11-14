@@ -508,12 +508,7 @@ fn failed(e: CoreError) -> CoreError {
             status,
             retry_after,
             ..
-        } => CoreError::Provider {
-            provider,
-            status,
-            message,
-            retry_after,
-        },
+        } => CoreError::provider_retry(provider, status, message, retry_after),
         _ => tracker_error(message),
     }
 }
@@ -558,12 +553,12 @@ mod tests {
     /// the failure took.
     #[test]
     fn a_failure_carries_one_readable_line() {
-        let limited = CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(429),
-            message: "AniList rate limited".to_string(),
-            retry_after: Some(9.0),
-        };
+        let limited = CoreError::provider_retry(
+            Provider::Anilist,
+            Some(429),
+            "AniList rate limited",
+            Some(9.0),
+        );
         let out = failed(limited);
         assert!(
             matches!(&out, CoreError::Provider { status: Some(429), message, retry_after: Some(w), .. }

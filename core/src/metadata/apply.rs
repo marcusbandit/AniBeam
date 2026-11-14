@@ -137,24 +137,14 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
                 Pasted::Anilist(id) => MatchTarget::Anilist { id, season: None },
                 Pasted::Mal(mal_id) => {
                     let id = owner.anilist.resolve_by_mal(mal_id).await?.ok_or_else(|| {
-                        CoreError::Provider {
-                            provider: Provider::Anilist,
-                            status: Some(404),
-                            message: tr(NO_MAL_ENTRY, &[]),
-                            retry_after: None,
-                        }
+                        CoreError::provider(Provider::Anilist, Some(404), tr(NO_MAL_ENTRY, &[]))
                     })?;
                     MatchTarget::Anilist { id, season: None }
                 }
                 Pasted::Tvmaze(id) => MatchTarget::Tvmaze { id },
                 Pasted::Imdb(imdb) => {
                     let id = owner.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
-                        CoreError::Provider {
-                            provider: Provider::Tvmaze,
-                            status: Some(404),
-                            message: tr(NO_IMDB_SHOW, &[]),
-                            retry_after: None,
-                        }
+                        CoreError::provider(Provider::Tvmaze, Some(404), tr(NO_IMDB_SHOW, &[]))
                     })?;
                     MatchTarget::Tvmaze { id }
                 }

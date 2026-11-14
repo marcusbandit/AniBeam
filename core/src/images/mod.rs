@@ -25,9 +25,10 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
 use crate::library::cards;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::store::Store;
 use crate::store::sql::placeholders;
+use crate::sync::recover;
 use crate::time;
 
 /// Fetches in flight at once.
@@ -163,12 +164,7 @@ pub fn extension(url: &str, content_type: Option<&str>) -> &'static str {
 /// A fetch that failed. The CDN is AniList's, so that is the provider a
 /// shell is told about; `status` is None when nothing answered at all.
 fn cdn_error(status: Option<u32>, message: impl Into<String>) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Anilist,
-        status,
-        message: message.into(),
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Anilist, status, message)
 }
 
 // ---------------------------------------------------------------------------
@@ -214,9 +210,7 @@ impl ImageCache {
     /// one `Instant`, and a panicking job must not wedge the gate for the
     /// rest of the process.
     fn fill_gate(&self) -> MutexGuard<'_, Option<Instant>> {
-        self.fill_started_at
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        recover(&self.fill_started_at)
     }
 
     /// Whether a read that found a gap should ask for a fill.
@@ -596,13 +590,7 @@ async fn fetch_one(
     dir: &Path,
     url: &str,
 ) -> Result<String, CoreError> {
-    let request = HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: None,
-    };
+    let request = HttpRequest::get(url);
     let response = http
         .send(request)
         .await

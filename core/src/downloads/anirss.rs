@@ -23,6 +23,7 @@ use tokio::process::Child;
 
 use crate::contract::*;
 use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "anirss";
@@ -185,13 +186,13 @@ impl AnirssClient {
     /// `DELETE /endpoints/<name>` (anirss 0.6).
     pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
         let response = self
-            .send(HttpRequest {
-                method: Method::Delete,
-                url: format!("{}/endpoints/{}", self.base, encode(name)),
-                headers: self.headers(),
-                body: None,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(
+                    Method::Delete,
+                    format!("{}/endpoints/{}", self.base, encode(name)),
+                )
+                .headers(self.headers()),
+            )
             .await?;
         judge(response).map(|_| ())
     }
@@ -454,13 +455,11 @@ impl AnirssClient {
             url = format!("{url}?{}", q.join("&"));
         }
         let response = self
-            .send(HttpRequest {
-                method: Method::Get,
-                url,
-                headers: self.headers(),
-                body: None,
-                timeout,
-            })
+            .send(
+                HttpRequest::get(url)
+                    .headers(self.headers())
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }
@@ -474,13 +473,12 @@ impl AnirssClient {
         let mut headers = self.headers();
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
         let response = self
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}{}", self.base, path),
-                headers,
-                body: Some(Body::Json(body)),
-                timeout,
-            })
+            .send(
+                HttpRequest::post(format!("{}{}", self.base, path))
+                    .headers(headers)
+                    .body(Body::Json(body))
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }
@@ -496,13 +494,15 @@ impl AnirssClient {
     }
 
     async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
-        self.http.send(req).await.map_err(|e| CoreError::Service {
-            service: SERVICE.to_string(),
-            code: "unreachable".to_string(),
-            message: crate::i18n::tr(
-                "core-downloads-anirss-no-answer",
-                &[("message", e.message.into())],
-            ),
+        self.http.send(req).await.map_err(|e| {
+            CoreError::service(
+                SERVICE,
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-anirss-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
         })
     }
 }
@@ -533,11 +533,7 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
                 ],
             )
         });
-    Err(CoreError::Service {
-        service: SERVICE.to_string(),
-        code,
-        message,
-    })
+    Err(CoreError::service(SERVICE, code, message))
 }
 
 /// Percent-encodes a query value the way a form does.
@@ -700,7 +696,7 @@ impl Sidecar {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(pipe).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let mut t = tail.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut t = recover(&tail);
                     if t.len() >= STDERR_TAIL {
                         t.pop_front();
                     }
@@ -771,7 +767,7 @@ impl Sidecar {
 
     /// The last few lines stderr said, joined, or `None` when it said nothing.
     fn stderr_tail(&self) -> Option<String> {
-        let t = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
+        let t = recover(&self.stderr);
         let lines: Vec<&str> = t
             .iter()
             .map(|s| s.trim())

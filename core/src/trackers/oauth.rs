@@ -292,12 +292,11 @@ async fn sign_in(
                 .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
                 .await?;
             if !profile.is_success() {
-                return Err(CoreError::Provider {
-                    provider: Provider::Mal,
-                    status: Some(u32::from(profile.status)),
-                    message: profile.text(),
-                    retry_after: None,
-                });
+                return Err(CoreError::provider(
+                    Provider::Mal,
+                    Some(u32::from(profile.status)),
+                    profile.text(),
+                ));
             }
             let profile: serde_json::Value = profile.json()?;
             let username = profile["name"]
@@ -374,31 +373,31 @@ fn bind(port: u16) -> Result<TcpListener, CoreError> {
         tracing::debug!("the loopback listener could not bind {port}: {e}");
         let service = tr("core-trackers-oauth-could-not-start", &[]);
         if e.kind() != std::io::ErrorKind::AddrInUse {
-            return CoreError::Service {
+            return CoreError::service(
                 service,
-                code: "listen_failed".to_string(),
-                message: tr(
+                "listen_failed",
+                tr(
                     "core-trackers-oauth-port-failed",
                     &[
                         ("port", port.to_string().into()),
                         ("error", e.to_string().into()),
                     ],
                 ),
-            };
+            );
         }
         // The port sits in the range the system hands out for any program's
         // connections, so a passing one can hold it for a moment, and a
         // program listening there holds it until it stops (#456). The
         // registered redirect pins the port, so waiting or closing the other
         // program is the remedy. Not `Io`, which would call it a file error.
-        CoreError::Service {
+        CoreError::service(
             service,
-            code: "port_busy".to_string(),
-            message: tr(
+            "port_busy",
+            tr(
                 "core-trackers-oauth-port-busy",
                 &[("port", port.to_string().into())],
             ),
-        }
+        )
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
     TcpListener::from_std(listener).map_err(io_error)

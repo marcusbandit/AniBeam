@@ -18,6 +18,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::media::Prepared;
 use crate::host::stream::{Range, byte_range};
+use crate::sync::recover;
 
 /// What one token serves.
 pub struct Served {
@@ -106,25 +107,15 @@ pub struct Registry {
 
 impl Registry {
     pub fn add(&self, token: String, served: Served) {
-        self.entries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(token, Arc::new(served));
+        recover(&self.entries).insert(token, Arc::new(served));
     }
 
     pub fn remove(&self, token: &str) {
-        self.entries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(token);
+        recover(&self.entries).remove(token);
     }
 
     fn get(&self, token: &str) -> Option<Arc<Served>> {
-        self.entries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(token)
-            .cloned()
+        recover(&self.entries).get(token).cloned()
     }
 }
 

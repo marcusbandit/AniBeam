@@ -447,20 +447,10 @@ async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreEr
     let http = crate::repos::endpoint_http(core);
     let reply = crate::net::Http::send(
         &http,
-        crate::net::HttpRequest {
-            method: crate::net::Method::Get,
-            url: link.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: Some(std::time::Duration::from_secs(30)),
-        },
+        crate::net::HttpRequest::get(link).timeout(std::time::Duration::from_secs(30)),
     )
     .await
-    .map_err(|e| CoreError::Service {
-        service: crate::net::host_shown(link),
-        code: "unreachable".to_string(),
-        message: e.message,
-    })?;
+    .map_err(|e| CoreError::service(crate::net::host_shown(link), "unreachable", e.message))?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 

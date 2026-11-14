@@ -21,7 +21,8 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::downloads::EndpointSync;
 use crate::i18n::tr;
-use crate::net::{HttpRequest, Method};
+use crate::net::HttpRequest;
+use crate::sync::recover;
 use index::{Definition, Index, RepoFault};
 
 pub use pace::{FLOOR, Paced};
@@ -99,13 +100,9 @@ async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
     if url.starts_with("https://") || url.starts_with("http://") {
         // A repo's host has no rate of its own; it waits the floor like any endpoint host.
         let http = Paced::new(core.http.clone(), Vec::new());
-        let req = HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![("Accept".into(), "application/json".into())],
-            body: None,
-            timeout: Some(FETCH_TIMEOUT),
-        };
+        let req = HttpRequest::get(url)
+            .header("Accept", "application/json")
+            .timeout(FETCH_TIMEOUT);
         let res = crate::net::Http::send(&http, req).await.map_err(|e| {
             RepoFault::new(
                 "unreachable",
@@ -464,7 +461,7 @@ pub fn add_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
         trusted,
     };
     // One preview at a time: a shell shows one, so an older one is let go.
-    let mut held = core.repos.indexes.lock().unwrap_or_else(|e| e.into_inner());
+    let mut held = recover(&core.repos.indexes);
     held.clear();
     held.insert(url, idx);
     Ok(Reply::EndpointRepoPreview { preview })
@@ -472,12 +469,7 @@ pub fn add_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
 
 pub fn trust_repo(core: &Core, url: String, key: String) -> Result<Reply, CoreError> {
     let url = normal_url(&url)?;
-    let pending = core
-        .repos
-        .indexes
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&url);
+    let pending = recover(&core.repos.indexes).remove(&url);
     let idx = match pending {
         Some(idx) => idx,
         None => core.handle.block_on(fetch(core, &url))?,

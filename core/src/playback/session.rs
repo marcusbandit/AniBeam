@@ -35,6 +35,7 @@ use crate::library::sidecar::sidecars_of;
 use crate::library::{classifier, labels};
 use crate::prefs;
 use crate::presence::Activity;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::{on_hold, writes};
 
@@ -112,7 +113,7 @@ impl Sessions {
     /// A poisoned lock is recovered rather than propagated: the map holds
     /// plain data, so a panic elsewhere leaves it perfectly usable.
     fn lock(&self) -> MutexGuard<'_, HashMap<u64, Session>> {
-        self.map.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.map)
     }
 
     fn next_id(&self) -> u64 {
@@ -494,17 +495,17 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
             // torrent is still writing does not open.
             if !f.is_extra && crate::downloads::is_writing(core, &f.path) {
                 let done = crate::downloads::episode_progress(core, f.series, f.number).unwrap_or(0.0);
-                return Err(CoreError::Service {
-                    service: crate::downloads::qbt::SERVICE.to_string(),
-                    code: "downloading".to_string(),
-                    message: crate::i18n::tr(
+                return Err(CoreError::service(
+                    crate::downloads::qbt::SERVICE,
+                    "downloading",
+                    crate::i18n::tr(
                         "core-playback-still-downloading",
                         &[
                             ("number", (f.number as u32).to_string().into()),
                             ("done", (done * 100.0).floor().to_string().into()),
                         ],
                     ),
-                });
+                ));
             }
             let s = series_row(c, f.series, &images_dir)?;
             let resume_from: Option<f64> = c

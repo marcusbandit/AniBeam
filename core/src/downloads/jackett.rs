@@ -18,7 +18,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// How long a command with no ready URL to wait for is given to fail
 /// before it counts as started.
@@ -100,16 +100,10 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(PROBE_TIMEOUT),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url).timeout(PROBE_TIMEOUT))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// The last line of the log that says anything.

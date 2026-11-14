@@ -24,6 +24,7 @@ use keyring_core::api::{CredentialApi, CredentialStoreApi};
 use keyring_core::{Credential, CredentialStore, Entry, Error as KeyringError};
 
 use crate::contract::CoreError;
+use crate::sync::recover;
 
 /// Every entry the core writes is under this one service, so the key is
 /// the whole address of a secret: `anilist.access_token`,
@@ -249,11 +250,11 @@ impl Secrets {
     }
 
     fn known(&self) -> MutexGuard<'_, HashSet<String>> {
-        self.known.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.known)
     }
 
     fn probed(&self) -> MutexGuard<'_, HashSet<String>> {
-        self.probed.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.probed)
     }
 
     /// The membership test on its own, so the guard is gone before any
@@ -458,7 +459,7 @@ impl CredentialApi for FileCredential {
     fn set_secret(&self, secret: &[u8]) -> keyring_core::Result<()> {
         let value = std::str::from_utf8(secret)
             .map_err(|e| KeyringError::Invalid("secret".to_string(), e.to_string()))?;
-        let _guard = self.store.writes.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = recover(&self.store.writes);
         let mut map = self.store.read_all()?;
         map.insert(self.key(), value.to_string());
         self.store.write_all(&map)
@@ -472,7 +473,7 @@ impl CredentialApi for FileCredential {
     }
 
     fn delete_credential(&self) -> keyring_core::Result<()> {
-        let _guard = self.store.writes.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = recover(&self.store.writes);
         let mut map = self.store.read_all()?;
         if map.remove(&self.key()).is_none() {
             return Err(KeyringError::NoEntry);

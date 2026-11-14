@@ -251,6 +251,45 @@ impl CoreError {
             message: message.into(),
         }
     }
+
+    /// A `Service` error: `service` names who refused, `code` is the fixed
+    /// word a shell branches on, `message` is for people.
+    pub fn service(
+        service: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> CoreError {
+        CoreError::Service {
+            service: service.into(),
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    /// A `Provider` error with no retry hint. A provider that said when to
+    /// come back gets [`CoreError::provider_retry`].
+    pub fn provider(
+        provider: Provider,
+        status: Option<u32>,
+        message: impl Into<String>,
+    ) -> CoreError {
+        CoreError::provider_retry(provider, status, message, None)
+    }
+
+    /// A `Provider` error that carries the provider's retry hint, in seconds.
+    pub fn provider_retry(
+        provider: Provider,
+        status: Option<u32>,
+        message: impl Into<String>,
+        retry_after: Option<f64>,
+    ) -> CoreError {
+        CoreError::Provider {
+            provider,
+            status,
+            message: message.into(),
+            retry_after,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -270,6 +309,36 @@ mod tests {
         );
         let back: CoreError = serde_json::from_value(json).unwrap();
         assert_eq!(back, e);
+    }
+
+    #[test]
+    fn the_constructors_build_the_variants() {
+        assert_eq!(
+            CoreError::service("anirss", "unreachable", String::from("timed out")),
+            CoreError::Service {
+                service: "anirss".into(),
+                code: "unreachable".into(),
+                message: "timed out".into(),
+            }
+        );
+        assert_eq!(
+            CoreError::provider(Provider::Mal, Some(401), "invalid_token"),
+            CoreError::Provider {
+                provider: Provider::Mal,
+                status: Some(401),
+                message: "invalid_token".into(),
+                retry_after: None,
+            }
+        );
+        assert_eq!(
+            CoreError::provider_retry(Provider::Anilist, Some(429), "slow down", Some(9.0)),
+            CoreError::Provider {
+                provider: Provider::Anilist,
+                status: Some(429),
+                message: "slow down".into(),
+                retry_after: Some(9.0),
+            }
+        );
     }
 
     #[test]
