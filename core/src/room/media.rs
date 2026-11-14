@@ -382,7 +382,7 @@ async fn fetch(
     downloads::download_telling(
         core,
         vec![release],
-        Some(e.series_title.clone()),
+        folder(&e.series_title),
         options,
         Some(tell),
     )
@@ -603,6 +603,22 @@ async fn search(core: &Arc<Core>, offer: &Offer, e: &proto::EpisodeRef) -> Resul
         }
     }
     Err(Why::NotFound)
+}
+
+/// The folder a download lands in, named for the show: a title with a slash in it
+/// ("Ranma1/2") would be refused as a path, so a slash reads as a hyphen. None when
+/// nothing is left, which names the folder after the release instead.
+fn folder(title: &str) -> Option<String> {
+    let name: String = title
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' => '-',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    let name = name.trim();
+    (!name.is_empty() && name != "." && name != "..").then(|| name.to_string())
 }
 
 /// A release that holds this episode alone: never a batch, and one with no
@@ -1112,6 +1128,17 @@ mod tests {
             release("Cowboy.Bebop.S01E05.renamed", &magnet(7)),
         ];
         assert_eq!(pick(&items, &host, &ep(5.0)).unwrap().link, magnet(7));
+    }
+
+    #[test]
+    fn a_title_with_a_slash_still_names_a_folder() {
+        assert_eq!(
+            folder("Ranma1/2 (2024) Season 3").as_deref(),
+            Some("Ranma1-2 (2024) Season 3")
+        );
+        assert_eq!(folder("A\\B").as_deref(), Some("A-B"));
+        assert_eq!(folder("  "), None);
+        assert_eq!(folder(".."), None);
     }
 
     #[test]
