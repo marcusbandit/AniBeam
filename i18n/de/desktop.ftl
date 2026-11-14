@@ -58,6 +58,7 @@ update-notice-downloading = Lade AniBeam { $version }
 update-notice-ready = AniBeam { $version } ist bereit
 update-notice-failed = Das Update ist fehlgeschlagen
 update-notice-on-aur = AniBeam { $version } ist im AUR
+update-notice-in-repo = AniBeam { $version } ist im { $manager }-Repo
 update-notice-out = AniBeam { $version } ist da
 update-notice-out-titled = AniBeam { $version } „{ $title }“ ist da
 update-notice-progress = { $percent } %  ·  { $got } von { $total } MB

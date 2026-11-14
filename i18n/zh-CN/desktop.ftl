@@ -43,6 +43,7 @@ update-notice-downloading = 正在下载 AniBeam { $version }
 update-notice-ready = AniBeam { $version } 已就绪
 update-notice-failed = 更新失败
 update-notice-on-aur = AniBeam { $version } 已上架 AUR
+update-notice-in-repo = AniBeam { $version } 已上架 { $manager } 软件源
 update-notice-out = AniBeam { $version } 已发布
 update-notice-out-titled = AniBeam { $version }“{ $title }”已发布
 update-notice-progress = { $percent }%  ·  { $got } / { $total } MB

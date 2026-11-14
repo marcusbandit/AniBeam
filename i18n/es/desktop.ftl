@@ -58,6 +58,7 @@ update-notice-downloading = Descargando AniBeam { $version }
 update-notice-ready = AniBeam { $version } está listo
 update-notice-failed = La actualización falló
 update-notice-on-aur = AniBeam { $version } está en el AUR
+update-notice-in-repo = AniBeam { $version } está en el repositorio de { $manager }
 update-notice-out = Ya está aquí AniBeam { $version }
 update-notice-out-titled = Ya está aquí AniBeam { $version } “{ $title }”
 update-notice-progress = { $percent } %  ·  { $got } de { $total } MB

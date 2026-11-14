@@ -67,7 +67,8 @@ pub mod qobject {
         /// (empty when it has none), its page and how this copy takes it. `how` is
         /// `install` (installUpdate does it), `command` (the package manager does it, with
         /// `command`), `source` (a build from a checkout) or `page` (the release has no
-        /// file for this copy).
+        /// file for this copy). `from` names where a `command` update comes from: `aur`,
+        /// `apt` or `dnf`, empty otherwise.
         #[qsignal]
         fn update_available(
             self: Pin<&mut Self>,
@@ -77,6 +78,7 @@ pub mod qobject {
             track: QString,
             how: QString,
             command: QString,
+            from: QString,
         );
         /// A check on `track` ended with nothing to offer: `error` is empty when this
         /// build is the newest, else why the check could not tell.
@@ -436,24 +438,29 @@ impl qobject::Shell {
                     INSTALL.get_or_init(|| found).clone()
                 }
             };
-            let offer =
-                |version: &str, title: &str, url: &str, how: &'static str, command: String| {
-                    let (version, title, url) = (
-                        QString::from(version),
-                        QString::from(title),
-                        QString::from(url),
-                    );
-                    let _ = shell.queue(move |shell| {
-                        shell.update_available(
-                            version,
-                            title,
-                            url,
-                            QString::from(asked),
-                            QString::from(how),
-                            QString::from(&command),
-                        )
-                    });
-                };
+            let offer = |version: &str,
+                         title: &str,
+                         url: &str,
+                         how: &'static str,
+                         command: String,
+                         from: &'static str| {
+                let (version, title, url) = (
+                    QString::from(version),
+                    QString::from(title),
+                    QString::from(url),
+                );
+                let _ = shell.queue(move |shell| {
+                    shell.update_available(
+                        version,
+                        title,
+                        url,
+                        QString::from(asked),
+                        QString::from(how),
+                        QString::from(&command),
+                        QString::from(from),
+                    )
+                });
+            };
             // A build the system's package manager installed is updated by that package
             // manager. The AUR's is offered once the AUR has it, with the command that
             // fetches it. The apt and dnf repos on anibeam.app carry each stable release as
@@ -464,6 +471,11 @@ impl qobject::Shell {
                     return nothing(String::new());
                 };
                 if let Some(command) = install::repo_command(*manager, package) {
+                    let from = match manager {
+                        install::Manager::Apt => "apt",
+                        install::Manager::Dnf => "dnf",
+                        install::Manager::Pacman => "",
+                    };
                     match anibeam_core::update::check_repos(&http, &current).await {
                         Ok(Some(version)) => offer(
                             &version,
@@ -473,6 +485,7 @@ impl qobject::Shell {
                             ),
                             "command",
                             command,
+                            from,
                         ),
                         Ok(None) => nothing(String::new()),
                         Err(e) => nothing(e.to_string()),
@@ -492,6 +505,7 @@ impl qobject::Shell {
                             &format!("https://aur.archlinux.org/packages/{package}"),
                             "command",
                             command,
+                            "aur",
                         )
                     }
                     Ok(None) => nothing(String::new()),
@@ -521,6 +535,7 @@ impl qobject::Shell {
                 &update.url,
                 how,
                 String::new(),
+                "",
             );
         });
     }
