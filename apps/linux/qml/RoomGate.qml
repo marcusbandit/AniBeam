@@ -23,10 +23,13 @@ Column {
     readonly property real fraction: total > 0 ? ready / total : 0
     // The player's buttons never take the keyboard: Space and the arrows stay the player's
     property bool takesFocus: true
+    // The width the heading and both buttons need, whatever the language: a card sizes to it
+    readonly property real needed: Math.max(count.implicitWidth, buttons.implicitWidth)
     visible: shown
     spacing: theme.space(3)
 
     Label {
+        id: count
         objectName: "room-gate-count"
         width: parent.width
         text: words.t("room-gate-ready", { ready: root.ready, total: root.total, percent: Math.round(root.fraction * 100) })
@@ -45,6 +48,7 @@ Column {
         }
     }
     Row {
+        id: buttons
         spacing: theme.space(2)
         Button {
             objectName: "room-gate-start"

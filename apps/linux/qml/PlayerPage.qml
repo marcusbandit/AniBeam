@@ -945,7 +945,7 @@ FocusScope {
         visible: roomGate.shown && !roomPanel.open
         anchors.centerIn: parent
         z: 850
-        width: Math.min(page.width - theme.space(8), theme.space(90))
+        width: Math.min(page.width - theme.space(8), Math.max(theme.space(90), roomGate.needed + pad * 2))
         height: roomGate.implicitHeight + pad * 2
         color: theme.glassFloat; borderColor: theme.lineStrong; borderWidth: 1; highlight: theme.glassHighlight
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
