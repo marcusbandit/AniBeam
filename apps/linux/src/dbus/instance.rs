@@ -260,7 +260,23 @@ mod tests {
         assert!(first.is_some());
         assert!(try_lock(&path).unwrap().is_none(), "held");
         drop(first);
-        assert!(try_lock(&path).unwrap().is_some(), "free again");
+        assert!(free_soon(&path).is_some(), "free again");
+    }
+
+    /// The lock once it is free, waiting a bounded while for it. A drop closes the file at
+    /// once, but a process another test forks in that moment carries a copy of the open
+    /// file, and the lock holds until that copy closes too (#645).
+    fn free_soon(path: &Path) -> Option<Lock> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(lock) = try_lock(path).unwrap() {
+                return Some(lock);
+            }
+            if std::time::Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[cfg(unix)]
