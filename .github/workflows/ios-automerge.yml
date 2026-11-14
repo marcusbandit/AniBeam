@@ -1,0 +1,58 @@
+name: iOS automerge
+
+# Merges the iPhone and Mac contributors' PRs on their own (#909): .github/ios-automerge.sh
+# holds the rules. A PR that only touches iPhone or Mac files squash merges once its checks
+# pass; any other waits for the owner's approval of its head commit, then merges the same way.
+#
+# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, comma separated);
+# while it is unset this does nothing. Each run looks over every open PR of theirs, so it
+# does not matter which event started it:
+#
+#   workflow_run          a PR's checks finished, the only event that can merge a new push
+#   pull_request_review   the owner approved
+#   pull_request_target   a PR opened, moved or got a push: comments only, never merges,
+#                         since its checks may not have started yet
+#
+# The script comes from the default branch and never runs a PR's code. A merge made with
+# this token starts no push workflows on main; the nightly builds it as usual.
+on:
+  workflow_run:
+    workflows: [Android, Arch, CI, Linux, macOS, Windows, "No sites", "PR build", "PR issue"]
+    types: [completed]
+  pull_request_review:
+    types: [submitted]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+# One sweep at a time, so a PR is never merged twice; a newer start waits for the running one.
+concurrency:
+  group: ios-automerge
+  cancel-in-progress: false
+
+jobs:
+  ios-automerge:
+    if: vars.IOS_AUTOMERGE_AUTHORS != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/ios-automerge.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Merge what is ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
+          OWNER: ${{ github.repository_owner }}
+          MERGE: ${{ github.event_name == 'pull_request_target' && '0' || '1' }}
+        run: .github/ios-automerge.sh
