@@ -2,9 +2,10 @@ name: iOS IPA
 
 # Builds the phone's unsigned IPA for an iPhone (arm64, no signature) as the version it
 # ships as, and uploads it as the phone-ipa artifact. AltStore and LiveContainer sign it
-# themselves when they install it, so it needs no certificate or provisioning profile. It is
-# PR-only for now: pr-build.yml calls it and puts the IPA on the pr-builds release, while
-# nightly.yml and release.yml leave it out until the iPhone app is ready for users.
+# themselves when they install it, so it needs no certificate or provisioning profile.
+# pr-build.yml calls it and puts the IPA on the pr-builds release; nightly.yml calls it and
+# puts it on the phone's nightly. release.yml leaves it out until the iPhone app is ready
+# for users.
 on:
   workflow_call:
     inputs:
