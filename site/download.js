@@ -24,6 +24,18 @@
       const from = card.dataset.asset === "apk" ? phone : desktop;
       if (from) card.href = from.assets[card.dataset.asset] || from.url;
     }
+    // The iPhone's tile follows the channel like the others: Stable links the stable phone
+    // release's IPA, Nightly the phone nightly's. It is there only when that release holds one,
+    // so nothing shows before the first IPA, and only the nightly's is called a test build.
+    const ipa = (nightly ? rel.phone_nightly : rel.phone)?.assets?.ipa;
+    const tile = document.getElementById("dl-iphone");
+    if (tile) {
+      tile.hidden = !ipa;
+      if (ipa) {
+        for (const a of tile.querySelectorAll("[data-install]")) a.href = AB.installLink(a.dataset.install, ipa);
+        tile.querySelector("[data-ipa]").href = ipa;
+      }
+    }
     // An Android phone sees only the phone's tile, so the line under the title is the phone
     // release's. An iPhone sees the Mac's tile until there is an iPhone app.
     const shown = android ? phone : desktop;
@@ -43,7 +55,8 @@
     show(b.dataset.channel);
     history.replaceState(history.state, "", b.dataset.channel === "nightly" ? "#nightly" : location.pathname);
   }));
-  if (location.hash === "#nightly" && toggle) show("nightly");
+  // #nightly or ?channel=nightly opens on Nightly; a phone has no toggle, so this is how an iPhone gets there.
+  if ((location.hash === "#nightly" || new URLSearchParams(location.search).get("channel") === "nightly") && toggle) show("nightly");
   // A new language redraws the date and the What's new link in its words.
   document.addEventListener("langchange", () => show(page.dataset.channel));
   AB.releases().then((r) => { rel = r; show(page.dataset.channel); });
