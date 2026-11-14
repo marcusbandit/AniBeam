@@ -8,7 +8,7 @@ use crate::contract::Sidecar;
 pub const SUBTITLE_EXTENSIONS: [&str; 4] = ["srt", "vtt", "ass", "ssa"];
 
 pub fn is_subtitle(name: &str) -> bool {
-    super::has_extension(name, &SUBTITLE_EXTENSIONS)
+    crate::foundation::names::has_extension(name, &SUBTITLE_EXTENSIONS)
 }
 
 /// The part between the video's base name and the subtitle extension: the

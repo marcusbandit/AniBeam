@@ -332,8 +332,8 @@ pub fn files_here(s: &DownloadSettings) -> bool {
 fn is_this_machine(host: &str) -> bool {
     names_this_machine(
         host,
-        &crate::host::server::hostname(),
-        crate::host::addr::local_addresses,
+        &crate::foundation::machine::hostname(),
+        crate::foundation::machine::local_addresses,
         |name| remembered(&LOOKUPS, name, Instant::now(), bounded_lookup),
     )
 }

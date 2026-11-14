@@ -320,7 +320,7 @@ async fn add_links(
             file_hashes
                 .get(l)
                 .cloned()
-                .or_else(|| super::replace::magnet_hash(l))
+                .or_else(|| crate::foundation::magnet::hash(l))
         })
         .collect();
     Ok(AddedTorrents {

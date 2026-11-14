@@ -10,10 +10,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::CoreError;
-use crate::host::trust::{Asker, TailnetUser};
-
-/// The person the computer belongs to.
-pub const OWNER: u64 = 1;
+pub use crate::foundation::trust::OWNER;
+use crate::foundation::trust::{Asker, TailnetUser};
 
 /// The profile to answer `asker` as, made on first sight for a person the host has not
 /// seen before, with their Tailscale name kept fresh. `me` is this computer's own

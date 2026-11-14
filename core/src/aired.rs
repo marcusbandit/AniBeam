@@ -24,7 +24,7 @@ use rusqlite::{Connection, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::Subscription;
-use crate::library::titles;
+use crate::foundation::titles;
 use crate::prefs;
 use crate::store::settings;
 use crate::sync::recover;

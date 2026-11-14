@@ -34,6 +34,7 @@ use tokio_util::sync::CancellationToken;
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::EventBus;
+use crate::foundation::trust::{Asker, TailnetUser};
 use crate::prefs;
 use crate::sync::recover;
 
@@ -223,7 +224,11 @@ impl Host {
         // Before `tailscale` has ever answered, this machine still knows its own
         // tailnet addresses from its interfaces.
         let known = |t: Option<Arc<trust::Tailnet>>| {
-            t.unwrap_or_else(|| Arc::new(trust::local_tailnet(&addr::local_addresses())))
+            t.unwrap_or_else(|| {
+                Arc::new(trust::local_tailnet(
+                    &crate::foundation::machine::local_addresses(),
+                ))
+            })
         };
         let first = trust::decide(from, &off, Some(&known(self.tailnet(false))));
         if first != trust::Verdict::Unknown {
@@ -235,14 +240,14 @@ impl Host {
     /// Whose request it is (`trust::asker`), and this machine's own Tailscale user when
     /// the tailnet names one. A device the last read cannot place reads the tailnet
     /// again first: it may have just joined. This machine is the owner without a read.
-    pub fn asker(&self, from: std::net::IpAddr) -> (trust::Asker, Option<trust::TailnetUser>) {
+    pub fn asker(&self, from: std::net::IpAddr) -> (Asker, Option<TailnetUser>) {
         let me = |t: &Option<Arc<trust::Tailnet>>| t.as_ref().and_then(|t| t.owner().cloned());
         if from.is_loopback() {
-            return (trust::Asker::Owner, me(&self.tailnet_now()));
+            return (Asker::Owner, me(&self.tailnet_now()));
         }
         let first = self.tailnet(false);
         let asked = trust::asker(from, first.as_deref());
-        if asked != trust::Asker::Unknown {
+        if asked != Asker::Unknown {
             return (asked, me(&first));
         }
         let again = self.tailnet(true);
@@ -397,9 +402,9 @@ fn listed(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
 fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
     // The owner, also when the status has no entry for their user.
     let owner = t.me_user.as_deref().map(|id| {
-        t.user(id).cloned().unwrap_or_else(|| trust::TailnetUser {
+        t.user(id).cloned().unwrap_or_else(|| TailnetUser {
             id: id.to_string(),
-            ..trust::TailnetUser::default()
+            ..TailnetUser::default()
         })
     });
     let mut people: Vec<TailnetPerson> = owner.iter().map(|me| person(me, true)).collect();
@@ -409,16 +414,14 @@ fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<Tailn
         .map(|p| {
             let asker = trust::whose(t, Some(p));
             let at = match &asker {
-                trust::Asker::Owner if owner.is_some() => Some(0),
-                trust::Asker::Person(user) => {
-                    Some(match people.iter().position(|q| q.id == user.id) {
-                        Some(i) => i,
-                        None => {
-                            people.push(person(user, false));
-                            people.len() - 1
-                        }
-                    })
-                }
+                Asker::Owner if owner.is_some() => Some(0),
+                Asker::Person(user) => Some(match people.iter().position(|q| q.id == user.id) {
+                    Some(i) => i,
+                    None => {
+                        people.push(person(user, false));
+                        people.len() - 1
+                    }
+                }),
                 _ => None,
             };
             let trusted = !off.contains(&p.id);
@@ -434,7 +437,7 @@ fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<Tailn
                 online: p.online,
                 trusted,
                 person: at.map(|i| people[i].name.clone()).unwrap_or_default(),
-                nobody: asker == trust::Asker::Unknown,
+                nobody: asker == Asker::Unknown,
             }
         })
         .collect();
@@ -443,7 +446,7 @@ fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<Tailn
     (devices, people)
 }
 
-fn person(user: &trust::TailnetUser, owner: bool) -> TailnetPerson {
+fn person(user: &TailnetUser, owner: bool) -> TailnetPerson {
     TailnetPerson {
         id: user.id.clone(),
         name: user.shown().map_or_else(
@@ -563,7 +566,10 @@ async fn supervise(
     };
     let mut serving: Option<Serving> = None;
     loop {
-        match addr::wanted(bind.as_deref(), &addr::local_addresses()) {
+        match addr::wanted(
+            bind.as_deref(),
+            &crate::foundation::machine::local_addresses(),
+        ) {
             Err(message) => {
                 if let Some(old) = serving.take() {
                     old.stop().await;

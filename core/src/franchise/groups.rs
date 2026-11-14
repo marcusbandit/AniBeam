@@ -21,7 +21,7 @@ use rusqlite::{Connection, params_from_iter};
 
 use super::{as_u64, closure};
 use crate::contract::{CoreError, FranchiseTag, TitleLanguage};
-use crate::library::titles;
+use crate::foundation::titles;
 
 /// One library series as the grouping sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
