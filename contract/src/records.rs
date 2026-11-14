@@ -1392,7 +1392,7 @@ pub struct TailnetPerson {
 
 /// What the tailnet host is doing, for the Settings page: whether the
 /// preference is on, the URLs it answers on, and one plain sentence for the
-/// state ("Serving on 100.65.105.9", "Tailscale is not connected").
+/// state ("Serving on 100.64.0.10", "Tailscale is not connected").
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct HostStatus {
     pub enabled: bool,

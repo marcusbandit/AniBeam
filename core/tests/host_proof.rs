@@ -15,7 +15,7 @@ use anibeam_host_api::{HELLO, Hello};
 use axum::extract::connect_info::MockConnectInfo;
 
 const STATUS: &[u8] = br#"{
-    "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9"]},
+    "Self": {"ID": "nSelf", "HostName": "desktop", "TailscaleIPs": ["100.64.0.10"]},
     "Peer": {
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                        "TailscaleIPs": ["100.70.1.2"]}

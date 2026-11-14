@@ -13,12 +13,12 @@ use anibeam_core::*;
 use axum::extract::connect_info::MockConnectInfo;
 
 const STATUS: &[u8] = br#"{
-    "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9"]},
+    "Self": {"ID": "nSelf", "HostName": "desktop", "TailscaleIPs": ["100.64.0.10"]},
     "Peer": {
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                        "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
-        "nodekey:bb": {"ID": "nLaptop", "HostName": "kangaeru", "OS": "linux", "Online": false,
-                       "TailscaleIPs": ["100.80.3.4"]}
+        "nodekey:bb": {"ID": "nLaptop", "HostName": "laptop", "OS": "linux", "Online": false,
+                       "TailscaleIPs": ["100.64.0.20"]}
     }
 }"#;
 
@@ -92,11 +92,11 @@ fn every_tailnet_device_is_answered_until_it_is_switched_off() {
             .iter()
             .map(|d| (d.id.as_str(), d.name.as_str(), d.trusted))
             .collect::<Vec<_>>(),
-        [("nLaptop", "kangaeru", true), ("nPhone", "pixel", true)]
+        [("nLaptop", "laptop", true), ("nPhone", "pixel", true)]
     );
     let phone = serve_as(&rt, &core, "100.70.1.2");
     let phone6 = serve_as(&rt, &core, "fd7a:115c:a1e0::2");
-    let laptop = serve_as(&rt, &core, "100.80.3.4");
+    let laptop = serve_as(&rt, &core, "100.64.0.20");
     let stranger = serve_as(&rt, &core, "100.99.9.9");
     assert_eq!(get(&rt, &format!("{phone}{hello}")).0, 200);
     assert_eq!(get(&rt, &format!("{stranger}{hello}")).0, 200);
@@ -181,7 +181,7 @@ fn nothing_off_the_tailnet_is_answered_but_this_machine() {
         assert_eq!(status, 403, "{from}");
         assert!(why.contains("tailnet"), "{why}");
     }
-    for from in ["127.0.0.1", "::1", "100.65.105.9"] {
+    for from in ["127.0.0.1", "::1", "100.64.0.10"] {
         let base = serve_as(&rt, &core, from);
         assert_eq!(get(&rt, &format!("{base}{hello}")).0, 200, "{from}");
     }
@@ -214,7 +214,7 @@ fn a_tailnet_that_cannot_be_read_gives_no_list_and_is_not_kept() {
     assert!(why.contains("tailnet"), "{why}");
 
     // No device online, so nothing off this machine is asked.
-    let alone = br#"{"Self": {"ID": "nSelf", "TailscaleIPs": ["100.65.105.9"]}, "Peer": {}}"#;
+    let alone = br#"{"Self": {"ID": "nSelf", "TailscaleIPs": ["100.64.0.10"]}, "Peer": {}}"#;
     core.set_tailscale_status(Some(alone.to_vec()));
     assert_eq!(get(&rt, &peers).0, 200);
 }
@@ -264,12 +264,12 @@ fn the_real_server_knows_who_is_asking() {
 #[test]
 fn hello_says_when_the_path_to_the_asker_is_relayed() {
     const PATHS: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9"]},
+        "Self": {"ID": "nSelf", "HostName": "desktop", "TailscaleIPs": ["100.64.0.10"]},
         "Peer": {
             "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "Active": true,
                   "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
-            "b": {"ID": "nLaptop", "HostName": "kangaeru", "Online": true, "Active": true,
-                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.80.3.4"]},
+            "b": {"ID": "nLaptop", "HostName": "laptop", "Online": true, "Active": true,
+                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.64.0.20"]},
             "c": {"ID": "nTablet", "HostName": "tab", "Online": true, "Active": false,
                   "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.80.3.5"]}
         }
@@ -302,7 +302,7 @@ fn hello_says_when_the_path_to_the_asker_is_relayed() {
         hello("fd7a:115c:a1e0::2")["relayed"],
         serde_json::json!(true)
     );
-    assert!(hello("100.80.3.4").get("relayed").is_none(), "direct");
+    assert!(hello("100.64.0.20").get("relayed").is_none(), "direct");
     assert!(hello("100.80.3.5").get("relayed").is_none(), "idle");
     assert!(hello("127.0.0.1").get("relayed").is_none());
 }

@@ -93,10 +93,10 @@ mod tests {
     use crate::host::trust::read_status;
 
     const STATUS: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "TailscaleIPs": ["100.65.105.9"]},
+        "Self": {"ID": "nSelf", "TailscaleIPs": ["100.64.0.10"]},
         "Peer": {
             "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "TailscaleIPs": ["fd7a:115c:a1e0::2", "100.70.1.2"]},
-            "b": {"ID": "nLaptop", "HostName": "kangaeru", "Online": true, "TailscaleIPs": ["fd7a:115c:a1e0::3"]},
+            "b": {"ID": "nLaptop", "HostName": "laptop", "Online": true, "TailscaleIPs": ["fd7a:115c:a1e0::3"]},
             "c": {"ID": "nAway", "HostName": "nemurenai", "Online": false, "TailscaleIPs": ["100.80.0.4"]},
             "d": {"ID": "nOff", "HostName": "homehub", "Online": true, "TailscaleIPs": ["100.80.0.5"]},
             "e": {"ID": "nLan", "HostName": "printer", "Online": true, "TailscaleIPs": ["192.168.1.9"]}
@@ -111,7 +111,7 @@ mod tests {
             candidates(&t, &off, 8790),
             vec![
                 (
-                    "kangaeru".to_string(),
+                    "laptop".to_string(),
                     "http://[fd7a:115c:a1e0::3]:8790".to_string()
                 ),
                 ("pixel".to_string(), "http://100.70.1.2:8790".to_string()),
@@ -133,7 +133,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let anibeam =
-                answer(r#"{"app":"anibeam","api":1,"version":"2.4.0","host":"kangaeru","now":0}"#)
+                answer(r#"{"app":"anibeam","api":1,"version":"2.4.0","host":"laptop","now":0}"#)
                     .await;
             let other =
                 answer(r#"{"app":"something-else","api":1,"version":"1","host":"x","now":0}"#)
@@ -147,14 +147,14 @@ mod tests {
             let found = find(vec![
                 ("a".into(), closed),
                 ("b".into(), other),
-                ("kangaeru-name".into(), anibeam.clone()),
+                ("laptop-name".into(), anibeam.clone()),
                 ("d".into(), junk),
             ])
             .await;
             assert_eq!(
                 found,
                 vec![wire::PeerHost {
-                    name: "kangaeru".into(),
+                    name: "laptop".into(),
                     url: anibeam,
                     version: "2.4.0".into(),
                 }]
@@ -167,7 +167,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let anibeam =
-                answer(r#"{"app":"anibeam","api":1,"version":"2.4.0","host":"kangaeru","now":0}"#)
+                answer(r#"{"app":"anibeam","api":1,"version":"2.4.0","host":"laptop","now":0}"#)
                     .await;
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let at = l.local_addr().unwrap();
@@ -191,7 +191,7 @@ mod tests {
         };
         let all = vec![
             host("pixel", "http://100.70.1.2:8790"),
-            host("kangaeru", "http://[fd7a:115c:a1e0::3]:8790"),
+            host("laptop", "http://[fd7a:115c:a1e0::3]:8790"),
         ];
         assert_eq!(
             others(&all, "100.70.1.2".parse().unwrap()),

@@ -892,11 +892,8 @@ mod tests {
 
     #[test]
     fn the_dns_name_comes_out_of_the_status_document() {
-        let doc = br#"{"Version":"1.80","Self":{"DNSName":"banditbox.tail24c6a9.ts.net.","HostName":"banditbox"}}"#;
-        assert_eq!(
-            dns_name_of(doc).as_deref(),
-            Some("banditbox.tail24c6a9.ts.net")
-        );
+        let doc = br#"{"Version":"1.80","Self":{"DNSName":"desktop.example.ts.net.","HostName":"desktop"}}"#;
+        assert_eq!(dns_name_of(doc).as_deref(), Some("desktop.example.ts.net"));
         assert_eq!(dns_name_of(br#"{"Self":{"DNSName":""}}"#), None);
         assert_eq!(dns_name_of(br#"{"Self":{}}"#), None);
         assert_eq!(dns_name_of(b"not json"), None);
