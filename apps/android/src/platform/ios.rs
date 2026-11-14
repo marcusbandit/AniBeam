@@ -1,5 +1,7 @@
-//! The iPhone: its entry point, the hinge, and the phone's language and light or dark
-//! setting. Every other call is `other.rs`'s stand-in until the iPhone brings its own.
+//! The iPhone: its entry point, the hinge, the phone's language and light or dark setting,
+//! and what the player needs of it: the audio session, the screen kept on, and the renderer
+//! stopped while the app is off the screen. Every other call is `other.rs`'s stand-in until
+//! the iPhone brings its own.
 //!
 //! The hinge comes from UIKit's `UIHingeInteraction` (iOS 27.1, the iPhone Duo), added to
 //! the app's window the first time the layout asks. UIKit says how far the hinge is open,
@@ -21,6 +23,7 @@ use objc2_foundation::{
     NSNotificationName, NSNumber, NSOperationQueue, NSString, NSURL, NSURLIsExcludedFromBackupKey,
 };
 
+use super::FocusAsk;
 use crate::worker::Command;
 
 pub use super::other::*;
@@ -70,6 +73,12 @@ fn keep_out_of_backups(dir: &Path) {
 /// language changing has Appearance's System mode and a language left to follow the phone
 /// follow it. The light or dark setting is read again each time the app becomes active, which
 /// covers a change made in Settings or Control Center.
+///
+/// The player hears the rest. iOS ends an app that draws with OpenGL ES in the background, so
+/// the renderer is held from the moment the app resigns active and let go of, on the main
+/// thread before the handler returns, when it enters the background; it comes back when the
+/// app is active again. The audio session's interruptions (a call, an alarm) are Android's
+/// passing focus loss and its gain back, and headphones coming out pause the episode.
 fn observe(commands: Sender<Command>) -> Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>> {
     let center = NSNotificationCenter::defaultCenter();
     let queue = NSOperationQueue::mainQueue();
@@ -79,12 +88,42 @@ fn observe(commands: Sender<Command>) -> Vec<Retained<ProtocolObject<dyn NSObjec
     let changed = RcBlock::new(|_: NonNull<NSNotification>| {
         let _ = slint::invoke_from_event_loop(crate::system_changed);
     });
-    // UIKit's notification names are strings equal to their constants' names.
+    let resigning = RcBlock::new(|_: NonNull<NSNotification>| crate::video::hold(true));
+    // Called straight away, not through Slint's queue: the GL must be gone when it returns.
+    let background = RcBlock::new(|_: NonNull<NSNotification>| crate::player::background());
+    let active = RcBlock::new(|_: NonNull<NSNotification>| {
+        crate::video::hold(false);
+        crate::player::foreground();
+    });
+    let interrupted = RcBlock::new(|note: NonNull<NSNotification>| {
+        // AVAudioSessionInterruptionType 1 began, 0 ended; option 1 is ShouldResume.
+        let code = match (
+            info_number(note, "AVAudioSessionInterruptionTypeKey"),
+            info_number(note, "AVAudioSessionInterruptionOptionKey"),
+        ) {
+            (Some(1), _) => -2,
+            (Some(0), Some(options)) if options & 1 != 0 => 1,
+            _ => return,
+        };
+        let _ = slint::invoke_from_event_loop(move || crate::audio_focus(code));
+    });
+    let route = RcBlock::new(|note: NonNull<NSNotification>| {
+        // AVAudioSessionRouteChangeReasonOldDeviceUnavailable: the headphones came out.
+        if info_number(note, "AVAudioSessionRouteChangeReasonKey") == Some(2) {
+            let _ = slint::invoke_from_event_loop(|| crate::audio_focus(-1));
+        }
+    });
+    // UIKit's and AVFoundation's notification names are strings equal to their constants'
+    // names.
     let will_enter_foreground = NSString::from_str("UIApplicationWillEnterForegroundNotification");
     let did_become_active = NSString::from_str("UIApplicationDidBecomeActiveNotification");
+    let will_resign_active = NSString::from_str("UIApplicationWillResignActiveNotification");
+    let did_enter_background = NSString::from_str("UIApplicationDidEnterBackgroundNotification");
+    let interruption = NSString::from_str("AVAudioSessionInterruptionNotification");
+    let route_change = NSString::from_str("AVAudioSessionRouteChangeNotification");
     let watch = |name: &NSNotificationName, block: &RcBlock<dyn Fn(NonNull<NSNotification>)>| {
-        // SAFETY: the blocks touch only a Sender and Slint's thread-safe queue, and run on the
-        // main queue, the UI thread.
+        // SAFETY: the blocks touch a Sender, Slint's thread-safe queue and the player's
+        // UI-thread state, and run on the main queue, the UI thread.
         unsafe {
             center.addObserverForName_object_queue_usingBlock(Some(name), None, Some(&queue), block)
         }
@@ -92,9 +131,113 @@ fn observe(commands: Sender<Command>) -> Vec<Retained<ProtocolObject<dyn NSObjec
     vec![
         watch(&will_enter_foreground, &foreground),
         watch(&did_become_active, &changed),
+        watch(&will_resign_active, &resigning),
+        watch(&did_enter_background, &background),
+        watch(&did_become_active, &active),
+        watch(&interruption, &interrupted),
+        watch(&route_change, &route),
         // SAFETY: a Foundation constant, read once it is linked.
         watch(unsafe { NSCurrentLocaleDidChangeNotification }, &changed),
     ]
+}
+
+/// A number in a notification's user info, by key.
+fn info_number(note: NonNull<NSNotification>, key: &str) -> Option<usize> {
+    let key = NSString::from_str(key);
+    // SAFETY: the notification is alive for the block's call; its user info is a dictionary
+    // or nil, and the values read here are NSNumbers.
+    unsafe {
+        let info: Option<Retained<AnyObject>> = msg_send![note.as_ref(), userInfo];
+        let value: Option<Retained<AnyObject>> = msg_send![&*info?, objectForKey: &*key];
+        let value = value?;
+        Some(msg_send![&*value, unsignedIntegerValue])
+    }
+}
+
+/// The app's AVAudioSession.
+fn audio_session() -> Option<Retained<AnyObject>> {
+    let class = AnyClass::get(c"AVAudioSession")?;
+    // SAFETY: `sharedInstance` returns the app's session.
+    unsafe { msg_send![class, sharedInstance] }
+}
+
+/// Sets the audio session's category once, before mpv's first core: playback, which plays
+/// with the ringer switched to silent and in the background (Info.plist's audio mode), for
+/// a film. mpv's AudioUnit output sets the same when it opens.
+pub fn prepare_mpv() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let Some(session) = audio_session() else {
+            return;
+        };
+        let category = NSString::from_str("AVAudioSessionCategoryPlayback");
+        let mode = NSString::from_str("AVAudioSessionModeMoviePlayback");
+        // SAFETY: the category and mode are AVFoundation's own strings; no options.
+        let r: Result<(), Retained<NSError>> = unsafe {
+            msg_send![&*session, setCategory: &*category, mode: &*mode, options: 0usize, error: _]
+        };
+        if let Err(e) = r {
+            log(&format!(
+                "audio session category: {}",
+                e.localizedDescription()
+            ));
+        }
+    });
+}
+
+/// The iOS Simulator, whose VideoToolbox does not reach GL dependably: mpv decodes in
+/// software there.
+pub fn emulator() -> bool {
+    cfg!(target_abi = "sim")
+}
+
+/// `AVAudioSessionErrorCodeInsufficientPriority`: another session, a call, holds the audio.
+const INSUFFICIENT_PRIORITY: isize = 0x2170_7269;
+
+/// Activates the audio session, which other apps' sound gives way to.
+pub fn take_audio_focus() -> FocusAsk {
+    prepare_mpv();
+    let Some(session) = audio_session() else {
+        return FocusAsk::Unavailable;
+    };
+    // SAFETY: `setActive:error:` takes a BOOL.
+    let r: Result<(), Retained<NSError>> =
+        unsafe { msg_send![&*session, setActive: true, error: _] };
+    match r {
+        Ok(()) => FocusAsk::Granted,
+        Err(e) if e.code() == INSUFFICIENT_PRIORITY => FocusAsk::Refused,
+        Err(e) => {
+            log(&format!("audio session: {}", e.localizedDescription()));
+            FocusAsk::Unavailable
+        }
+    }
+}
+
+/// Deactivates the audio session, telling the app that gave way it can play again.
+pub fn give_audio_focus() {
+    let Some(session) = audio_session() else {
+        return;
+    };
+    // SAFETY: option 1 is AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation.
+    let r: Result<(), Retained<NSError>> =
+        unsafe { msg_send![&*session, setActive: false, withOptions: 1usize, error: _] };
+    if let Err(e) = r {
+        log(&format!("audio session off: {}", e.localizedDescription()));
+    }
+}
+
+/// Keeps the screen on while an episode plays: UIKit's idle timer is off.
+pub fn player_awake(on: bool) {
+    let Some(app_class) = AnyClass::get(c"UIApplication") else {
+        return;
+    };
+    // SAFETY: called on the UI thread, the main thread, which UIApplication wants.
+    unsafe {
+        let app: *mut AnyObject = msg_send![app_class, sharedApplication];
+        if !app.is_null() {
+            let _: () = msg_send![app, setIdleTimerDisabled: on];
+        }
+    }
 }
 
 /// The phone's language as iOS lists it first: `da-DK`, `pt-BR`, `zh-Hans-CN`, the same

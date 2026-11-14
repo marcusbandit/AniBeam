@@ -1,10 +1,11 @@
 //! libmpv, the desktop's player, over its C API: one core per open episode, its events on a
 //! thread of their own, and the picture drawn through the render API by `video.rs`.
 //!
-//! The libraries come from mpv-android's releases (`scripts/fetch-mpv.sh`). Where build.rs
-//! links no libmpv (`cfg(libmpv)` unset: every target but Android today), the same type
-//! opens nothing and every call is a no-op; the rest of the app, and its tests, build on the
-//! desktop all the same. What the platform has to do before mpv starts is
+//! The libraries come from mpv-android's releases on Android (`scripts/fetch-mpv.sh`) and
+//! from MPVKit's on the iPhone (`scripts/fetch-mpv-ios.sh`). Where build.rs links no libmpv
+//! (`cfg(libmpv)` unset: the desktop the tests run on), the same type opens nothing and
+//! every call is a no-op; the rest of the app, and its tests, build on the desktop all the
+//! same. What the platform has to do before mpv starts is
 //! `crate::platform::prepare_mpv`'s.
 
 // Without libmpv the types stand in for a player that never opens.
@@ -60,12 +61,28 @@ pub enum Format {
 /// sound goes to AudioTrack. No GL interop for hardware frames: the copy does not need it,
 /// and the AImageReader one wants a Surface the render API never gives it. AniBeam's owned
 /// options and the subtitle table follow at load.
+#[cfg(not(target_os = "ios"))]
 pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("gpu-hwdec-interop", "no"),
     ("vo", "libmpv"),
     ("opengl-es", "yes"),
     ("hwdec", "mediacodec-copy"),
     ("ao", "audiotrack,opensles"),
+    ("idle", "yes"),
+    ("terminal", "no"),
+];
+
+/// The iPhone's: the picture goes through the render API on OpenGL ES, decoding uses
+/// VideoToolbox, whose frames reach that GL context without a copy (mpv's `ios-gl` interop),
+/// and sound goes to an AudioUnit, which sets up the app's audio session itself. Film grain
+/// is the decoder's to apply: left to the GL renderer, this build's software HEVC frames come
+/// out black or in streaks.
+#[cfg(target_os = "ios")]
+pub const BOOT_OPTIONS: [(&str, &str); 6] = [
+    ("vo", "libmpv"),
+    ("hwdec", "videotoolbox"),
+    ("vd-lavc-film-grain", "cpu"),
+    ("ao", "audiounit"),
     ("idle", "yes"),
     ("terminal", "no"),
 ];
@@ -255,7 +272,8 @@ mod imp {
             }
             for (k, v) in BOOT_OPTIONS {
                 // The emulator's MediaCodec H.264 decoder (c2.goldfish) streaks the picture
-                // with black lines through the copy; software decoding there is clean.
+                // with black lines through the copy, and the iOS Simulator has no dependable
+                // VideoToolbox to GL path; software decoding is clean on both.
                 let v = if k == "hwdec" && crate::platform::emulator() {
                     "no"
                 } else {
@@ -264,7 +282,7 @@ mod imp {
                 let (k, v) = (c(k), c(v));
                 unsafe { mpv_set_option_string(handle, k.as_ptr(), v.as_ptr()) };
             }
-            // mpv's own warnings and errors go to logcat beside the app's.
+            // mpv's own warnings and errors go to the log beside the app's.
             unsafe { mpv_request_log_messages(handle, c"warn".as_ptr()) };
             let code = unsafe { mpv_initialize(handle) };
             if code < 0 {

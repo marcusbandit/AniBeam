@@ -36,11 +36,11 @@ pub fn system_dark() -> bool {
 }
 
 /// Nothing to ready: a target that links libmpv here hands it nothing first.
-#[cfg_attr(not(libmpv), allow(dead_code))]
+#[cfg_attr(any(not(libmpv), target_os = "ios"), allow(dead_code))]
 pub fn prepare_mpv() {}
 
 /// Never the Android emulator.
-#[cfg_attr(not(libmpv), allow(dead_code))]
+#[cfg_attr(any(not(libmpv), target_os = "ios"), allow(dead_code))]
 pub fn emulator() -> bool {
     false
 }
@@ -87,11 +87,13 @@ pub fn notifications_allowed() -> bool {
 }
 
 /// Every request for the audio focus is granted.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn take_audio_focus() -> FocusAsk {
     FocusAsk::Granted
 }
 
 /// No audio focus to give back.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn give_audio_focus() {}
 
 /// No clipboard: nothing is copied.
@@ -144,6 +146,7 @@ pub fn multicast(on: bool) {
 }
 
 /// No display to keep on.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn player_awake(on: bool) {
     let _ = on;
 }
