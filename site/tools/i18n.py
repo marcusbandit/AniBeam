@@ -34,8 +34,8 @@ TAG = {"zh": "zh-Hans"}
 SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
         "$", "|", "English", "AniList", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
-        "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan Season 2",
-        "Attack on Titan Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}
+        "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan", "Season 2",
+        "Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}
 PROTECT = re.compile(r"<(script|style|code|svg)\b.*?</\1>", re.S | re.I)
 TEXT = re.compile(r"(>|\x00\d+\x00)([^<>\x00]+)(?=<|\x00)")
 ATTR = re.compile(r'\b(alt|aria-label|title|placeholder)="([^"]*)"')

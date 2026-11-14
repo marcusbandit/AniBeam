@@ -455,15 +455,13 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 }
 @media (prefers-reduced-motion: reduce) { .show-card, .show-card.out { transform: none; transition: opacity 0.2s ease; } }
 
-/* Features: a bento of small, real pieces of the app */
+/* Features: small, real pieces of the app. The player runs the full width so its chrome shows near
+   the app's own size; the pieces under it sit on one card each, with no card around the card. */
 .feats h2 { margin-bottom: 64px; text-align: center; }
-.feat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; }
-.feat { display: flex; flex-direction: column; gap: 26px; padding: 32px; overflow: hidden; transition: box-shadow 0.3s ease; }
-.feat:hover { box-shadow: inset 0 1px rgba(255, 255, 255, 0.18); }
-.feat-player { grid-column: span 3; }
-.feat-sync { grid-column: span 2; }
-.feat-resume { grid-column: span 2; }
-.feat-chain { grid-column: span 3; }
+.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; row-gap: 72px; }
+.feat { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.feat h3 { font-size: 24px; letter-spacing: -0.02em; text-align: left; }
+.feat-player, .feat-chain { grid-column: 1 / -1; }
 
 /* The player, as PlayerChrome.qml draws it: the video full bleed, two glass panes (8, 9, 12 at
    55%, a 10% white edge, radius 18, no scrim). Built at the app's own 960 x 540 and scaled to
@@ -522,7 +520,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .tracks-h { padding: 6px 8px 2px; color: rgba(255, 255, 255, 0.5); font-size: 11.5px; font-weight: 600; }
 .tr { padding: 7px 9px; border-radius: 8px; color: rgba(255, 255, 255, 0.85); font-size: 13.5px; }
 .tr.is-on { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.tr.is-on::after { content: ""; float: right; width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--brand); }
+.tr.is-on::after { content: ""; float: right; width: 14px; height: 14px; margin: 2px 0 0 12px; background: var(--done); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-player .pl-fill, .js .feat-player .pl-knob { transition: width 9s linear, left 9s linear, opacity 0.2s ease; }
   .js .feat-player:not(.in) { --played: 33.8%; }
@@ -530,64 +528,52 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .js .feat-player:not(.in) .tracks { opacity: 0; transform: translateY(8px) scale(0.97); }
 }
 
-/* AniList sync: the episode ends here, the entry turns over there */
-.sync { display: grid; gap: 0; margin: auto 0; }
-.sync-watch { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--hair); }
-.sw-label { color: var(--fg); font-size: 14px; font-weight: 600; }
-.sw-bar { position: relative; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
-.sw-bar i { position: absolute; inset: 0; border-radius: inherit; background: var(--done); transform-origin: left; }
-.sw-check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--done); color: #07201b; }
-.sw-check svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.sync-streak { position: relative; display: block; width: 2px; height: 34px; margin: 0 auto; background: linear-gradient(var(--done), var(--anilist)); opacity: 0.6; overflow: hidden; }
-.sync-streak i { position: absolute; left: 0; top: -40%; width: 100%; height: 40%; background: linear-gradient(transparent, #fff, transparent); }
-.al-card { position: relative; padding: 16px; border-radius: 16px; background: linear-gradient(160deg, #152232, #0b1622); box-shadow: inset 0 0 0 1px rgba(61, 180, 242, 0.22), inset 0 1px rgba(255, 255, 255, 0.08); overflow: hidden; }
-.al-head { display: flex; align-items: center; gap: 10px; color: #edf1f5; font-size: 14px; font-weight: 640; }
-.al-head > svg { width: 22px; height: 22px; fill: #02a9ff; }
-.al-synced { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: #3db4f2; font-size: 13px; font-weight: 600; }
-.al-synced svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.al-entry { display: grid; grid-template-columns: 52px 1fr auto; gap: 14px; align-items: center; margin-top: 14px; }
-.al-entry img { width: 52px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; }
-.al-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
-.al-meta b { overflow: hidden; color: #edf1f5; font-size: 14.5px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.al-status { color: #7bd555; font-size: 13px; font-weight: 600; }
-.al-num { display: flex; align-items: baseline; gap: 5px; color: #9fadbd; font: 500 13px/1 var(--mono); }
-.al-num .n { position: relative; display: inline-grid; color: #edf1f5; font-size: 22px; font-weight: 500; }
+/* AniList sync: the episode ends, its cell lights and the AniList entry counts up */
+.sync { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 26px; padding: 32px; }
+.al-entry { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; gap: 20px; align-items: center; }
+.al-entry img { width: 80px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.al-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; text-align: left; }
+.al-meta b { color: var(--fg); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.al-status { color: var(--fg-2); font-size: 15px; }
+.al-num { display: flex; align-items: baseline; gap: 6px; color: var(--fg-4); font: 500 18px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.al-num .n { position: relative; display: inline-grid; overflow: hidden; color: var(--fg); font-size: 44px; font-weight: 700; letter-spacing: -0.03em; }
 .al-num .old, .al-num .new { grid-area: 1 / 1; transition: opacity 0.35s ease, transform 0.35s var(--ease); }
 .al-num .old { opacity: 0; transform: translateY(-100%); }
-.al-track { position: relative; height: 3px; margin-top: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.al-track i { position: absolute; inset: 0; width: calc(13 / 28 * 100%); border-radius: inherit; background: #3db4f2; transition: width 0.5s var(--ease); }
+.al-eps { display: grid; grid-template-columns: repeat(28, minmax(0, 1fr)); gap: 4px; }
+.al-eps i { height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
+.al-eps i.on, .al-eps i.now { background: var(--done); }
+.al-eps i.now { box-shadow: 0 0 0 3px rgba(70, 224, 196, 0.3); }
+.al-foot { display: flex; align-items: center; gap: 10px; color: var(--fg-2); font-size: 15px; font-weight: 600; }
+.al-foot > svg { width: 22px; height: 22px; fill: var(--anilist); }
+.al-synced { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--done); font-size: 14px; font-weight: 600; }
+.al-synced svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 @media (prefers-reduced-motion: no-preference) {
-  .js .feat-sync .sw-bar i { transition: transform 1.1s var(--ease); }
-  .js .feat-sync:not(.in) .sw-bar i { transform: scaleX(0.72); }
-  .js .feat-sync .sw-check { transition: transform 0.35s var(--ease) 1s, opacity 0.35s ease 1s; }
-  .js .feat-sync:not(.in) .sw-check { transform: scale(0.4); opacity: 0; }
-  .js .feat-sync.in .sync-streak i { animation: drop 0.8s ease-in 1.2s both; }
-  .js .feat-sync .al-num .old, .js .feat-sync .al-num .new, .js .feat-sync .al-track i, .js .feat-sync .al-synced { transition-delay: 1.9s; }
+  .js .feat-sync .al-eps i.now { transition-delay: 0.6s; }
+  .js .feat-sync:not(.in) .al-eps i.now { background: rgba(255, 255, 255, 0.12); box-shadow: none; }
+  .js .feat-sync .al-num .old, .js .feat-sync .al-num .new { transition-delay: 1.1s; }
   .js .feat-sync:not(.in) .al-num .new { opacity: 0; transform: translateY(100%); }
   .js .feat-sync:not(.in) .al-num .old { opacity: 1; transform: none; }
-  .js .feat-sync:not(.in) .al-track i { width: calc(12 / 28 * 100%); }
-  .js .feat-sync .al-synced { transition: opacity 0.4s ease; }
+  .js .feat-sync .al-synced { transition: opacity 0.4s ease 1.4s; }
   .js .feat-sync:not(.in) .al-synced { opacity: 0; }
 }
-@keyframes drop { from { top: -40%; } to { top: 100%; } }
 
 /* Pick up where you left off: the app's Home card */
-.pickup { position: relative; display: grid; grid-template-columns: 80px 1fr; gap: 18px; align-items: center; margin: auto 0; padding: 20px; overflow: hidden; border-radius: 16px; isolation: isolate; }
-.pickup-art { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(10, 12, 16, 0.92) 30%, rgba(10, 12, 16, 0.55)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); border-radius: inherit; }
-.pickup-poster { width: 80px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 24px -8px #000; }
+.pickup { position: relative; flex: 1; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: center; padding: 32px; overflow: hidden; border-radius: 24px; isolation: isolate; }
+.pickup-art { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(10, 12, 16, 0.94) 35%, rgba(10, 12, 16, 0.72)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); border-radius: inherit; }
+.pickup-poster { width: 120px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 24px -8px #000; }
 .pickup-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; text-align: left; }
 
-.pickup-text b { color: #fff; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; font-variation-settings: "wdth" 86; }
-.pickup-ep { color: var(--fg-2); font-size: 13px; }
-.cubes { display: flex; gap: 3px; margin: 8px 0 4px; }
-.cubes i { width: 7px; height: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
+.pickup-text b { color: #fff; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; font-variation-settings: "wdth" 86; }
+.pickup-ep { color: var(--fg-2); font-size: 15px; }
+.cubes { display: flex; gap: 3px; width: 100%; margin: 12px 0 6px; }
+.cubes i { flex: 0 1 7px; min-width: 3px; height: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
 .cubes i.on { background: var(--done); }
 .cubes i.half { background: linear-gradient(90deg, var(--done) 50%, rgba(255, 255, 255, 0.18) 50%); }
-.pickup-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pickup-btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .pickup-btns > span { white-space: nowrap; }
-.pk-resume { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px; background: #eef2f5; color: #0b0d11; font-size: 13px; font-weight: 640; transition: background-color var(--quick); }
-.pk-resume svg { width: 11px; fill: currentColor; }
-.pk-open { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); color: var(--fg); font-size: 13px; font-weight: 600; }
+.pk-resume { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 18px; border-radius: 999px; background: #eef2f5; color: #0b0d11; font-size: 15px; font-weight: 640; transition: background-color var(--quick); }
+.pk-resume svg { width: 12px; fill: currentColor; }
+.pk-open { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: var(--fg); font-size: 15px; font-weight: 600; }
 .feat-resume:hover .pk-resume { background: #fff; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-resume .pickup-art { transition: transform 6s ease-out; }
@@ -595,18 +581,31 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .js .feat-resume .cubes i { transition: background-color 0.25s ease calc(0.4s + var(--c, 0) * 0.03s); }
 }
 
-/* Related shows, as the series page lists them today (watch order is #784) */
-.related { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: auto 0 0; }
-.stone { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--hair); text-align: left; min-width: 0; }
-.stone img { width: 44px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; }
-.stone div { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
-.stone b { overflow: hidden; color: var(--fg); font-size: 13px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.stone span { color: var(--fg-3); font-size: 12px; }
-.stone em { color: var(--fg-3); font-style: normal; font-size: 12px; }
-.stone.owned em { color: var(--done); }
+/* Sequels in watch order: a rail of six segments, lit where the season is in the library, over
+   one row of the seasons (watch order in the app is #784) */
+.related { padding: 26px 32px 30px; }
+.rel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; text-align: left; }
+.rel-head b { color: var(--fg); font-size: 18px; font-weight: 600; }
+.rel-head span { color: var(--fg-2); font-size: 15px; }
+.rel-rail, .rel-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
+.rel-rail { margin: 18px 0 20px; }
+.rel-rail i { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
+.rel-rail i.on { background: var(--done); }
+.stone { display: flex; gap: 12px; align-items: center; min-width: 0; text-align: left; }
+.stone-art { position: relative; flex: none; }
+.stone img { width: 56px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.stone:not(.owned) img { opacity: 0.4; filter: saturate(0.4); }
+.tick { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--done); color: #07201b; box-shadow: 0 0 0 3px var(--card-b); }
+.tick svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.stone div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stone b { color: var(--fg); font-size: 15px; font-weight: 600; line-height: 1.25; text-wrap: balance; }
+.stone:not(.owned) b { color: var(--fg-2); }
+.stone span { color: var(--fg-3); font-size: 13px; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-chain .stone { transition: opacity 0.5s var(--ease) calc(0.1s + var(--i) * 0.07s), transform 0.5s var(--ease) calc(0.1s + var(--i) * 0.07s); }
   .js .feat-chain:not(.in) .stone { opacity: 0; transform: translateY(10px); }
+  .js .feat-chain .rel-rail i { transition: background-color 0.4s ease calc(0.4s + var(--i) * 0.12s); }
+  .js .feat-chain:not(.in) .rel-rail i.on { background: rgba(255, 255, 255, 0.1); }
 }
 
 /* Casting, in Google Cast's own terms: the content full screen on the TV with its title and the
@@ -749,16 +748,15 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 }
 @media (max-width: 1100px) {
   .window { grid-template-columns: 64px 1fr; }
-  .feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .feat-player, .feat-chain { grid-column: span 2; }
-  .feat-sync, .feat-resume { grid-column: span 1; }
 
   .trust-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 56px; }
   .tcell:nth-child(3) { border-left: 0; }
-  .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .cast-section { grid-template-columns: minmax(0, 1fr); }
+  .feat-grid { grid-template-columns: minmax(0, 1fr); row-gap: 56px; }
+  .rel-rail { display: none; }
+  .rel-row { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; margin-top: 20px; }
 
 }
 @media (max-width: 700px) {
@@ -774,11 +772,20 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
   .rail button { flex: 1; font-size: 11px; }
   .rail button svg { width: 18px; }
   .poster { width: 112px; }
-  .feat-grid { grid-template-columns: minmax(0, 1fr); }
-
-  .feat-player, .feat-chain, .feat-sync, .feat-resume { grid-column: auto; }
-  .feat { padding: 22px; }
-  .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feat h3 { font-size: 21px; }
+  .sync, .pickup { padding: 22px; }
+  .related { padding: 20px 22px 24px; }
+  .al-entry { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; }
+  .al-entry img { width: 56px; }
+  .al-meta b { font-size: 17px; }
+  .al-num .n { font-size: 34px; }
+  .pickup { grid-template-columns: 84px minmax(0, 1fr); gap: 18px; }
+  .pickup-poster { width: 84px; }
+  .pickup-text b { font-size: 21px; }
+  .rel-row { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; }
+  .stone { gap: 10px; }
+  .stone img { width: 44px; }
+  .stone b { font-size: 14px; }
   /* The five promises are five matching cards that zigzag down the screen, left then right.
      Each card's line sits inside it. */
   .trust-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 48px !important; max-width: 420px; }
