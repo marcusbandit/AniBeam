@@ -23,8 +23,9 @@ Column {
     readonly property real fraction: total > 0 ? ready / total : 0
     // The player's buttons never take the keyboard: Space and the arrows stay the player's
     property bool takesFocus: true
-    // The width the heading and both buttons need, whatever the language: a card sizes to it
-    readonly property real needed: Math.max(count.implicitWidth, buttons.implicitWidth)
+    // The width the heading and both buttons need side by side, whatever the language: a card
+    // sizes to it, and a narrower column puts the second button under the first
+    readonly property real needed: Math.max(count.implicitWidth, start.implicitWidth + buttons.spacing + wait.implicitWidth)
     visible: shown
     spacing: theme.space(3)
 
@@ -47,10 +48,12 @@ Column {
             Behavior on width { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
         }
     }
-    Row {
+    Flow {
         id: buttons
+        width: parent.width
         spacing: theme.space(2)
         Button {
+            id: start
             objectName: "room-gate-start"
             primary: true; small: true
             icon: "play"
@@ -59,6 +62,7 @@ Column {
             onClicked: root.room.startAnyway()
         }
         Button {
+            id: wait
             objectName: "room-gate-wait"
             small: true
             icon: "clock"
