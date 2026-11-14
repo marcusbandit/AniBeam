@@ -8,7 +8,11 @@ name: macOS
 # workspace runs it too, so a change that breaks the Mac shows up before it merges. Run it
 # from the Actions tab (Run workflow) for a build without a release.
 on:
+  # A pull request runs it once, when it gets the `full ci` label, never on each push (#986).
+  # The fast checks in ci.yml run on every push; take the label off and put it back to build
+  # the newest push again.
   pull_request:
+    types: [labeled]
     paths:
       - 'contract/**'
       - 'foundation/**'
@@ -33,11 +37,11 @@ on:
         type: string
         default: ''
 
-# A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
-# one build per PR instead of queueing behind the runners. Nightly and release runs have no
-# PR number, so each gets its own group and none cancels another (#529).
+# Putting `full ci` back on a PR cancels that PR's older run of this build (#529). The label's
+# name is in the group, so a different label landing never cancels it (#986). Nightly and
+# release runs have no PR number, so each gets its own group and none cancels another.
 concurrency:
-  group: ${{ github.workflow }}-macos-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-macos-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.label.name }}
   cancel-in-progress: true
 
 permissions:
@@ -60,6 +64,9 @@ env:
 
 jobs:
   build-macos:
+    # Any label fires the pull_request event; only `full ci` builds. A run another workflow
+    # calls (nightly, release, a PR test build) always builds.
+    if: github.event_name != 'pull_request' || inputs.version != '' || github.event.label.name == 'full ci'
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -120,6 +127,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Build

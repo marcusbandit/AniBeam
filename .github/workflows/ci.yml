@@ -81,6 +81,10 @@ jobs:
           rustup component add rustc cargo rust-std
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
         run: cargo clippy --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
