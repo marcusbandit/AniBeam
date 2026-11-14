@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
+import { Tr } from "tr.slint";
 
 // Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
 // a layout grows to its wrapped height whatever max-height says, so this one fixes its
@@ -722,6 +723,107 @@ export component Segmented inherits Rectangle {
     }
 }
 
+// One of a focused field's own edit keys: Select all, Copy, Paste. A glyph, so three of them
+// fit beside the text in every language; the word is its accessible name.
+component EditKey inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 9 * Theme.unit;
+    height: self.width;
+    border-radius: self.height / 2;
+    background: touch.pressed ? Theme.pressed : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    Image {
+        width: 4.5 * Theme.unit;
+        height: self.width;
+        source: root.icon;
+        colorize: !root.enabled ? Theme.faint : touch.pressed ? Theme.text : Theme.dim;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The one line both fields type into (#911). A bare TextInput never scrolls, so it sits in a
+// clipped box and shifts to keep the cursor in view, the way Slint's LineEdit does. While it has
+// focus it carries its own Select all, Copy and Paste: the iPhone has no text menu. A secret
+// offers no Copy.
+component LineInput inherits Rectangle {
+    in-out property <string> text;
+    in property <length> font-size: Theme.normal;
+    in property <string> font-family: Theme.face;
+    in property <bool> secret;
+    out property <bool> has-focus: input.has-focus;
+    callback accepted(string);
+    callback edited(string);
+    property <bool> editing: input.has-focus;
+    // Where the cursor last stood in the text, so a box that narrows or widens (the keys
+    // coming and going) can bring it back into view.
+    property <length> cursor-x;
+    property <length> shift;
+    function follow() {
+        if root.cursor-x + root.shift < 0 {
+            root.shift = -root.cursor-x;
+        } else if root.cursor-x + root.shift > box.width - input.text-cursor-width {
+            root.shift = box.width - root.cursor-x - input.text-cursor-width;
+        }
+    }
+    box := Rectangle {
+        x: 0;
+        width: root.width - (root.editing ? keys.preferred-width + Theme.unit : 0);
+        height: root.height;
+        clip: true;
+        changed width => { root.follow(); }
+        input := TextInput {
+            x: min(0px, max(parent.width - self.width - self.text-cursor-width, root.shift));
+            width: max(parent.width - self.text-cursor-width, self.preferred-width);
+            height: parent.height;
+            text <=> root.text;
+            color: Theme.text;
+            font-size: root.font-size;
+            font-family: root.font-family;
+            vertical-alignment: center;
+            single-line: true;
+            input-type: root.secret ? InputType.password : InputType.text;
+            cursor-position-changed(pos) => {
+                root.cursor-x = pos.x;
+                root.follow();
+            }
+            accepted => { root.accepted(self.text); }
+            edited => { root.edited(self.text); }
+        }
+    }
+    keys := HorizontalLayout {
+        visible: root.editing;
+        x: root.width - self.preferred-width;
+        y: (root.height - self.height) / 2;
+        width: self.preferred-width;
+        height: 9 * Theme.unit;
+        alignment: end;
+        EditKey {
+            icon: @image-url("icons/text-select.svg");
+            label: Tr.t("common-select-all");
+            enabled: root.text != "";
+            clicked => { input.select-all(); }
+        }
+        if !root.secret: EditKey {
+            icon: @image-url("icons/copy.svg");
+            label: Tr.t("common-copy");
+            enabled: root.text != "";
+            clicked => { input.copy(); }
+        }
+        EditKey {
+            icon: @image-url("icons/clipboard-paste.svg");
+            label: Tr.t("common-paste");
+            clicked => { input.paste(); }
+        }
+    }
+}
+
 // The page's search: one wide field of glass, the desktop's, with its glyph and a large
 // placeholder.
 export component SearchField inherits Rectangle {
@@ -754,17 +856,14 @@ export component SearchField inherits Rectangle {
         overflow: elide;
     }
     property <length> clear-size: 12 * Theme.unit;
-    input := TextInput {
+    input := LineInput {
         x: root.text-x;
         width: parent.width - self.x - (root.text != "" ? root.clear-size : Theme.pad);
         height: parent.height;
         text <=> root.text;
-        color: Theme.text;
         font-size: Theme.heading;
-        vertical-alignment: center;
-        single-line: true;
-        edited => { root.edited(self.text); }
-        accepted => { root.accepted(self.text); }
+        edited(t) => { root.edited(t); }
+        accepted(t) => { root.accepted(t); }
     }
     // Clears the search in one tap.
     if root.text != "": Rectangle {
@@ -812,18 +911,15 @@ export component Field inherits Rectangle {
         vertical-alignment: center;
         overflow: elide;
     }
-    input := TextInput {
+    input := LineInput {
         x: Theme.unit * 4;
         width: parent.width - 8 * Theme.unit;
         height: parent.height;
         text <=> root.text;
-        color: Theme.text;
         font-family: root.figure ? Theme.figure : Theme.face;
-        vertical-alignment: center;
-        single-line: true;
-        input-type: root.secret ? InputType.password : InputType.text;
-        accepted => { root.accepted(self.text); }
-        edited => { root.edited(self.text); }
+        secret: root.secret;
+        accepted(t) => { root.accepted(t); }
+        edited(t) => { root.edited(t); }
     }
 }
 
