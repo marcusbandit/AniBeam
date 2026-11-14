@@ -299,10 +299,10 @@ fn a_refresh_that_learns_the_series_ended_writes_the_status() {
 }
 
 /// Jikan is the title side-fetch and nothing else, so an outage costs a
-/// series its titles rather than its schedule. Two series failing inside
-/// the ten minute window is one line in the log, not two.
+/// series its titles rather than its schedule. Inside the ten minute
+/// window Jikan is not asked again, and the outage is one line in the log.
 #[test]
-fn two_jikan_failures_inside_the_window_write_one_warning() {
+fn a_jikan_failure_is_one_warning_and_no_second_request_inside_the_window() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
@@ -316,8 +316,8 @@ fn two_jikan_failures_inside_the_window_write_one_warning() {
             200,
             schedule_json(id, Some((9, now + 86_400)), &[]).to_string(),
         );
-        http.push_for("jikan.moe", 504, "gateway timeout");
     }
+    http.push_for("jikan.moe", 504, "gateway timeout");
 
     for series in [first, second] {
         let job = started(&core, Call::RefreshAiring { series });
@@ -331,7 +331,9 @@ fn two_jikan_failures_inside_the_window_write_one_warning() {
             }
         );
     }
-    assert_eq!(http.requests().len(), 4);
+    // Both schedules and one Jikan request: the second series' turn came
+    // inside the window, so Jikan was left alone.
+    assert_eq!(http.requests().len(), 3);
 
     let warnings: Vec<String> = c
         .events()

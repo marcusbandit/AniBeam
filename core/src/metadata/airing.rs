@@ -10,11 +10,13 @@
 //! table is the best one there will ever be. `write_episodes`'
 //! `keep_titles` is that rule.
 //!
-//! Jikan's failures are reported through `Core::report_jikan_outage`,
-//! which warns at most once every `metadata::OUTAGE_WINDOW`. The window
-//! lives beside the module rather than here because the full fetch shares
-//! it: a launch sweep through an outage must write one line, not one line
-//! per series.
+//! Jikan is asked through `Core::jikan_episodes`, which warns at most once
+//! every `metadata::OUTAGE_WINDOW` and skips Jikan for the rest of it. The
+//! window lives beside the module rather than here because the full fetch
+//! shares it: a launch sweep through an outage must write one line, not
+//! one line per series, and must not wait on Jikan once per series either.
+//! A refresh without Jikan's half deletes no future row, since the one
+//! the schedule leaves out may be an episode only Jikan knew of.
 //!
 //! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
 //! `AIRING_REFRESH_TTL_MS`, carried over.
@@ -200,15 +202,11 @@ async fn refresh_anilist(
 ) -> Result<bool, CoreError> {
     let schedule = core.anilist.schedule(anilist_id).await?;
     let jikan = match mal_id {
-        Some(mal_id) => match core.jikan.episodes(mal_id).await {
-            Ok(episodes) => episodes,
-            Err(e) => {
-                core.report_jikan_outage(&message_of(&e));
-                Vec::new()
-            }
-        },
-        None => Vec::new(),
+        Some(mal_id) => core.jikan_episodes(mal_id).await,
+        None => Some(Vec::new()),
     };
+    let whole = jikan.is_some();
+    let jikan = jikan.unwrap_or_default();
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
@@ -216,7 +214,11 @@ async fn refresh_anilist(
     core.store
         .tx_async(move |tx| {
             let before = stored(tx, anilist_id)?;
-            record::write_episodes(tx, anilist_id, &rows, true, now)?;
+            if whole {
+                record::write_episodes(tx, anilist_id, &rows, true, now)?;
+            } else {
+                record::upsert_episodes(tx, anilist_id, &rows, true)?;
+            }
             let status_changed = write_status(tx, anilist_id, status.as_deref())?;
             stamp(tx, anilist_id, now)?;
             Ok(status_changed || before != stored(tx, anilist_id)?)
@@ -289,7 +291,7 @@ fn stamp(tx: &Transaction, anilist_id: u64, now: i64) -> Result<(), CoreError> {
 
 /// The one field this cheap fetch may write besides episodes: the media's
 /// own status, which is how a series that stopped airing ever leaves the
-/// airing rail — the full fetch that would normally carry it ran once,
+/// airing rail: the full fetch that would normally carry it ran once,
 /// when the series was matched, and never runs again on its own. Only a
 /// status AniList actually sent and the row's state disagrees with is
 /// written, and nothing here may clear one.

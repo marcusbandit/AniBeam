@@ -33,7 +33,10 @@ use crate::store::sql::as_i64;
 /// A Jikan failure is not a failure of the match: AniList carries no
 /// episode titles and Jikan is the side-fetch that fills them in, so an
 /// outage costs the series its titles and nothing else. It goes through
-/// the core's outage window, which warns at most once every ten minutes.
+/// the core's outage window, which warns at most once every ten minutes
+/// and skips Jikan until the window has passed. Without Jikan's half the
+/// list is AniList's alone, so the future rows it leaves out stay rather
+/// than going: one of them may be an episode only Jikan knew of.
 ///
 /// The enrichment is the exception. `write_media` replaces the relations
 /// and the recommendations unconditionally, so writing a build that has no
@@ -60,15 +63,11 @@ pub async fn fetch_and_write(
 
     let mal_id = media.id_mal.or(enrichment.id_mal);
     let jikan = match mal_id {
-        Some(mal_id) => match core.jikan.episodes(mal_id).await {
-            Ok(episodes) => episodes,
-            Err(e) => {
-                core.report_jikan_outage(&message_of(&e));
-                Vec::new()
-            }
-        },
-        None => Vec::new(),
+        Some(mal_id) => core.jikan_episodes(mal_id).await,
+        None => Some(Vec::new()),
     };
+    let whole = jikan.is_some();
+    let jikan = jikan.unwrap_or_default();
 
     let write = record::build(&media, Some(&enrichment));
     let titles = record::streaming_titles(&enrichment.streaming_episodes);
@@ -91,7 +90,11 @@ pub async fn fetch_and_write(
                 "UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1",
                 params![as_i64(anilist_id), now],
             )?;
-            record::write_episodes(tx, anilist_id, &episodes, false, now)?;
+            if whole {
+                record::write_episodes(tx, anilist_id, &episodes, false, now)?;
+            } else {
+                record::upsert_episodes(tx, anilist_id, &episodes, false)?;
+            }
             write_match_only(
                 tx,
                 series,
