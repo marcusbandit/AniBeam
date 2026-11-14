@@ -207,10 +207,12 @@ chmod 755 "$anirss/bin/anirss"
 
 echo "== appimage"
 # The plugin linuxdeploy's --output appimage calls, run by hand now the helpers are in.
+# The file name is set here, not taken from the desktop entry's Name=: the updater and the release
+# workflows match AniBeam-<version>-x86_64.AppImage, and Name= now reads Anibeam.
 rm -f "$out"/*.AppImage
-"$tools/linuxdeploy-plugin-appimage-x86_64.AppImage" --appdir "$appdir" > "$out/appimage-plugin.log" 2>&1 \
-  || { tail -40 "$out/appimage-plugin.log"; exit 1; }
 image="$out/AniBeam-$pkgver-x86_64.AppImage"
+LDAI_OUTPUT="$image" "$tools/linuxdeploy-plugin-appimage-x86_64.AppImage" --appdir "$appdir" > "$out/appimage-plugin.log" 2>&1 \
+  || { tail -40 "$out/appimage-plugin.log"; exit 1; }
 [ -f "$image" ] || { echo "no $image; the plugin wrote:" >&2; ls -la "$out" >&2; tail -20 "$out/appimage-plugin.log" >&2; exit 1; }
 chmod +x "$image"
 ls -la "$image"
