@@ -26,6 +26,8 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/workflows/ios.yml'
+      # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
+      - '!apps/android/src/platform/android.rs'
   workflow_dispatch:
 
 permissions:

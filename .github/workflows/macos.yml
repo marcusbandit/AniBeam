@@ -19,6 +19,14 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/workflows/macos.yml'
+      # Linux and Windows only files (#950). A platform's own files cannot affect the others; later patterns win.
+      - '!apps/linux/packaging/linux/**'
+      - '!apps/linux/packaging/aur/**'
+      - '!apps/linux/com.marcusrosado.AniBeam.desktop'
+      - '!apps/linux/src/dbus/inhibit.rs'
+      - '!apps/linux/src/dbus/notify.rs'
+      - '!apps/linux/packaging/windows/**'
+      - '!apps/linux/src/winpower.rs'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it

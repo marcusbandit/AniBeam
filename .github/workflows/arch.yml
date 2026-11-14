@@ -18,6 +18,14 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/arch.yml'
+      # Mac and Windows only files (#950). A platform's own files cannot affect the others; later patterns win.
+      - '!apps/linux/packaging/macos/**'
+      - '!apps/linux/packaging/brew/**'
+      - '!apps/linux/cpp/nowplaying.mm'
+      - '!apps/linux/src/iokit.rs'
+      - '!apps/linux/src/macnp.rs'
+      - '!apps/linux/packaging/windows/**'
+      - '!apps/linux/src/winpower.rs'
   workflow_dispatch:
   workflow_call:
     inputs:
