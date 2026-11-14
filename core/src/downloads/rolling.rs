@@ -1366,7 +1366,7 @@ pub fn set(
 }
 
 /// `GetRollingSettings`: the rolling part of the downloads settings.
-pub fn settings_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn settings_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::RollingSettings {
         rolling: super::settings::read(core)?.rolling,
     })

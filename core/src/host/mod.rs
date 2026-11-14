@@ -390,12 +390,7 @@ pub(crate) fn set_device_trust(
     })?;
     core.host
         .set_switched_off(preferences.tailnet_switched_off.clone());
-    core.bus.debug(
-        Stage::Store,
-        "preferences changed",
-        EventBody::PreferencesChanged { preferences },
-    );
-    Ok(Reply::Ok)
+    crate::app::preferences_changed(core, preferences)
 }
 
 /// Whether Tailscale carries the path to `from` through a relay, as the last

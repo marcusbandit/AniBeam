@@ -868,7 +868,7 @@ impl Core {
                 query,
                 sort,
                 direction,
-                ..
+                reveal_hidden: _,
             } => reads::list_series(self, tab, &query, sort, direction),
             Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
             Call::ListLibrary {
@@ -876,7 +876,7 @@ impl Core {
                 query,
                 sort,
                 direction,
-                ..
+                reveal_hidden: _,
             } => reads::list_library(self, tab, &query, sort, direction),
             Call::ListFeed { sort } => feed::list_call(self, sort),
             Call::GetSeries { series } => reads::get_series(self, series),

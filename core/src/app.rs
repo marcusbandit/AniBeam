@@ -77,6 +77,15 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
     {
         on_hold::kick(&owner);
     }
+    preferences_changed(core, preferences)
+}
+
+/// The end of every preferences write: the bus says what the preferences
+/// are now, and the call answers Ok.
+pub(crate) fn preferences_changed(
+    core: &Core,
+    preferences: Preferences,
+) -> Result<Reply, CoreError> {
     core.bus.debug(
         Stage::Store,
         "preferences changed",

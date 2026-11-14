@@ -16,12 +16,8 @@ pub(crate) fn act_on_series(
     series: Vec<u64>,
     action: SeriesAction,
 ) -> Result<Reply, CoreError> {
-    let mut picks: Vec<u64> = Vec::with_capacity(series.len());
-    for id in series {
-        if !picks.contains(&id) {
-            picks.push(id);
-        }
-    }
+    let mut seen = HashSet::with_capacity(series.len());
+    let picks: Vec<u64> = series.into_iter().filter(|id| seen.insert(*id)).collect();
     if picks.is_empty() {
         return Err(CoreError::invalid(
             "series",

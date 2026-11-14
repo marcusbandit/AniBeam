@@ -41,14 +41,14 @@ fn sources_path(core: &Core) -> PathBuf {
 }
 
 /// `PhoneSources`: the sources saved here, as the call's reply.
-pub fn sources_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn sources_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneSources {
         sources: sources(core),
     })
 }
 
 /// `PhoneSearchSources`: [`search_sources`] as the call's reply.
-pub fn search_sources_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn search_sources_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneSources {
         sources: search_sources(core),
     })

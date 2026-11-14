@@ -271,7 +271,7 @@ async fn host(
 }
 
 /// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
-pub fn run_call(core: &Core) -> Result<Reply, CoreError> {
+pub(crate) fn run_call(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneNetCheck {
         checks: core.handle.block_on(run(core)),
     })
