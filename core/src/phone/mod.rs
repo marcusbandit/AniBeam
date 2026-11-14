@@ -522,7 +522,7 @@ pub fn download(
                         })
                         .map(|(_, f)| f.size)
                         .sum(),
-                    None => crate::downloads::facts::size_bytes(&i.size).unwrap_or(1_500_000_000),
+                    None => crate::foundation::size::size_bytes(&i.size).unwrap_or(1_500_000_000),
                 })
                 .sum();
             if used + pending + size > limit {

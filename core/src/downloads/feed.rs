@@ -140,7 +140,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
     });
     let info_hash = child("infoHash")
         .or_else(|| attr("infohash"))
-        .or_else(|| hash_in(&link))
+        .or_else(|| crate::foundation::magnet::hash(&link))
         .unwrap_or_default()
         .to_ascii_lowercase();
     FeedEntry {
@@ -163,16 +163,6 @@ fn date(text: &str) -> Option<i64> {
     time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc2822)
         .ok()
         .map(|d| d.unix_timestamp())
-}
-
-/// The btih in a magnet link, hex only (a base32 one is left alone).
-fn hash_in(link: &str) -> Option<String> {
-    let at = link.find("urn:btih:")? + "urn:btih:".len();
-    let hash: String = link[at..]
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
-        .collect();
-    (hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit())).then_some(hash)
 }
 
 fn human(bytes: u64) -> String {
@@ -269,6 +259,12 @@ mod tests {
         assert_eq!(
             parse(xml).unwrap()[0].info_hash,
             "0123456789abcdef0123456789abcdef01234567"
+        );
+        // A base32 hash reads as the hex one it is, the way a download reads it.
+        let xml = r#"<rss><channel><item><title>m</title><link>magnet:?xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&amp;dn=x</link></item></channel></rss>"#;
+        assert_eq!(
+            parse(xml).unwrap()[0].info_hash,
+            "000102030405060708090a0b0c0d0e0f10111213"
         );
     }
 

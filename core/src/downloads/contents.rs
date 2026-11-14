@@ -44,16 +44,13 @@ pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
 /// The largest `.torrent` read; past this the link is not a torrent file.
 const MAX_TORRENT: usize = 16 * 1024 * 1024;
 
-const VIDEO: [&str; 7] = ["mkv", "mp4", "avi", "m4v", "webm", "ts", "wmv"];
-
 /// The whole episode numbers among the video files, each read as a release
 /// title is.
 pub fn episodes_of(files: &[(String, u64)]) -> Vec<u32> {
     let mut out = BTreeSet::new();
     for (path, _) in files {
         let base = path.rsplit('/').next().unwrap_or(path);
-        let ext = base.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-        if !VIDEO.contains(&ext.as_str()) {
+        if !crate::foundation::names::is_video(base) {
             continue;
         }
         let facts = super::facts::read_name(base);

@@ -454,7 +454,7 @@ pub async fn call(
     }
     // Downloads fill this computer's disk and its torrent client, so only the
     // person it belongs to may send them (#733).
-    if download && profile != crate::profiles::OWNER {
+    if download && profile != crate::foundation::trust::OWNER {
         return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
     let Some(core) = st.core.upgrade() else {

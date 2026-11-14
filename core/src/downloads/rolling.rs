@@ -49,10 +49,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use super::qbt::QbtClient;
-use super::replace::{magnet_hash, names_match, title_key};
+use super::replace::names_match;
 use super::{facts, settings};
 use crate::contract::*;
 use crate::core::Core;
+use crate::foundation::magnet;
+use crate::foundation::names::{is_video, title_key};
 use crate::store::settings as kv;
 use crate::time::now_secs;
 
@@ -72,10 +74,6 @@ pub const MAX_AHEAD: u32 = 500;
 pub const SKIP: i64 = 0;
 pub const NORMAL: i64 = 1;
 pub const FIRST: i64 = 7;
-
-const VIDEO: &[&str] = &[
-    "mkv", "mp4", "avi", "webm", "m4v", "mov", "ts", "m2ts", "wmv", "flv", "ogm",
-];
 
 /// What a pass asks of the torrent client. qBittorrent answers it on the
 /// desktop, the phone's own engine on the phone.
@@ -314,7 +312,7 @@ pub fn plan(
             let r = &items[i];
             let part = Part {
                 release: r.clone(),
-                hash: magnet_hash(&r.link).unwrap_or_default(),
+                hash: magnet::hash(&r.link).unwrap_or_default(),
                 added: true,
                 added_at: now,
                 single: false,
@@ -354,7 +352,7 @@ pub fn plan(
             let r = &items[i];
             Part {
                 release: r.clone(),
-                hash: magnet_hash(&r.link).unwrap_or_default(),
+                hash: magnet::hash(&r.link).unwrap_or_default(),
                 added: n < ahead as usize,
                 added_at: now,
                 single: true,
@@ -445,13 +443,6 @@ pub fn units_of(files: &[TorrentFile]) -> Vec<Unit> {
             gone: false,
         })
         .collect()
-}
-
-fn is_video(name: &str) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| VIDEO.contains(&e.to_ascii_lowercase().as_str()))
 }
 
 /// Compares names with runs of digits read as numbers.

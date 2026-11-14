@@ -513,7 +513,7 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
     let m = media.unwrap_or_default();
     let (lib_mal, lib_eps, romaji, english, native) = library.unwrap_or_default();
     let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
-    let folder_name = crate::library::titles::resolve(
+    let folder_name = crate::foundation::titles::resolve(
         lang,
         text(&m["title"]["romaji"]).or(romaji).as_deref(),
         text(&m["title"]["english"]).or(english).as_deref(),

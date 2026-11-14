@@ -9,9 +9,10 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::foundation::titles;
+use crate::library::labels;
 use crate::library::schedule::{NoteRow, When};
 use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
-use crate::library::{labels, titles};
 use crate::time;
 
 // ---------------------------------------------------------------------------

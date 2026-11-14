@@ -223,7 +223,11 @@ impl Host {
         // Before `tailscale` has ever answered, this machine still knows its own
         // tailnet addresses from its interfaces.
         let known = |t: Option<Arc<trust::Tailnet>>| {
-            t.unwrap_or_else(|| Arc::new(trust::local_tailnet(&addr::local_addresses())))
+            t.unwrap_or_else(|| {
+                Arc::new(trust::local_tailnet(
+                    &crate::foundation::machine::local_addresses(),
+                ))
+            })
         };
         let first = trust::decide(from, &off, Some(&known(self.tailnet(false))));
         if first != trust::Verdict::Unknown {
@@ -563,7 +567,10 @@ async fn supervise(
     };
     let mut serving: Option<Serving> = None;
     loop {
-        match addr::wanted(bind.as_deref(), &addr::local_addresses()) {
+        match addr::wanted(
+            bind.as_deref(),
+            &crate::foundation::machine::local_addresses(),
+        ) {
             Err(message) => {
                 if let Some(old) = serving.take() {
                     old.stop().await;

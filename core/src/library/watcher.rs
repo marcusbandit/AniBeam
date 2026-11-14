@@ -18,7 +18,8 @@ use notify_debouncer_full::{
 
 use crate::contract::*;
 use crate::core::Core;
-use crate::library::walk::{is_ignored_name, is_video};
+use crate::foundation::names::is_video;
+use crate::library::walk::is_ignored_name;
 use crate::sync::recover;
 
 /// How long the debouncer waits for a path to go quiet before it reports.
