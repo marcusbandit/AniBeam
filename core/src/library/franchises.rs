@@ -2,7 +2,7 @@
 //! library page, and what the box around them is called.
 //!
 //! A group is a connected component of the library's series over the
-//! `relations` table, walking only the edges `closure::TRAVERSABLE` names,
+//! `relations` table, walking only the edges [`TRAVERSABLE`] names,
 //! so a CHARACTER or OTHER edge never joins two franchises (a cameo would
 //! otherwise glue every franchise it touches into one box). The walk runs
 //! through any node the table holds, owned or not, so a first and a third
@@ -19,9 +19,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rusqlite::{Connection, params_from_iter};
 
-use super::{as_u64, closure};
 use crate::contract::{CoreError, FranchiseTag, TitleLanguage};
+use crate::foundation::relations::TRAVERSABLE;
 use crate::foundation::titles;
+use crate::store::sql::as_u64;
 
 /// One library series as the grouping sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,12 +78,12 @@ pub fn load(
         return Ok(HashMap::new());
     }
 
-    let list = vec!["?"; closure::TRAVERSABLE.len()].join(", ");
+    let list = vec!["?"; TRAVERSABLE.len()].join(", ");
     let mut stmt = conn.prepare(&format!(
         "SELECT from_id, to_id FROM relations WHERE relation IN ({list})"
     ))?;
     let edges: Vec<(u64, u64)> = stmt
-        .query_map(params_from_iter(closure::TRAVERSABLE.iter()), |r| {
+        .query_map(params_from_iter(TRAVERSABLE.iter()), |r| {
             Ok((as_u64(r.get(0)?), as_u64(r.get(1)?)))
         })?
         .collect::<Result<_, _>>()?;
@@ -297,8 +298,8 @@ pub fn strip_season(title: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testing::*;
     use super::*;
+    use crate::franchise::testing::*;
     use rusqlite::params;
 
     fn member(series: u64, anilist_id: u64, title: &str, released: &str) -> Member {

@@ -5,6 +5,13 @@
 
 use anibeam_contract::enums::TitleLanguage;
 
+/// The title of last resort, for a show the store knows only by its AniList
+/// id: an id reads better than an empty card. Airing now, Watching and Plan
+/// to watch all fall back to it.
+pub fn fallback_title(anilist_id: u64) -> String {
+    format!("AniList {anilist_id}")
+}
+
 /// An empty or blank string counts as absent, the way JavaScript's `||`
 /// treated `""`.
 fn present(s: Option<&str>) -> Option<&str> {

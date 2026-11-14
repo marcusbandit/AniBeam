@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::act;
 use crate::agent;
 use crate::airing_now;
 use crate::app;
@@ -19,7 +20,7 @@ use crate::jobs::{Jobs, started, started_or_ok};
 use crate::launch;
 use crate::library::scan;
 use crate::library::watcher::Watcher;
-use crate::library::{Library, act, delete, fixes, reads, report, schedule};
+use crate::library::{Library, delete, fixes, reads, report, schedule};
 use crate::metadata::{Metadata, airing, apply, automatch};
 use crate::net::{Http, Net, ReqwestHttp};
 use crate::paths::CorePaths;
@@ -33,7 +34,7 @@ use crate::repos;
 use crate::room;
 use crate::stats;
 use crate::store::Store;
-use crate::trackers::{Trackers, accounts, cache, move_up, oauth, watching, writes};
+use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
@@ -206,13 +207,25 @@ impl Core {
         // finish in a core that was never started, as the CLI's are.
         crate::calendar::listen(&core.metadata);
         // Before anything reads an installed endpoint: a kind saved under a site's name gets
-        // its shape name (#602).
-        if let Err(e) = crate::repos::rename_old_kinds(&core.services) {
-            core.services.bus.warn(
-                Stage::Downloads,
-                format!("could not give a download source the new name of its kind: {e}"),
-                EventBody::Notice,
-            );
+        // its shape name (#602), in the installed endpoints and in the phone's saved sources.
+        let renamed = crate::repos::rename_old_kinds(&core.services)
+            .and_then(|n| Ok(n + crate::phone::rename_old_kinds(&core.services)?));
+        match renamed {
+            Ok(0) => {}
+            Ok(renamed) => {
+                core.services.bus.info(
+                    Stage::Downloads,
+                    format!("Gave {renamed} download sources the new name of their kind"),
+                    EventBody::Notice,
+                );
+            }
+            Err(e) => {
+                core.services.bus.warn(
+                    Stage::Downloads,
+                    format!("could not give a download source the new name of its kind: {e}"),
+                    EventBody::Notice,
+                );
+            }
         }
         Ok(core)
     }
@@ -684,7 +697,7 @@ impl Core {
             } => airing_now::set_not_interested(&self.services, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(&self.services),
             Call::PlanToWatch { anilist_id } => {
-                airing_now::plan_to_watch(&self.trackers, anilist_id)
+                plan_to_watch::plan_to_watch(&self.trackers, anilist_id)
             }
             Call::ListRecommended { scope } => recommended::list_call(&self.services, scope),
             Call::RefreshRecommended { force } => recommended::refresh_call(&self.metadata, force),
@@ -1058,14 +1071,5 @@ impl Drop for Core {
         if let Some(runtime) = runtime {
             runtime.shutdown_background();
         }
-    }
-}
-
-/// The variant name of a call, for messages: the externally tagged JSON key.
-pub fn call_name(call: &Call) -> String {
-    match serde_json::to_value(call) {
-        Ok(serde_json::Value::String(s)) => s,
-        Ok(serde_json::Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
-        _ => "?".into(),
     }
 }

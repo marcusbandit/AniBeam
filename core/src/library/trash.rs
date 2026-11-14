@@ -2,7 +2,8 @@
 //! never deletes: it moves what the torrents downloaded and the library
 //! series' folder to the freedesktop trash, where they can be put back, on
 //! the same drive as the files (`$topdir/.Trash-$uid`), so a season is a
-//! rename, not a copy.
+//! rename, not a copy. Deleting episodes (`library::delete`) goes the same
+//! way, so the trash sits with the library, below the downloads (#854).
 //!
 //! Every target is checked before anything goes. A path that is not
 //! absolute, holds a `..`, does not exist, is the filesystem root, is the

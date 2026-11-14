@@ -165,7 +165,7 @@ pub struct SeriesCard {
     pub downloading: Vec<EpisodeDownload>,
     /// The franchise this series shares with other library series, or None
     /// when it relates to no other series in the library
-    /// (`franchise::groups`).
+    /// (`library::franchises`).
     #[serde(default)]
     pub franchise: Option<FranchiseTag>,
     /// The release year: AniList's seasonYear, else the start year; TVmaze's

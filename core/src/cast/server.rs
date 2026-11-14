@@ -17,7 +17,7 @@ use axum::routing::get;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::media::Prepared;
-use crate::host::stream::{Range, byte_range};
+use crate::foundation::range::{Range, byte_range};
 use crate::sync::recover;
 
 /// What one token serves.

@@ -5,6 +5,7 @@
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::foundation::services::Services;
 use crate::foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
 use crate::store::settings;
 
@@ -112,7 +113,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
             ),
         ));
     }
-    if crate::room::clean_name(&p.room_name).is_none() && !p.room_name.trim().is_empty() {
+    if anibeam_room::room::clean_name(&p.room_name).is_none() && !p.room_name.trim().is_empty() {
         return Err(CoreError::invalid(
             "room_name",
             crate::i18n::tr(
@@ -121,7 +122,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
             ),
         ));
     }
-    if !crate::room::relay_ok(&p.room_relay) {
+    if !relay_ok(&p.room_relay) {
         return Err(CoreError::invalid(
             "room_relay",
             crate::i18n::tr("core-prefs-room-relay", &[]),
@@ -169,4 +170,25 @@ pub fn validate_subtitle_defaults(d: &SubtitleDefaults) -> Result<(), CoreError>
         ));
     }
     Ok(())
+}
+
+/// Whether a relay address can be used: http or https, with a host.
+pub(crate) fn relay_ok(relay: &str) -> bool {
+    let relay = relay.trim();
+    (relay.starts_with("https://") || relay.starts_with("http://"))
+        && reqwest::Url::parse(relay)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| !h.is_empty()))
+            .unwrap_or(false)
+}
+
+/// Tells every listener the preferences changed: the event a save sends, from
+/// `SetPreferences` and from the host's trust switch alike.
+pub(crate) fn changed(services: &Services, preferences: Preferences) -> Result<Reply, CoreError> {
+    services.bus.debug(
+        Stage::Store,
+        "preferences changed",
+        EventBody::PreferencesChanged { preferences },
+    );
+    Ok(Reply::Ok)
 }

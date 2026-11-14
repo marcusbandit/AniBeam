@@ -414,7 +414,7 @@ pub(crate) fn set_device_trust(
         Ok(p)
     })?;
     host.set_switched_off(preferences.tailnet_switched_off.clone());
-    crate::app::preferences_changed(&host.services, preferences)
+    prefs::changed(&host.services, preferences)
 }
 
 /// Whether Tailscale carries the path to `from` through a relay, as the last

@@ -21,7 +21,6 @@ use crate::time;
 
 pub mod closure;
 pub mod crawl;
-pub mod groups;
 pub mod layout;
 
 use closure::{Closure, Node};

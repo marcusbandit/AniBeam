@@ -11,12 +11,12 @@ pub(crate) static BRACKETS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s*\[[^\]]*\]\s*").unwrap());
 pub(crate) static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
-pub(crate) mod act;
 pub mod cards;
 pub mod classifier;
 pub mod delete;
 pub mod detail;
 pub mod fixes;
+pub mod franchises;
 pub(crate) mod history;
 pub(crate) mod hostview;
 pub mod labels;
@@ -30,6 +30,7 @@ pub mod sidecar;
 pub mod snapshot;
 pub mod sort;
 mod team;
+pub mod trash;
 pub mod walk;
 pub mod watcher;
 

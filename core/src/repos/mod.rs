@@ -1118,9 +1118,9 @@ pub fn edit_custom(
 }
 
 /// Installed endpoints saved before #602 can carry their kind under a site's name. This gives
-/// each its shape name in place and changes nothing else about it, and the phone's saved
-/// sources the same. A row already under a shape name is left alone, so after the first open
-/// this does nothing. Returns how many were renamed.
+/// each its shape name in place and changes nothing else about it; `Core::open` does the
+/// phone's saved sources the same beside it. A row already under a shape name is left alone,
+/// so after the first open this does nothing. Returns how many were renamed.
 pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
     // Read first: after the first open nothing is left to rename, and a write would take the
     // store's lock on every open, a CLI's beside a running desktop's.
@@ -1136,20 +1136,10 @@ pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
         }
         Ok(n)
     })?;
-    let mut renamed = if old == 0 {
-        0
-    } else {
-        rewrite_old_kinds(services)?
-    };
-    renamed += crate::phone::rename_old_kinds(services)?;
-    if renamed > 0 {
-        services.bus.info(
-            Stage::Downloads,
-            format!("Gave {renamed} download sources the new name of their kind"),
-            EventBody::Notice,
-        );
+    if old == 0 {
+        return Ok(0);
     }
-    Ok(renamed)
+    rewrite_old_kinds(services)
 }
 
 fn rewrite_old_kinds(services: &Services) -> Result<usize, CoreError> {

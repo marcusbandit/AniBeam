@@ -74,7 +74,7 @@ fn saved_sources(services: &Services) -> Vec<PhoneSource> {
 }
 
 /// The saved sources whose kind has a name from before #602 get its shape name, in place and
-/// once (`repos::rename_old_kinds`). Returns how many.
+/// once, beside `repos::rename_old_kinds` in `Core::open`. Returns how many.
 pub(crate) fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
     let mut saved = saved_sources(services);
     let mut renamed = 0;
