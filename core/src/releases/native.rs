@@ -225,15 +225,15 @@ impl Native {
                     service,
                     code,
                     message,
-                } => CoreError::Service {
+                } => CoreError::service(
                     service,
                     code,
-                    message: [message]
+                    [message]
                         .into_iter()
                         .chain(rest)
                         .collect::<Vec<_>>()
                         .join("; "),
-                },
+                ),
                 other => other,
             });
         }

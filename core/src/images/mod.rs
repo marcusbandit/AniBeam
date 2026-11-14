@@ -163,12 +163,7 @@ pub fn extension(url: &str, content_type: Option<&str>) -> &'static str {
 /// A fetch that failed. The CDN is AniList's, so that is the provider a
 /// shell is told about; `status` is None when nothing answered at all.
 fn cdn_error(status: Option<u32>, message: impl Into<String>) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Anilist,
-        status,
-        message: message.into(),
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Anilist, status, message)
 }
 
 // ---------------------------------------------------------------------------

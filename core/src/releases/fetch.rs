@@ -281,21 +281,23 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
             )],
         ),
     };
-    Some(CoreError::Service {
-        service: endpoint_name.to_string(),
-        code: "refused".to_string(),
+    Some(CoreError::service(
+        endpoint_name.to_string(),
+        "refused",
         message,
-    })
+    ))
 }
 
 /// Parse an RSS feed into releases. Reads a tracker's extension fields when present;
 /// otherwise falls back to Size: and Category: hints in `<description>`. Errors on malformed XML.
 pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreError> {
     let data = data.strip_prefix('\u{feff}').unwrap_or(data);
-    let doc = roxmltree::Document::parse(data).map_err(|e| CoreError::Service {
-        service: endpoint_name.to_string(),
-        code: "unreadable".to_string(),
-        message: crate::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
+    let doc = roxmltree::Document::parse(data).map_err(|e| {
+        CoreError::service(
+            endpoint_name.to_string(),
+            "unreadable",
+            crate::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
+        )
     })?;
     if let Some(e) = indexer_error(&doc, endpoint_name) {
         return Err(e);
@@ -384,11 +386,7 @@ pub async fn fetch_rss(
             timeout: Some(timeout),
         })
         .await
-        .map_err(|e| CoreError::Service {
-            service: source_name.to_string(),
-            code: "unreachable".to_string(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(source_name.to_string(), "unreachable", e.message))?;
     if !response.is_success() {
         // Prowlarr can send its error document with a 401 or a 403; its reason beats a status.
         let body = String::from_utf8_lossy(&response.body);
@@ -399,14 +397,14 @@ pub async fn fetch_rss(
         {
             return Err(e);
         }
-        return Err(CoreError::Service {
-            service: source_name.to_string(),
-            code: format!("http_{}", response.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            source_name.to_string(),
+            format!("http_{}", response.status),
+            crate::i18n::tr(
                 "core-releases-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),
-        });
+        ));
     }
     let body = String::from_utf8_lossy(&response.body);
     let items = parse_rss(&body, source_name)?;

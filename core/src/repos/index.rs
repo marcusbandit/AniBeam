@@ -37,11 +37,7 @@ impl RepoFault {
 
 impl From<RepoFault> for CoreError {
     fn from(f: RepoFault) -> CoreError {
-        CoreError::Service {
-            service: "Endpoint repo".into(),
-            code: f.code.into(),
-            message: f.message,
-        }
+        CoreError::service("Endpoint repo", f.code, f.message)
     }
 }
 

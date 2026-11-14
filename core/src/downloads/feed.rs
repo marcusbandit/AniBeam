@@ -29,27 +29,19 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
             timeout: Some(FEED_TIMEOUT),
         })
         .await
-        .map_err(|e| CoreError::Service {
-            service: host.clone(),
-            code: "unreachable".to_string(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(host.clone(), "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: host,
-            code: format!("http_{}", response.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            host,
+            format!("http_{}", response.status),
+            crate::i18n::tr(
                 "core-downloads-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),
-        });
+        ));
     }
     let text = String::from_utf8_lossy(&response.body);
-    parse(&text).map_err(|message| CoreError::Service {
-        service: host,
-        code: "unreadable".to_string(),
-        message,
-    })
+    parse(&text).map_err(|message| CoreError::service(host, "unreadable", message))
 }
 
 pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {

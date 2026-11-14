@@ -225,26 +225,19 @@ pub async fn fetch(
             timeout: Some(timeout),
         })
         .await
-        .map_err(|e| CoreError::Service {
-            service: source.to_string(),
-            code: "unreachable".into(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(source.to_string(), "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: source.to_string(),
-            code: format!("http_{}", response.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            source.to_string(),
+            format!("http_{}", response.status),
+            crate::i18n::tr(
                 "core-releases-search-answered",
                 &[("status", response.status.to_string().into())],
             ),
-        });
+        ));
     }
-    parse(&response.body, map, source).map_err(|message| CoreError::Service {
-        service: source.to_string(),
-        code: "unreadable".into(),
-        message,
-    })
+    parse(&response.body, map, source)
+        .map_err(|message| CoreError::service(source.to_string(), "unreadable", message))
 }
 
 #[cfg(test)]

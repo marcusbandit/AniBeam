@@ -315,12 +315,11 @@ fn check(response: &HttpResponse) -> Result<(), CoreError> {
     if response.is_success() {
         return Ok(());
     }
-    Err(CoreError::Provider {
-        provider: Provider::Tvmaze,
-        status: Some(u32::from(response.status)),
-        message: format!("TVmaze {}: {}", response.status, response.text()),
-        retry_after: None,
-    })
+    Err(CoreError::provider(
+        Provider::Tvmaze,
+        Some(u32::from(response.status)),
+        format!("TVmaze {}: {}", response.status, response.text()),
+    ))
 }
 
 #[cfg(test)]

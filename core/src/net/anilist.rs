@@ -846,12 +846,7 @@ impl AnilistClient {
 }
 
 fn provider_error(status: Option<u32>, message: impl Into<String>) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Anilist,
-        status,
-        message: message.into(),
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Anilist, status, message)
 }
 
 fn parse_media(value: &serde_json::Value) -> Result<Option<Media>, CoreError> {

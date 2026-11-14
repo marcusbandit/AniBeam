@@ -65,12 +65,11 @@ impl JikanClient {
             return Ok(Vec::new());
         }
         if !response.is_success() {
-            return Err(CoreError::Provider {
-                provider: Provider::Mal,
-                status: Some(u32::from(response.status)),
-                message: format!("Jikan {}: {}", response.status, response.text()),
-                retry_after: None,
-            });
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                format!("Jikan {}: {}", response.status, response.text()),
+            ));
         }
         let reply: EpisodesReply = response.json()?;
         // Keyed by episode number, so a repeated entry collapses and the

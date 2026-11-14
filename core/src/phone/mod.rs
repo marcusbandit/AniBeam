@@ -456,11 +456,7 @@ async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreEr
         },
     )
     .await
-    .map_err(|e| CoreError::Service {
-        service: crate::net::host_shown(link),
-        code: "unreachable".to_string(),
-        message: e.message,
-    })?;
+    .map_err(|e| CoreError::service(crate::net::host_shown(link), "unreachable", e.message))?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 

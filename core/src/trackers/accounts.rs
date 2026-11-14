@@ -446,12 +446,7 @@ pub(crate) fn token_failure(response: &HttpResponse, sent_secret: bool) -> CoreE
     } else {
         response.text()
     };
-    CoreError::Provider {
-        provider: Provider::Mal,
-        status: Some(u32::from(response.status)),
-        message,
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Mal, Some(u32::from(response.status)), message)
 }
 
 /// What a token endpoint hands back. AniList's implicit grant fills the
@@ -571,15 +566,14 @@ fn joined<T>(joined: Result<T, tokio::task::JoinError>) -> Result<T, CoreError> 
 
 /// A tracker's own failure, carrying the provider it belongs to.
 pub(crate) fn tracker_error(t: Tracker, message: impl Into<String>) -> CoreError {
-    CoreError::Provider {
-        provider: match t {
+    CoreError::provider(
+        match t {
             Tracker::Anilist => Provider::Anilist,
             Tracker::Mal => Provider::Mal,
         },
-        status: None,
-        message: message.into(),
-        retry_after: None,
-    }
+        None,
+        message,
+    )
 }
 
 /// The whole tracker state, after anything that changed a part of it.

@@ -66,12 +66,11 @@ impl AniSkipClient {
             return Ok(None);
         }
         if !response.is_success() {
-            return Err(CoreError::Provider {
-                provider: Provider::Mal,
-                status: Some(u32::from(response.status)),
-                message: format!("AniSkip {}: {}", response.status, response.text()),
-                retry_after: None,
-            });
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                format!("AniSkip {}: {}", response.status, response.text()),
+            ));
         }
         let reply: SkipReply = response.json()?;
         let mut windows = Vec::new();

@@ -301,17 +301,9 @@ mod tests {
 
     #[test]
     fn problems_are_plain_sentences() {
-        let late = CoreError::Service {
-            service: "qBittorrent".into(),
-            code: "timeout".into(),
-            message: "slow".into(),
-        };
+        let late = CoreError::service("qBittorrent", "timeout", "slow");
         assert_eq!(problem("qBittorrent", &late), "qBittorrent did not answer");
-        let down = CoreError::Service {
-            service: "anirss".into(),
-            code: "unreachable".into(),
-            message: "refused".into(),
-        };
+        let down = CoreError::service("anirss", "unreachable", "refused");
         assert_eq!(problem("anirss", &down), "anirss is not running");
     }
 

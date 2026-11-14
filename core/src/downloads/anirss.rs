@@ -496,13 +496,15 @@ impl AnirssClient {
     }
 
     async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
-        self.http.send(req).await.map_err(|e| CoreError::Service {
-            service: SERVICE.to_string(),
-            code: "unreachable".to_string(),
-            message: crate::i18n::tr(
-                "core-downloads-anirss-no-answer",
-                &[("message", e.message.into())],
-            ),
+        self.http.send(req).await.map_err(|e| {
+            CoreError::service(
+                SERVICE,
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-anirss-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
         })
     }
 }
@@ -533,11 +535,7 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
                 ],
             )
         });
-    Err(CoreError::Service {
-        service: SERVICE.to_string(),
-        code,
-        message,
-    })
+    Err(CoreError::service(SERVICE, code, message))
 }
 
 /// Percent-encodes a query value the way a form does.

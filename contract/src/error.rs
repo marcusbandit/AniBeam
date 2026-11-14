@@ -251,6 +251,45 @@ impl CoreError {
             message: message.into(),
         }
     }
+
+    /// A `Service` error: `service` names who refused, `code` is the fixed
+    /// word a shell branches on, `message` is for people.
+    pub fn service(
+        service: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> CoreError {
+        CoreError::Service {
+            service: service.into(),
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    /// A `Provider` error with no retry hint. A provider that said when to
+    /// come back gets [`CoreError::provider_retry`].
+    pub fn provider(
+        provider: Provider,
+        status: Option<u32>,
+        message: impl Into<String>,
+    ) -> CoreError {
+        CoreError::provider_retry(provider, status, message, None)
+    }
+
+    /// A `Provider` error that carries the provider's retry hint, in seconds.
+    pub fn provider_retry(
+        provider: Provider,
+        status: Option<u32>,
+        message: impl Into<String>,
+        retry_after: Option<f64>,
+    ) -> CoreError {
+        CoreError::Provider {
+            provider,
+            status,
+            message: message.into(),
+            retry_after,
+        }
+    }
 }
 
 #[cfg(test)]

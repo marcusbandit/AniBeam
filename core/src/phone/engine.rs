@@ -77,11 +77,7 @@ pub struct Engine {
 }
 
 fn fail(e: impl std::fmt::Display) -> CoreError {
-    CoreError::Service {
-        service: "torrents".to_string(),
-        code: "engine".to_string(),
-        message: e.to_string(),
-    }
+    CoreError::service("torrents", "engine", e.to_string())
 }
 
 fn now() -> i64 {

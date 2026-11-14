@@ -481,11 +481,8 @@ mod tests {
     /// number wins when it is longer.
     #[test]
     fn a_deferral_is_never_shorter_than_a_minute() {
-        let limited = |seconds: Option<f64>| CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(429),
-            message: "rate limited".to_string(),
-            retry_after: seconds,
+        let limited = |seconds: Option<f64>| {
+            CoreError::provider_retry(Provider::Anilist, Some(429), "rate limited", seconds)
         };
         assert_eq!(retry_after(&limited(None)), 60);
         assert_eq!(retry_after(&limited(Some(0.0))), 60);

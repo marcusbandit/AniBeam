@@ -701,11 +701,7 @@ fn no_free_port(e: &std::io::Error) -> String {
 }
 
 fn service(name: &str, code: &str, message: String) -> CoreError {
-    CoreError::Service {
-        service: name.to_string(),
-        code: code.to_string(),
-        message,
-    }
+    CoreError::service(name.to_string(), code.to_string(), message)
 }
 
 /// A service error's own words, without the service's name in front.
@@ -1251,14 +1247,14 @@ async fn guard_search(
             .unwrap_or_default();
         let up = !ready.is_empty() && probe_kept(core.http.as_ref(), &ready).await;
         if !up && target == Some(e.name.as_str()) {
-            return Err(CoreError::Service {
-                service: e.name.clone(),
-                code: "not_running".to_string(),
-                message: crate::i18n::tr(
+            return Err(CoreError::service(
+                e.name.clone(),
+                "not_running",
+                crate::i18n::tr(
                     "core-downloads-source-not-running",
                     &[("name", e.name.as_str().into())],
                 ),
-            });
+            ));
         }
         all_up &= up;
     }

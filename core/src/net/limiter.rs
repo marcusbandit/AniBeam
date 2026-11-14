@@ -183,21 +183,18 @@ impl ProviderClient {
             .await;
         match result {
             Ok(r) => Ok(r),
-            Err(Attempt::Limited(r)) => Err(CoreError::Provider {
-                provider: self.upstream.provider(),
-                status: Some(429),
-                message: crate::i18n::tr(
+            Err(Attempt::Limited(r)) => Err(CoreError::provider_retry(
+                self.upstream.provider(),
+                Some(429),
+                crate::i18n::tr(
                     "core-net-rate-limited",
                     &[("provider", self.upstream.label().into())],
                 ),
-                retry_after: retry_after(&r),
-            }),
-            Err(Attempt::Transport(message)) => Err(CoreError::Provider {
-                provider: self.upstream.provider(),
-                status: None,
-                message,
-                retry_after: None,
-            }),
+                retry_after(&r),
+            )),
+            Err(Attempt::Transport(message)) => {
+                Err(CoreError::provider(self.upstream.provider(), None, message))
+            }
         }
     }
 }
