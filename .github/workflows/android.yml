@@ -40,6 +40,8 @@ on:
       - '!apps/android/src/**/metal.rs'
       - '!apps/android/src/**/metal/**'
       - '!apps/android/scripts/*ios*'
+      # Change files are checked by ci.yml (core/tests/changelog.rs); the APK never reads them.
+      - '!apps/android/changes/**'
   workflow_dispatch:
 
 permissions:
