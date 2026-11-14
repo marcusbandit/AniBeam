@@ -2,8 +2,9 @@ name: PR build
 
 # Installers for a pull request, so someone can try a branch before it merges. Put the
 # `test build` label on the PR: every platform builds the PR's head as 2.5.0-pr.280.3 (the
-# workspace version, the PR and this workflow's run number), the files go on the one
-# `pr-builds` pre-release under that name, and a comment on the PR links them. A new push
+# workspace version, the PR and this workflow's run number; the iPhone IPA takes the phone's
+# own version, 2.4.3-pr.280.3), the files go on the one `pr-builds` pre-release under that
+# name, and a comment on the PR links them, saying so when the IPA failed. A new push
 # while the label is on builds again and replaces them; closing the PR or taking the label
 # off removes them. A test build is never offered as an update, and is offered the stable
 # release it was tested for once that ships. A fork's PR builds, but its files stay on the
@@ -35,6 +36,7 @@ jobs:
       build: ${{ steps.gate.outputs.build }}
       remove: ${{ steps.gate.outputs.remove }}
       version: ${{ steps.gate.outputs.version }}
+      phone_version: ${{ steps.gate.outputs.phone_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,6 +61,9 @@ jobs:
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "remove=$remove" >> "$GITHUB_OUTPUT"
           echo "version=$base-pr.$PR.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          # The phone keeps its own version, as nightly.yml's phone_version does.
+          phone_base="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)"
+          echo "phone_version=$phone_base-pr.$PR.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           echo "build=$build remove=$remove"
 
   macos:
@@ -96,7 +101,7 @@ jobs:
     secrets: inherit
     with:
       ref: ${{ github.event.pull_request.head.sha }}
-      version: ${{ needs.gate.outputs.version }}
+      version: ${{ needs.gate.outputs.phone_version }}
 
   publish:
     needs: [gate, macos, linux, windows, ios]
@@ -110,6 +115,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.gate.outputs.version }}
+      PHONE_VERSION: ${{ needs.gate.outputs.phone_version }}
+      IOS_RESULT: ${{ needs.ios.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/download-artifact@v4
@@ -126,7 +134,7 @@ jobs:
 
       - name: Name the IPA for this build
         if: needs.ios.result == 'success'
-        run: mv ipa/AniBeam.ipa "dist/AniBeam-$VERSION.ipa"
+        run: mv ipa/AniBeam.ipa "dist/AniBeam-$PHONE_VERSION.ipa"
 
       - name: Replace this PR's files on pr-builds
         run: |
@@ -138,7 +146,7 @@ jobs:
           fi
           gh release upload pr-builds dist/* --clobber
           gh release view pr-builds --json assets --jq '.assets[].name' |
-            grep -F -- "-pr.$PR." | grep -vF -- "$VERSION" |
+            grep -F -- "-pr.$PR." | grep -vF -e "$VERSION" -e "$PHONE_VERSION" |
             while read -r name; do gh release delete-asset pr-builds "$name" --yes; done
 
       - name: Link them on the PR
@@ -152,6 +160,9 @@ jobs:
               name="$(basename "$f")"
               echo "- [$name]($base/$name)"
             done
+            if [ "$IOS_RESULT" != success ]; then
+              echo "- The iPhone IPA did not build ($IOS_RESULT): see [the run]($RUN_URL)."
+            fi
             echo
             echo "The files go away when the PR closes or the label comes off."
           } > comment.md
