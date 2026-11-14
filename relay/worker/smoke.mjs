@@ -170,6 +170,11 @@ async function rooms() {
   check(html.includes(`Episode 3: Tender Horns. Room ${code}`), "the page names the episode for previews");
   check(html.includes(`anibeam://room/${code}`), "the page opens the app");
 
+  const find = await fetch(`${base}/`);
+  check(find.status === 200 && (await find.text()).includes("Join a room"), "GET / is the find page");
+  const typed = await fetch(`${base}/?code=${code.slice(0, 3).toLowerCase()}-${code.slice(3)}`, { redirect: "manual" });
+  check(typed.status === 303 && typed.headers.get("location") === `/${code}`, "GET /?code= goes to that room's page");
+
   const missing = await fetch(`${base}/ZZZZZZ`);
   check(missing.status === 404 && (await missing.text()).includes("Room not found"), "a page for no room is 404 and says so");
   const nonsense = await fetch(`${base}/not-a-code`);
