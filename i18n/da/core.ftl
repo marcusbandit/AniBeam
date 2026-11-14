@@ -1292,6 +1292,7 @@ core-room-media-cannot = Værten kan ikke dele dette afsnit lige nu.
 core-room-media-sent = Sendte afsnittets torrent til { $name }.
 core-room-media-sent-name = Sendte navnet på afsnittets udgivelse til { $name }.
 core-room-media-nothing = Værten har ingen kopi af afsnittet at dele.
+core-room-media-no-answer = Værtens app svarede ikke. Prøv igen om lidt.
 core-room-media-torrent = Henter afsnittet fra værtens torrent.
 core-room-media-searching = Søger i dine kilder efter værtens udgivelse.
 core-room-media-not-found = Ingen af dine kilder har værtens udgivelse.

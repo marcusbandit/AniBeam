@@ -1293,6 +1293,7 @@ core-room-media-cannot = De host kan deze aflevering nu niet delen.
 core-room-media-sent = { $name } de torrent van de aflevering gestuurd.
 core-room-media-sent-name = { $name } de naam van de release van de aflevering gestuurd.
 core-room-media-nothing = De host heeft geen kopie van de aflevering om te delen.
+core-room-media-no-answer = De app van de host antwoordde niet. Probeer het zo opnieuw.
 core-room-media-torrent = De aflevering wordt gedownload via de torrent van de host.
 core-room-media-searching = Je bronnen worden doorzocht op de release van de host.
 core-room-media-not-found = Geen van je bronnen heeft de release van de host.

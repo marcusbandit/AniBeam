@@ -1310,6 +1310,7 @@ core-room-media-cannot = O anfitrião não pode compartilhar este episódio agor
 core-room-media-sent = Torrent do episódio enviado para { $name }.
 core-room-media-sent-name = Nome do lançamento do episódio enviado para { $name }.
 core-room-media-nothing = O anfitrião não tem uma cópia do episódio para compartilhar.
+core-room-media-no-answer = O aplicativo do anfitrião não respondeu. Tente de novo em um instante.
 core-room-media-torrent = Baixando o episódio pelo torrent do anfitrião.
 core-room-media-searching = Procurando o lançamento do anfitrião nas suas fontes.
 core-room-media-not-found = Nenhuma das suas fontes tem o lançamento do anfitrião.

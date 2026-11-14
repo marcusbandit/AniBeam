@@ -98,6 +98,8 @@ pub struct Offer {
 #[derive(Debug)]
 enum Why {
     Nothing,
+    /// The host's app never answered, or the relay could not pass the ask on.
+    NoAnswer,
     NotFound,
     NoSources,
     Start(String),
@@ -109,6 +111,7 @@ impl Why {
     fn words(&self) -> Words {
         match self {
             Why::Nothing => crate::words!("core-room-media-nothing"),
+            Why::NoAnswer => crate::words!("core-room-media-no-answer"),
             Why::NotFound => crate::words!("core-room-media-not-found"),
             Why::NoSources => crate::words!("core-room-media-no-sources"),
             Why::Start(message) => {
@@ -154,7 +157,7 @@ pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
             tokio::time::sleep(ASK_WAIT).await;
             if let Some(playback) = owner.upgrade() {
                 let late = |a: &Active| a.fetch == RoomFetch::Asking;
-                stop(&playback, serial, id, late, Why::Nothing);
+                stop(&playback, serial, id, late, Why::NoAnswer);
             }
         });
         out.push(Say::said(
@@ -243,6 +246,22 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
                 stop(playback, serial, id, fits, Why::Nothing);
             }
         }
+    }
+}
+
+/// The relay refused to pass a sealed payload on: nobody by that id is
+/// connected, the host having just dropped. An ask waiting on it stops now
+/// rather than when its timer runs out.
+pub(super) fn seal_refused(playback: &Playback, serial: u64) {
+    let id = playback
+        .rooms
+        .lock()
+        .as_ref()
+        .filter(|a| a.serial == serial && a.fetch == RoomFetch::Asking)
+        .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
+    if let Some(id) = id {
+        let asking = |a: &Active| a.fetch == RoomFetch::Asking;
+        stop(playback, serial, id, asking, Why::NoAnswer);
     }
 }
 

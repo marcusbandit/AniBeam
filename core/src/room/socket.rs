@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::protocol::{Role, WebSocketConfig};
 use tokio_util::sync::CancellationToken;
 
 use anibeam_room::proto::{
-    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, ServerMsg,
+    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, SEAL_NOBODY, ServerMsg,
 };
 use anibeam_room::room::{CLOSED_BYE, CLOSED_REPLACED};
 
@@ -408,6 +408,9 @@ impl Link<'_> {
                             let fatal = code.is_fatal() || (code == ErrorCode::BadName && !welcomed);
                             if !fatal {
                                 tracing::debug!("room: the relay said {code:?}: {message}");
+                                if code == ErrorCode::NotAllowed && message == SEAL_NOBODY {
+                                    super::media::seal_refused(&playback, self.serial);
+                                }
                                 continue;
                             }
                             if let Some(tx) = first.take() {

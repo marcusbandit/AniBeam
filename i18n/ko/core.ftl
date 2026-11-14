@@ -1199,6 +1199,7 @@ core-room-media-cannot = 호스트가 지금은 이 에피소드를 공유할 �
 core-room-media-sent = { $name }님에게 에피소드 토렌트를 보냈어요.
 core-room-media-sent-name = { $name }님에게 에피소드 릴리스 이름을 보냈어요.
 core-room-media-nothing = 호스트에게 공유할 에피소드 사본이 없어요.
+core-room-media-no-answer = 호스트의 앱이 응답하지 않았어요. 잠시 후 다시 시도하세요.
 core-room-media-torrent = 호스트의 토렌트로 에피소드를 내려받고 있어요.
 core-room-media-searching = 내 소스에서 호스트의 릴리스를 찾고 있어요.
 core-room-media-not-found = 내 소스 중 호스트의 릴리스가 있는 곳이 없어요.

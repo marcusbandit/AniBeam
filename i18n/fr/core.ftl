@@ -1304,6 +1304,7 @@ core-room-media-cannot = L'hôte ne peut pas partager cet épisode pour le momen
 core-room-media-sent = Torrent de l'épisode envoyé à { $name }.
 core-room-media-sent-name = Nom de la sortie de l'épisode envoyé à { $name }.
 core-room-media-nothing = L'hôte n'a aucune copie de l'épisode à partager.
+core-room-media-no-answer = L'application de l'hôte n'a pas répondu. Réessayez dans un instant.
 core-room-media-torrent = Téléchargement de l'épisode depuis le torrent de l'hôte.
 core-room-media-searching = Recherche de la sortie de l'hôte dans vos sources.
 core-room-media-not-found = Aucune de vos sources n'a la sortie de l'hôte.

@@ -1109,6 +1109,7 @@ core-room-media-cannot = 房主现在无法分享这一集。
 core-room-media-sent = 已将这一集的种子发送给 { $name }。
 core-room-media-sent-name = 已将这一集的发布名称发送给 { $name }。
 core-room-media-nothing = 房主没有可分享的这一集。
+core-room-media-no-answer = 房主的应用没有回应。请稍后再试。
 core-room-media-torrent = 正在通过房主的种子下载这一集。
 core-room-media-searching = 正在你的来源中搜索房主的发布。
 core-room-media-not-found = 你的来源中都没有房主的发布。

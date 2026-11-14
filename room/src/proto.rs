@@ -23,6 +23,10 @@ pub const MAX_KEY: usize = 64;
 /// The longest sealed payload one member may pass to another, in characters.
 pub const MAX_SEALED: usize = 8 * 1024;
 
+/// What the relay says to a seal for a member who is not connected, so the
+/// sender can tell that refusal from any other.
+pub const SEAL_NOBODY: &str = "nobody else in the room has that id";
+
 /// The longest a download may still take, as a member's status says it, in
 /// seconds (a week). Anything longer reads as unknown.
 pub const MAX_ETA: u64 = 7 * 24 * 3600;

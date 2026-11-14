@@ -1292,6 +1292,7 @@ core-room-media-cannot = Der Host kann diese Folge gerade nicht teilen.
 core-room-media-sent = { $name } den Torrent der Folge geschickt.
 core-room-media-sent-name = { $name } den Namen des Releases der Folge geschickt.
 core-room-media-nothing = Der Host hat keine Kopie der Folge zum Teilen.
+core-room-media-no-answer = Die App des Hosts hat nicht geantwortet. Versuch es gleich noch einmal.
 core-room-media-torrent = Lade die Folge über den Torrent des Hosts herunter.
 core-room-media-searching = Suche in deinen Quellen nach dem Release des Hosts.
 core-room-media-not-found = Keine deiner Quellen hat das Release des Hosts.

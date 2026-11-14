@@ -1553,6 +1553,7 @@ core-room-media-cannot = Ведущий сейчас не может подел�
 core-room-media-sent = Торрент серии отправлен: { $name }.
 core-room-media-sent-name = Название релиза серии отправлено: { $name }.
 core-room-media-nothing = У ведущего нет копии серии, которой можно поделиться.
+core-room-media-no-answer = Приложение ведущего не ответило. Попробуйте ещё раз чуть позже.
 core-room-media-torrent = Серия скачивается по торренту ведущего.
 core-room-media-searching = Поиск релиза ведущего в ваших источниках.
 core-room-media-not-found = Ни в одном из ваших источников нет релиза ведущего.

@@ -1302,6 +1302,7 @@ core-room-media-cannot = L'host non può condividere questo episodio adesso.
 core-room-media-sent = Inviato a { $name } il torrent dell'episodio.
 core-room-media-sent-name = Inviato a { $name } il nome della release dell'episodio.
 core-room-media-nothing = L'host non ha una copia dell'episodio da condividere.
+core-room-media-no-answer = L'app dell'host non ha risposto. Riprova tra un attimo.
 core-room-media-torrent = Download dell'episodio dal torrent dell'host.
 core-room-media-searching = Ricerca della release dell'host nelle tue fonti.
 core-room-media-not-found = Nessuna delle tue fonti ha la release dell'host.

@@ -1259,6 +1259,7 @@ core-room-media-cannot = ホストは今このエピソードを共有できま�
 core-room-media-sent = { $name } にエピソードのトレントを送りました。
 core-room-media-sent-name = { $name } にエピソードのリリース名を送りました。
 core-room-media-nothing = ホストには共有できるエピソードのコピーがありません。
+core-room-media-no-answer = ホストのアプリから応答がありませんでした。少ししてからもう一度お試しください。
 core-room-media-torrent = ホストのトレントからエピソードをダウンロードしています。
 core-room-media-searching = あなたのソースでホストのリリースを検索しています。
 core-room-media-not-found = あなたのソースにホストのリリースはありませんでした。
