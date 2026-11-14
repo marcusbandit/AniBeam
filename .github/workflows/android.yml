@@ -32,6 +32,14 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/workflows/android.yml'
+      # An iPhone-only change cannot affect this (#950): the paths ios-automerge.sh counts as
+      # iPhone only. Later patterns win, so these stay after the positive ones.
+      - '!apps/android/ios/**'
+      - '!apps/android/src/**/ios.rs'
+      - '!apps/android/src/**/ios/**'
+      - '!apps/android/src/**/metal.rs'
+      - '!apps/android/src/**/metal/**'
+      - '!apps/android/scripts/*ios*'
   workflow_dispatch:
 
 permissions:

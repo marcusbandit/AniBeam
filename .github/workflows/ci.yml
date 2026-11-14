@@ -24,6 +24,14 @@ on:
       - '**'
       - '!**.md'
       - '!docs/**'
+      # An iPhone-only change cannot affect this (#950): the paths ios-automerge.sh counts as
+      # iPhone only. Later patterns win, so these stay before the change-file line.
+      - '!apps/android/ios/**'
+      - '!apps/android/src/**/ios.rs'
+      - '!apps/android/src/**/ios/**'
+      - '!apps/android/src/**/metal.rs'
+      - '!apps/android/src/**/metal/**'
+      - '!apps/android/scripts/*ios*'
       - '**/CHANGELOG.md'
       - 'apps/*/changes/**'
   workflow_dispatch:
