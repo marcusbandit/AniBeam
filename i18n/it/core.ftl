@@ -87,7 +87,7 @@ event-problem-trackers = Qualcosa è andato storto con le tue liste. I dettagli 
 event-problem-franchise = Qualcosa è andato storto con le serie correlate. I dettagli sono nelle opzioni sviluppatore.
 event-problem-playback = Qualcosa è andato storto con la riproduzione. I dettagli sono nelle opzioni sviluppatore.
 event-problem-store = Qualcosa è andato storto nel salvataggio dei tuoi dati. I dettagli sono nelle opzioni sviluppatore.
-event-problem-system = Qualcosa è andato storto in AniBeam. I dettagli sono nelle opzioni sviluppatore.
+event-problem-system = Qualcosa è andato storto in Anibeam. I dettagli sono nelle opzioni sviluppatore.
 event-problem-downloads = Qualcosa è andato storto con i download. I dettagli sono nelle opzioni sviluppatore.
 
 ## Errori (contract::CoreError)
@@ -112,8 +112,8 @@ core-error-io = Impossibile leggere o scrivere un file: { $message }
 core-error-storage = Impossibile salvare la tua libreria: { $message }
 core-error-keyring = Impossibile raggiungere l'archivio password di sistema: { $message }
 core-error-unsupported = { $what } non è ancora supportato.
-core-error-version = Questa esportazione viene da un AniBeam più recente (formato { $found }). Aggiorna AniBeam per importarla.
-core-error-internal = AniBeam ha avuto un errore interno: { $message }
+core-error-version = Questa esportazione viene da un Anibeam più recente (formato { $found }). Aggiorna Anibeam per importarla.
+core-error-internal = Anibeam ha avuto un errore interno: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -573,7 +573,7 @@ core-trackers-page-failed = L'accesso non è terminato
 core-trackers-page-go-back = Torna su { $app } e riprova.
 core-trackers-page-finishing-title = { $app }, quasi fatto
 core-trackers-page-finishing = Quasi fatto
-core-trackers-page-finishing-body = { $site } ha risposto e AniBeam sta completando l'accesso. Torna su { $app }, che ti dirà quando ha finito.
+core-trackers-page-finishing-body = { $site } ha risposto e Anibeam sta completando l'accesso. Torna su { $app }, che ti dirà quando ha finito.
 core-trackers-page-cancelled-title = { $app }, accesso annullato
 core-trackers-page-cancelled = Questo accesso è stato annullato
 core-trackers-page-cancelled-body = Puoi chiudere questa scheda. Se volevi accedere, ricomincia da { $app }.
@@ -1030,8 +1030,8 @@ core-downloads-anirss-slow-start = anirss non è partito entro { $seconds } seco
 core-downloads-anirss-slow-start-said = anirss non è partito entro { $seconds } secondi: { $said }
 core-downloads-anirss-install-mac = Installa anirss { $version } o successivo con: { $command }
 core-downloads-anirss-install-linux = Installa anirss { $version } o successivo: il pacchetto anirss su AUR, oppure { $command }
-core-downloads-anirss-too-old = anirss { $version } è troppo vecchio per AniBeam, che richiede la { $minimum } o successiva. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } non sa tenere separato l'accesso di ogni client torrent, cosa che serve ad AniBeam per cambiare client; anirss { $minimum } e successivi lo fanno. { $update }.
+core-downloads-anirss-too-old = anirss { $version } è troppo vecchio per Anibeam, che richiede la { $minimum } o successiva. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } non sa tenere separato l'accesso di ogni client torrent, cosa che serve ad Anibeam per cambiare client; anirss { $minimum } e successivi lo fanno. { $update }.
 core-downloads-anirss-update-mac = Aggiornalo con: { $command }
 core-downloads-anirss-update-linux = Aggiorna il pacchetto anirss, oppure esegui: { $command }
 
@@ -1059,19 +1059,19 @@ core-downloads-anirss-missing = { $install }. Oppure indica nelle Impostazioni u
 core-downloads-anirss-command-missing = { $command } non trovato. { $install }. Oppure indica nelle Impostazioni un server già attivo.
 core-downloads-anirss-start-failed = Impossibile avviare { $command }: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Ha detto: { $message }
-core-downloads-no-torrent-client = Nessun qBittorrent risponde a { $address } e AniBeam non ne ha uno suo da avviare. Installa qBittorrent e attiva la sua Web UI, oppure installa qbittorrent-nox, che poi AniBeam avvia per te
-core-downloads-own-client-gone = Il qBittorrent di AniBeam non c'è più: qbittorrent-nox non è installato. Reinstalla AniBeam, o indica nelle Impostazioni un tuo qBittorrent
+core-downloads-no-torrent-client = Nessun qBittorrent risponde a { $address } e Anibeam non ne ha uno suo da avviare. Installa qBittorrent e attiva la sua Web UI, oppure installa qbittorrent-nox, che poi Anibeam avvia per te
+core-downloads-own-client-gone = Il qBittorrent di Anibeam non c'è più: qbittorrent-nox non è installato. Reinstalla Anibeam, o indica nelle Impostazioni un tuo qBittorrent
 core-downloads-no-port = nessuna porta in { $address }
 core-downloads-own-client-settings = impossibile scrivere le impostazioni di qBittorrent: { $error }
 core-downloads-own-client-start-failed = Impossibile avviare { $command }: { $error }
-core-downloads-own-client-slow-start = Il qBittorrent di AniBeam non è partito
-core-downloads-own-client-slow-start-said = Il qBittorrent di AniBeam non è partito: { $said }
+core-downloads-own-client-slow-start = Il qBittorrent di Anibeam non è partito
+core-downloads-own-client-slow-start-said = Il qBittorrent di Anibeam non è partito: { $said }
 core-downloads-not-ready = I download non sono pronti. Controlla Download nelle Impostazioni.
 core-downloads-ready = I download sono pronti.
 core-downloads-helper-sources =
     { $count ->
-        [one] Ora i download cercano con AniBeam stesso, che non legge la { $count } fonte nella configurazione dell'helper di ricerca. Aggiungila in Impostazioni, Download, o scegli lì l'helper di ricerca.
-       *[other] Ora i download cercano con AniBeam stesso, che non legge le { $count } fonti nella configurazione dell'helper di ricerca. Aggiungile in Impostazioni, Download, o scegli lì l'helper di ricerca.
+        [one] Ora i download cercano con Anibeam stesso, che non legge la { $count } fonte nella configurazione dell'helper di ricerca. Aggiungila in Impostazioni, Download, o scegli lì l'helper di ricerca.
+       *[other] Ora i download cercano con Anibeam stesso, che non legge le { $count } fonti nella configurazione dell'helper di ricerca. Aggiungile in Impostazioni, Download, o scegli lì l'helper di ricerca.
     }
 core-downloads-client-connected = L'app di download è collegata.
 core-downloads-client-not-connected = L'app di download non è collegata. Controlla il suo indirizzo nelle Impostazioni.
@@ -1272,7 +1272,7 @@ core-releases-episode-range = da { $from } a { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

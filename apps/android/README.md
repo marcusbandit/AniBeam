@@ -1,8 +1,8 @@
-# AniBeam for Android
+# Anibeam for Android
 
-AniBeam on the phone, as its own app: it runs the same core as the desktop over its own
+Anibeam on the phone, as its own app: it runs the same core as the desktop over its own
 library, so what you keep on the phone is the phone's, and only tracking is shared through
-AniList and MyAnimeList. It can also show another AniBeam's library over your tailnet, read
+AniList and MyAnimeList. It can also show another Anibeam's library over your tailnet, read
 only.
 
 Everything is Rust: the UI is [Slint](https://slint.dev) on its Android backend, behind
@@ -22,7 +22,7 @@ Four tabs:
 - **Home** is this phone's: the next episode to air, this week with a dot on each day
   something airs, and the recently watched and recently downloaded shelves.
 - **Library** is every show on the phone as a poster with the desktop's episode cubes, with
-  search. When another AniBeam on the tailnet has answered, a switcher above shows its
+  search. When another Anibeam on the tailnet has answered, a switcher above shows its
   library instead. Tap a poster for its series page: the facts, the cubes, the synopsis,
   every episode, Play for the next one up, and Get episodes, which opens the show in
   Downloads. A tap on any whole episode plays it.
@@ -43,7 +43,7 @@ again. Turned down, the notification has a row in More and a line in Downloads w
 something downloads, both opening the app's notification settings.
 
 **The player** is the desktop's, on the same libmpv: the core opens the session, keeps the
-resume point and the history, and marks the trackers; the track pick and AniBeam's mpv
+resume point and the history, and marks the trackers; the track pick and Anibeam's mpv
 options are the core's too, so a file plays the same on both. The screen turns to landscape
 with the system bars hidden. The controls island has the time, the groove with the skip
 windows on it, previous, play and next, Skip intro or outro while inside one, the audio and
@@ -84,7 +84,7 @@ too, so its library still shows when it is off.
 
 1. Install the Tailscale app on the phone, sign in to the same tailnet as the desktop, and
    keep it connected. The host only listens on its Tailscale addresses.
-2. On the desktop, switch on **Share over Tailscale** in AniBeam.
+2. On the desktop, switch on **Share over Tailscale** in Anibeam.
 3. Sideload the APK. Either copy `dist/AniBeam-<version>.apk` to the phone and open it
    (Android asks once to allow installs from that app), or with USB debugging on:
 
@@ -92,10 +92,10 @@ too, so its library still shows when it is off.
    adb install -r dist/AniBeam-0.8.0.apk
    ```
 
-4. Open AniBeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
+4. Open Anibeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
    such as `my-computer:8790`. If the phone cannot resolve the short name, use the full one,
    `my-computer.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
-   says whether AniBeam answered and which version it is.
+   says whether Anibeam answered and which version it is.
 
 Release APKs are signed with the project's key, so each one installs over the last. An APK
 built in a checkout is signed with that machine's `~/.android/debug.keystore`, and its

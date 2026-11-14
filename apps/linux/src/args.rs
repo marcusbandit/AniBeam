@@ -85,7 +85,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             // The scheme handler's %u: one link, and only a kind this build opens
             link if link.starts_with(SCHEME) => {
                 if room_code(link).is_none() {
-                    return Err(format!("{link} is not a link AniBeam opens"));
+                    return Err(format!("{link} is not a link Anibeam opens"));
                 }
                 if a.link.is_some() {
                     return Err("one link at a time".into());

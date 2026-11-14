@@ -56,7 +56,7 @@ NOT_TEXT = re.compile(
 
 # Literals made only of these words stay as they are in every language.
 BRANDS = {
-    "AniBeam", "AniList", "MyAnimeList", "MAL", "TVmaze", "Jikan", "AniSkip", "qBittorrent",
+    "Anibeam", "AniList", "MyAnimeList", "MAL", "TVmaze", "Jikan", "AniSkip", "qBittorrent",
     "Discord", "Tailscale", "mpv", "libmpv", "Qt", "GitHub", "AUR", "Chromecast", "DLNA",
     "RSS", "torznab", "anirss", "MPRIS", "Linux", "Windows", "Mac", "macOS", "Android",
 }

@@ -1,6 +1,6 @@
 name: Linux
 
-# Builds the AniBeam AppImage on an ubuntu-24.04 runner, runs the core and shell tests there,
+# Builds the Anibeam AppImage on an ubuntu-24.04 runner, runs the core and shell tests there,
 # then smoke-tests the image on the runner and inside Debian 13, Fedora 41 and Arch
 # containers, so a library the bundle forgot shows up as a failure on a distro that lacks it.
 # The image carries anirss on its own Python and a static qbittorrent-nox; the smoke run

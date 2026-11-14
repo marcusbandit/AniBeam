@@ -1,9 +1,9 @@
-//! Watch history, resume points and matches merged between trusted AniBeam
+//! Watch history, resume points and matches merged between trusted Anibeam
 //! computers (#561).
 //!
 //! Each computer serves its own as an `anibeam-export` document at
 //! [`wire::HISTORY`]. While Share over Tailscale is on, a computer pulls from
-//! every trusted AniBeam on the tailnet once it serves there, and pulls back
+//! every trusted Anibeam on the tailnet once it serves there, and pulls back
 //! from any computer that asks for its own, so two that see each other end with
 //! the same history whichever came up first. Nothing is polled.
 //!
@@ -401,8 +401,8 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
     Ok(merged)
 }
 
-/// Pulls the history of the AniBeam at `base` (`http://<address>:<port>`)
-/// and merges it. Nothing is merged from something that is not AniBeam or
+/// Pulls the history of the Anibeam at `base` (`http://<address>:<port>`)
+/// and merges it. Nothing is merged from something that is not Anibeam or
 /// does not serve its history.
 pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
     let http = reqwest::Client::builder()
@@ -506,7 +506,7 @@ async fn pull_if_due(core: &Arc<Core>, base: &str) {
     }
 }
 
-/// Pulls from every trusted AniBeam on the tailnet that is due, on a worker.
+/// Pulls from every trusted Anibeam on the tailnet that is due, on a worker.
 pub fn pull_all(core: &Core) {
     let Some(core) = core.arc() else { return };
     let handle = core.handle.clone();

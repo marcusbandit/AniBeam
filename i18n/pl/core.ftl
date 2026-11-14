@@ -90,7 +90,7 @@ event-problem-trackers = Coś poszło nie tak z Twoimi listami. Szczegóły są 
 event-problem-franchise = Coś poszło nie tak z powiązanymi serialami. Szczegóły są w opcjach programisty.
 event-problem-playback = Coś poszło nie tak z odtwarzaniem. Szczegóły są w opcjach programisty.
 event-problem-store = Coś poszło nie tak przy zapisie Twoich danych. Szczegóły są w opcjach programisty.
-event-problem-system = Coś poszło nie tak z AniBeam. Szczegóły są w opcjach programisty.
+event-problem-system = Coś poszło nie tak z Anibeam. Szczegóły są w opcjach programisty.
 event-problem-downloads = Coś poszło nie tak z pobieraniem. Szczegóły są w opcjach programisty.
 
 ## Errors (contract::CoreError)
@@ -117,8 +117,8 @@ core-error-io = Nie udało się odczytać ani zapisać pliku: { $message }
 core-error-storage = Nie udało się zapisać biblioteki: { $message }
 core-error-keyring = Brak dostępu do systemowego magazynu haseł: { $message }
 core-error-unsupported = { $what }: jeszcze nieobsługiwane.
-core-error-version = Ten eksport pochodzi z nowszego AniBeam (format { $found }). Zaktualizuj AniBeam, aby go zaimportować.
-core-error-internal = Wewnętrzny błąd AniBeam: { $message }
+core-error-version = Ten eksport pochodzi z nowszego Anibeam (format { $found }). Zaktualizuj Anibeam, aby go zaimportować.
+core-error-internal = Wewnętrzny błąd Anibeam: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -624,7 +624,7 @@ core-trackers-oauth-port-failed = nie udało się otworzyć portu { $port } na t
 core-trackers-oauth-port-busy = port { $port } na tym komputerze jest zajęty przez inny program. Poczekaj chwilę i spróbuj ponownie albo zamknij ten program, jeśli port wciąż jest zajęty.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } zwrócił błąd: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } jest połączony z { $app }
 core-trackers-page-close-tab = Możesz zamknąć tę kartę.
@@ -633,7 +633,7 @@ core-trackers-page-failed = Logowanie się nie zakończyło
 core-trackers-page-go-back = Wróć do { $app } i spróbuj ponownie.
 core-trackers-page-finishing-title = { $app }, jeszcze kończy
 core-trackers-page-finishing = Jeszcze kończy
-core-trackers-page-finishing-body = { $site } odpowiedział, a AniBeam kończy logowanie. Wróć do { $app }, który powie, kiedy skończy.
+core-trackers-page-finishing-body = { $site } odpowiedział, a Anibeam kończy logowanie. Wróć do { $app }, który powie, kiedy skończy.
 core-trackers-page-cancelled-title = { $app }, logowanie anulowane
 core-trackers-page-cancelled = To logowanie zostało anulowane
 core-trackers-page-cancelled-body = Możesz zamknąć tę kartę. Zacznij od nowa w { $app }, jeśli chcesz.
@@ -1216,8 +1216,8 @@ core-downloads-anirss-slow-start-said = anirss nie uruchomił się w ciągu { $s
 core-downloads-anirss-install-mac = Zainstaluj anirss { $version } lub nowszy poleceniem: { $command }
 core-downloads-anirss-install-linux = Zainstaluj anirss { $version } lub nowszy: pakiet anirss z AUR albo { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } jest za stary dla AniBeam, który wymaga { $minimum } lub nowszego. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } nie umie trzymać osobno logowania każdego klienta torrentów, czego AniBeam potrzebuje do przełączania klientów; anirss { $minimum } i nowsze to umieją. { $update }.
+core-downloads-anirss-too-old = anirss { $version } jest za stary dla Anibeam, który wymaga { $minimum } lub nowszego. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } nie umie trzymać osobno logowania każdego klienta torrentów, czego Anibeam potrzebuje do przełączania klientów; anirss { $minimum } i nowsze to umieją. { $update }.
 core-downloads-anirss-update-mac = Zaktualizuj go poleceniem: { $command }
 core-downloads-anirss-update-linux = Zaktualizuj pakiet anirss albo uruchom: { $command }
 
@@ -1250,23 +1250,23 @@ core-downloads-anirss-command-missing = Nie znaleziono { $command }. { $install 
 core-downloads-anirss-start-failed = Nie udało się uruchomić { $command }: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } Odpowiedź: { $message }
-core-downloads-no-torrent-client = Żaden qBittorrent nie odpowiada pod { $address }, a AniBeam nie ma własnego do uruchomienia. Zainstaluj qBittorrent i włącz jego Web UI albo zainstaluj qbittorrent-nox, który AniBeam uruchomi za Ciebie
-core-downloads-own-client-gone = qBittorrent AniBeam zniknął: qbittorrent-nox nie jest zainstalowany. Zainstaluj ponownie AniBeam albo wskaż w Ustawieniach własny qBittorrent
+core-downloads-no-torrent-client = Żaden qBittorrent nie odpowiada pod { $address }, a Anibeam nie ma własnego do uruchomienia. Zainstaluj qBittorrent i włącz jego Web UI albo zainstaluj qbittorrent-nox, który Anibeam uruchomi za Ciebie
+core-downloads-own-client-gone = qBittorrent Anibeam zniknął: qbittorrent-nox nie jest zainstalowany. Zainstaluj ponownie Anibeam albo wskaż w Ustawieniach własny qBittorrent
 core-downloads-no-port = brak portu w { $address }
 core-downloads-own-client-settings = nie można zapisać ustawień qBittorrent: { $error }
 core-downloads-own-client-start-failed = Nie udało się uruchomić { $command }: { $error }
-core-downloads-own-client-slow-start = qBittorrent AniBeam się nie uruchomił
+core-downloads-own-client-slow-start = qBittorrent Anibeam się nie uruchomił
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = qBittorrent AniBeam się nie uruchomił: { $said }
+core-downloads-own-client-slow-start-said = qBittorrent Anibeam się nie uruchomił: { $said }
 core-downloads-not-ready = Pobieranie nie jest gotowe. Sprawdź Pobieranie w Ustawieniach.
 core-downloads-ready = Pobieranie jest gotowe.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Pobieranie szuka teraz samym AniBeam, który nie czyta { $count } źródła z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
-        [few] Pobieranie szuka teraz samym AniBeam, który nie czyta { $count } źródeł z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
-        [many] Pobieranie szuka teraz samym AniBeam, który nie czyta { $count } źródeł z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
-       *[other] Pobieranie szuka teraz samym AniBeam, który nie czyta { $count } źródła z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
+        [one] Pobieranie szuka teraz samym Anibeam, który nie czyta { $count } źródła z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
+        [few] Pobieranie szuka teraz samym Anibeam, który nie czyta { $count } źródeł z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
+        [many] Pobieranie szuka teraz samym Anibeam, który nie czyta { $count } źródeł z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
+       *[other] Pobieranie szuka teraz samym Anibeam, który nie czyta { $count } źródła z konfiguracji pomocnika wyszukiwania. Dodaj je w Ustawieniach, Pobieranie, albo wybierz tam pomocnika wyszukiwania.
     }
 core-downloads-client-connected = Program do pobierania jest połączony.
 core-downloads-client-not-connected = Program do pobierania nie jest połączony. Sprawdź jego adres w Ustawieniach.
@@ -1524,7 +1524,7 @@ core-releases-episode-range = { $from } do { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

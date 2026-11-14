@@ -32,7 +32,7 @@ targets:
       # The Android app's applicationId. A nightly overrides both on the xcodebuild line
       # (scripts/build-ios.sh with ANIBEAM_NIGHTLY=1) so it installs beside the release.
       PRODUCT_BUNDLE_IDENTIFIER: com.marcusrosado.anibeam
-      ANIBEAM_DISPLAY_NAME: AniBeam
+      ANIBEAM_DISPLAY_NAME: Anibeam
       MARKETING_VERSION: "0"
       CURRENT_PROJECT_VERSION: "1"
       TARGETED_DEVICE_FAMILY: "1"

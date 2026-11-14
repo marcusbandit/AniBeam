@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws every AniBeam icon from glyph.svg: the desktop's SVGs and PNGs, the hicolor sizes,
+"""Draws every Anibeam icon from glyph.svg: the desktop's SVGs and PNGs, the hicolor sizes,
 the README's PNG, and the Android launcher icons with their picker previews.
 
 Run it after glyph.svg or a colour changes, then commit what it wrote. It needs resvg and

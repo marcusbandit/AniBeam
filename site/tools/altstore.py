@@ -12,8 +12,8 @@ ordered, newest first, because AltStore takes the first entry as the latest.
 
 One source, two apps, each with a bundle id of its own so both install side by side:
 
-  AniBeam          com.marcusrosado.anibeam          the phone's releases (android-v2.4.3)
-  AniBeam Nightly  com.marcusrosado.anibeam.nightly  the phone's nightlies (android-v2.4.3-nightly.N.M)
+  Anibeam          com.marcusrosado.anibeam          the phone's releases (android-v2.4.3)
+  Anibeam Nightly  com.marcusrosado.anibeam.nightly  the phone's nightlies (android-v2.4.3-nightly.N.M)
 
 An app with no IPA yet is left out, so the source is valid with two apps, one or none.
 
@@ -34,23 +34,23 @@ from pathlib import Path
 BASE = "https://anibeam.app"
 IOS = Path(__file__).resolve().parent.parent.parent / "apps" / "android" / "ios"
 SOURCE = {
-    "name": "AniBeam",
+    "name": "Anibeam",
     "identifier": "com.marcusrosado.anibeam.source",
-    "subtitle": "AniBeam for iPhone",
-    "description": "AniBeam for iPhone, and AniBeam Nightly, the newest build from main, side by side. Add this source and both show up in your library, each new build as an update.",
+    "subtitle": "Anibeam for iPhone",
+    "description": "Anibeam for iPhone, and Anibeam Nightly, the newest build from main, side by side. Add this source and both show up in your library, each new build as an update.",
     "icon": "img/icon.png",
 }
 APPS = {
     "stable": {
-        "name": "AniBeam",
+        "name": "Anibeam",
         "bundle_id": "com.marcusrosado.anibeam",
         "app_subtitle": "Browse and play your anime library",
         "icon": "img/icon.png",
     },
     "nightly": {
-        "name": "AniBeam Nightly",
+        "name": "Anibeam Nightly",
         "bundle_id": "com.marcusrosado.anibeam.nightly",
-        "app_subtitle": "Nightly build of AniBeam",
+        "app_subtitle": "Nightly build of Anibeam",
         # The website's nightly mark: rsvg-convert -w 512 -h 512 img/logo-nightly.svg
         # -o img/icon-nightly.png after the logo changes.
         "icon": "img/icon-nightly.png",
@@ -58,8 +58,8 @@ APPS = {
 }
 # nightly.yml names a nightly's IPA with this prefix once it is built with the nightly bundle id.
 NIGHTLY_IPA = "AniBeam-Nightly-"
-APP_DESCRIPTION = ("AniBeam browses and plays your anime library, keeps your AniList and MyAnimeList "
-                   "progress in step, and talks to AniBeam on your computer.")
+APP_DESCRIPTION = ("Anibeam browses and plays your anime library, keeps your AniList and MyAnimeList "
+                   "progress in step, and talks to Anibeam on your computer.")
 
 
 def deployment_target():

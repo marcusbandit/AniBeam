@@ -85,7 +85,7 @@ event-problem-trackers = 목록에 문제가 생겼어요. 자세한 내용은 �
 event-problem-franchise = 관련 작품에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-playback = 재생에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-store = 데이터를 저장하다가 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
-event-problem-system = AniBeam에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
+event-problem-system = Anibeam에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-downloads = 다운로드에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 
 ## Errors (contract::CoreError)
@@ -110,8 +110,8 @@ core-error-io = 파일을 읽거나 쓰지 못했어요: { $message }
 core-error-storage = 라이브러리를 저장하지 못했어요: { $message }
 core-error-keyring = 시스템 비밀번호 저장소에 연결하지 못했어요: { $message }
 core-error-unsupported = { $what }은(는) 아직 지원하지 않아요.
-core-error-version = 더 새로운 AniBeam에서 내보낸 파일이에요(형식 { $found }). 가져오려면 AniBeam을 업데이트하세요.
-core-error-internal = AniBeam 내부 오류가 발생했어요: { $message }
+core-error-version = 더 새로운 Anibeam에서 내보낸 파일이에요(형식 { $found }). 가져오려면 Anibeam을 업데이트하세요.
+core-error-internal = Anibeam 내부 오류가 발생했어요: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -567,7 +567,7 @@ core-trackers-page-failed = 로그인을 마치지 못했어요
 core-trackers-page-go-back = { $app }(으)로 돌아가서 다시 시도하세요.
 core-trackers-page-finishing-title = { $app }, 마무리 중
 core-trackers-page-finishing = 마무리 중
-core-trackers-page-finishing-body = { $site }이(가) 응답했고 AniBeam이 로그인을 마무리하고 있어요. { $app }(으)로 돌아가면 완료됐을 때 알려 줘요.
+core-trackers-page-finishing-body = { $site }이(가) 응답했고 Anibeam이 로그인을 마무리하고 있어요. { $app }(으)로 돌아가면 완료됐을 때 알려 줘요.
 core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
@@ -934,8 +934,8 @@ core-downloads-anirss-slow-start = anirss가 { $seconds }초 안에 시작되지
 core-downloads-anirss-slow-start-said = anirss가 { $seconds }초 안에 시작되지 않았어요: { $said }
 core-downloads-anirss-install-mac = anirss { $version } 이상을 설치하세요: { $command }
 core-downloads-anirss-install-linux = anirss { $version } 이상을 설치하세요: AUR의 anirss 패키지 또는 { $command }
-core-downloads-anirss-too-old = anirss { $version }은(는) 너무 오래됐어요. AniBeam에는 { $minimum } 이상이 필요해요. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클라이언트별 로그인을 따로 보관할 수 없어서, AniBeam이 클라이언트를 전환할 수 없어요. anirss { $minimum } 이상은 가능해요. { $update }.
+core-downloads-anirss-too-old = anirss { $version }은(는) 너무 오래됐어요. Anibeam에는 { $minimum } 이상이 필요해요. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클라이언트별 로그인을 따로 보관할 수 없어서, Anibeam이 클라이언트를 전환할 수 없어요. anirss { $minimum } 이상은 가능해요. { $update }.
 core-downloads-anirss-update-mac = 다음 명령으로 업데이트하세요: { $command }
 core-downloads-anirss-update-linux = anirss 패키지를 업데이트하거나 다음을 실행하세요: { $command }
 
@@ -963,18 +963,18 @@ core-downloads-anirss-missing = { $install }. 또는 설정에서 실행 중인 
 core-downloads-anirss-command-missing = { $command }을(를) 찾지 못했어요. { $install }. 또는 설정에서 실행 중인 서버를 지정하세요.
 core-downloads-anirss-start-failed = { $command }을(를) 시작하지 못했어요: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } 응답 내용: { $message }
-core-downloads-no-torrent-client = { $address }에서 응답하는 qBittorrent가 없고, AniBeam에도 실행할 자체 qBittorrent가 없어요. qBittorrent를 설치하고 Web UI를 켜거나, qbittorrent-nox를 설치하면 AniBeam이 대신 실행해요
-core-downloads-own-client-gone = AniBeam의 qBittorrent가 없어요: qbittorrent-nox가 설치돼 있지 않아요. AniBeam을 다시 설치하거나 설정에서 직접 쓰는 qBittorrent를 지정하세요
+core-downloads-no-torrent-client = { $address }에서 응답하는 qBittorrent가 없고, Anibeam에도 실행할 자체 qBittorrent가 없어요. qBittorrent를 설치하고 Web UI를 켜거나, qbittorrent-nox를 설치하면 Anibeam이 대신 실행해요
+core-downloads-own-client-gone = Anibeam의 qBittorrent가 없어요: qbittorrent-nox가 설치돼 있지 않아요. Anibeam을 다시 설치하거나 설정에서 직접 쓰는 qBittorrent를 지정하세요
 core-downloads-no-port = { $address }에 포트가 없어요
 core-downloads-own-client-settings = qBittorrent 설정을 쓸 수 없어요: { $error }
 core-downloads-own-client-start-failed = { $command }을(를) 시작하지 못했어요: { $error }
-core-downloads-own-client-slow-start = AniBeam의 qBittorrent가 시작되지 않았어요
-core-downloads-own-client-slow-start-said = AniBeam의 qBittorrent가 시작되지 않았어요: { $said }
+core-downloads-own-client-slow-start = Anibeam의 qBittorrent가 시작되지 않았어요
+core-downloads-own-client-slow-start-said = Anibeam의 qBittorrent가 시작되지 않았어요: { $said }
 core-downloads-not-ready = 다운로드를 사용할 준비가 안 됐어요. 설정의 다운로드를 확인하세요.
 core-downloads-ready = 다운로드를 사용할 준비가 됐어요.
 core-downloads-helper-sources =
     { $count ->
-       *[other] 이제 다운로드 검색을 AniBeam이 직접 해요. 검색 도우미 설정에 있는 소스 { $count }개는 읽지 않아요. 설정, 다운로드에서 추가하거나 그곳에서 검색 도우미를 선택하세요.
+       *[other] 이제 다운로드 검색을 Anibeam이 직접 해요. 검색 도우미 설정에 있는 소스 { $count }개는 읽지 않아요. 설정, 다운로드에서 추가하거나 그곳에서 검색 도우미를 선택하세요.
     }
 core-downloads-client-connected = 다운로드 앱이 연결됐어요.
 core-downloads-client-not-connected = 다운로드 앱이 연결되지 않았어요. 설정에서 주소를 확인하세요.
@@ -1169,7 +1169,7 @@ core-releases-episode-range = { $from }~{ $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 

@@ -63,7 +63,7 @@ mod linux {
         out
     }
 
-    /// The files the last Dark pick wrote, one path a line, in AniBeam's own data folder.
+    /// The files the last Dark pick wrote, one path a line, in Anibeam's own data folder.
     /// Default removes exactly these, so a dark set from an older build goes too, and a file
     /// the user put in hicolor themselves is never written over nor removed.
     fn ledger() -> PathBuf {

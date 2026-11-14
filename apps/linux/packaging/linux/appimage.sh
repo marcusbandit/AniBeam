@@ -168,7 +168,7 @@ mkdir -p "$appdir/usr/libexec/anibeam"
 install -m 755 "$downloads/qbittorrent-nox" "$appdir/usr/libexec/anibeam/qbittorrent-nox"
 cat > "$appdir/usr/bin/qbittorrent-nox" <<'LAUNCHER'
 #!/bin/sh
-# AniBeam's own qbittorrent-nox: the static build, with the host's OpenSSL config left out.
+# Anibeam's own qbittorrent-nox: the static build, with the host's OpenSSL config left out.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 OPENSSL_CONF=/dev/null
 export OPENSSL_CONF
@@ -199,7 +199,7 @@ find "$anirss/app" -name __pycache__ -type d -prune -exec rm -rf {} +
 mkdir -p "$anirss/bin"
 cat > "$anirss/bin/anirss" <<'LAUNCHER'
 #!/bin/sh
-# AniBeam's own anirss: the release it was built with, on the Python beside it.
+# Anibeam's own anirss: the release it was built with, on the Python beside it.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$here/python/bin/python3" "$here/app/anirss" "$@"
 LAUNCHER
@@ -207,10 +207,12 @@ chmod 755 "$anirss/bin/anirss"
 
 echo "== appimage"
 # The plugin linuxdeploy's --output appimage calls, run by hand now the helpers are in.
+# The file name is set here, not taken from the desktop entry's Name=: the updater and the release
+# workflows match AniBeam-<version>-x86_64.AppImage, and Name= now reads Anibeam.
 rm -f "$out"/*.AppImage
-"$tools/linuxdeploy-plugin-appimage-x86_64.AppImage" --appdir "$appdir" > "$out/appimage-plugin.log" 2>&1 \
-  || { tail -40 "$out/appimage-plugin.log"; exit 1; }
 image="$out/AniBeam-$pkgver-x86_64.AppImage"
+LDAI_OUTPUT="$image" "$tools/linuxdeploy-plugin-appimage-x86_64.AppImage" --appdir "$appdir" > "$out/appimage-plugin.log" 2>&1 \
+  || { tail -40 "$out/appimage-plugin.log"; exit 1; }
 [ -f "$image" ] || { echo "no $image; the plugin wrote:" >&2; ls -la "$out" >&2; tail -20 "$out/appimage-plugin.log" >&2; exit 1; }
 chmod +x "$image"
 ls -la "$image"

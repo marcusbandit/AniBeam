@@ -141,7 +141,7 @@ jobs:
           ls -la dist
           if ! gh release view pr-builds > /dev/null 2>&1; then
             gh release create pr-builds --target "${{ github.event.repository.default_branch }}" \
-              --prerelease --latest=false --title "AniBeam pull request builds" \
+              --prerelease --latest=false --title "Anibeam pull request builds" \
               --notes "Test builds of open pull requests, one set of files per PR, named AniBeam-<version>-pr.<PR>.<run>. Each PR's comment links its own. Never offered as an update."
           fi
           gh release upload pr-builds dist/* --clobber

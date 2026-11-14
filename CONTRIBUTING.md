@@ -10,7 +10,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
-   [AniBeam project board](https://github.com/users/marcusbandit/projects/1),
+   [Anibeam project board](https://github.com/users/marcusbandit/projects/1),
    and its card moves as the work does. A security problem never goes in an
    issue: [`SECURITY.md`](SECURITY.md) says where to report it privately.
    Before your first card, ask the owner for board access and run
@@ -85,7 +85,7 @@ gives the run its own bus names, so it opens beside the installed app instead
 of handing off to it and never touches its data. anirss gets a home of its own
 there too, `<root>/state/home`: the run reads anirss's config from
 `<root>/state/home/.config/anirss/config.toml`, the anirss it starts keeps its
-state there, and a fresh run sets up AniBeam's own qBittorrent rather than
+state there, and a fresh run sets up Anibeam's own qBittorrent rather than
 taking one it finds on the machine. Point it at your own qBittorrent in
 Settings when you want that. For a picture without a
 window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
@@ -165,7 +165,7 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - A version can have a title to remember it by, between the number and the day:
   `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
   none. What's new and the update notice show it, and the release goes out named
-  "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
+  "Anibeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
 Good, as `apps/linux/changes/160-seek-jump.md`:
 
@@ -228,7 +228,7 @@ format string, ends in `// i18n: none`.
 
 ## Sources
 
-AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
+Anibeam ships no download sources, and this repo takes no PR that adds one. Nothing in
 the app points at a site: no address, no host, no default, no onboarding link, and no code,
 test or fixture that names one. A PR that adds a site gets closed, however well it is built.
 CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
@@ -248,7 +248,7 @@ that site. A new source goes in one of two places:
 
 - A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
   the owner's own repo. Its README says how to write a definition.
-- A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
+- A repo of your own, signed with your own key, that anyone can add in Anibeam beside or
   instead of the owner's.
 
 Endpoints are not part of this project, and that is final. No PR here decides which sources

@@ -649,7 +649,7 @@ async fn supervise(
                                 status.put(Some(&cancel), s.status());
                             }
                             // Serving on the tailnet: catch up with every
-                            // trusted AniBeam that is up. Not on an address a
+                            // trusted Anibeam that is up. Not on an address a
                             // test or the env var chose, which is no tailnet.
                             if bind.is_none()
                                 && let Some(core) = core.upgrade()

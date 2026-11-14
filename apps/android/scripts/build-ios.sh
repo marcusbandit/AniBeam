@@ -41,7 +41,7 @@ esac
 # A nightly is its own app: its own bundle id and name, so both can be installed at once.
 identity=()
 if [ "${ANIBEAM_NIGHTLY:-}" = 1 ]; then
-  identity=(PRODUCT_BUNDLE_IDENTIFIER=com.marcusrosado.anibeam.nightly "ANIBEAM_DISPLAY_NAME=AniBeam Nightly")
+  identity=(PRODUCT_BUNDLE_IDENTIFIER=com.marcusrosado.anibeam.nightly "ANIBEAM_DISPLAY_NAME=Anibeam Nightly")
 fi
 
 # The player's libmpv, linked statically (build.rs); fetched once, then only when its pin

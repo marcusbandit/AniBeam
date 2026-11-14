@@ -61,7 +61,7 @@ impl Chosen {
 }
 
 /// anirss's `[downloads] save_base`, `movie_path` and `[qbittorrent] tags`,
-/// with `~` expanded against `home`, as the anirss AniBeam runs expands them.
+/// with `~` expanded against `home`, as the anirss Anibeam runs expands them.
 /// Nothing when the file is missing or does not read.
 pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
     let home = home.dir();

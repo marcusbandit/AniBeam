@@ -57,7 +57,7 @@ impl CorePaths {
         Path::new(&self.data_dir).join("anibeam.ics")
     }
 
-    /// This AniBeam's own key (`host::keys`), owner-only.
+    /// This Anibeam's own key (`host::keys`), owner-only.
     pub fn device_key_path(&self) -> PathBuf {
         Path::new(&self.data_dir).join("device-key")
     }

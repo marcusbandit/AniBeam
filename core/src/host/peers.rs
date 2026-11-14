@@ -1,7 +1,7 @@
-//! The other AniBeams on the tailnet, for a phone that cannot list tailnet
+//! The other Anibeams on the tailnet, for a phone that cannot list tailnet
 //! devices itself (#313): every trusted, online device the status names is
 //! asked for its hello on the usual port, all at once and briefly, and the
-//! ones that answer as AniBeam are handed over.
+//! ones that answer as Anibeam are handed over.
 
 use std::time::Duration;
 
@@ -29,7 +29,7 @@ pub fn candidates(t: &Tailnet, off: &[String], port: u16) -> Vec<(String, String
         .collect()
 }
 
-/// The candidates that answer their hello as AniBeam, in the order given.
+/// The candidates that answer their hello as Anibeam, in the order given.
 pub async fn find(candidates: Vec<(String, String)>) -> Vec<wire::PeerHost> {
     // A device answers for itself only: no redirect is followed, so none can
     // point this machine at its own or its network's services, and no proxy

@@ -1,6 +1,6 @@
 //! Proof that a request comes from the device holding a key (#555).
 //!
-//! Every AniBeam makes an ed25519 key pair once. A host that offers
+//! Every Anibeam makes an ed25519 key pair once. A host that offers
 //! [`crate::FEATURE_PROOF`] says its public key in [`crate::Hello::key`]. A
 //! client then signs each request it makes there and sends the proof in
 //! [`HEADER`]:
