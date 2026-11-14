@@ -9,11 +9,11 @@ use std::time::Instant;
 use crate::aired::Aired;
 use crate::calendar::Calendar;
 use crate::contract::{EventBody, Stage};
-use crate::downloads::Downloads;
-use crate::foundation::above::Above;
+use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::library::Library;
 use crate::metadata::OUTAGE_WINDOW;
+use crate::metadata::automatch;
 use crate::net::Net;
 use crate::sync::recover;
 
@@ -46,8 +46,6 @@ pub struct Metadata {
     /// crawl behind that read runs at most once a minute per root, so
     /// opening the same page twice costs AniList nothing the second time.
     pub(crate) crawl_recent: Mutex<HashMap<u64, Instant>>,
-    /// The followed shows' next episodes, armed again when a schedule moves.
-    pub(crate) downloads: Above<Downloads>,
 }
 
 impl Metadata {
@@ -63,8 +61,26 @@ impl Metadata {
             recommender_gap_ms: AtomicU64::new(crate::recommended::GAP_MS),
             jikan_outage: Mutex::new(None),
             crawl_recent: Mutex::new(HashMap::new()),
-            downloads: Above::default(),
         }
+    }
+
+    /// Hears what the teams below tell this one (#854): a settled folder is
+    /// worth a match, and a tracker list read again is what Recommended
+    /// learns from. Set once, by `Core::open`.
+    pub(crate) fn listen(self: &Arc<Self>) {
+        let metadata = Arc::downgrade(self);
+        self.services.bus.on_signal(Arc::new(move |signal| {
+            let Some(metadata) = metadata.upgrade() else {
+                return;
+            };
+            match signal {
+                Signal::FolderSettled => {
+                    automatch::start(&metadata);
+                }
+                Signal::TrackersChanged => crate::recommended::after_tracker_refresh(&metadata),
+                Signal::SchedulesMoved => {}
+            }
+        }));
     }
 
     /// Warns that Jikan is not answering, at most once every ten minutes.

@@ -35,7 +35,7 @@ const LAPTOP: &str = "100.70.1.4";
 
 fn serve_as(rt: &tokio::runtime::Runtime, core: &Arc<Core>, from: &str) -> String {
     let from: SocketAddr = format!("{from}:40000").parse().unwrap();
-    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(from));
+    let app = core.host_router().layer(MockConnectInfo(from));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();

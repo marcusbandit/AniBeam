@@ -15,7 +15,7 @@ use axum::extract::connect_info::MockConnectInfo;
 /// host always answers, so only the streaming switch decides.
 fn serve(rt: &tokio::runtime::Runtime, core: &Arc<Core>) -> String {
     let me: std::net::SocketAddr = "127.0.0.1:40000".parse().unwrap();
-    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(me));
+    let app = core.host_router().layer(MockConnectInfo(me));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();

@@ -25,6 +25,7 @@ use rusqlite::{Connection, params};
 
 use crate::contract::*;
 use crate::downloads::Downloads;
+use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::sync::recover;
 
@@ -193,6 +194,20 @@ impl Drop for Slot {
     fn drop(&mut self) {
         armed().remove(&self.0);
     }
+}
+
+/// Arms the timers again when the metadata below says an airing refresh
+/// moved a schedule (#854), which may be a new time for a followed show's
+/// next episode. Set once, by `Core::open`.
+pub(crate) fn listen(downloads: &Arc<Downloads>) {
+    let weak = Arc::downgrade(downloads);
+    downloads.services.bus.on_signal(Arc::new(move |signal| {
+        if signal == Signal::SchedulesMoved
+            && let Some(downloads) = weak.upgrade()
+        {
+            arm(&downloads);
+        }
+    }));
 }
 
 /// Sets a timer for every followed episode that has none yet. Called at

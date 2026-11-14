@@ -20,6 +20,7 @@ use std::time::{Duration, SystemTime};
 use rusqlite::{Connection, Transaction, params};
 
 use crate::contract::*;
+use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
@@ -485,7 +486,7 @@ async fn run(
     // The list the recommender learns from just changed, so it fits again,
     // off the UI thread, reading AniList only for what it is missing.
     if !refreshed.is_empty() {
-        crate::recommended::after_tracker_refresh(&trackers.metadata);
+        trackers.services.bus.signal(Signal::TrackersChanged);
     }
     match pending {
         Some((t, count)) => Ok(Finished {

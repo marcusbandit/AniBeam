@@ -18,11 +18,10 @@ use std::time::Duration;
 use rusqlite::params;
 
 use crate::contract::*;
-use crate::downloads::EndpointSync;
 use crate::foundation::services::Services;
 use crate::i18n::tr;
-use crate::net::HttpRequest;
-use crate::releases::Releases;
+use crate::net::{BoxFuture, HttpRequest};
+use crate::releases::{AnirssView, EndpointSync, Releases};
 use crate::sync::recover;
 use index::{Definition, Index, RepoFault};
 
@@ -353,12 +352,11 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
         .collect();
     let secrets = releases.services.secrets();
     let synced = read_synced(&releases.services);
-    // One engine and one anirss view for the whole catalog, not a read per row.
-    let engine = crate::downloads::backend::engine(&releases.services)?;
-    let view = releases
-        .downloads
-        .get()
-        .and_then(|d| crate::downloads::anirss_view(&d));
+    // One engine and one anirss view for the whole catalog, not a read per row. With no
+    // downloads to ask, a core going away, there is nothing to note.
+    let searcher = releases.searcher.get();
+    let engine = searcher.as_ref().map(|s| s.engine()).transpose()?;
+    let view = searcher.and_then(|s| s.anirss_view());
     let installed = installed
         .iter()
         .map(|i| {
@@ -389,7 +387,7 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
                 custom: i.repo_url == CUSTOM,
                 address: (i.repo_url == CUSTOM).then(|| i.def.url.clone()),
                 offered: next.is_some() || i.repo_url == CUSTOM,
-                desktop_note: note_for(engine, view.as_ref(), &i.def, &synced),
+                desktop_note: engine.and_then(|e| note_for(e, view.as_ref(), &i.def, &synced)),
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -425,8 +423,8 @@ fn reply(releases: &Releases) -> Result<Reply, CoreError> {
 
 /// The reply after a change to what is installed: the desktop's anirss follows first.
 fn changed(releases: &Releases) -> Result<Reply, CoreError> {
-    if let Some(downloads) = releases.downloads.get() {
-        crate::downloads::repo_endpoints_changed(&downloads);
+    if let Some(searcher) = releases.searcher.get() {
+        searcher.endpoints_changed();
     }
     reply(releases)
 }
@@ -1196,8 +1194,8 @@ pub fn lift_stored_secrets(releases: &Releases) -> Result<(), CoreError> {
             "Moved a secret in a source added by hand to the secret store",
             EventBody::Notice,
         );
-        if let Some(downloads) = releases.downloads.get() {
-            crate::downloads::repo_endpoints_changed(&downloads);
+        if let Some(searcher) = releases.searcher.get() {
+            searcher.endpoints_changed();
         }
     }
     first_error.map_or(Ok(()), Err)
@@ -1244,9 +1242,9 @@ fn read_synced(services: &Services) -> Synced {
 }
 
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
-/// of that name from its config, cannot search the kind, does not list
-/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES), whatever its version says,
-/// or is one the desktop never writes into (a server the person runs, a sandbox run).
+/// of that name from its config, cannot search the kind, does not list `endpoint_writes`,
+/// whatever its version says, or is one the desktop never writes into (a server the person
+/// runs, a sandbox run).
 /// None on the phone, and before the desktop has read its anirss.
 ///
 /// Only the anirss engine has these limits. Anibeam's own engine searches every installed
@@ -1255,7 +1253,7 @@ fn read_synced(services: &Services) -> Synced {
 /// from anirss; that is its own item in #297.
 fn note_for(
     engine: DownloadsEngine,
-    view: Option<&crate::downloads::AnirssView>,
+    view: Option<&AnirssView>,
     def: &Definition,
     synced: &Synced,
 ) -> Option<String> {
@@ -1287,10 +1285,7 @@ fn note_for(
             "core-repos-note-old",
             &[
                 ("version", view.version.to_string().into()),
-                (
-                    "min",
-                    crate::downloads::anirss::MIN_VERSION.to_string().into(),
-                ),
+                ("min", view.min_version.to_string().into()),
             ],
         )),
         EndpointSync::Syncs => (listed && !synced.contains_key(&def.id)).then(by_hand),
@@ -1315,23 +1310,31 @@ fn hash_of(spec: &serde_json::Value) -> String {
         .collect()
 }
 
+/// The endpoint API of the anirss the desktop runs, which [`sync_anirss`] writes into. The
+/// downloads' anirss client implements it (#854), so the releases name no client above them.
+pub(crate) trait AnirssEndpoints: Send + Sync {
+    /// Adds the endpoint `spec` describes, or replaces the one of its name.
+    fn put_endpoint(&self, spec: serde_json::Value) -> BoxFuture<'_, Result<(), CoreError>>;
+    /// Removes the endpoint of this name.
+    fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>>;
+}
+
 /// Puts the installed endpoints into the desktop's anirss, which searches only what its own
 /// config lists: each enabled one with its credentials, under its id. Only names Anibeam
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record Anibeam reads. A kind
 /// anirss cannot search (`json-feed`) stays out, and an anirss whose `/health` does not list
-/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES) is left alone, whatever
-/// its version says.
+/// `endpoint_writes` (`writes` false) is left alone, whatever its version says.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
     services: &Services,
-    client: &crate::downloads::anirss::AnirssClient,
-    health: &crate::downloads::anirss::Health,
+    client: &dyn AnirssEndpoints,
+    writes: bool,
     have: &[SearchEndpoint],
 ) -> bool {
-    if !health.has(crate::downloads::anirss::ENDPOINT_WRITES) {
+    if !writes {
         return false;
     }
     let want: Vec<Runnable> = runnable(services)
@@ -1790,8 +1793,7 @@ pub fn endpoint_http(services: &Services) -> Paced {
 mod tests {
     use super::*;
 
-    use crate::downloads::AnirssView;
-    use crate::downloads::anirss::{AnirssClient, Health};
+    use crate::downloads::anirss::{AnirssClient, ENDPOINT_WRITES, Health, MIN_VERSION};
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
@@ -1828,6 +1830,7 @@ mod tests {
             endpoint_writes,
             endpoints: endpoints.iter().map(|e| e.to_string()).collect(),
             sync: EndpointSync::Syncs,
+            min_version: MIN_VERSION,
         }
     }
 
@@ -2469,7 +2472,7 @@ mod tests {
         assert!(!core.services.handle.block_on(sync_anirss(
             &core.services,
             &anirss,
-            &without,
+            without.has(ENDPOINT_WRITES),
             &have
         )));
         assert!(http.requests().is_empty());
@@ -2480,7 +2483,7 @@ mod tests {
         assert!(core.services.handle.block_on(sync_anirss(
             &core.services,
             &anirss,
-            &writes,
+            writes.has(ENDPOINT_WRITES),
             &have
         )));
         let sent = http.requests();
@@ -2500,7 +2503,7 @@ mod tests {
         assert!(!core.services.handle.block_on(sync_anirss(
             &core.services,
             &anirss,
-            &writes,
+            writes.has(ENDPOINT_WRITES),
             &have
         )));
         assert_eq!(http.requests().len(), 1);
@@ -2532,7 +2535,7 @@ mod tests {
         assert!(core.services.handle.block_on(sync_anirss(
             &core.services,
             &anirss,
-            &writes,
+            writes.has(ENDPOINT_WRITES),
             &have
         )));
         let sent = http.requests();
@@ -2544,7 +2547,7 @@ mod tests {
         assert!(!core.services.handle.block_on(sync_anirss(
             &core.services,
             &anirss,
-            &writes,
+            writes.has(ENDPOINT_WRITES),
             &have
         )));
         assert_eq!(http.requests().len(), 2);

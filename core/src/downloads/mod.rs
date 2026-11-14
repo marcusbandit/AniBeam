@@ -47,6 +47,7 @@ use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::trash;
 use crate::net::{Http, HttpRequest};
+use crate::releases::{AnirssView, EndpointSync};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -826,30 +827,6 @@ async fn run_connect(downloads: Arc<Downloads>) -> Result<Finished, CoreError> {
     })
 }
 
-/// The anirss this core last read: its version, whether it lists
-/// [`anirss::ENDPOINT_WRITES`], the names of its endpoints, and whether the desktop puts
-/// the installed endpoints into it at all.
-pub(crate) struct AnirssView {
-    pub version: String,
-    pub endpoint_writes: bool,
-    pub endpoints: Vec<String>,
-    pub sync: EndpointSync,
-}
-
-/// Whether the endpoints installed from repos go into the anirss the desktop reads, and
-/// why not when they do not (#499).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EndpointSync {
-    /// Anibeam's own sidecar, in a run that may change the owner's setup.
-    #[default]
-    Syncs,
-    /// A server the person runs themselves (Remote mode), which keeps its own config.
-    Theirs,
-    /// A sandbox root or a drive, which never writes into the owner's real anirss, or a
-    /// run whose settings could not be read, which writes nothing it cannot be sure of.
-    Sandbox,
-}
-
 /// The [`AnirssView`] of the anirss last read. None until one has been read, and always
 /// on the phone, which has none.
 pub(crate) fn anirss_view(downloads: &Downloads) -> Option<AnirssView> {
@@ -859,6 +836,7 @@ pub(crate) fn anirss_view(downloads: &Downloads) -> Option<AnirssView> {
         endpoint_writes: anirss::lists(&st.anirss_features, anirss::ENDPOINT_WRITES),
         endpoints: st.endpoints.iter().map(|e| e.name.clone()).collect(),
         sync: st.endpoint_sync,
+        min_version: anirss::MIN_VERSION,
     })
 }
 
@@ -906,6 +884,21 @@ enum Read {
     Kept,
     /// Thrown away: a save replaced the settings the client was built from.
     Dropped,
+}
+
+/// What the releases below ask of the downloads (#854).
+impl crate::releases::Searcher for Downloads {
+    fn engine(&self) -> Result<DownloadsEngine, CoreError> {
+        backend::engine(&self.services)
+    }
+
+    fn anirss_view(&self) -> Option<AnirssView> {
+        anirss_view(self)
+    }
+
+    fn endpoints_changed(self: Arc<Self>) {
+        repo_endpoints_changed(&self);
+    }
 }
 
 /// What is installed from repos changed (#143): a running anirss gets it, and the page
@@ -998,7 +991,13 @@ async fn read_anirss(downloads: &Downloads, reached: &Reached) -> Result<Read, C
     let mut endpoints = client.endpoints().await?;
     let sync = endpoint_sync(downloads, reached);
     if sync == EndpointSync::Syncs
-        && crate::repos::sync_anirss(&downloads.services, client, &health, &endpoints).await
+        && crate::repos::sync_anirss(
+            &downloads.services,
+            client,
+            health.has(anirss::ENDPOINT_WRITES),
+            &endpoints,
+        )
+        .await
     {
         endpoints = client.endpoints().await?;
     }
@@ -2810,6 +2809,29 @@ fn held(content: &str, gone: &[std::path::PathBuf]) -> Held {
 pub fn is_writing(downloads: &Downloads, path: &str) -> bool {
     let st = downloads.state();
     !st.writing.is_empty() && st.writing.contains(&path_key(path))
+}
+
+/// What the library below asks of the downloads (#854).
+impl crate::library::Incoming for Downloads {
+    fn overlay(self: Arc<Self>, cards: &mut [SeriesCard]) {
+        overlay(&self, cards);
+    }
+
+    fn overlay_detail(self: Arc<Self>, detail: &mut SeriesDetail) {
+        overlay_detail(&self, detail);
+    }
+
+    fn is_writing(&self, path: &str) -> bool {
+        is_writing(self, path)
+    }
+
+    fn files_gone(self: Arc<Self>, gone: Vec<std::path::PathBuf>) {
+        drop_torrents_of(&self, gone);
+    }
+
+    fn files_arrived(self: Arc<Self>) {
+        origins::after_scan(&self);
+    }
 }
 
 /// The series whose downloads are worth a `SeriesChanged` now, and the

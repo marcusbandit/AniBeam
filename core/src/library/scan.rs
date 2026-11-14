@@ -1436,9 +1436,9 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
             // The torrent each new file came from, while the client that
             // fetched it still lists it (#241)
             if added + changed > 0
-                && let Some(downloads) = library.downloads.get()
+                && let Some(incoming) = library.incoming.get()
             {
-                crate::downloads::origins::after_scan(&downloads);
+                incoming.files_arrived();
             }
             Ok(Finished {
                 plain: scan_words(added, changed, removed),
