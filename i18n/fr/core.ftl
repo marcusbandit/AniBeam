@@ -1312,5 +1312,6 @@ core-room-media-no-sources = Chaque source est désactivée. Activez-en une pour
 core-room-media-no-start = Impossible de lancer le téléchargement : { $message }
 core-room-media-client = le client torrent ne l'a pas accepté
 core-room-media-lost = Le client torrent a perdu le téléchargement de l'épisode.
+core-room-media-stalled = Le téléchargement n'a pas avancé depuis dix minutes. Réessayez plus tard.
 core-room-media-not-in-library = L'épisode est téléchargé, mais il n'est pas dans votre bibliothèque. Vérifiez que les téléchargements vont dans un dossier de la bibliothèque.
 core-room-media-here = L'épisode est maintenant dans votre bibliothèque.

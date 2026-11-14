@@ -1561,5 +1561,6 @@ core-room-media-no-sources = Все источники выключены. Вк�
 core-room-media-no-start = Не удалось начать загрузку: { $message }
 core-room-media-client = торрент-клиент его не принял
 core-room-media-lost = Торрент-клиент потерял загрузку серии.
+core-room-media-stalled = Загрузка не продвигается уже десять минут. Попробуйте ещё раз позже.
 core-room-media-not-in-library = Серия скачана, но её нет в вашей библиотеке. Проверьте, что загрузки сохраняются в папку библиотеки.
 core-room-media-here = Серия теперь в вашей библиотеке.

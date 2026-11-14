@@ -1117,5 +1117,6 @@ core-room-media-no-sources = 所有来源都已关闭。开启一个才能搜索
 core-room-media-no-start = 无法开始下载：{ $message }
 core-room-media-client = 种子客户端没有接受
 core-room-media-lost = 种子客户端丢失了这一集的下载。
+core-room-media-stalled = 下载已经十分钟没有进展。请稍后再试。
 core-room-media-not-in-library = 这一集已下载，但不在你的媒体库中。请检查下载是否保存到媒体库文件夹。
 core-room-media-here = 这一集已在你的媒体库中。

@@ -44,6 +44,11 @@ const POLL: Duration = Duration::from_secs(2);
 /// handed to it, before it counts as lost.
 const LIST_WAIT: Duration = Duration::from_secs(120);
 
+/// How long a download may go without moving before Get media gives up on it:
+/// nobody seeds it, or the client holds it back. The torrent stays with the
+/// client, and Get media can be pressed again.
+const STALL: Duration = Duration::from_secs(10 * 60);
+
 /// How long a finished download has to show in the library.
 const ARRIVE_WAIT: Duration = Duration::from_secs(300);
 
@@ -104,6 +109,7 @@ enum Why {
     NoSources,
     Start(String),
     Lost,
+    Stalled,
     NotInLibrary,
 }
 
@@ -118,6 +124,7 @@ impl Why {
                 crate::words!("core-room-media-no-start", message = message.as_str())
             }
             Why::Lost => crate::words!("core-room-media-lost"),
+            Why::Stalled => crate::words!("core-room-media-stalled"),
             Why::NotInLibrary => crate::words!("core-room-media-not-in-library"),
         }
     }
@@ -428,20 +435,6 @@ async fn fetch(
     let known = crate::foundation::magnet::hash(&release.link);
     let title = release.title.clone();
     let since = crate::time::now_secs();
-    let (tell, told) = oneshot::channel();
-    let options = DownloadOptions {
-        series: local.series,
-        provider: release.source.clone(),
-        ..Default::default()
-    };
-    downloads::download_telling(
-        &playback.downloads,
-        vec![release],
-        folder(&e.series_title),
-        options,
-        Some(tell),
-    )
-    .map_err(|err| Why::Start(err.to_string()))?;
     update(playback, serial, id, |a| {
         a.progress = Some(Progress {
             percent: 0.0,
@@ -449,17 +442,53 @@ async fn fetch(
         });
         true
     });
-    let added = told
-        .await
-        .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
-    // A link the client fetches itself names no hash up front: the torrent is
-    // then found by its name among those added since
-    let hash = known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()));
-    let content = follow(playback, serial, id, hash.as_deref(), &title, since).await?;
+    // A Get media tried again finds the torrent the last one handed over:
+    // qBittorrent refuses to add it twice, so it is followed where it is
+    let held = match &known {
+        Some(hash) => match downloads::qbt_client(&playback.downloads).await {
+            Ok(qbt) => qbt
+                .torrents_named(std::slice::from_ref(hash))
+                .await
+                .is_ok_and(|t| !t.is_empty()),
+            Err(_) => false,
+        },
+        None => false,
+    };
+    let hash = if held {
+        known
+    } else {
+        let (tell, told) = oneshot::channel();
+        // The episode alone, now: never held to a rolling window
+        let options = DownloadOptions {
+            series: local.series,
+            provider: release.source.clone(),
+            rolling: Some(false),
+            ..Default::default()
+        };
+        downloads::download_telling(
+            &playback.downloads,
+            vec![release],
+            folder(&e.series_title),
+            options,
+            Some(tell),
+        )
+        .map_err(|err| Why::Start(err.to_string()))?;
+        let added = told
+            .await
+            .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
+        // A link the client fetches itself names no hash up front: the torrent is
+        // then found by its name among those added since
+        known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
+    };
+    let content = follow(playback, serial, id, hash.as_deref(), &title, since, offer, e).await?;
     settle_in(playback, e, offer, &content).await
 }
 
-/// Reads the download's progress until it is done; its content path then.
+/// Reads the download's progress until it is done; the path of the episode's
+/// file then. A torrent of several files (the host's batch) downloads the
+/// episode's file alone, once the client knows the files: the rest are set to
+/// skip, and that file's progress is the one followed.
+#[allow(clippy::too_many_arguments)]
 async fn follow(
     playback: &Arc<Playback>,
     serial: u64,
@@ -467,49 +496,149 @@ async fn follow(
     hash: Option<&str>,
     title: &str,
     since: i64,
+    offer: &Offer,
+    e: &proto::EpisodeRef,
 ) -> Result<String, Why> {
     let mut last_seen = Instant::now();
+    let mut stall = Stall::new(Instant::now());
+    // None until the client lists the torrent's files; then the one file
+    // followed, or Whole for a torrent of one file or none that is the episode
+    let mut unit: Option<Unit> = None;
     loop {
         tokio::time::sleep(POLL).await;
-        let listed = match downloads::qbt_client(&playback.downloads).await {
-            Ok(qbt) => match hash {
-                Some(hash) => qbt
-                    .torrents_named(&[hash.to_string()])
-                    .await
-                    .ok()
-                    .and_then(|t| t.into_iter().next()),
-                None => qbt.torrents().await.ok().and_then(|all| {
-                    all.into_iter()
-                        .find(|t| t.added_on >= since - 60 && replace::names_match(&t.name, title))
-                }),
-            },
-            Err(_) => None,
+        let qbt = downloads::qbt_client(&playback.downloads).await.ok();
+        let listed = match (&qbt, hash) {
+            (Some(qbt), Some(hash)) => qbt
+                .torrents_named(&[hash.to_string()])
+                .await
+                .ok()
+                .and_then(|t| t.into_iter().next()),
+            (Some(qbt), None) => qbt.torrents().await.ok().and_then(|all| {
+                all.into_iter()
+                    .find(|t| t.added_on >= since - 60 && replace::names_match(&t.name, title))
+            }),
+            (None, _) => None,
         };
-        let Some(t) = listed else {
+        let (Some(qbt), Some(t)) = (qbt, listed) else {
             if last_seen.elapsed() >= LIST_WAIT {
                 return Err(Why::Lost);
             }
             continue;
         };
         last_seen = Instant::now();
-        let progress = progress_of(&t);
+        let files = match unit {
+            Some(Unit::Whole) => None,
+            _ => qbt.files(&t.hash).await.ok().filter(|f| !f.is_empty()),
+        };
+        if unit.is_none()
+            && let Some(files) = &files
+        {
+            let one = episode_file(files, offer, e);
+            if let Some(i) = one {
+                let others: Vec<usize> = (0..files.len()).filter(|j| *j != i).collect();
+                if let Err(err) = qbt.set_file_priority(&t.hash, &others, 0).await {
+                    tracing::warn!("room: the other files of the torrent were not skipped: {err}");
+                }
+            }
+            unit = Some(one.map_or(Unit::Whole, Unit::File));
+        }
+        let followed = match (unit, &files) {
+            (Some(Unit::File(i)), Some(files)) => files.get(i).map(|f| {
+                let path = crate::downloads::rolling::file_path(&t.save_path, &f.name)
+                    .map(|p| p.to_string_lossy().into_owned());
+                (f.progress, path)
+            }),
+            // The files could not be read this time round
+            (Some(Unit::File(_)), None) => continue,
+            _ => None,
+        };
+        let (fraction, path) = followed.unwrap_or((t.progress, Some(t.content_path.clone())));
+        let progress = progress_at(fraction, t.eta);
         update(playback, serial, id, |a| {
             let changed = a.progress != progress;
             a.progress = progress;
             changed
         });
-        if t.progress >= 1.0 {
-            return Ok(t.content_path);
+        if fraction >= 1.0 {
+            return path.ok_or(Why::Lost);
         }
+        if stall.stuck(fraction, Instant::now()) {
+            return Err(Why::Stalled);
+        }
+    }
+}
+
+/// What of a torrent Get media follows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Unit {
+    Whole,
+    File(usize),
+}
+
+/// The file of a torrent of several that is the room's episode: the host's
+/// own file by its name, else the one file whose name carries the episode's
+/// number. None for a torrent of one file, or when no single file fits.
+fn episode_file(files: &[TorrentFile], offer: &Offer, e: &proto::EpisodeRef) -> Option<usize> {
+    if files.len() < 2 {
+        return None;
+    }
+    let base = |name: &str| name.rsplit(['/', '\\']).next().unwrap_or(name).to_string();
+    if !offer.file.is_empty()
+        && let Some(i) = files
+            .iter()
+            .position(|f| base(&f.name).eq_ignore_ascii_case(&offer.file))
+    {
+        return Some(i);
+    }
+    let want = e.number?;
+    let fits: Vec<usize> = files
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| {
+            let facts = facts::read_name(&f.name);
+            !facts.batch && facts.episode.is_some_and(|n| (n - want).abs() < 0.01)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match fits.as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    }
+}
+
+/// Whether a download has stopped moving: the furthest it got, and when.
+struct Stall {
+    best: f64,
+    since: Instant,
+}
+
+impl Stall {
+    fn new(now: Instant) -> Stall {
+        Stall { best: 0.0, since: now }
+    }
+
+    /// Notes how far the download is at `now`: true once it has gone `STALL`
+    /// without getting any further.
+    fn stuck(&mut self, fraction: f64, now: Instant) -> bool {
+        if fraction > self.best {
+            self.best = fraction;
+            self.since = now;
+        }
+        now.duration_since(self.since) >= STALL
     }
 }
 
 /// A torrent's progress as the status carries it: a tenth of a percent at most,
 /// and no time left when the client has none (qBittorrent says 8640000).
 pub fn progress_of(t: &Torrent) -> Option<Progress> {
+    progress_at(t.progress, t.eta)
+}
+
+/// `progress_of` for a fraction done and the client's seconds left.
+fn progress_at(fraction: f64, eta: i64) -> Option<Progress> {
     Progress {
-        percent: (t.progress * 1000.0).floor() / 10.0,
-        eta: u64::try_from(t.eta).ok(),
+        percent: (fraction * 1000.0).floor() / 10.0,
+        eta: u64::try_from(eta).ok(),
     }
     .clean()
 }
@@ -1141,6 +1270,59 @@ mod tests {
         assert_eq!(progress_of(&t).unwrap().eta, None);
         t.eta = -1;
         assert_eq!(progress_of(&t).unwrap().eta, None);
+    }
+
+    fn files(names: &[&str]) -> Vec<TorrentFile> {
+        names
+            .iter()
+            .map(|n| TorrentFile {
+                name: (*n).into(),
+                size: 1,
+                progress: 0.0,
+                priority: 1,
+                episode: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_batch_downloads_the_episode_s_file_alone() {
+        let batch = files(&[
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 04 (1080p).mkv",
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 05 (1080p).mkv",
+            "Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - 06 (1080p).mkv",
+        ]);
+        // The host's own file by its name
+        let host = Offer {
+            file: "[Lantern] Cowboy Bebop - 05 (1080p).mkv".into(),
+            ..offer("[Lantern] Cowboy Bebop (01-26) (1080p) [Batch]")
+        };
+        assert_eq!(episode_file(&batch, &host, &ep(5.0)), Some(1));
+        // A file renamed on the host's side is found by its number
+        let renamed = Offer {
+            file: "bebop five.mkv".into(),
+            ..host.clone()
+        };
+        assert_eq!(episode_file(&batch, &renamed, &ep(6.0)), Some(2));
+        // Two files of that number fit, so neither is picked
+        let two = files(&["A - 05.mkv", "B - 05.mkv"]);
+        assert_eq!(episode_file(&two, &renamed, &ep(5.0)), None);
+        // One file is the whole torrent
+        assert_eq!(episode_file(&batch[..1], &host, &ep(4.0)), None);
+    }
+
+    #[test]
+    fn a_download_that_stops_moving_is_stuck_after_the_stall_time() {
+        let t0 = Instant::now();
+        let mut stall = Stall::new(t0);
+        assert!(!stall.stuck(0.0, t0 + STALL / 2));
+        // It moved, so the clock starts again from there
+        assert!(!stall.stuck(0.1, t0 + STALL - Duration::from_secs(1)));
+        assert!(!stall.stuck(0.1, t0 + STALL + Duration::from_secs(1)));
+        assert!(stall.stuck(0.1, t0 + STALL * 2));
+        // Metadata never came: no progress from the start
+        let mut never = Stall::new(t0);
+        assert!(never.stuck(0.0, t0 + STALL));
     }
 
     #[test]

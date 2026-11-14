@@ -1301,5 +1301,6 @@ core-room-media-no-sources = Elke bron staat uit. Zet er een aan om te zoeken.
 core-room-media-no-start = De download kon niet starten: { $message }
 core-room-media-client = de torrentclient nam hem niet aan
 core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
+core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
 core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
 core-room-media-here = De aflevering staat nu in je bibliotheek.

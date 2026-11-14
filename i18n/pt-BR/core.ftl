@@ -1318,5 +1318,6 @@ core-room-media-no-sources = Todas as fontes estão desativadas. Ative uma para 
 core-room-media-no-start = Não foi possível iniciar o download: { $message }
 core-room-media-client = o cliente de torrent não aceitou
 core-room-media-lost = O cliente de torrent perdeu o download do episódio.
+core-room-media-stalled = O download não avançou em dez minutos. Tente de novo mais tarde.
 core-room-media-not-in-library = O episódio foi baixado, mas não está na sua biblioteca. Verifique se os downloads são salvos em uma pasta da biblioteca.
 core-room-media-here = O episódio já está na sua biblioteca.

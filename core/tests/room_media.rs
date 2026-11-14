@@ -226,14 +226,22 @@ fn ann_sees_progress(ann: &Person, ben_id: u32) {
     );
 }
 
+/// The files of a batch torrent as qBittorrent lists them, episode 5 this far.
+fn batch_files(done: f64) -> String {
+    let file = |n: u32, progress: f64| {
+        json!({
+            "name": format!("Cowboy Bebop (01-26)/[Lantern] Cowboy Bebop - {n:02} (1080p).mkv"),
+            "size": 1000, "progress": progress, "priority": 1,
+        })
+    };
+    json!([file(4, 0.0), file(5, done), file(6, 0.0)]).to_string()
+}
+
 /// The download finishes and the library takes the file in: Ben's core finds it,
-/// says so, and Ben's player attaching makes him ready for Ann too.
-fn ben_gets_it(ann: &Person, ben: &Person, ben_id: u32, hash: &str) {
-    ben.http.push_for(
-        &format!("torrents/info?hashes={hash}"),
-        200,
-        torrent(hash, NAME, 1.0, 0),
-    );
+/// says so, and Ben's player attaching makes him ready for Ann too. A batch
+/// finishes when episode 5's file does.
+fn ben_gets_it(ann: &Person, ben: &Person, ben_id: u32, hash: &str, batch: bool) {
+    // The file is in the library by the time the client says it is done
     let file = fixtures::insert_episode_file(
         &ben.core,
         ben.series,
@@ -241,6 +249,17 @@ fn ben_gets_it(ann: &Person, ben: &Person, ben_id: u32, hash: &str) {
         5.0,
         anibeam_core::time::now_secs(),
     );
+    for _ in 0..3 {
+        if batch {
+            ben.http
+                .push_for(&format!("torrents/files?hash={hash}"), 200, batch_files(1.0));
+        }
+        ben.http.push_for(
+            &format!("torrents/info?hashes={hash}"),
+            200,
+            torrent(hash, NAME, if batch { 0.04 } else { 1.0 }, 0),
+        );
+    }
     common::wait_for(
         &ben.c,
         |e| matches!(&e.body, EventBody::RoomEpisode { file: Some(f), .. } if *f == file),
@@ -291,13 +310,20 @@ fn a_member_downloads_the_host_s_torrent() {
         200,
         torrent(HASH, NAME, 1.0, 0),
     );
+    // Ben's client does not hold it yet, then lists it as a batch of three files
+    // of which only episode 5 downloads: 40 percent of that file is 13 of the whole
+    ben.http
+        .push_for(&format!("torrents/info?hashes={HASH}"), 200, "[]");
     ben.http.push_for("torrents/add", 200, "Ok.");
+    ben.http.push_for("torrents/filePrio", 200, "");
     for _ in 0..3 {
         ben.http.push_for(
             &format!("torrents/info?hashes={HASH}"),
             200,
-            torrent(HASH, NAME, 0.4, 120),
+            torrent(HASH, NAME, 0.13, 120),
         );
+        ben.http
+            .push_for(&format!("torrents/files?hash={HASH}"), 200, batch_files(0.4));
     }
 
     let ben_id = room_with_ben_missing(&ann, &ben);
@@ -337,8 +363,19 @@ fn a_member_downloads_the_host_s_torrent() {
             .all(|r| !r.url.contains("feed.example")),
         "the torrent route searches nothing"
     );
+    // Every file but episode 5's is skipped
+    let skipped: Vec<Vec<(String, String)>> = ben
+        .http
+        .requests()
+        .iter()
+        .filter(|r| r.url.ends_with("api/v2/torrents/filePrio"))
+        .map(form)
+        .collect();
+    assert_eq!(skipped.len(), 1, "{skipped:?}");
+    assert!(skipped[0].contains(&("id".to_string(), "0|2".to_string())));
+    assert!(skipped[0].contains(&("priority".to_string(), "0".to_string())));
 
-    ben_gets_it(&ann, &ben, ben_id, HASH);
+    ben_gets_it(&ann, &ben, ben_id, HASH, true);
 }
 
 #[test]
@@ -372,6 +409,8 @@ fn a_member_finds_the_host_s_release_by_its_name() {
     for _ in 0..4 {
         ben.http.push_for("feed.example", 200, feed.clone());
     }
+    ben.http
+        .push_for(&format!("torrents/info?hashes={same}"), 200, "[]");
     ben.http.push_for("torrents/add", 200, "Ok.");
     for _ in 0..3 {
         ben.http.push_for(
@@ -413,7 +452,7 @@ fn a_member_finds_the_host_s_release_by_its_name() {
         .unwrap();
     assert!(searched.contains("Lantern"), "{searched}");
 
-    ben_gets_it(&ann, &ben, ben_id, same);
+    ben_gets_it(&ann, &ben, ben_id, same, false);
 }
 
 #[test]

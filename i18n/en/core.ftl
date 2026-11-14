@@ -597,6 +597,7 @@ core-room-media-no-sources = Every source is switched off. Switch one on to sear
 core-room-media-no-start = Could not start the download: { $message }
 core-room-media-client = the torrent client did not take it
 core-room-media-lost = The torrent client lost the episode's download.
+core-room-media-stalled = The download has not moved in ten minutes. Try again later.
 core-room-media-not-in-library = The episode downloaded, but it is not in your library. Check that downloads save into a library folder.
 core-room-media-here = The episode is in your library now.
 

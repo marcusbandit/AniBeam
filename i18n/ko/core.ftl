@@ -1207,5 +1207,6 @@ core-room-media-no-sources = 모든 소스가 꺼져 있어요. 검색하려면 
 core-room-media-no-start = 다운로드를 시작할 수 없었어요: { $message }
 core-room-media-client = 토렌트 클라이언트가 받지 않았어요
 core-room-media-lost = 토렌트 클라이언트가 에피소드 다운로드를 놓쳤어요.
+core-room-media-stalled = 다운로드가 10분 동안 진행되지 않았어요. 나중에 다시 시도하세요.
 core-room-media-not-in-library = 에피소드는 내려받았지만 라이브러리에 없어요. 다운로드가 라이브러리 폴더에 저장되는지 확인하세요.
 core-room-media-here = 에피소드가 이제 라이브러리에 있어요.

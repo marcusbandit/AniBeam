@@ -1267,5 +1267,6 @@ core-room-media-no-sources = すべてのソースがオフです。検索する
 core-room-media-no-start = ダウンロードを開始できませんでした: { $message }
 core-room-media-client = トレントクライアントが受け付けませんでした
 core-room-media-lost = トレントクライアントがエピソードのダウンロードを見失いました。
+core-room-media-stalled = ダウンロードが10分間進んでいません。後でもう一度お試しください。
 core-room-media-not-in-library = エピソードはダウンロードされましたが、ライブラリにありません。ダウンロードの保存先がライブラリのフォルダか確認してください。
 core-room-media-here = エピソードがライブラリに入りました。
