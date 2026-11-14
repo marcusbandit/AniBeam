@@ -8,7 +8,7 @@ how an issue reaches triage, and how to reproduce one here.
 
 ## How an issue gets here
 
-On banditbox, the "Issue triage" T3 scheduled task runs `~/.local/share/issue-triage/check.sh`
+On the owner's desktop, the "Issue triage" T3 scheduled task runs `~/.local/share/issue-triage/check.sh`
 every 10 minutes. AniBeam is opted in by its line in `repos.txt` beside the script, and
 `check.sh` says in its header exactly what it hands out. For each issue it reports, the task
 launches a thread titled `Triage: AniBeam #<n>` on Claude Opus, in a fresh worktree of
@@ -31,8 +31,8 @@ the owner or a bot comments after the owner's latest triage comment: at most 3 r
 issue, after which the owner takes over.
 
 At most 3 issues are handed out per run and 12 per day; the rest wait for a later run. While
-banditbox is off nothing runs, and the first run after it comes back picks up what arrived. The
-trigger is a poll rather than GitHub's webhook because the T3 server on banditbox (0.1.1-nightly)
+the desktop is off nothing runs, and the first run after it comes back picks up what arrived. The
+trigger is a poll rather than GitHub's webhook because the T3 server on that desktop (0.1.1-nightly)
 cannot filter webhook deliveries yet, so every label change would start a run.
 
 ## Labels

@@ -69,7 +69,7 @@ This document is the one thing the effort that builds phases 1 to 4 reads beside
 
 Two readers. The agent that builds the core and the Linux shell reads all of it. Liam's Claude reads the shell chapter and the macOS appendix later.
 
-The audience for the app was settled while charting, in conversation on 2026-09-03 with no ticket. The owner comes first, on two machines: the Arch desktop (banditbox, an RTX 3090 on the NVIDIA driver, Hyprland) and the Arch laptop (kangaeru, a Radeon 860M on Mesa, Hyprland). Liam, a friend with a Mac, comes later and builds that shell with his own Claude; the owner has no Mac and there is none in the fleet. Friends on Windows and on Debian or Arch come later still. Nothing in this document may block any of them, and nothing on this route serves them: the Qt shell compiles on those platforms, and that is as far as the spec goes.
+The audience for the app was settled while charting, in conversation on 2026-09-03 with no ticket. The owner comes first, on two machines: the Arch desktop (an RTX 3090 on the NVIDIA driver, Hyprland) and the Arch laptop (a Radeon 860M on Mesa, Hyprland). Liam, a friend with a Mac, comes later and builds that shell with his own Claude; the owner has no Mac and there is none in the fleet. Friends on Windows and on Debian or Arch come later still. Nothing in this document may block any of them, and nothing on this route serves them: the Qt shell compiles on those platforms, and that is as far as the spec goes.
 
 ### 1.2 Repository, branches and versions
 
@@ -192,7 +192,7 @@ The answer is yes. libmpv renders inside a Qt 6 QML window on this hardware with
 
 #### Setup
 
-banditbox: Arch, Hyprland 0.56.1, RTX 3090 on nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0 (libmpv client API 2.5), mpvqt 1.2.0-1 installed from extra for this spike. The app is C++ and CMake, no Rust, so the GPU question stays separate from the build-system question: one `MpvItem` subclass of `MpvAbstractItem` marked `QML_ELEMENT`, `QQuickWindow::setGraphicsApi(OpenGL)` before the application object, a second `MpvItem` in the corner as a seek preview, and a scripted 68 second sequence that logs observed mpv properties as JSON lines instead of polling them. Each sequence holds a chapter seek, a pause with ten frame steps, a fullscreen toggle and four preview seeks, about 120 s of video.
+The desktop: Arch, Hyprland 0.56.1, RTX 3090 on nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0 (libmpv client API 2.5), mpvqt 1.2.0-1 installed from extra for this spike. The app is C++ and CMake, no Rust, so the GPU question stays separate from the build-system question: one `MpvItem` subclass of `MpvAbstractItem` marked `QML_ELEMENT`, `QQuickWindow::setGraphicsApi(OpenGL)` before the application object, a second `MpvItem` in the corner as a seek preview, and a scripted 68 second sequence that logs observed mpv properties as JSON lines instead of polling them. Each sequence holds a chapter seek, a pause with ten frame steps, a fullscreen toggle and four preview seeks, about 120 s of video.
 
 Test file: Girls und Panzer 03 (ak-Submarines BD 1080p). HEVC Main 10 (yuv420p10), FLAC, one ASS subtitle track with 15 embedded fonts, chapters OP, Part A, Part B, ED and Preview, 23.976 fps.
 
@@ -276,7 +276,7 @@ The answer is yes. The same app plays the same file the same way on the Radeon 8
 
 #### Setup
 
-kangaeru: Arch, kernel 7.1.11-zen1, Hyprland 0.56.2 on the laptop's own 1920 by 1200 panel at 60 Hz (VRR off), Radeon 860M (Krackan) on Mesa 26.2.1 with libva 2.24.1, qt6-base, qt6-declarative and qt6-wayland 6.11.2, mpv 0.41.0-6, mpvqt 1.2.0-1. Run over SSH from the desktop with nobody at the laptop; the tailnet path was direct over the LAN. The window went up on the empty focused workspace and every run was measured there, tiled into a 1824 by 1156 slot at 74,22 (the owner's gaps). Same app, same file (sha256 starting `f9d5a1ed`), same 68 second script, driven through `spikes/libmpv-qml/run-laptop.sh` (no window moves, one monitor) and `occlude.sh` for the hidden-workspace test.
+The laptop: Arch, kernel 7.1.11-zen1, Hyprland 0.56.2 on the laptop's own 1920 by 1200 panel at 60 Hz (VRR off), Radeon 860M (Krackan) on Mesa 26.2.1 with libva 2.24.1, qt6-base, qt6-declarative and qt6-wayland 6.11.2, mpv 0.41.0-6, mpvqt 1.2.0-1. Run over SSH from the desktop with nobody at the laptop; the tailnet path was direct over the LAN. The window went up on the empty focused workspace and every run was measured there, tiled into a 1824 by 1156 slot at 74,22 (the owner's gaps). Same app, same file (sha256 starting `f9d5a1ed`), same 68 second script, driven through `spikes/libmpv-qml/run-laptop.sh` (no window moves, one monitor) and `occlude.sh` for the hidden-workspace test.
 
 The one package installed for the spike was mpvqt. The VA driver is Mesa 26.2.1's own `radeonsi_drv_video.so`, part of the mesa package now; libva 2.24.1 was already there; `libva-utils` is absent and was not needed.
 
@@ -372,7 +372,7 @@ The answer is yes. A Cargo-only cxx-qt build produces an installable Arch packag
 
 #### Setup
 
-banditbox on 2026-09-03: Arch, Hyprland 0.56.1, RTX 3090 on nvidia-utils 610.43.03, Rust 1.92.0 stable through rustup 1.29.0 (pacman sees the rustup package as providing rust and cargo), GCC 16.1.1, lld 22.1.8, pacman 7.1.0 with its makepkg, qt6-base 6.11.1-1, qt6-declarative 6.11.1-3, mpvqt 1.2.0-1, mpv 0.41.0-3. cxx-qt, cxx-qt-lib and cxx-qt-build pinned with `=0.10.0`; locked with them qt-build-utils 0.10.0, cxx 1.0.199, cc 1.4.4, tokio 1.53.1.
+The desktop on 2026-09-03: Arch, Hyprland 0.56.1, RTX 3090 on nvidia-utils 610.43.03, Rust 1.92.0 stable through rustup 1.29.0 (pacman sees the rustup package as providing rust and cargo), GCC 16.1.1, lld 22.1.8, pacman 7.1.0 with its makepkg, qt6-base 6.11.1-1, qt6-declarative 6.11.1-3, mpvqt 1.2.0-1, mpv 0.41.0-3. cxx-qt, cxx-qt-lib and cxx-qt-build pinned with `=0.10.0`; locked with them qt-build-utils 0.10.0, cxx 1.0.199, cc 1.4.4, tokio 1.53.1.
 
 #### The crate
 
@@ -540,7 +540,7 @@ mpv 0.41's defaults are already what the candidate list was reaching for: `scale
 
 #### The laptop matrix
 
-Twenty three runs on kangaeru: Radeon 860M on Mesa 26.2.1 with libva 2.24.1, mpv 0.41.0, mpvqt 1.2.0, qt6-base and qt6-declarative 6.11.2, libplacebo 7.360.1, kernel 7.1.11-zen1, Hyprland 0.56 on the 1920 by 1200 panel at 60 Hz, `QSG_RENDER_LOOP=threaded` on every run, on mains the whole time (battery 27 to 72 percent), nobody at the machine, the window on an empty focused workspace. The spike harness at `spikes/libmpv-qml` was extended with `--set key=value`, `--play SECONDS`, `--start`, `--stills` and `--fullscreen`. Each run plays 60 undisturbed seconds while a sampler reads `gpu_busy_percent`, `power1_average`, `freq1_input` and `temp1_input` four times a second, then pauses on three exact frames and grabs the panel with `grim`. The numbers are the mean over the playback window alone, and every config's stills diff against its block's baseline pixel for pixel. `base` runs first in every block and `base2` last with identical settings, so the tables carry their own noise floor: 0.5, 0.7 and 0.1 points of GPU busy, and under 0.4 W.
+Twenty three runs on the laptop: Radeon 860M on Mesa 26.2.1 with libva 2.24.1, mpv 0.41.0, mpvqt 1.2.0, qt6-base and qt6-declarative 6.11.2, libplacebo 7.360.1, kernel 7.1.11-zen1, Hyprland 0.56 on the 1920 by 1200 panel at 60 Hz, `QSG_RENDER_LOOP=threaded` on every run, on mains the whole time (battery 27 to 72 percent), nobody at the machine, the window on an empty focused workspace. The spike harness at `spikes/libmpv-qml` was extended with `--set key=value`, `--play SECONDS`, `--start`, `--stills` and `--fullscreen`. Each run plays 60 undisturbed seconds while a sampler reads `gpu_busy_percent`, `power1_average`, `freq1_input` and `temp1_input` four times a second, then pauses on three exact frames and grabs the panel with `grim`. The numbers are the mean over the playback window alone, and every config's stills diff against its block's baseline pixel for pixel. `base` runs first in every block and `base2` last with identical settings, so the tables carry their own noise floor: 0.5, 0.7 and 0.1 points of GPU busy, and under 0.4 W.
 
 Three geometries, because the window size decides which scaler runs at all:
 
@@ -613,7 +613,7 @@ The laptop's 1920 by 1200 panel cannot produce an upscale at all, so `scale` was
 
 #### The desktop matrix
 
-Eighteen fullscreen runs on banditbox: RTX 3090 on nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0, mpvqt 1.2.0, libplacebo 7.360.1, kernel 7.1.5-arch1, Hyprland 0.56.1. Every run played fullscreen on HDMI-A-1, the 5120 by 1440 panel at 144 Hz with VRR on, on its own workspace while the owner was away from the desk. `QSG_RENDER_LOOP=threaded` on every run, and Qt's animation driver reported a 6.95 ms vsync on every run, so the window was paced at 144 Hz.
+Eighteen fullscreen runs on the desktop: RTX 3090 on nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0, mpvqt 1.2.0, libplacebo 7.360.1, kernel 7.1.5-arch1, Hyprland 0.56.1. Every run played fullscreen on HDMI-A-1, the 5120 by 1440 panel at 144 Hz with VRR on, on its own workspace while the owner was away from the desk. `QSG_RENDER_LOOP=threaded` on every run, and Qt's animation driver reported a 6.95 ms vsync on every run, so the window was paced at 144 Hz.
 
 The laptop's `quality.sh` became `quality-nv.sh` for this box: the window launches straight onto a workspace through `hl.dsp.exec_cmd` with a `workspace N silent` rule, so it never appears on the owner's workspace; `nvsample.py` reads `utilization.gpu`, `power.draw`, `clocks.gr` and `temperature.gpu` from `nvidia-smi` four times a second, in the same five-field format `summarise.py` parses; `grim -o HDMI-A-1` grabs the panel on each still. `nvidia-smi pmon` reports no per-process load for the player (a `C+G` process with every column blank), so the numbers are whole-GPU. In the fhd block busy held at 0.0 points of drift between the two baselines while power rose 1.3 W as the card warmed two degrees; in the uhd block busy drifted 3.2 points while power moved 0.3 W. On this box power is the cost column to read and busy is shown for completeness: `utilization.gpu` is a coarse time-busy sample and the compositor shares it. The board sits at about 138 W with the player idle because two panels keep the memory clock pinned and the compositor holds the core at 1725 MHz; the player itself is a few watts on top.
 
