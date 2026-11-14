@@ -241,7 +241,7 @@ jobs:
           if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
           # The IPA is there when its build succeeded; no match must not reach gh as a name.
           shopt -s nullglob
-          files=(dist/*.apk dist/*.ipa)
+          files=(dist/*.apk dist/*.aab dist/*.ipa)
           gh release create "$tag" "${files[@]}" --draft --prerelease --latest=false --target "$SHA" \
             --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
