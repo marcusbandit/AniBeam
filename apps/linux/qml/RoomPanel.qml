@@ -86,7 +86,23 @@ Item {
         var ep = e.episode_title ? e.episode_title : (e.number !== null && e.number !== undefined ? words.episodeName("", e.number) : e.episode_key)
         return words.t("room-panel-watching", { series: e.series_title, episode: ep })
     }
-    readonly property var readyWords: ({ Ready: "room-panel-ready", Loading: "room-panel-opening", Missing: "room-panel-missing" })
+    // How each member's state shows on the right of their row
+    readonly property var stateLook: ({
+        Ready: { icon: "circle-check", color: theme.green, msg: "room-panel-ready", spin: false },
+        Loading: { icon: "loader-circle", color: theme.textDim, msg: "room-panel-opening", spin: true },
+        Missing: { icon: "circle-alert", color: theme.yellow, msg: "room-panel-missing", spin: false },
+        Downloading: { icon: "download", color: theme.accent, msg: "room-panel-downloading", spin: false },
+        Asking: { icon: "loader-circle", color: theme.textDim, msg: "room-panel-asking", spin: true },
+        Searching: { icon: "loader-circle", color: theme.textDim, msg: "room-panel-searching", spin: true },
+        Failed: { icon: "circle-x", color: theme.yellow, msg: "room-panel-failed", spin: false }
+    })
+    // The first letter of a name, for its round avatar
+    function initial(name) {
+        var s = String(name || "").trim()
+        if (s === "") return "?" // i18n: none
+        var c = s.codePointAt(0)
+        return String.fromCodePoint(c).toUpperCase()
+    }
 
     Blocker { anchors.fill: parent; scrim: !root.inPlayer; dismissOnPress: true; onDismissed: root.close() }
     Corner {
@@ -298,13 +314,6 @@ Item {
                             role: "title"; font.pointSize: theme.typeNormal
                             wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                         }
-                        Label {
-                            width: parent.width
-                            visible: room.missing
-                            msg: "room-panel-missing-here"
-                            color: theme.yellow
-                            wrapMode: Text.Wrap
-                        }
                         Button {
                             objectName: "room-panel-open-episode"
                             visible: !root.inPlayer && !!room.episode && room.episode.file >= 0
@@ -312,7 +321,12 @@ Item {
                             onClicked: { root.close(); room.openEpisode() }
                         }
                         Label { msg: "room-panel-people"; msgArgs: ({ count: root.info ? root.info.members.length : 0 }); role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                        // Who is here: a round initial, the name with the host's crown, and
+                        // where each one is on the right. Someone fetching the episode gets a
+                        // thin line under their name with the time left; your own row carries
+                        // Get media while you lack it.
                         Column {
+                            objectName: "room-panel-members"
                             width: parent.width
                             spacing: theme.space(1)
                             Repeater {
@@ -320,30 +334,128 @@ Item {
                                 Item {
                                     id: member
                                     required property var modelData
-                                    readonly property bool me: root.info && modelData.id === root.info.you
+                                    readonly property var m: modelData
+                                    readonly property bool me: root.info !== null && m.id === root.info.you
+                                    readonly property string fetch: me && root.info ? String(root.info.fetch || "Idle") : "Idle"
+                                    readonly property bool downloading: m.ready === "Downloading"
+                                    readonly property bool offer: me && root.info.can_fetch === true
+                                    readonly property real percent: downloading ? Math.max(0, Math.min(100, Number(m.progress || 0))) : 0
+                                    // Your own fetch says more than the relay's echo of it
+                                    readonly property string shown: me && (fetch === "Asking" || fetch === "Searching") ? fetch
+                                                                  : me && fetch === "Failed" && !offer ? "Failed"
+                                                                  : String(m.ready)
+                                    readonly property var look: root.stateLook[shown] || root.stateLook.Loading
+                                    objectName: "room-panel-member-" + m.id
                                     width: people.width
-                                    height: theme.space(8)
-                                    Row {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: theme.space(2)
-                                        width: parent.width - readyChip.width - theme.space(2)
+                                    height: theme.space(10) + (downloading ? theme.space(4) : 0)
+
+                                    Rectangle {
+                                        id: avatar
+                                        y: theme.space(1)
+                                        width: theme.space(8); height: width; radius: width / 2
+                                        color: member.m.host ? theme.tone(theme.raised, theme.accent, 0.28) : theme.tone(theme.raised, theme.text, 0.12)
+                                        border.width: member.me ? 1 : 0
+                                        border.color: theme.lineStrong
                                         Label {
+                                            anchors.centerIn: parent
+                                            text: root.initial(member.m.name)
+                                            role: "ui"; font.weight: 600
+                                            color: member.m.host ? theme.accent : theme.text
+                                        }
+                                    }
+                                    Row {
+                                        id: nameRow
+                                        anchors.left: avatar.right; anchors.leftMargin: theme.space(3)
+                                        anchors.verticalCenter: avatar.verticalCenter
+                                        spacing: theme.space(1.5)
+                                        readonly property real budget: (member.offer ? getButton.x : status.x) - x - theme.space(3)
+                                        Label {
+                                            id: nameText
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.min(implicitWidth, parent.width - (hostChip.visible ? hostChip.width + parent.spacing : 0) - (youChip.visible ? youChip.width + parent.spacing : 0))
-                                            text: member.modelData.name
-                                            role: "ui"; font.weight: member.me ? 600 : theme.roleWeight("ui")
+                                            width: Math.min(implicitWidth, Math.max(theme.space(10), nameRow.budget - (crown.visible ? crown.width + nameRow.spacing : 0) - (youText.visible ? youText.implicitWidth + nameRow.spacing : 0)))
+                                            text: member.m.name
+                                            role: "ui"
                                             elide: Text.ElideRight
                                         }
-                                        Chip { id: hostChip; anchors.verticalCenter: parent.verticalCenter; visible: member.modelData.host; small: true; mono: false; msg: "room-panel-host" }
-                                        Chip { id: youChip; anchors.verticalCenter: parent.verticalCenter; visible: member.me; small: true; mono: false; msg: "room-panel-you" }
+                                        Icon {
+                                            id: crown
+                                            objectName: "room-panel-crown"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: member.m.host
+                                            glyph: "crown"; size: theme.space(3.5); color: theme.accent
+                                        }
+                                        Label {
+                                            id: youText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: member.me
+                                            msg: "room-panel-you"
+                                            color: theme.textFaint; font.pointSize: theme.typeSmall
+                                        }
                                     }
-                                    Chip {
-                                        id: readyChip
-                                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                                        small: true; mono: false
-                                        icon: member.modelData.ready === "Ready" ? "circle-check" : member.modelData.ready === "Missing" ? "circle-alert" : "loader-circle"
-                                        textColor: member.modelData.ready === "Ready" ? theme.green : member.modelData.ready === "Missing" ? theme.yellow : theme.textDim
-                                        msg: root.readyWords[member.modelData.ready] || "room-panel-opening"
+                                    Row {
+                                        id: status
+                                        objectName: "room-panel-status"
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: avatar.verticalCenter
+                                        visible: !member.offer
+                                        spacing: theme.space(1.5)
+                                        Icon {
+                                            id: statusIcon
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            glyph: member.look.icon; size: theme.space(4); color: member.look.color
+                                            RotationAnimation on rotation {
+                                                running: member.look.spin && status.visible && !theme.reducedMotion
+                                                from: 0; to: 360; duration: 1200; loops: Animation.Infinite
+                                                onRunningChanged: if (!running) statusIcon.rotation = 0
+                                            }
+                                        }
+                                        Label {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: member.downloading ? words.t("room-panel-percent", { percent: Math.floor(member.percent) }) : words.t(member.look.msg)
+                                            role: member.downloading ? "ledger" : "ui"
+                                            color: member.look.color
+                                            font.pointSize: theme.typeSmall
+                                        }
+                                    }
+                                    Button {
+                                        id: getButton
+                                        objectName: "room-panel-get-media"
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: avatar.verticalCenter
+                                        visible: member.offer
+                                        primary: true; small: true
+                                        icon: member.fetch === "Failed" ? "rotate-cw" : "download"
+                                        msg: member.fetch === "Failed" ? "action-try-again" : "room-panel-get-media"
+                                        takesFocus: false
+                                        onClicked: room.getMedia()
+                                    }
+                                    // The download: a thin line from the name to the edge, the time left at its end
+                                    Item {
+                                        objectName: "room-panel-progress"
+                                        visible: member.downloading
+                                        anchors.left: nameRow.left; anchors.right: parent.right
+                                        anchors.top: avatar.bottom; anchors.topMargin: theme.space(1)
+                                        height: theme.space(3)
+                                        Rectangle {
+                                            id: track
+                                            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - (etaText.visible ? etaText.implicitWidth + theme.space(3) : 0)
+                                            height: 3; radius: 1.5
+                                            color: theme.line
+                                            Rectangle {
+                                                width: Math.max(height, parent.width * member.percent / 100)
+                                                height: parent.height; radius: parent.radius
+                                                color: theme.accent
+                                                Behavior on width { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
+                                            }
+                                        }
+                                        Label {
+                                            id: etaText
+                                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                            visible: member.m.eta !== null && member.m.eta !== undefined && member.m.eta > 0
+                                            text: visible ? words.t("room-panel-left", { time: member.m.eta < 60 ? words.countdownSeconds(member.m.eta) : words.countdown(member.m.eta) }) : ""
+                                            role: "ledger"; color: theme.textDim; font.pointSize: theme.typeSmall
+                                        }
                                     }
                                 }
                             }
