@@ -37,7 +37,7 @@
 
 <script>
 // ?to=altstore|sidestore|livecontainer with one of
-//   &source=stable|nightly   adds the site's source for that channel (altstore/<channel>.json) to the app,
+//   &source=1                adds the site's one source (altstore/source.json, AniBeam and AniBeam Nightly) to the app,
 //   &channel=stable|nightly  installs the IPA the site's releases.json lists for that channel once,
 //   &url=<IPA url>           installs that IPA once (a PR test build).
 // Only the site's own source and an IPA on this project's releases are passed on, so the page cannot
@@ -47,25 +47,18 @@
 const SCHEMES = { altstore: "altstore", sidestore: "sidestore", livecontainer: "livecontainer" };
 const KEYS = { stable: "phone", nightly: "phone_nightly" };
 const PREFIX = "https://github.com/marcusbandit/AniBeam/releases/download/";
-const SOURCES = "https://anibeam.app/altstore/";
+const SOURCE = "https://anibeam.app/altstore/source.json";
 const okIpa = (ipa) => typeof ipa === "string" && ipa.startsWith(PREFIX) && ipa.endsWith(".ipa") && !/[\s<>"]/.test(ipa);
 const done = (ipa, scheme) => okIpa(ipa)
   ? { ipa, redirect: scheme + "://install?url=" + encodeURIComponent(ipa) }
   : { error: "That is not an Anibeam IPA link." };
-const source = (channel, scheme, ipa) => {
-  const feed = SOURCES + channel + ".json";
-  return { feed, ipa, redirect: scheme + "://source?url=" + encodeURIComponent(feed) };
-};
+const source = (scheme) => ({ feed: SOURCE, redirect: scheme + "://source?url=" + encodeURIComponent(SOURCE) });
 // What is wanted: from the address (url=), or from the release list (channel=, source=), null until it is read.
 function wanted(search) {
   const q = new URLSearchParams(search);
   const scheme = SCHEMES[q.get("to")];
   if (!scheme) return { error: "Unknown app. Use AltStore, SideStore or LiveContainer." };
-  if (q.has("source")) {
-    const key = KEYS[q.get("source")];
-    if (!key) return { error: "That is not an Anibeam source." };
-    return { scheme, key, channel: q.get("source"), source: true };
-  }
+  if (q.has("source")) return source(scheme);
   if (q.get("url")) return done(q.get("url"), scheme);
   const key = KEYS[q.get("channel")];
   if (!key) return { error: "That is not an Anibeam IPA link." };
@@ -75,7 +68,6 @@ function fromReleases(w, releases) {
   const rel = releases && releases[w.key];
   const ipa = rel && rel.assets && rel.assets.ipa;
   if (!ipa) return { none: true, channel: w.channel };
-  if (w.source) return okIpa(ipa) ? source(w.channel, w.scheme, ipa) : { error: "That is not an Anibeam source." };
   return done(ipa, w.scheme);
 }
 if (typeof document !== "undefined") {
@@ -99,8 +91,10 @@ if (typeof document !== "undefined") {
     } else {
       msg.textContent = "Opening the app. If nothing happens, install it first, or download the IPA and open it there.";
     }
-    dl.href = r.ipa;
-    dl.hidden = false;
+    if (r.ipa) {
+      dl.href = r.ipa;
+      dl.hidden = false;
+    }
     location.href = r.redirect;
   };
   const w = wanted(location.search);

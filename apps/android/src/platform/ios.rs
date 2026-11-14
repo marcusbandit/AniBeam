@@ -8,10 +8,11 @@
 //! not where the crease runs, so the crease is never reported and the layout takes it for a
 //! book fold's, down the middle of the window: `fold` says which way the middle runs.
 //!
-//! The orientations the app turns to are winit's view controller's to answer UIKit for, so
-//! they are asked for through winit's window. An iPhone that does not fold stays upright
-//! outside the player and turns to landscape in it; one whose hinge has been heard (the Duo)
-//! turns as it is held, everywhere.
+//! The orientations the app turns to, the status bar and the home indicator are winit's
+//! view controller's to answer UIKit for, so they are asked for through winit's window. An
+//! iPhone that does not fold stays upright outside the player and turns to landscape in it;
+//! one whose hinge has been heard (the Duo) turns as it is held, everywhere. The player
+//! hides the status bar and the home indicator.
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -268,9 +269,16 @@ fn with_winit<T>(f: impl FnOnce(&WinitWindow) -> T) -> Option<T> {
     window.window().with_winit_window(f)
 }
 
-/// The player's screen: landscape on an iPhone that does not fold, upright again when it
-/// closes. One that folds turns as it is held either way.
+/// The player's screen: while it is up the status bar is hidden and the home indicator fades
+/// after a moment, as in Apple's own players; when it closes both come back. UIKit lays the
+/// safe area out again, and winit tells Slint, so the pages keep clear of the bar. It is
+/// landscape on an iPhone that does not fold, upright again when it closes; one that folds
+/// turns as it is held either way.
 pub fn player_screen(on: bool) {
+    with_winit(|w| {
+        w.set_prefers_status_bar_hidden(on);
+        w.set_prefers_home_indicator_hidden(on);
+    });
     PLAYING.set(on);
     orient();
 }

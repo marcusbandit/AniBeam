@@ -11,7 +11,7 @@ and every nightly, so the file is current without each visitor asking GitHub's A
     "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
     "tags":    every published tag, for What's new to link only releases that exist
   }
-and <site>/altstore/stable.json and nightly.json, the iPhone app's AltStore-format sources
+and <site>/altstore/source.json, the iPhone app's AltStore-format source
 (tools/altstore.py).
 
 usage: releases.py <site-dir>    GH_TOKEN, when set, authenticates the call
