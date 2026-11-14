@@ -3460,6 +3460,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = 방에서 쓸 이름
 rail-room = 함께 보기(Ctrl+J)
 rail-room-in = 함께 보기 방에 있음(Ctrl+J)
+rail-join-room = 방 참여
+rail-in-room = 방에 있음
 player-chrome-watch-together = 함께 보기
 player-chrome-room = 방 { $code } · { $count ->
    *[other] { $count }명
