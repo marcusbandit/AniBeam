@@ -58,6 +58,9 @@ env:
 
 jobs:
   build-windows:
+    # A pull request's own run builds Linux alone (#993); the `test build` label (pr-build.yml
+    # passes `ref`), nightlies and releases still build this.
+    if: github.event_name != 'pull_request' || inputs.ref != ''
     runs-on: windows-2025
     timeout-minutes: 150
     defaults:
