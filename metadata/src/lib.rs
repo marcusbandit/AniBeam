@@ -1,8 +1,5 @@
-//! Provider records: the pure translation from a provider's reply to the
-//! rows behind it. Every match, every refresh and every crawl step writes
-//! through here, so the rules live in one place rather than once per job.
-//!
-//! The metadata team (#854) is this crate: matching and fetching, the
+//! The metadata team (#854): matching and fetching, the provider records
+//! every match, refresh and crawl step writes through (`record`), the
 //! franchise crawl and closure (`franchise`), Recommended (`recommended`),
 //! Airing now (`airing_now`), the aired episodes (`aired`) and the calendar
 //! feed (`calendar`). The core hands it on as `anibeam_core::metadata`, with

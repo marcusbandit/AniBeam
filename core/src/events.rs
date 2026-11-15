@@ -3,29 +3,25 @@
 //! the core: `Subscription`, the handle `Core::subscribe` gives a shell, which
 //! uniffi exports from the crate that holds `Core`.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 pub use anibeam_foundation::events::*;
 
 use crate::contract::EventListener;
+use crate::sync::recover;
 
 /// Handed back by `Core::subscribe`; dropping it or calling `unsubscribe`
-/// removes the listener.
+/// removes the listener. It holds the foundation's `Listening`, which does
+/// the removing, once.
 #[derive(uniffi::Object)]
 pub struct Subscription {
-    bus: Arc<EventBus>,
-    id: u64,
-    active: AtomicBool,
+    listening: Mutex<Option<Listening>>,
 }
 
 impl Subscription {
     pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
-        let id = bus.subscribe(listener);
         Arc::new(Subscription {
-            bus,
-            id,
-            active: AtomicBool::new(true),
+            listening: Mutex::new(Some(Listening::new(bus, listener))),
         })
     }
 }
@@ -33,15 +29,10 @@ impl Subscription {
 #[uniffi::export]
 impl Subscription {
     pub fn unsubscribe(&self) {
-        if self.active.swap(false, Ordering::SeqCst) {
-            self.bus.unsubscribe(self.id);
-        }
-    }
-}
-
-impl Drop for Subscription {
-    fn drop(&mut self) {
-        self.unsubscribe();
+        // Taken out of the mutex before it is dropped: the drop takes the
+        // bus's own lock.
+        let listening = recover(&self.listening).take();
+        drop(listening);
     }
 }
 

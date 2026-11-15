@@ -17,7 +17,7 @@ use std::time::Duration;
 use crate::Metadata;
 use anibeam_contract::*;
 use anibeam_foundation::atomic_file;
-use anibeam_foundation::events::Subscribed;
+use anibeam_foundation::events::Listening;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
@@ -41,7 +41,7 @@ const FOLD_OCTETS: usize = 75;
 /// delete) from crossing on the same file.
 #[derive(Default)]
 pub(crate) struct Calendar {
-    listener: Mutex<Option<Subscribed>>,
+    listener: Mutex<Option<Listening>>,
     file: Mutex<()>,
     /// A rewrite is waiting out `SETTLE`.
     queued: AtomicBool,
@@ -381,7 +381,7 @@ pub fn listen(metadata: &Arc<Metadata>) {
         metadata: Arc::downgrade(metadata),
     });
     *recover(&metadata.calendar.listener) =
-        Some(Subscribed::new(metadata.services.bus.clone(), listener));
+        Some(Listening::new(metadata.services.bus.clone(), listener));
 }
 
 /// Unsubscribes the listener. Taken out of the mutex before it is dropped,

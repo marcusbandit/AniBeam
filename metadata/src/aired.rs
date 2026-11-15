@@ -23,7 +23,7 @@ use rusqlite::{Connection, params};
 
 use crate::Metadata;
 use anibeam_contract::*;
-use anibeam_foundation::events::Subscribed;
+use anibeam_foundation::events::Listening;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::store::settings;
@@ -101,7 +101,7 @@ pub(crate) fn due(conn: &Connection, from: i64, to: i64) -> Result<Vec<EpisodeOu
 /// alarm, and a re-arm waiting out `SETTLE`.
 #[derive(Default)]
 pub(crate) struct Aired {
-    listener: Mutex<Option<Subscribed>>,
+    listener: Mutex<Option<Listening>>,
     alarm: Mutex<Option<tokio::task::JoinHandle<()>>>,
     queued: AtomicBool,
     /// One announce at a time, so an alarm and a re-arm never say one episode twice.
@@ -203,7 +203,7 @@ pub fn listen(metadata: &Arc<Metadata>) {
         metadata: Arc::downgrade(metadata),
     });
     *recover(&metadata.aired.listener) =
-        Some(Subscribed::new(metadata.services.bus.clone(), listener));
+        Some(Listening::new(metadata.services.bus.clone(), listener));
     let owner = metadata.clone();
     metadata.services.handle.spawn_blocking(move || arm(&owner));
 }

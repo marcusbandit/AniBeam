@@ -188,7 +188,7 @@ fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::franchise::testing::*;
+    use anibeam_foundation::store::testing::*;
 
     /// The nodes a closure drew, smallest id first.
     fn ids(closure: &Closure) -> Vec<u64> {

@@ -351,22 +351,22 @@ impl EventBus {
     }
 }
 
-/// A listener a team keeps on the bus for as long as it holds this: dropping it
-/// unsubscribes, once. A shell's listener is the core's `Subscription`, which does the
-/// same behind uniffi; a team below the core keeps this instead.
-pub struct Subscribed {
+/// A listener on the bus for as long as this is held: dropping it unsubscribes, once.
+/// A team keeps one for a listener of its own; the core's `Subscription`, the handle a
+/// shell gets, holds one behind uniffi.
+pub struct Listening {
     bus: Arc<EventBus>,
     id: u64,
 }
 
-impl Subscribed {
-    pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Subscribed {
+impl Listening {
+    pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Listening {
         let id = bus.subscribe(listener);
-        Subscribed { bus, id }
+        Listening { bus, id }
     }
 }
 
-impl Drop for Subscribed {
+impl Drop for Listening {
     fn drop(&mut self) {
         self.bus.unsubscribe(self.id);
     }
@@ -484,6 +484,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
         (dir, EventBus::new(store).unwrap())
+    }
+
+    #[test]
+    fn dropping_a_listening_unsubscribes() {
+        let (_dir, bus) = bus();
+        let c = Arc::new(Collector::default());
+        {
+            let _listening = Listening::new(bus.clone(), c.clone());
+            bus.debug(Stage::System, "a", EventBody::Notice);
+        }
+        bus.debug(Stage::System, "b", EventBody::Notice);
+        assert_eq!(c.events().len(), 1);
     }
 
     /// Every column of every stored row, as the database holds it.

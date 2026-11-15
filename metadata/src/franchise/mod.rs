@@ -183,6 +183,3 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
         .optional()?;
     Ok(found.flatten().as_deref().and_then(ListStatus::from_column))
 }
-
-#[cfg(test)]
-pub(crate) use anibeam_foundation::store::testing;
