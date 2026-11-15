@@ -52,7 +52,7 @@ mod linux {
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(fallback)))
     }
 
-    /// Every regular file in `dir` named under the old id, with its new path.
+    /// Every regular file in `dir` named under the old id, with its path under the new one.
     fn old_files(dir: &Path) -> Vec<(PathBuf, PathBuf)> {
         let Ok(read) = std::fs::read_dir(dir) else {
             return Vec::new();
@@ -63,7 +63,6 @@ mod linux {
                 let new = renamed(&e.file_name().to_string_lossy())?;
                 Some((e.path(), dir.join(new)))
             })
-            .filter(|(_, new)| !new.exists())
             .collect()
     }
 
@@ -84,11 +83,9 @@ mod linux {
         moved
     }
 
-    /// Replaces the old id in a file that stays where it is, when it mentions it.
+    /// Replaces the old id in a file that stays where it is, when it mentions it. A link
+    /// (into a dotfiles checkout, say) gets its target written and stays a link.
     fn respell(path: &Path) {
-        if path.is_symlink() {
-            return;
-        }
         if let Ok(text) = std::fs::read_to_string(path)
             && text.contains(OLD_ID)
         {
@@ -96,8 +93,25 @@ mod linux {
         }
     }
 
+    /// Every `mimeapps.list` in `dir`, the desktop's own ones (`kde-mimeapps.list`) too.
+    fn mime_lists(dir: &Path) -> Vec<PathBuf> {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        read.flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with("mimeapps.list"))
+            .map(|e| e.path())
+            .collect()
+    }
+
     pub fn adopt() {
         let Some(data) = data_home() else { return };
+        // Once per install: after the first launch of a renamed build there is nothing left
+        // to look for, and a launch should not pay for the look.
+        let done = PathBuf::from(&crate::runtime::paths().core.data_dir).join("old-name-done");
+        if done.exists() {
+            return;
+        }
         let ledger =
             PathBuf::from(&crate::runtime::paths().core.data_dir).join("launcher-icons.txt");
         let config = xdg("XDG_CONFIG_HOME", ".config");
@@ -105,10 +119,14 @@ mod linux {
             let apps = data.join("applications");
             crate::scheme::linux::quiet(Command::new("update-desktop-database").arg(&apps));
         }
+        if let Some(dir) = done.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&done, "");
     }
 
-    /// Does the renaming under these folders. True when a desktop entry moved, so the
-    /// desktop's cache wants rebuilding.
+    /// Does the renaming under these folders. True when a desktop entry moved or went, so
+    /// the desktop's cache wants rebuilding.
     pub(super) fn adopt_in(
         data: &Path,
         config: Option<&Path>,
@@ -118,30 +136,55 @@ mod linux {
         let apps = data.join("applications");
         let mut entries = false;
         for (from, to) in old_files(&apps) {
-            entries |= rewrite(&from, &to);
+            if to.exists() {
+                // The new entry is there already (the installer wrote it): the old one is a
+                // second launcher entry with a dead icon, so it goes.
+                entries |= std::fs::remove_file(&from).is_ok();
+            } else {
+                entries |= rewrite(&from, &to);
+            }
         }
 
         let hicolor = data.join("icons/hicolor");
-        let mut icons = false;
+        let mut moved = Vec::new();
         if let Ok(sizes) = std::fs::read_dir(&hicolor) {
             for size in sizes.flatten() {
                 for (from, to) in old_files(&size.path().join("apps")) {
-                    icons |= std::fs::rename(&from, &to).is_ok();
+                    if !to.exists() && std::fs::rename(&from, &to).is_ok() {
+                        moved.push((from, to));
+                    }
                 }
             }
         }
-        if icons {
+        if !moved.is_empty() {
             // The launcher re-reads hicolor when the folder's time changes.
             let _ = std::fs::File::open(&hicolor)
                 .and_then(|f| f.set_modified(std::time::SystemTime::now()));
+            // The list of icons a Dark pick wrote follows the ones that moved, and only
+            // those, so a Default pick never removes a file this build did not write.
+            if let Ok(text) = std::fs::read_to_string(ledger) {
+                let lines: String = text
+                    .lines()
+                    .map(|line| {
+                        let path = Path::new(line);
+                        let to = moved
+                            .iter()
+                            .find(|(from, _)| from == path)
+                            .map(|(_, to)| to);
+                        format!("{}\n", to.map_or(path, |t| t.as_path()).display())
+                    })
+                    .collect();
+                if lines != text {
+                    let _ = crate::scheme::linux::replace(ledger, &lines);
+                }
+            }
         }
 
-        // The list of icons a Dark pick wrote names their paths, so it follows them.
-        respell(ledger);
-        if let Some(config) = config {
-            respell(&config.join("mimeapps.list"));
+        for dir in config.into_iter().chain([apps.as_path()]) {
+            for list in mime_lists(dir) {
+                respell(&list);
+            }
         }
-        respell(&apps.join("mimeapps.list"));
 
         if let Some(pictures) = pictures {
             let (from, to) = (pictures.join(OLD_FOLDER), pictures.join("Anibeam"));
@@ -152,18 +195,14 @@ mod linux {
         entries
     }
 
-    /// The user's Pictures folder, as `xdg-user-dir` names it.
+    /// The Pictures folder the player saves screenshots in: the XDG one, else ~/Pictures,
+    /// which is where Qt's PicturesLocation falls back to. Never the home folder itself.
     fn pictures() -> Option<PathBuf> {
-        let out = Command::new("xdg-user-dir")
-            .arg("PICTURES")
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()?;
-        let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
-        // With no Pictures set, xdg-user-dir answers with the home folder.
-        (path.is_absolute() && Some(path.as_os_str()) != std::env::var_os("HOME").as_deref())
-            .then_some(path)
+        let home = directories::BaseDirs::new()?.home_dir().to_path_buf();
+        let dir = directories::UserDirs::new()
+            .and_then(|u| u.picture_dir().map(Path::to_path_buf))
+            .unwrap_or_else(|| home.join("Pictures"));
+        (dir.is_absolute() && dir != home).then_some(dir)
     }
 }
 
@@ -204,16 +243,28 @@ mod tests {
         );
         let apps = data.join("applications");
         let icons = data.join("icons/hicolor/512x512/apps");
-        for dir in [&apps, &icons, &config, &pictures.join(OLD_FOLDER)] {
+        let small = data.join("icons/hicolor/256x256/apps");
+        for dir in [&apps, &icons, &small, &config, &pictures.join(OLD_FOLDER)] {
             fs::create_dir_all(dir).unwrap();
         }
         let entry =
             format!("[Desktop Entry]\nName=Anibeam\nIcon={OLD_ID}\nStartupWMClass={OLD_ID}\n");
         fs::write(apps.join(format!("{OLD_ID}.desktop")), &entry).unwrap();
         fs::write(apps.join(format!("{OLD_ID}.Dev.desktop")), &entry).unwrap();
+        // The installer already wrote the new main entry's Dev twin: the old one only goes.
+        let dev = format!("{}.Dev.desktop", crate::APP_ID);
+        fs::write(apps.join(&dev), "installer's").unwrap();
         // Someone else's entry that only starts with the same letters stays as it is.
         fs::write(apps.join(format!("{OLD_ID}Fan.desktop")), "x").unwrap();
         fs::write(icons.join(format!("{OLD_ID}.png")), "png").unwrap();
+        // A 256 icon with the new name is already there, so the old one stays where it is.
+        fs::write(small.join(format!("{OLD_ID}.png")), "old").unwrap();
+        fs::write(small.join(format!("{}.png", crate::APP_ID)), "new").unwrap();
+        fs::write(
+            config.join("kde-mimeapps.list"),
+            format!("[Added Associations]\nx-scheme-handler/anibeam={OLD_ID}.desktop;\n"),
+        )
+        .unwrap();
         fs::write(
             config.join("mimeapps.list"),
             format!("[Default Applications]\nx-scheme-handler/anibeam={OLD_ID}.desktop\n"),
@@ -222,7 +273,11 @@ mod tests {
         let ledger = home.join("launcher-icons.txt");
         fs::write(
             &ledger,
-            format!("{}\n", icons.join(format!("{OLD_ID}.png")).display()),
+            format!(
+                "{}\n{}\n",
+                icons.join(format!("{OLD_ID}.png")).display(),
+                small.join(format!("{OLD_ID}.png")).display()
+            ),
         )
         .unwrap();
 
@@ -238,7 +293,8 @@ mod tests {
             fs::read_to_string(apps.join(new(".desktop"))).unwrap(),
             entry.replace(OLD_ID, crate::APP_ID)
         );
-        assert!(apps.join(new(".Dev.desktop")).is_file());
+        assert_eq!(fs::read_to_string(apps.join(&dev)).unwrap(), "installer's");
+        assert!(!apps.join(format!("{OLD_ID}.Dev.desktop")).exists());
         assert!(!apps.join(format!("{OLD_ID}.desktop")).exists());
         assert!(apps.join(format!("{OLD_ID}Fan.desktop")).exists());
         assert!(icons.join(new(".png")).is_file());
@@ -247,7 +303,23 @@ mod tests {
                 .unwrap()
                 .contains(OLD_ID)
         );
-        assert!(!fs::read_to_string(&ledger).unwrap().contains(OLD_ID));
+        assert!(
+            !fs::read_to_string(config.join("kde-mimeapps.list"))
+                .unwrap()
+                .contains(OLD_ID)
+        );
+        assert_eq!(
+            fs::read_to_string(small.join(format!("{OLD_ID}.png"))).unwrap(),
+            "old"
+        );
+        assert_eq!(
+            fs::read_to_string(&ledger).unwrap(),
+            format!(
+                "{}\n{}\n",
+                icons.join(new(".png")).display(),
+                small.join(format!("{OLD_ID}.png")).display()
+            )
+        );
         assert!(pictures.join("Anibeam").is_dir() && !pictures.join(OLD_FOLDER).exists());
 
         // A second launch finds nothing left to move.

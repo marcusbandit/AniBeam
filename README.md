@@ -120,8 +120,8 @@ If Windows says it protected your PC, click More info, then Run anyway.
 <br>
 
 ```bash
-chmod +x Anibeam-*-x86_64.AppImage
-./Anibeam-*-x86_64.AppImage
+chmod +x ./*-x86_64.AppImage
+./*-x86_64.AppImage
 ```
 
 If it mentions FUSE, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04), or run it with
