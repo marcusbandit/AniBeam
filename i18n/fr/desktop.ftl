@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Aucune vidéo dans ce dossier pour l'instant
    *[other] Aucune vidéo dans ces dossiers pour l'instant
 }
+library-empty-missing = { $count ->
+    [1] Ce dossier est introuvable
+   *[other] Ces dossiers sont introuvables
+}
 library-empty-more-folders = { $count ->
     [one] et { $count } autre dossier
    *[other] et { $count } autres dossiers
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Ajouter un dossier
 library-empty-get = Trouver quelque chose à regarder
 library-empty-scan-again = Analyser de nouveau
+library-empty-settings = Réglages de la bibliothèque
 library-empty-pick-folder = Choisir un dossier pour votre bibliothèque
 library-tab-all = Tout
 library-tab-series = Séries

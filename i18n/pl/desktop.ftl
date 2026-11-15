@@ -801,6 +801,10 @@ library-empty-nothing = { $count ->
     [1] W tym folderze nie ma jeszcze filmów
    *[other] W tych folderach nie ma jeszcze filmów
 }
+library-empty-missing = { $count ->
+    [1] Tego folderu nie ma
+   *[other] Tych folderów nie ma
+}
 library-empty-more-folders = { $count ->
     [one] i jeszcze { $count } folder
     [few] i jeszcze { $count } foldery
@@ -810,6 +814,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Dodaj folder
 library-empty-get = Znajdź coś do obejrzenia
 library-empty-scan-again = Skanuj ponownie
+library-empty-settings = Ustawienia biblioteki
 library-empty-pick-folder = Wybierz folder dla biblioteki
 library-tab-all = Wszystko
 library-tab-series = Seriale

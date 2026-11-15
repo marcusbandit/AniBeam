@@ -569,12 +569,16 @@ library-empty-scanning = { $count ->
 library-empty-nothing = { $count ->
    *[other] フォルダにまだ動画がありません
 }
+library-empty-missing = { $count ->
+   *[other] フォルダが見つかりません
+}
 library-empty-more-folders = { $count ->
    *[other] ほかフォルダ{ $count }個
 }
 library-empty-add-folder = フォルダを追加
 library-empty-get = 見るものを探す
 library-empty-scan-again = もう一度スキャン
+library-empty-settings = ライブラリの設定
 library-empty-pick-folder = ライブラリのフォルダを選択
 library-tab-all = すべて
 library-tab-series = シリーズ

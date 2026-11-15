@@ -775,6 +775,10 @@ library-empty-nothing = { $count ->
     [1] В этой папке пока нет видео
    *[other] В этих папках пока нет видео
 }
+library-empty-missing = { $count ->
+    [1] Этой папки нет
+   *[other] Этих папок нет
+}
 library-empty-more-folders = { $count ->
     [one] и ещё { $count } папка
     [few] и ещё { $count } папки
@@ -784,6 +788,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Добавить папку
 library-empty-get = Найти, что посмотреть
 library-empty-scan-again = Сканировать снова
+library-empty-settings = Настройки библиотеки
 library-empty-pick-folder = Выберите папку для библиотеки
 library-tab-all = Все
 library-tab-series = Сериалы

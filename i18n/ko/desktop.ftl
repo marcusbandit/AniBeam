@@ -631,12 +631,16 @@ library-empty-scanning = { $count ->
 library-empty-nothing = { $count ->
    *[other] 폴더에 아직 동영상이 없어요
 }
+library-empty-missing = { $count ->
+   *[other] 폴더를 찾을 수 없어요
+}
 library-empty-more-folders = { $count ->
    *[other] 외 폴더 { $count }개
 }
 library-empty-add-folder = 폴더 추가
 library-empty-get = 볼 거리 찾기
 library-empty-scan-again = 다시 스캔
+library-empty-settings = 라이브러리 설정
 library-empty-pick-folder = 라이브러리 폴더 선택
 library-tab-all = 전체
 library-tab-series = 시리즈

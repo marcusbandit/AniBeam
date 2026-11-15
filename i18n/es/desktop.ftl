@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Aún no hay vídeos en esta carpeta
    *[other] Aún no hay vídeos en estas carpetas
 }
+library-empty-missing = { $count ->
+    [1] Esta carpeta no está
+   *[other] Estas carpetas no están
+}
 library-empty-more-folders = { $count ->
     [one] y { $count } carpeta más
    *[other] y { $count } carpetas más
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Añadir una carpeta
 library-empty-get = Conseguir algo que ver
 library-empty-scan-again = Revisar de nuevo
+library-empty-settings = Ajustes de biblioteca
 library-empty-pick-folder = Elige una carpeta para tu biblioteca
 library-tab-all = Todo
 library-tab-series = Series

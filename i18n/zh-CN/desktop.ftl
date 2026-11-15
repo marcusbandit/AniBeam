@@ -555,12 +555,16 @@ library-empty-scanning = { $count ->
 library-empty-nothing = { $count ->
    *[other] 文件夹里还没有视频
 }
+library-empty-missing = { $count ->
+   *[other] 找不到文件夹
+}
 library-empty-more-folders = { $count ->
    *[other] 还有 { $count } 个文件夹
 }
 library-empty-add-folder = 添加文件夹
 library-empty-get = 找点东西看
 library-empty-scan-again = 重新扫描
+library-empty-settings = 媒体库设置
 library-empty-pick-folder = 为媒体库选择文件夹
 library-tab-all = 全部
 library-tab-series = 番剧

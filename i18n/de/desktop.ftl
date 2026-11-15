@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Noch keine Videos in diesem Ordner
    *[other] Noch keine Videos in diesen Ordnern
 }
+library-empty-missing = { $count ->
+    [1] Dieser Ordner ist nicht da
+   *[other] Diese Ordner sind nicht da
+}
 library-empty-more-folders = { $count ->
     [one] und { $count } weiterer Ordner
    *[other] und { $count } weitere Ordner
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Ordner hinzufügen
 library-empty-get = Etwas zum Schauen holen
 library-empty-scan-again = Erneut scannen
+library-empty-settings = Bibliothekseinstellungen
 library-empty-pick-folder = Ordner für deine Bibliothek wählen
 library-tab-all = Alle
 library-tab-series = Serien

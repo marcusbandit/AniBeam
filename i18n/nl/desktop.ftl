@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Nog geen video's in deze map
    *[other] Nog geen video's in deze mappen
 }
+library-empty-missing = { $count ->
+    [1] Deze map is er niet
+   *[other] Deze mappen zijn er niet
+}
 library-empty-more-folders = { $count ->
     [one] en nog { $count } map
    *[other] en nog { $count } mappen
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Map toevoegen
 library-empty-get = Iets zoeken om te kijken
 library-empty-scan-again = Opnieuw scannen
+library-empty-settings = Bibliotheekinstellingen
 library-empty-pick-folder = Kies een map voor je bibliotheek
 library-tab-all = Alles
 library-tab-series = Series

@@ -105,7 +105,8 @@ Item {
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}
-        libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0
+        // Hidden series are still a library, as Library counts them
+        libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0 && (n.hidden || 0) === 0
         resume = pickResume()
         nowMs = Date.now()
     }

@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Ainda não há vídeos nesta pasta
    *[other] Ainda não há vídeos nestas pastas
 }
+library-empty-missing = { $count ->
+    [1] Esta pasta não está lá
+   *[other] Estas pastas não estão lá
+}
 library-empty-more-folders = { $count ->
     [one] e mais { $count } pasta
    *[other] e mais { $count } pastas
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Incluir pasta
 library-empty-get = Achar algo para ver
 library-empty-scan-again = Verificar de novo
+library-empty-settings = Config. da biblioteca
 library-empty-pick-folder = Escolha uma pasta para a biblioteca
 library-tab-all = Tudo
 library-tab-series = Séries

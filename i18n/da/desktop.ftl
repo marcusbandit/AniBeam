@@ -701,6 +701,10 @@ library-empty-nothing = { $count ->
     [1] Ingen videoer i denne mappe endnu
    *[other] Ingen videoer i disse mapper endnu
 }
+library-empty-missing = { $count ->
+    [1] Denne mappe findes ikke
+   *[other] Disse mapper findes ikke
+}
 library-empty-more-folders = { $count ->
     [one] og { $count } mappe mere
    *[other] og { $count } mapper mere
@@ -708,6 +712,7 @@ library-empty-more-folders = { $count ->
 library-empty-add-folder = Tilføj en mappe
 library-empty-get = Find noget at se
 library-empty-scan-again = Scan igen
+library-empty-settings = Biblioteksindstillinger
 library-empty-pick-folder = Vælg en mappe til dit bibliotek
 library-tab-all = Alle
 library-tab-series = Serier
