@@ -29,8 +29,8 @@ use anibeam_host_api as wire;
 use tokio::process::Child;
 use tokio::sync::OnceCell;
 
-use crate::process::command;
-use crate::sync::recover;
+use anibeam_foundation::process::command;
+use anibeam_foundation::sync::recover;
 
 /// ffmpeg's own words, in the job's directory.
 const LOG: &str = "ffmpeg.log";

@@ -18,28 +18,28 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::contract::*;
-use crate::foundation::secrets::StoreKind;
-use crate::foundation::services::Services;
-use crate::host::Host;
-use crate::i18n::tr;
-use crate::images;
-use crate::jobs::{Finished, JobCtx};
-use crate::library::cards;
-use crate::library::classifier;
-use crate::library::fixes;
-use crate::library::history;
-use crate::library::scan;
-use crate::metadata::fetch;
-use crate::metadata::record;
-use crate::paths::{normalise, under};
-use crate::prefs;
-use crate::time;
-use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
+use crate::Host;
 use crate::transfer::file_name;
 use crate::transfer::format::{
     self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
 };
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::paths::{normalise, under};
+use anibeam_foundation::prefs;
+use anibeam_foundation::secrets::StoreKind;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_library::cards;
+use anibeam_library::classifier;
+use anibeam_library::fixes;
+use anibeam_library::history;
+use anibeam_library::scan;
+use anibeam_metadata::fetch;
+use anibeam_metadata::record;
+use anibeam_net::images;
+use anibeam_trackers::accounts::{self, access_key, refresh_key, secret_key};
 
 /// The five sections a `JobProgress` counts through.
 const SECTIONS: u64 = 5;
@@ -207,7 +207,7 @@ async fn run(
         summary.fields_ignored.len(),
     );
     Ok(Finished {
-        plain: Some(crate::words!("core-transfer-imported")),
+        plain: Some(anibeam_contract::words!("core-transfer-imported")),
         level: Level::Info,
         message,
         body: EventBody::ImportFinished { summary },
@@ -736,7 +736,7 @@ pub(crate) async fn merge_history(
                     "INSERT INTO watch_log (series_id, episode_key, at, how) SELECT ?1, ?2, ?3, ?4
                      WHERE NOT EXISTS (SELECT 1 FROM watch_log
                                        WHERE profile_id = 1 AND series_id = ?1 AND episode_key = ?2 AND at = ?3)",
-                    params![row.id as i64, key, at, crate::library::history::How::Imported.as_str()],
+                    params![row.id as i64, key, at, anibeam_library::history::How::Imported.as_str()],
                 )?;
             }
             let mut resume = 0u64;
@@ -1212,7 +1212,7 @@ mod tests {
     #[test]
     fn an_out_of_range_fix_is_skipped() {
         let dir = tempfile::tempdir().unwrap();
-        let store = crate::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let store = anibeam_foundation::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
         let ep = |number: f64, season: Option<u32>| FileReading::Episode { number, season };
         let fix = |path: &str, reading: FileReading, was: Option<FileReading>| format::FixEntry {
             path: path.to_string(),

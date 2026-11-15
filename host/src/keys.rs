@@ -17,10 +17,10 @@ use std::time::{Duration, Instant};
 use anibeam_host_api::proof::{self, DeviceKey, ProofError};
 use serde::{Deserialize, Serialize};
 
-use crate::contract::CoreError;
-use crate::host::Host;
-use crate::store::settings;
-use crate::sync::recover;
+use crate::Host;
+use anibeam_contract::CoreError;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::sync::recover;
 
 /// More fresh proofs than this at once and new ones are refused, so a
 /// paired device signing as fast as it can cannot grow the list without end.
@@ -188,7 +188,7 @@ fn load_or_make(path: &Path) -> Option<DeviceKey> {
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let key = DeviceKey::from_seed(rand::random::<[u8; 32]>());
-            match crate::atomic_file::write_private(path, proof::hex(&key.seed())) {
+            match anibeam_foundation::atomic_file::write_private(path, proof::hex(&key.seed())) {
                 Ok(()) => Some(key),
                 Err(e) => {
                     tracing::warn!("host: the device key could not be stored: {e}");
@@ -222,7 +222,10 @@ pub fn pair(host: &Host, key: &str, name: &str) -> Result<(), CoreError> {
     let Some(bytes) = proof::unhex::<32>(key) else {
         return Err(CoreError::Invalid {
             field: "key".into(),
-            message: crate::i18n::tr("core-host-not-a-key", &[("key", format!("{key:?}").into())]),
+            message: anibeam_contract::i18n::tr(
+                "core-host-not-a-key",
+                &[("key", format!("{key:?}").into())],
+            ),
         });
     };
     let entry = Paired {

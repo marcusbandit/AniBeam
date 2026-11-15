@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::contract::{AutoSkip, CoreError, FileReading, TrackChoice};
+use anibeam_contract::{AutoSkip, CoreError, FileReading, TrackChoice};
 
 /// The `format` field, the only value this reader takes.
 pub const FORMAT: &str = "anibeam-export";
@@ -349,13 +349,16 @@ pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|e| {
         CoreError::invalid(
             "format",
-            crate::i18n::tr("core-transfer-not-json", &[("error", e.to_string().into())]),
+            anibeam_contract::i18n::tr(
+                "core-transfer-not-json",
+                &[("error", e.to_string().into())],
+            ),
         )
     })?;
     if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
         return Err(CoreError::invalid(
             "format",
-            crate::i18n::tr("core-transfer-wrong-format", &[("format", FORMAT.into())]),
+            anibeam_contract::i18n::tr("core-transfer-wrong-format", &[("format", FORMAT.into())]),
         ));
     }
     let found = value.get("version").and_then(Value::as_u64).unwrap_or(0);
@@ -466,7 +469,7 @@ impl Document {
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = include_str!("../../tests/fixtures/anibeam-export-v1.json");
+    const FIXTURE: &str = include_str!("../../../core/tests/fixtures/anibeam-export-v1.json");
 
     #[test]
     fn the_version_1_document_parses_with_its_keys_and_no_track_choice() {
@@ -566,7 +569,7 @@ mod tests {
             FixEntry {
                 path: String::new(),
                 reading: FileReading::Extra {
-                    kind: crate::contract::ExtraKind::Op,
+                    kind: anibeam_contract::ExtraKind::Op,
                     index: Some(1),
                 },
                 was: None,

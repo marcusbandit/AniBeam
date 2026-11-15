@@ -451,7 +451,7 @@ core-recommended-reading-suggestions = Leggo le serie da consigliare
 
 core-recommended-no-anime = { -anilist } non ha l'anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Off
 core-host-starting = Avvio
@@ -461,11 +461,11 @@ core-host-cannot-listen = Impossibile mettersi in ascolto
 core-host-port-taken = La porta { $port } è occupata
 core-host-cannot-listen-on = Impossibile mettersi in ascolto su { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } non è un indirizzo con porta
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } non è una chiave di dispositivo
 
@@ -843,7 +843,7 @@ core-franchise-relation-character = Personaggi in comune
 
 core-images-progress-fetching = download delle immagini
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -851,12 +851,12 @@ core-transfer-exported =
        *[other] { $count } serie salvate in { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = non è JSON: { $error }
 core-transfer-wrong-format = non è un documento { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Libreria caricata dal file.
 

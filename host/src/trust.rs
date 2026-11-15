@@ -18,7 +18,7 @@
 use std::net::IpAddr;
 
 use super::addr;
-use crate::foundation::trust::{Asker, TailnetUser};
+use anibeam_foundation::trust::{Asker, TailnetUser};
 
 /// A device on the tailnet, as `tailscale status --json` names it.
 #[derive(Clone, Debug, PartialEq)]

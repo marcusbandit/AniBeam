@@ -12,12 +12,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anibeam_host_api as wire;
 use sha2::{Digest, Sha256};
 
-use crate::contract::*;
-use crate::downloads;
-use crate::foundation::services::Services;
-use crate::host::Host;
-use crate::library::snapshot::Snapshot;
-use crate::time;
+use crate::Host;
+use anibeam_contract::*;
+use anibeam_downloads as downloads;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_library::snapshot::Snapshot;
 
 /// How long one Downloads read may take before the snapshot goes without it.
 pub const DOWNLOADS_LIMIT: Duration = Duration::from_secs(8);
@@ -103,7 +103,7 @@ pub fn problem(service: &str, error: &CoreError) -> String {
     }
 }
 
-fn airing(a: &crate::contract::Airing) -> wire::Airing {
+fn airing(a: &anibeam_contract::Airing) -> wire::Airing {
     wire::Airing {
         episode: a.episode,
         season: a.season,
@@ -138,7 +138,7 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
 /// none and passes through unchanged.
 pub fn without_secrets(url: &str) -> String {
     let url = &without_userinfo(url);
-    let (base, params) = crate::redact::split_params(url);
+    let (base, params) = anibeam_foundation::redact::split_params(url);
     let mut out = base.to_string();
     // Whether `out` has opened its query and its fragment yet.
     let (mut query, mut fragment) = (false, false);
@@ -148,7 +148,7 @@ pub fn without_secrets(url: &str) -> String {
     for (sep, pair) in params {
         let secret = pair
             .split_once('=')
-            .is_some_and(|(name, _)| crate::redact::secret_param(name).is_some());
+            .is_some_and(|(name, _)| anibeam_foundation::redact::secret_param(name).is_some());
         if secret {
             if sep == "#" && !fragment {
                 lead = Some("#");
@@ -174,7 +174,7 @@ pub fn without_secrets(url: &str) -> String {
 
 /// `url` without a `user:password@` in front of its host.
 fn without_userinfo(url: &str) -> String {
-    match crate::repos::index::split_login(url) {
+    match anibeam_releases::repos::index::split_login(url) {
         Some((scheme, _, host)) => format!("{scheme}{host}"),
         None => url.to_string(),
     }
@@ -184,7 +184,7 @@ fn without_userinfo(url: &str) -> String {
 /// completion time of 0 or below for a torrent not yet done.
 const NO_ETA: i64 = 8_640_000;
 
-pub fn torrents(list: Vec<crate::contract::Torrent>) -> Vec<wire::Torrent> {
+pub fn torrents(list: Vec<anibeam_contract::Torrent>) -> Vec<wire::Torrent> {
     list.into_iter()
         .map(|t| wire::Torrent {
             hash: t.hash,
@@ -240,7 +240,7 @@ pub async fn snapshot(
     let snapshot = wire::Snapshot {
         api: wire::API_VERSION,
         host: hostname.to_string(),
-        version: crate::VERSION.to_string(),
+        version: anibeam_net::VERSION.to_string(),
         generated_at: time::now_secs(),
         series: library.series.clone(),
         subscriptions,
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn torrents_drop_the_clients_placeholders() {
-        let t = |eta, done| crate::contract::Torrent {
+        let t = |eta, done| anibeam_contract::Torrent {
             hash: "h".into(),
             name: "n".into(),
             state: "uploading".into(),

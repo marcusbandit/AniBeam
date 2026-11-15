@@ -470,7 +470,7 @@ core-recommended-reading-suggestions = おすすめ候補を読み込み中
 
 core-recommended-no-anime = { -anilist }にアニメ{ $id }はありません
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = オフ
@@ -482,11 +482,11 @@ core-host-cannot-listen = 待ち受けできませんでした
 core-host-port-taken = ポート{ $port }は使用中です
 core-host-cannot-listen-on = { $address }で待ち受けできませんでした: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text }はアドレスとポートではありません
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key }はデバイスキーではありません
@@ -804,19 +804,19 @@ core-franchise-relation-character = 共通キャラクター
 # A progress label while covers and banners download.
 core-images-progress-fetching = 画像を取得中
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported = { $count }作品を{ $folder }に保存しました。
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = JSONではありません: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = { $format }形式のファイルではありません
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = ファイルからライブラリを読み込みました。
 

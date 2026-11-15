@@ -453,7 +453,7 @@ core-recommended-reading-suggestions = Læser serier at foreslå
 
 core-recommended-no-anime = { -anilist } har ingen anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Fra
 core-host-starting = Starter
@@ -463,11 +463,11 @@ core-host-cannot-listen = Kunne ikke lytte
 core-host-port-taken = Port { $port } er optaget
 core-host-cannot-listen-on = Kunne ikke lytte på { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } er ikke en adresse og port
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } er ikke en enhedsnøgle
 
@@ -845,7 +845,7 @@ core-franchise-relation-character = Fælles figurer
 
 core-images-progress-fetching = henter billeder
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -853,12 +853,12 @@ core-transfer-exported =
        *[other] Gemte { $count } serier i { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = ikke JSON: { $error }
 core-transfer-wrong-format = ikke et { $format }-dokument
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Indlæste dit bibliotek fra filen.
 
