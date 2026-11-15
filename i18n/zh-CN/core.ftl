@@ -506,6 +506,9 @@ core-first-run-not-absolute = 视频文件夹必须是绝对路径
 ## core/src/presence/mod.rs
 
 core-presence-extra = 附加内容
+core-presence-room = 一起观看
+core-presence-in-room = 在房间中
+core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 
 ## core/src/trackers/accounts.rs
 
@@ -962,6 +965,10 @@ core-downloads-refuse-library-folder = { $path } 是媒体库文件夹或包含�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent 没有默认保存文件夹，请在 qBittorrent 中设置
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } 不是文件夹的完整路径
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } 无法保存下载：请选择一个存在且不是主文件夹的文件夹
 core-downloads-name-empty = 名称不能为空
 core-downloads-name-slash = 名称不能包含 / 或 \
 core-downloads-name-not-folder = { $name } 不是文件夹名称
@@ -1091,6 +1098,7 @@ core-room-service = 一起看
 core-room-not-found = 没有使用该代码的房间。房间可能已关闭。
 core-room-full = 该房间已满。
 core-room-proto = 该中继运行的是另一个版本的房间。请更新 { -app-name } 后再加入。
+core-room-needs-episode = 该中继需要一集才能创建房间。请在播放器里创建，或更新中继。
 core-room-unreachable = 无法连接中继：{ $message }
 core-room-refused = 中继拒绝了请求：{ $message }
 core-room-not-in = 你不在房间中。
@@ -1120,3 +1128,4 @@ core-room-media-lost = 种子客户端丢失了这一集的下载。
 core-room-media-stalled = 下载已经十分钟没有进展。请稍后再试。
 core-room-media-not-in-library = 这一集已下载，但不在你的媒体库中。请检查下载是否保存到媒体库文件夹。
 core-room-media-here = 这一集已在你的媒体库中。
+core-room-media-rest-missing = 无法获取这部剧的其余剧集。只在下载这一集。

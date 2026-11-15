@@ -70,6 +70,10 @@ cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core",
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process"] }
 
+# Peeks at Discord's named pipe for events without blocking (#966).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Pipes"] }
+
 [dev-dependencies]
 tempfile = "3"
 # The native relay, run in-process by the rooms tests.

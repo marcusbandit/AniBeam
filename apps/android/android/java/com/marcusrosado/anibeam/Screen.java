@@ -17,6 +17,8 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
+import java.lang.ref.WeakReference;
+
 /**
  * What the player asks of the screen, which Android only lets its UI thread change: the
  * picture in landscape with the system bars hidden, the display kept on while it plays, and
@@ -28,6 +30,18 @@ public final class Screen {
     private Screen() {}
 
     private static WifiManager.MulticastLock multicast;
+
+    /**
+     * The orientation outside the player: portrait on a phone that does not fold, and free on
+     * a foldable or a tablet, where the wide layout fits.
+     */
+    private static volatile int rest = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+
+    /** The activity `rest` was last asked of. */
+    private static volatile WeakReference<Activity> applied = new WeakReference<Activity>(null);
+
+    /** The player has the screen. Set and read on the UI thread. */
+    private static boolean playing;
 
     /** The hinge's last angle in degrees; -1 on a phone without one. Set on the UI thread. */
     private static volatile float hinge = -1;
@@ -65,6 +79,7 @@ public final class Screen {
                 }
             }
         }
+        rest(activity);
         int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
         float angle = hinge;
         // Beside another app the window does not straddle the hinge: lay out as if flat.
@@ -72,6 +87,28 @@ public final class Screen {
             angle = 180;
         }
         return rotation * 1000 + (angle < 0 ? 999 : angle);
+    }
+
+    /**
+     * A phone with no hinge and room for one pane only stays upright outside the player;
+     * sideways it would get the unfolded layout on a short screen (#937). A foldable with a
+     * hinge sensor, or a screen 600 dp wide either way, turns freely. Read on every fold()
+     * call, so a foldable without a hinge sensor lets go once it opens.
+     */
+    private static void rest(final Activity activity) {
+        int want = hinge < 0 && activity.getResources().getConfiguration().smallestScreenWidthDp < 600
+                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        // A recreated activity (a font size change, say) starts unspecified: ask it again.
+        if (want == rest && applied.get() == activity) return;
+        rest = want;
+        applied = new WeakReference<Activity>(activity);
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (!playing) activity.setRequestedOrientation(rest);
+            }
+        });
     }
 
     /**
@@ -96,9 +133,10 @@ public final class Screen {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                playing = on;
                 activity.setRequestedOrientation(on
                         ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                        : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                        : rest);
                 Window window = activity.getWindow();
                 if (Build.VERSION.SDK_INT >= 28) {
                     WindowManager.LayoutParams lp = window.getAttributes();

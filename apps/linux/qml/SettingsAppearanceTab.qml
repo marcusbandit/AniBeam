@@ -69,7 +69,7 @@ SettingsTab {
             Row {
                 spacing: theme.space(3)
                 Repeater {
-                    model: [{ id: "default", msg: "settings-appearance-icon-default", nameMsg: "settings-appearance-icon-default-name", file: "icon.png" }, { id: "dark", msg: "settings-appearance-icon-dark", nameMsg: "settings-appearance-icon-dark-name", file: "icon-dark.png" }]
+                    model: [{ id: "default", msg: "settings-appearance-icon-default", nameMsg: "settings-appearance-icon-default-name", file: Shell.defaultIcon }, { id: "dark", msg: "settings-appearance-icon-dark", nameMsg: "settings-appearance-icon-dark-name", file: "icon-dark.png" }]
                     Column {
                         id: pick
                         required property var modelData

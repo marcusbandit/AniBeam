@@ -561,6 +561,9 @@ core-first-run-not-absolute = папка с видео должна быть у�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал
+core-presence-room = Смотрим вместе
+core-presence-in-room = В комнате
+core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -1373,6 +1376,10 @@ core-downloads-refuse-library-folder = { $path } это папка библио�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = в qBittorrent не задана папка сохранения по умолчанию; задайте её в qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } не полный путь к папке
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } не подходит для загрузок: выберите существующую папку, которая не является домашней
 core-downloads-name-empty = имя не может быть пустым
 core-downloads-name-slash = имя не должно содержать / или \
 # $name is the name given, in quotes
@@ -1535,6 +1542,7 @@ core-room-service = Совместный просмотр
 core-room-not-found = Комнаты с таким кодом нет. Возможно, она закрылась.
 core-room-full = Эта комната заполнена.
 core-room-proto = Этот ретранслятор работает на другой версии комнат. Обновите { -app-name }, чтобы войти.
+core-room-needs-episode = Этому ретранслятору нужна серия, чтобы создать комнату. Создайте её из плеера или обновите ретранслятор.
 core-room-unreachable = Не удалось связаться с ретранслятором: { $message }
 core-room-refused = Ретранслятор отказал: { $message }
 core-room-not-in = Вы не в комнате.
@@ -1564,3 +1572,4 @@ core-room-media-lost = Торрент-клиент потерял загрузк
 core-room-media-stalled = Загрузка не продвигается уже десять минут. Попробуйте ещё раз позже.
 core-room-media-not-in-library = Серия скачана, но её нет в вашей библиотеке. Проверьте, что загрузки сохраняются в папку библиотеки.
 core-room-media-here = Серия теперь в вашей библиотеке.
+core-room-media-rest-missing = Не удалось получить остальные серии. Скачивается только эта серия.

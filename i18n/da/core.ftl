@@ -520,6 +520,9 @@ core-first-run-not-absolute = videomappen skal være en absolut sti
 ## core/src/presence/mod.rs
 
 core-presence-extra = Ekstra
+core-presence-room = Ser sammen
+core-presence-in-room = I et rum
+core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 
 ## core/src/trackers/accounts.rs
 
@@ -1141,6 +1144,10 @@ core-downloads-refuse-library-folder = { $path } er en biblioteksmappe eller ind
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent har ingen standardmappe at gemme i; vælg en i qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } er ikke en fuld sti til en mappe
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kan ikke rumme downloads: vælg en mappe, der findes og ikke er din hjemmemappe
 core-downloads-name-empty = navnet må ikke være tomt
 core-downloads-name-slash = navnet må ikke indeholde / eller \
 core-downloads-name-not-folder = { $name } er ikke et mappenavn
@@ -1274,6 +1281,7 @@ core-room-service = Se sammen
 core-room-not-found = Intet rum har den kode. Det er måske lukket.
 core-room-full = Det rum er fuldt.
 core-room-proto = Det relæ kører en anden version af rum. Opdater { -app-name } for at gå ind i det.
+core-room-needs-episode = Det relæ skal have et afsnit for at starte et rum. Start det fra afspilleren, eller opdater relæet.
 core-room-unreachable = Kunne ikke nå relæet: { $message }
 core-room-refused = Relæet sagde nej: { $message }
 core-room-not-in = Du er ikke i et rum.
@@ -1303,3 +1311,4 @@ core-room-media-lost = Torrentklienten mistede afsnittets hentning.
 core-room-media-stalled = Hentningen har ikke rykket sig i ti minutter. Prøv igen senere.
 core-room-media-not-in-library = Afsnittet er hentet, men det er ikke i dit bibliotek. Tjek at hentninger gemmes i en biblioteksmappe.
 core-room-media-here = Afsnittet er i dit bibliotek nu.
+core-room-media-rest-missing = Kunne ikke hente resten af serien. Kun dette afsnit hentes.

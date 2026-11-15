@@ -261,12 +261,27 @@ kind, open an issue about the kind and leave the source out.
 
 ## Before you open it
 
-- The test, clippy and fmt commands in `docs/build-from-source.md` under Working on it pass.
+- `.github/local-ci.sh` passes on your machine. It runs the Linux checks: fmt, the patch note
+  heading, strings, site names, clippy, the tests and a tester build to try by hand.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in a change file under the app's `changes/`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
 - Nothing in the diff names a download site. See Sources.
 - `.github/strings-check.py` passes: new words go in `i18n/en/` under an ID. See Words.
+
+## Checks on GitHub
+
+A push to a pull request runs only the fast checks: CI (fmt, clippy and the core's tests),
+Strings, No sites, the PR checks and the Android check when the phone or the core changed,
+about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
+the phone's code changed, and a PR that only touches iPhone files skips the Android check.
+Work on one platform at a time and check it locally with
+`.github/local-ci.sh`.
+
+When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
+and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
+Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
+last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
 
 ## Releases
 

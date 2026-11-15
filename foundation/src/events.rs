@@ -156,6 +156,9 @@ impl EventBus {
                 | EventBody::JobStarted { .. }
                 | EventBody::TorrentsRead { .. }
                 | EventBody::PresenceChanged { .. }
+                | EventBody::DiscordJoinAsk { .. }
+                | EventBody::DiscordAskGone { .. }
+                | EventBody::DiscordJoin { .. }
                 | EventBody::TailnetDevicesChanged { .. }
                 // Nor a watch together room's news: no read the shell caches depends on
                 // it, and a room in sync sends a correction as often as once a second.
