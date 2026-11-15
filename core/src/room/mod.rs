@@ -50,8 +50,8 @@ use crate::foundation::services::Services;
 use crate::library::Library;
 use crate::metadata::Metadata;
 use crate::playback::{Follower, Playback};
-use crate::presence::JoinRooms;
 use crate::prefs;
+use crate::presence::JoinRooms;
 use crate::store::settings;
 
 /// The largest offset a member may set, in seconds either way.
@@ -777,10 +777,14 @@ fn start(rooms: &Arc<Rooms>, b: Begin) -> Result<RoomInfo, CoreError> {
 }
 
 fn attach(rooms: &Rooms, session: u64) -> Result<Option<RoomInfo>, CoreError> {
-    let s = rooms.playback.sessions.get(session).ok_or(CoreError::NotFound {
-        what: Entity::Session,
-        id: session,
-    })?;
+    let s = rooms
+        .playback
+        .sessions
+        .get(session)
+        .ok_or(CoreError::NotFound {
+            what: Entity::Session,
+            id: session,
+        })?;
     let stored = rooms.services.store.read(|c| stored_offset(c, s.file))?;
     let mut out = Vec::new();
     let info = {
@@ -1210,13 +1214,7 @@ fn opening_known(rooms: &Rooms, session: u64, start: f64) {
 
 /// The relay welcomed this member, first or again. False when the room is no
 /// longer this core's.
-fn on_welcome(
-    rooms: &Rooms,
-    serial: u64,
-    you: MemberId,
-    room: RoomView,
-    server_ms: u64,
-) -> bool {
+fn on_welcome(rooms: &Rooms, serial: u64, you: MemberId, room: RoomView, server_ms: u64) -> bool {
     let mut out = Vec::new();
     let to_match;
     {
@@ -1362,11 +1360,7 @@ fn find(rooms: &Rooms, serial: u64, e: proto::EpisodeRef) {
 }
 
 fn on_pong(rooms: &Rooms, serial: u64, c: u64, s: u64) {
-    if let Some(a) = rooms
-        .lock()
-        .as_mut()
-        .filter(|a| a.serial == serial)
-    {
+    if let Some(a) = rooms.lock().as_mut().filter(|a| a.serial == serial) {
         a.clock.pong(c, s, local_ms());
     }
 }

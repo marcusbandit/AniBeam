@@ -827,11 +827,7 @@ fn release(title: &str, link: &str) -> Release {
 /// the host's own (a renamed file, a release no source carries), the best fit
 /// of the same episode from the closest search stands in: the room's offset
 /// covers a cut that differs.
-async fn search(
-    rooms: &Arc<Rooms>,
-    offer: &Offer,
-    e: &proto::EpisodeRef,
-) -> Result<Release, Why> {
+async fn search(rooms: &Arc<Rooms>, offer: &Offer, e: &proto::EpisodeRef) -> Result<Release, Why> {
     let backend = DownloadsBackend::open(&rooms.downloads)
         .await
         .map_err(|err| Why::Start(err.to_string()))?;

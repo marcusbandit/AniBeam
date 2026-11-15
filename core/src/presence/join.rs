@@ -321,7 +321,11 @@ pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Repl
 /// The room this person is in, from the room team above, which `Core::open`
 /// links. Once it has gone there is none.
 fn room_status(playback: &Playback) -> Option<RoomInfo> {
-    playback.presence.rooms.get().and_then(|rooms| rooms.status())
+    playback
+        .presence
+        .rooms
+        .get()
+        .and_then(|rooms| rooms.status())
 }
 
 /// A room opened by the room team above, for `session` or for none.
