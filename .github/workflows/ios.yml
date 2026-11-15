@@ -1,29 +1,39 @@
 name: iOS
 
-# The iPhone app's own checks (#950). A pull request that touches the iPhone's files or the
-# phone code it builds from runs rustfmt, clippy for the simulator's target with warnings
-# denied, and the simulator build through scripts/build-ios.sh, so the iPhone is checked
-# without a `test build` label. A PR that changes only iPhone files skips the desktop and
-# Android workflows (their paths exclude them) and runs this one. Setup follows ios-ipa.yml,
-# which builds the device IPA, and its libmpv cache key is the same.
+# The iPhone app's own checks (#950). A pull request that touches the phone's code runs
+# rustfmt, clippy for the simulator's target with warnings denied, and the simulator build
+# through scripts/build-ios.sh, so the iPhone is checked without a label. A PR that changes
+# only iPhone files skips the Android workflow and ci.yml's cargo jobs (their paths exclude
+# them) and runs this one. The core and the shared crates are not in the paths: a push there
+# builds no macOS job (#986), and the `full ci` label builds the IPA over them before merge.
+# Setup follows ios-ipa.yml, which builds the device IPA, and its libmpv cache key is the same.
 on:
+  # Main saves the Rust cache that pull requests restore, as android.yml does.
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/ios/**'
+      - 'apps/android/src/**'
+      - 'apps/android/ui/**'
+      - 'apps/android/scripts/*ios*'
+      - 'apps/android/companion/**'
+      - 'apps/android/Cargo.toml'
+      - 'apps/android/Cargo.lock'
+      - 'apps/android/build.rs'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/ios.yml'
+      # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
+      - '!apps/android/src/platform/android.rs'
   pull_request:
     paths:
       - 'apps/android/ios/**'
       - 'apps/android/src/**'
       - 'apps/android/ui/**'
       - 'apps/android/scripts/*ios*'
-      - 'apps/android/scripts/fetch-mpv-ios.sh'
       - 'apps/android/companion/**'
       - 'apps/android/Cargo.toml'
       - 'apps/android/Cargo.lock'
       - 'apps/android/build.rs'
-      # What the phone links: the core, which carries the contract, and host-api.
-      - 'contract/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/workflows/ios.yml'
       # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
@@ -61,6 +71,7 @@ jobs:
         with:
           workspaces: apps/android
           key: ios
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The macos-26 image's newest Xcode, the one ios-ipa.yml builds the IPA with.
       - name: Xcode and xcodegen

@@ -273,7 +273,9 @@ kind, open an issue about the kind and leave the source out.
 
 A push to a pull request runs only the fast checks: CI (fmt, clippy and the core's tests),
 Strings, No sites, the PR checks and the Android check when the phone or the core changed,
-about seven minutes. Work on one platform at a time and check it locally with
+about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
+the phone's code changed. A PR that only touches iPhone files skips the Android check and
+CI's cargo jobs. Work on one platform at a time and check it locally with
 `.github/local-ci.sh`.
 
 When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
