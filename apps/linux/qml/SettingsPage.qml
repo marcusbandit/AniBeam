@@ -182,11 +182,15 @@ FocusScope {
         return out
     }
 
-    // ---- Geometry: the page's centred column, the index at its left, the search on top of it
-    readonly property real sideInset: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
+    // ---- Geometry: the index and the section side by side, the pair centred in the page (#1012)
+    // with the same margin on both sides, the search on top of the index. The section's column
+    // is the measure SettingsTab sets its rows to; the stage itself runs on to the window's right
+    // edge, so the wheel scrolls the section from the margin and its scroll bar sits at the edge.
     readonly property real topInset: theme.space(7)
     readonly property real indexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
     readonly property real columnGap: theme.space(14)
+    readonly property real sectionWidth: Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
+    readonly property real sideInset: Math.max(theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
 
     // ---- The index
     Flickable {
@@ -277,7 +281,7 @@ FocusScope {
         id: stage
         x: indexPane.x + indexPane.width + page.columnGap
         y: indexPane.y
-        width: page.width - x - page.sideInset + theme.space(6)
+        width: page.width - x
         height: page.height - y
         Loader {
             id: content

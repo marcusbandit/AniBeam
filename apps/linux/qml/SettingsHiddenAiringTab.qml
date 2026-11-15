@@ -21,7 +21,7 @@ Item {
         var q = filter.trim().toLowerCase()
         return q === "" ? shows : shows.filter(function(s) { return s.title.toLowerCase().indexOf(q) >= 0 })
     }
-    readonly property real blockWidth: Math.min(width - theme.space(6), theme.space(210))
+    readonly property real blockWidth: Math.min(width - theme.space(6), page.sectionWidth || theme.space(210))
 
     function load() {
         var before = Door.listNotInterested()

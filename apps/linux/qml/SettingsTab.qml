@@ -20,8 +20,10 @@ Flickable {
     property real footInset: theme.space(16)
     readonly property real viewport: Math.max(0, height - footInset - layout.y)
     readonly property real gap: theme.space(10)
-    readonly property real measure: theme.space(210)
-    readonly property real blockWidth: wide ? width - theme.space(6) : Math.min(width - theme.space(6), measure)
+    // SettingsPage centres the index and this column as one block and says how wide the
+    // column is; `wide` keeps the same margin on the right as the page has on the left
+    readonly property real measure: page && page.sectionWidth ? page.sectionWidth : theme.space(210)
+    readonly property real blockWidth: wide ? width - (page && page.sideInset ? page.sideInset : theme.space(6)) : Math.min(width - theme.space(6), measure)
     readonly property real blockX: 0
 
     // Whether any direct child asks for the spare height
