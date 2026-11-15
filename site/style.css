@@ -1104,7 +1104,9 @@ html[data-os="android"] .channel { display: none; }
 .ios-mac, .ios-soon { display: none; }
 html[data-os="ios"] .ios-mac { display: inline-flex; }
 .ios-mac .os-icon { fill: currentColor; stroke: none; }
-html[data-os="ios"] .dl-grid:has(#dl-iphone[hidden]) .dl-card[data-os="mac"] { display: flex; }
+html[data-os="ios"] .dl-grid:has(#dl-iphone[hidden]) .dl-card[data-os="mac"] { display: grid; }
+/* the terminal is not on a phone, so nothing may lead to its tabs */
+html[data-device="phone"] .dl-files li:has([data-tab]) { display: none; }
 html[data-os="ios"] .dl-page:has(#dl-iphone[hidden]) .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
 .ios-soon svg { width: 16px; height: 16px; fill: currentColor; }
 
