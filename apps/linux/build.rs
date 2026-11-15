@@ -118,6 +118,7 @@ fn main() {
             .qml_file("qml/TrackerRow.qml")
             .qml_file("qml/SettingsPage.qml")
             .qml_file("qml/SettingsLibraryTab.qml")
+            .qml_file("qml/SettingsHiddenAiringTab.qml")
             .qml_file("qml/LookPane.qml")
             .qml_file("qml/LookPreview.qml")
             .qml_file("qml/SettingsAppearanceTab.qml")

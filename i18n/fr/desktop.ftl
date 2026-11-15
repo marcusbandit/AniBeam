@@ -2928,6 +2928,12 @@ settings-library-show-hidden = Afficher les séries masquées
 settings-library-hidden-from-airing = Masquées dans En diffusion
 settings-library-hidden-from-airing-empty = Rien pour l'instant
 settings-library-show-again = Réafficher
+settings-hidden-airing-filter = Filtrer les titres
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Une série qui n'est plus diffusée a quitté la liste
+       *[other] { $count } séries qui ne sont plus diffusées ont quitté la liste
+    }
 settings-library-calendar = Calendrier
 settings-library-calendar-feed = Horaires de diffusion dans un calendrier
 settings-library-calendar-file = Fichier calendrier

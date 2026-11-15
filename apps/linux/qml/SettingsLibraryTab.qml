@@ -1,8 +1,8 @@
 // Library: the folders Anibeam watches (each with its counts and its own Open, Rescan and
 // Remove, then Add a folder and the last scan with Scan all), Matching (the providers in
 // the order matching tries them, and the way to the Metadata page where each match is
-// reviewed), the session's Show hidden shows, and the shows hidden from Airing now, each
-// with a way back, then Calendar (the iCal file of airing times the core keeps while
+// reviewed), the session's Show hidden shows, and how many shows are hidden from Airing now,
+// a button that opens their own page, then Calendar (the iCal file of airing times the core keeps while
 // its switch is on, with its path to copy) and Notifications (a desktop notification when a
 // followed show's episode airs, #212). The figures and the per-series ledger the old tab
 // carried are the Metadata page's job and live there.
@@ -39,14 +39,10 @@ SettingsTab {
                  : [s.added ? words.t("settings-library-scan-added", { count: s.added }) : "", s.changed ? words.t("settings-library-scan-changed", { count: s.changed }) : "", s.removed ? words.t("settings-library-scan-removed", { count: s.removed }) : ""].filter(Boolean).join(", ")
         return s.source !== null && s.source !== undefined && sourcePath(s.source) !== "" ? words.t("settings-library-scan-in-folder", { folder: Fmt.baseName(sourcePath(s.source)), what: what }) : what
     }
-    // Airing now's not interested marks (#202), newest first, each with a way back
-    property var notInterested: []
-    function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterested = r.reply.shows }
-    function showAgain(id) {
-        var r = Door.setNotInterested(id, false)
-        if (r.error) { frame.fail(r.error, function() { tab.showAgain(id) }); return }
-        reloadNotInterested()
-    }
+    // How many shows Airing now's not interested marks hide (#202); the list and the way back
+    // for each are on their own page, SettingsHiddenAiringTab.qml
+    property int notInterestedCount: 0
+    function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterestedCount = r.reply.shows.length }
     Component.onCompleted: { reload(); reloadNotInterested() }
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
@@ -136,22 +132,17 @@ SettingsTab {
             label: words.t("settings-library-show-hidden")
             Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } }
         }
+        // The marks themselves are a page of their own (#1012): a list of a hundred and more
+        // rows here made the whole section slow to open
         SettingRow {
+            objectName: "settings-hidden-from-airing"
             label: words.t("settings-library-hidden-from-airing")
-            status: tab.notInterested.length ? "" : words.t("settings-library-hidden-from-airing-empty")
-        }
-        Repeater {
-            model: tab.notInterested
-            SettingRow {
-                id: niRow
-                required property var modelData
-                objectName: "not-interested-" + modelData.anilist_id
-                label: modelData.title
-                Button {
-                    objectName: "not-interested-again-" + niRow.modelData.anilist_id
-                    msg: "settings-library-show-again"; icon: "eye"; flat: true; small: true
-                    onClicked: tab.showAgain(niRow.modelData.anilist_id)
-                }
+            Button {
+                objectName: "settings-open-hidden-from-airing"
+                text: tab.notInterestedCount > 0 ? words.t("count-shows", { count: tab.notInterestedCount }) : words.t("settings-library-hidden-from-airing-empty")
+                icon: "eye-off"; flat: true; small: true
+                enabled: tab.notInterestedCount > 0
+                onClicked: page.open("hidden")
             }
         }
     }

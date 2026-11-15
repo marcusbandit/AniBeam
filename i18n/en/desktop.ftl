@@ -3079,6 +3079,12 @@ settings-library-show-hidden = Show hidden shows
 settings-library-hidden-from-airing = Hidden from Airing now
 settings-library-hidden-from-airing-empty = Nothing yet
 settings-library-show-again = Show again
+settings-hidden-airing-filter = Filter titles
+settings-hidden-airing-ended =
+    { $count ->
+        [one] One show that stopped airing came off the list
+       *[other] { $count } shows that stopped airing came off the list
+    }
 settings-library-calendar = Calendar
 settings-library-calendar-feed = Airing times in a calendar
 settings-library-calendar-file = Calendar file

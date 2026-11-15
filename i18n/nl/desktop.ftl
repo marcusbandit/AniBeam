@@ -2927,6 +2927,12 @@ settings-library-show-hidden = Verborgen series tonen
 settings-library-hidden-from-airing = Verborgen in Nu uitgezonden
 settings-library-hidden-from-airing-empty = Nog niets
 settings-library-show-again = Weer tonen
+settings-hidden-airing-filter = Titels filteren
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Eén serie die niet meer wordt uitgezonden is van de lijst gehaald
+       *[other] { $count } series die niet meer worden uitgezonden zijn van de lijst gehaald
+    }
 settings-library-calendar = Agenda
 settings-library-calendar-feed = Uitzendtijden in een agenda
 settings-library-calendar-file = Agendabestand

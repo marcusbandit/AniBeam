@@ -6,6 +6,8 @@
 // view and lights it for a moment. The section and each one's scroll are session state
 // kept on the frame, by section id. Section ids that have since moved into another
 // section (subtitles, phone, storage, help) still open the section that took them.
+// One page sits under a section without an entry of its own: `hidden`, the shows hidden from
+// Airing now, which Library opens and which keeps Library lit; Escape goes back to Library.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -54,15 +56,22 @@ FocusScope {
         want = aliases[want] || want
         // The focus first: when `tab` names the section already loaded, nothing reloads and
         // the reveal has to be started here
-        if (props.focus) pendingFocus = props.focus === "not-interested" ? words.t("settings-library-hidden-from-airing") : props.focus
-        if (sectionIndex(want) >= 0) current = want
+        // The shows hidden from Airing now are Library's own page, opened by name or by the old
+        // focus Airing used to send
+        if (props.focus === "not-interested") want = "hidden"
+        else if (props.focus) pendingFocus = props.focus
+        if (sectionIndex(want) >= 0 || want === "hidden") current = want
         if (pendingFocus !== "") focusLater.restart()
         forceActiveFocus()
     }
     function focusSearch() { search.focusInput() }
     // Named escapePressed, not escape: QML's compiler reserves "escape" and refuses it as a
     // property, method or signal name on any object.
-    function escapePressed() { if (query !== "") { clearSearch(); return true } return false }
+    function escapePressed() {
+        if (query !== "") { clearSearch(); return true }
+        if (current === "hidden") { open("library"); return true }
+        return false
+    }
 
     // ---- Which index entries want attention, read live
     property var srcs: []
@@ -209,7 +218,8 @@ FocusScope {
                 Rectangle {
                     id: entry
                     required property var modelData
-                    readonly property bool active: page.query === "" && page.current === modelData.id
+                    // Library stays lit on its own sub-page, the shows hidden from Airing now
+                    readonly property bool active: page.query === "" && (page.current === modelData.id || (page.current === "hidden" && modelData.id === "library"))
                     objectName: "settings-tabs-" + modelData.id
                     width: indexCol.width
                     height: theme.space(11)
@@ -277,7 +287,7 @@ FocusScope {
             opacity: page.query === "" ? 1 : 0
             enabled: page.query === ""
             source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback",
-                                     downloads: "Downloads", keys: "Keys", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
+                                     downloads: "Downloads", keys: "Keys", about: "About", developer: "Developer", hidden: "HiddenAiring" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()

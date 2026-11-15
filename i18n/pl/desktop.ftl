@@ -3282,6 +3282,13 @@ settings-library-show-hidden = Pokaż ukryte seriale
 settings-library-hidden-from-airing = Ukryte w Teraz w emisji
 settings-library-hidden-from-airing-empty = Jeszcze nic
 settings-library-show-again = Pokaż ponownie
+settings-hidden-airing-filter = Filtruj tytuły
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Jeden serial, który przestał być emitowany, zniknął z listy
+        [few] { $count } seriale, które przestały być emitowane, zniknęły z listy
+       *[other] { $count } seriali, które przestały być emitowane, zniknęło z listy
+    }
 settings-library-calendar = Kalendarz
 settings-library-calendar-feed = Godziny emisji w kalendarzu
 settings-library-calendar-file = Plik kalendarza

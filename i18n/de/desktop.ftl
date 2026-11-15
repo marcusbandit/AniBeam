@@ -2928,6 +2928,12 @@ settings-library-show-hidden = Ausgeblendete Serien zeigen
 settings-library-hidden-from-airing = Aus Läuft jetzt ausgeblendet
 settings-library-hidden-from-airing-empty = Noch nichts
 settings-library-show-again = Wieder zeigen
+settings-hidden-airing-filter = Titel filtern
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Eine Serie, die nicht mehr läuft, ist von der Liste
+       *[other] { $count } Serien, die nicht mehr laufen, sind von der Liste
+    }
 settings-library-calendar = Kalender
 settings-library-calendar-feed = Sendezeiten im Kalender
 settings-library-calendar-file = Kalenderdatei

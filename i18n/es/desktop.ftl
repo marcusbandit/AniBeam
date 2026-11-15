@@ -2928,6 +2928,12 @@ settings-library-show-hidden = Mostrar series ocultas
 settings-library-hidden-from-airing = Ocultas en En emisión
 settings-library-hidden-from-airing-empty = Aún nada
 settings-library-show-again = Volver a mostrar
+settings-hidden-airing-filter = Filtrar títulos
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Una serie que dejó de emitirse salió de la lista
+       *[other] { $count } series que dejaron de emitirse salieron de la lista
+    }
 settings-library-calendar = Calendario
 settings-library-calendar-feed = Horarios de emisión en un calendario
 settings-library-calendar-file = Archivo de calendario

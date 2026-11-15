@@ -2928,6 +2928,12 @@ settings-library-show-hidden = Mostra serie nascoste
 settings-library-hidden-from-airing = Nascoste da In onda ora
 settings-library-hidden-from-airing-empty = Ancora niente
 settings-library-show-again = Mostra di nuovo
+settings-hidden-airing-filter = Filtra i titoli
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Una serie non più in onda è uscita dalla lista
+       *[other] { $count } serie non più in onda sono uscite dalla lista
+    }
 settings-library-calendar = Calendario
 settings-library-calendar-feed = Orari di messa in onda in un calendario
 settings-library-calendar-file = File calendario

@@ -363,6 +363,48 @@ fn a_mark_with_nothing_left_to_hide_goes_at_the_next_read_of_what_is_on_air() {
 }
 
 #[test]
+fn opening_the_list_drops_marks_the_cached_reads_no_longer_carry() {
+    let now = anibeam_core::time::now_secs();
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let pruned = |core: &Core| -> Vec<u64> {
+        let Reply::NotInterested { shows } = core.call(Call::PruneNotInterested).unwrap() else {
+            panic!()
+        };
+        let mut ids: Vec<u64> = shows.iter().map(|s| s.anilist_id).collect();
+        ids.sort();
+        ids
+    };
+
+    // No read of what is on air yet: nothing to check against, nothing goes.
+    mark(&core, 777, true);
+    assert_eq!(pruned(&core), vec![777]);
+
+    // Next season and what is on air, read once; then the marks are checked
+    // against those reads alone, with nothing asked of AniList.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [
+            show(500, "Next Thing", None),
+        ] } } }),
+    );
+    http.push_for("500.jpg", 200, JPEG.to_vec());
+    queue_now(&http, now);
+    common::wait_job(&c, refresh(&core, SeasonPick::Next, true).unwrap());
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    // The read itself prunes; mark the ended show again so the call has one to drop.
+    mark(&core, 777, true);
+    mark(&core, 235, true);
+    mark(&core, 500, true);
+    mark(&core, 300, true);
+    assert_eq!(
+        pruned(&core),
+        vec![235, 300, 500],
+        "on air, next season and a finale in the strip stay; the ended show goes"
+    );
+}
+
+#[test]
 fn next_season_is_its_own_read_with_no_strip() {
     let http = FakeHttp::new();
     http.push_json(

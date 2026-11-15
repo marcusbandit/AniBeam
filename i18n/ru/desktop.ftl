@@ -3216,6 +3216,13 @@ settings-library-show-hidden = Показывать скрытые
 settings-library-hidden-from-airing = Скрыто из «В эфире»
 settings-library-hidden-from-airing-empty = Пока пусто
 settings-library-show-again = Вернуть
+settings-hidden-airing-filter = Фильтр по названию
+settings-hidden-airing-ended =
+    { $count ->
+        [one] { $count } сериал, который больше не выходит, убран из списка
+        [few] { $count } сериала, которые больше не выходят, убраны из списка
+       *[other] { $count } сериалов, которые больше не выходят, убраны из списка
+    }
 settings-library-calendar = Календарь
 settings-library-calendar-feed = Время выхода в календаре
 settings-library-calendar-file = Файл календаря

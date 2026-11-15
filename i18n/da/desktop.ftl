@@ -2928,6 +2928,12 @@ settings-library-show-hidden = Vis skjulte serier
 settings-library-hidden-from-airing = Skjult fra Sendes nu
 settings-library-hidden-from-airing-empty = Intet endnu
 settings-library-show-again = Vis igen
+settings-hidden-airing-filter = Filtrér titler
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Én serie, der er holdt op med at blive sendt, røg af listen
+       *[other] { $count } serier, der er holdt op med at blive sendt, røg af listen
+    }
 settings-library-calendar = Kalender
 settings-library-calendar-feed = Sendetider i en kalender
 settings-library-calendar-file = Kalenderfil
