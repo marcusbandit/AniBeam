@@ -429,7 +429,7 @@ core-core-guest-not-interested = No me interesa en ese ordenador es la lista de 
 core-core-guest-recommended = las recomendaciones de ese ordenador salen de la lista de su dueño
 core-core-nothing-picked = no hay nada elegido
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } no es un proveedor de reconocimiento
 core-prefs-provider-count = { $provider } aparece { $count } veces; cada proveedor aparece una vez
@@ -469,16 +469,16 @@ core-host-not-an-address = { $text } no es una dirección y un puerto
 
 core-host-not-a-key = { $key } no es una clave de dispositivo
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = tiempo agotado tras { $ms } ms
 core-net-rate-limited = { $provider } limitó las peticiones
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: se agotó el tiempo hace un momento; { -app-name } espera { $seconds } s antes de volver a preguntar
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = sin datos
 
@@ -507,7 +507,7 @@ core-update-cannot-copy = No se pudo copiar la nueva app junto a esta: { $error 
 core-calendar-season-episode = { $title } - Temporada { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no hay carpeta personal
 
@@ -842,7 +842,7 @@ core-metadata-progress-imdb-ratings = valoraciones de IMDb
 
 core-franchise-relation-character = Personajes en común
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = descargando imágenes
 
@@ -1329,3 +1329,4 @@ core-room-media-lost = El cliente de torrents perdió la descarga del episodio.
 core-room-media-stalled = La descarga no ha avanzado en diez minutos. Inténtalo de nuevo más tarde.
 core-room-media-not-in-library = El episodio se descargó, pero no está en tu biblioteca. Comprueba que las descargas se guarden en una carpeta de la biblioteca.
 core-room-media-here = El episodio ya está en tu biblioteca.
+core-room-media-rest-missing = No se pudo conseguir el resto de la serie. Solo se descarga este episodio.

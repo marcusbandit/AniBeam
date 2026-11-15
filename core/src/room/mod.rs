@@ -157,11 +157,14 @@ struct Active {
     keys: Arc<seal::Keys>,
     /// Where Get media is, the download's progress the status carries, and the
     /// fetch running now: its number, and the token that stops it. `whole_show`
-    /// when the member asked for the rest of the show with it (#922).
+    /// when the member asked for the rest of the show with it (#922), and `rest`
+    /// once the search for that rest has started for the room's episode: it runs
+    /// once an episode, and stops with the room or when the host moves on.
     fetch: RoomFetch,
     progress: Option<proto::Progress>,
     fetching: Option<(u64, CancellationToken)>,
     whole_show: bool,
+    rest: Option<CancellationToken>,
     /// The host's ready gate (#922), and the position on the room's timeline the
     /// host pressed play at. `started` once the episode has played: the gate asks
     /// only before that, so a pause later never brings it back.
@@ -217,6 +220,9 @@ impl Active {
     fn fresh_episode(&mut self) {
         self.gate = RoomGate::Off;
         self.started = false;
+        if let Some(rest) = self.rest.take() {
+            rest.cancel();
+        }
     }
 
     /// The host starts the room at the position play was pressed at, for
@@ -663,6 +669,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         progress: None,
         fetching: None,
         whole_show: false,
+        rest: None,
         gate: RoomGate::Off,
         gate_at: 0.0,
         started: false,
@@ -1173,7 +1180,7 @@ fn on_welcome(
         a.connected = true;
         // Anything sent before this welcome was dropped with the connection.
         a.settle(room.state);
-        if room.state.playing {
+        if played(&room.state) {
             a.started = true;
         }
         let same = |a: Option<&proto::EpisodeRef>, b: Option<&proto::EpisodeRef>| match (a, b) {
@@ -1206,7 +1213,7 @@ fn on_welcome(
                 a.detach();
                 a.timeline = None;
                 a.fresh_episode();
-                if room.state.playing {
+                if played(&room.state) {
                     a.started = true;
                 }
             }
@@ -1240,6 +1247,13 @@ fn on_welcome(
         find(playback, serial, e);
     }
     true
+}
+
+/// Whether a room's state shows its episode has played: playing now, or
+/// paused past the start. A core that joins late, comes back after a restart
+/// or takes over as host learns it from here, having seen no play itself.
+fn played(state: &PlayState) -> bool {
+    state.playing || state.position > 0.0
 }
 
 /// Looks for the room's episode in this library and says what it found.
@@ -1359,11 +1373,12 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             ServerMsg::State { state, by } => out.extend(take_state(a, state, by)),
             ServerMsg::Members { members } => {
                 let before = std::mem::replace(&mut a.members, members);
-                // The gate ends with the host role, and opens once everyone is ready
+                // The gate ends with the host role. Waiting for everyone opens it
+                // once everyone is ready; asking still waits for the host's choice.
                 if a.gate != RoomGate::Off {
                     if !a.is_host() {
                         a.gate = RoomGate::Off;
-                    } else if a.all_ready() {
+                    } else if a.gate == RoomGate::Waiting && a.all_ready() {
                         out.extend(a.open_gate());
                     }
                 }
@@ -1566,6 +1581,7 @@ mod tests {
             progress: None,
             fetching: None,
             whole_show: false,
+            rest: None,
             gate: RoomGate::Off,
             gate_at: 0.0,
             started: false,

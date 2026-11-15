@@ -417,7 +417,7 @@ core-core-guest-not-interested = 那台电脑上的“不感兴趣”是它主�
 core-core-guest-recommended = 那台电脑上的推荐是根据它主人的列表生成的
 core-core-nothing-picked = 未选择任何内容
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } 不是匹配服务
 core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服务只能出现一次
@@ -457,16 +457,16 @@ core-host-not-an-address = { $text } 不是地址和端口
 
 core-host-not-a-key = { $key } 不是设备密钥
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 后超时
 core-net-rate-limited = { $provider } 限制了请求频率
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }：刚才超时了；{ -app-name } 会等待 { $seconds } 秒后再请求
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 没有数据
 
@@ -495,7 +495,7 @@ core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $err
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 没有主目录
 
@@ -732,7 +732,7 @@ core-metadata-progress-imdb-ratings = IMDb 评分
 
 core-franchise-relation-character = 共同角色
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 正在获取图片
 
@@ -1124,3 +1124,4 @@ core-room-media-lost = 种子客户端丢失了这一集的下载。
 core-room-media-stalled = 下载已经十分钟没有进展。请稍后再试。
 core-room-media-not-in-library = 这一集已下载，但不在你的媒体库中。请检查下载是否保存到媒体库文件夹。
 core-room-media-here = 这一集已在你的媒体库中。
+core-room-media-rest-missing = 无法获取这部剧的其余剧集。只在下载这一集。

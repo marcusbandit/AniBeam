@@ -432,7 +432,7 @@ core-core-guest-not-interested = Niet interessant op die computer is de lijst va
 core-core-guest-recommended = de aanbevelingen op die computer komen uit de lijst van de eigenaar
 core-core-nothing-picked = niets gekozen
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is geen bron voor koppelen
 core-prefs-provider-count = { $provider } staat er { $count } keer in; elke bron staat er één keer in
@@ -472,16 +472,16 @@ core-host-not-an-address = { $text } is geen adres met poort
 
 core-host-not-a-key = { $key } is geen apparaatsleutel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = time-out na { $ms }ms
 core-net-rate-limited = { $provider } remt verzoeken af
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: zojuist een time-out; { -app-name } wacht { $seconds } s voordat het weer vraagt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = geen gegevens
 
@@ -510,7 +510,7 @@ core-update-cannot-copy = Kon de nieuwe app niet naast deze kopiëren: { $error 
 core-calendar-season-episode = { $title } - Seizoen { $season } Aflevering { $number }
 core-calendar-episode = { $title } - Aflevering { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = geen thuismap
 
@@ -842,7 +842,7 @@ core-metadata-progress-imdb-ratings = IMDb-beoordelingen
 
 core-franchise-relation-character = Gedeelde personages
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = afbeeldingen ophalen
 
@@ -1308,3 +1308,4 @@ core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
 core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
 core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
 core-room-media-here = De aflevering staat nu in je bibliotheek.
+core-room-media-rest-missing = De rest van de serie kon niet worden opgehaald. Alleen deze aflevering wordt gedownload.

@@ -409,9 +409,10 @@ pub enum RoomFetch {
 }
 
 /// The host's ready gate (#922). `Asking` once the host pressed play while someone in
-/// the room lacks the episode or is still opening it: the room stays paused and the
-/// host chooses (`RoomStart`). `Waiting` after choosing to wait: the room starts on
-/// its own once everyone is ready. Back to `Off` once the episode plays, or on a new one.
+/// the room lacks the episode or is still opening it: the room stays paused until the
+/// host chooses (`RoomStart`), even once everyone is ready. `Waiting` after choosing to
+/// wait: the room starts on its own once everyone is ready. Back to `Off` once the
+/// episode plays, or on a new one.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
 )]

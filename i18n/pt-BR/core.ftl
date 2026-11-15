@@ -429,7 +429,7 @@ core-core-guest-not-interested = Sem interesse naquele computador é a lista do 
 core-core-guest-recommended = as recomendações naquele computador vêm da lista do dono dele
 core-core-nothing-picked = nada escolhido
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } não é um provedor de vínculo
 core-prefs-provider-count = { $provider } aparece { $count } vezes; cada provedor aparece uma vez
@@ -469,16 +469,16 @@ core-host-not-an-address = { $text } não é um endereço com porta
 
 core-host-not-a-key = { $key } não é uma chave de dispositivo
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = tempo esgotado após { $ms } ms
 core-net-rate-limited = { $provider } limitou as requisições
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: tempo esgotado há pouco; o { -app-name } espera { $seconds } s antes de perguntar de novo
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = sem dados
 
@@ -507,7 +507,7 @@ core-update-cannot-copy = Não foi possível copiar o novo app ao lado deste: { 
 core-calendar-season-episode = { $title } - Temporada { $season } Episódio { $number }
 core-calendar-episode = { $title } - Episódio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = sem pasta pessoal
 
@@ -841,7 +841,7 @@ core-metadata-progress-imdb-ratings = notas do IMDb
 
 core-franchise-relation-character = Personagens em comum
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = baixando imagens
 
@@ -1325,3 +1325,4 @@ core-room-media-lost = O cliente de torrent perdeu o download do episódio.
 core-room-media-stalled = O download não avançou em dez minutos. Tente de novo mais tarde.
 core-room-media-not-in-library = O episódio foi baixado, mas não está na sua biblioteca. Verifique se os downloads são salvos em uma pasta da biblioteca.
 core-room-media-here = O episódio já está na sua biblioteca.
+core-room-media-rest-missing = Não foi possível obter o resto da série. Só este episódio está sendo baixado.

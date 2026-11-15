@@ -431,7 +431,7 @@ core-core-guest-not-interested = Kein Interesse auf diesem Computer ist die List
 core-core-guest-recommended = die Empfehlungen auf diesem Computer stammen aus der Liste seines Besitzers
 core-core-nothing-picked = nichts gewählt
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } ist kein Anbieter für Zuordnungen
 core-prefs-provider-count = { $provider } steht { $count }-mal drin; jeder Anbieter steht genau einmal drin
@@ -471,16 +471,16 @@ core-host-not-an-address = { $text } ist keine Adresse mit Port
 
 core-host-not-a-key = { $key } ist kein Geräteschlüssel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = Zeitüberschreitung nach { $ms } ms
 core-net-rate-limited = { $provider } drosselt die Anfragen
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: eben eine Zeitüberschreitung; { -app-name } wartet { $seconds } s, bevor es wieder fragt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = keine Daten
 
@@ -509,7 +509,7 @@ core-update-cannot-copy = Die neue App konnte nicht neben diese kopiert werden: 
 core-calendar-season-episode = { $title } - Staffel { $season } Folge { $number }
 core-calendar-episode = { $title } - Folge { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = kein Home-Verzeichnis
 
@@ -841,7 +841,7 @@ core-metadata-progress-imdb-ratings = IMDb-Bewertungen
 
 core-franchise-relation-character = Gemeinsame Charaktere
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = Bilder werden geladen
 
@@ -1307,3 +1307,4 @@ core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.
 core-room-media-stalled = Der Download ist seit zehn Minuten nicht weitergekommen. Versuch es später noch einmal.
 core-room-media-not-in-library = Die Folge ist heruntergeladen, aber nicht in deiner Bibliothek. Prüfe, ob Downloads in einem Bibliotheksordner landen.
 core-room-media-here = Die Folge ist jetzt in deiner Bibliothek.
+core-room-media-rest-missing = Der Rest der Serie war nicht zu bekommen. Nur diese Folge wird geladen.

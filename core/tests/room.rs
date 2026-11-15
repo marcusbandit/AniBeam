@@ -1082,9 +1082,20 @@ fn the_host_starts_anyway_and_a_late_copy_joins_in_sync() {
     }))
     .unwrap();
     assert_eq!(held.gate, RoomGate::Asking, "Ben has yet to open episode 2");
-    // Ben opens it late: the room was asking, and starts now everyone is ready.
+    // Ben opens it late: everyone is ready, but the room only starts on its own
+    // after the host chose to wait, so it still asks.
     let ben_2 = open(&ben, ben.files[1]);
     room(ben.core.call(Call::RoomAttach { session: ben_2 }));
+    seen_ready(&ann, "Ben");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(status(&ann).unwrap().gate, RoomGate::Asking);
+    assert!(
+        applies(&cid.c, cid_2).iter().all(|(playing, _)| !playing),
+        "nobody plays until the host chooses"
+    );
+    // Waiting with everyone ready starts at once.
+    let started = room(ann.core.call(Call::RoomStart { wait: true })).unwrap();
+    assert_eq!(started.gate, RoomGate::Off);
     applied(&cid.c, cid_2, |playing, _, _| playing);
     applied(&ben.c, ben_2, |playing, _, _| playing);
 }
@@ -1305,4 +1316,81 @@ fn switching_discord_off_in_a_room_takes_the_room_off_and_keeps_it_off() {
     let after = discord.wire();
     assert_eq!(after.last(), Some(&Wire::Clear), "{after:#?}");
     assert_eq!(after.len(), off, "nothing shows again: {after:#?}");
+}
+
+#[test]
+fn a_new_host_on_an_episode_that_has_played_is_not_asked_again() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let cid = person(&relay, "Cid", &[1.0], true);
+    let ben = person(&relay, "Ben", &[1.0], true);
+    // Dee lacks episode 1.
+    let dee = person(&relay, "Dee", &[2.0], true);
+
+    // Ann, alone, plays the episode and pauses it at 30 s.
+    let ann_s = open(&ann, ann.files[0]);
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
+    let played = room(ann.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 0.0,
+    }))
+    .unwrap();
+    assert_eq!(played.gate, RoomGate::Off);
+    ann.core
+        .call(Call::RoomCommand {
+            action: RoomAction::Pause,
+            position: 30.0,
+        })
+        .unwrap();
+    // The relay has the pause before anyone else comes in
+    std::thread::sleep(Duration::from_millis(300));
+
+    // Cid joins the paused room first and sees no play himself; then Ben and Dee.
+    room(cid.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let cid_s = open(&cid, cid.files[0]);
+    room(cid.core.call(Call::RoomAttach { session: cid_s }));
+    applied(&cid.c, cid_s, |playing, seek, _| {
+        !playing && seek.is_some_and(|t| (t - 30.0).abs() < 0.01)
+    });
+    seen_ready(&ann, "Cid");
+    room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let ben_s = open(&ben, ben.files[0]);
+    room(ben.core.call(Call::RoomAttach { session: ben_s }));
+    seen_ready(&cid, "Ben");
+    room(dee.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    common::wait_for(
+        &cid.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomChanged { room: Some(r) }
+                if r.members.iter().any(|m| m.name == "Dee" && m.ready == RoomReady::Missing))
+        },
+        WAIT,
+    );
+
+    // Ann leaves: Cid, there longest, is the host. Dee still lacks the episode,
+    // but it has played, so Cid's play goes straight through.
+    room(ann.core.call(Call::RoomLeave));
+    common::wait_for(
+        &cid.c,
+        |e| matches!(&e.body, EventBody::RoomChanged { room: Some(r) } if r.host),
+        WAIT,
+    );
+    let again = room(cid.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 30.0,
+    }))
+    .unwrap();
+    assert_eq!(again.gate, RoomGate::Off);
+    applied(&ben.c, ben_s, |playing, seek, _| {
+        playing && seek.is_some_and(|t| (30.0..32.0).contains(&t))
+    });
 }
