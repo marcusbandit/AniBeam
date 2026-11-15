@@ -87,5 +87,8 @@
   "Download IPA": "Scarica l'IPA",
   "Nightly test build, unsigned, for sideloading": "Build di prova nightly, non firmata, per il sideloading",
   "Unsigned, for sideloading": "Non firmato, per il sideloading",
-  "Or install this build once in": "Oppure installa questa versione una sola volta in"
+  "Or install this build once in": "Oppure installa questa versione una sola volta in",
+  "Every platform": "Tutte le piattaforme",
+  "Installer": "Programma di installazione",
+  "From a terminal": "Da un terminale"
 }

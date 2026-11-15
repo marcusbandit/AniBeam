@@ -128,7 +128,14 @@ body {
   letter-spacing: 0.005em;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
+  /* A column the height of the window at least, so the footer sits at its bottom on a short page. */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
+body > main { flex: 1 0 auto; width: 100%; }
+body > .foot { width: 100%; }
 img { display: block; max-width: 100%; height: auto; }
 a { color: var(--fg); text-underline-offset: 0.2em; text-decoration-thickness: 1px; transition: color var(--quick); }
 a:hover { color: var(--brand); }
@@ -798,12 +805,15 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
   .foot nav { margin-left: 0; }
 }
 
-/* The download page. The visitor's system gets the wide tile on top; the rest sit below it.
-   Nightly keeps the same page and changes only what says "not finished": the owner's
-   hand-drawn logo, and the pale paper yellow of that drawing in place of the brand yellow. */
+/* The download page. The hero hands the visitor's own system its file in one button, beside a
+   picture of the app; every platform follows as a card listing its files, and the terminal
+   installs sit in tabs below. Nightly keeps the same page and changes only what says "not
+   finished": the owner's hand-drawn logo, and the pale paper yellow of that drawing in place of
+   the brand yellow. */
 .dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
 .dl-page[data-channel="nightly"] { --paper: #f3e073; --brand: var(--paper); --brand-hi: #fff3b0; --beam-a: rgba(243, 224, 115, 0.4); --beam-b: rgba(243, 224, 115, 0.25); }
-.dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
+
+.dl-hero { position: relative; isolation: isolate; display: flex; justify-content: center; padding: 160px 0 104px; text-align: center; }
 .dl-beams { inset: -40px -40% 0; }
 /* Nightly draws its streaks as bent, dashed vector lines (download.js); the straight ones step
    aside. The dashes crawl along the line. */
@@ -817,20 +827,159 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 /* 100 px a loop: a whole number of dash cycles on every streak (download.js), so it never jumps. */
 @keyframes crawl { to { stroke-dashoffset: -100; } }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
-.dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
-.dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
-/* The switch is a plain crossfade between the two logos. */
-.dl-mark img { transition: opacity 0.35s ease; }
+
+.dl-hero-copy { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.dl-mark { position: relative; width: 72px; height: 72px; margin-bottom: 28px; }
+.dl-mark img { position: absolute; inset: 0; border-radius: 18px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.35s ease; }
 .mark-nightly { opacity: 0; }
 .dl-page[data-channel="nightly"] .mark-stable { opacity: 0; }
 .dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; }
-.dl-head h1 { font-size: clamp(36px, 5.4vw, 64px); letter-spacing: -0.04em; font-weight: 640; }
-.channel { position: relative; display: inline-flex; margin-top: 30px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-hero h1 { font-size: clamp(44px, 5.6vw, 76px); line-height: 0.98; letter-spacing: -0.045em; font-weight: 660; text-wrap: balance; }
+
+/* The version line: the number as a tag, the date, and What's new */
+.dl-meta { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 14px; margin: 20px 0 0; color: var(--fg-3); font-size: 15px; }
+.dl-meta .dl-ver { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--fg); font: 500 13px/1 var(--mono); }
+.dl-meta .dl-ver::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 10px var(--brand); transition: background-color 0.45s ease; }
+.dl-meta a { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-2); text-decoration: none; }
+.dl-meta a::after { content: "\2192"; transition: translate var(--quick); }
+.dl-meta a:hover { color: #fff; }
+.dl-meta a:hover::after { translate: 3px 0; }
+
+.channel { position: relative; display: inline-flex; margin-top: 28px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
 .channel button { position: relative; z-index: 1; width: 104px; padding: 9px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
 .channel button:hover { color: #fff; }
 .channel button[aria-pressed="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
 .dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
+
+/* The one big button: the visitor's system, its icon, its file and size, and the arrow. With no
+   system to pick it leads down to the cards. */
+.dl-mine {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: min(100%, 420px);
+  margin-top: 32px;
+  padding: 14px 14px 14px 16px;
+  text-align: left;
+  border-radius: 18px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  text-decoration: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5), inset 0 -1px 0.4px rgba(0, 0, 0, 0.25), inset 0 1px 0.4px rgba(255, 255, 255, 0.7), 0 24px 60px -24px rgba(253, 201, 1, 0.55);
+  transition: background-color var(--quick), transform 0.25s var(--ease), box-shadow 0.45s ease;
+}
+.dl-mine:hover { color: var(--brand-ink); background: var(--brand-hi); transform: translateY(-2px); }
+.dl-mine:active { transform: translateY(0) scale(0.99); }
+.dl-mine-os { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: rgba(13, 14, 17, 0.12); }
+.dl-mine-os svg { width: 26px; height: 26px; fill: currentColor; }
+.dl-mine-os svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.dl-mine-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dl-mine-text b { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.15; }
+.dl-mine-text small { font: 500 13px/1.2 var(--mono); opacity: 0.68; }
+.dl-mine-text small[hidden] { display: none; }
+.dl-mine-go { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--brand-ink); color: var(--brand); transition: color 0.45s ease; }
+.dl-mine-go svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-mine::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.6) 48%, rgba(255, 255, 255, 0.2) 52%, transparent 60%); background-size: 300% 100%; background-position: 130% 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .dl-mine:hover::after { background-position: -30% 0; transition: background-position 0.8s var(--ease); }
+  .dl-mine:hover .dl-mine-go svg { animation: nudge 0.9s var(--ease) infinite; }
+}
+@keyframes nudge { 50% { transform: translateY(3px); } }
+
+/* The other ways to get it on the same system, as chips under the big button */
+.dl-alt { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.dl-alt:empty { display: none; }
+.dl-alt a { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--fg-2); font: 500 13px/1 var(--mono); text-decoration: none; transition: color var(--quick), background-color var(--quick); }
+.dl-alt a:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.dl-alt svg { width: 15px; height: 15px; }
+.dl-alt svg.ic-b { fill: currentColor; }
+.dl-alt svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-alt .dl-get { display: none; }
+
+
+/* Section headings */
+.dl-platforms h2, .dl-cli h2 { margin-bottom: 36px; font-size: clamp(30px, 3.4vw, 44px); }
+
+/* Every platform: one row each, all the same size. The name on the left, the other ways to get
+   it as chips, and the main file as the button on the right. */
+.dl-grid { display: flex; flex-direction: column; gap: 10px; }
+.dl-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 88px;
+  padding: 16px 16px 16px 20px;
+  border: 1px solid var(--hair);
+  border-radius: 20px;
+  background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
+  box-shadow: inset 0 1px var(--hi);
+}
+.dl-card[hidden] { display: none; }
+/* Desktop above, phones below: Android is the first phone, so the gap opens above it. */
+.dl-card[data-os="android"] { margin-top: 30px; }
+.dl-card [hidden] { display: none; }
+.dl-glyph { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-glyph svg { width: 24px; height: 24px; fill: var(--fg); transition: fill 0.45s ease; }
+.dl-card.is-mine { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.dl-card.is-mine .dl-glyph svg { fill: var(--brand); }
+.dl-card-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dl-card-name h3 { font-size: 20px; letter-spacing: -0.02em; }
+.dl-req { color: var(--fg-3); font-size: 13.5px; }
+.dl-files { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.dl-files li:has([data-main]) { order: 1; }
+.dl-file { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px; border-radius: 999px; color: var(--fg-2); font: 500 13.5px/1 var(--sans); text-decoration: none; white-space: nowrap; transition: color var(--quick), background-color var(--quick), box-shadow var(--quick); }
+.dl-file:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.dl-file svg { width: 15px; height: 15px; }
+.dl-file svg.ic-b { fill: currentColor; }
+.dl-file svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-file[data-main] { height: 44px; min-width: 190px; justify-content: center; padding: 0 18px; border-radius: 12px; background: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08)), #0d0e10; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), inset 0 1px rgba(255, 255, 255, 0.08); color: var(--fg); font-weight: 600; font-size: 15px; }
+.dl-file[data-main]:hover { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 1px rgba(255, 255, 255, 0.12); }
+.dl-size { color: var(--fg-3); font: 500 12.5px/1 var(--mono); }
+.dl-size:empty { display: none; }
+.dl-card.is-mine .dl-file[data-main] { background: var(--brand); box-shadow: inset 0 -1px 0.4px rgba(0, 0, 0, 0.25), inset 0 1px 0.4px rgba(255, 255, 255, 0.7); color: var(--brand-ink); }
+.dl-card.is-mine .dl-file[data-main]:hover { background: var(--brand-hi); }
+.dl-card.is-mine .dl-file[data-main] .dl-size { color: rgba(13, 14, 17, 0.6); }
+
+/* From a terminal: one console, a tab per way in */
+.dl-cli { margin-top: 112px; }
+.dl-console { border: 1px solid var(--hair); border-radius: 22px; background: #050607; box-shadow: inset 0 1px var(--hi); overflow: hidden; }
+.dl-tabs { display: flex; gap: 4px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--hair); background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%); scrollbar-width: none; }
+.dl-tabs::-webkit-scrollbar { display: none; }
+.dl-tabs button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color var(--quick), background-color var(--quick); }
+.dl-tabs button:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+.dl-tabs button[aria-selected="true"] { color: var(--fg); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-tabs svg { width: 16px; height: 16px; fill: currentColor; }
+.dl-tabs button[aria-selected="true"] svg { fill: var(--brand); }
+.dl-tab-icons { display: inline-flex; gap: 4px; }
+.dl-panel { padding: 18px; }
+.dl-panel[hidden] { display: none; }
+.dl-panel .term { background: none; box-shadow: none; padding-left: 6px; }
+.term-lines code { padding-top: 7px; white-space: pre; line-height: 1.9; }
+.term-lines .prompt { padding: 0; }
+
+.dl-more { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 72px; }
+.dl-more svg { width: 18px; height: 18px; }
+.dl-more svg.ic-b { fill: currentColor; }
+.dl-more svg.ic { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.dl-page + .foot { margin-top: 120px; }
+
+@media (max-width: 760px) {
+  .dl-hero { padding: 120px 0 72px; }
+  .dl-card { grid-template-columns: 44px minmax(0, 1fr); gap: 14px 14px; padding: 16px; }
+  .dl-glyph { width: 44px; height: 44px; }
+  .dl-files { grid-column: 1 / -1; justify-content: flex-start; }
+  .dl-files li:has([data-main]) { order: -1; flex-basis: 100%; }
+  .dl-file[data-main] { width: 100%; }
+  .dl-mine { width: 100%; }
+  .dl-cli { margin-top: 80px; }
+  .term-lines code { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
 
 /* Get Anibeam on the home page: the hero's two buttons again, and the install command. */
 .install { text-align: center; }
@@ -839,74 +988,7 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 .get-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 28px !important; }
 .get-term .term { width: min(100%, 560px); text-align: left; }
 
-.dl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.dl-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  padding: 26px;
-  border: 1px solid var(--hair);
-  border-radius: 22px;
-  background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
-  box-shadow: inset 0 1px var(--hi);
-}
-.dl-name { display: flex; align-items: center; gap: 12px; }
-.dl-name svg { width: 26px; height: 26px; fill: var(--fg); transition: fill 0.45s ease; }
-.dl-name :is(h2, h3) { font-size: 22px; letter-spacing: -0.02em; }
-.dl-do { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
-.dl-main { width: 100%; }
-.dl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.dl-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair); color: var(--fg-2); font: 500 13px/1 var(--mono); text-decoration: none; transition: color var(--quick), background-color var(--quick); }
-.dl-chip svg { width: 14px; height: 14px; fill: currentColor; }
-a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
-.dl-chip.is-soon { opacity: 0.6; font-family: var(--sans); }
-
-/* The featured tile: the visitor's system, wide, with its download in the brand colour. */
-.dl-tile.is-featured { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 40px; padding: 34px 38px; }
-.dl-tile.is-featured .dl-name svg { width: 44px; height: 44px; fill: var(--brand); }
-.dl-tile.is-featured .dl-name :is(h2, h3) { font-size: 34px; }
-.dl-tile.is-featured .dl-do { flex-direction: row; align-items: center; gap: 18px; margin: 0 0 0 auto; }
-.dl-tile.is-featured .dl-main { width: auto; min-width: 260px; }
-/* A light runs round the edge of the featured tile, and a sheen crosses its download button
-   every few seconds. */
-@property --edge { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.dl-tile.is-featured::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  padding: 1px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--edge), rgba(255, 255, 255, 0.07) 0 52%, var(--brand) 66%, #fff 70%, var(--brand) 74%, rgba(255, 255, 255, 0.07) 88%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .dl-tile.is-featured::before { animation: edge-run 7s linear infinite; }
-  .dl-tile.is-featured .dl-main::after { animation: sheen 4.8s cubic-bezier(0.45, 0, 0.2, 1) 1.2s infinite; }
-}
-@keyframes edge-run { to { --edge: 360deg; } }
-.dl-tile.is-featured .dl-main::after { background-image: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.85) 47%, rgba(255, 255, 255, 0.95) 49%, rgba(255, 255, 255, 0.3) 52%, transparent 58%); background-size: 300% 100%; }
-@keyframes sheen { 0%, 72% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
-.dl-tile.is-featured .dl-main { transition: background-color var(--quick), box-shadow var(--quick), transform 0.25s var(--ease); }
-.dl-tile.is-featured .dl-main:hover { transform: translateY(-2px) scale(1.02); }
-.dl-tile.is-featured .dl-main:active { transform: translateY(0) scale(0.99); }
-
-.dl-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 56px; }
-.dl-term .term { width: min(100%, 620px); }
-.dl-term .term.nightly-only { width: min(100%, 780px); }
 .dl-term-for { color: var(--fg-3); font-size: 13.5px; }
-.dl-all { margin: 56px 0 0; color: var(--fg-3); font-size: 14.5px; text-align: center; }
-.dl-page + .foot { margin-top: 120px; }
-@media (max-width: 860px) {
-  .dl-grid { grid-template-columns: minmax(0, 1fr); }
-  .dl-tile.is-featured { flex-direction: column; align-items: stretch; gap: 22px; padding: 26px; }
-  .dl-tile.is-featured .dl-do { flex-direction: column; align-items: stretch; margin: 0; }
-  .dl-tile.is-featured .dl-main { min-width: 0; width: 100%; }
-}
 
 /* The nav: the language, Watch together, GitHub, and the way to the downloads */
 .nav-lang, .nav-gh, .nav-rooms { display: inline-flex; align-items: center; gap: 7px; }
@@ -998,36 +1080,32 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
   .wn-coming { padding: 26px 20px; }
 }
 
-/* The download page's channel and the chips only a release has */
+/* The download page's channel and the rows only a release has */
 .dl-page[data-channel="nightly"] .stable-only { display: none; }
 .dl-page:not([data-channel="nightly"]) .nightly-only { display: none; }
 .term[hidden] { display: none; }
-.dl-chip.is-note { font-family: var(--sans); color: var(--fg-3); background: none; box-shadow: none; padding-inline: 4px; }
 .dl-auto.is-soon { cursor: default; pointer-events: none; }
 .dl-auto.is-soon .os-icon { display: none; }
 
-/* A phone: only the phone's download, no command line, no other systems, no channels. */
-html[data-device="phone"] .dl-tile:not([data-os="android"]),
-html[data-device="phone"] .dl-term,
+/* A phone: its own download only. No picture of the desktop app, no command line, no other
+   systems; an Android phone gets it all from the hero's button, so it has no cards either. */
+html[data-device="phone"] .dl-cli,
+html[data-device="phone"] .dl-more,
+html[data-device="phone"] .dl-card:not([data-os="ios"]),
 html[data-device="phone"] .get-term,
 html[data-device="phone"] .dl-other,
-html[data-device="phone"] .dl-all { display: none; }
+html[data-os="android"] .dl-platforms { display: none; }
 
 /* An Android phone has no channels, but an iPhone does: its IPA is on each of them. */
 html[data-os="android"] .channel { display: none; }
 
-/* An iPhone: no app yet, so the note says it is coming and the Mac's download stands in. */
+/* An iPhone: its card once there is a build, and until then the note that it is coming, with
+   the Mac's download standing in. */
 .ios-mac, .ios-soon { display: none; }
 html[data-os="ios"] .ios-mac { display: inline-flex; }
 .ios-mac .os-icon { fill: currentColor; stroke: none; }
-html[data-os="ios"] .dl-tile[data-os="mac"] { display: flex; }
-html[data-os="ios"] .dl-tile[data-os="android"] { display: none; }
-/* The iPhone's test build tile, shown by download.js once the phone's nightly has an IPA. An
-   iPhone sees it with the Mac's tile above. */
-.dl-tile[hidden] { display: none; }
-.dl-tile [hidden] { display: none; }
-html[data-os="ios"] .dl-tile[data-os="ios"]:not([hidden]) { display: flex; }
-html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
+html[data-os="ios"] .dl-grid:has(#dl-iphone[hidden]) .dl-card[data-os="mac"] { display: flex; }
+html[data-os="ios"] .dl-page:has(#dl-iphone[hidden]) .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
 .ios-soon svg { width: 16px; height: 16px; fill: currentColor; }
 
 /* A narrow screen that is no phone wraps a long command instead of cutting it off. */
@@ -1070,3 +1148,5 @@ html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 
   .legal-hero { padding: 120px 0 40px; }
   .legal > section:not(.legal-hero) { grid-template-columns: minmax(0, 1fr); padding: 32px 0; }
 }
+/* An iPhone with a build: the hero's button and chips are its whole card, so the card steps aside. */
+html[data-os="ios"] .dl-page:has(#dl-iphone:not([hidden])) .dl-platforms { display: none; }
