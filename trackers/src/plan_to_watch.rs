@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 
-use anibeam_contract::*;
-use anibeam_foundation::titles::{self, fallback_title};
-use anibeam_foundation::jobs::{Finished, JobCtx};
-use anibeam_foundation::prefs;
 use crate::Trackers;
 use crate::{accounts, no_token, writes};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::prefs;
+use anibeam_foundation::titles::{self, fallback_title};
 
 /// The `PlanToWatch` call: Planning on every connected tracker that does
 /// not list the show yet. A show already on a list keeps its status there,
@@ -199,7 +199,11 @@ async fn plan(
                     site = crate::oauth::site_name(*one),
                     other = crate::oauth::site_name(*other),
                 ),
-                ts => anibeam_contract::words!("core-airing-now-planned", title = &title, site = names(ts)),
+                ts => anibeam_contract::words!(
+                    "core-airing-now-planned",
+                    title = &title,
+                    site = names(ts)
+                ),
             }),
             level: Level::Info,
             message: format!("{title} is on Planning on {}", labels(&planned)),
@@ -221,7 +225,10 @@ async fn plan(
             body: EventBody::Notice,
         },
         (true, None, Some(why)) => Finished {
-            plain: Some(anibeam_contract::words!("core-airing-now-plan-failed", title = &title)),
+            plain: Some(anibeam_contract::words!(
+                "core-airing-now-plan-failed",
+                title = &title
+            )),
             level: Level::Warn,
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,

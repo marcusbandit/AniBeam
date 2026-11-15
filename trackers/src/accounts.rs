@@ -15,14 +15,14 @@ use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::Trackers;
 use anibeam_contract::*;
+use anibeam_foundation::prefs;
 use anibeam_foundation::secrets::{Secrets, StoreKind};
 use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
 use anibeam_library::cards;
 use anibeam_net::HttpResponse;
-use anibeam_foundation::prefs;
-use anibeam_foundation::time;
-use crate::Trackers;
 
 /// The one url the code exchange and the refresh both post to.
 pub(crate) const MAL_TOKEN_URL: &str = "https://myanimelist.net/v1/oauth2/token";

@@ -26,15 +26,15 @@ use rand::Rng;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use anibeam_contract::*;
-use anibeam_contract::i18n::tr;
-use anibeam_foundation::jobs::{Finished, JobCtx};
-use anibeam_net::anilist::VIEWER_QUERY;
-use anibeam_foundation::percent::decode;
-use anibeam_foundation::time;
 use crate::Trackers;
 use crate::accounts::{self, Tokens};
 use crate::{TRACKER_TIMEOUT, cache};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::percent::decode;
+use anibeam_foundation::time;
+use anibeam_net::anilist::VIEWER_QUERY;
 
 /// The one path the listener serves. Both providers redirect here.
 const CALLBACK_PATH: &str = "/callback";

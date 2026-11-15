@@ -22,10 +22,15 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use anibeam_contract::*;
-use anibeam_foundation::services::Services;
+use crate::Trackers;
+use crate::{TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold};
 use anibeam_contract::i18n::{Arg, tr};
+use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
 use anibeam_library::history::How;
 use anibeam_metadata::apply::card_for;
 use anibeam_metadata::fetch::message_of;
@@ -33,13 +38,6 @@ use anibeam_net::HttpResponse;
 use anibeam_net::anilist::{
     MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_LIST_STATUS_MUTATION, SAVE_NOTES_MUTATION,
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
-};
-use anibeam_foundation::prefs;
-use anibeam_foundation::sync::recover;
-use anibeam_foundation::time;
-use crate::Trackers;
-use crate::{
-    TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
 };
 
 /// MAL's list API. AniList's address lives with its queries.
@@ -1153,7 +1151,11 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                         show = folder,
                         sites = s
                     ),
-                    None => anibeam_contract::words!("core-trackers-score-cleared", show = folder, sites = s),
+                    None => anibeam_contract::words!(
+                        "core-trackers-score-cleared",
+                        show = folder,
+                        sites = s
+                    ),
                 }),
                 level,
                 message: match rated {
@@ -1188,8 +1190,16 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             let cleared = notes.is_none();
             Finished {
                 plain: sites.map(|s| match cleared {
-                    false => anibeam_contract::words!("core-trackers-notes-saved", show = folder, sites = s),
-                    true => anibeam_contract::words!("core-trackers-notes-cleared", show = folder, sites = s),
+                    false => anibeam_contract::words!(
+                        "core-trackers-notes-saved",
+                        show = folder,
+                        sites = s
+                    ),
+                    true => anibeam_contract::words!(
+                        "core-trackers-notes-cleared",
+                        show = folder,
+                        sites = s
+                    ),
                 }),
                 level,
                 message: match cleared {

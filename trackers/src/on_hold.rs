@@ -29,16 +29,16 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::Trackers;
+use crate::{NO_TOKEN, accounts, cache, no_token, writes};
 use anibeam_contract::*;
-use anibeam_foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
 use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::prefs;
+use anibeam_foundation::time;
+use anibeam_foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
 use anibeam_library::cards;
 use anibeam_metadata::apply::card_for;
 use anibeam_metadata::fetch::message_of;
-use anibeam_foundation::prefs;
-use anibeam_foundation::time;
-use crate::Trackers;
-use crate::{NO_TOKEN, accounts, cache, no_token, writes};
 
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
@@ -720,7 +720,9 @@ fn finished(tally: &Tally, days: u32) -> Finished {
     let failed = tally.failed;
     let said = match (tally.moved.as_slice(), failed) {
         ([], _) => anibeam_contract::words!("core-trackers-on-hold-failed", failed = failed),
-        ([(t, n)], 0) => anibeam_contract::words!("core-trackers-on-hold-moved", count = *n, site = site(t)),
+        ([(t, n)], 0) => {
+            anibeam_contract::words!("core-trackers-on-hold-moved", count = *n, site = site(t))
+        }
         ([(t, n)], _) => anibeam_contract::words!(
             "core-trackers-on-hold-moved-failed",
             count = *n,

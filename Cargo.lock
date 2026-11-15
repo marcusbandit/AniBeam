@@ -119,6 +119,7 @@ dependencies = [
  "anibeam-relay",
  "anibeam-releases",
  "anibeam-room",
+ "anibeam-trackers",
  "anyhow",
  "axum",
  "base64 0.23.1",
@@ -298,6 +299,24 @@ version = "2.5.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-trackers"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "base64 0.23.1",
+ "rand 0.10.2",
+ "rusqlite",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

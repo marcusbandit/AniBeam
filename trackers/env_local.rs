@@ -12,7 +12,8 @@ fn bundle(names: &[&str]) {
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env.local");
     // Watched only when it exists: Cargo reads a missing file as changed, which would rerun
     // this script and rebuild the crate on every build of a clone without one. The cost is
-    // that a newly created .env.local goes unnoticed until the build script is touched.
+    // that a newly created .env.local goes unnoticed until both scripts that read it are
+    // touched: `touch trackers/build.rs core/build.rs`.
     if file.exists() {
         println!("cargo:rerun-if-changed={}", file.display());
     }

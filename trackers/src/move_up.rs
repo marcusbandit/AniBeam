@@ -11,11 +11,11 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, params};
 
-use anibeam_contract::*;
-use anibeam_foundation::services::Services;
-use anibeam_foundation::jobs::{Finished, JobCtx};
 use crate::Trackers;
 use crate::{accounts, writes};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
 
 /// `PreviewListMove`: [`preview`] off the reader connection.
 pub fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
@@ -208,7 +208,8 @@ async fn run(
         } else if refused {
             failed += 1;
         }
-        if let Ok(Some(card)) = anibeam_metadata::apply::card_for(&trackers.services, series).await {
+        if let Ok(Some(card)) = anibeam_metadata::apply::card_for(&trackers.services, series).await
+        {
             ctx.changed(card);
         }
     }
