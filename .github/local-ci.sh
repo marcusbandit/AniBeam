@@ -41,6 +41,7 @@ done
 [ $quick -eq 0 ] && [ $cargo -eq 0 ] && quick=1 && cargo=1
 
 status=0
+fetched=0
 step() {
   local name="$1"
   shift
@@ -59,6 +60,7 @@ step() {
 if [ $quick -eq 1 ]; then
   # The patch note check compares with main as it is now, not as it was at the last fetch.
   git fetch -q origin main 2>/dev/null || echo "local-ci: could not fetch origin/main; comparing with the last fetch"
+  fetched=1
   base="$(git merge-base HEAD origin/main)"
   step fmt cargo fmt --all --check
   step changelog .github/changelog-newest.sh "$base"
@@ -70,7 +72,9 @@ if [ $cargo -eq 1 ]; then
   pick=(--all)
   if [ $all -eq 0 ]; then
     if git rev-parse --git-dir >/dev/null 2>&1; then
-      git fetch -q origin main 2>/dev/null || echo "local-ci: could not fetch origin/main; comparing with the last fetch"
+      if [ $fetched -eq 0 ]; then
+        git fetch -q origin main 2>/dev/null || echo "local-ci: could not fetch origin/main; comparing with the last fetch"
+      fi
       pick=(--base origin/main)
     else
       echo "local-ci: no .git here, so every crate is checked"
@@ -78,6 +82,8 @@ if [ $cargo -eq 1 ]; then
   fi
   picked="$(mktemp)"
   step "affected crates" python3 .github/affected-crates.py "${pick[@]}" --output "$picked"
+  # A failed selection, which its step reports, checks every crate rather than none.
+  grep -q '^crates=' "$picked" || python3 .github/affected-crates.py --all --output "$picked" >/dev/null
   crates=() alone=() core=false packages=()
   if grep -q '^crates=' "$picked"; then
     read -ra crates <<<"$(sed -n 's/^crates=//p' "$picked")"
@@ -85,7 +91,7 @@ if [ $cargo -eq 1 ]; then
     core="$(sed -n 's/^core=//p' "$picked")"
     for crate in "${crates[@]}"; do packages+=(-p "$crate"); done
   else
-    # The selection failed, and its step says so: check everything rather than nothing.
+    # Not even cargo metadata worked: let cargo say why.
     packages=(--workspace) core=true
   fi
   rm -f "$picked"

@@ -2,8 +2,8 @@
 """Which workspace crates a change has to clippy and test (#1075).
 
 A pull request checks the crates whose files it changed, plus every crate that depends on one
-of them, directly or not, through any kind of dependency: a dev-dependency runs its user's
-tests, so it counts too. The crates, their folders and their dependencies come from
+of them, directly or not. A dev-dependency counts for its direct user only, whose tests build
+it; cargo never builds a dev-dependency for the user's own users. The crates, their folders and their dependencies come from
 `cargo metadata`, so a crate split out later needs no edit here.
 
   affected-crates.py --base REV        files changed since the merge base of HEAD and REV,
@@ -36,6 +36,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -79,7 +80,7 @@ def matches(path, pattern):
     """A pattern ending in / is a folder; one with * or ? is a glob; anything else is a file or
     a folder by its exact name."""
     if pattern.endswith("/"):
-        return path.startswith(pattern)
+        return path.startswith(pattern) or path == pattern[:-1]
     if any(c in pattern for c in "*?["):
         return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(os.path.basename(path), pattern)
     return path == pattern or path.startswith(pattern + "/")
@@ -89,12 +90,16 @@ class Workspace:
     """The workspace's crates: name, folder from the root, what they read, what they use."""
 
     def __init__(self, crates):
-        # crates: {name: {"dir": "core", "reads": ["apps/linux/packaging"], "uses": {names}}}
+        # crates: {name: {"dir": "core", "reads": ["apps/linux/packaging/"], "uses": {names},
+        #                 "dev": {names only its tests use}}}
         self.crates = crates
         self.users = {name: set() for name in crates}
+        self.dev_users = {name: set() for name in crates}
         for name, c in crates.items():
             for dep in c["uses"]:
                 self.users[dep].add(name)
+            for dep in c.get("dev", set()) - c["uses"]:
+                self.dev_users[dep].add(name)
 
     @classmethod
     def from_metadata(cls, meta):
@@ -112,9 +117,11 @@ class Workspace:
             reads = [r + "/" if os.path.isdir(os.path.join(root, r)) else r for r in reads]
             crates[p["name"]] = {"dir": d, "reads": reads, "deps": p["dependencies"]}
         for c in crates.values():
-            c["uses"] = {by_dir[os.path.normpath(dep["path"])]
-                         for dep in c.pop("deps")
-                         if dep.get("path") and os.path.normpath(dep["path"]) in by_dir}
+            local = [(by_dir[os.path.normpath(dep["path"])], dep.get("kind"))
+                     for dep in c.pop("deps")
+                     if dep.get("path") and os.path.normpath(dep["path"]) in by_dir]
+            c["uses"] = {n for n, kind in local if kind != "dev"}
+            c["dev"] = {n for n, kind in local if kind == "dev"}
         return cls(crates)
 
     def order(self, names):
@@ -125,7 +132,7 @@ class Workspace:
             if n in seen:
                 return
             seen.add(n)
-            for d in sorted(self.crates[n]["uses"]):
+            for d in sorted(self.crates[n]["uses"] | self.crates[n].get("dev", set())):
                 visit(d)
             out.append(n)
 
@@ -147,13 +154,16 @@ class Workspace:
         return sorted(n for n, c in self.crates.items() if any(matches(path, r) for r in c["reads"]))
 
     def users_of(self, names):
-        """The crates that depend on any of these, directly or not."""
+        """The crates that build on any of these, directly or not, plus the direct users whose
+        tests use one of them, or a crate built on one, as a dev-dependency."""
         out, todo = set(), list(names)
         while todo:
             for u in self.users[todo.pop()]:
                 if u not in out:
                     out.add(u)
                     todo.append(u)
+        built = out | set(names)
+        out |= {u for n in built for u in self.dev_users[n]}
         return out - set(names)
 
 
@@ -206,7 +216,7 @@ def select(ws, files, everything=False, skip=()):
     if unpicked:
         why.append("not checked: " + ", ".join(unpicked))
     crates = ws.order(names)
-    alone = [n for n in crates if ws.users[n]]
+    alone = [n for n in crates if ws.users[n] or ws.dev_users[n]]
     return crates, alone, why
 
 
@@ -215,9 +225,10 @@ def changed_files(root, base):
         return subprocess.run(["git", "-C", root, *args], check=True, capture_output=True,
                               text=True).stdout
     mb = git("merge-base", "HEAD", base).strip()
-    # Renames show as a delete and an add, so the crate a file left is checked too.
-    files = git("diff", "--name-only", "--no-renames", "--relative", mb).splitlines()
-    files += git("ls-files", "--others", "--exclude-standard").splitlines()
+    # NUL-separated, so a path with any character in it comes back as it is, unquoted. Renames
+    # show as a delete and an add, so the crate a file left is checked too.
+    files = git("diff", "-z", "--name-only", "--no-renames", "--relative", mb).split("\0")
+    files += git("ls-files", "-z", "--others", "--exclude-standard").split("\0")
     return sorted(set(f for f in files if f)), mb
 
 
@@ -266,6 +277,54 @@ def main():
     return 0
 
 
+# Paths spelled out in a crate's Rust: include_str!("..."), include_bytes!("..."), include!("...")
+# relative to the file, and env!("CARGO_MANIFEST_DIR")).join("...") relative to the crate. A path
+# built at run time cannot be seen here; declare those by hand.
+INCLUDE = re.compile(r'include(?:_str|_bytes)?!\(\s*"([^"]+)"\s*\)')
+MANIFEST_JOIN = re.compile(r'env!\("CARGO_MANIFEST_DIR"\)\s*\)\s*\.join\(\s*"([^"]+)"\s*\)')
+
+
+def undeclared_reads(ws, root):
+    """Every file a crate's Rust names outside its own folder has to sit in a crate it builds on
+    or in its reads, or a change to it would check nothing."""
+    problems = []
+    for name, c in sorted(ws.crates.items()):
+        below, todo = set(), [name]
+        while todo:
+            n = todo.pop()
+            for d in ws.crates[n]["uses"] | ws.crates[n].get("dev", set()):
+                if d not in below:
+                    below.add(d)
+                    todo.append(d)
+        dirs = [ws.crates[n]["dir"] for n in below | {name}]
+        top = os.path.join(root, c["dir"])
+        for here, subdirs, files in os.walk(top):
+            subdirs[:] = [d for d in subdirs if d != "target"
+                          and not os.path.exists(os.path.join(here, d, "Cargo.toml"))]
+            for f in files:
+                if not f.endswith(".rs"):
+                    continue
+                text = open(os.path.join(here, f), errors="replace").read()
+                found = [(os.path.join(here, m), m) for m in INCLUDE.findall(text)]
+                found += [(os.path.join(top, m), m) for m in MANIFEST_JOIN.findall(text)]
+                for target, spelled in found:
+                    rel = os.path.relpath(os.path.normpath(target), root)
+                    if rel.startswith("..") or not os.path.exists(os.path.join(root, rel)):
+                        continue
+                    # A folder above the crate, such as the root, is only a base for a path
+                    # made at run time.
+                    if rel == "." or c["dir"] == rel or c["dir"].startswith(rel + "/"):
+                        continue
+                    if any(d == "." or rel == d or rel.startswith(d + "/") for d in dirs):
+                        continue
+                    if any(matches(rel, r) for r in c["reads"]):
+                        continue
+                    src = os.path.relpath(os.path.join(here, f), root)
+                    problems.append(f"{src} reads {spelled} ({rel}), which {name} does not "
+                                    "declare under [package.metadata.ci] reads")
+    return problems
+
+
 # The self-test: a small workspace shaped like the real one, and change lists with the crates
 # they must pick. Run by ci.yml and local-ci.sh --quick.
 
@@ -280,7 +339,7 @@ FAKE = {
     "trackers": {"dir": "trackers", "reads": [], "uses": {"metadata"}},
     "relay": {"dir": "apps/relay", "reads": [], "uses": {"room"}},
     "core": {"dir": "core", "reads": ["apps/linux/packaging/", "apps/*/changes/*"],
-             "uses": {"trackers", "room", "relay"}},
+             "uses": {"trackers", "room"}, "dev": {"relay"}},
     "cli": {"dir": "apps/cli", "reads": [], "uses": {"core"}},
     "shell": {"dir": "apps/linux", "reads": [], "uses": {"core"}},
 }
@@ -291,10 +350,11 @@ CASES = [
     (["foundation/src/store.rs"], ABOVE_FOUNDATION),
     (["trackers/src/anilist.rs"], {"trackers", "core", "cli", "shell"}),
     (["apps/cli/src/main.rs"], {"cli"}),
-    # A dev-dependency counts: the core's tests use the relay.
+    # The relay builds on the room, and the core's tests use the relay.
     (["room/src/lib.rs"], {"room", "foundation", "net", "library", "metadata", "trackers",
                            "relay", "core", "cli", "shell"}),
-    (["apps/relay/src/main.rs"], {"relay", "core", "cli", "shell"}),
+    # A dev-dependency reaches its direct user and stops: cli never builds the relay.
+    (["apps/relay/src/main.rs"], {"relay", "core"}),
     # Two changes pick the union.
     (["net/src/a.rs", "apps/cli/src/main.rs"], {"net", "library", "metadata", "trackers", "core",
                                                 "cli", "shell"}),
@@ -328,7 +388,7 @@ def self_test():
         if set(got) != want:
             bad += 1
             print(f"self-test: {files}: got {sorted(got)}, want {sorted(want)}", file=sys.stderr)
-        if any(not ws.users[n] for n in alone) or any(n not in got for n in alone):
+        if any(not (ws.users[n] or ws.dev_users[n]) for n in alone) or any(n not in got for n in alone):
             bad += 1
             print(f"self-test: {files}: alone {alone} has a crate nothing builds on", file=sys.stderr)
     # Skipping leaves the rest, and dependencies come first.
@@ -351,6 +411,11 @@ def self_test():
             if not any(ch in r for ch in "*?[") and not os.path.exists(os.path.join(root, r)):
                 bad += 1
                 print(f"self-test: {name} reads {r}, which does not exist", file=sys.stderr)
+    total += 1
+    problems = undeclared_reads(real, root)
+    for problem in problems:
+        print(f"self-test: {problem}", file=sys.stderr)
+    bad += 1 if problems else 0
     total += 1
     got, _, _ = select(real, ["foundation/src/x.rs"])
     want = {"anibeam-foundation", "anibeam-net", "anibeam-library", "anibeam-trackers",
