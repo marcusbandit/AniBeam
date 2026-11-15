@@ -616,6 +616,13 @@ pub enum Call {
         anirss_token: Option<String>,
         torrent_password: Option<String>,
     },
+    /// Where a show that is not in the library yet downloads to on the core's own engine:
+    /// a folder of its own under `folder`, which must be absolute. `None` or an empty folder
+    /// goes back to the default, the first library folder for Anibeam's own qBittorrent.
+    /// The search helper keeps its own folders. Emits `DownloadsStatusChanged`.
+    SetSaveFolder {
+        folder: Option<String>,
+    },
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,

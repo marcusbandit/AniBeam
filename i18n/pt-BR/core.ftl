@@ -1162,6 +1162,10 @@ core-downloads-refuse-library-folder = { $path } é uma pasta da biblioteca ou c
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = o qBittorrent não tem pasta padrão de destino; defina uma no qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } não é um caminho completo para uma pasta
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } não pode guardar downloads: escolha uma pasta que exista e que não seja a sua pasta pessoal
 core-downloads-name-empty = o nome não pode ficar vazio
 core-downloads-name-slash = o nome não pode conter / nem \
 core-downloads-name-not-folder = { $name } não é um nome de pasta
