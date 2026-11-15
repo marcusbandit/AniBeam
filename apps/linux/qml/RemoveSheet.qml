@@ -10,7 +10,7 @@
 // torrentCount, canFiles, filesWhere, note }; `done` gets { torrents, files }. A click
 // outside, Escape or Cancel closes it without a word; Return confirms.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

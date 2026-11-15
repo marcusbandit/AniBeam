@@ -6,7 +6,7 @@ pkgver=2.1.0
 pkgrel=1
 pkgdesc="Browse, play and track a local anime library (Qt 6 and libmpv)"
 arch=(x86_64 aarch64)
-url="https://github.com/marcusbandit/AniBeam"
+url="https://github.com/marcusbandit/Anibeam"
 license=(GPL-3.0-or-later)
 # anirss and qbittorrent-nox are the Downloads page's: Anibeam runs both itself, and uses a
 # qBittorrent you already run instead when one answers.
@@ -23,7 +23,7 @@ options=(!lto)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
-_src() { cd "$srcdir/AniBeam-$pkgver"; }
+_src() { cd "$srcdir/Anibeam-$pkgver"; }
 
 prepare() {
   _src

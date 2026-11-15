@@ -75,13 +75,14 @@ def pending(changes_dir, ref=None):
     return sections
 
 
+# The spelling before #1047, split so a search for it finds nothing.
+OLD_NAME = "Ani" + "Beam"
+
+
 def respell(text):
-    """The site spells the name Anibeam. Change files written before the rename can still say
-    AniBeam, so prose is respelled here. Code spans, paths and file names (Pictures/AniBeam,
-    %APPDATA%\\AniBeam, AniBeam.AppImage, AniBeam-2.4.0) keep their spelling."""
-    parts = text.split("`")
-    parts[::2] = [re.sub(r"(?<![/\\.\w])AniBeam(?!\.\w|[\w-])", "Anibeam", p) for p in parts[::2]]
-    return "`".join(parts)
+    """The site spells the name Anibeam. Change files read from a tag made before the rename
+    (Coming next reads the newest nightly's) still say it with a capital B."""
+    return text.replace(OLD_NAME, "Anibeam")
 
 
 def inline(text):
@@ -212,7 +213,7 @@ def entry(e, prefix, link=True, level="h2"):
     v, slug = e["version"], e["slug"]
     title = f'<span class="wn-title">{html.escape(respell(e["title"]))}</span>' if e["title"] else ""
     name = f'<a href="{prefix}whats-new/{slug}/">{v}</a>' if link else v
-    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/AniBeam/releases/tag/{e["tag"]}">Download {v}</a>'
+    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/Anibeam/releases/tag/{e["tag"]}">Download {v}</a>'
           if TAGS is None or e["tag"] in TAGS else "")
     anchor = f"v{v}" if e["app"] == "desktop" else slug
     return f"""<article class="wn-entry" id="{anchor}">

@@ -7,7 +7,7 @@
 // Every move between them is sideways, so Back leaves Library rather than stepping
 // through its tabs.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Seg {
     id: root

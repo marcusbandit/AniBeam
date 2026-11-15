@@ -19,7 +19,7 @@ An app with no IPA yet is left out, so the source is valid with two apps, one or
 
 Nightlies published before the nightly bundle id (#944) carry the stable id inside their IPA, and
 AltStore refuses an IPA whose bundle id differs from its app's. They cannot be told apart by tag,
-so nightly.yml names the IPA of a nightly with the nightly id AniBeam-Nightly-<version>.ipa, and
+so nightly.yml names the IPA of a nightly with the nightly id Anibeam-Nightly-<version>.ipa, and
 only nightlies holding such an asset are listed; the old ones are skipped.
 
 An IPA's short version is the base of the release's version and its build number the run number
@@ -56,7 +56,8 @@ APPS = {
     },
 }
 # nightly.yml names a nightly's IPA with this prefix once it is built with the nightly bundle id.
-NIGHTLY_IPA = "AniBeam-Nightly-"
+# Builds before 2.5 spelled it with a capital B, so it matches in any case.
+NIGHTLY_IPA = "Anibeam-Nightly-"
 APP_DESCRIPTION = ("Anibeam browses and plays your anime library, keeps your AniList and MyAnimeList "
                    "progress in step, and talks to Anibeam on your computer.")
 
@@ -95,7 +96,7 @@ def entries(releases, channel, min_os):
         if nightly != (channel == "nightly"):
             continue
         ipa = next((a for a in r["assets"] if a["name"].endswith(".ipa")
-                    and (not nightly or a["name"].startswith(NIGHTLY_IPA))), None)
+                    and (not nightly or a["name"].lower().startswith(NIGHTLY_IPA.lower()))), None)
         if not ipa:
             continue
         entry = {

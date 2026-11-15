@@ -23,7 +23,7 @@ import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

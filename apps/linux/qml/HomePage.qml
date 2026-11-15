@@ -12,7 +12,7 @@
 // With no library yet Home holds the same empty state as Library and nothing else (#1006):
 // rows of the season's shows had nothing to do with the person who opened it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

@@ -822,8 +822,8 @@ class PosterShader : public QSGMaterialShader
 public:
     PosterShader()
     {
-        setShaderFileName(VertexStage, QStringLiteral(":/qt/qml/com/marcusrosado/AniBeam/shaders/poster.vert.qsb"));
-        setShaderFileName(FragmentStage, QStringLiteral(":/qt/qml/com/marcusrosado/AniBeam/shaders/poster.frag.qsb"));
+        setShaderFileName(VertexStage, QStringLiteral(":/qt/qml/com/marcusrosado/Anibeam/shaders/poster.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/qt/qml/com/marcusrosado/Anibeam/shaders/poster.frag.qsb"));
     }
     bool updateUniformData(RenderState &state, QSGMaterial *next, QSGMaterial *) override
     {

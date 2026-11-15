@@ -38,7 +38,7 @@ fn android_main(android: slint::android::AndroidApp) {
     }
 }
 
-/// Writes `line` to logcat, under AniBeamCore.
+/// Writes `line` to logcat, under AnibeamCore.
 pub fn log(line: &str) {
     use std::ffi::CString;
     unsafe extern "C" {
@@ -48,7 +48,7 @@ pub fn log(line: &str) {
             text: *const std::ffi::c_char,
         ) -> i32;
     }
-    let tag = CString::new("AniBeamCore").unwrap();
+    let tag = CString::new("AnibeamCore").unwrap();
     let text = CString::new(line.replace('\0', " ")).unwrap();
     // Priority 4 is INFO.
     unsafe { __android_log_write(4, tag.as_ptr(), text.as_ptr()) };

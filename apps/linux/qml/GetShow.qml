@@ -15,7 +15,7 @@
 // The page owns the searches and the actions (DownloadsPage.getShow*); this view draws them
 // and reports clicks.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

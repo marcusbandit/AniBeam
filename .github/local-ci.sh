@@ -66,6 +66,7 @@ if [ $quick -eq 1 ]; then
   step changelog .github/changelog-newest.sh "$base"
   step strings python3 .github/strings-check.py
   step "no sites" .github/no-site-names.sh
+  step "one spelling" .github/one-spelling.sh
   step "affected crates self-test" python3 .github/affected-crates.py --self-test
 fi
 if [ $cargo -eq 1 ]; then

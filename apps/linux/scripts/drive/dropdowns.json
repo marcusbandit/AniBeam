@@ -333,7 +333,7 @@
   "log": "a tooltip over a hovering MouseArea: both see the hover"
  },
  {
-  "eval": "Qt.createQmlObject('import QtQuick; import com.marcusrosado.AniBeam; Rectangle { objectName: \"tipfix\"; x: 1700; y: 900; width: 200; height: 80; color: area.containsMouse ? theme.raisedHover : theme.raised; MouseArea { id: area; objectName: \"tipfix-area\"; anchors.fill: parent; hoverEnabled: true } Tooltip { text: \"Fixture tip\" } }', frame.item.overlay, 'tipfix') !== null",
+  "eval": "Qt.createQmlObject('import QtQuick; import com.marcusrosado.Anibeam; Rectangle { objectName: \"tipfix\"; x: 1700; y: 900; width: 200; height: 80; color: area.containsMouse ? theme.raisedHover : theme.raised; MouseArea { id: area; objectName: \"tipfix-area\"; anchors.fill: parent; hoverEnabled: true } Tooltip { text: \"Fixture tip\" } }', frame.item.overlay, 'tipfix') !== null",
   "expect": true
  },
  {

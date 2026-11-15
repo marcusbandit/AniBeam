@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: appimage.sh <out-dir>
-# Turns target/release/anibeam into <out-dir>/AniBeam-<pkgver>-x86_64.AppImage.
+# Turns target/release/anibeam into <out-dir>/Anibeam-<pkgver>-x86_64.AppImage.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam)
 #   DEPS_PREFIX   where deps.sh installed libva, FFmpeg, libmpv and MpvQt
 #   QMAKE         the qmake of the Qt the binary was built against
@@ -99,8 +99,8 @@ export LINUXDEPLOY_OUTPUT_VERSION="$pkgver"
 cd "$out"
 "$tools/linuxdeploy-x86_64.AppImage" --appdir "$appdir" \
   -e "$appdir/usr/bin/anibeam" \
-  -d "$shell/com.marcusrosado.AniBeam.desktop" \
-  -i "$shell/assets/icon.png" --icon-filename com.marcusrosado.AniBeam \
+  -d "$shell/com.marcusrosado.Anibeam.desktop" \
+  -i "$shell/assets/icon.png" --icon-filename com.marcusrosado.Anibeam \
   --deploy-deps-only "$appdir/usr/plugins/wayland-decoration-client" \
   --deploy-deps-only "$appdir/usr/plugins/wayland-graphics-integration-client" \
   --deploy-deps-only "$appdir/usr/plugins/wayland-shell-integration" \
@@ -208,9 +208,9 @@ chmod 755 "$anirss/bin/anirss"
 echo "== appimage"
 # The plugin linuxdeploy's --output appimage calls, run by hand now the helpers are in.
 # The file name is set here, not taken from the desktop entry's Name=: the updater and the release
-# workflows match AniBeam-<version>-x86_64.AppImage, and Name= now reads Anibeam.
+# workflows match Anibeam-<version>-x86_64.AppImage, and Name= now reads Anibeam.
 rm -f "$out"/*.AppImage
-image="$out/AniBeam-$pkgver-x86_64.AppImage"
+image="$out/Anibeam-$pkgver-x86_64.AppImage"
 LDAI_OUTPUT="$image" "$tools/linuxdeploy-plugin-appimage-x86_64.AppImage" --appdir "$appdir" > "$out/appimage-plugin.log" 2>&1 \
   || { tail -40 "$out/appimage-plugin.log"; exit 1; }
 [ -f "$image" ] || { echo "no $image; the plugin wrote:" >&2; ls -la "$out" >&2; tail -20 "$out/appimage-plugin.log" >&2; exit 1; }

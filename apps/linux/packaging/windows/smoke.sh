@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: smoke.sh <AniBeam-dir> <anibeam-cli.exe> <out-dir>
+# usage: smoke.sh <Anibeam-dir> <anibeam-cli.exe> <out-dir>
 # Runs the bundled app the way a Windows user gets it and leaves PNGs in <out-dir>: a small
 # library of generated clips, matched against AniList, then the home, library, series and
 # settings pages, the player on a real file through libmpv, and the Downloads page starting

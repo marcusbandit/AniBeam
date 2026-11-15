@@ -12,7 +12,7 @@
 // off, and one switched off gets nothing. The addresses the phone app should be given sit
 // under the host service, one row each, with Copy.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

@@ -2,7 +2,7 @@
 //!
 //! The core keeps its database, cache and secrets under `files/core`, and the phone's
 //! library is one folder the app owns, `files/Anime`. Events go to logcat under the tag
-//! `AniBeamCore` until the screens read them.
+//! `AnibeamCore` until the screens read them.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -156,7 +156,7 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
 }
 
 /// `old` is this app's library at a container it has left: gone from the disk, and named
-/// as the library is from the app's own folder down (`AniBeam/Anime` on the iPhone,
+/// as the library is from the app's own folder down (`Anibeam/Anime` on the iPhone,
 /// `files/Anime` on Android), so a folder the app never owned is never taken for it.
 fn moved_library(old: &Path, library: &Path) -> bool {
     fn tail(p: &Path) -> Vec<std::path::Component<'_>> {
@@ -164,7 +164,16 @@ fn moved_library(old: &Path, library: &Path) -> bool {
         names.reverse();
         names
     }
-    old != library && !old.is_dir() && tail(old).len() == 2 && tail(old) == tail(library)
+    // Case-blind, because the iPhone's folder lost its capital B in 2.5.
+    let same = |a: &[std::path::Component<'_>], b: &[std::path::Component<'_>]| {
+        a.len() == b.len()
+            && a.iter().zip(b).all(|(x, y)| {
+                x.as_os_str()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(&y.as_os_str().to_string_lossy())
+            })
+    };
+    old != library && !old.is_dir() && tail(old).len() == 2 && same(&tail(old), &tail(library))
 }
 
 /// A test hook: each line of `/data/local/tmp/anibeam-seed` names a file to create, empty,
@@ -211,18 +220,24 @@ mod tests {
     #[test]
     fn a_library_left_behind_by_a_moved_container_is_followed() {
         let new = Path::new(
-            "/var/mobile/Containers/Data/Application/NEW/Library/Application Support/AniBeam/Anime",
+            "/var/mobile/Containers/Data/Application/NEW/Library/Application Support/Anibeam/Anime",
         );
         let old = Path::new(
-            "/var/mobile/Containers/Data/Application/OLD/Library/Application Support/AniBeam/Anime",
+            "/var/mobile/Containers/Data/Application/OLD/Library/Application Support/Anibeam/Anime",
         );
         assert!(moved_library(old, new));
         assert!(!moved_library(new, new));
+        // The folder from before 2.5, with its capital B.
+        let capital = Path::new(concat!(
+            "/var/mobile/Containers/Data/Application/NEW/Library/Application Support/Ani",
+            "Beam/Anime"
+        ));
+        assert!(moved_library(capital, new));
         // Another app's folder, or one that is still there, is not the library.
         assert!(!moved_library(Path::new("/nowhere/Other/Anime"), new));
         let here = std::env::temp_dir()
             .join(format!("anibeam-local-{}", std::process::id()))
-            .join("AniBeam/Anime");
+            .join("Anibeam/Anime");
         std::fs::create_dir_all(&here).unwrap();
         let still_there = moved_library(&here, new);
         let _ = std::fs::remove_dir_all(here.parent().unwrap().parent().unwrap());
