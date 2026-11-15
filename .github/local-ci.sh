@@ -14,7 +14,8 @@
 #
 # Clippy and the tests cover the crates changed since the merge base with origin/main, plus
 # every crate that builds on them (.github/affected-crates.py, #1075). A copy without .git
-# cannot tell what changed, so it checks every crate.
+# reads the changed files from LOCAL_CI_FILES, one per line, which localci sets on the box
+# with the history; without that either, it checks every crate.
 #
 # Each step prints a "== <step>" line first, so a wrapper can show where it is. The exit
 # status is the first failing step's; the steps after a failure still run, so one pass lists
@@ -77,6 +78,13 @@ if [ $cargo -eq 1 ]; then
         git fetch -q origin main 2>/dev/null || echo "local-ci: could not fetch origin/main; comparing with the last fetch"
       fi
       pick=(--base origin/main)
+    elif [ -n "${LOCAL_CI_FILES+set}" ]; then
+      # A copy on a build box has no .git; localci sends the changed files along instead,
+      # one per line, worked out where the history is.
+      files=()
+      while IFS= read -r f; do if [ -n "$f" ]; then files+=("$f"); fi; done <<<"$LOCAL_CI_FILES"
+      echo "local-ci: no .git here; using the ${#files[@]} changed files localci sent"
+      pick=(--files "${files[@]}")
     else
       echo "local-ci: no .git here, so every crate is checked"
     fi

@@ -44,7 +44,7 @@ PAGES = [
 # depth as the wiki's index, and a page one level down climbs one more.
 _dl = (out / "download/index.html").read_text()
 NAV = re.search(r'<header class="nav">.*?</header>', _dl, re.S).group(0)
-FOOT = re.search(r'<footer class="foot">.*?</footer>', _dl, re.S).group(0)
+FOOT = re.search(r'<footer class="credits">.*?</footer>', _dl, re.S).group(0)
 # The language menu leads to each language's home page, since the wiki is English only.
 # English, the language the visitor is in, stays on the page (page() points it at its own
 # address): lang.js sees the same page and the current language and does nothing, rather
@@ -91,9 +91,11 @@ def page(title, prefix, body, canonical, description):
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="{prefix}style.css">
+<link rel="stylesheet" href="{prefix}redesign.css">
 <script src="{prefix}lang.js" defer></script>
+<script src="{prefix}redesign.js" defer></script>
 </head>
-<body>
+<body class="rd">
 {chrome(NAV, prefix).replace(f'href="{prefix}wiki/" hreflang="en"', f'href="{prefix}{canonical}" hreflang="en"', 1)}
 <main class="wiki">
 {body}
