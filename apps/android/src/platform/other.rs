@@ -10,7 +10,7 @@ pub fn log(line: &str) {
 
 /// No browser to open: the link is logged.
 pub fn open_url(url: &str) {
-    log(&format!("open {url}"));
+    super::log(&format!("open {url}"));
 }
 
 /// Nothing can be picked here.

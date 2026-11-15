@@ -3,46 +3,42 @@
 //!
 //! `android.rs` is the phone: its entry point and the calls only Java answers, over JNI.
 //! `ios.rs` is the iPhone: its entry point and the hinge, with `other.rs`'s stand-ins for
-//! the rest. `other.rs` stands in on every other target (the desktop the tests and host
-//! clippy run on, and any shell that has not brought its own yet) and does the harmless
-//! thing: nothing, None, or the value a phone without the feature would give. Each is
-//! re-exported through the one list in `calls!`: the app reaches only the calls named there,
-//! so a helper made `pub` in one file stays out of it, and a listed call one file lacks fails
-//! that target's build. What every platform shares sits here.
-
-/// Re-exports the platform calls from `$p`. A new call goes in this list and in every
-/// platform file.
-macro_rules! calls {
-    ($p:ident) => {
-        pub use $p::{
-            app_icon, ask_notifications, bars, brightness, copy_text, crease, episode_ready, fold,
-            give_audio_focus, line_colours, log, multicast, notification_settings,
-            notifications_allowed, open_url, pick_file, player_awake, player_screen, relocalize,
-            set_app_icon, set_brightness, set_volume, start_service, stop_service, system_dark,
-            system_locale, take_audio_focus, unmetered, update_service, volume, window_up,
-        };
-        // Only the player calls these, and it links libmpv only where libmpv was fetched.
-        #[cfg_attr(not(libmpv), allow(unused_imports))]
-        pub use $p::{emulator, prepare_mpv};
-    };
-}
+//! the rest, which it names one by one. `other.rs` stands in on every other target (the
+//! desktop the tests and host clippy run on, and any shell that has not brought its own yet)
+//! and does the harmless thing: nothing, None, or the value a phone without the feature
+//! would give. The target's file is re-exported through the one list below: the app reaches
+//! only the calls named there, so a helper made `pub` in one file stays out of it, and a
+//! listed call a target lacks fails that target's build. What every platform shares sits
+//! here.
 
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
-calls!(android);
+use android as target;
 
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]
-calls!(ios);
+use ios as target;
 #[cfg(target_os = "ios")]
 pub use ios::ios_main;
 
 #[cfg(not(target_os = "android"))]
 mod other;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-calls!(other);
+use other as target;
+
+// The platform calls. A new call goes in this list and in every platform file.
+pub use target::{
+    app_icon, ask_notifications, bars, brightness, copy_text, crease, episode_ready, fold,
+    give_audio_focus, line_colours, log, multicast, notification_settings, notifications_allowed,
+    open_url, pick_file, player_awake, player_screen, relocalize, set_app_icon, set_brightness,
+    set_volume, start_service, stop_service, system_dark, system_locale, take_audio_focus,
+    unmetered, update_service, volume, window_up,
+};
+// Only the player calls these, and it links libmpv only where libmpv was fetched.
+#[cfg_attr(not(libmpv), allow(unused_imports))]
+pub use target::{emulator, prepare_mpv};
 
 /// What the platform said to a request for the audio focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
