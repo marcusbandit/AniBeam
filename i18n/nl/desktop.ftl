@@ -1398,7 +1398,9 @@ get-show-running = Draait
 get-show-not-running = Draait niet
 get-show-not-running-start = Draait niet. Klik hierboven op de bron om hem te starten.
 get-show-switched-off = Uitgezet
-get-show-click-to-see = Klik om te zien wat het voor deze serie heeft
+get-show-show-releases = Releases tonen
+get-show-show-releases-on = Releases op { $name } tonen
+get-show-try-again = Opnieuw proberen
 get-show-searching = Zoeken
 get-show-searching-source = { $name } doorzoeken
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1661,6 +1663,7 @@ downloads-remove-group-torrents =
         [one] De torrent weghalen
        *[other] De { $count } torrents weghalen
     }
+downloads-show-in-folder = Tonen in map
 downloads-run-span = { $from } t/m { $to }
 downloads-run-pair = { $first } en { $second }
 downloads-gap-missing =

@@ -43,6 +43,13 @@ Item {
     // inside it, which grows to fill the cube once it is picked (coded `p`). The owner of the
     // cubes says which, from hoverCell and whatever else it knows (a batch, a held Ctrl).
     property var lit: ({})
+    // Each cube names its episode (#1004): the number inside the cube when the cube has the
+    // room for the longest number, else a scale under each row of cubes
+    property bool numbered: false
+    // The episode each cube stands for, when they do not run on from `first` (a batch that
+    // skips some, a torrent's files)
+    property var numbers: null
+    function numberAt(i) { return numbers && i < numbers.length ? numbers[i] : first + i }
     signal cubeClicked(int index, int modifiers)
     // A folded cube's click: the first and last episode index it stands for
     signal rangeClicked(int first, int last, int modifiers)
@@ -77,6 +84,48 @@ Item {
         return out
     }
     readonly property int rows: Math.ceil(cells.length / perRow)
+    // ---- The numbers. A cube holds its number from 16 px for two digits, 22 px for three
+    readonly property int digits: String(Math.max(1, numberAt(count - 1))).length
+    readonly property real numberFits: digits <= 2 ? theme.space(4) : digits === 3 ? theme.space(5.5) : theme.space(7.5)
+    readonly property bool numbersInside: numbered && count > 0 && fold === 1 && size >= numberFits
+    readonly property bool numberScale: numbered && count > 0 && !numbersInside
+    readonly property real scaleText: Math.max(9, theme.space(2.5))
+    readonly property real scaleRoom: numberScale ? Math.round(scaleText * 1.5) : 0
+    // One row of cubes to the next: the cube, the gap, and the scale under it when there is one
+    readonly property real rowStep: size + gap + scaleRoom
+    // The scale: each row starts with its number, then the round numbers that have the room
+    readonly property var scaleMarks: {
+        if (!numberScale) return []
+        var colStep = size + gap
+        var labelW = digits * scaleText * 0.62 + theme.space(2)
+        // Round tens at the least, and far enough apart to read as a scale, not a row of numbers
+        var minCells = Math.max(1, Math.ceil(labelW * 2 / colStep))
+        var nice = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
+        var every = 10000
+        for (var k = 0; k < nice.length; k++) if (nice[k] >= minCells * fold) { every = nice[k]; break }
+        var out = [], lastX = -1e9
+        for (var i = 0; i < cells.length; i++) {
+            var a = numberAt(i * fold), z = numberAt(Math.min(count, (i + 1) * fold) - 1), col = i % perRow
+            var n = -1
+            if (col === 0) { n = a; lastX = -1e9 }
+            else { var m = Math.ceil(a / every) * every; if (m <= z) n = m }
+            if (n < 0) continue
+            var x = col * colStep + size / 2
+            if (x - lastX < labelW) continue
+            out.push({ i: i, n: n })
+            lastX = x
+        }
+        return out
+    }
+    // The number's colour on its cube: dark on a light fill, light on a dark one, and the
+    // text's own greys on the glass ones
+    function numberColor(code, part) {
+        if (code === "n" || code === "o" || code === "f") return theme.textFaint
+        if (part) return theme.text
+        var c = Qt.lighter(theme.cubeState(code).fill, 1.0)
+        if (c.a < 0.5) return theme.textDim
+        return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b > 0.6 ? Qt.rgba(0, 0, 0, 0.78) : Qt.rgba(1, 1, 1, 0.95)
+    }
     // The span in cells, the room its label takes above the grid, and which cube is hovered
     readonly property bool spanned: spanFirst > 0 && spanLast >= spanFirst && count > 0
     readonly property int spanA: spanned ? Math.floor((spanFirst - 1) / fold) : -1
@@ -88,7 +137,7 @@ Item {
     readonly property real badgeRoom: badged ? Math.round((badgeLabel.implicitHeight + theme.space(1)) / 2) : 0
     readonly property bool spanHot: spanned && hoverCell >= spanA && hoverCell <= spanB
     function inSpan(i) { return spanned && i >= spanA && i <= spanB }
-    implicitHeight: count === 0 ? 0 : tabHeight + 2 * pad + rows * size + (rows - 1) * gap
+    implicitHeight: count === 0 ? 0 : tabHeight + 2 * pad + rows * (size + scaleRoom) + (rows - 1) * gap
     implicitWidth: Math.max(0, count * (cubeSize + gap) - gap)
 
     // The span's container: one band per grid row it crosses, edge to edge between rows so
@@ -111,9 +160,9 @@ Item {
             readonly property real r: Math.max(3, root.size * 0.3 + root.pad)
             readonly property real lead: first ? root.pad : root.gap / 2
             x: c0 * (root.size + root.gap) - root.pad
-            y: root.tabHeight + root.pad + row * (root.size + root.gap) - lead
+            y: root.tabHeight + root.pad + row * root.rowStep - lead
             width: (c1 - c0 + 1) * (root.size + root.gap) - root.gap + 2 * root.pad
-            height: root.size + lead + (last ? root.pad : root.gap / 2)
+            height: root.size + root.scaleRoom + lead + (last ? root.pad : root.gap / 2)
             // A corner rounds where nothing of the span continues past it
             topLeftRadius: first || c0 < root.c0Of(row - 1) ? r : 0
             topRightRadius: first || c1 > root.c1Of(row - 1) ? r : 0
@@ -142,7 +191,7 @@ Item {
         height: badgeLabel.implicitHeight + theme.space(1)
         radius: height / 2
         x: col * (root.size + root.gap) + (root.size - width) / 2
-        y: root.tabHeight + root.pad + row * (root.size + root.gap) - height / 2
+        y: root.tabHeight + root.pad + row * root.rowStep - height / 2
         z: 1
         color: theme.raised
         border.width: 1
@@ -157,7 +206,7 @@ Item {
     readonly property real gridY: tabHeight + pad
     function cellAt(x, y) {
         var step = size + gap
-        var c = Math.floor((x + gap / 2) / step), r = Math.floor((y - gridY + gap / 2) / step)
+        var c = Math.floor((x + gap / 2) / step), r = Math.floor((y - gridY + gap / 2) / rowStep)
         if (c < 0 || c >= perRow || r < 0) return -1
         var i = r * perRow + c
         return i < cells.length ? i : -1
@@ -173,7 +222,8 @@ Item {
     Grid {
         y: root.gridY
         columns: root.perRow
-        spacing: root.gap
+        columnSpacing: root.gap
+        rowSpacing: root.gap + root.scaleRoom
         Repeater {
             model: root.cells.length
             Rectangle {
@@ -208,7 +258,7 @@ Item {
             readonly property real filled: Math.min(1, root.fills[modelData])
             readonly property var st: theme.cubeState("t")
             x: (modelData % root.perRow) * (root.size + root.gap)
-            y: root.gridY + Math.floor(modelData / root.perRow) * (root.size + root.gap) + root.size - height
+            y: root.gridY + Math.floor(modelData / root.perRow) * root.rowStep + root.size - height
             width: root.size
             height: Math.round(root.size * filled)
             clip: true
@@ -236,14 +286,53 @@ Item {
             property real shown: grow
             Behavior on shown { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast; easing.type: Easing.OutCubic } }
             visible: shown > 0.01
-            width: Math.max(2, root.size * shown); height: width
+            // With a number inside, the pick to come rings the cube instead, so the number
+            // stays readable
+            readonly property bool ring: root.numbersInside && code !== "p"
+            width: ring ? root.size : Math.max(2, root.size * shown); height: width
             x: (index % root.perRow) * (root.size + root.gap) + (root.size - width) / 2
-            y: root.gridY + Math.floor(index / root.perRow) * (root.size + root.gap) + (root.size - height) / 2
-            radius: Math.max(1, root.size * 0.3) * shown
-            color: theme.cubeState("p").fill
+            y: root.gridY + Math.floor(index / root.perRow) * root.rowStep + (root.size - height) / 2
+            radius: Math.max(1, root.size * 0.3) * (ring ? 1 : shown)
+            color: ring ? "transparent" : theme.cubeState("p").fill
+            border.width: ring ? 2 : 0
+            border.color: theme.cubeState("p").fill
             opacity: code === "p" ? 1 : 0.9
             scale: root.scaleOf(index)
             Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+        }
+    }
+    // The numbers inside the cubes, over the fills and the picks
+    Repeater {
+        model: root.numbersInside ? root.cells.length : 0
+        Text {
+            required property int index
+            readonly property string code: root.cells[index] || "g"
+            readonly property bool part: code === "t" && !!root.fills && typeof root.fills[index] === "number" && root.fills[index] < 1
+            x: (index % root.perRow) * (root.size + root.gap)
+            y: root.gridY + Math.floor(index / root.perRow) * root.rowStep
+            width: root.size; height: root.size
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            text: String(root.numberAt(index))
+            font.family: theme.fontFigure
+            font.pixelSize: Math.round(root.size * (root.digits <= 2 ? 0.42 : root.digits === 3 ? 0.36 : 0.3))
+            color: root.numberColor(code, part)
+            scale: root.scaleOf(index)
+            Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+        }
+    }
+    // The scale under each row, for cubes too small to hold a number
+    Repeater {
+        model: root.scaleMarks
+        Text {
+            required property var modelData
+            readonly property int col: modelData.i % Math.max(1, root.perRow)
+            x: Math.max(0, Math.min(root.width - width, col * (root.size + root.gap) + (root.size - width) / 2))
+            y: root.gridY + Math.floor(modelData.i / Math.max(1, root.perRow)) * root.rowStep + root.size + 1
+            text: String(modelData.n)
+            font.family: theme.fontFigure
+            font.pixelSize: root.scaleText
+            color: theme.textFaint
         }
     }
     MouseArea {
@@ -282,7 +371,7 @@ Item {
     onPointCellChanged: {
         if (pointCell < 0) { cubeTip.release(); return }
         probe.x = (pointCell % perRow) * (size + gap)
-        probe.y = gridY + Math.floor(pointCell / perRow) * (size + gap)
+        probe.y = gridY + Math.floor(pointCell / perRow) * rowStep
         cubeTip.text = tipTextOf(pointCell)
         cubeTip.show()
     }

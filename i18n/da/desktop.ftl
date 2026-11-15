@@ -1398,7 +1398,9 @@ get-show-running = Kører
 get-show-not-running = Kører ikke
 get-show-not-running-start = Kører ikke. Klik på kilden ovenfor for at starte den.
 get-show-switched-off = Slået fra
-get-show-click-to-see = Klik for at se, hvad den har af denne serie
+get-show-show-releases = Vis udgivelser
+get-show-show-releases-on = Vis udgivelser på { $name }
+get-show-try-again = Prøv igen
 get-show-searching = Søger
 get-show-searching-source = Søger i { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1661,6 +1663,7 @@ downloads-remove-group-torrents =
         [one] Fjern torrenten
        *[other] Fjern dens { $count } torrents
     }
+downloads-show-in-folder = Vis i mappe
 downloads-run-span = { $from } til { $to }
 downloads-run-pair = { $first } og { $second }
 downloads-gap-missing =

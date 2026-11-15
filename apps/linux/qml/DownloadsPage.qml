@@ -233,6 +233,12 @@ Item {
         else if (page.hoverGroupItem === item) { page.hoverGroupItem = null; page.hoverGroup = null }
     }
     function contextItems() {
+        // A line of the activity column (#1004): its torrent's folder
+        var line = activity.visible ? activity.hoverTorrent : null
+        if (line) {
+            var folder = activity.folderOf(line)
+            return folder === "" ? [] : [{ text: words.t("downloads-show-in-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(folder)) } }]
+        }
         var g = page.hoverGroup, anchor = page.hoverGroupItem
         if (!g || !anchor || !page.home || page.lens !== "downloaded") return []
         return [{ text: words.t("downloads-remove-group-torrents", { count: g.torrents.length }), icon: "x",

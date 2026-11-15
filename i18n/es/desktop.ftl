@@ -1398,7 +1398,9 @@ get-show-running = En marcha
 get-show-not-running = Detenida
 get-show-not-running-start = Detenida. Haz clic en su fuente, arriba, para iniciarla.
 get-show-switched-off = Desactivada
-get-show-click-to-see = Haz clic para ver qué tiene de esta serie
+get-show-show-releases = Ver lanzamientos
+get-show-show-releases-on = Ver lanzamientos en { $name }
+get-show-try-again = Reintentar
 get-show-searching = Buscando
 get-show-searching-source = Buscando en { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1661,6 +1663,7 @@ downloads-remove-group-torrents =
         [one] Quitar el torrent
        *[other] Quitar sus { $count } torrents
     }
+downloads-show-in-folder = Mostrar en la carpeta
 downloads-run-span = { $from } a { $to }
 downloads-run-pair = { $first } y { $second }
 downloads-gap-missing =

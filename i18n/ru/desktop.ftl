@@ -1568,7 +1568,9 @@ get-show-running = Работает
 get-show-not-running = Не запущен
 get-show-not-running-start = Не запущен. Нажмите на его источник выше, чтобы запустить.
 get-show-switched-off = Выключен
-get-show-click-to-see = Нажмите, чтобы увидеть, что в нём есть для этого сериала
+get-show-show-releases = Показать релизы
+get-show-show-releases-on = Показать релизы: { $name }
+get-show-try-again = Повторить
 get-show-searching = Поиск
 get-show-searching-source = Поиск: { $name }
 get-show-searching-elapsed = { $label }, { $seconds } с
@@ -1859,6 +1861,7 @@ downloads-remove-group-torrents =
         [many] Удалить его { $count } торрентов
        *[other] Удалить его { $count } торрента
     }
+downloads-show-in-folder = Показать в папке
 downloads-run-span = с { $from } по { $to }
 downloads-run-pair = { $first } и { $second }
 downloads-gap-missing =

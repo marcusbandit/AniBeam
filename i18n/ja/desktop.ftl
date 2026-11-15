@@ -1097,7 +1097,9 @@ get-show-running = 動作中
 get-show-not-running = 停止中
 get-show-not-running-start = 停止中。上のソースをクリックすると起動します。
 get-show-switched-off = オフ
-get-show-click-to-see = クリックでこの作品の入手先を表示
+get-show-show-releases = リリースを表示
+get-show-show-releases-on = { $name }のリリースを表示
+get-show-try-again = 再試行
 get-show-searching = 検索中
 get-show-searching-source = { $name }を検索中
 get-show-searching-elapsed = { $label }、{ $seconds }秒
@@ -1306,6 +1308,7 @@ downloads-remove-group-torrents =
         [1] トレントを削除
        *[other] トレント{ $count }件を削除
     }
+downloads-show-in-folder = フォルダで表示
 downloads-run-span = { $from }〜{ $to }
 downloads-run-pair = { $first }、{ $second }
 downloads-gap-missing = 第{ $runs }話が欠けています

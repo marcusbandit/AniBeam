@@ -1247,7 +1247,9 @@ get-show-running = 실행 중
 get-show-not-running = 실행 안 됨
 get-show-not-running-start = 실행 중이 아니에요. 위의 소스를 클릭해서 시작하세요.
 get-show-switched-off = 꺼짐
-get-show-click-to-see = 클릭해서 이 작품의 릴리스 보기
+get-show-show-releases = 릴리스 보기
+get-show-show-releases-on = { $name } 릴리스 보기
+get-show-try-again = 다시 시도
 get-show-searching = 검색 중
 get-show-searching-source = { $name } 검색 중
 get-show-searching-elapsed = { $label }, { $seconds }초
@@ -1495,6 +1497,7 @@ downloads-remove-group-torrents =
     { $count ->
        *[other] 토렌트 { $count }개 제거
     }
+downloads-show-in-folder = 폴더에서 보기
 downloads-run-span = { $from }~{ $to }
 downloads-run-pair = { $first }, { $second }
 downloads-gap-missing =

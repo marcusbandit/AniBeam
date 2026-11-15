@@ -1446,7 +1446,9 @@ get-show-running = Running
 get-show-not-running = Not running
 get-show-not-running-start = Not running. Click its source above to start it.
 get-show-switched-off = Switched off
-get-show-click-to-see = Click to see what it has for this show
+get-show-show-releases = Show releases
+get-show-show-releases-on = Show releases on { $name }
+get-show-try-again = Try again
 get-show-searching = Searching
 get-show-searching-source = Searching { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1666,6 +1668,7 @@ release-table-season-batch = Season { $season } batch
 release-table-batch = Batch
 release-table-via = via { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d MMMM yyyy, HH:mm
 release-table-download = Download
 release-table-more = and { $count } more. Narrow the list or sort it to see others first.
@@ -1711,6 +1714,7 @@ downloads-remove-group-torrents =
         [one] Remove the torrent
        *[other] Remove its { $count } torrents
     }
+downloads-show-in-folder = Show in folder
 downloads-run-span = { $from } to { $to }
 downloads-run-pair = { $first } and { $second }
 downloads-gap-missing =

@@ -1400,7 +1400,9 @@ get-show-running = Rodando
 get-show-not-running = Parada
 get-show-not-running-start = Parada. Clique na fonte acima para iniciá-la.
 get-show-switched-off = Desativada
-get-show-click-to-see = Clique para ver o que ela tem desta série
+get-show-show-releases = Ver releases
+get-show-show-releases-on = Ver releases em { $name }
+get-show-try-again = Tentar de novo
 get-show-searching = Buscando
 get-show-searching-source = Buscando em { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1663,6 +1665,7 @@ downloads-remove-group-torrents =
         [one] Remover o torrent
        *[other] Remover os { $count } torrents
     }
+downloads-show-in-folder = Mostrar na pasta
 downloads-run-span = { $from } a { $to }
 downloads-run-pair = { $first } e { $second }
 downloads-gap-missing =

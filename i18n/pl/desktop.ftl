@@ -1614,7 +1614,9 @@ get-show-running = Działa
 get-show-not-running = Nie działa
 get-show-not-running-start = Nie działa. Kliknij jego źródło powyżej, aby je uruchomić.
 get-show-switched-off = Wyłączone
-get-show-click-to-see = Kliknij, aby zobaczyć, co ma dla tego serialu
+get-show-show-releases = Pokaż wydania
+get-show-show-releases-on = Pokaż wydania z { $name }
+get-show-try-again = Spróbuj ponownie
 get-show-searching = Szukanie
 get-show-searching-source = Szukanie w { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1909,6 +1911,7 @@ downloads-remove-group-torrents =
         [many] Usuń jego { $count } torrentów
        *[other] Usuń jego { $count } torrenta
     }
+downloads-show-in-folder = Pokaż w folderze
 downloads-run-span = { $from }-{ $to }
 downloads-run-pair = { $first } i { $second }
 downloads-gap-missing =
