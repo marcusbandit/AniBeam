@@ -158,10 +158,15 @@ async fn create_hands_out_a_code_and_a_host_key() {
 #[tokio::test]
 async fn create_refuses_a_bad_body() {
     let addr = start().await;
-    let (status, _) = http(&addr, "POST", "/rooms", "{\"episode\":1}").await;
-    assert_eq!(status, 400);
-    let (status, _) = http(&addr, "POST", "/rooms", "not json").await;
-    assert_eq!(status, 400);
+    for body in [
+        "{\"nope\":1}",
+        "{\"epsiode\":{\"episode_key\":\"1\",\"series_title\":\"S\"}}",
+        "{\"episode\":1}",
+        "not json",
+    ] {
+        let (status, _) = http(&addr, "POST", "/rooms", body).await;
+        assert_eq!(status, 400, "{body}");
+    }
 }
 
 #[tokio::test]

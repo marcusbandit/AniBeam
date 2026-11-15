@@ -297,8 +297,10 @@ impl ServerMsg {
 }
 
 /// The body of `POST /rooms`. `{}` makes a room that has not picked an
-/// episode yet (#922).
+/// episode yet (#922). Any other field is refused, so a malformed body or a
+/// misspelt `episode` never makes an empty room.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRoom {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub episode: Option<EpisodeRef>,
@@ -667,6 +669,13 @@ mod tests {
         let empty: CreateRoom = serde_json::from_value(json!({})).unwrap();
         assert_eq!(empty.episode, None);
         assert_eq!(serde_json::to_value(&empty).unwrap(), json!({}));
+        // Anything but an episode is refused, a misspelt one included
+        for bad in [
+            json!({"nope": 1}),
+            json!({"epsiode": {"episode_key": "k", "series_title": "S"}}),
+        ] {
+            assert!(serde_json::from_value::<CreateRoom>(bad).is_err());
+        }
         let created = CreatedRoom {
             code: "K7QM2X".into(),
             host_key: "00".into(),
