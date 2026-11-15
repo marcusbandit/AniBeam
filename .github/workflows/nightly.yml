@@ -125,6 +125,17 @@ jobs:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.version }}
 
+  # The AUR tarball is built only to show it still packs (#993): pull requests no longer build
+  # it, so a rolling Arch update that breaks it shows up here, before a release. Not published.
+  arch:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/arch.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
   android:
     needs: gate
     if: needs.gate.outputs.phone == 'true'
