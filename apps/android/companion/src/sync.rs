@@ -42,7 +42,7 @@ impl Syncer {
     }
 
     /// Hello and snapshot, stored before anything else, so the screens can show it while
-    /// the posters are still coming. The list of other AniBeams is carried over from the
+    /// the posters are still coming. The list of other Anibeams is carried over from the
     /// last sync with this host; [`Syncer::fetch_peers`] brings it up to date afterwards.
     pub fn fetch_snapshot(&self, address: &HostAddress, now: i64) -> Result<Cache, HostError> {
         let client = self.client(address);
@@ -67,7 +67,7 @@ impl Syncer {
         Ok(cache)
     }
 
-    /// Asks the host for the other AniBeams it sees and stores the answer. Returns the
+    /// Asks the host for the other Anibeams it sees and stores the answer. Returns the
     /// cache when the list changed. The list is a bonus: a host that cannot answer it
     /// leaves the last list in place.
     pub fn fetch_peers(&self, address: &HostAddress, cache: &Cache) -> Option<Cache> {

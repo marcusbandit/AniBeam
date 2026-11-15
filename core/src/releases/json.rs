@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::foundation::magnet::is_hash;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::repos::index::JsonMap;
 
 /// The value at a dot path of object keys; the value itself for an empty path.
@@ -211,40 +211,26 @@ pub async fn fetch(
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".to_string(),
-                    super::fetch::USER_AGENT.to_string(),
-                ),
-                ("Accept".to_string(), "application/json".to_string()),
-            ],
-            body: None,
-            timeout: Some(timeout),
-        })
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", super::fetch::USER_AGENT)
+                .header("Accept", "application/json")
+                .timeout(timeout),
+        )
         .await
-        .map_err(|e| CoreError::Service {
-            service: source.to_string(),
-            code: "unreachable".into(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: source.to_string(),
-            code: format!("http_{}", response.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            source,
+            format!("http_{}", response.status),
+            crate::i18n::tr(
                 "core-releases-search-answered",
                 &[("status", response.status.to_string().into())],
             ),
-        });
+        ));
     }
-    parse(&response.body, map, source).map_err(|message| CoreError::Service {
-        service: source.to_string(),
-        code: "unreadable".into(),
-        message,
-    })
+    parse(&response.body, map, source)
+        .map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

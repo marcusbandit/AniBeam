@@ -281,3 +281,27 @@ fn title_case(season: &str) -> String {
         None => String::new(),
     }
 }
+
+/// `GetStats`: the year read off one snapshot and the watch log.
+pub(crate) fn get_call(
+    services: &crate::foundation::services::Services,
+    year: Option<i32>,
+    utc_offset: i32,
+    month_starts: &[i64],
+) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let now = crate::time::now();
+    let stats = services.store.read(|c| {
+        let snap = Snapshot::load(c, &images_dir, now, None)?;
+        let log = finishes(c)?;
+        Ok(compute(
+            &snap,
+            &log,
+            year,
+            i64::from(utc_offset),
+            month_starts,
+            crate::time::to_secs(now),
+        ))
+    })?;
+    Ok(Reply::Stats { stats })
+}

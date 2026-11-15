@@ -17,9 +17,11 @@ use std::sync::{Arc, LazyLock, Mutex};
 use rusqlite::{Connection, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::downloads::qbt::QbtClient;
+use crate::foundation::services::Services;
 use crate::store::sql::placeholders;
+use crate::sync::recover;
 
 /// One recorded origin: the torrent's info hash, lower case, and its name.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,7 +74,7 @@ pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts
 static SEEN: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
 fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
-    SEEN.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&SEEN)
 }
 
 /// Records which finished torrent holds each library file whose origin is
@@ -84,7 +86,7 @@ fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
 /// client full of done torrents costs no request at all. Two torrents
 /// holding one path (a cross-seed) leave the first one read.
 pub async fn record_from(
-    core: &Arc<Core>,
+    services: &Services,
     client: Option<&QbtClient>,
     torrents: &[Torrent],
 ) -> Result<u64, CoreError> {
@@ -98,7 +100,7 @@ pub async fn record_from(
     if fresh.is_empty() {
         return Ok(0);
     }
-    let (unknown, sources) = core
+    let (unknown, sources) = services
         .store
         .write_async(|c| {
             let mut stmt = c.prepare(
@@ -159,7 +161,7 @@ pub async fn record_from(
     }
     let now = crate::time::now_secs();
     let count = found.len() as u64;
-    core.store
+    services.store
         .tx_async(move |tx| {
             {
                 let mut stmt = tx.prepare(
@@ -186,15 +188,15 @@ pub async fn record_from(
 /// finished torrents are read again, since one of them may hold the new
 /// files. Not a job; a failure is a debug line and the files stay
 /// unrecorded until the next read.
-pub fn after_scan(core: &Core) {
+pub fn after_scan(downloads: &Arc<Downloads>) {
     seen().clear();
     #[cfg(feature = "phone")]
-    crate::phone::after_scan(core);
-    let Some(client) = core.downloads.state().qbt.clone() else {
+    crate::phone::after_scan(downloads);
+    let Some(client) = downloads.state().qbt.clone() else {
         return;
     };
-    let Ok(owner) = core.owner() else { return };
-    core.handle.spawn(async move {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
         let torrents = match client.torrents().await {
             Ok(t) => t,
             Err(e) => {
@@ -203,7 +205,7 @@ pub fn after_scan(core: &Core) {
             }
         };
         logged(
-            record_from(&owner, Some(&client), &torrents).await,
+            record_from(&owner.services, Some(&client), &torrents).await,
             "after a scan",
         );
     });
@@ -265,6 +267,7 @@ fn slashes(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Core;
     use crate::net::FakeHttp;
 
     fn origin(hash: &str, name: &str) -> Origin {
@@ -322,7 +325,7 @@ mod tests {
     /// One show with episode 1 on its own and episode 2 inside a batch
     /// folder, the way two torrents would leave them.
     fn library(core: &Core) -> u64 {
-        core.store
+        core.services.store
             .write(|c| {
                 c.execute(
                     "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
@@ -382,11 +385,13 @@ mod tests {
             torrent("R1CCC", "Elsewhere", "/downloads/Elsewhere"),
         ];
         let n = core
+            .services
             .handle
-            .block_on(record_from(&core, Some(&client), &torrents))
+            .block_on(record_from(&core.services, Some(&client), &torrents))
             .unwrap();
         assert_eq!(n, 2);
         let known = core
+            .services
             .store
             .read(|c| {
                 of(
@@ -409,8 +414,9 @@ mod tests {
 
         let asked = http.requests().len();
         let again = core
+            .services
             .handle
-            .block_on(record_from(&core, Some(&client), &torrents))
+            .block_on(record_from(&core.services, Some(&client), &torrents))
             .unwrap();
         assert_eq!(again, 0);
         assert_eq!(http.requests().len(), asked);
@@ -418,7 +424,8 @@ mod tests {
         // Downloaded over by another torrent: the file is newer than its
         // record, so the new torrent is the origin. A file the library no
         // longer holds loses its origin.
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute(
                     "UPDATE files SET mtime = (SELECT recorded_at FROM file_origins LIMIT 1) + 10
@@ -435,10 +442,12 @@ mod tests {
             "[Grp] Show - 01 [1080p].mkv",
             "/lib/Show/[Grp] Show - 01 [1080p].mkv",
         )];
-        core.handle
-            .block_on(record_from(&core, Some(&client), &over))
+        core.services
+            .handle
+            .block_on(record_from(&core.services, Some(&client), &over))
             .unwrap();
         let known = core
+            .services
             .store
             .read(|c| {
                 of(
@@ -485,12 +494,14 @@ mod tests {
         // whose folder holds a file with no origin.
         let unlisted = torrent("GGG", "Batch", "/lib/Show/Batch");
         let n = core
+            .services
             .handle
-            .block_on(record_from(&core, None, &[batch, one, unlisted]))
+            .block_on(record_from(&core.services, None, &[batch, one, unlisted]))
             .unwrap();
         assert_eq!(n, 2);
         assert!(http.requests().is_empty());
         let known = core
+            .services
             .store
             .read(|c| {
                 of(
@@ -525,7 +536,7 @@ mod tests {
         let http = FakeHttp::new();
         let (_dir, core) = core_with(http.clone());
         library(&core);
-        core.store
+        core.services.store
             .write(|c| {
                 c.execute(
                     "INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at)
@@ -547,7 +558,7 @@ mod tests {
             // No origin for episode 2: the name still decides
             release("Show - 02", "https://example.invalid/2.torrent"),
         ];
-        let (facts, show) = crate::downloads::annotate(&core, "Show", &items);
+        let (facts, show) = crate::downloads::annotate(&core.services, "Show", &items);
         assert!(show.is_some());
         assert_eq!((facts[0].on_disk, facts[0].other_on_disk), (false, true));
         assert_eq!((facts[1].on_disk, facts[1].other_on_disk), (true, false));

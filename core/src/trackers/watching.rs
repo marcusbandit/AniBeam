@@ -26,24 +26,19 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
-use crate::foundation::titles;
+use crate::foundation::services::Services;
+use crate::foundation::titles::{self, fallback_title};
 use crate::jobs::Finished;
 use crate::metadata::record::{self, StubWrite};
 use crate::net::anilist::WATCHING_LIST_QUERY;
 use crate::prefs;
 use crate::store::settings;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::accounts;
 use crate::trackers::cache::normalize_status;
 use crate::trackers::writes;
 use crate::trackers::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
-
-/// The title of last resort. A stub the store has only ever seen on this
-/// list still draws a card, and an id reads better than an empty one.
-fn fallback_title(anilist_id: u64) -> String {
-    format!("AniList {anilist_id}")
-}
 
 // The read -------------------------------------------------------------------
 
@@ -201,10 +196,10 @@ fn list_of(
 /// that began an AniList fetch made every page reload a network request.
 /// `refreshing` names a refresh that is already running, so a page can
 /// still say one is on its way.
-pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let list = core.store.read(|c| list(c, &images_dir))?;
-    let refreshing = core
+pub fn list_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| list(c, &images_dir))?;
+    let refreshing = services
         .jobs
         .list()
         .into_iter()
@@ -214,9 +209,9 @@ pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
 }
 
 /// `ListPlanning`: the planning list off the cache, at once.
-pub fn planning_call(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let list = core.store.read(|c| planning(c, &images_dir))?;
+pub fn planning_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| planning(c, &images_dir))?;
     Ok(Reply::Planning { list })
 }
 
@@ -227,8 +222,8 @@ pub const STALE_AFTER_SECS: i64 = 5 * 60;
 /// The `RefreshWatching` call: the job when the cache is stale (or never
 /// filled) or `force` says so, `Ok` when it is fresh or there is no account
 /// to ask. A refresh already running is handed back rather than doubled.
-pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
-    let (connected, fetched_at) = core.store.read(|c| {
+pub fn refresh_call(trackers: &Arc<Trackers>, force: bool) -> Result<Reply, CoreError> {
+    let (connected, fetched_at) = trackers.services.store.read(|c| {
         Ok((
             is_connected(c)?,
             settings::get::<i64>(c, settings::WATCHING_FETCHED_AT)?,
@@ -241,9 +236,7 @@ pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = trackers.clone();
     Ok(Reply::Started {
         job: start_refresh(&owner)?,
     })
@@ -279,14 +272,15 @@ struct Row {
 /// Starts the RefreshWatching job, one at a time per kind: a second call
 /// while one runs hands back the running job's id. Refuses only when there
 /// is no account to ask, which the call itself has already ruled out.
-pub fn start_refresh(core: &Arc<Core>) -> Result<u64, CoreError> {
-    if !core.store.read(is_connected)? {
+pub fn start_refresh(trackers: &Arc<Trackers>) -> Result<u64, CoreError> {
+    if !trackers.services.store.read(is_connected)? {
         return Err(CoreError::NotConnected {
             tracker: Tracker::Anilist,
         });
     }
-    let owner = core.clone();
-    Ok(core
+    let owner = trackers.clone();
+    Ok(trackers
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshWatching, move |_| async move {
@@ -294,12 +288,13 @@ pub fn start_refresh(core: &Arc<Core>) -> Result<u64, CoreError> {
         }))
 }
 
-async fn run(core: Arc<Core>) -> Result<Finished, CoreError> {
-    refresh(&core).await.map_err(failed)
+async fn run(trackers: Arc<Trackers>) -> Result<Finished, CoreError> {
+    refresh(&trackers).await.map_err(failed)
 }
 
-async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
-    let account = core
+async fn refresh(trackers: &Arc<Trackers>) -> Result<Finished, CoreError> {
+    let account = trackers
+        .services
         .store
         .write_async(move |c| accounts::load_row(c, Tracker::Anilist))
         .await?
@@ -309,13 +304,13 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     let user_id = account
         .user_id
         .ok_or_else(|| tracker_error(crate::i18n::tr("core-trackers-no-user-id", &[])))?;
-    let token = accounts::access_token(core, Tracker::Anilist)
+    let token = accounts::access_token(trackers, Tracker::Anilist)
         .await?
         .ok_or_else(|| tracker_error(no_token()))?;
     // Anything written to the cache after this moment (a status the user
     // just set) is newer than what the fetch can know, and is left alone.
     let started = time::now_secs();
-    let rows = fetch(core, user_id, &token).await?;
+    let rows = fetch(trackers, user_id, &token).await?;
 
     let covers_of = |wanted: &[ListStatus]| -> Vec<String> {
         rows.iter()
@@ -326,12 +321,14 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     let covers = covers_of(&[ListStatus::Watching, ListStatus::Repeating]);
     let planned = covers_of(&[ListStatus::Planning]);
     let now = time::now_secs();
-    core.store
+    trackers
+        .services
+        .store
         .tx_async(move |tx| write(tx, &rows, now, started))
         .await?;
     // Every watching cover before the job reports, so the page's posters
     // are local files rather than urls the shell has to go and get.
-    for (url, outcome) in core.images.ensure(&covers).await {
+    for (url, outcome) in trackers.net.images.ensure(&covers).await {
         if let Err(e) = outcome {
             tracing::debug!("the watching list's cover {url} was not fetched: {e}");
         }
@@ -339,9 +336,9 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     // The planning covers after it: a long planning list must not hold the
     // watching page on Refreshing. The planning tab reads them as they land.
     if !planned.is_empty() {
-        let owner = core.clone();
+        let owner = trackers.clone();
         tokio::spawn(async move {
-            for (url, outcome) in owner.images.ensure(&planned).await {
+            for (url, outcome) in owner.net.images.ensure(&planned).await {
                 if let Err(e) = outcome {
                     tracing::debug!("the planning list's cover {url} was not fetched: {e}");
                 }
@@ -349,8 +346,9 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
         });
     }
 
-    let images_dir = core.paths.images_dir();
-    let list = core
+    let images_dir = trackers.services.paths.images_dir();
+    let list = trackers
+        .services
         .store
         .write_async(move |c| list(c, &images_dir))
         .await?;
@@ -365,8 +363,9 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
 /// The list itself. AniList repeats one media across custom lists, so the
 /// first copy of it is the one kept, and anything that is not being
 /// watched belongs to another page.
-async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, CoreError> {
-    let data = core
+async fn fetch(trackers: &Trackers, user_id: u64, token: &str) -> Result<Vec<Row>, CoreError> {
+    let data = trackers
+        .net
         .anilist
         .graphql_within(
             WATCHING_LIST_QUERY,
@@ -510,12 +509,7 @@ fn failed(e: CoreError) -> CoreError {
             status,
             retry_after,
             ..
-        } => CoreError::Provider {
-            provider,
-            status,
-            message,
-            retry_after,
-        },
+        } => CoreError::provider_retry(provider, status, message, retry_after),
         _ => tracker_error(message),
     }
 }
@@ -560,12 +554,12 @@ mod tests {
     /// the failure took.
     #[test]
     fn a_failure_carries_one_readable_line() {
-        let limited = CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(429),
-            message: "AniList rate limited".to_string(),
-            retry_after: Some(9.0),
-        };
+        let limited = CoreError::provider_retry(
+            Provider::Anilist,
+            Some(429),
+            "AniList rate limited",
+            Some(9.0),
+        );
         let out = failed(limited);
         assert!(
             matches!(&out, CoreError::Provider { status: Some(429), message, retry_after: Some(w), .. }

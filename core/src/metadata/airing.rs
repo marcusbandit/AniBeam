@@ -10,13 +10,13 @@
 //! table is the best one there will ever be. `write_episodes`'
 //! `keep_titles` is that rule.
 //!
-//! Jikan is asked through `Core::jikan_episodes`, which warns at most once
-//! every `metadata::OUTAGE_WINDOW` and skips Jikan for the rest of it. The
-//! window lives beside the module rather than here because the full fetch
-//! shares it: a launch sweep through an outage must write one line, not
-//! one line per series, and must not wait on Jikan once per series either.
-//! A refresh without Jikan's half deletes no future row, since the one
-//! the schedule leaves out may be an episode only Jikan knew of.
+//! Jikan is asked through `Metadata::jikan_episodes`, which warns at most
+//! once every `metadata::OUTAGE_WINDOW` and skips Jikan for the rest of it.
+//! The window lives beside the module rather than here because the full
+//! fetch shares it: a launch sweep through an outage must write one line,
+//! not one line per series, and must not wait on Jikan once per series
+//! either. A refresh without Jikan's half deletes no future row, since the
+//! one the schedule leaves out may be an episode only Jikan knew of.
 //!
 //! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
 //! `AIRING_REFRESH_TTL_MS`, carried over.
@@ -32,8 +32,10 @@ use std::time::Duration;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::events::Signal;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
+use crate::metadata::Metadata;
 use crate::metadata::apply::{card_for, provider_stopped};
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::record;
@@ -185,24 +187,28 @@ pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreErr
 /// so the rows are read either side of it inside the one transaction and
 /// compared: the same numbers with the same titles and the same dates is
 /// a refresh nobody needs to hear about.
-pub async fn refresh_one(core: &Core, cand: &Candidate, now: i64) -> Result<bool, CoreError> {
+pub async fn refresh_one(
+    metadata: &Metadata,
+    cand: &Candidate,
+    now: i64,
+) -> Result<bool, CoreError> {
     match cand.behind {
         Behind::Anilist { anilist_id, mal_id } => {
-            refresh_anilist(core, anilist_id, mal_id, now).await
+            refresh_anilist(metadata, anilist_id, mal_id, now).await
         }
-        Behind::Tvmaze { show_id } => refresh_tvmaze(core, show_id, now).await,
+        Behind::Tvmaze { show_id } => refresh_tvmaze(metadata, show_id, now).await,
     }
 }
 
 async fn refresh_anilist(
-    core: &Core,
+    metadata: &Metadata,
     anilist_id: u64,
     mal_id: Option<u64>,
     now: i64,
 ) -> Result<bool, CoreError> {
-    let schedule = core.anilist.schedule(anilist_id).await?;
+    let schedule = metadata.net.anilist.schedule(anilist_id).await?;
     let jikan = match mal_id {
-        Some(mal_id) => core.jikan_episodes(mal_id).await,
+        Some(mal_id) => metadata.jikan_episodes(mal_id).await,
         None => Some(Vec::new()),
     };
     let whole = jikan.is_some();
@@ -211,7 +217,9 @@ async fn refresh_anilist(
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
     let status = schedule.status.clone();
-    core.store
+    metadata
+        .services
+        .store
         .tx_async(move |tx| {
             let before = stored(tx, anilist_id)?;
             if whole {
@@ -229,10 +237,11 @@ async fn refresh_anilist(
 /// A TVmaze show's turn: the whole show fetched again and written whole,
 /// compared either side the way the AniList half compares its rows. A
 /// new poster comes in with it.
-async fn refresh_tvmaze(core: &Core, show_id: u64, now: i64) -> Result<bool, CoreError> {
-    let show = fetch::fetch_show(core, show_id).await?;
+async fn refresh_tvmaze(metadata: &Metadata, show_id: u64, now: i64) -> Result<bool, CoreError> {
+    let show = fetch::fetch_show(metadata, show_id).await?;
     let urls = fetch::show_image_urls(&show);
-    let changed = core
+    let changed = metadata
+        .services
         .store
         .tx_async(move |tx| {
             let before = stored_show(tx, show_id)?;
@@ -240,7 +249,7 @@ async fn refresh_tvmaze(core: &Core, show_id: u64, now: i64) -> Result<bool, Cor
             Ok(before != stored_show(tx, show_id)?)
         })
         .await?;
-    core.images.ensure(&urls).await;
+    metadata.net.images.ensure(&urls).await;
     Ok(changed)
 }
 
@@ -320,8 +329,9 @@ fn write_status(
     Ok(true)
 }
 
-async fn stamp_async(core: &Core, behind: Behind, now: i64) -> Result<(), CoreError> {
-    core.store
+async fn stamp_async(services: &Services, behind: Behind, now: i64) -> Result<(), CoreError> {
+    services
+        .store
         .tx_async(move |tx| match behind {
             Behind::Anilist { anilist_id, .. } => stamp(tx, anilist_id, now),
             // The show's fetch is its clock, so a failed turn moves it on
@@ -340,12 +350,12 @@ async fn stamp_async(core: &Core, behind: Behind, now: i64) -> Result<(), CoreEr
 /// What one series' turn produced. A failure that is the provider's rather
 /// than the core's still counts as the turn having happened.
 async fn refresh_reported(
-    core: &Core,
+    metadata: &Metadata,
     ctx: &JobCtx,
     cand: &Candidate,
     now: i64,
 ) -> Result<bool, CoreError> {
-    match refresh_one(core, cand, now).await {
+    match refresh_one(metadata, cand, now).await {
         Ok(updated) => Ok(updated),
         // A rate limit the limiter could not ride out, or nothing
         // answering at all, is the provider saying stop rather than this
@@ -362,7 +372,7 @@ async fn refresh_reported(
                 ),
                 EventBody::Notice,
             );
-            stamp_async(core, cand.behind.clone(), now).await?;
+            stamp_async(&metadata.services, cand.behind.clone(), now).await?;
             Ok(false)
         }
     }
@@ -372,8 +382,8 @@ async fn refresh_reported(
 /// candidate ends the job at once rather than refusing the call: the shell
 /// asks for this on its way into a page, and "nothing to do" is an answer
 /// rather than an error.
-pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
-    let known: Option<i64> = core.store.read(|c| {
+pub fn start_refresh(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreError> {
+    let known: Option<i64> = metadata.services.store.read(|c| {
         Ok(c.query_row(
             "SELECT 1 FROM series WHERE id = ?1",
             params![series as i64],
@@ -387,13 +397,15 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
             id: series,
         });
     }
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshAiring, move |ctx| async move {
             let now = time::now_secs();
             let cand = owner
+                .services
                 .store
                 .write_async(move |c| candidate(c, series, now, false))
                 .await?;
@@ -409,12 +421,12 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
                 });
             };
             let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
-            if updated && let Some(card) = card_for(&owner, series).await? {
+            if updated && let Some(card) = card_for(&owner.services, series).await? {
                 ctx.changed(card);
             }
             // A new date for a followed show's next episode is a new timer (#215)
             if updated {
-                crate::downloads::watch::arm(&owner);
+                owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {
                 plain: None,
@@ -435,13 +447,19 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
 ///
 /// The list is read once, up front, so the loop is finite whatever the
 /// fetches write back.
-pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata
+        .services
+        .jobs
         .clone()
         .start(JobKind::RefreshAiring, move |ctx| async move {
             let now = time::now_secs();
-            let work = owner.store.write_async(move |c| candidates(c, now)).await?;
+            let work = owner
+                .services
+                .store
+                .write_async(move |c| candidates(c, now))
+                .await?;
             let total = work.len() as u64;
             let mut updated = 0u64;
             for (done, cand) in work.into_iter().enumerate() {
@@ -452,13 +470,13 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                 // stamp the last series hours before it was actually fetched.
                 if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
                     updated += 1;
-                    if let Some(card) = card_for(&owner, cand.series).await? {
+                    if let Some(card) = card_for(&owner.services, cand.series).await? {
                         ctx.changed(card);
                     }
                 }
             }
             if updated > 0 {
-                crate::downloads::watch::arm(&owner);
+                owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {
                 plain: None,

@@ -9,6 +9,7 @@ machine. The design is `docs/superpowers/specs/2026-11-13-watch-together-rooms.m
 |---|---|
 | `POST /rooms` `{"episode": EpisodeRef}` | `201 {"code", "host_key"}`, `400` bad body, `413` over 16 KiB, `429` over the limit |
 | `GET /rooms/{code}/ws` | WebSocket upgrade, `404` no such room, `426` not an upgrade, `429` over the limit |
+| `GET /` | the find page, where a code is typed, `200`; `/?code=...` answers `303` to that room's page, or `400` with the page again when it is not a code |
 | `GET /{code}` | the join page, `200`, or `404` with a "Room not found" page |
 | `GET /health` | `200 ok` |
 
@@ -52,7 +53,11 @@ root never builds it. It only builds for `wasm32-unknown-unknown`.
   10 s gets `proto` and is closed: each socket carries when it opened as a
   second tag (`o<ms>`), every message checks it, and each open sets the alarm
   10 s on to sweep sockets that never sent anything. That alarm is one more
-  request and one more row per socket opened.
+  request and one more row per socket opened. The client gets the Close frame
+  at 10 s. Under `wrangler dev`, workerd keeps the TCP connection of a
+  hibernatable socket that never sent a frame open until the object leaves
+  memory, about 10 s later (cloudflare/workerd#7566), so a client that waits
+  for its `close` event sees it then. Not yet seen on the deployed relay.
 - TODO: the native relay also caps open rooms at 10,000. The Worker has no
   global count; the 32^6 code space and the free plan's daily caps stand in
   for it.

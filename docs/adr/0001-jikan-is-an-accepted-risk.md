@@ -35,7 +35,7 @@ What the core does when Jikan fails:
   never replaces one at all.
 - `Core::report_jikan_outage` warns in the activity log at most once per
   `OUTAGE_WINDOW` (10 minutes). The window limits the warning, not the calls.
-- Every call goes through the shared limiter in `core/src/net/limiter.rs`,
+- Every call goes through the shared limiter in `net/src/limiter.rs`,
   which retries a 429 on its 1 to 32 second backoff.
 
 ## Consequences

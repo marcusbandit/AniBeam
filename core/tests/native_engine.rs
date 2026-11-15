@@ -113,7 +113,7 @@ fn the_native_engine_round_trips_through_the_settings() {
     assert_eq!(json["engine"], json!("Native"));
     common::wait_for(
         &c,
-        |e| e.level == Level::Info && e.message.contains("AniBeam's own engine"),
+        |e| e.level == Level::Info && e.message.contains("Anibeam's own engine"),
         std::time::Duration::from_secs(5),
     );
 }
@@ -283,7 +283,7 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
 #[test]
 fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_anirss_alone() {
     let (dir, core, c, http) = native_core();
-    // AniBeam runs anirss itself, through a command that leaves a mark if it is ever
+    // Anibeam runs anirss itself, through a command that leaves a mark if it is ever
     // started: the case "never starts anirss" is about.
     let mark = dir.path().join("anirss-started");
     let command = dir.path().join("anirss");
@@ -310,7 +310,7 @@ fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_a
         Reply::Downloads { status } => assert_eq!(status.endpoints.len(), 1),
         other => panic!("{other:?}"),
     }
-    assert!(done.message.contains("AniBeam itself"), "{}", done.message);
+    assert!(done.message.contains("Anibeam itself"), "{}", done.message);
     assert_eq!(status.endpoints.len(), 1);
     assert!(
         !matches!(

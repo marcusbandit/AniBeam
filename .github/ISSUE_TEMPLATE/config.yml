@@ -2,4 +2,4 @@ blank_issues_enabled: true
 contact_links:
   - name: Report a security problem
     url: https://github.com/marcusbandit/AniBeam/security/advisories/new
-    about: A way AniBeam could harm the people who use it. Reported privately, never in an issue. SECURITY.md says what happens next.
+    about: A way Anibeam could harm the people who use it. Reported privately, never in an issue. SECURITY.md says what happens next.

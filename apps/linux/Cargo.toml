@@ -5,12 +5,16 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
+description = "Anibeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
 build = "build.rs"
 
 [[bin]]
 name = "anibeam"
 path = "src/main.rs"
+
+[features]
+# ANIBEAM_QML_DIR in an optimised build, for a tester build (#927). Debug builds always have it.
+dev-qml = []
 
 [dependencies]
 anibeam-core = { workspace = true, features = ["cast"] }

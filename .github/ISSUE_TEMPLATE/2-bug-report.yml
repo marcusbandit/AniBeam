@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in AniBeam is broken and you are writing it up yourself.
+description: Something in Anibeam is broken and you are writing it up yourself.
 labels:
   - bug
   - needs-triage
@@ -13,7 +13,7 @@ body:
         Please check the [open issues](https://github.com/marcusbandit/AniBeam/issues) first.
         If yours is already there, add a comment to it instead.
 
-        A way AniBeam could harm the people who use it is not an issue: report it privately,
+        A way Anibeam could harm the people who use it is not an issue: report it privately,
         as [SECURITY.md](https://github.com/marcusbandit/AniBeam/blob/main/SECURITY.md) says.
 
   - type: textarea
@@ -48,7 +48,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: AniBeam version
+      label: Anibeam version
       description: Open Settings, go to the Data tab, and look under About. Write "unknown" if you cannot find it.
       placeholder: 2.0.0
     validations:
@@ -57,7 +57,7 @@ body:
   - type: dropdown
     id: install
     attributes:
-      label: How you installed AniBeam
+      label: How you installed Anibeam
       options:
         - Downloaded it from the GitHub releases page
         - AUR or PKGBUILD package

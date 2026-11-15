@@ -17,9 +17,10 @@ use anibeam_core::*;
 use rusqlite::params;
 use serde_json::{Value, json};
 
-const SHOW: &str = include_str!("fixtures/tvmaze/show-83073.json");
-const SEARCH: &str = include_str!("fixtures/tvmaze/search-avatar-seven-havens.json");
-const SEARCH_AVATAR: &str = include_str!("fixtures/tvmaze/search-avatar.json");
+const SHOW: &str = include_str!("../../net/tests/fixtures/tvmaze/show-83073.json");
+const SEARCH: &str =
+    include_str!("../../net/tests/fixtures/tvmaze/search-avatar-seven-havens.json");
+const SEARCH_AVATAR: &str = include_str!("../../net/tests/fixtures/tvmaze/search-avatar.json");
 
 const POSTER: &str = "https://static.tvmaze.com/uploads/images/original_untouched/645/1613483.jpg";
 const BACKGROUND: &str =
@@ -902,7 +903,7 @@ fn a_tvmaze_match_round_trips_through_export_and_the_backfill_fills_it() {
     );
 
     push_show(&http2);
-    let job = anibeam_core::metadata::apply::backfill_stubs(&fresh);
+    let job = anibeam_core::metadata::apply::backfill_stubs(fresh.metadata());
     let done = common::wait_job(&c2, job);
     assert!(
         matches!(done.body, EventBody::RefreshFinished { refreshed: 1, .. }),

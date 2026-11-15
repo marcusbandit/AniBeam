@@ -10,7 +10,8 @@
 use std::sync::Arc;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
+use crate::foundation::services::Services;
 use crate::releases::BestfitConfig;
 use crate::releases::native::Native;
 
@@ -22,47 +23,51 @@ use super::{ensure_client, native as on_qbt, settings};
 #[derive(Clone)]
 pub enum DownloadsBackend {
     Anirss(AnirssClient),
-    Native(Native, Arc<Core>),
+    Native(Native, Arc<Downloads>),
 }
 
 /// The engine the settings pick. A store that cannot be read is an error,
 /// not a quiet fall back to one or the other.
-pub fn engine(core: &Core) -> Result<DownloadsEngine, CoreError> {
-    Ok(settings::read(core)?.engine)
+pub fn engine(services: &Services) -> Result<DownloadsEngine, CoreError> {
+    Ok(settings::read(services)?.engine)
 }
 
 /// What best fit ranks by on the desktop's native engine: the preferences saved in the
-/// config of the anirss AniBeam runs, as anirss itself ranks (#545). A remote anirss keeps
+/// config of the anirss Anibeam runs, as anirss itself ranks (#545). A remote anirss keeps
 /// its config on its own machine, and a missing file leaves the core's own ranking: None.
-fn saved_bestfit(core: &Core) -> Result<Option<BestfitConfig>, CoreError> {
-    let mode = settings::read(core)?.anirss_mode;
+fn saved_bestfit(services: &Services) -> Result<Option<BestfitConfig>, CoreError> {
+    let mode = settings::read(services)?.anirss_mode;
     if mode == AnirssMode::Remote {
         return Ok(None);
     }
-    Ok(settings::anirss_config_path(core).and_then(|p| settings::anirss_bestfit(&p)))
+    Ok(settings::anirss_config_path(services).and_then(|p| settings::anirss_bestfit(&p)))
 }
 
 impl DownloadsBackend {
     /// The backend the settings pick.
-    pub async fn open(core: &Arc<Core>) -> Result<DownloadsBackend, CoreError> {
-        DownloadsBackend::with(core, engine(core)?).await
+    pub async fn open(downloads: &Arc<Downloads>) -> Result<DownloadsBackend, CoreError> {
+        DownloadsBackend::with(downloads, engine(&downloads.services)?).await
     }
 
     /// The backend for `engine`. Native never starts the sidecar; anirss is
     /// `ensure_client`, the sidecar started when it is not up.
     pub async fn with(
-        core: &Arc<Core>,
+        downloads: &Arc<Downloads>,
         engine: DownloadsEngine,
     ) -> Result<DownloadsBackend, CoreError> {
         match engine {
-            DownloadsEngine::Anirss => ensure_client(core).await.map(DownloadsBackend::Anirss),
+            DownloadsEngine::Anirss => ensure_client(downloads).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                let native = Native::for_core(core, Vec::new(), saved_bestfit(core)?);
+                let native = Native::for_core(
+                    &downloads.services,
+                    Vec::new(),
+                    saved_bestfit(&downloads.services)?,
+                );
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()
                 );
-                Ok(DownloadsBackend::Native(native, core.clone()))
+                Ok(DownloadsBackend::Native(native, downloads.clone()))
             }
         }
     }
@@ -74,6 +79,12 @@ impl DownloadsBackend {
             DownloadsBackend::Anirss(_) => None,
             DownloadsBackend::Native(native, _) => native.endpoints.first().map(|e| e.name.clone()),
         }
+    }
+
+    /// Whether a search here has nowhere to look: the native engine with every
+    /// source switched off. anirss keeps its own list, so it always has one.
+    pub fn has_no_sources(&self) -> bool {
+        matches!(self, DownloadsBackend::Native(native, _) if native.endpoints.is_empty())
     }
 
     /// One search with fallback. Native fills in the seeders a feed left
@@ -176,8 +187,8 @@ impl DownloadsBackend {
                     .subscribe(query, endpoint, items, name, save_path)
                     .await
             }
-            DownloadsBackend::Native(native, core) => {
-                on_qbt::subscribe(core, native, query, endpoint, items, name, save_path).await
+            DownloadsBackend::Native(native, downloads) => {
+                on_qbt::subscribe(downloads, native, query, endpoint, items, name, save_path).await
             }
         }
     }
@@ -186,7 +197,7 @@ impl DownloadsBackend {
     pub async fn subscriptions(&self) -> Result<Vec<SubscriptionRule>, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => client.subscriptions().await,
-            DownloadsBackend::Native(_, core) => on_qbt::subscriptions(core).await,
+            DownloadsBackend::Native(_, downloads) => on_qbt::subscriptions(downloads).await,
         }
     }
 
@@ -202,8 +213,8 @@ impl DownloadsBackend {
             DownloadsBackend::Anirss(client) => {
                 client.remove(names, torrents, files, dry_run).await
             }
-            DownloadsBackend::Native(_, core) => {
-                on_qbt::remove(core, names, torrents, files, dry_run).await
+            DownloadsBackend::Native(_, downloads) => {
+                on_qbt::remove(downloads, names, torrents, files, dry_run).await
             }
         }
     }
@@ -218,8 +229,8 @@ impl DownloadsBackend {
     ) -> Result<AddedTorrents, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => client.download(items, name, save_path).await,
-            DownloadsBackend::Native(_, core) => {
-                on_qbt::download(core, items, name, save_path).await
+            DownloadsBackend::Native(_, downloads) => {
+                on_qbt::download(downloads, items, name, save_path).await
             }
         }
     }
@@ -228,7 +239,7 @@ impl DownloadsBackend {
     pub async fn movie(&self, link: &str) -> Result<AddedTorrents, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => client.movie(link).await,
-            DownloadsBackend::Native(_, core) => on_qbt::movie(core, link).await,
+            DownloadsBackend::Native(_, downloads) => on_qbt::movie(downloads, link).await,
         }
     }
 
@@ -239,13 +250,12 @@ impl DownloadsBackend {
     /// are the list the last connect read from it, each narrowing as the
     /// installed endpoint of its name does, and one written into anirss by
     /// hand as a plain feed; the core's are its own.
-    pub fn narrows_locally(&self, core: &Core, endpoint: &str) -> bool {
+    pub fn narrows_locally(&self, downloads: &Downloads, endpoint: &str) -> bool {
         let plain =
             |kind: &str, narrows: bool| kind != crate::releases::kinds::FILTERED_RSS && !narrows;
         match self {
             DownloadsBackend::Anirss(_) => {
-                let Some(kind) = core
-                    .downloads
+                let Some(kind) = downloads
                     .state()
                     .endpoints
                     .iter()
@@ -255,7 +265,7 @@ impl DownloadsBackend {
                     return false;
                 };
                 kind != crate::releases::kinds::FILTERED_RSS
-                    && !crate::repos::installed_narrows(core, endpoint)
+                    && !crate::repos::installed_narrows(&downloads.services, endpoint)
             }
             DownloadsBackend::Native(native, _) => native
                 .endpoints

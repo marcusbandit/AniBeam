@@ -247,7 +247,7 @@ pub fn install(window: &AppWindow) {
             d.text_style.box_opacity = (v as f64).clamp(0.0, 1.0)
         })
     });
-    // Back to the look AniBeam ships with; the language orders stay as they are.
+    // Back to the look Anibeam ships with; the language orders stay as they are.
     d.on_reset({
         let window = window.as_weak();
         move || {

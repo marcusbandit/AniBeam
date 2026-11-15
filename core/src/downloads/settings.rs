@@ -13,8 +13,8 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use super::home::AnirssHome;
-use crate::Core;
 use crate::contract::*;
+use crate::foundation::services::Services;
 use crate::releases::BestfitConfig;
 use crate::store::settings;
 use crate::trackers::Secrets;
@@ -39,7 +39,7 @@ pub fn password_key(id: &str) -> String {
     }
 }
 
-/// The key of the password the client in use logs in with. AniBeam's own
+/// The key of the password the client in use logs in with. Anibeam's own
 /// needs none, so it has none.
 pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
     (s.torrent_mode != TorrentMode::Managed).then(|| password_key(&s.active_client))
@@ -73,9 +73,9 @@ pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSetti
 }
 
 /// `load_stored` for `core`, off the home its paths give anirss.
-pub fn read(core: &Core) -> Result<DownloadSettings, CoreError> {
-    let home = AnirssHome::of(&core.paths);
-    core.store.read(move |c| load_stored(c, &home))
+pub fn read(services: &Services) -> Result<DownloadSettings, CoreError> {
+    let home = AnirssHome::of(&services.paths);
+    services.store.read(move |c| load_stored(c, &home))
 }
 
 pub fn load(
@@ -319,7 +319,7 @@ fn address_key(url: &str) -> String {
 }
 
 /// Whether the client in use keeps its downloads on this machine's disk, so
-/// the core may move them to the trash itself. AniBeam's own always does; a
+/// the core may move them to the trash itself. Anibeam's own always does; a
 /// client of the user's does when its address is this machine: loopback,
 /// one of the machine's own addresses, or its name. A seedbox's paths are
 /// its own, and the same path here is somebody else's folder.
@@ -399,7 +399,7 @@ fn bounded_lookup(name: &str) -> Option<Vec<IpAddr>> {
 /// Whether `host` is this machine, named `hostname` and holding `locals`. An address
 /// counts when it is loopback, unspecified or one of `locals`, and a name when it is the
 /// bare hostname. A longer name that only starts with it, a tailnet's
-/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`, counts only when it
+/// `desk.example-tailnet.ts.net` or a lookalike `desk.example.net`, counts only when it
 /// resolves here, since the core trashes files at the paths that client reports (#446).
 /// Only such a name is looked up, and `locals` is listed only when an address needs it.
 fn names_this_machine(
@@ -453,7 +453,7 @@ fn host_of(url: &str) -> String {
     parsed(url).map_or(String::new(), |u| bare_host(&u))
 }
 
-/// Whether AniBeam's own may listen at the address in use: it has to be on
+/// Whether Anibeam's own may listen at the address in use: it has to be on
 /// this machine, and not where one of the user's saved clients is, or it
 /// would be started at the user's own qBittorrent's port.
 pub fn fits_managed(s: &DownloadSettings) -> bool {
@@ -494,7 +494,7 @@ fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
 }
 
 /// How many endpoints anirss's own `config.toml` names, nought when there is
-/// no file or none it can read. AniBeam itself does not read them (#552).
+/// no file or none it can read. Anibeam itself does not read them (#552).
 pub fn anirss_config_endpoints(path: &Path) -> usize {
     let Ok(text) = std::fs::read_to_string(path) else {
         return 0;
@@ -563,8 +563,8 @@ pub fn anirss_config_qbt(path: &Path) -> Option<(String, String)> {
 
 /// The config of the anirss `core` runs: in the person's own home, or in a
 /// sandboxed run's own (`AnirssHome`).
-pub fn anirss_config_path(core: &Core) -> Option<PathBuf> {
-    AnirssHome::of(&core.paths).config_path()
+pub fn anirss_config_path(services: &Services) -> Option<PathBuf> {
+    AnirssHome::of(&services.paths).config_path()
 }
 
 /// The qBittorrent password anirss's CLI saved (`qbt.pass` in its state
@@ -703,62 +703,52 @@ mod tests {
         let locals = || -> Vec<IpAddr> {
             vec![
                 "192.168.1.20".parse().unwrap(),
-                "100.65.105.9".parse().unwrap(),
+                "100.64.0.1".parse().unwrap(),
             ]
         };
         let asked = std::cell::RefCell::new(Vec::new());
         let dns = |name: &str| -> Option<Vec<IpAddr>> {
             asked.borrow_mut().push(name.to_string());
             match name {
-                "banditbox.tail1234.ts.net" => Some(vec!["100.65.105.9".parse().unwrap()]),
-                "banditbox.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
+                "desk.example-tailnet.ts.net" => Some(vec!["100.64.0.1".parse().unwrap()]),
+                "desk.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
                 _ => None,
             }
         };
-        let here = |host: &str| names_this_machine(host, "banditbox", locals, dns);
-        assert!(here("banditbox"));
-        assert!(here("BanditBox."));
-        assert!(here("banditbox.tail1234.ts.net"));
-        assert!(here("BANDITBOX.TAIL1234.TS.NET."));
+        let here = |host: &str| names_this_machine(host, "desk", locals, dns);
+        assert!(here("desk"));
+        assert!(here("Desk."));
+        assert!(here("desk.example-tailnet.ts.net"));
+        assert!(here("DESK.EXAMPLE-TAILNET.TS.NET."));
         assert!(here("192.168.1.20"));
         assert!(here("127.0.0.1") && here("::1") && here("::ffff:127.0.0.1") && here("0.0.0.0"));
         // A lookalike whose first label is this machine's name is somebody
         // else's box, and so is a name that resolves nowhere (#446).
-        assert!(!here("banditbox.example.net"));
-        assert!(!here("banditbox.nowhere.invalid"));
+        assert!(!here("desk.example.net"));
+        assert!(!here("desk.nowhere.invalid"));
         assert!(!here("seedbox.example.net"));
         assert!(!here("203.0.113.7"));
         // Only a name that starts like this machine's is looked up.
         assert!(
-            asked.borrow().iter().all(|n| n.starts_with("banditbox.")),
+            asked.borrow().iter().all(|n| n.starts_with("desk.")),
             "{:?}",
             asked.borrow()
         );
         // No hostname, no match; a dotted hostname still knows its bare name.
-        assert!(!names_this_machine("banditbox", "", locals, dns));
-        assert!(names_this_machine(
-            "banditbox",
-            "banditbox.local",
-            locals,
-            dns
-        ));
-        assert!(names_this_machine(
-            "banditbox.local",
-            "banditbox.local",
-            locals,
-            dns
-        ));
+        assert!(!names_this_machine("desk", "", locals, dns));
+        assert!(names_this_machine("desk", "desk.local", locals, dns));
+        assert!(names_this_machine("desk.local", "desk.local", locals, dns));
     }
 
     #[test]
     fn a_failed_lookup_keeps_the_last_answer() {
         let cache = Lookups::default();
         let at = Instant::now();
-        let tailnet = vec!["100.65.105.9".parse::<IpAddr>().unwrap()];
-        let found = |_: &str| Some(vec!["100.65.105.9".parse().unwrap()]);
+        let tailnet = vec!["100.64.0.1".parse::<IpAddr>().unwrap()];
+        let found = |_: &str| Some(vec!["100.64.0.1".parse().unwrap()]);
         let fails = |_: &str| None;
         let never = |_: &str| -> Option<Vec<IpAddr>> { panic!("looked up within LOOKUP_FOR") };
-        let name = "banditbox.tail1234.ts.net";
+        let name = "desk.example-tailnet.ts.net";
         assert_eq!(remembered(&cache, "other.example", at, fails), None);
         assert_eq!(remembered(&cache, name, at, found), Some(tailnet.clone()));
         assert_eq!(

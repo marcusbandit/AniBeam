@@ -3,21 +3,11 @@ name: Arch
 # The tarball the AUR's anibeam-bin installs (#235). It is built in an Arch container, not on
 # the Ubuntu runner linux.yml uses, because the binary links against the system's Qt, MpvQt and
 # libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
-# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256; a pull request that touches
-# the packaging builds it too, to show it still packs.
-# The pull request paths are linux.yml's: whatever can break the shell's build in the
-# container breaks it here too, and a release finds out only if a pull request did not.
+# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256, and nightly.yml calls it so
+# a rolling Arch update that breaks the container build shows up on the next nightly rather
+# than on a release. A pull request does not run it on a push (#993); the `full ci` label builds
+# it through full-ci.yml (#986), and the Actions tab (Run workflow) runs it by hand.
 on:
-  pull_request:
-    paths:
-      - 'contract/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/arch.yml'
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -64,6 +54,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Build and pack

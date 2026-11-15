@@ -12,6 +12,9 @@ pub mod imdb;
 pub mod link;
 pub mod record;
 pub mod similarity;
+mod team;
+
+pub use team::Metadata;
 
 /// How often the core is willing to say out loud that Jikan is down, and
 /// how long it leaves Jikan alone after a failure. Jikan is the
