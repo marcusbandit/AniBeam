@@ -84,9 +84,9 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 /// cancellation before it stops waiting and closes the store anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
-/// The line every start logs, around the version: "AniBeam core 2.1.0
+/// The line every start logs, around the version: "Anibeam core 2.1.0
 /// ready". `earlier_starts` reads the version back out of it.
-const READY_BEFORE: &str = "AniBeam core ";
+const READY_BEFORE: &str = "Anibeam core ";
 const READY_AFTER: &str = " ready";
 
 impl Core {

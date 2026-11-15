@@ -9,7 +9,7 @@
 //
 // props: { anilist } - the AniList id.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

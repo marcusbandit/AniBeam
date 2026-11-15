@@ -42,7 +42,7 @@ ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
 debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds and in
 builds with the `dev-qml` feature only. A
-URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml`
+URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/Anibeam/qml/<name>.qml`
 the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared
 components all come from disk. Edit, then run with the binary as it stands:
 
@@ -185,8 +185,8 @@ runner; nothing here builds it on Linux. `packaging/macos/` holds the steps the 
     deps.sh <prefix>        libmpv 0.41 (lean: no Lua, VapourSynth or Vulkan) and MpvQt 1.2 into a prefix
     MPVQT_PREFIX=<prefix> MPV_PREFIX=<prefix> QMAKE=$(brew --prefix qtbase)/bin/qmake \
       cargo build --release -p anibeam -p anibeam-cli
-    DEPS_PREFIX=<prefix> packaging/macos/bundle.sh dist   AniBeam.app and the dmg, ad-hoc signed
-    packaging/macos/smoke.sh dist/AniBeam.app target/release/anibeam-cli smoke
+    DEPS_PREFIX=<prefix> packaging/macos/bundle.sh dist   Anibeam.app and the dmg, ad-hoc signed
+    packaging/macos/smoke.sh dist/Anibeam.app target/release/anibeam-cli smoke
 
 `bundle.sh` runs macdeployqt, then `fix-dylibs.py`, which copies in whatever still loads from
 outside the bundle and fails if anything does. `smoke.sh` seeds a library of generated clips,

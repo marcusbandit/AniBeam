@@ -4,7 +4,7 @@
 // its own, with the days it waits. On hold and the main tracker only mean something with
 // a tracker connected, so with none they stay out and the page says what connecting buys.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

@@ -2,7 +2,7 @@
 // the fix. What it says about the library and the data reads live (how many shows are not
 // recognised, where the files are), so the answer is about this install, not a manual.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -117,7 +117,7 @@ SettingsTab {
             label: words.t("settings-help-report")
             helper: words.t("settings-help-report-helper")
             Button { objectName: "help-report"; msg: "settings-help-report"; icon: "external-link"; flat: true
-                     onClicked: frame.openLink("https://github.com/marcusbandit/AniBeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
+                     onClicked: frame.openLink("https://github.com/marcusbandit/Anibeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
         }
     }
 }

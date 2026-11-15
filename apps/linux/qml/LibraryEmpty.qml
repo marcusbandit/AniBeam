@@ -5,7 +5,7 @@
 // The folders it watches are named, so a new empty folder reads as empty, not as broken.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Column {
     id: root

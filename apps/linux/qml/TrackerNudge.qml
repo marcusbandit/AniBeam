@@ -5,7 +5,7 @@
 // (a --root run's sandbox included), and connecting either tracker retires it as well.
 import QtQuick
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Tile {
     id: root

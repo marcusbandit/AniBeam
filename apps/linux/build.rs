@@ -21,7 +21,7 @@ fn main() {
         .collect();
     extra.dedup();
     let mut builder = CxxQtBuilder::new_qml_module(
-        QmlModule::new("com.marcusrosado.AniBeam")
+        QmlModule::new("com.marcusrosado.Anibeam")
             .version(1, 0)
             .qml_file("qml/Main.qml")
             .qml_file("qml/Driver.qml")
@@ -175,7 +175,7 @@ fn main() {
         "cpp/keyboard.h",
         "cpp/keyboard.cpp",
     ])
-    // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
+    // qrc:/qt/qml/com/marcusrosado/Anibeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([

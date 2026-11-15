@@ -14,7 +14,7 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.5.0 · 2026-11-12
+## 2.5.0 · New app ID, pin it again if it left · 2026-11-12
 
 ## 2.4.0 · Quality of life · 2026-10-30
 
@@ -54,7 +54,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Get lights the episodes a click will pick, before you click
 - Hold the mouse on the video to play at 2x until you let go
 - Page Up and Page Down jump between chapters, now marked on the seek bar
-- S saves a screenshot of the video to Pictures/AniBeam
+- S saves a screenshot of the video to Pictures/Anibeam
 - Home goes to the start of an episode and End to its outro
 - F11 toggles fullscreen
 - A resumed episode says where it picked up, with Start over

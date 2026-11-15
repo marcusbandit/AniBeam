@@ -75,17 +75,8 @@ def pending(changes_dir, ref=None):
     return sections
 
 
-def respell(text):
-    """The site spells the name Anibeam. Change files written before the rename can still say
-    AniBeam, so prose is respelled here. Code spans, paths and file names (Pictures/AniBeam,
-    %APPDATA%\\AniBeam, AniBeam.AppImage, AniBeam-2.4.0) keep their spelling."""
-    parts = text.split("`")
-    parts[::2] = [re.sub(r"(?<![/\\.\w])AniBeam(?!\.\w|[\w-])", "Anibeam", p) for p in parts[::2]]
-    return "`".join(parts)
-
-
 def inline(text):
-    text = html.escape(respell(text))
+    text = html.escape(text)
     return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
 
 
@@ -210,9 +201,9 @@ def page(title, prefix, body, canonical, description):
 
 def entry(e, prefix, link=True, level="h2"):
     v, slug = e["version"], e["slug"]
-    title = f'<span class="wn-title">{html.escape(respell(e["title"]))}</span>' if e["title"] else ""
+    title = f'<span class="wn-title">{html.escape(e["title"])}</span>' if e["title"] else ""
     name = f'<a href="{prefix}whats-new/{slug}/">{v}</a>' if link else v
-    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/AniBeam/releases/tag/{e["tag"]}">Download {v}</a>'
+    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/Anibeam/releases/tag/{e["tag"]}">Download {v}</a>'
           if TAGS is None or e["tag"] in TAGS else "")
     anchor = f"v{v}" if e["app"] == "desktop" else slug
     return f"""<article class="wn-entry" id="{anchor}">
@@ -259,7 +250,7 @@ for i, e in enumerate(versions):
 {entry(e, "../../", link=False, level="h1")}
 </div>
 {nav}"""
-    title = f"Anibeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {respell(e['title'])}" if e["title"] else "")
+    title = f"Anibeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {e['title']}" if e["title"] else "")
     (out / "whats-new" / slug).mkdir(parents=True, exist_ok=True)
     (out / "whats-new" / slug / "index.html").write_text(
         page(title, "../../", body, f"whats-new/{slug}/", f"What changed in {e['app_name']} {v}, released {nice_date(e['date'])}."))

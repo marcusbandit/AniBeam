@@ -12,8 +12,8 @@ pub const DEFAULT_FILE: &str = env!("ANIBEAM_ICON_FILE");
 /// The 512 PNG the window shows; the Rail and Appearance read the same files.
 pub fn qrc(icon: AppIcon) -> String {
     match icon {
-        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/AniBeam/assets/{DEFAULT_FILE}"),
-        AppIcon::Dark => ":/qt/qml/com/marcusrosado/AniBeam/assets/icon-dark.png".to_string(),
+        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{DEFAULT_FILE}"),
+        AppIcon::Dark => ":/qt/qml/com/marcusrosado/Anibeam/assets/icon-dark.png".to_string(),
     }
 }
 
@@ -37,7 +37,7 @@ mod linux {
 
     use super::AppIcon;
 
-    const NAME: &str = "com.marcusrosado.AniBeam";
+    const NAME: &str = "com.marcusrosado.Anibeam";
 
     macro_rules! sizes {
         ($($size:literal),+) => {

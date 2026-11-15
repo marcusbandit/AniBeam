@@ -311,11 +311,11 @@ mod tests {
 
     #[test]
     fn a_sandbox_owns_its_own_names_and_nothing_else_moves() {
-        assert_eq!(app_name(false), "com.marcusrosado.AniBeam");
-        assert_eq!(app_path(false), "/com/marcusrosado/AniBeam");
+        assert_eq!(app_name(false), "com.marcusrosado.Anibeam");
+        assert_eq!(app_path(false), "/com/marcusrosado/Anibeam");
         assert_eq!(mpris_suffix(false), "anibeam");
-        assert_eq!(app_name(true), "com.marcusrosado.AniBeam.Sandbox");
-        assert_eq!(app_path(true), "/com/marcusrosado/AniBeam/Sandbox");
+        assert_eq!(app_name(true), "com.marcusrosado.Anibeam.Sandbox");
+        assert_eq!(app_path(true), "/com/marcusrosado/Anibeam/Sandbox");
         assert_eq!(mpris_suffix(true), "anibeam.sandbox");
     }
 }

@@ -4,7 +4,7 @@
 // come back as exportFinished, importFinished and imagesCleared.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

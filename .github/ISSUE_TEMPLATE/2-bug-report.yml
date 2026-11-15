@@ -10,11 +10,11 @@ body:
         Thanks for taking the time. If you use a coding agent such as Claude Code or Codex,
         the **Triage report** form gets fixed faster: the agent can read the logs for you.
 
-        Please check the [open issues](https://github.com/marcusbandit/AniBeam/issues) first.
+        Please check the [open issues](https://github.com/marcusbandit/Anibeam/issues) first.
         If yours is already there, add a comment to it instead.
 
         A way Anibeam could harm the people who use it is not an issue: report it privately,
-        as [SECURITY.md](https://github.com/marcusbandit/AniBeam/blob/main/SECURITY.md) says.
+        as [SECURITY.md](https://github.com/marcusbandit/Anibeam/blob/main/SECURITY.md) says.
 
   - type: textarea
     id: what-happened

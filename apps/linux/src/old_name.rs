@@ -1,0 +1,262 @@
+//! Builds before 2.5 named the app `com.marcusrosado.Ani` + `Beam`, with a capital B (#1047).
+//! The user's own desktop entries, launcher icons, `mimeapps.list` lines and screenshot folder
+//! still carry that spelling, and the desktop matches the window to its entry by the id, so
+//! at launch they are renamed once to the id this build runs under. The old spelling is
+//! split in two below so a search for it finds nothing.
+//!
+//! Only the user's files are touched, never a system one. A file that already exists under
+//! the new name is left as it is, a symlink is never followed, and a failure leaves startup
+//! alone.
+
+/// Renames what the old id left behind, before anything reads the entries.
+pub fn adopt() {
+    #[cfg(target_os = "linux")]
+    {
+        let args = crate::runtime::args();
+        if args.root.is_some() || args.drive.is_some() || args.shoot.is_some() {
+            return;
+        }
+        linux::adopt();
+    }
+}
+
+/// The old id, and the folder name the old builds saved screenshots in.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+const OLD_ID: &str = concat!("com.marcusrosado.Ani", "Beam");
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+const OLD_FOLDER: &str = concat!("Ani", "Beam");
+
+/// `name` under the new id, when it is one of the old id's files: the id itself or the id
+/// followed by a dot (`.desktop`, `.Dev.png`).
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn renamed(name: &str) -> Option<String> {
+    let rest = name.strip_prefix(OLD_ID)?;
+    (rest.is_empty() || rest.starts_with('.')).then(|| format!("{}{rest}", crate::APP_ID))
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    use super::{OLD_FOLDER, OLD_ID, renamed};
+
+    fn data_home() -> Option<PathBuf> {
+        xdg("XDG_DATA_HOME", ".local/share")
+    }
+
+    fn xdg(var: &str, fallback: &str) -> Option<PathBuf> {
+        std::env::var_os(var)
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(fallback)))
+    }
+
+    /// Every regular file in `dir` named under the old id, with its new path.
+    fn old_files(dir: &Path) -> Vec<(PathBuf, PathBuf)> {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        read.flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|e| {
+                let new = renamed(&e.file_name().to_string_lossy())?;
+                Some((e.path(), dir.join(new)))
+            })
+            .filter(|(_, new)| !new.exists())
+            .collect()
+    }
+
+    /// Writes `text` with the old id replaced, at `to`, and removes `from`.
+    fn rewrite(from: &Path, to: &Path) -> bool {
+        let Ok(text) = std::fs::read_to_string(from) else {
+            return false;
+        };
+        let moved = std::fs::write(to, text.replace(OLD_ID, crate::APP_ID)).is_ok()
+            && std::fs::metadata(from)
+                .and_then(|m| std::fs::set_permissions(to, m.permissions()))
+                .is_ok();
+        if moved {
+            let _ = std::fs::remove_file(from);
+        } else {
+            let _ = std::fs::remove_file(to);
+        }
+        moved
+    }
+
+    /// Replaces the old id in a file that stays where it is, when it mentions it.
+    fn respell(path: &Path) {
+        if path.is_symlink() {
+            return;
+        }
+        if let Ok(text) = std::fs::read_to_string(path)
+            && text.contains(OLD_ID)
+        {
+            let _ = crate::scheme::linux::replace(path, &text.replace(OLD_ID, crate::APP_ID));
+        }
+    }
+
+    pub fn adopt() {
+        let Some(data) = data_home() else { return };
+        let ledger =
+            PathBuf::from(&crate::runtime::paths().core.data_dir).join("launcher-icons.txt");
+        let config = xdg("XDG_CONFIG_HOME", ".config");
+        if adopt_in(&data, config.as_deref(), &ledger, pictures().as_deref()) {
+            let apps = data.join("applications");
+            crate::scheme::linux::quiet(Command::new("update-desktop-database").arg(&apps));
+        }
+    }
+
+    /// Does the renaming under these folders. True when a desktop entry moved, so the
+    /// desktop's cache wants rebuilding.
+    pub(super) fn adopt_in(
+        data: &Path,
+        config: Option<&Path>,
+        ledger: &Path,
+        pictures: Option<&Path>,
+    ) -> bool {
+        let apps = data.join("applications");
+        let mut entries = false;
+        for (from, to) in old_files(&apps) {
+            entries |= rewrite(&from, &to);
+        }
+
+        let hicolor = data.join("icons/hicolor");
+        let mut icons = false;
+        if let Ok(sizes) = std::fs::read_dir(&hicolor) {
+            for size in sizes.flatten() {
+                for (from, to) in old_files(&size.path().join("apps")) {
+                    icons |= std::fs::rename(&from, &to).is_ok();
+                }
+            }
+        }
+        if icons {
+            // The launcher re-reads hicolor when the folder's time changes.
+            let _ = std::fs::File::open(&hicolor)
+                .and_then(|f| f.set_modified(std::time::SystemTime::now()));
+        }
+
+        // The list of icons a Dark pick wrote names their paths, so it follows them.
+        respell(ledger);
+        if let Some(config) = config {
+            respell(&config.join("mimeapps.list"));
+        }
+        respell(&apps.join("mimeapps.list"));
+
+        if let Some(pictures) = pictures {
+            let (from, to) = (pictures.join(OLD_FOLDER), pictures.join("Anibeam"));
+            if from.is_dir() && !from.is_symlink() && !to.exists() {
+                let _ = std::fs::rename(from, to);
+            }
+        }
+        entries
+    }
+
+    /// The user's Pictures folder, as `xdg-user-dir` names it.
+    fn pictures() -> Option<PathBuf> {
+        let out = Command::new("xdg-user-dir")
+            .arg("PICTURES")
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+        // With no Pictures set, xdg-user-dir answers with the home folder.
+        (path.is_absolute() && Some(path.as_os_str()) != std::env::var_os("HOME").as_deref())
+            .then_some(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_old_ids_files_get_the_new_id() {
+        let old = |rest: &str| format!("{OLD_ID}{rest}");
+        assert_eq!(
+            renamed(&old(".desktop")).as_deref(),
+            Some("com.marcusrosado.Anibeam.desktop")
+        );
+        assert_eq!(
+            renamed(&old(".Dev.png")).as_deref(),
+            Some("com.marcusrosado.Anibeam.Dev.png")
+        );
+        assert_eq!(
+            renamed(&old("")).as_deref(),
+            Some("com.marcusrosado.Anibeam")
+        );
+        assert_eq!(renamed(&old("Fan.desktop")), None);
+        assert_eq!(renamed("com.marcusrosado.Anibeam.desktop"), None);
+        assert_eq!(renamed("org.other.App.desktop"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_old_install_takes_the_new_id() {
+        use std::fs;
+        let home = std::env::temp_dir().join(format!("anibeam-old-name-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let (data, config, pictures) = (
+            home.join("data"),
+            home.join("config"),
+            home.join("Pictures"),
+        );
+        let apps = data.join("applications");
+        let icons = data.join("icons/hicolor/512x512/apps");
+        for dir in [&apps, &icons, &config, &pictures.join(OLD_FOLDER)] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        let entry =
+            format!("[Desktop Entry]\nName=Anibeam\nIcon={OLD_ID}\nStartupWMClass={OLD_ID}\n");
+        fs::write(apps.join(format!("{OLD_ID}.desktop")), &entry).unwrap();
+        fs::write(apps.join(format!("{OLD_ID}.Dev.desktop")), &entry).unwrap();
+        // Someone else's entry that only starts with the same letters stays as it is.
+        fs::write(apps.join(format!("{OLD_ID}Fan.desktop")), "x").unwrap();
+        fs::write(icons.join(format!("{OLD_ID}.png")), "png").unwrap();
+        fs::write(
+            config.join("mimeapps.list"),
+            format!("[Default Applications]\nx-scheme-handler/anibeam={OLD_ID}.desktop\n"),
+        )
+        .unwrap();
+        let ledger = home.join("launcher-icons.txt");
+        fs::write(
+            &ledger,
+            format!("{}\n", icons.join(format!("{OLD_ID}.png")).display()),
+        )
+        .unwrap();
+
+        assert!(linux::adopt_in(
+            &data,
+            Some(&config),
+            &ledger,
+            Some(&pictures)
+        ));
+
+        let new = |rest: &str| format!("{}{rest}", crate::APP_ID);
+        assert_eq!(
+            fs::read_to_string(apps.join(new(".desktop"))).unwrap(),
+            entry.replace(OLD_ID, crate::APP_ID)
+        );
+        assert!(apps.join(new(".Dev.desktop")).is_file());
+        assert!(!apps.join(format!("{OLD_ID}.desktop")).exists());
+        assert!(apps.join(format!("{OLD_ID}Fan.desktop")).exists());
+        assert!(icons.join(new(".png")).is_file());
+        assert!(
+            !fs::read_to_string(config.join("mimeapps.list"))
+                .unwrap()
+                .contains(OLD_ID)
+        );
+        assert!(!fs::read_to_string(&ledger).unwrap().contains(OLD_ID));
+        assert!(pictures.join("Anibeam").is_dir() && !pictures.join(OLD_FOLDER).exists());
+
+        // A second launch finds nothing left to move.
+        assert!(!linux::adopt_in(
+            &data,
+            Some(&config),
+            &ledger,
+            Some(&pictures)
+        ));
+        let _ = fs::remove_dir_all(&home);
+    }
+}

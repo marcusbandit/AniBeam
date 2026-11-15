@@ -5,7 +5,7 @@
 // foot, named by their tips, and the foot itself holds the title-language switch and the
 // version, which opens What's new. The active place takes the soft accent; nothing else is lit.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -67,7 +67,7 @@ Item {
         Image {
             x: (root.itemWidth - width) / 2
             width: theme.space(10); height: width
-            source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
+            source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
             sourceSize: Qt.size(96, 96)
             // Decoded off the Qt thread, not inside the frame's first build
             asynchronous: true

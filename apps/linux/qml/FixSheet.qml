@@ -10,7 +10,7 @@
 // press on the shield all close it through close().
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

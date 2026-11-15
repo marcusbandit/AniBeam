@@ -9,7 +9,7 @@
 // row into view and lights it for a moment. The section and each one's scroll are session
 // state kept on the frame, by section id.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page

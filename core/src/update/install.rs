@@ -371,7 +371,7 @@ async fn download(
     mut progress: impl FnMut(u64, u64) + Send,
 ) -> Result<(), String> {
     let client = reqwest::Client::builder()
-        .user_agent(format!("AniBeam/{}", crate::VERSION))
+        .user_agent(format!("Anibeam/{}", crate::VERSION))
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(60))
         .build()
@@ -660,7 +660,7 @@ if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
                      New-Item -ItemType Directory -Path $old -Force | Out-Null\n\
                      foreach ($d in 'qml','anirss') {{ $p = Join-Path {dir} $d; if (Test-Path -LiteralPath $p) {{ Move-Item -LiteralPath $p -Destination $old }} }}\n\
                      try {{\n\
-                     Get-ChildItem -LiteralPath (Join-Path {unpacked} 'AniBeam') | Copy-Item -Destination {dir} -Recurse -Force\n\
+                     Get-ChildItem -LiteralPath (Join-Path {unpacked} 'Anibeam') | Copy-Item -Destination {dir} -Recurse -Force\n\
                      }} catch {{\n\
                      foreach ($d in 'qml','anirss') {{ $o = Join-Path $old $d; if (Test-Path -LiteralPath $o) {{ Remove-Item -LiteralPath (Join-Path {dir} $d) -Recurse -Force -ErrorAction SilentlyContinue; Move-Item -LiteralPath $o -Destination {dir} }} }}\n\
                      throw\n\
@@ -748,10 +748,10 @@ mod tests {
 
     fn release() -> Vec<Asset> {
         [
-            "AniBeam-2.5.0-macos-arm64.dmg",
-            "AniBeam-2.5.0-windows-x64-setup.exe",
-            "AniBeam-2.5.0-windows-x64.zip",
-            "AniBeam-2.5.0-x86_64.AppImage",
+            "Anibeam-2.5.0-macos-arm64.dmg",
+            "Anibeam-2.5.0-windows-x64-setup.exe",
+            "Anibeam-2.5.0-windows-x64.zip",
+            "Anibeam-2.5.0-x86_64.AppImage",
         ]
         .into_iter()
         .map(asset)
@@ -767,7 +767,7 @@ mod tests {
         let p = PathBuf::from("/x");
         assert_eq!(
             picked(Install::AppImage { path: p.clone() }, "x86_64").as_deref(),
-            Some("AniBeam-2.5.0-x86_64.AppImage")
+            Some("Anibeam-2.5.0-x86_64.AppImage")
         );
         assert_eq!(
             picked(Install::AppImage { path: p.clone() }, "aarch64"),
@@ -775,35 +775,35 @@ mod tests {
         );
         assert_eq!(
             picked(Install::MacApp { bundle: p.clone() }, "aarch64").as_deref(),
-            Some("AniBeam-2.5.0-macos-arm64.dmg")
+            Some("Anibeam-2.5.0-macos-arm64.dmg")
         );
         assert_eq!(
             picked(Install::WindowsSetup { exe: p.clone() }, "x86_64").as_deref(),
-            Some("AniBeam-2.5.0-windows-x64-setup.exe")
+            Some("Anibeam-2.5.0-windows-x64-setup.exe")
         );
         assert_eq!(
             picked(Install::WindowsPortable { exe: p }, "x86_64").as_deref(),
-            Some("AniBeam-2.5.0-windows-x64.zip")
+            Some("Anibeam-2.5.0-windows-x64.zip")
         );
         assert_eq!(picked(Install::Source, "x86_64"), None);
         assert_eq!(picked(Install::Package { owner: None }, "x86_64"), None);
     }
 
-    /// Unix paths: Windows reads `/home/...` as relative.
+    /// Unix paths: Windows reads `/opt/...` as relative.
     #[cfg(unix)]
     #[test]
     fn linux_tells_an_appimage_a_package_and_a_build_apart() {
-        let exe = Path::new("/tmp/.mount_AniBeaXYZ/usr/bin/anibeam");
+        let exe = Path::new("/tmp/.mount_AnibeaXYZ/usr/bin/anibeam");
         let runtime = || {
             Some((
-                PathBuf::from("/home/a/AniBeam.AppImage"),
-                PathBuf::from("/tmp/.mount_AniBeaXYZ"),
+                PathBuf::from("/opt/example/Anibeam.AppImage"),
+                PathBuf::from("/tmp/.mount_AnibeaXYZ"),
             ))
         };
         assert_eq!(
             Install::classify(exe, runtime(), Os::Linux),
             Install::AppImage {
-                path: "/home/a/AniBeam.AppImage".into()
+                path: "/opt/example/Anibeam.AppImage".into()
             }
         );
         // Started from a terminal inside some AppImage: its variables are not ours
@@ -817,7 +817,7 @@ mod tests {
         );
         assert_eq!(
             Install::classify(
-                Path::new("/home/a/AniBeam/target/release/anibeam"),
+                Path::new("/opt/example/Anibeam/target/release/anibeam"),
                 None,
                 Os::Linux
             ),
@@ -829,17 +829,17 @@ mod tests {
     fn a_mac_app_is_the_bundle_around_the_binary() {
         assert_eq!(
             Install::classify(
-                Path::new("/Applications/AniBeam.app/Contents/MacOS/anibeam"),
+                Path::new("/Applications/Anibeam.app/Contents/MacOS/anibeam"),
                 None,
                 Os::Mac
             ),
             Install::MacApp {
-                bundle: "/Applications/AniBeam.app".into()
+                bundle: "/Applications/Anibeam.app".into()
             }
         );
         assert_eq!(
             Install::classify(
-                Path::new("/Users/a/AniBeam/target/release/anibeam"),
+                Path::new("/Users/a/Anibeam/target/release/anibeam"),
                 None,
                 Os::Mac
             ),
@@ -873,7 +873,7 @@ mod tests {
     #[test]
     fn an_appimage_restart_waits_then_opens_the_same_path() {
         let p = Prepared::AppImage {
-            path: "/home/a/AniBeam.AppImage".into(),
+            path: "/opt/example/Anibeam.AppImage".into(),
         };
         assert_eq!(p.helper(42, false, &[]), None);
         let h = p
@@ -881,20 +881,20 @@ mod tests {
             .unwrap();
         assert_eq!(h.program, PathBuf::from("/bin/sh"));
         assert_eq!(h.args[3], "42");
-        assert_eq!(h.args[4], "/home/a/AniBeam.AppImage");
+        assert_eq!(h.args[4], "/opt/example/Anibeam.AppImage");
         assert_eq!(h.args[5..], ["--root", "/tmp/s"]);
     }
 
     #[test]
     fn an_appimage_restart_drops_the_old_mount_and_keeps_the_rest() {
         let drops = |name: &str, value: &str| {
-            from_old_mount(name.as_ref(), value.as_ref(), Some("/tmp/.mount_AniBeaXYZ"))
+            from_old_mount(name.as_ref(), value.as_ref(), Some("/tmp/.mount_AnibeaXYZ"))
         };
-        assert!(drops("APPIMAGE", "/opt/AniBeam.AppImage"));
-        assert!(drops("APPDIR", "/tmp/.mount_AniBeaXYZ"));
+        assert!(drops("APPIMAGE", "/opt/Anibeam.AppImage"));
+        assert!(drops("APPDIR", "/tmp/.mount_AnibeaXYZ"));
         assert!(drops("ARGV0", "anibeam"));
         assert!(drops("OWD", "/srv"));
-        assert!(drops("QT_PLUGIN_PATH", "/tmp/.mount_AniBeaXYZ/usr/plugins"));
+        assert!(drops("QT_PLUGIN_PATH", "/tmp/.mount_AnibeaXYZ/usr/plugins"));
         assert!(!drops("APPIMAGELAUNCHER_DISABLE", "1"));
         assert!(!drops("PATH", "/usr/bin:/bin"));
         assert!(!from_old_mount("PATH".as_ref(), "/usr/bin".as_ref(), None));
@@ -903,21 +903,21 @@ mod tests {
     #[test]
     fn a_mac_swap_runs_on_quit_and_reopens_only_on_restart() {
         let p = Prepared::MacApp {
-            bundle: "/Applications/AniBeam.app".into(),
-            staged: "/Applications/.AniBeam.app.update".into(),
+            bundle: "/Applications/Anibeam.app".into(),
+            staged: "/Applications/.Anibeam.app.update".into(),
         };
         let quit = p.helper(7, false, &[]).unwrap();
         assert_eq!(quit.args.last().unwrap(), "stay");
         let restart = p.helper(7, true, &[]).unwrap();
         assert_eq!(restart.args.last().unwrap(), "reopen");
-        assert_eq!(restart.args[5], "/Applications/.AniBeam.app.update");
+        assert_eq!(restart.args[5], "/Applications/.Anibeam.app.update");
     }
 
     #[test]
     fn a_windows_path_is_quoted_for_powershell() {
         assert_eq!(
-            ps(Path::new(r"C:\Users\O'Neil\AniBeam")),
-            r"'C:\Users\O''Neil\AniBeam'"
+            ps(Path::new(r"C:\Users\O'Neil\Anibeam")),
+            r"'C:\Users\O''Neil\Anibeam'"
         );
         let p = Prepared::WindowsSetup {
             setup: r"C:\t\setup.exe".into(),
@@ -975,8 +975,8 @@ mod tests {
     #[test]
     fn the_mac_swap_puts_the_new_bundle_in_place() {
         let dir = tempfile::tempdir().unwrap();
-        let bundle = dir.path().join("AniBeam.app");
-        let staged = dir.path().join(".AniBeam.app.update");
+        let bundle = dir.path().join("Anibeam.app");
+        let staged = dir.path().join(".Anibeam.app.update");
         std::fs::create_dir_all(bundle.join("old")).unwrap();
         std::fs::create_dir_all(staged.join("new")).unwrap();
         let h = Prepared::MacApp {
@@ -1004,7 +1004,7 @@ mod tests {
             .unwrap();
         assert!(bundle.join("new").is_dir());
         assert!(!staged.exists());
-        assert!(!dir.path().join(".AniBeam.app.update.old").exists());
+        assert!(!dir.path().join(".Anibeam.app.update.old").exists());
     }
 
     #[test]

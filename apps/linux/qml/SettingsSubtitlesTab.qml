@@ -4,7 +4,7 @@
 // SRT and VTT files get: font, colour, outline, shadow, the box behind them, bold).
 // Everything writes the subtitle defaults through one debounced save.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

@@ -85,11 +85,11 @@ too, so its library still shows when it is off.
 1. Install the Tailscale app on the phone, sign in to the same tailnet as the desktop, and
    keep it connected. The host only listens on its Tailscale addresses.
 2. On the desktop, switch on **Share over Tailscale** in Anibeam.
-3. Sideload the APK. Either copy `dist/AniBeam-<version>.apk` to the phone and open it
+3. Sideload the APK. Either copy `dist/Anibeam-<version>.apk` to the phone and open it
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.8.0.apk
+   adb install -r dist/Anibeam-0.8.0.apk
    ```
 
 4. Open Anibeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
@@ -117,18 +117,18 @@ You need:
   keyboard helper with javac and d8 during the build; that is Slint's code, not the app's.
 
 ```sh
-scripts/build.sh                 # x86_64 APK for the emulator: build/AniBeam-debug.apk
+scripts/build.sh                 # x86_64 APK for the emulator: build/Anibeam-debug.apk
 scripts/build.sh --abi all       # arm64-v8a and x86_64 in one APK
-scripts/build.sh --dist          # both, copied to dist/AniBeam-<versionName>.apk
-scripts/build.sh --bundle        # App Bundle for Google Play: build/AniBeam-release.aab
+scripts/build.sh --dist          # both, copied to dist/Anibeam-<versionName>.apk
+scripts/build.sh --bundle        # App Bundle for Google Play: build/Anibeam-release.aab
 scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same limits
 ```
 
 `--bundle` builds the Play flavor (`ANIBEAM_FLAVOR=play`) with a pinned bundletool
 (`scripts/fetch-bundletool.sh`) and signs it with jarsigner and the APK's key. To try it on the
 emulator: `java -jar "$(scripts/fetch-bundletool.sh)" build-apks --local-testing --bundle
-build/AniBeam-release.aab --output build/AniBeam.apks`, then the same `java -jar` with
-`install-apks --apks build/AniBeam.apks`.
+build/Anibeam-release.aab --output build/Anibeam.apks`, then the same `java -jar` with
+`install-apks --apks build/Anibeam.apks`.
 
 `build.sh` runs inside a systemd scope capped at 6 GB with swap forbidden
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
@@ -157,12 +157,12 @@ step, puts in the bundle. You need a Mac with Xcode, xcodegen (`brew install xco
 and the simulator target (`rustup target add aarch64-apple-ios-sim`).
 
 ```sh
-scripts/build-ios.sh                       # build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
-xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+scripts/build-ios.sh                       # build/ios/Build/Products/Debug-iphonesimulator/Anibeam.app
+xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/Anibeam.app
 xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
 ```
 
-`scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
+`scripts/build-ios.sh ipa` builds `build/ios/Anibeam.ipa` for a device, unsigned: AltStore and
 LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
 A PR's test build comment carries Add to AltStore, SideStore and LiveContainer links: they open
 `site/install/`, which hands the IPA's release URL to the app's `<app>://install?url=` scheme.

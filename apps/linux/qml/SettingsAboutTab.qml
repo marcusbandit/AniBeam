@@ -2,7 +2,7 @@
 // (the switch, hidden only when ANIBEAM_DEV=1 forces them on), and IMDb's credit,
 // which its terms ask for wherever its data is used.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

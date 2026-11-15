@@ -28,7 +28,7 @@ cargo fmt --all --check
 
 The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld.
 
-**A QML-only change needs no cargo build.** Where a box has an AniBeam Dev install (`~/.local/opt/anibeam-dev`, launched by `anibeam-dev`), the branch is tried there. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads `qml/`, `themes/` and `mpv.conf` from that folder through `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF`. When a branch changes nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf`, copy them in and restart it. That takes seconds:
+**A QML-only change needs no cargo build.** Where a box has an Anibeam Dev install (`~/.local/opt/anibeam-dev`, launched by `anibeam-dev`), the branch is tried there. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads `qml/`, `themes/` and `mpv.conf` from that folder through `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF`. When a branch changes nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf`, copy them in and restart it. That takes seconds:
 
 ```bash
 dev=~/.local/opt/anibeam-dev
@@ -39,7 +39,7 @@ pkill -f "$dev/anibeam"; pidwait -f "$dev/anibeam"
 setsid -f anibeam-dev >"$XDG_RUNTIME_DIR/anibeam-dev.log" 2>&1
 ```
 
-Only one AniBeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
+Only one Anibeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
 
 A branch that touches Rust takes `cargo build --profile tester -p anibeam --features dev-qml`: copy `target/tester/anibeam` into the install along with the three steps above, then restart. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 

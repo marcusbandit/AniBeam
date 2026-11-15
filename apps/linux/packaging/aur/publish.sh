@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: publish.sh <version>          e.g. publish.sh 2.1.0
 # Points the AUR's anibeam (built from the v<version> tag) and anibeam-bin (the release's
-# AniBeam-<version>-linux-x86_64.tar.zst) at that version and pushes both, so the two never
+# Anibeam-<version>-linux-x86_64.tar.zst) at that version and pushes both, so the two never
 # drift apart. Run it after the GitHub release is published: the tag's tarball and the release
 # asset have to exist for their checksums. Needs an AUR account whose SSH key ~/.ssh/config
 # hands to aur.archlinux.org.

@@ -8,7 +8,7 @@
 // carried are the Metadata page's job and live there.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

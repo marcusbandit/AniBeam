@@ -8,7 +8,7 @@
 // with Discard and Save, so the way to keep a change is never a scroll away from it.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

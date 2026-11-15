@@ -22,7 +22,7 @@ pub fn agent() -> ureq::Agent {
         .timeout_connect(Some(Duration::from_secs(4)))
         .timeout_global(Some(Duration::from_secs(20)))
         .http_status_as_error(false)
-        .user_agent(concat!("AniBeam-Android/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("Anibeam-Android/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
 }
@@ -33,7 +33,7 @@ pub enum HostError {
     Unreachable(String),
     /// Something answered, but it is not Anibeam. Holds the whole sentence, worded in the
     /// language the app spoke when it happened.
-    NotAniBeam(String),
+    NotAnibeam(String),
     /// An Anibeam that speaks a newer API than this app reads.
     TooNew(u32),
     /// Anibeam answered with an error or something unreadable.
@@ -44,7 +44,7 @@ impl std::fmt::Display for HostError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HostError::Unreachable(why) => write!(f, "{why}"),
-            HostError::NotAniBeam(what) => write!(f, "{what}"),
+            HostError::NotAnibeam(what) => write!(f, "{what}"),
             HostError::TooNew(api) => {
                 write!(
                     f,
@@ -237,7 +237,7 @@ impl HostClient {
             // a web server that is not Anibeam.
             return Err(match refusal(status, &body) {
                 Some(why) => HostError::Bad(why),
-                None => HostError::NotAniBeam(tr!(
+                None => HostError::NotAnibeam(tr!(
                     "client-not-anibeam-status",
                     host = self.address.display(),
                     status = status.to_string(),
@@ -246,9 +246,9 @@ impl HostClient {
             });
         }
         let hello: Hello = serde_json::from_slice(&body)
-            .map_err(|_| HostError::NotAniBeam(tr!("client-not-anibeam-hello")))?;
+            .map_err(|_| HostError::NotAnibeam(tr!("client-not-anibeam-hello")))?;
         if hello.app != api::APP {
-            return Err(HostError::NotAniBeam(tr!(
+            return Err(HostError::NotAnibeam(tr!(
                 "client-not-anibeam-name",
                 name = hello.app.as_str()
             )));

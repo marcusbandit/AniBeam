@@ -6,7 +6,7 @@
 // the language changes, and the screen switches without a restart.
 import QtQuick
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: root

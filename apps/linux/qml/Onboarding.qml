@@ -21,7 +21,7 @@
 import QtQuick
 import QtQuick.Dialogs
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

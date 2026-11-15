@@ -15,7 +15,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 site="$(cd "$1" && pwd)"
-repo="${GITHUB_REPOSITORY:-marcusbandit/AniBeam}"
+repo="${GITHUB_REPOSITORY:-marcusbandit/Anibeam}"
 
 # Every way this can go wrong fails the deploy: Pages then keeps serving the last good site,
 # repos included, instead of replacing it with one that has none.

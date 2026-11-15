@@ -19,7 +19,7 @@
 // match. The core writes one line to the activity log for the lot; Escape or Cancel stops.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

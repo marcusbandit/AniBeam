@@ -7,7 +7,7 @@
 // tailnet with a switch and whose it is: all are trusted until the person switches one
 // off, and one switched off gets nothing.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

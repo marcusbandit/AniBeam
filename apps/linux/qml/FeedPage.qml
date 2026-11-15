@@ -7,7 +7,7 @@
 // "Everything else". The head is the library's: the title, the one-line summary beside
 // it, the sort at the right.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

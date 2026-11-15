@@ -27,7 +27,7 @@
 // two seconds while something is downloading and the page is up, every fifteen while
 // nothing is, and not at all while the removal sheet is open.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

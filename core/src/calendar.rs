@@ -153,7 +153,7 @@ pub fn render(entries: &[Entry], now: i64) -> String {
     let mut lines = vec![
         "BEGIN:VCALENDAR".to_string(),
         "VERSION:2.0".to_string(),
-        "PRODID:-//AniBeam//EN".to_string(),
+        "PRODID:-//Anibeam//EN".to_string(),
         "CALSCALE:GREGORIAN".to_string(),
         "X-WR-CALNAME:Anibeam".to_string(),
     ];

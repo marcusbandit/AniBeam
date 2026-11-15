@@ -5,7 +5,7 @@ import QtQuick
 import QtCore
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: frame

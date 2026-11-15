@@ -4,7 +4,7 @@
 // or the same query on another endpoint. An on-demand endpoint's start has a known ceiling
 // (anirss's timeout for it), so its bar fills toward that; everything else runs a sweep.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Tile {
     id: root

@@ -7,7 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     // The text sizes, as theme.toml names them and as the row says them
@@ -91,7 +91,7 @@ SettingsTab {
                             Image {
                                 anchors.fill: parent
                                 anchors.margins: theme.space(1.5)
-                                source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + pick.modelData.file
+                                source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/" + pick.modelData.file
                                 sourceSize: Qt.size(128, 128)
                                 smooth: true
                             }

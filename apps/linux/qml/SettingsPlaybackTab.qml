@@ -3,7 +3,7 @@
 // first), Discord (showing what plays on the person's profile, where the build has a
 // Discord application) and mpv (whether their own mpv settings file is read).
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
