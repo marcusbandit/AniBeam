@@ -114,7 +114,7 @@ core-error-version = 더 새로운 Anibeam에서 내보낸 파일이에요(형�
 core-error-internal = Anibeam 내부 오류가 발생했어요: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = 저장소 주소를 붙여넣으세요
 core-repos-must-be-https = 주소는 https여야 해요
@@ -151,7 +151,7 @@ core-repos-note-theirs = 직접 실행하는 anirss라서 데스크톱은 설정
 core-repos-note-sandbox = 이번 실행은 anirss 설정에 쓰지 않으므로 여기서 데스크톱은 { $id }을(를) 검색하지 않아요
 core-repos-note-old = anirss { $version }은(는) { -app-name }에서 엔드포인트를 받을 수 없어요. 데스크톱에서 검색하려면 { $min } 이상으로 업데이트하세요
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = 인덱스의 키가 ed25519 키가 아니에요
 core-repos-key-not-base64 = 인덱스의 키가 32바이트 base64가 아니에요
@@ -298,7 +298,7 @@ core-jobs-start-endpoint = 다운로드 소스 시작 중
 core-jobs-schedule-agent = 코딩 에이전트에게 방영 일정 요청 중
     .stopped = 코딩 에이전트에게 방영 일정을 요청하다가 문제가 생겨 멈췄어요.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 지금 방영 중
 core-airing-now-winter = { $year }년 겨울
@@ -318,7 +318,7 @@ core-airing-now-already-on =
     }(으)로 있어요.
 core-airing-now-plan-failed = { $title }을(를) 시청 예정 목록에 추가하지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title } { $number }화가 공개됐어요.
 
@@ -433,18 +433,18 @@ core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제�
 core-prefs-outside = { $value }은(는) { $low }~{ $high } 범위를 벗어나요
 core-prefs-empty = 비어 있음
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 추천 작품 순위 정하는 중
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 취향이 비슷한 사람 찾는 중
 core-recommended-reading-lists = 그 사람들의 목록 읽는 중
 core-recommended-reading-yours = 내 작품 읽는 중
 core-recommended-reading-suggestions = 추천할 작품 읽는 중
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }에 애니 { $id }이(가) 없어요
 
@@ -499,7 +499,7 @@ core-update-cannot-read-dmg = dmg를 읽지 못했어요: { $error }
 core-update-no-app = dmg에 앱이 없어요
 core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
@@ -519,7 +519,7 @@ core-presence-room = 함께 보는 중
 core-presence-in-room = 방에 있음
 core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = { $tracker } 클라이언트 ID가 설정되지 않았어요.
 core-trackers-mal-reconnect = 설정에서 MyAnimeList를 다시 연결하세요.
@@ -527,15 +527,15 @@ core-trackers-mal-wants-secret = MyAnimeList가 이 앱의 클라이언트 시�
 core-trackers-token-reply-unreadable = 토큰 응답을 읽을 수 없어요: { $error }
 core-trackers-token-reply-no-token = 토큰 응답에 액세스 토큰이 없어요
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 저장된 액세스 토큰이 없어요. 설정에서 다시 연결하세요
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 계정에 사용자 ID가 없어요
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 옮길 작품을 선택하지 않았어요
 core-trackers-moved-up =
@@ -550,7 +550,7 @@ core-trackers-moved-up-some-refused =
     }는 받지 않았어요.
 core-trackers-move-refused = { $site }이(가) { $show }을(를) 받지 않았어요: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 인증 시간이 초과됐어요. 다시 시도하세요.
 core-trackers-oauth-state-mismatch = state가 일치하지 않아요. CSRF일 수 있어 중단했어요.
@@ -575,7 +575,7 @@ core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = { $tracker }에서 보류로 옮기는 중
 core-trackers-on-hold-moved =
@@ -607,7 +607,7 @@ core-trackers-back-on-watching = { $name }이(가) { $site }에서 다시 시청
 core-trackers-back-on-watching-two = { $name }이(가) { $site }와(과) { $secondSite }에서 다시 시청 중으로 돌아왔어요.
 core-trackers-back-on-watching-failed = { $name }을(를) 시청 중으로 되돌리지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 요청 한도 초과. 1분 뒤 다시 시도하세요.
 core-trackers-auth-expired = { $tracker } 인증이 만료됐어요. 설정에서 다시 연결하세요.
@@ -687,7 +687,7 @@ core-trackers-left-out =
        *[other] {" "}작품 { $kept }개는 보낼 트래커가 없어 이 컴퓨터에 보관돼요.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show }을(를) { $title }에 매칭했어요.
 core-metadata-auto-matched =
@@ -742,7 +742,7 @@ core-metadata-find-failed = 작품 { $failed }개를 검색하지 못했어요. 
 core-metadata-find-had = 작품 { $had }개는 이미 매칭돼 있었어요.
 core-metadata-find-busy = 작품 { $busy }개는 이미 매칭 중이에요.
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 그 링크를 읽지 못했어요. AniList, MyAnimeList, TVmaze 또는 IMDb 페이지 주소를 붙여넣으세요.
 core-metadata-no-mal-entry = AniList에 그 MyAnimeList ID의 항목이 없어요.
@@ -769,17 +769,17 @@ core-metadata-updated-some =
        *[other] 작품 { $count }개의 정보를 업데이트했어요. { $failed }개는 업데이트하지 못했어요.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze에 작품 { $id }이(가) 없어요
 core-metadata-no-such-media = AniList에 미디어 { $id }이(가) 없어요
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata의 IMDb 링크
 core-metadata-progress-imdb-ratings = IMDb 평점
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 같은 캐릭터
 
@@ -1052,6 +1052,10 @@ core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder }은(는) 폴더의 전체 경로가 아니에요
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder }에는 다운로드를 저장할 수 없어요. 실제로 있고 홈 폴더가 아닌 폴더를 고르세요
 core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
@@ -1107,7 +1111,7 @@ core-downloads-rolled = { $title }: 이제 { $total }화 중 { $from }~{ $to }�
 core-downloads-roll-ahead = 최소 한 화는 앞서 받아 두세요
 core-downloads-roll-nothing = 가져올 항목이 없어요
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON 검색 소스는 필드를 매핑한 정의가 있는 엔드포인트 저장소에서만 와요
 core-releases-endpoint-no-name = `name`이 없어요
@@ -1119,17 +1123,17 @@ core-releases-endpoint-not-http = { $name }: 주소는 http:// 또는 https://�
 core-releases-endpoint-needs-query = { $name }: { $kind } url에는 {"{"}query{"}"} 자리표시자가 있어야 해요
 core-releases-endpoint-no-query = { $name }: { $kind } url은 검색어를 직접 붙이므로 {"{"}query{"}"}를 쓰지 않아요
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = 인덱서가 오류 { $code }(으)로 응답했어요
 core-releases-bad-feed = 잘못된 피드: { $error }
 core-releases-feed-answered = 피드 응답 { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = 피드의 JSON이 아니에요: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = JSON이 아니에요: { $error }
 core-releases-search-error-said = 검색이 오류를 보냈어요: { $message }
@@ -1138,7 +1142,7 @@ core-releases-no-results-field = 응답의 { $path }에 결과가 없어요
 core-releases-results-not-list = 응답의 결과가 목록이 아니에요
 core-releases-search-answered = 검색 응답 { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = 아직 엔드포인트가 없어요. 더보기의 엔드포인트에서 저장소를 추가하거나 직접 추가하세요
 core-releases-no-source-named = { $name } 소스가 없어요
@@ -1146,7 +1150,7 @@ core-releases-empty-query = 검색어를 입력하세요
 core-releases-cannot-follow = { $name }은(는) 구독할 수 없어요. 검색에는 응답하지만 새 에피소드를 확인할 피드가 없어요
 core-releases-endpoint-gone = { $name }을(를) 더 이상 쓸 수 없어요. 제거됐거나, 꺼졌거나, 키가 없어요
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word }은(는) 짧은 한 단어여야 해요
 core-releases-quirks-pattern-count = show_feed는 페이지 패턴을 1~{ $most }개 받아요
@@ -1157,11 +1161,11 @@ core-releases-quirks-url-https = show_feed url은 https여야 해요
 core-releases-quirks-url-host = show_feed url은 엔드포인트와 같은 호스트에 있어야 해요
 core-releases-quirks-url-slug = show_feed url에는 {"{"}slug{"}"}가 한 번만 있고 다른 자리표시자는 없어야 해요
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = op 'tokens'에는 비어 있지 않은 `tokens` 목록이 필요해요
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = { $group } 일괄
 core-releases-episodes-phrase =

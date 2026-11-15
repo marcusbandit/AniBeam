@@ -139,7 +139,7 @@ fn files_of(
                 let done = stats.file_progress.get(i).copied().unwrap_or(0);
                 let name = f.relative_filename.to_string_lossy().into_owned();
                 TorrentFile {
-                    episode: crate::downloads::facts::read_name(&name).episode,
+                    episode: crate::releases::facts::read_name(&name).episode,
                     name,
                     size: f.len,
                     progress: if f.len == 0 {
@@ -294,7 +294,7 @@ impl Engine {
             .map(|d| {
                 let name = d.filename.to_pathbuf().to_string_lossy().into_owned();
                 TorrentFile {
-                    episode: crate::downloads::facts::read_name(&name).episode,
+                    episode: crate::releases::facts::read_name(&name).episode,
                     name,
                     size: d.len,
                     progress: 0.0,
@@ -478,7 +478,7 @@ impl Engine {
                     .to_string_lossy()
                     .into_owned(),
             };
-            let facts = crate::downloads::facts::read_name(&name);
+            let facts = crate::releases::facts::read_name(&name);
             out.push(Torrent {
                 hash,
                 name,

@@ -161,6 +161,127 @@ fn an_endpoint_without_auth_installs_and_joins_the_search() {
     assert_eq!(names, ["indexer"]);
 }
 
+// Attaching in one step (#1003) ---------------------------------------------------------------
+
+fn attach(core: &anibeam_core::Core, url: &str) -> Result<EndpointCatalog, CoreError> {
+    core.call(Call::AttachEndpointRepo { url: url.into() })
+        .map(|r| catalog(Ok(r)))
+}
+
+fn installed_ids(c: &EndpointCatalog) -> Vec<&str> {
+    let mut ids: Vec<&str> = c.installed.iter().map(|i| i.id.as_str()).collect();
+    ids.sort();
+    ids
+}
+
+#[test]
+fn attaching_saves_the_repo_and_installs_what_asks_for_nothing() {
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
+    let c = attach(&core, &general).unwrap();
+    assert_eq!(c.repos.len(), 1);
+    assert_eq!(c.repos[0].name, "Example endpoints");
+    assert_eq!(
+        installed_ids(&c),
+        ["feed", "indexer", "limes", "lumen", "tracker"]
+    );
+    assert!(
+        c.installed
+            .iter()
+            .all(|i| i.enabled && i.missing.is_empty())
+    );
+    // The one that needs a token stays offered for the person to fill in.
+    let keyed = c.offered.iter().find(|o| o.id == "keyed").unwrap();
+    assert_eq!(keyed.installed, None);
+}
+
+#[test]
+fn attaching_again_installs_nothing_twice() {
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
+    attach(&core, &general).unwrap();
+    let c = attach(&core, &general).unwrap();
+    assert_eq!(c.repos.len(), 1);
+    assert_eq!(c.installed.len(), 5);
+}
+
+#[test]
+fn attaching_again_keeps_a_removed_source_off_and_turns_on_one_new_to_the_list() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    let a = || endpoint("a", 1, "https://a.example/?q={query}", false);
+    let b = || endpoint("b", 1, "https://b.example/?q={query}", false);
+    write_repo(&path, &key(1), 1, vec![a(), b()]);
+    let c = attach(&core, &url).unwrap();
+    let gone = c.installed.iter().find(|i| i.id == "b").unwrap();
+    core.call(Call::RemoveEndpoint {
+        install: gone.install_id.clone(),
+    })
+    .unwrap();
+    let c = endpoint("c", 1, "https://c.example/?q={query}", false);
+    write_repo(&path, &key(1), 2, vec![a(), b(), c]);
+    let after = attach(&core, &url).unwrap();
+    assert_eq!(installed_ids(&after), ["a", "c"]);
+}
+
+#[test]
+fn attaching_leaves_an_nsfw_endpoint_alone_unless_the_repo_is_nsfw() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("mixed.json");
+    let url = path.to_string_lossy().into_owned();
+    let mut adult = endpoint("adult", 1, "https://adult.example/?q={query}", false);
+    adult["nsfw"] = true.into();
+    write_repo(
+        &path,
+        &key(3),
+        1,
+        vec![
+            endpoint("plain", 1, "https://plain.example/?q={query}", false),
+            adult,
+        ],
+    );
+    let c = attach(&core, &url).unwrap();
+    assert_eq!(installed_ids(&c), ["plain"]);
+
+    let nsfw = published(dir.path()).1;
+    let c = attach(&core, &nsfw).unwrap();
+    assert_eq!(installed_ids(&c), ["adult", "plain"]);
+}
+
+#[test]
+fn attaching_a_saved_repo_under_a_new_key_is_refused() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    write_repo(
+        &path,
+        &key(1),
+        10,
+        vec![endpoint("a", 1, "https://a.example/?q={query}", false)],
+    );
+    attach(&core, &url).unwrap();
+    write_repo(
+        &path,
+        &key(2),
+        11,
+        vec![endpoint("b", 1, "https://b.example/?q={query}", false)],
+    );
+    let e = attach(&core, &url).unwrap_err();
+    assert_eq!(service_code(&e), "key_changed");
+    let c = catalog(core.call(Call::ListRepoEndpoints));
+    assert_eq!(installed_ids(&c), ["a"]);
+}
+
+#[test]
+fn attaching_a_file_that_is_no_repo_saves_nothing() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("not-a-repo.json");
+    std::fs::write(&path, b"{}").unwrap();
+    assert!(attach(&core, &path.to_string_lossy()).is_err());
+    assert!(catalog(core.call(Call::ListRepoEndpoints)).repos.is_empty());
+}
+
 #[test]
 fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
     let (dir, core, _) = common::open_core();
@@ -870,7 +991,7 @@ fn an_endpoint_the_repo_stops_offering_stays_installed() {
 fn a_json_endpoint_searches_through_the_map_its_definition_supplies() {
     let http = FakeHttp::new();
     let body = std::fs::read(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-search.json"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../releases/tests/fixtures/json-search.json"),
     )
     .unwrap();
     http.push_for("search.example.org", 200, body);

@@ -17,14 +17,38 @@ Anibeam browses, plays and tracks a local anime library: it scans configured fol
 Cargo builds everything. There is no Bun or Node in the tree any more.
 
 ```bash
-cargo build --release -p anibeam        # the Qt shell, target/release/anibeam
+cargo build --release -p anibeam        # the Qt shell for shipping; to try a change, see below
 cargo build --release -p anibeam-cli    # the terminal shell over the same core
 cargo test --workspace                  # unit tests plus core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld. The owner's launcher entry (`com.marcusrosado.AniBeam.desktop`) runs `target/release/anibeam` with `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF` pointed at `apps/linux/`, so rebuild the release binary when a feature is done; source edits are invisible to the launcher until then.
+**Build only the crate you changed.** The core is splitting into one crate per team (#854), and each of `contract/`, `foundation/`, `net/`, `library/`, `releases/`, `metadata/` and `trackers/` builds and tests on its own. Iterate with `cargo test -p anibeam-library` (or `check`/`clippy -p`), not `--workspace` and not the shell; run the whole workspace once before the PR.
+
+The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld.
+
+**A QML-only change needs no cargo build.** Where a box has an AniBeam Dev install (`~/.local/opt/anibeam-dev`, launched by `anibeam-dev`), the branch is tried there. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads `qml/`, `themes/` and `mpv.conf` from that folder through `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF`. When a branch changes nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf`, copy them in and restart it. That takes seconds:
+
+```bash
+dev=~/.local/opt/anibeam-dev
+rsync -a --delete apps/linux/qml/ "$dev/qml/"
+rsync -a --delete apps/linux/themes/ "$dev/themes/"
+cp apps/linux/mpv.conf "$dev/mpv.conf"
+pkill -f "$dev/anibeam"; pidwait -f "$dev/anibeam"
+setsid -f anibeam-dev >"$XDG_RUNTIME_DIR/anibeam-dev.log" 2>&1
+```
+
+Only one AniBeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
+
+A branch that touches Rust needs the tester build, installed before the copy and restart steps above:
+
+```bash
+buildq --pull target/tester/anibeam -- cargo build --profile tester -p anibeam --features dev-qml
+install -m755 target/tester/anibeam ~/.local/opt/anibeam-dev/anibeam
+```
+
+`--pull` brings the binary back when buildq builds on another box. `install` replaces the file, so it works while the old one runs; `cp` over a running binary fails with "Text file busy". When nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf` changed since the checkout's last tester build, buildq answers at once and compiles nothing: the binary already in `target/tester/` is current, so install it anyway, since Dev may be running another branch's. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
@@ -36,7 +60,10 @@ A Cargo workspace. The members most work touches:
 - **`foundation/`** (`anibeam-foundation`): what every team shares: the store (SQLite, migrations in `src/store/sql/`), the event bus, jobs, paths, prefs, profiles, secrets, redact, `Services`, and small helpers more than one team reads. It depends on the contract and the two leaf crates `host-api` and `room`; the core hands each module on under its old path, so `anibeam_core::store` and `crate::foundation::services` still resolve.
 - **`net/`** (`anibeam-net`): the net team: one client per provider behind `src/limiter.rs`, the fronted and DoH clients, the fake transport the tests use, the image cache, and the build's version, which its user agents send. It depends on foundation and the contract only; the core hands it on as `anibeam_core::net`, `anibeam_core::images` and `anibeam_core::VERSION`.
 - **`library/`** (`anibeam-library`): the library team: the sources, the scans, the folder walk and the watcher, the classifier, and the reads that turn the tables into cards, details and the snapshot, plus history, delete and the trash. It depends on net, foundation, the contract and the leaf `host-api` (the host's wire records) only, and reaches the downloads above it through its own `Incoming` trait; the core hands it on as `anibeam_core::library`.
-- **`core/`** (`anibeam-core`): everything that is not drawing. `metadata/` matches and fetches, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. Integration tests live in `core/tests/`.
+- **`releases/`** (`anibeam-releases`): the releases team: anirss's release logic (endpoints, quirks, the feed readers, title parsing, best fit, refinement, the grid, rules and stats), what a release title says (`facts`), the endpoint repos and their pacing (`repos`), and the Feed page's reads (`feed`). It depends on library, net, foundation and the contract only, and reaches the downloads above it through its own `Searcher` and `AnirssEndpoints` traits; the core hands it on as `anibeam_core::releases`, `anibeam_core::repos` and `anibeam_core::feed`.
+- **`metadata/`** (`anibeam-metadata`): the metadata team: matching and fetching, the franchise crawl and closure (`src/franchise/`), Recommended, Airing now, the aired episodes and the calendar feed. It depends on library, net, foundation, the contract and `recs` only, and hears what the trackers change on the bus; the core hands it on as `anibeam_core::metadata`, with `franchise`, `recommended`, `airing_now`, `aired` and `calendar` at the core's root.
+- **`trackers/`** (`anibeam-trackers`): the trackers team: AniList and MAL, their accounts and sign-in, the list cache and the writes, Watching, move up, On hold and Plan to watch. It depends on metadata, library, net, foundation and the contract only, and says a list was read again on the bus; its build script compiles in the bundled tracker apps from `.env.local` (`env_local.rs`, which core/build.rs shares for Discord). The core hands it on as `anibeam_core::trackers`.
+- **`core/`** (`anibeam-core`): everything that is not drawing. `playback/`, `downloads/` and `subscriptions.rs` cover the rest. Integration tests live in `core/tests/`.
 - **`apps/linux/`** (`anibeam`): the QML shell, bridged to the core through cxx-qt 0.10. Rust bridges in `src/bridge/`, QML in `qml/`, the libmpv item in `cpp/`, themes in `themes/`, the bundled `mpv.conf`.
 - **`apps/cli/`** (`anibeam-cli`): a terminal shell, and the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`, `import`, `export`, `events --follow`, `call <Name> --json '{...}'`.
 
@@ -46,7 +73,7 @@ A Cargo workspace. The members most work touches:
 
 - **Rate limiting**: every provider call (AniList, MAL, Jikan, TVmaze, AniSkip and the rest of `net/src/`) goes through the shared limiter in `net/src/limiter.rs`. Never call a provider around it.
 - **The activity log is signal-only**: log state changes, never per-asset, per-candidate or per-browse chatter.
-- **Franchise closure**: `core/src/franchise/closure.rs` draws CHARACTER and OTHER edges but never walks them, so a crossover cameo (Isekai Quartet) cannot glue unrelated franchises together. Cross-franchise hops are pointers, not embedded copies.
+- **Franchise closure**: `metadata/src/franchise/closure.rs` draws CHARACTER and OTHER edges but never walks them, so a crossover cameo (Isekai Quartet) cannot glue unrelated franchises together. Cross-franchise hops are pointers, not embedded copies.
 - **Scores keep their source's scale**: `average_score` is stored as the provider gave it and normalised at read time. Don't convert it on write.
 - **No polling the library**: the watcher plus a catch-up scan at launch, no intervals or periodic rescans.
 - **One window, play on when hidden**: never a second window or an external mpv process, never auto-pause when the window is hidden.

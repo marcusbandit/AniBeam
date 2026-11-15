@@ -132,7 +132,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = paste the address of a repo
 core-repos-must-be-https = the address must be https
@@ -171,7 +171,7 @@ core-repos-note-theirs = This anirss is one you run, and the desktop never chang
 core-repos-note-sandbox = This run never writes into anirss's config, so the desktop does not search { $id } here
 core-repos-note-old = anirss { $version } cannot take endpoints from { -app-name }; update it to { $min } or newer for the desktop to search this
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = the index's key is not an ed25519 key
 core-repos-key-not-base64 = the index's key is not 32 bytes of base64
@@ -324,7 +324,7 @@ core-jobs-start-endpoint = Starting a download source
 core-jobs-schedule-agent = Asking your coding agent for a schedule
     .stopped = Asking your coding agent for a schedule stopped with a problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Airing now
 core-airing-now-winter = Winter { $year }
@@ -345,7 +345,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Could not add { $title } to your Planning list. Try again later.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Episode { $number } of { $title } is out.
 
@@ -479,18 +479,18 @@ core-prefs-empty = empty
 core-prefs-room-name = a name is 1 to { $max } characters, with no control characters
 core-prefs-room-relay = the relay address must start with https:// or http://
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ranking shows for you
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Finding people with your taste
 core-recommended-reading-lists = Reading their lists
 core-recommended-reading-yours = Reading your shows
 core-recommended-reading-suggestions = Reading shows to suggest
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } has no anime { $id }
 
@@ -549,7 +549,7 @@ core-update-cannot-read-dmg = Could not read the dmg: { $error }
 core-update-no-app = The dmg holds no app
 core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
@@ -614,7 +614,7 @@ core-presence-no-room = That Discord invite has no room yet. Ask them to start o
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = No client ID set for { $tracker }.
@@ -624,15 +624,15 @@ core-trackers-mal-wants-secret = MyAnimeList wants this app's client secret. Add
 core-trackers-token-reply-unreadable = unreadable token reply: { $error }
 core-trackers-token-reply-no-token = the token reply carried no access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = no access token stored, reconnect in Settings
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = the account carries no user id
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = no series picked to move
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -652,7 +652,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } did not take { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Authorization timed out, try again.
 core-trackers-oauth-state-mismatch = state mismatch, possible CSRF, aborted.
@@ -683,7 +683,7 @@ core-trackers-page-cancelled-title = { $app }, sign-in cancelled
 core-trackers-page-cancelled = This sign-in was cancelled
 core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } if you meant to.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Moving to On hold on { $tracker }
@@ -726,7 +726,7 @@ core-trackers-back-on-watching = { $name } is back on Watching on { $site }.
 core-trackers-back-on-watching-two = { $name } is back on Watching on { $site } and { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } could not go back on Watching. Try again later.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } rate limited, try again in a minute.
@@ -832,7 +832,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } shows are kept on this computer, with no tracker to send to.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = Matched { $show } to { $title }.
@@ -919,7 +919,7 @@ core-metadata-find-busy =
        *[other] { $busy } shows are being matched already.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.
 core-metadata-no-mal-entry = AniList has no entry for that MyAnimeList id.
@@ -953,19 +953,19 @@ core-metadata-updated-some =
        *[other] Updated the info for { $count } shows; { $failed } could not be updated.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmaze has no show { $id }
 core-metadata-no-such-media = AniList has no media { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = Wikidata's IMDb links
 core-metadata-progress-imdb-ratings = IMDb ratings
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters
@@ -1327,6 +1327,10 @@ core-downloads-refuse-library-folder = { $path } is a library folder or holds on
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent names no default save folder; set one in qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } is not a full path to a folder
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } cannot hold downloads: pick a folder that exists and is not the home folder
 core-downloads-name-empty = the name cannot be empty
 core-downloads-name-slash = the name must not contain / or \
 # $name is the name given, in quotes
@@ -1396,7 +1400,7 @@ core-downloads-rolled = { $title }: now on episodes { $from } to { $to } of { $t
 core-downloads-roll-ahead = keep at least one episode ahead
 core-downloads-roll-nothing = nothing to fetch
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = a JSON search source comes from an endpoint repo whose definition maps its fields
 core-releases-endpoint-no-name = missing `name`
@@ -1412,7 +1416,7 @@ core-releases-endpoint-not-http = { $name }: the address must start with http://
 core-releases-endpoint-needs-query = { $name }: { $kind } url must contain a {"{"}query{"}"} placeholder
 core-releases-endpoint-no-query = { $name }: a { $kind } url adds the search itself, so it takes no {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = the indexer answered error { $code }
@@ -1420,11 +1424,11 @@ core-releases-bad-feed = bad feed: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = the feed answered { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = not the feed's JSON: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = not JSON: { $error }
 # $message is what the search said about itself
@@ -1435,7 +1439,7 @@ core-releases-no-results-field = the reply has no results at { $path }
 core-releases-results-not-list = the reply's results are not a list
 core-releases-search-answered = the search answered { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = no endpoints yet: add a repo, or one by hand, under Endpoints in More
 core-releases-no-source-named = no source named { $name }
@@ -1443,7 +1447,7 @@ core-releases-empty-query = type something to search for
 core-releases-cannot-follow = { $name } cannot be followed: it answers searches, but has no feed to check for new episodes
 core-releases-endpoint-gone = { $name } is not available any more: removed, switched off or missing its key
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1457,12 +1461,12 @@ core-releases-quirks-url-https = show_feed url must be https
 core-releases-quirks-url-host = show_feed url must be on the endpoint's own host
 core-releases-quirks-url-slug = show_feed url takes {"{"}slug{"}"} once and no other placeholder
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = op 'tokens' needs a non-empty `tokens` list
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = { $group }'s batch

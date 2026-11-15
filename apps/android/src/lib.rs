@@ -6,9 +6,9 @@
 //! Everything that differs by platform goes through `platform`.
 
 // Clippy asks for `const` on thread_local initialisers that already have it on targets
-// without `#[thread_local]`, Android among them (rust-lang/rust-clippy#17566). Allowed on
-// every target, so no file outside `platform` names one.
-#![allow(clippy::missing_const_for_thread_local)]
+// without `#[thread_local]`, Android among them (rust-lang/rust-clippy#17566). Allowed
+// there only, so the host clippy run still holds the lint.
+#![cfg_attr(target_os = "android", allow(clippy::missing_const_for_thread_local))]
 
 slint::include_modules!();
 
@@ -59,18 +59,20 @@ pub use app::run;
 #[cfg(target_os = "ios")]
 pub use platform::ios_main;
 
-// The calls a platform makes into the app. Public, so a target whose platform never makes
-// them still keeps them.
+// The calls a platform makes into the app. A target whose platform never makes them
+// still keeps them, allowed unused there.
 
 /// The device's light or dark setting or its language changed: Appearance's System mode
 /// and a language left to follow the device follow it. Called on the UI loop.
-pub fn system_changed() {
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
+pub(crate) fn system_changed() {
     look::system_changed();
     lang::system_changed();
 }
 
 /// The platform moved the audio focus; `code` is Android's `AudioManager` change. Called on
 /// the UI loop.
-pub fn audio_focus(code: i32) {
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
+pub(crate) fn audio_focus(code: i32) {
     player::audio_focus(code);
 }

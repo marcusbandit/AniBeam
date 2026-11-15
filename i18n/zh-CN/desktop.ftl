@@ -217,7 +217,6 @@ frame-downloads-not-read = 未读取。
 ## HomePage
 
 home-title = 首页
-home-scan-started = 已开始扫描
 home-ago-minutes = { $count } 分钟前
 home-ago-hours = { $count } 小时前
 home-ago-days = { $count } 天前
@@ -260,7 +259,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } 集待看
 home-day-nothing = 无
 home-now = 现在 { $time }
-home-card-aired = { $episode }，{ $ago }播出
 home-continue = 继续观看
 home-continue-fact = { $count } 部番剧可以接着看
 home-on-hold = 搁置
@@ -281,6 +279,7 @@ home-week = 本周
 home-week-show-empty = 显示空白日
 home-week-hide-empty = 隐藏空白日
 home-week-airing = 正在播出
+home-week-feed = 动态
 home-week-out = 已播出
 home-week-coming-up = 即将播出
 home-recommended = 为你推荐
@@ -299,18 +298,6 @@ home-genres = 类型
 home-open-library = 打开媒体库
 home-dropped = 抛弃
 home-dropped-fact = 磁盘上还有 { $count } 个文件
-home-out-now = 已播出
-home-out-now-fact = 本周新剧集，来自 AniList
-home-popular = 本季热门
-home-add-folder-title = 你自己的番剧也会显示在这里
-home-add-folder-body = 添加存放动漫的文件夹，首页就会填满你在看的番剧。
-home-add-folder-button = 添加文件夹
-home-empty-scanned-title = 文件夹里还没找到内容
-home-empty-title = 还没有番剧
-home-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-home-empty-body = 添加存放动漫的文件夹，媒体库会自动填满。
-home-scan-all = 全部扫描
-home-library-settings = 媒体库设置
 home-failed-title = 首页没有加载
 home-failed-body = Anibeam 刚才无法读取媒体库。请稍后再试。
 
@@ -378,9 +365,6 @@ onboarding-lists-connected = 已连接。你在这里看的内容现在会计入
 onboarding-lists-no-account = 还没有账号？两个都免费，有一个就够了。随时可以在设置的“账号”中断开连接。
 onboarding-search-title = 可以搜索的地方
 onboarding-search-ready = 有 { $count } 个来源可供搜索。
-onboarding-search-none = Anibeam 本身不带任何来源。你需要从来源仓库添加：别人分享给你的一个链接，粘贴到设置的“下载”中即可。
-onboarding-sources-after = 设置完成后打开
-onboarding-sources-add = 设置完成后添加仓库
 onboarding-fetch-title = 由谁下载
 onboarding-fetch-auto = 交给 Anibeam
 onboarding-fetch-recommended = 推荐
@@ -396,7 +380,7 @@ onboarding-ready-lists = 你的列表
 onboarding-ready-lists-as = { $tracker }，账号 { $user }
 onboarding-ready-lists-none = 尚未连接。需要时可在设置的“账号”中连接。
 onboarding-ready-downloads = 下载
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 还没有来源
    *[other] { $sources } 个来源
 }，{ $client ->
@@ -405,9 +389,8 @@ onboarding-ready-downloads-line = { $sources ->
 }{ $next ->
     [ready] 一切就绪。
     [opens] 接下来会打开设置的“下载”。
-   *[both] 两者都在设置的“下载”中。
+   *[sources] 添加一个来源列表即可搜索。
 }
-onboarding-ready-open-downloads = 打开设置中的“下载”
 onboarding-ready-set-up = 立即设置
 
 ## Rail.qml
@@ -415,17 +398,9 @@ onboarding-ready-set-up = 立即设置
 rail-home = 首页
 rail-library = 媒体库
 rail-airing = 播出
-rail-feed = 动态
-rail-stats = 统计
-rail-show-info = 番剧信息
 rail-downloads = 下载
 rail-settings = 设置
 rail-downloads-complete = 下载：{ $count } 个订阅已完成
-rail-title-language-name = 标题语言：{ $language }。点按切换到下一个
-rail-title-language-english = 英语
-rail-title-language-tip = 标题语言：罗马音、英语或日语
-rail-whats-new-in = { $release } 更新内容
-rail-whats-new = 更新内容
 rail-settings-note = 设置：{ $note }
 
 ## FixSheet.qml
@@ -562,12 +537,32 @@ library-group-season = 季度
 library-group-type = 类型
 library-group-genre = 题材
 library-group-watch-state = 观看状态
-library-scan-started = 已开始扫描
+library-empty-none = 媒体库是空的
+library-empty-scanning = { $count ->
+   *[other] 正在文件夹中查找视频
+}
+library-empty-nothing = { $count ->
+   *[other] 文件夹里还没有视频
+}
+library-empty-missing = { $count ->
+   *[other] 找不到文件夹
+}
+library-empty-more-folders = { $count ->
+   *[other] 还有 { $count } 个文件夹
+}
+library-empty-add-folder = 添加文件夹
+library-empty-get = 找点东西看
+library-empty-scan-again = 重新扫描
+library-empty-settings = 媒体库设置
+library-empty-pick-folder = 为媒体库选择文件夹
 library-tab-all = 全部
 library-tab-series = 番剧
 library-tab-movies = 剧场版
 library-tab-watched = 已看
 library-tab-hidden = 已隐藏
+library-tab-on-my-list = 我的列表
+library-tab-stats = 统计
+library-tab-fix-matches = 修正匹配
 library-count-movies = { $count } 部剧场版
 library-count-watched = 已看 { $count }
 library-count-hidden = 已隐藏 { $count }
@@ -617,18 +612,6 @@ library-rescan = 重新扫描
 library-find-match = 查找匹配
 library-find-match-tip = 为每个没有匹配的选中项搜索
 library-all-matched = 所有选中项都已匹配
-library-empty-scanned-title = 文件夹里还没找到内容
-library-empty-title = 媒体库是空的
-library-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-library-empty-body = 添加存放动漫的文件夹，媒体库会自动填满；也可以导入 Anibeam 导出文件。
-library-scan-all = 全部扫描
-library-add-folder = 添加文件夹
-library-settings = 媒体库设置
-library-import = 导入
-library-import-title = 导入 Anibeam 导出文件
-library-import-filter-export = Anibeam 导出文件 (*.json)
-library-import-filter-all = 所有文件 (*)
-library-import-started = 已开始导入
 
 ## MetadataPage.qml
 
@@ -1055,9 +1038,10 @@ get-show-kind-indexer-search = 索引器搜索
 get-show-ready = 就绪
 get-show-running = 运行中
 get-show-not-running = 未运行
-get-show-not-running-start = 未运行。点击上方的来源即可启动。
 get-show-switched-off = 已关闭
-get-show-click-to-see = 点击查看它有这部番剧的哪些资源
+get-show-show-releases = 查看资源
+get-show-show-releases-on = 查看 { $name } 上的资源
+get-show-try-again = 重试
 get-show-searching = 搜索中
 get-show-searching-source = 正在搜索 { $name }
 get-show-searching-elapsed = { $label }，{ $seconds } 秒
@@ -1187,7 +1171,6 @@ torrent-row-stop = 停止
 
 ## SourceRow
 
-source-row-unavailable-fix = 接上它所在的磁盘，然后点“重新扫描”。如果文件夹移动了，请移除它并添加新位置。
 source-row-counts = { $count } 部番剧
 source-row-counts-movies = { $count } 部番剧，{ $movies } 个电影文件夹
 source-row-unavailable = 不可用
@@ -1235,6 +1218,7 @@ release-table-season-batch = 第 { $season } 季合集
 release-table-batch = 合集
 release-table-via = 来自 { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = yyyy年M月d日 HH:mm
 release-table-download = 下载
 release-table-more = 还有 { $count } 个。缩小范围或排序可以先看到其他资源。
@@ -1271,6 +1255,7 @@ downloads-error-unknown = 出了点问题，请重试。
 downloads-search-all-off = 所有来源都已关闭。开启一个才能搜索。
 downloads-turn-on = 开启 { $name }
 downloads-search-no-sources = 还没有可搜索的来源。请在设置的“下载”中添加来源列表。
+downloads-no-sources = 还没有可搜索的来源
 downloads-search-none-started = 没有来源能开始搜索，请稍后再试。
 downloads-auto-resolution = 已筛选为 { $resolution }，可选的最高清晰度
 downloads-search-one-failed = 在 { $name } 上的搜索没有成功。请重试，或换个来源搜索。
@@ -1668,7 +1653,6 @@ player-not-now = 以后再说
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 来源列表
-endpoint-repos-panel-helper = 来源列表是一组经过签名的搜索位置，通过地址添加。Anibeam 会检查签名，并在保存前向你展示密钥，然后你可以安装需要的来源。已安装的来源会加入上方的“搜索来源”。
 endpoint-repos-panel-could-not-start = Anibeam 无法启动它，请稍后再试。
 endpoint-repos-panel-needs-value = { $name } 需要填写值
 endpoint-repos-panel-values-of = { $name } 的值
@@ -1681,19 +1665,9 @@ endpoint-repos-panel-needs-fields = 需要先填写 { $fields } 才能搜索。
 endpoint-repos-panel-no-longer-offered = 它的来源列表已不再提供。
 endpoint-repos-panel-update-requests-to = 更新后会向 { $host } 发送请求。
 endpoint-repos-panel-unreadable = 无法读取此列表。“刷新列表”会重试。
-endpoint-repos-panel-add-list = 添加来源列表
-endpoint-repos-panel-add-list-helper = 索引文件的地址，或这台机器上的文件路径。
 endpoint-repos-panel-checking = 检查中
 endpoint-repos-panel-add = 添加
-endpoint-repos-panel-trust-question = 信任 { $name }？
 endpoint-repos-panel-fingerprint = 密钥指纹  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } 个来源，已签名。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } 个来源，已签名，已信任。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-trust = 信任
 endpoint-repos-panel-saving = 保存中
 endpoint-repos-panel-install = 安装
 endpoint-repos-panel-update = 更新
@@ -1704,10 +1678,25 @@ endpoint-repos-panel-add-value = 填写它的值
 endpoint-repos-panel-change = 更改 { $fields }
 endpoint-repos-panel-asks-for = 需要你的 { $fields }。
 endpoint-repos-panel-by-hand = 手动添加
-endpoint-repos-panel-by-hand-helper = 适用于没有列表收录的站点：任何在搜索词位置写上 {"{"}query{"}"} 的订阅源都行，包括搜索代理提供的订阅源。地址中的密钥会单独保存，有系统密码存储时就存放在那里。
 endpoint-repos-panel-name = 名称
 endpoint-repos-panel-refreshing = 正在刷新
 endpoint-repos-panel-refresh = 刷新列表
+
+## SourceAttach.qml
+
+source-attach-placeholder = 粘贴来源列表的地址
+source-attach-what = 什么是来源列表？
+source-attach-recent = 用过的
+source-attach-added = { $count ->
+    [one] 已添加 { $name }：已开启 { $count } 个来源。
+   *[other] 已添加 { $name }：已开启 { $count } 个来源。
+}
+source-attach-added-none = 已添加 { $name }。没有可新开启的来源。
+source-attach-waiting = { $count ->
+    [one] { $names } 需要先填一个值。
+   *[other] { $names } 需要先填值。
+}
+source-attach-fill-in = 填写
 
 ## ScheduleSheet.qml
 
@@ -1819,67 +1808,12 @@ settings-section-library = 媒体库
 settings-section-accounts = 账号
 settings-section-appearance = 外观
 settings-section-playback = 播放
-settings-section-subtitles = 字幕
 settings-section-keys = 键盘
 settings-section-downloads = 下载
-settings-section-phone = 手机应用
-settings-section-storage = 存储和备份
-settings-section-help = 帮助
 settings-section-about = 关于
 settings-section-developer = 开发者
-settings-status-library-empty = 还没有文件夹
-settings-status-library = { $folders } 个文件夹，{ $count } 部番剧
-settings-status-library-missing = { $gone } 个文件夹找不到，{ $folders } 个文件夹中有 { $count } 部番剧
-settings-status-accounts-anilist = 正在同步到 AniList
-settings-status-accounts-mal = 正在同步到 MyAnimeList
-settings-status-accounts-both = 正在同步到 AniList 和 MyAnimeList
-settings-status-accounts-none = 未连接列表
-settings-status-appearance =
-    { $mode ->
-        [system] 跟随系统
-        [light] 浅色
-       *[dark] 深色
-    }，{ $source ->
-        [theme] 主题配色
-       *[desktop] 桌面配色
-    }
-settings-status-playback =
-    { $skip ->
-        [both] 跳过片头和片尾
-        [intro] 跳过片头
-        [outro] 跳过片尾
-       *[none] 完整播放
-    }
-settings-status-playback-audio =
-    { $skip ->
-        [both] 跳过片头和片尾
-        [intro] 跳过片头
-        [outro] 跳过片尾
-       *[none] 完整播放
-    }，音频 { $languages }
-settings-status-subtitles =
-    大小 { $percent }%，{ $override ->
-        [AsScripted] 特效字幕保持原样
-        [Force] 所有文件使用你的样式
-       *[ScaleOnly] 特效字幕保留原有外观
-    }
-settings-status-keys = Anibeam 响应的所有按键
-settings-status-downloads-unread = 尚未读取
-settings-status-downloads-answered = qBittorrent 已响应
-settings-status-downloads-missing = 未安装搜索助手
-settings-status-downloads-unconnected = 尚未连接
-settings-status-phone-shared = 已在你的 tailnet 上共享
-settings-status-phone-off = 未共享
-settings-status-storage = 已缓存 { $size } 图片
-settings-status-storage-unread = 图片、导出和导入
-settings-status-help = 常见问题解答
-settings-status-about-update = 版本 { $version } 已发布
-settings-status-developer = 正在为每个页面计时
-settings-status-developer-last = { $page } 构建用时 { $ms } ms
 settings-results = { $count } 项设置匹配
 settings-results-none = 没有匹配项
-settings-results-hint = 按 Enter 打开第一项。
-settings-results-none-hint = 换个更简单的词试试：主题、字幕、追踪、密码、文件夹。
 
 settings-find-folders =
     .words = 添加 文件夹 扫描 重新扫描 移除 来源 路径 收藏
@@ -1901,6 +1835,8 @@ settings-find-on-hold =
     .words = 搁置 暂停 闲置 未动 天数
 settings-find-language =
     .words = 语言 翻译 区域 英语 中文
+settings-find-title-language =
+    .words = 标题 罗马字 英语 日语 名称
 settings-find-mode =
     .words = 深色 浅色 系统 主题 夜间
 settings-find-colours-from =
@@ -1995,14 +1931,6 @@ settings-find-files =
     .words = 数据库 数据 配置 缓存 文件夹 路径
 settings-find-help-folders =
     .words = 帮助 文件夹 结构 命名 剧集 季 电影 文件
-settings-find-help-recognised =
-    .words = 帮助 匹配 错误 番剧 找不到 未匹配 识别
-settings-find-help-anilist =
-    .words = 帮助 anilist myanimelist mal 登录 连接 追踪
-settings-find-help-downloads =
-    .words = 帮助 下载 空 来源 没有 种子 qbittorrent
-settings-find-help-data =
-    .words = 帮助 数据 文件 备份 数据库 隐私
 settings-find-help-else =
     .words = 帮助 设置 新手引导 向导 报告 bug 问题 反馈
 settings-find-version =
@@ -2019,9 +1947,6 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = 下载
-settings-downloads-lead = Anibeam 把下载内容发往何处，以及如何搜索资源订阅源。
-settings-downloads-keep-none = 看完一集会删除它的前一集。
-settings-downloads-keep-line = 在刚看完的那一集之前保留的已看剧集数。设为 { $count } 时，看完第 { $finishing } 集会删除第 1 集。
 settings-downloads-anirss-ready = 运行中，版本 { $version }，地址 { $url }。
 settings-downloads-anirss-starting = 正在启动搜索助手。
 settings-downloads-anirss-missing = 未安装搜索助手。请重新安装 Anibeam，或在“命令”中填写你自己的 anirss。
@@ -2031,31 +1956,29 @@ settings-downloads-torrent-trying = 正在尝试 { $client }。
 settings-downloads-torrent-answered = { $client } { $version } 已响应。
 settings-downloads-torrent-failed = { $client } 没有连接。请检查上方的地址和密码，然后重新测试。
 settings-downloads-torrent-untried = 尚未尝试。
-settings-downloads-mode-existing = 你自己运行的 qBittorrent，需开启 Web UI。
-settings-downloads-mode-managed = Anibeam 运行自带的 qBittorrent，下载到 ~/Downloads/Anime。Anibeam 退出后它会继续运行，订阅会持续下载。
-settings-downloads-mode-auto = 如果下方地址有 qBittorrent 响应就使用它，否则运行自带的。
 settings-downloads-password-saved = 这里已为此客户端保存了密码。
 settings-downloads-password-anirss = 正在使用搜索助手保存的密码；在这里保存一个就不再依赖它。
 settings-downloads-password-none = 没有保存密码。对这台机器免登录的客户端不需要密码。
 settings-downloads-mismatch = 搜索助手连接的是 { $helperUrl }，而 Anibeam 连接的是 { $url }。你自己运行的搜索助手从它自己的 config.toml 读取地址，所以在这里切换客户端不会影响它。
 settings-downloads-torrent-title = 种子客户端
-settings-downloads-torrent-helper = 负责下载的 qBittorrent。它的密码保存在系统密码存储中。
 settings-downloads-which-client = 使用哪个客户端
 settings-downloads-pick-for-me = 自动选择
 settings-downloads-my-own = 我自己的
 settings-downloads-built-in = 内置
 settings-downloads-saved-clients = 已保存的客户端
-settings-downloads-saved-clients-helper = 比如一台 seedbox 和这台机器上的客户端。“下载”页面上的客户端标签也可以在它们之间切换。
 settings-downloads-add-client = 添加
 settings-downloads-name = 名称
 settings-downloads-name-placeholder = 以地址命名
 settings-downloads-address = 地址
-settings-downloads-address-managed-helper = 只有这台机器能访问它，不需要密码。
-settings-downloads-address-helper = Web UI 的地址。
 settings-downloads-username = 用户名
 settings-downloads-password = 密码
 settings-downloads-secret-saved = 已保存
 settings-downloads-secret-unset = 未设置
+settings-downloads-save-to = 保存到
+settings-downloads-save-to-client = qBittorrent 自己的文件夹
+settings-downloads-save-to-choose = 选择文件夹
+settings-downloads-save-to-reset = 重置
+settings-downloads-save-to-pick = 下载保存到
 settings-downloads-connection = 连接
 settings-downloads-open-config = 打开它的配置
 settings-downloads-details = 详情
@@ -2065,78 +1988,48 @@ settings-downloads-test-save = 保存并测试
 settings-downloads-test = 测试
 settings-downloads-searching = 搜索
 settings-downloads-search-helper = 搜索助手
-settings-downloads-searching-helper = Anibeam 自己搜索你的来源，并把你选中的内容发送到种子客户端。不需要搜索助手。
-settings-downloads-search-helper-helper = Anibeam 中负责搜索和订阅的部分，是一个名为 anirss 的程序。Anibeam 会替你运行它；只有你自己运行时才需要更改。
 settings-downloads-runs-in = 搜索运行于
-settings-downloads-runs-in-native-helper = 订阅仍交给种子客户端，所以 Anibeam 关闭时新剧集也会到来。
-settings-downloads-runs-in-helper = 搜索助手，一个由 Anibeam 或你自己运行的独立程序。
 settings-downloads-engine-native = Anibeam 本身
 settings-downloads-how-runs = 运行方式
-settings-downloads-how-runs-sidecar = Anibeam 打开时启动它，退出时停止它。
-settings-downloads-how-runs-remote = Anibeam 使用你已在运行的那个，地址和密钥见下方。
 settings-downloads-runs-sidecar = 由 Anibeam 运行
 settings-downloads-runs-remote = 由我运行
 settings-downloads-command = 命令
-settings-downloads-command-helper = PATH 中的名称或完整路径。也会搜索 ~/.local/bin。
-settings-downloads-server-address-helper = 服务器的基础地址，不含 /api/v1。
 settings-downloads-key = 密钥
-settings-downloads-key-saved-helper = 已保存密钥。输入新的即可替换，清空即可移除。
-settings-downloads-key-helper = 搜索助手启动时显示的密钥，用于让 Anibeam 访问。
 settings-downloads-details-anirss = 搜索助手停止时输出了这些内容。
 settings-downloads-starting = 正在启动
 settings-downloads-reconnect = 重新连接
 settings-downloads-save-first = 请先保存更改
 settings-downloads-roll-title = 保持后几集就绪
-settings-downloads-roll-helper = 长篇番剧每次只下载几集，每看完一集就开始下载下一集。整部番剧不必全部放进磁盘。
 settings-downloads-roll-big = 适用于长篇番剧
-settings-downloads-roll-big-helper = 超过 { $count } 集的番剧会自动分批下载。它在“下载”页面上的条目仍可一次获取全部。
 settings-downloads-roll-ahead = 预留集数
-settings-downloads-roll-ahead-helper = 在当前这一集之后保持下载的集数。12 集大约是一季。
 settings-downloads-unit-episodes = 集
 settings-downloads-roll-over = 长篇指超过
-settings-downloads-roll-over-helper = 集数超过这个值的下载会分批进行。
 settings-downloads-roll-watched = 已看剧集
-settings-downloads-roll-watched-delete-helper = 往后看了之后会删除，磁盘上只保留还没看的内容。
-settings-downloads-roll-watched-keep-helper = 看过的每个文件都留在磁盘上。
 settings-downloads-keep-all = 全部保留
 settings-downloads-keep-behind = 保留之前
 settings-downloads-subscriptions-title = 订阅和搜索
 settings-downloads-last-search = 保留上次搜索
-settings-downloads-last-search-helper = 打开“下载”页面时显示你上次的搜索。关闭时页面为空。
 settings-downloads-prune = 取消订阅已完结番剧
-settings-downloads-prune-helper = 番剧最后一集播出 16 天后，会移除它的订阅源。番剧和文件会保留。
 settings-downloads-sources-title = 搜索来源
-settings-downloads-sources-helper = 搜索的去处，按尝试顺序排列。一个找不到就交给下一个。
 settings-downloads-sources-empty = 还没有设置来源
 settings-downloads-sources-connect = 连接搜索助手后即可列出
-settings-downloads-sources-empty-helper = 在下方添加来源列表，它的来源就会显示在这里。
 settings-downloads-config-file = 搜索助手的设置文件
-settings-downloads-config-native-helper = 包含保存文件夹、标签和最佳匹配规则，Anibeam 运行助手时自己也会遵循。其中的来源只属于助手。
-settings-downloads-config-helper = 包含来源、保存文件夹、标签和最佳匹配规则。
 settings-downloads-unsaved = 有未保存的更改
-settings-downloads-unsaved-helper = 保存后搜索助手会以新设置重启。
 settings-downloads-discard = 放弃
 
 ## SettingsDeveloperTab
 
 settings-developer-title = 开发者
-settings-developer-lead = 测量页面为什么慢。每个开关从你打开的下一个页面开始生效。
 settings-developer-ms = { $ms } ms
 settings-developer-mb = { $mb } MB
 settings-developer-seconds = { $seconds } 秒
 settings-developer-switches = 开关
 settings-developer-load-images = 加载图片
-settings-developer-load-images-helper = 关闭时不读取也不解码任何海报、横幅或头像。
 settings-developer-overlay = 页面加载浮层
-settings-developer-overlay-helper = 在窗口右下角显示上次页面加载和内存。
 settings-developer-read-cache = 保留媒体库读取结果
-settings-developer-read-cache-helper = 整个媒体库的读取结果会保留到媒体库变化为止。关闭时每个页面都会重新询问核心。
 settings-developer-poster-pool = 在后台预热海报
-settings-developer-poster-pool-helper = 解码你最可能看到的 60 张海报并保留在内存中。
 settings-developer-options = 开发者选项
-settings-developer-options-helper = 关闭此标签页、浮层和测量。
 settings-developer-memory = 内存
-settings-developer-memory-helper = 内核为此进程统计的内存。图片解码后的像素会占用内存和显存。
 settings-developer-memory-unknown = 此系统不提供应用的内存用量。
 settings-developer-in-use = 使用中
 settings-developer-peak = 峰值
@@ -2144,13 +2037,11 @@ settings-developer-heap = 堆
 settings-developer-files-mapped = 映射文件
 settings-developer-threads = 线程
 settings-developer-give-back = 释放内存
-settings-developer-give-back-helper = 丢弃场景图可以重建的内容，回收 JavaScript 垃圾，并把空闲堆交还给系统。释放的就是应用占着却不需要的部分。
 settings-developer-released = { $before } 到 { $after }
 settings-developer-free-now = 立即释放
 settings-developer-images-total = 启动以来的图片
 settings-developer-images-total-line = 解码 { $decodes } 次，{ $pixels } 像素，来自磁盘上的 { $disk }，{ $ms } ms
 settings-developer-loads = 页面加载
-settings-developer-loads-helper = “构建”是点击后的等待时间：页面出现之前 Qt 线程不做其他事。“完成”是最后一张图片到达的时间。
 settings-developer-touring = 正在计时，{ $at } / { $steps }
 settings-developer-tour = 为每个页面计时
 settings-developer-copy-report = 复制报告
@@ -2187,7 +2078,6 @@ settings-developer-scene = 页面的构成
 settings-developer-scene-line = { $items } 个元素，{ $offscreen } 个在窗口外；{ $texts } 个文本，{ $shapes } 个形状，{ $icons } 个图标；{ $images } 张图片，其中 { $imagesOffscreen } 张在窗口外，占用 { $size }
 settings-developer-copy-load = 复制此次加载
 settings-developer-tour-title = 每个页面，开启和关闭图片
-settings-developer-tour-helper = 每个页面访问三次取中间值。两列数值相同的地方，拖慢页面的不是图片。
 settings-developer-col-built-on = 构建，开启图片
 settings-developer-col-built-off = 构建，关闭图片
 settings-developer-col-settled-on = 完成，开启
@@ -2196,7 +2086,6 @@ settings-developer-col-decodes-time = 解码，用时
 settings-developer-col-data = 数据
 settings-developer-tour-peak = 计时期间内存峰值 { $size }
 settings-developer-events = 事件
-settings-developer-events-helper = 核心输出的所有内容，所有级别，最新在前。每个事件都以 JSON 复制到 Qt 线程；大小即发送成本。
 settings-developer-event-rate = { $kind } { $count }/分钟，{ $size }
 settings-developer-events-filter = 按词语、类型或阶段筛选
 settings-developer-event-plain = { $message }   （原文：{ $plain }）
@@ -2205,7 +2094,6 @@ settings-developer-copy-events = 复制事件
 ## SettingsKeysTab
 
 settings-keys-title = 键盘
-settings-keys-lead = Anibeam 响应的所有按键。在任何地方按 ? 都能看到当前位置可用的按键。
 settings-keys-player = 播放器中
 settings-keys-player-around = 在播放器中导航
 settings-keys-around = 导航
@@ -2272,7 +2160,6 @@ key-help-pick-all = 选择所有显示的卡片
 ## SettingsAboutTab
 
 settings-about-title = 关于
-settings-about-lead = 这是哪个版本的 Anibeam，以及它如何得知新版本。
 settings-about-update-failed = 更新没有完成。请重试，或从发布页获取。
 settings-about-update-ready = { $version } 已可安装。
 settings-about-update-command = { $version } 已发布。更新命令：{ $command }
@@ -2284,16 +2171,12 @@ settings-about-build = Anibeam { $build }
 settings-about-whats-new = 更新内容
 settings-about-install = 安装 { $version }
 settings-about-setup = 设置向导
-settings-about-setup-helper = 新安装时打开的向导：你的文件夹、列表和下载。
 settings-about-run-setup = 重新运行设置
 settings-about-updates = 更新
-settings-about-nightly-helper = 几乎每天都有新版本。更新，但测试较少。
-settings-about-stable-helper = 经过测试并发布后才有新版本。
 settings-about-stable = 稳定版
 settings-about-nightly = Nightly
 settings-about-check-now = 立即检查
 settings-about-developer = 开发者选项
-settings-about-developer-helper = 添加“开发者”分区，可为每个页面计时、显示内存和完整的技术日志，还能关闭图片。
 settings-about-credits = 致谢
 settings-about-ratings = 评分
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
@@ -2303,17 +2186,12 @@ settings-about-series-helper = AniList 和 TVmaze。跳过时间来自 AniSkip�
 ## SettingsPlaybackTab
 
 settings-playback-title = 播放
-settings-playback-lead = 播放器自动完成的事，让你只在需要时才去操作。
 settings-playback-skipping = 跳过
-settings-playback-skipping-helper = 使用文件的章节，否则使用其他观众在网上分享的跳过时间。在播放器中点“撤销”会关闭跳过，直到 Anibeam 关闭。
 settings-playback-skip-intros = 跳过片头
 settings-playback-skip-outros = 跳过片尾
-settings-playback-skip-outros-helper = 播到片尾也会把这一集标为已看。
 settings-playback-next-episode = 下一集
 settings-playback-name-next = 显示下一集标题
-settings-playback-name-next-helper = 一集结束时的“下一集”按钮会显示下一集的标题。关闭时只显示集数。
 settings-playback-languages = 语言
-settings-playback-languages-helper = 语言代码，最想要的在前。文件中第一个匹配的生效。你在播放器中选的轨道会为该番剧记住。
 settings-playback-subtitle-languages = 字幕语言
 settings-playback-audio-languages = 音频语言
 settings-playback-discord = 在 Discord 上显示你在看什么
@@ -2331,7 +2209,6 @@ room-panel-discord-open = 公开
 room-panel-discord-invite = 仅限邀请
 settings-playback-advanced = 高级
 settings-playback-my-mpv = 使用我的 mpv 设置
-settings-playback-my-mpv-helper = 读取你的 mpv.conf。仅在启动时生效的选项会被跳过，脚本永远不会加载。
 settings-playback-no-mpv-conf = 没有找到 mpv 设置文件。把选项写入 mpv.conf 后再开启此项。
 
 ## SliderRow
@@ -2356,45 +2233,33 @@ look-preview-light = 浅色
 ## SettingsAccountsTab
 
 settings-accounts-title = 账号
-settings-accounts-lead = 连接 AniList 或 MyAnimeList，你看完的每一集都会自动在那里标记。进度只增不减。
 settings-accounts-syncing = 正在同步列表
 settings-accounts-synced = 列表已同步
 settings-accounts-lists = 你的动漫列表
-settings-accounts-lists-helper = 没有列表时，Anibeam 仍会在这台电脑上记住你看过什么。AniList 或 MyAnimeList 上的列表会把它带到你的手机和个人资料上。
 settings-accounts-progress = 进度
 settings-accounts-main-list = 主列表
-settings-accounts-main-list-helper = 卡片显示这个列表的进度。另一个仍会收到每次更新。
 settings-accounts-local-lists = 这台电脑上的列表
-settings-accounts-local-lists-helper = 有 { $count } 部番剧的状态或评分只在这里。把它们移到 { $tracker }，就能在手机和个人资料上看到。
+settings-accounts-local-lists-helper = 有 { $count } 部番剧的状态或评分只在这里。
 settings-accounts-review-move = 查看并移动
 settings-accounts-nothing-to-move = 没有需要移动的内容
 settings-accounts-sync-now = 立即同步
-settings-accounts-sync-now-helper = 重新读取每个已连接的列表。Anibeam 启动时也会这样做。
 settings-accounts-sync = 同步
 settings-accounts-move-on-hold = 移到“搁置”
-settings-accounts-move-on-hold-helper = 一段时间没碰的“在看”番剧会在你的列表上移到“搁置”。再播放就会移回来。在等下一集的番剧保持不变。
 settings-accounts-after = 之后
 settings-accounts-after-line = 没有播放任何一集的天数
 settings-accounts-days-unit = 天
 
-## SettingsPhoneTab
+## SettingsAccountsTab: the phone app
 
 settings-phone-title = 手机应用
-settings-phone-lead = 手机上的 Anibeam 可以播放这个媒体库、查看正在播出的番剧并跟进你的下载，无论你身在何处。
 settings-phone-online = 在线
 settings-phone-offline = 离线
 settings-phone-untrusted = 从这台电脑获取不到任何内容
-settings-phone-sharing = 共享
-settings-phone-sharing-helper = 只有你自己在 Tailscale 上的设备能访问。在手机上看的剧集，进度会同步到这里。
 settings-phone-share = 通过 Tailscale 共享
 settings-phone-stream = 串流剧集
-settings-phone-stream-on = 你的设备可以播放和投屏这台电脑上的剧集。
-settings-phone-stream-off = 你的设备能看到媒体库和正在播出的番剧，但不能从这里播放。
 settings-phone-host-service = 主机服务
 settings-phone-not-running = 未运行
 settings-phone-running = 运行中
-settings-phone-service-off-helper = 运行一次这条命令，之后从登录起你的设备就能访问 Anibeam，不用打开窗口。
-settings-phone-service-on-helper = 你的设备不用打开窗口也能访问 Anibeam。这个窗口打开时，由它代替服务共享。
 settings-phone-copy-command = 复制命令
 settings-phone-command-copied = 已复制命令
 settings-phone-nobody = 获取不到任何内容：Tailscale 没有为它指定用户
@@ -2407,73 +2272,29 @@ settings-phone-person-own-devices =
     }
 settings-phone-person-devices = { $count } 台设备
 settings-phone-devices = 你 tailnet 上的设备
-settings-phone-devices-helper = 开启共享时，你 tailnet 上的每台设备都能访问这台电脑。关闭某台设备后，它从这里获取不到任何内容。
-settings-phone-addresses = 地址
-settings-phone-addresses-helper = 手机应用第一次询问时，输入其中一个地址。
 settings-phone-copy = 复制
 settings-phone-address-copied = 已复制地址
 
-## SettingsHelpTab
+## SettingsAboutTab: the questions people ask most
 
-settings-help-title = 帮助
-settings-help-lead = 常见问题的简短解答，每条都能直接跳到解决办法。
+settings-about-help = 帮助
 settings-help-folders = 文件夹应该怎么组织？
-settings-help-folders-helper = 每部番剧一个文件夹，剧集放在里面。每个文件名带上集数，就像资源发布时那样：“Frieren - 01.mkv”或“Frieren S01E01.mkv”。第二季可以单独一个文件夹，也可以是番剧文件夹里的“Season 2”文件夹。剧场版放在名为 Movies 的文件夹里，每部一个文件。
-settings-help-for-example = 例如
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = 还没有添加文件夹
-settings-help-reads-folders = Anibeam 读取 { $count } 个文件夹
-settings-help-add-folder-helper = 添加存放番剧的总文件夹，而不是逐个添加每部番剧。
-settings-help-add-folder = 添加文件夹
-settings-help-open-folders = 打开你的文件夹
-settings-help-match = 为什么我的番剧没有被识别？
-settings-help-match-helper = Anibeam 按文件夹名称查找每部番剧，先查 AniList，再查 TVmaze。多余的词、拼写错误或其他语言的名称都可能导致找不到。可以在“番剧信息”中手动选择正确的番剧；你的选择永远不会被替换。
-settings-help-all-recognised = 所有番剧都已识别
-settings-help-unrecognised = 有 { $count } 部番剧未被识别
-settings-help-open-show-info = 打开“番剧信息”
-settings-help-connect = 如何连接 AniList？
-settings-help-connect-helper = 连接后，你看完的每一集都会标记到列表上，手机和个人资料也会同步。AniList 需要你先创建一个自己的小应用；Anibeam 会一步步引导你，大约一分钟。MyAnimeList 也一样。
-settings-help-both-connected = 两者都已连接
-settings-help-anilist-connected = AniList 已连接
-settings-help-mal-connected = MyAnimeList 已连接
-settings-help-none-connected = 两者都还没有连接
-settings-help-connect-anilist = 连接 AniList
-settings-help-connect-mal = 连接 MyAnimeList
-settings-help-downloads = 为什么“下载”是空的？
-settings-help-downloads-helper = Anibeam 本身不带任何搜索位置。请在设置的“下载”中添加来源列表，并从中安装需要的来源。下载还需要种子客户端：Anibeam 可以运行自带的，也可以使用你已有的 qBittorrent。
-settings-help-sources = 来源和种子客户端
-settings-help-open-downloads = 打开下载设置
-settings-help-data = 我的数据在哪里？
-settings-help-data-helper = 你的媒体库、观看记录和设置都保存在这台电脑上。AniList 和 MyAnimeList 的登录信息保存在系统密码存储中；没有时则保存在只有你能读取的文件中。可以在“存储和备份”中把所有内容备份到一个文件。
-settings-help-library-history = 媒体库和历史
-settings-help-show-folder = 显示文件夹
-settings-help-backup = 备份或恢复
-settings-help-open-storage = 打开“存储和备份”
 settings-help-more = 还有其他问题？
-settings-help-more-helper = 重新运行首次设置，或告诉我们哪里出了问题。附上截图会很有帮助。
-settings-help-first-setup = 首次设置
-settings-help-first-setup-helper = 你的文件夹、列表和下载，一步一步来。
-settings-help-run-setup = 重新运行设置
 settings-help-report = 反馈问题
-settings-help-report-helper = 在浏览器中打开 GitHub 上的问题报告，并填好当前版本。
 
-## SettingsSubtitlesTab
+## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = 字幕
-settings-subtitles-lead = 每一集的初始字幕设置。更改会实时显示在下方的画面上。
 settings-subtitles-reset-done = 字幕已恢复为最初的样子
 settings-subtitles-size-place = 大小和位置
 settings-subtitles-size = 大小
 settings-subtitles-position = 位置
-settings-subtitles-position-helper = 100 贴着底边。数值越小，字幕越往上。
 settings-subtitles-style = 样式
 settings-subtitles-styled = 特效字幕
-settings-subtitles-as-made-helper = 特效（ASS）字幕文件完全按制作者的设置显示。
-settings-subtitles-mine-helper = 下方你的样式会用于每个文件。标牌和卡拉 OK 字幕可能出错。
-settings-subtitles-size-only-helper = 特效字幕文件保留原有外观，只采用你的大小。普通文件采用你的样式。
 settings-subtitles-as-made = 原样
 settings-subtitles-size-only = 仅大小
 settings-subtitles-mine = 我的样式
@@ -2485,20 +2306,14 @@ settings-subtitles-colour-invalid = 请输入颜色，例如 #ffcc00。
 settings-subtitles-outline = 描边
 settings-subtitles-outline-invalid = 宽度必须是 0 或更大的数字。
 settings-subtitles-outline-colour-invalid = 请输入颜色，例如 #000000。
-settings-subtitles-outline-helper = 先是宽度，再是颜色。
 settings-subtitles-shadow = 阴影
 settings-subtitles-shadow-invalid = 0 或更大的数字。0 表示无阴影。
-settings-subtitles-shadow-helper = 阴影的距离，0 表示无阴影。
 settings-subtitles-box = 背景框
-settings-subtitles-box-helper = 字幕后面的深色框。0 表示不显示。
 settings-subtitles-start-over = 恢复默认
-settings-subtitles-start-over-helper = 把大小、字体、颜色、描边、背景框和位置恢复为初始设置。
 settings-subtitles-reset = 重置
 
-## SettingsDataTab
+## SettingsAboutTab: storage and backup
 
-settings-data-title = 存储和备份
-settings-data-lead = 把媒体库迁移到另一台电脑、保存一份副本，或释放图片占用的空间。
 settings-data-backed-up = 已备份到 { $path }
 settings-data-restore-finished = 恢复完成
 settings-data-images-removed = 已移除 { $count } 张图片
@@ -2514,21 +2329,16 @@ settings-data-summary-unavailable = 有 { $count } 个文件夹在这台电脑�
 settings-data-summary-left-out = 未包含：{ $fields }。
 settings-data-backup = 备份
 settings-data-back-up-library = 备份媒体库
-settings-data-back-up-helper = 一个文件，包含你的文件夹、匹配结果和观看记录。
 settings-data-last-written = 上次写入 { $path }
 settings-data-open-folder = 打开文件夹
 settings-data-back-up = 备份
-settings-data-private = 包含私人数据
-settings-data-private-helper = 加入 AniList 和 MyAnimeList 的登录信息、观看历史和偏好设置。登录信息以明文写入，请妥善保管文件。
+settings-data-private = 包含登录信息，以明文保存
 settings-data-restore-from = 从备份恢复
-settings-data-restore-helper = 把备份读入这个媒体库。以磁盘上的内容为准，文件补全其余部分。
 settings-data-restore = 恢复
 settings-data-image-cache = 图片缓存
-settings-data-image-cache-helper = 海报、横幅和头像保存在磁盘上，让媒体库离线也能用。清除的图片会在页面需要时重新下载。
 settings-data-cache-unmeasured = 无法统计图片缓存
 settings-data-cache-size = { $count } 张图片，共 { $size }
 settings-data-cache-empty = 没有缓存图片
-settings-data-cache-unmeasured-helper = 请稍后再试。图片本身没有问题。
 settings-data-remove-images = 移除 { $count } 张图片？
 settings-data-files = Anibeam 的文件位置
 settings-data-files-database = 媒体库数据库
@@ -2543,62 +2353,53 @@ settings-data-restoring = 正在恢复
 ## SettingsLibraryTab
 
 settings-library-title = 媒体库
-settings-library-lead = Anibeam 监视的文件夹，以及它如何识别其中的内容。
 settings-library-not-scanned = 尚未扫描
 settings-library-scan-nothing-changed = 没有变化
 settings-library-scan-added = 新增 { $count }
 settings-library-scan-changed = 变化 { $count }
 settings-library-scan-removed = 移除 { $count }
 settings-library-scan-in-folder = { $folder }：{ $what }
-settings-library-anilist-about = 动画：番剧、剧场版及其关联。你看过的内容会在追踪服务上标记。
-settings-library-tvmaze-about = 其他电视节目：真人剧、卡通、纪录片。不会在追踪服务上标记。
 settings-library-tried-first = 第一个尝试
 settings-library-tried-second = 第二个尝试
 settings-library-tried-third = 第三个尝试
 settings-library-tried-fourth = 第四个尝试
 settings-library-tried-nth = 第 { $number } 个尝试
 settings-library-folders = 文件夹
-settings-library-folders-helper = 这些文件夹中的每个子文件夹都是一部番剧。Movies 文件夹顶层的文件是剧场版。
 settings-library-rescan-started = 已开始重新扫描
 settings-library-load-failed = 无法读取你的文件夹
-settings-library-load-failed-helper = Anibeam 无法读取它的文件夹列表，请稍后再试。
 settings-library-no-folders = 还没有文件夹
-settings-library-no-folders-helper = 让 Anibeam 指向存放动漫的文件夹，它会自己找出番剧和剧场版。
 settings-library-scanned = 扫描于{ $when }
 settings-library-add-a-folder = 添加文件夹
 settings-library-scan-all = 全部扫描
 settings-library-scan-started = 已开始扫描
 settings-library-add-folder = 添加文件夹
 settings-library-matching = 匹配
-settings-library-matching-helper = 新文件夹按这个顺序查找，并保留第一个合适的匹配。手动设置的匹配永远不会被替换。
 settings-library-try-later = 往后
 settings-library-try-first = 优先
 settings-library-check-matches = 检查匹配
-settings-library-check-matches-helper = “番剧信息”页面列出每部番剧及 Anibeam 为它找到的信息，可以修正错误的匹配。
 settings-library-open-show-info = 打开“番剧信息”
 settings-library-hidden-shows = 隐藏的番剧
 settings-library-show-hidden = 显示隐藏的番剧
-settings-library-show-hidden-helper = 让你隐藏的番剧重新出现在每个页面上，直到 Anibeam 关闭。
 settings-library-hidden-from-airing = 从“正在播出”中隐藏
-settings-library-hidden-from-airing-helper = 你标记为不感兴趣的番剧。在你恢复之前，它们不会出现在“正在播出”中。
-settings-library-hidden-from-airing-empty = 还没有。你在“正在播出”中标记为不感兴趣的番剧会集中在这里，随时可以恢复。
+settings-library-hidden-from-airing-empty = 还没有
 settings-library-show-again = 重新显示
+settings-hidden-airing-filter = 筛选标题
+settings-hidden-airing-ended = 已从列表中移除 { $count } 部已停播的番剧
 settings-library-calendar = 日历
 settings-library-calendar-feed = 日历中的播出时间
-settings-library-calendar-feed-helper = 生成一个日历文件，包含你列表中番剧即将播出的剧集，排期变化时会更新。
 settings-library-calendar-file = 日历文件
-settings-library-calendar-file-helper = 在你的日历应用中订阅这个文件。
 settings-library-copy = 复制
 settings-library-path-copied = 已复制路径
 settings-library-open-folder = 打开文件夹
 settings-library-notifications = 通知
 settings-library-new-episodes = 新剧集
-settings-library-new-episodes-helper = “在看”列表中的番剧有新一集播出时，弹出桌面通知。点击即可打开番剧。
 settings-library-folder-added = 已添加文件夹，正在扫描
 
 ## SettingsAppearanceTab
 
 settings-appearance-language = 语言
+settings-appearance-title-language = 标题显示为
+settings-appearance-title-language-english = 英语
 settings-appearance-language-system = 跟随系统（{ $language }）
 settings-appearance-text-smaller = 较小
 settings-appearance-text-normal = 标准
@@ -2606,51 +2407,39 @@ settings-appearance-text-large = 大
 settings-appearance-text-larger = 更大
 settings-appearance-text-largest = 最大
 settings-appearance-title = 外观
-settings-appearance-lead = 更改会立即在这里和每个页面上生效。设置保存在 ~/.config/anibeam/theme.toml，也可以手动编辑。
 settings-appearance-colours = 颜色
 settings-appearance-mode = 模式
 settings-appearance-mode-dark = 深色
 settings-appearance-mode-light = 浅色
 settings-appearance-mode-system = 跟随系统
 settings-appearance-colours-from = 配色来源
-settings-appearance-from-theme-helper = 下方的一对主题，一个用于深色，一个用于浅色。
-settings-appearance-from-desktop-helper = 你的终端配色，否则使用桌面的配色方案和强调色。
 settings-appearance-from-desktop = 桌面
 settings-appearance-from-theme = 主题
 settings-appearance-dark-theme = 深色主题
 settings-appearance-light-theme = 浅色主题
-settings-appearance-themes-helper = 放进 ~/.config/anibeam/themes 的主题文件会出现在两个列表中。
 settings-appearance-accent = 强调色
-settings-appearance-accent-helper = 用来标记已选中、正在播放或新增的内容。
 settings-appearance-icon = 图标
 settings-appearance-app-icon = 应用图标
-settings-appearance-app-icon-helper = 窗口、任务栏和启动器上的图标。深色版会对调黄色和黑色。
 settings-appearance-icon-default = 默认
 settings-appearance-icon-default-name = 默认应用图标
 settings-appearance-icon-dark = 深色
 settings-appearance-icon-dark-name = 深色应用图标
 settings-appearance-size-motion = 大小和动效
 settings-appearance-text-size = 文字大小
-settings-appearance-text-size-helper = Anibeam 中所有文字的大小，叠加在系统自身的字体大小之上。
 settings-appearance-density = 密度
-settings-appearance-density-helper = 各元素周围的留白，从紧凑到宽松。
 settings-appearance-density-compact = 紧凑
 settings-appearance-density-normal = 标准
 settings-appearance-density-comfortable = 宽松
 settings-appearance-poster-size = 海报大小
-settings-appearance-poster-size-helper = 番剧在媒体库和首页上显示的大小。
 settings-appearance-poster-small = 小
 settings-appearance-poster-medium = 中
 settings-appearance-poster-large = 大
 settings-appearance-out-now = “正在播出”的已播出
-settings-appearance-out-now-helper = 带有番剧横幅的卡片，或由小海报和标题组成、三行深的列表。
 settings-appearance-out-now-cards = 卡片
 settings-appearance-out-now-list = 列表
 settings-appearance-out-now-grid = 已播出卡片
-settings-appearance-out-now-grid-helper = 点“全部”展开其余内容前显示多少卡片，列数乘行数。
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = 减少动效
-settings-appearance-reduce-motion-helper = 跳过媒体库的开场动画和其他纯装饰性的动效。
 
 ## LookPane
 
@@ -3156,4 +2945,3 @@ settings-playback-together = 一起看
 settings-playback-room-name = 你在一起看房间中的名字
 settings-playback-room-name-placeholder = 你的名字
 settings-playback-room-relay = 房间服务器
-settings-playback-room-relay-helper = 房间在这里创建。只有使用你自己运行的服务器时才需要更改。

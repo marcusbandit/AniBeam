@@ -198,15 +198,16 @@ dependencies = [
  "anibeam-foundation",
  "anibeam-host-api",
  "anibeam-library",
+ "anibeam-metadata",
  "anibeam-net",
- "anibeam-recs",
+ "anibeam-releases",
  "anibeam-room",
+ "anibeam-trackers",
  "anyhow",
  "axum",
  "base64",
  "chacha20poly1305",
  "ed25519-dalek",
- "fancy-regex",
  "flate2",
  "futures-core",
  "futures-util",
@@ -290,6 +291,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-metadata"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-net",
+ "anibeam-recs",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "anibeam-net"
 version = "2.5.0"
 dependencies = [
@@ -319,12 +338,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-releases"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-net",
+ "base64",
+ "ed25519-dalek",
+ "fancy-regex",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "roxmltree 0.20.0",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "anibeam-room"
 version = "2.5.0"
 dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-trackers"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "base64",
+ "rand 0.10.3",
+ "rusqlite",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
