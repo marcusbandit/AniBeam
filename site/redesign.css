@@ -290,7 +290,7 @@ body.rd { --wide: 1320px; }
 }
 .rows .sync, .rows .pickup, .rows .room { box-shadow: inset 0 1px var(--hi), 0 30px 60px -24px #000; }
 .rows .player { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 30px 70px -24px #000; }
-.feat-cast .row-vis { aspect-ratio: 4 / 3; }
+.feat-cast .row-vis { aspect-ratio: auto; }
 .rows .cast-scene { width: 86%; }
 .room-open { height: 42px; }
 
@@ -526,18 +526,7 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .lp-bar i { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--done); }
 .dev-phone .lp-bar { bottom: 7%; }
 .lp-base { display: block; width: 116%; height: 9px; margin-left: -8%; border-radius: 0 0 10px 10px; background: linear-gradient(#26282d, #141518); }
-.dev-phone, .dev-tablet { opacity: 0; }
-@media (prefers-reduced-motion: no-preference) {
-  .dev { animation: dev-turn 9s var(--ease) infinite; animation-play-state: var(--motion, running); }
-  .dev-phone { animation-delay: -6s; }
-  .dev-tablet { animation-delay: -3s; }
-}
-@keyframes dev-turn {
-  0%, 27.8% { opacity: 1; transform: none; }
-  33.3%, 94.4% { opacity: 0; transform: translateY(14px) scale(0.97); }
-  100% { opacity: 1; transform: none; }
-}
-.feat-cast .cast-arc { left: 26%; bottom: 36%; width: 30%; height: 18%; }
+
 
 /* Watch together: the app's room panel, with the last friend's copy opening and then ready. */
 .room2 { display: grid; gap: 16px; padding: 22px 24px; }
@@ -594,8 +583,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .endcard .term code { white-space: nowrap; overflow-x: auto; }
   .feat-cast .cast-scene { aspect-ratio: auto; display: flex; flex-direction: column; align-items: center; gap: 20px; }
   .feat-cast .tv { position: relative; top: 0; right: auto; width: 100%; }
-  .senders { position: relative; left: auto; bottom: auto; width: 78%; }
-  .feat-cast .cast-arc { display: none; }
   .credits { padding: 72px var(--gutter) 48px; }
 }
 
@@ -680,4 +667,30 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
   .rd .rows .feat.row { position: relative; gap: 20px; padding: 36px 0; }
   .rd .rows .feat.row h3 { font-size: 32px; }
   .rd .row-vis { background: none; }
+}
+
+/* Casting: the TV, and under it every kind of thing that casts to it, side by side, each with
+   its own line of light running up to the screen. */
+.feat-cast .cast-scene { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; aspect-ratio: auto; }
+.feat-cast .tv { position: relative; top: auto; right: auto; width: 70%; }
+.cast-lines { display: block; width: 100%; height: clamp(40px, 7vw, 76px); margin: -4px 0 0; overflow: visible; }
+.cast-lines path { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 2 9; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px rgba(253, 201, 1, 0.6)); }
+@media (prefers-reduced-motion: no-preference) {
+  .cast-lines path { animation: cast-up 0.9s linear infinite; animation-play-state: var(--motion, running); }
+}
+@keyframes cast-up { to { stroke-dashoffset: 11; } }
+.feat-cast .senders { position: relative; left: auto; bottom: auto; display: flex; justify-content: space-between; align-items: flex-end; width: 100%; aspect-ratio: auto; }
+.feat-cast .dev { position: relative; left: auto; bottom: auto; opacity: 1; animation: none; }
+.feat-cast .dev-phone { width: 14%; }
+.feat-cast .dev-laptop { width: 46%; }
+.feat-cast .dev-tablet { width: 30%; }
+.feat-cast .dev-phone .lp-tile b, .feat-cast .dev-phone .lp-tile span { display: none; }
+.feat-cast .dev-phone .lp-screen { border-width: 4px; border-radius: 16px; }
+.feat-cast .dev-phone .lp-screen::before { top: 4px; width: 6px; height: 6px; margin-left: -3px; }
+.feat-cast .dev-tablet .lp-screen { border-width: 7px; border-radius: 16px; }
+.feat-cast .dev-tablet .lp-tile span { display: none; }
+@media (max-width: 760px) {
+  .feat-cast .tv { width: 86%; }
+  .feat-cast .dev-tablet .lp-tile b { font-size: 9px; }
+  .feat-cast .dev-laptop .lp-tile span { display: none; }
 }
