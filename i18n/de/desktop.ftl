@@ -456,9 +456,7 @@ onboarding-search-ready = { $count ->
     [one] { $count } Quelle bereit zum Suchen.
    *[other] { $count } Quellen bereit zum Suchen.
 }
-onboarding-search-none = Anibeam bringt keine eigenen Quellen mit. Du fügst sie aus einem Quellen-Repo hinzu: ein Link, den dir jemand gibt und den du unter Einstellungen, Downloads einfügst.
-onboarding-sources-after = Öffnet nach der Einrichtung
-onboarding-sources-add = Repo nach der Einrichtung hinzufügen
+onboarding-search-paste = Anibeam bringt keine eigenen Quellen mit. Füge die Adresse einer Quellenliste ein, die dir jemand geschickt hat.
 onboarding-fetch-title = Wer lädt
 onboarding-fetch-auto = Anibeam kümmert sich
 onboarding-fetch-recommended = Empfohlen
@@ -483,7 +481,7 @@ onboarding-ready-lists = Deine Liste
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Noch nicht verbunden. Das findet sich unter Einstellungen, Konten, wenn du es brauchst.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Noch keine Quellen
     [one] { $sources } Quelle
    *[other] { $sources } Quellen
@@ -493,9 +491,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alles bereit.
     [opens] Als Nächstes öffnet Einstellungen, Downloads.
-   *[both] Beides findest du unter Einstellungen, Downloads.
+   *[sources] Füge eine Quellenliste hinzu, um zu suchen.
 }
-onboarding-ready-open-downloads = Einstellungen, Downloads öffnen
 onboarding-ready-set-up = Jetzt einrichten
 
 ## Rail.qml
@@ -1680,6 +1677,7 @@ downloads-error-unknown = Etwas ist schiefgegangen. Versuch es nochmal.
 downloads-search-all-off = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
 downloads-turn-on = { $name } einschalten
 downloads-search-no-sources = Es gibt noch keine Quellen zum Suchen. Füge in den Einstellungen unter Downloads eine Quellenliste hinzu.
+downloads-no-sources = Noch keine Quellen zum Suchen
 downloads-search-none-started = Keine Quelle konnte die Suche starten. Versuch es gleich nochmal.
 downloads-auto-resolution = Eingegrenzt auf { $resolution }, die schärfste im Angebot
 downloads-search-one-failed = Die Suche bei { $name } hat nicht geklappt. Versuch es nochmal oder durchsuche eine andere Quelle.
@@ -2161,7 +2159,6 @@ player-not-now = Nicht jetzt
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Quellenlisten
-endpoint-repos-panel-helper = Eine Quellenliste ist eine signierte Liste von Suchorten, per Adresse hinzugefügt. Anibeam prüft die Signatur und zeigt den Schlüssel vor dem Speichern, dann installierst du, was du willst. Sie ergänzen die Suchquellen oben.
 endpoint-repos-panel-could-not-start = Anibeam konnte das nicht starten. Versuch es gleich nochmal.
 endpoint-repos-panel-needs-value = { $name } braucht einen Wert
 endpoint-repos-panel-values-of = Werte von { $name }
@@ -2174,19 +2171,9 @@ endpoint-repos-panel-needs-fields = Braucht { $fields }, bevor es sucht.
 endpoint-repos-panel-no-longer-offered = Von seiner Quellenliste nicht mehr angeboten.
 endpoint-repos-panel-update-requests-to = Das Update sendet Anfragen an { $host }.
 endpoint-repos-panel-unreadable = Diese Liste war nicht lesbar. Listen aktualisieren versucht es erneut.
-endpoint-repos-panel-add-list = Quellenliste hinzufügen
-endpoint-repos-panel-add-list-helper = Die Adresse ihrer Indexdatei oder ein Pfad zu einer auf diesem Rechner.
 endpoint-repos-panel-checking = Prüfe
 endpoint-repos-panel-add = Hinzufügen
-endpoint-repos-panel-trust-question = { $name } vertrauen?
 endpoint-repos-panel-fingerprint = Schlüssel-Fingerabdruck  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } Quellen, signiert. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } Quellen, signiert, schon vertraut. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-trust = Vertrauen
 endpoint-repos-panel-saving = Speichere
 endpoint-repos-panel-install = Installieren
 endpoint-repos-panel-update = Aktualisieren
@@ -2201,6 +2188,22 @@ endpoint-repos-panel-by-hand-helper = Für Seiten ohne Liste: jeder Feed mit {"{
 endpoint-repos-panel-name = Name
 endpoint-repos-panel-refreshing = Aktualisiere
 endpoint-repos-panel-refresh = Listen aktualisieren
+
+## SourceAttach.qml
+
+source-attach-placeholder = Adresse einer Quellenliste einfügen
+source-attach-what = Was ist eine Quellenliste?
+source-attach-recent = Schon verwendet
+source-attach-added = { $count ->
+    [one] { $name } hinzugefügt: { $count } Quelle ist an.
+   *[other] { $name } hinzugefügt: { $count } Quellen sind an.
+}
+source-attach-added-none = { $name } hinzugefügt. Keine neue Quelle zum Einschalten.
+source-attach-waiting = { $count ->
+    [one] { $names } braucht zuerst einen Wert.
+   *[other] { $names } brauchen zuerst einen Wert.
+}
+source-attach-fill-in = Ausfüllen
 
 ## ScheduleSheet.qml
 
@@ -2381,6 +2384,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Jede Taste, auf die Anibeam hört
 settings-status-downloads-unread = Noch nicht gelesen
+settings-status-downloads-no-sources = Noch keine Quellen
 settings-status-downloads-answered = qBittorrent hat geantwortet
 settings-status-downloads-missing = Suchhelfer nicht installiert
 settings-status-downloads-unconnected = Noch nicht verbunden
@@ -2629,7 +2633,6 @@ settings-downloads-sources-title = Suchquellen
 settings-downloads-sources-helper = Wohin eine Suche geht, in Probierreihenfolge. Findet eine nichts, kommt die nächste.
 settings-downloads-sources-empty = Noch keine Quellen eingerichtet
 settings-downloads-sources-connect = Verbinde den Suchhelfer, um sie aufzulisten
-settings-downloads-sources-empty-helper = Füge unten eine Liste hinzu, um Quellen zu sehen.
 settings-downloads-config-file = Einstellungsdatei des Suchhelfers
 settings-downloads-config-native-helper = Enthält die Speicherordner, die Tags und die Regeln für die beste Wahl, denen Anibeam selbst folgt, wenn es den Helfer startet. Seine eigenen Quellen gehören nur dem Helfer.
 settings-downloads-config-helper = Enthält die Quellen, die Speicherordner, die Tags und die Regeln für die beste Wahl.

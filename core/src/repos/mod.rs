@@ -506,6 +506,44 @@ pub fn trust_repo(releases: &Releases, url: String, key: String) -> Result<Reply
     reply(releases)
 }
 
+/// Adds a repo and turns on what it offers, in one step (#1003). The key is pinned on first
+/// use, as trusting does; the fingerprint shows on the repo's row afterwards. Installed: each
+/// endpoint that asks for no value, is not NSFW unless the whole repo is, and whose id is not
+/// installed already. The rest stay offered for the person to install by hand.
+pub fn attach_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
+    let url = normal_url(&url)?;
+    let idx = releases
+        .services
+        .handle
+        .block_on(fetch(&releases.services, &url))?;
+    let stored = stored_repo(&releases.services, &url)?;
+    if let Some(stored) = &stored {
+        admit(stored, &idx)?;
+    }
+    recover(&releases.pending.indexes).remove(&url);
+    save_index(&releases.services, &url, &idx)?;
+    if stored.is_none() {
+        releases.services.bus.say(
+            Level::Info,
+            Stage::Downloads,
+            crate::words!("core-repos-repo-added"),
+            format!("Added the endpoint repo {}", idx.name),
+            EventBody::Notice,
+        );
+    }
+    let installed = releases.services.store.read(read_installed)?;
+    for def in idx
+        .endpoints
+        .iter()
+        .filter(|d| d.auth.is_empty() && (idx.nsfw || !d.nsfw))
+        .filter(|d| !installed.iter().any(|i| i.def.id == d.id))
+    {
+        // A list just added says so once; a source added to a list already there says so itself.
+        insert_install(releases, &url, def, &[], stored.is_some())?;
+    }
+    changed(releases)
+}
+
 pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
     let url = url.trim().to_string();
     let Some(stored) = stored_repo(&releases.services, &url)? else {
@@ -674,11 +712,24 @@ pub fn install(
             },
         ));
     }
+    insert_install(releases, &repo, &def, &values, true)?;
+    changed(releases)
+}
+
+/// Saves one endpoint as installed from `repo`, its values in the secret store, and with
+/// `say` a line in the activity log.
+fn insert_install(
+    releases: &Releases,
+    repo: &str,
+    def: &Definition,
+    values: &[(String, String)],
+    say: bool,
+) -> Result<(), CoreError> {
     let install_id = new_install_id();
-    store_credentials(&releases.services, &install_id, &values)?;
+    store_credentials(&releases.services, &install_id, values)?;
     let (row_id, row_repo, row_def, version, json) = (
         install_id.clone(),
-        repo.clone(),
+        repo.to_string(),
         def.id.clone(),
         def.version as i64,
         serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
@@ -691,14 +742,16 @@ pub fn install(
         )?;
         Ok(())
     })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
-        crate::words!("core-repos-source-added"),
-        format!("Installed the endpoint {}", def.name),
-        EventBody::Notice,
-    );
-    changed(releases)
+    if say {
+        releases.services.bus.say(
+            Level::Info,
+            Stage::Downloads,
+            crate::words!("core-repos-source-added"),
+            format!("Installed the endpoint {}", def.name),
+            EventBody::Notice,
+        );
+    }
+    Ok(())
 }
 
 pub fn update(

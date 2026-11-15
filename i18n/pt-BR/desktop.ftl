@@ -456,9 +456,7 @@ onboarding-search-ready = { $count ->
     [one] { $count } fonte pronta para buscar.
    *[other] { $count } fontes prontas para buscar.
 }
-onboarding-search-none = O Anibeam não vem com fontes próprias. Você as inclui de um repo de fontes: um link que alguém compartilha com você e que você cola em Configurações, Downloads.
-onboarding-sources-after = Abre depois da configuração
-onboarding-sources-add = Incluir um repo depois
+onboarding-search-paste = O Anibeam não vem com fontes próprias. Cole o endereço de uma lista de fontes que alguém compartilhou com você.
 onboarding-fetch-title = Quem baixa
 onboarding-fetch-auto = Deixar com o Anibeam
 onboarding-fetch-recommended = Recomendado
@@ -483,7 +481,7 @@ onboarding-ready-lists = Sua lista
 onboarding-ready-lists-as = { $tracker }, como { $user }
 onboarding-ready-lists-none = Ainda não conectado. Fica em Configurações, Contas quando você quiser.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Nenhuma fonte ainda
     [one] { $sources } fonte
    *[other] { $sources } fontes
@@ -493,9 +491,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Tudo pronto.
     [opens] Configurações, Downloads abre em seguida.
-   *[both] Os dois ficam em Configurações, Downloads.
+   *[sources] Inclua uma lista de fontes para buscar.
 }
-onboarding-ready-open-downloads = Abrir Configurações, Downloads
 onboarding-ready-set-up = Configurar agora
 
 ## Rail.qml
@@ -1682,6 +1679,7 @@ downloads-error-unknown = Algo deu errado. Tente de novo.
 downloads-search-all-off = Todas as fontes estão desativadas. Ative uma para buscar.
 downloads-turn-on = Ativar { $name }
 downloads-search-no-sources = Ainda não há fontes para buscar. Inclua uma lista de fontes nas Configurações, em Downloads.
+downloads-no-sources = Ainda não há fontes para buscar
 downloads-search-none-started = Nenhuma fonte conseguiu iniciar a busca. Tente de novo em instantes.
 downloads-auto-resolution = Filtrado para { $resolution }, a melhor disponível
 downloads-search-one-failed = A busca em { $name } não funcionou. Tente de novo, ou busque em outra fonte.
@@ -2163,7 +2161,6 @@ player-not-now = Agora não
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Listas de fontes
-endpoint-repos-panel-helper = Uma lista de fontes é um conjunto assinado de lugares de busca, incluído por endereço. O Anibeam confere a assinatura e mostra a chave antes de salvar, e você instala as que quiser. As instaladas entram em Fontes de busca, acima.
 endpoint-repos-panel-could-not-start = O Anibeam não conseguiu iniciar isso. Tente de novo em instantes.
 endpoint-repos-panel-needs-value = { $name } precisa de um valor
 endpoint-repos-panel-values-of = Valores de { $name }
@@ -2176,19 +2173,9 @@ endpoint-repos-panel-needs-fields = Precisa de { $fields } antes de buscar.
 endpoint-repos-panel-no-longer-offered = Não é mais oferecida pela lista de fontes.
 endpoint-repos-panel-update-requests-to = A atualização envia requisições para { $host }.
 endpoint-repos-panel-unreadable = Esta lista não pôde ser lida. Atualizar listas tenta de novo.
-endpoint-repos-panel-add-list = Incluir lista de fontes
-endpoint-repos-panel-add-list-helper = O endereço do arquivo de índice, ou o caminho de um nesta máquina.
 endpoint-repos-panel-checking = Verificando
 endpoint-repos-panel-add = Incluir
-endpoint-repos-panel-trust-question = Confiar em { $name }?
 endpoint-repos-panel-fingerprint = Impressão da chave  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } fontes, assinadas. As fontes decidem para onde vão suas buscas; só confie em uma lista de alguém em quem você confia.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } fontes, assinadas, já confiável. As fontes decidem para onde vão suas buscas; só confie em uma lista de alguém em quem você confia.
-endpoint-repos-panel-trust = Confiar
 endpoint-repos-panel-saving = Salvando
 endpoint-repos-panel-install = Instalar
 endpoint-repos-panel-update = Atualizar
@@ -2203,6 +2190,22 @@ endpoint-repos-panel-by-hand-helper = Para sites sem lista: qualquer feed com {"
 endpoint-repos-panel-name = Nome
 endpoint-repos-panel-refreshing = Atualizando
 endpoint-repos-panel-refresh = Atualizar listas
+
+## SourceAttach.qml
+
+source-attach-placeholder = Cole o endereço de uma lista de fontes
+source-attach-what = O que é uma lista de fontes?
+source-attach-recent = Usadas antes
+source-attach-added = { $count ->
+    [one] { $name } incluída: { $count } fonte ativada.
+   *[other] { $name } incluída: { $count } fontes ativadas.
+}
+source-attach-added-none = { $name } incluída. Nenhuma fonte nova para ativar.
+source-attach-waiting = { $count ->
+    [one] { $names } pede um valor primeiro.
+   *[other] { $names } pedem um valor primeiro.
+}
+source-attach-fill-in = Preencher
 
 ## ScheduleSheet.qml
 
@@ -2383,6 +2386,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Todas as teclas que o Anibeam entende
 settings-status-downloads-unread = Ainda não lido
+settings-status-downloads-no-sources = Ainda sem fontes
 settings-status-downloads-answered = O qBittorrent respondeu
 settings-status-downloads-missing = Ajudante de busca não instalado
 settings-status-downloads-unconnected = Ainda não conectado
@@ -2632,7 +2636,6 @@ settings-downloads-sources-title = Fontes de busca
 settings-downloads-sources-helper = Para onde vai a busca, na ordem de tentativa. Uma que não acha nada passa para a próxima.
 settings-downloads-sources-empty = Nenhuma fonte configurada ainda
 settings-downloads-sources-connect = Conecte o ajudante de busca para listá-las
-settings-downloads-sources-empty-helper = Inclua uma lista abaixo e suas fontes aparecem aqui.
 settings-downloads-config-file = Arquivo de config. do ajudante de busca
 settings-downloads-config-native-helper = Guarda as pastas de destino, as tags e as regras de melhor opção, que o próprio Anibeam segue quando roda o ajudante. As fontes dele são só do ajudante.
 settings-downloads-config-helper = Guarda as fontes, as pastas de destino, as tags e as regras de melhor opção.

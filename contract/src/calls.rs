@@ -700,6 +700,13 @@ pub enum Call {
     AddEndpointRepo {
         url: String,
     },
+    /// Adds a repo in one step (#1003): fetches and checks its index, pins its key, and
+    /// installs every endpoint it offers that asks for no value and is not NSFW in a repo
+    /// that is not. A repo already saved under another key is refused, as on a refresh.
+    /// Replies with the catalog; the endpoints that ask for a value stay offered.
+    AttachEndpointRepo {
+        url: String,
+    },
     /// Saves a repo, pinning `key`, the one the preview showed.
     TrustEndpointRepo {
         url: String,

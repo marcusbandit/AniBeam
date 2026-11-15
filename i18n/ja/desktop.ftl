@@ -384,9 +384,7 @@ onboarding-lists-connected = 連携しました。ここで視聴したものが
 onboarding-lists-no-account = アカウントがない場合は? どちらも無料で、1つあれば十分です。連携は設定の「アカウント」でいつでも解除できます。
 onboarding-search-title = 検索先
 onboarding-search-ready = { $count }件のソースで検索できます。
-onboarding-search-none = Anibeamにはソースが入っていません。ソースリポジトリから追加します。共有されたリンクを、設定の「ダウンロード」に貼り付けてください。
-onboarding-sources-after = 設定後に開きます
-onboarding-sources-add = 設定後にリポジトリを追加
+onboarding-search-paste = Anibeam には独自のソースがありません。誰かに共有されたソースリストのアドレスを貼り付けてください。
 onboarding-fetch-title = 取得の方法
 onboarding-fetch-auto = Anibeamに任せる
 onboarding-fetch-recommended = おすすめ
@@ -402,7 +400,7 @@ onboarding-ready-lists = リスト
 onboarding-ready-lists-as = { $tracker }、{ $user }
 onboarding-ready-lists-none = まだ連携していません。必要なときに設定の「アカウント」で連携できます。
 onboarding-ready-downloads = ダウンロード
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] ソースなし
    *[other] ソース{ $sources }件
 }、{ $client ->
@@ -411,9 +409,8 @@ onboarding-ready-downloads-line = { $sources ->
 }{ $next ->
     [ready] 準備完了です。
     [opens] 次に設定の「ダウンロード」が開きます。
-   *[both] どちらも設定の「ダウンロード」にあります。
+   *[sources] 検索するにはソースリストを追加してください。
 }
-onboarding-ready-open-downloads = 設定の「ダウンロード」を開く
 onboarding-ready-set-up = 今すぐ設定
 
 ## Rail.qml
@@ -1317,6 +1314,7 @@ downloads-error-unknown = 問題が発生しました。もう一度お試しく
 downloads-search-all-off = すべてのソースがオフです。検索するにはどれかをオンにしてください。
 downloads-turn-on = { $name }をオンにする
 downloads-search-no-sources = 検索できるソースがまだありません。設定の「ダウンロード」でソースリストを追加してください。
+downloads-no-sources = 検索できるソースがまだありません
 downloads-search-none-started = どのソースも検索を開始できませんでした。少し待ってからもう一度お試しください。
 downloads-auto-resolution = 提供中で最高画質の{ $resolution }に絞り込みました
 downloads-search-one-failed = { $name }での検索がうまくいきませんでした。もう一度試すか、別のソースを検索してください。
@@ -1718,7 +1716,6 @@ player-not-now = 今はしない
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = ソースリスト
-endpoint-repos-panel-helper = ソースリストは、署名付きの検索先の一覧で、アドレスで追加します。Anibeamは保存前に署名を確認して鍵を表示し、そのあと使いたいソースをインストールします。インストールしたソースは上の「検索ソース」に加わります。
 endpoint-repos-panel-could-not-start = 開始できませんでした。少し待ってからもう一度お試しください。
 endpoint-repos-panel-needs-value = { $name }には値が必要です
 endpoint-repos-panel-values-of = { $name }の値
@@ -1732,19 +1729,9 @@ endpoint-repos-panel-needs-fields = 検索する前に{ $fields }が必要です
 endpoint-repos-panel-no-longer-offered = ソースリストでもう提供されていません。
 endpoint-repos-panel-update-requests-to = アップデートは{ $host }にリクエストを送信します。
 endpoint-repos-panel-unreadable = このリストを読み込めませんでした。「リストを更新」で再試行します。
-endpoint-repos-panel-add-list = ソースリストを追加
-endpoint-repos-panel-add-list-helper = インデックスファイルのアドレス、またはこのマシン上のパス。
 endpoint-repos-panel-checking = 確認中
 endpoint-repos-panel-add = 追加
-endpoint-repos-panel-trust-question = { $name }を信頼しますか?
 endpoint-repos-panel-fingerprint = 鍵のフィンガープリント  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    署名付きのソース{ $count }件。検索がどこに送られるかはソースが決めます。信頼できる人のリストだけを信頼してください。
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    署名付きのソース{ $count }件、信頼済み。検索がどこに送られるかはソースが決めます。信頼できる人のリストだけを信頼してください。
-endpoint-repos-panel-trust = 信頼する
 endpoint-repos-panel-saving = 保存中
 endpoint-repos-panel-install = インストール
 endpoint-repos-panel-update = 更新
@@ -1759,6 +1746,22 @@ endpoint-repos-panel-by-hand-helper = リストにないサイト用: 検索語�
 endpoint-repos-panel-name = 名前
 endpoint-repos-panel-refreshing = 更新中
 endpoint-repos-panel-refresh = リストを更新
+
+## SourceAttach.qml
+
+source-attach-placeholder = ソースリストのアドレスを貼り付け
+source-attach-what = ソースリストとは？
+source-attach-recent = 以前に使用
+source-attach-added = { $count ->
+    [one] { $name } を追加しました: { $count } 個のソースが有効です。
+   *[other] { $name } を追加しました: { $count } 個のソースが有効です。
+}
+source-attach-added-none = { $name } を追加しました。新しく有効にするソースはありません。
+source-attach-waiting = { $count ->
+    [one] { $names } は先に値が必要です。
+   *[other] { $names } は先に値が必要です。
+}
+source-attach-fill-in = 入力する
 
 ## ScheduleSheet.qml
 
@@ -1924,6 +1927,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Anibeamで使えるすべてのキー
 settings-status-downloads-unread = 未読み込み
+settings-status-downloads-no-sources = ソースがまだありません
 settings-status-downloads-answered = qBittorrentが応答しました
 settings-status-downloads-missing = 検索ヘルパー未インストール
 settings-status-downloads-unconnected = 未接続
@@ -2171,7 +2175,6 @@ settings-downloads-sources-title = 検索ソース
 settings-downloads-sources-helper = 検索の送り先で、上から順に試します。何も見つからなければ次へ進みます。
 settings-downloads-sources-empty = ソースはまだ設定されていません
 settings-downloads-sources-connect = 一覧を表示するには検索ヘルパーに接続してください
-settings-downloads-sources-empty-helper = 下でソースリストを追加すると、ここに並びます。
 settings-downloads-config-file = 検索ヘルパーの設定ファイル
 settings-downloads-config-native-helper = 保存フォルダ、タグ、最適一致のルールが入っていて、ヘルパーを動かすときはAnibeam自身もこれに従います。ファイル内のソースはヘルパー専用です。
 settings-downloads-config-helper = ソース、保存フォルダ、タグ、最適一致のルールが入っています。

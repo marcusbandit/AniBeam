@@ -59,6 +59,9 @@ Item {
     readonly property bool searchReady: nativeEngine || anirssReady
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
+    // Searches could run and there is nothing to search: no source list added yet. The search
+    // field gives way to the one step that adds one (#1003)
+    readonly property bool noSources: searchReady && endpoints.length === 0
     // Whether the search's source has a feed a subscription can follow (#507)
     readonly property bool followable: {
         var name = page.state ? page.state.endpoint : ""
@@ -1895,6 +1898,7 @@ Item {
         SearchField {
             id: search
             objectName: "downloads-search"
+            visible: !page.noSources
             large: true
             width: parent.width
             placeholder: words.t("downloads-search-placeholder")
@@ -2034,6 +2038,26 @@ Item {
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
                     MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: page.runSearch() }
+                }
+            }
+        }
+
+        // ---- No sources yet: said plainly, with the step that adds a list in place of the search
+        Tile {
+            objectName: "downloads-no-sources"
+            visible: page.noSources
+            width: parent.width
+            height: noSourcesWords.implicitHeight + padding * 2
+            padding: theme.space(7)
+            Column {
+                id: noSourcesWords
+                width: parent.width
+                spacing: theme.space(5)
+                Label { width: parent.width; msg: "downloads-no-sources"; role: "title"; font.pointSize: theme.typeLarge * 1.2; wrapMode: Text.Wrap }
+                SourceAttach {
+                    width: parent.width
+                    onAttached: page.reload()
+                    onSettingsAsked: frame.go("settings", { tab: "downloads" })
                 }
             }
         }

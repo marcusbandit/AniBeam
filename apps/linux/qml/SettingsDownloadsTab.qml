@@ -1,11 +1,11 @@
-// Downloads: the torrent client first (which one, which of the person's saved clients,
-// where, the login, a test), then how searches run (the search helper, anirss, or Anibeam
-// itself) and, for the helper, how Anibeam reaches it and its state, Rolling
-// downloads, finished shows, the search sources anirss was configured with and the endpoint
-// repos. Edits sit in a draft until Save: the secrets only cross once, and saving stops a
-// running sidecar (its environment carries the password), so a save is one deliberate act
-// followed by a reconnect. While the draft differs, a bar floats at the foot of the section
-// with Discard and Save, so the way to keep a change is never a scroll away from it.
+// Downloads: the source lists first, since nothing searches without one (#1003), then the
+// torrent client (which one, which of the person's saved clients, where, the login, a test),
+// then how searches run (the search helper, anirss, or Anibeam itself) and, for the helper,
+// how Anibeam reaches it and its state, Rolling downloads, finished shows and the search
+// sources anirss was configured with. Edits sit in a draft until Save: the secrets only cross
+// once, and saving stops a running sidecar (its environment carries the password), so a save
+// is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
+// foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -181,6 +181,8 @@ SettingsTab {
         return words.t("settings-downloads-mismatch", { helperUrl: a, url: b })
     }
 
+    // The source lists first: nothing searches without one (#1003)
+    EndpointReposPanel { grows: false }
     Panel {
         title: words.t("settings-downloads-torrent-title")
         helper: words.t("settings-downloads-torrent-helper")
@@ -271,7 +273,6 @@ SettingsTab {
         title: words.t("settings-downloads-sources-title")
         helper: words.t("settings-downloads-sources-helper")
         SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
-            helper: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty-helper") : ""
             Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
         Repeater {
             model: tab.endpoints
@@ -287,7 +288,6 @@ SettingsTab {
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
             Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
-    EndpointReposPanel { grows: false }
 
     // The save bar: floats over the section's foot while the draft differs from what is saved
     Rectangle {

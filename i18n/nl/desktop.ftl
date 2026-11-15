@@ -456,9 +456,7 @@ onboarding-search-ready = { $count ->
     [one] { $count } bron klaar om te doorzoeken.
    *[other] { $count } bronnen klaar om te doorzoeken.
 }
-onboarding-search-none = Anibeam heeft geen eigen bronnen. Je voegt ze toe uit een bronrepo: een link die iemand met je deelt, en die je plakt in Instellingen, Downloads.
-onboarding-sources-after = Opent na de introductie
-onboarding-sources-add = Repo toevoegen na introductie
+onboarding-search-paste = Anibeam heeft geen eigen bronnen. Plak het adres van een bronlijst die iemand met je heeft gedeeld.
 onboarding-fetch-title = Wie haalt op
 onboarding-fetch-auto = Laat Anibeam het regelen
 onboarding-fetch-recommended = Aanbevolen
@@ -483,7 +481,7 @@ onboarding-ready-lists = Je lijst
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Nog niet gekoppeld. Dat staat in Instellingen, Accounts wanneer je wilt.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Nog geen bronnen
     [one] { $sources } bron
    *[other] { $sources } bronnen
@@ -493,9 +491,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alles klaar.
     [opens] Instellingen, Downloads opent hierna.
-   *[both] Beide staan in Instellingen, Downloads.
+   *[sources] Voeg een bronlijst toe om te zoeken.
 }
-onboarding-ready-open-downloads = Instellingen, Downloads openen
 onboarding-ready-set-up = Nu instellen
 
 ## Rail.qml
@@ -1680,6 +1677,7 @@ downloads-error-unknown = Er ging iets mis. Probeer het opnieuw.
 downloads-search-all-off = Elke bron staat uit. Zet er een aan om te zoeken.
 downloads-turn-on = { $name } aanzetten
 downloads-search-no-sources = Er zijn nog geen bronnen om te doorzoeken. Voeg een bronlijst toe in Instellingen, onder Downloads.
+downloads-no-sources = Nog geen bronnen om te doorzoeken
 downloads-search-none-started = Geen bron kon de zoekopdracht starten. Probeer het zo opnieuw.
 downloads-auto-resolution = Verfijnd tot { $resolution }, de scherpste die er is
 downloads-search-one-failed = Zoeken op { $name } werkte niet. Probeer het opnieuw, of doorzoek een andere bron.
@@ -2161,7 +2159,6 @@ player-not-now = Niet nu
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Bronlijsten
-endpoint-repos-panel-helper = Een bronlijst is een ondertekende set zoekplekken die je via het adres toevoegt. Anibeam controleert de handtekening en toont de sleutel vóór opslaan; daarna installeer je wat je wilt. Die komen bij Zoekbronnen hierboven.
 endpoint-repos-panel-could-not-start = Anibeam kon dat niet starten. Probeer het zo opnieuw.
 endpoint-repos-panel-needs-value = { $name } heeft een waarde nodig
 endpoint-repos-panel-values-of = Waarden van { $name }
@@ -2174,19 +2171,9 @@ endpoint-repos-panel-needs-fields = Heeft { $fields } nodig voordat het zoekt.
 endpoint-repos-panel-no-longer-offered = Wordt niet meer aangeboden door de bronlijst.
 endpoint-repos-panel-update-requests-to = De update stuurt verzoeken naar { $host }.
 endpoint-repos-panel-unreadable = Deze lijst kon niet worden gelezen. Lijsten vernieuwen probeert het opnieuw.
-endpoint-repos-panel-add-list = Bronlijst toevoegen
-endpoint-repos-panel-add-list-helper = Het adres van het indexbestand, of een pad ernaar op deze machine.
 endpoint-repos-panel-checking = Controleren
 endpoint-repos-panel-add = Toevoegen
-endpoint-repos-panel-trust-question = { $name } vertrouwen?
 endpoint-repos-panel-fingerprint = Vingerafdruk sleutel  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } bronnen, ondertekend. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } bronnen, ondertekend, al vertrouwd. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-trust = Vertrouwen
 endpoint-repos-panel-saving = Opslaan
 endpoint-repos-panel-install = Installeren
 endpoint-repos-panel-update = Bijwerken
@@ -2201,6 +2188,22 @@ endpoint-repos-panel-by-hand-helper = Voor sites zonder lijst: elke feed met {"{
 endpoint-repos-panel-name = Naam
 endpoint-repos-panel-refreshing = Vernieuwen
 endpoint-repos-panel-refresh = Lijsten vernieuwen
+
+## SourceAttach.qml
+
+source-attach-placeholder = Plak het adres van een bronlijst
+source-attach-what = Wat is een bronlijst?
+source-attach-recent = Eerder gebruikt
+source-attach-added = { $count ->
+    [one] { $name } toegevoegd: { $count } bron staat aan.
+   *[other] { $name } toegevoegd: { $count } bronnen staan aan.
+}
+source-attach-added-none = { $name } toegevoegd. Geen nieuwe bron om aan te zetten.
+source-attach-waiting = { $count ->
+    [one] { $names } vraagt eerst om een waarde.
+   *[other] { $names } vragen eerst om een waarde.
+}
+source-attach-fill-in = Invullen
 
 ## ScheduleSheet.qml
 
@@ -2381,6 +2384,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Elke toets waar Anibeam op reageert
 settings-status-downloads-unread = Nog niet gelezen
+settings-status-downloads-no-sources = Nog geen bronnen
 settings-status-downloads-answered = qBittorrent antwoordde
 settings-status-downloads-missing = Zoekhulp niet geïnstalleerd
 settings-status-downloads-unconnected = Nog niet gekoppeld
@@ -2628,7 +2632,6 @@ settings-downloads-sources-title = Zoekbronnen
 settings-downloads-sources-helper = Waar zoeken heen gaat, op volgorde. Vindt een bron niets, dan de volgende.
 settings-downloads-sources-empty = Nog geen bronnen ingesteld
 settings-downloads-sources-connect = Koppel de zoekhulp om ze te tonen
-settings-downloads-sources-empty-helper = Bronnen uit een bronlijst hieronder verschijnen hier.
 settings-downloads-config-file = Instellingenbestand van de zoekhulp
 settings-downloads-config-native-helper = Bevat de opslagmappen, de tags en de regels voor beste match, die Anibeam zelf volgt als het de hulp draait. De eigen bronnen zijn alleen van de hulp.
 settings-downloads-config-helper = Bevat de bronnen, de opslagmappen, de tags en de regels voor beste match.

@@ -378,9 +378,7 @@ onboarding-lists-connected = 已连接。你在这里看的内容现在会计入
 onboarding-lists-no-account = 还没有账号？两个都免费，有一个就够了。随时可以在设置的“账号”中断开连接。
 onboarding-search-title = 可以搜索的地方
 onboarding-search-ready = 有 { $count } 个来源可供搜索。
-onboarding-search-none = Anibeam 本身不带任何来源。你需要从来源仓库添加：别人分享给你的一个链接，粘贴到设置的“下载”中即可。
-onboarding-sources-after = 设置完成后打开
-onboarding-sources-add = 设置完成后添加仓库
+onboarding-search-paste = Anibeam 不自带任何来源。粘贴别人分享给你的来源列表地址。
 onboarding-fetch-title = 由谁下载
 onboarding-fetch-auto = 交给 Anibeam
 onboarding-fetch-recommended = 推荐
@@ -396,7 +394,7 @@ onboarding-ready-lists = 你的列表
 onboarding-ready-lists-as = { $tracker }，账号 { $user }
 onboarding-ready-lists-none = 尚未连接。需要时可在设置的“账号”中连接。
 onboarding-ready-downloads = 下载
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 还没有来源
    *[other] { $sources } 个来源
 }，{ $client ->
@@ -405,9 +403,8 @@ onboarding-ready-downloads-line = { $sources ->
 }{ $next ->
     [ready] 一切就绪。
     [opens] 接下来会打开设置的“下载”。
-   *[both] 两者都在设置的“下载”中。
+   *[sources] 添加一个来源列表即可搜索。
 }
-onboarding-ready-open-downloads = 打开设置中的“下载”
 onboarding-ready-set-up = 立即设置
 
 ## Rail.qml
@@ -1271,6 +1268,7 @@ downloads-error-unknown = 出了点问题，请重试。
 downloads-search-all-off = 所有来源都已关闭。开启一个才能搜索。
 downloads-turn-on = 开启 { $name }
 downloads-search-no-sources = 还没有可搜索的来源。请在设置的“下载”中添加来源列表。
+downloads-no-sources = 还没有可搜索的来源
 downloads-search-none-started = 没有来源能开始搜索，请稍后再试。
 downloads-auto-resolution = 已筛选为 { $resolution }，可选的最高清晰度
 downloads-search-one-failed = 在 { $name } 上的搜索没有成功。请重试，或换个来源搜索。
@@ -1668,7 +1666,6 @@ player-not-now = 以后再说
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 来源列表
-endpoint-repos-panel-helper = 来源列表是一组经过签名的搜索位置，通过地址添加。Anibeam 会检查签名，并在保存前向你展示密钥，然后你可以安装需要的来源。已安装的来源会加入上方的“搜索来源”。
 endpoint-repos-panel-could-not-start = Anibeam 无法启动它，请稍后再试。
 endpoint-repos-panel-needs-value = { $name } 需要填写值
 endpoint-repos-panel-values-of = { $name } 的值
@@ -1681,19 +1678,9 @@ endpoint-repos-panel-needs-fields = 需要先填写 { $fields } 才能搜索。
 endpoint-repos-panel-no-longer-offered = 它的来源列表已不再提供。
 endpoint-repos-panel-update-requests-to = 更新后会向 { $host } 发送请求。
 endpoint-repos-panel-unreadable = 无法读取此列表。“刷新列表”会重试。
-endpoint-repos-panel-add-list = 添加来源列表
-endpoint-repos-panel-add-list-helper = 索引文件的地址，或这台机器上的文件路径。
 endpoint-repos-panel-checking = 检查中
 endpoint-repos-panel-add = 添加
-endpoint-repos-panel-trust-question = 信任 { $name }？
 endpoint-repos-panel-fingerprint = 密钥指纹  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } 个来源，已签名。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } 个来源，已签名，已信任。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-trust = 信任
 endpoint-repos-panel-saving = 保存中
 endpoint-repos-panel-install = 安装
 endpoint-repos-panel-update = 更新
@@ -1708,6 +1695,22 @@ endpoint-repos-panel-by-hand-helper = 适用于没有列表收录的站点：任
 endpoint-repos-panel-name = 名称
 endpoint-repos-panel-refreshing = 正在刷新
 endpoint-repos-panel-refresh = 刷新列表
+
+## SourceAttach.qml
+
+source-attach-placeholder = 粘贴来源列表的地址
+source-attach-what = 什么是来源列表？
+source-attach-recent = 用过的
+source-attach-added = { $count ->
+    [one] 已添加 { $name }：已开启 { $count } 个来源。
+   *[other] 已添加 { $name }：已开启 { $count } 个来源。
+}
+source-attach-added-none = 已添加 { $name }。没有可新开启的来源。
+source-attach-waiting = { $count ->
+    [one] { $names } 需要先填一个值。
+   *[other] { $names } 需要先填值。
+}
+source-attach-fill-in = 填写
 
 ## ScheduleSheet.qml
 
@@ -1865,6 +1868,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Anibeam 响应的所有按键
 settings-status-downloads-unread = 尚未读取
+settings-status-downloads-no-sources = 还没有来源
 settings-status-downloads-answered = qBittorrent 已响应
 settings-status-downloads-missing = 未安装搜索助手
 settings-status-downloads-unconnected = 尚未连接
@@ -2109,7 +2113,6 @@ settings-downloads-sources-title = 搜索来源
 settings-downloads-sources-helper = 搜索的去处，按尝试顺序排列。一个找不到就交给下一个。
 settings-downloads-sources-empty = 还没有设置来源
 settings-downloads-sources-connect = 连接搜索助手后即可列出
-settings-downloads-sources-empty-helper = 在下方添加来源列表，它的来源就会显示在这里。
 settings-downloads-config-file = 搜索助手的设置文件
 settings-downloads-config-native-helper = 包含保存文件夹、标签和最佳匹配规则，Anibeam 运行助手时自己也会遵循。其中的来源只属于助手。
 settings-downloads-config-helper = 包含来源、保存文件夹、标签和最佳匹配规则。
