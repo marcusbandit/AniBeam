@@ -3,8 +3,8 @@ name: iOS
 # The iPhone app's own checks (#950). A pull request that touches the phone's code runs
 # rustfmt, clippy for the simulator's target with warnings denied, and the simulator build
 # through scripts/build-ios.sh, so the iPhone is checked without a label. A PR that changes
-# only iPhone files skips the Android workflow and ci.yml's cargo jobs (their paths exclude
-# them) and runs this one. The core and the shared crates are not in the paths: a push there
+# only iPhone files skips the Android workflow (its paths exclude them) and runs this one.
+# The core, the shared crates and the root Cargo files are not in the paths: a push there
 # builds no macOS job (#986), and the `full ci` label builds the IPA over them before merge.
 # Setup follows ios-ipa.yml, which builds the device IPA, and its libmpv cache key is the same.
 on:
@@ -51,6 +51,26 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Its own fast job, as in android.yml, so a formatting slip fails in seconds instead of after
+  # the macOS setup. The phone workspace is not a member of the root one, so ci.yml never sees
+  # it, and on an iPhone-only PR android.yml does not run. Its two packages by name.
+  fmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
+
+      - run: cargo fmt --check -p anibeam-android -p anibeam-companion
+
   ios:
     runs-on: macos-26
     timeout-minutes: 90
@@ -79,9 +99,20 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app
           brew install xcodegen
 
-      # Unpacked libmpv archives cached on the fetch script's pin, as ios-ipa.yml does.
+      # Unpacked libmpv archives cached on the fetch script's pin, as ios-ipa.yml does. Only
+      # main saves it (#986); a pull request restores what main or the nightly's IPA saved.
       - name: Cache libmpv for iOS
+        if: github.ref == 'refs/heads/main'
         uses: actions/cache@v4
+        with:
+          path: |
+            apps/android/vendor/mpv-ios
+            !apps/android/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+
+      - name: Restore libmpv for iOS
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v4
         with:
           path: |
             apps/android/vendor/mpv-ios
@@ -93,10 +124,6 @@ jobs:
         run: |
           scripts/fetch-mpv-ios.sh
           rm -rf vendor/mpv-ios/zips
-
-      # The phone workspace is not a member of the root one, so ci.yml never sees it. Its two
-      # packages by name, as android.yml does.
-      - run: cargo fmt --check -p anibeam-android -p anibeam-companion
 
       - name: Clippy (iPhone simulator)
         run: cargo clippy --locked --target aarch64-apple-ios-sim -- -D warnings

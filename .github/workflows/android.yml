@@ -39,14 +39,17 @@ on:
       - 'rust-toolchain.toml'
       - '.github/workflows/android.yml'
       # An iPhone-only change cannot affect this (#950): the paths ios-automerge.sh counts as
-      # iPhone only. Later patterns win, so these stay after the positive ones.
+      # iPhone only, the same list as its ONLY regex, so a path added there is added here too.
+      # Later patterns win, so these stay after the positive ones.
       - '!apps/android/ios/**'
       - '!apps/android/src/**/ios.rs'
       - '!apps/android/src/**/ios/**'
       - '!apps/android/src/**/metal.rs'
       - '!apps/android/src/**/metal/**'
       - '!apps/android/scripts/*ios*'
-      # Change files are checked by ci.yml (core/tests/changelog.rs); the APK never reads them.
+      # Every iPhone PR carries one. The build embeds them as text (build.rs) and the app
+      # parses them at run time, so no change file can fail this; ci.yml checks their format
+      # (core/tests/changelog.rs).
       - '!apps/android/changes/**'
   workflow_dispatch:
 
