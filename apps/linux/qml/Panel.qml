@@ -1,6 +1,6 @@
-// A settings group: a heading on the ground in the title cut, an optional helper line under
-// it, then one flat pane (`theme.tile`, the tile radius) holding the rows. Panel draws a
-// hairline under each row that sets `hairline: true`, except the last. One surface per group
+// A settings group: a heading on the ground in the title cut, then one flat pane
+// (`theme.tile`, the tile radius) holding the rows. Panel draws a hairline under each row
+// that sets `hairline: true`, except the last. One surface per group
 // and dividers inside it, never a pane in a pane. Three slots: `rows` (the default) flow from
 // the top at their natural height, `stretch` holds one item that takes whatever is left when
 // the group is taller than its content, and `foot` pins rows to the pane's bottom edge. `bare`
@@ -15,7 +15,6 @@ Item {
     id: root
     property string title: ""
     property string icon: ""
-    property string helper: ""
     property bool grows: false
     property bool spread: false
     property bool bare: false
@@ -41,7 +40,7 @@ Item {
     readonly property real naturalStretch: stretchItem ? stretchItem.implicitHeight : 0
     readonly property bool hasRows: laidRows.n > 0
     readonly property bool hasFoot: footer.children.length > 0
-    readonly property bool hasHead: title !== "" || helper !== ""
+    readonly property bool hasHead: title !== ""
     // The rows' natural height read off the children, not body.height, so `spread` can
     // widen the gaps without feeding back into the height it spreads over. A Column lays
     // out only visible children with a size, so only those count.
@@ -80,15 +79,6 @@ Item {
             font.pointSize: theme.typeLarge
             font.variableAxes: ({ "wdth": 74, "wght": 500 })
             color: root.flash > 0 ? Qt.tint(theme.text, Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.flash)) : theme.text
-        }
-        Label {
-            visible: root.helper !== ""
-            width: Math.min(parent.width, theme.space(190))
-            text: root.helper
-            color: theme.textDim
-            wrapMode: Text.Wrap
-            role: "ui"
-            font.pointSize: theme.typeSmall
         }
     }
     Rectangle {

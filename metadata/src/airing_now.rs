@@ -756,6 +756,29 @@ pub fn set_not_interested(
     Ok(Reply::Ok)
 }
 
+/// The `PruneNotInterested` call: the same check a full read of what is on
+/// air makes (`prune_not_interested`), run against what is cached, then the
+/// list. Settings makes it when the list is opened (#1012), so a mark for a
+/// show that ended goes without waiting for a whole read. A cache with no
+/// show on air in it is no read at all, and one stopped at the page cap is
+/// not all of it; neither drops anything.
+pub fn prune_and_list(services: &Services) -> Result<Reply, CoreError> {
+    services.store.tx(|tx| {
+        let on_air: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM season_shows WHERE season = 'NOW'",
+            [],
+            |r| r.get(0),
+        )?;
+        // The same guard the read itself has: a read stopped at the page cap may have left
+        // shows on air unread, and their marks must stay
+        if on_air > 0 && on_air < i64::from(MAX_PAGES * 50) {
+            prune_not_interested(tx)?;
+        }
+        Ok(())
+    })?;
+    list_not_interested(services)
+}
+
 /// The `ListNotInterested` call: newest mark first.
 pub fn list_not_interested(services: &Services) -> Result<Reply, CoreError> {
     let images_dir = services.paths.images_dir();
