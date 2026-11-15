@@ -412,13 +412,14 @@ Item {
             // row stretched to the width it was given
             readonly property bool oneLine: tabSeg.implicitWidth + theme.space(8) + orderRow.fullWidth <= width
             height: oneLine ? Math.max(tabSeg.height, orderRow.height) : tabSeg.height + theme.space(3) + orderRow.height
-            Seg {
+            // The library's tabs, then the pages that live under Library (#1012)
+            LibraryTabs {
                 id: tabSeg
-                objectName: "tab"
                 anchors.left: parent.left
-                options: page.tabOptions
-                index: Math.max(0, page.tabNames.indexOf(page.tab))
-                onPicked: function(i) { page.pickTab(i) }
+                here: "library"
+                filters: page.tabOptions
+                filterIndex: Math.max(0, page.tabNames.indexOf(page.tab))
+                onFilterPicked: function(i) { page.pickTab(i) }
             }
             // The order pair and the cut trio. Fixed widths for the pills and the direction, so
             // a pick never moves the controls under the pointer or flips the line
@@ -675,6 +676,17 @@ Item {
         onCleared: page.ratePicked(null)
     }
 
+    // The tabs stay over an empty library too, so On my list, Stats and Fix matches can be reached
+    // before the first folder is in (#1012)
+    LibraryTabs {
+        visible: page.libraryEmpty
+        x: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
+        y: theme.space(8)
+        here: "library"
+        filters: page.tabOptions
+        filterIndex: Math.max(0, page.tabNames.indexOf(page.tab))
+        onFilterPicked: function(i) { page.pickTab(i) }
+    }
     // The empty library: no folder, folders still being read, or folders with no video
     LibraryEmpty {
         objectName: "library-empty"
