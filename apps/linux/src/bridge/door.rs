@@ -1373,6 +1373,9 @@ impl qobject::Door {
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
             | EventBody::RecommendedRefreshed
+            | EventBody::DiscordJoinAsk { .. }
+            | EventBody::DiscordAskGone { .. }
+            | EventBody::DiscordJoin { .. }
             | EventBody::ShowPageRead { .. } => {}
             EventBody::RoomChanged { room } => {
                 let room = match room {

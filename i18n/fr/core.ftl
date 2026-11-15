@@ -520,6 +520,9 @@ core-first-run-not-absolute = le dossier des vidéos doit être un chemin absolu
 ## core/src/presence/mod.rs
 
 core-presence-extra = Bonus
+core-presence-room = Regarder ensemble
+core-presence-in-room = Dans un salon
+core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demandez-lui d'en ouvrir un.
 
 ## core/src/trackers/accounts.rs
 
