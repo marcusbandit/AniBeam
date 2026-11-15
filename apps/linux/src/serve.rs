@@ -343,7 +343,7 @@ mod unix {
     }
 
     /// Opens the core, holds the host on and starts it. Downloads that were set up come up
-    /// with it, so AniBeam's own qBittorrent keeps fetching what the subscriptions find; a
+    /// with it, so Anibeam's own qBittorrent keeps fetching what the subscriptions find; a
     /// sandbox root leaves the owner's real clients alone, as the window does.
     fn open(sandbox: bool) -> Result<Arc<Core>, CoreError> {
         let core = runtime::open_core()?;

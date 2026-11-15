@@ -1,4 +1,4 @@
-From: Marcus Rosado <marcusbanditten@gmail.com>
+From: Marcus Rosado <22052802+marcusbandit@users.noreply.github.com>
 Subject: [PATCH] ao_coreaudio: clear audio_unit after disposing it on init failure
 
 mpv-player/mpv#18383 makes a failed init call uninit, which disposes

@@ -27,12 +27,16 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
+use crate::foundation::titles;
+use crate::foundation::watch::MARK_FRACTION;
 use crate::library::cards;
 use crate::library::sidecar::sidecars_of;
-use crate::library::{classifier, labels, titles};
+use crate::library::{classifier, labels};
+use crate::playback::Playback;
 use crate::prefs;
 use crate::presence::Activity;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::{on_hold, writes};
 
@@ -41,9 +45,6 @@ pub const VIEW_SECS: f64 = 30.0;
 /// The largest advance between two ticks that still reads as playing rather
 /// than as a seek: one and a half times the shell's one-second tick.
 pub const MAX_TICK_DELTA: f64 = 1.5;
-/// How far through a file counts as watched when no outro is known. The
-/// number AniList and MAL use themselves.
-pub const MARK_FRACTION: f64 = 0.85;
 /// A position under this is not worth resuming to.
 pub const RESUME_HEAD: f64 = 5.0;
 /// How far the playhead has to move before another resume point is worth
@@ -113,7 +114,7 @@ impl Sessions {
     /// A poisoned lock is recovered rather than propagated: the map holds
     /// plain data, so a panic elsewhere leaves it perfectly usable.
     fn lock(&self) -> MutexGuard<'_, HashMap<u64, Session>> {
-        self.map.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.map)
     }
 
     fn next_id(&self) -> u64 {
@@ -143,7 +144,7 @@ impl Sessions {
     pub(crate) fn playing(&self) -> Option<Session> {
         self.lock()
             .values()
-            .filter(|s| s.profile == crate::profiles::OWNER)
+            .filter(|s| s.profile == crate::foundation::trust::OWNER)
             .filter(|s| s.last_position.is_some() && !s.paused)
             .max_by_key(|s| s.id)
             .cloned()
@@ -443,12 +444,14 @@ fn neighbours(
 /// a miss the skip windows job will ask about again, so it reads as absent.
 /// The skip windows found so far for an open session, for a player whose
 /// session runs on another machine and so never hears `SkipWindowsReady`.
-pub fn windows_of(core: &Core, session: u64) -> Result<Vec<SkipWindow>, CoreError> {
-    let s = core.sessions.get(session).ok_or(CoreError::NotFound {
+pub fn windows_of(playback: &Playback, session: u64) -> Result<Vec<SkipWindow>, CoreError> {
+    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
         what: Entity::Session,
         id: session,
     })?;
-    core.store
+    playback
+        .services
+        .store
         .read(|c| cached_windows(c, s.series, &s.episode_key))
 }
 
@@ -473,32 +476,43 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 
 /// Everything the player needs before the first frame, and the session the
 /// ticks that follow belong to.
-pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
-    open_for(core, file, crate::profiles::OWNER)
+pub fn open(playback: &Playback, file: u64) -> Result<PlaybackSession, CoreError> {
+    open_for(playback, file, crate::foundation::trust::OWNER)
+}
+
+/// `OpenPlayback`: [`open`] as the call's reply.
+pub(crate) fn open_call(playback: &Playback, file: u64) -> Result<Reply, CoreError> {
+    Ok(Reply::Playback {
+        session: Box::new(open(playback, file)?),
+    })
 }
 
 /// [`open`] for one profile: the resume point it starts from and every row
 /// the session writes are that profile's.
-pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession, CoreError> {
-    let images_dir = core.paths.images_dir();
+pub fn open_for(
+    playback: &Playback,
+    file: u64,
+    profile: u64,
+) -> Result<PlaybackSession, CoreError> {
+    let images_dir = playback.services.paths.images_dir();
     let (f, s, resume_from, skip_windows, Neighbours { prev, next, first_season }, episode_title, subtitle_defaults, lang) =
-        core.store.read(|c| {
+        playback.services.store.read(|c| {
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
             // torrent is still writing does not open.
-            if !f.is_extra && crate::downloads::is_writing(core, &f.path) {
-                let done = crate::downloads::episode_progress(core, f.series, f.number).unwrap_or(0.0);
-                return Err(CoreError::Service {
-                    service: crate::downloads::qbt::SERVICE.to_string(),
-                    code: "downloading".to_string(),
-                    message: crate::i18n::tr(
+            if !f.is_extra && crate::downloads::is_writing(&playback.downloads, &f.path) {
+                let done = crate::downloads::episode_progress(&playback.downloads, f.series, f.number).unwrap_or(0.0);
+                return Err(CoreError::service(
+                    crate::downloads::qbt::SERVICE,
+                    "downloading",
+                    crate::i18n::tr(
                         "core-playback-still-downloading",
                         &[
                             ("number", (f.number as u32).to_string().into()),
                             ("done", (done * 100.0).floor().to_string().into()),
                         ],
                     ),
-                });
+                ));
             }
             let s = series_row(c, f.series, &images_dir)?;
             let resume_from: Option<f64> = c
@@ -514,7 +528,7 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
             let neighbours = match (f.is_extra, s.kind) {
                 (false, SeriesKind::Show) => {
                     neighbours(c, f.series, f.season.unwrap_or(1), f.number, &|path| {
-                        crate::downloads::is_writing(core, path)
+                        crate::downloads::is_writing(&playback.downloads, path)
                     })?
                 }
                 _ => Neighbours::default(),
@@ -604,8 +618,8 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
         s.poster_url.clone(),
     ));
 
-    let id = core.sessions.next_id();
-    core.sessions.lock().insert(
+    let id = playback.sessions.next_id();
+    playback.sessions.lock().insert(
         id,
         Session {
             id,
@@ -666,25 +680,25 @@ pub fn opening_of(windows: &[SkipWindow]) -> Option<f64> {
 
 /// The opening the skip windows job found, for the session and for a watch
 /// together room it is attached to.
-pub fn report_opening(core: &Core, session: u64, start: f64) {
+pub fn report_opening(playback: &Playback, session: u64, start: f64) {
     if !start.is_finite() || start < 0.0 {
         return;
     }
     {
-        let mut map = core.sessions.lock();
+        let mut map = playback.sessions.lock();
         let Some(s) = map.get_mut(&session) else {
             return;
         };
         s.opening_start = Some(start);
     }
-    crate::room::opening_known(core, session, start);
+    crate::room::opening_known(playback, session, start);
 }
 
 /// What the shell learned when the file loaded. Called twice by the skip
 /// windows job: once with the duration alone, and again once an outro is
 /// known. A session that has closed in between is nothing to report.
-pub fn report_chapters(core: &Core, session: u64, duration: f64, outro_start: Option<f64>) {
-    let mut map = core.sessions.lock();
+pub fn report_chapters(playback: &Playback, session: u64, duration: f64, outro_start: Option<f64>) {
+    let mut map = playback.sessions.lock();
     let Some(s) = map.get_mut(&session) else {
         tracing::debug!("chapters for session {session}, which has already closed");
         return;
@@ -703,9 +717,14 @@ pub fn report_chapters(core: &Core, session: u64, duration: f64, outro_start: Op
 
 /// One tick from the player. The rules run under the sessions lock, so each
 /// fires exactly once; nothing that touches the store runs while it is held.
-pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<(), CoreError> {
+pub fn tick(
+    playback: &Arc<Playback>,
+    session: u64,
+    position: f64,
+    paused: bool,
+) -> Result<(), CoreError> {
     let (s, fired) = {
-        let mut map = core.sessions.lock();
+        let mut map = playback.sessions.lock();
         let Some(s) = map.get_mut(&session) else {
             return Err(CoreError::NotFound {
                 what: Entity::Session,
@@ -725,29 +744,29 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
         (s.clone(), fired)
     };
     // Discord shows the owner's own playing, never a guest's.
-    if s.profile == crate::profiles::OWNER {
-        crate::presence::tick(core, s.id, &s.presence, position, paused);
+    if s.profile == crate::foundation::trust::OWNER {
+        crate::presence::tick(playback, s.id, &s.presence, position, paused);
     }
-    crate::room::tick(core, s.id, position, paused);
-    apply(core, &s, &fired)
+    crate::room::tick(playback, s.id, position, paused);
+    apply(playback, &s, &fired)
 }
 
 /// The end of a session: a last tick, the completion the end of the file
 /// implies, and the session gone. Closing one that is already closed is the
 /// same as closing it once, so a shell that says goodbye twice is fine.
 pub fn close(
-    core: &Core,
+    playback: &Arc<Playback>,
     session: u64,
     position: f64,
     reason: CloseReason,
 ) -> Result<(), CoreError> {
-    let taken = core.sessions.lock().remove(&session);
+    let taken = playback.sessions.lock().remove(&session);
     let Some(mut s) = taken else {
         tracing::debug!("close for session {session}, which is already closed");
         return Ok(());
     };
-    crate::presence::close(core, session);
-    crate::room::closed(core, session);
+    crate::presence::close(playback, session);
+    crate::room::closed(playback, session);
     let mut fired = effects(&mut s, position, TickKind::Closing);
     if reason == CloseReason::Ended
         && let Some(effect) = ended(&mut s)
@@ -757,16 +776,16 @@ pub fn close(
         fired.retain(|e| !matches!(e, Effect::Resume(_)));
         fired.push(effect);
     }
-    apply(core, &s, &fired)
+    apply(playback, &s, &fired)
 }
 
-fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
+fn apply(playback: &Playback, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
     for effect in fired {
         match effect {
-            Effect::View => record_view(core, s)?,
-            Effect::Mark => mark(core, s),
-            Effect::Complete => complete(core, s)?,
-            Effect::Resume(position) => write_resume(core, s, *position),
+            Effect::View => record_view(playback, s)?,
+            Effect::Mark => mark(playback, s),
+            Effect::Complete => complete(playback, s)?,
+            Effect::Resume(position) => write_resume(&playback.services, s, *position),
         }
     }
     Ok(())
@@ -775,10 +794,10 @@ fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
 /// The library's Last viewed sort, one row per series. The write only lands
 /// when it is newer than what is there, so a session that outlived a clock
 /// change cannot clobber a fresher one.
-fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
+fn record_view(playback: &Playback, s: &Session) -> Result<(), CoreError> {
     let (series, key, now, profile) =
         (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
-    core.store.write(move |c| {
+    playback.services.store.write(move |c| {
         c.execute(
             "INSERT INTO views (profile_id, series_id, episode_key, at) VALUES (?4, ?1, ?2, ?3)
              ON CONFLICT(profile_id, series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
@@ -787,11 +806,11 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
         )?;
         Ok(())
     })?;
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
-    let (folder, code) = core.store.read(|c| line_labels(c, s))?;
-    core.bus.info(
+    let (folder, code) = playback.services.store.read(|c| line_labels(c, s))?;
+    playback.services.bus.info(
         Stage::Playback,
         format!("viewed {folder} {code}"),
         EventBody::Viewed {
@@ -800,26 +819,27 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
         },
     );
     // Watching a series on hold again takes it off hold.
-    on_hold::played(core, s.series);
+    on_hold::played(&playback.trackers, s.series);
     Ok(())
 }
 
 /// The mark the rule fires, as the Mark job every other mark goes through.
 /// The rule has already happened by the time this runs, so whatever the
 /// write answers is the outcome and none of it is a failure of the tick.
-fn mark(core: &Core, s: &Session) {
+fn mark(playback: &Playback, s: &Session) {
     // The tracker accounts are the owner's; a guest's own come with #632.
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return;
     }
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
-        let folder = core
+        let folder = playback
+            .services
             .store
             .read(|c| line_labels(c, s))
             .map(|(folder, _)| folder)
             .unwrap_or_default();
-        core.bus.say(
+        playback.services.bus.say(
             Level::Warn,
             Stage::Playback,
             crate::words!("core-playback-not-saved", folder = &folder),
@@ -830,7 +850,8 @@ fn mark(core: &Core, s: &Session) {
     }
     // The hidden guard, ahead of the job's own: a series the user hid never
     // gets a mark because it was played, and it says nothing about it.
-    let hidden = core
+    let hidden = playback
+        .services
         .store
         .read(|c| {
             for (tracker, id) in [(Tracker::Anilist, s.anilist_id), (Tracker::Mal, s.mal_id)] {
@@ -846,7 +867,7 @@ fn mark(core: &Core, s: &Session) {
     if hidden {
         return;
     }
-    if let Err(e) = writes::mark(core, s.series, number) {
+    if let Err(e) = writes::mark(&playback.trackers, s.series, number) {
         tracing::debug!("the mark rule wrote nothing for series {}: {e}", s.series);
     }
 }
@@ -855,7 +876,7 @@ fn mark(core: &Core, s: &Session) {
 /// (the latest in `completed`, and one more finish in the watch log),
 /// and the card behind the player is pushed so Next up moves on. An extra
 /// only forgets where it was, since it is not an episode of anything.
-fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
+fn complete(playback: &Playback, s: &Session) -> Result<(), CoreError> {
     let (series, key, now, record, profile) = (
         s.series,
         s.episode_key.clone(),
@@ -867,7 +888,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     // seconds of forward play, the view rule. A scrub to the credits or a file
     // that ends at once still completes the episode, but adds no finish.
     let watched = s.viewed;
-    core.store.tx(move |tx| {
+    playback.services.store.tx(move |tx| {
         tx.execute(
             "DELETE FROM resume_points WHERE profile_id = ?3 AND series_id = ?1 AND episode_key = ?2",
             params![series as i64, key, profile as i64],
@@ -893,10 +914,10 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     })?;
     // The bus is the owner's shell and log: a guest's playing writes their
     // rows and says nothing there.
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return Ok(());
     }
-    core.bus.debug(
+    playback.services.bus.debug(
         Stage::Playback,
         "resume point cleared",
         EventBody::ResumePointChanged {
@@ -907,14 +928,15 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     if s.is_extra {
         return Ok(());
     }
-    crate::downloads::rolling::nudge(core);
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    crate::downloads::rolling::nudge(&playback.downloads);
+    let images_dir = playback.services.paths.images_dir();
+    let cards = playback
+        .services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[s.series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let what = if s.is_film { "a film" } else { "an episode" };
-    core.bus.debug(
+    playback.services.bus.debug(
         Stage::Playback,
         format!("{title} finished {what}"),
         EventBody::SeriesChanged { series: cards },
@@ -926,7 +948,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
 /// and what it needs back is the event, which goes out at once. The row is
 /// queued behind whatever the writer is doing, and the queue is FIFO, so a
 /// completion that deletes the row still runs after the upsert before it.
-fn write_resume(core: &Core, s: &Session, position: f64) {
+fn write_resume(services: &Services, s: &Session, position: f64) {
     let (series, key, now, profile) =
         (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
     // A duration is only known once the shell has reported the chapters, and
@@ -934,7 +956,7 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
     // every fraction drawn off it.
     let duration = s.duration.unwrap_or(0.0);
     let named = key.clone();
-    core.store.post(move |c| {
+    services.store.post(move |c| {
         if let Err(e) = c.execute(
             "INSERT INTO resume_points (profile_id, series_id, episode_key, position, duration, at) VALUES (?6, ?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
@@ -943,10 +965,10 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");
         }
     });
-    if s.profile != crate::profiles::OWNER {
+    if s.profile != crate::foundation::trust::OWNER {
         return;
     }
-    core.bus.debug(
+    services.bus.debug(
         Stage::Playback,
         "resume point saved",
         EventBody::ResumePointChanged {
@@ -996,13 +1018,13 @@ fn line_labels(conn: &Connection, s: &Session) -> Result<(String, String), CoreE
 /// The series' playback memory: which audio and which subtitles the last
 /// episode was watched with, so the next one opens on the same pair.
 pub fn set_track_choice(
-    core: &Core,
+    services: &Services,
     series: u64,
     audio: Option<TrackRef>,
     subtitle: Option<SubtitleChoice>,
 ) -> Result<Reply, CoreError> {
     let json = serde_json::to_string(&TrackChoice { audio, subtitle })?;
-    let changed = core.store.write(move |c| {
+    let changed = services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET track_choice = ?1 WHERE id = ?2",
             params![json, series as i64],
@@ -1048,7 +1070,7 @@ mod tests {
             presence: Arc::new(Activity::describe(
                 "Bebop", "EP 3", None, is_extra, false, None,
             )),
-            profile: crate::profiles::OWNER,
+            profile: crate::foundation::trust::OWNER,
         }
     }
 

@@ -24,21 +24,23 @@ pub fn pick_file(
 }
 
 /// The language the environment names, as `LANG` holds it.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_locale() -> String {
     std::env::var("LANG").unwrap_or_default()
 }
 
 /// Dark, the app's own default.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn system_dark() -> bool {
     true
 }
 
 /// Nothing to ready: a target that links libmpv here hands it nothing first.
-#[cfg_attr(not(libmpv), allow(dead_code))]
+#[cfg_attr(any(not(libmpv), target_os = "ios"), allow(dead_code))]
 pub fn prepare_mpv() {}
 
 /// Never the Android emulator.
-#[cfg_attr(not(libmpv), allow(dead_code))]
+#[cfg_attr(any(not(libmpv), target_os = "ios"), allow(dead_code))]
 pub fn emulator() -> bool {
     false
 }
@@ -85,11 +87,13 @@ pub fn notifications_allowed() -> bool {
 }
 
 /// Every request for the audio focus is granted.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn take_audio_focus() -> FocusAsk {
     FocusAsk::Granted
 }
 
 /// No audio focus to give back.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn give_audio_focus() {}
 
 /// No clipboard: nothing is copied.
@@ -99,12 +103,14 @@ pub fn copy_text(label: &str, text: &str) -> bool {
 }
 
 /// No hinge.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn fold() -> (Option<f32>, bool) {
     (None, false)
 }
 
 /// The crease is never reported: the answer `Crease.at` gives on a phone without the window
 /// extensions.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn crease() -> crate::crease::Reading {
     crate::crease::decode(crate::crease::SILENT)
 }
@@ -129,7 +135,14 @@ pub fn set_volume(level: f32) {
     let _ = level;
 }
 
+/// No window of the platform's to reach.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+pub fn window_up(window: &crate::AppWindow) {
+    let _ = window;
+}
+
 /// No screen to turn.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn player_screen(on: bool) {
     let _ = on;
 }
@@ -140,16 +153,19 @@ pub fn multicast(on: bool) {
 }
 
 /// No display to keep on.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn player_awake(on: bool) {
     let _ = on;
 }
 
 /// The Default launcher icon.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn app_icon() -> i32 {
     0
 }
 
 /// No launcher icon to change.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn set_app_icon(which: i32) {
     let _ = which;
 }

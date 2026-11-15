@@ -89,7 +89,7 @@ event-problem-trackers = Mit deinen Listen ist etwas schiefgegangen. Details ste
 event-problem-franchise = Mit verwandten Serien ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
 event-problem-playback = Bei der Wiedergabe ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
 event-problem-store = Beim Speichern deiner Daten ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
-event-problem-system = In AniBeam ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
+event-problem-system = In Anibeam ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
 event-problem-downloads = Bei den Downloads ist etwas schiefgegangen. Details stehen in den Entwickleroptionen.
 
 ## Fehler (contract::CoreError)
@@ -114,8 +114,8 @@ core-error-io = Eine Datei konnte nicht gelesen oder geschrieben werden: { $mess
 core-error-storage = Deine Bibliothek konnte nicht gespeichert werden: { $message }
 core-error-keyring = Der Passwortspeicher des Systems war nicht erreichbar: { $message }
 core-error-unsupported = { $what } wird noch nicht unterstützt.
-core-error-version = Dieser Export stammt aus einem neueren AniBeam (Format { $found }). Aktualisiere AniBeam, um ihn zu importieren.
-core-error-internal = Interner Fehler in AniBeam: { $message }
+core-error-version = Dieser Export stammt aus einem neueren Anibeam (Format { $found }). Aktualisiere Anibeam, um ihn zu importieren.
+core-error-internal = Interner Fehler in Anibeam: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -431,7 +431,7 @@ core-core-guest-not-interested = Kein Interesse auf diesem Computer ist die List
 core-core-guest-recommended = die Empfehlungen auf diesem Computer stammen aus der Liste seines Besitzers
 core-core-nothing-picked = nichts gewählt
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } ist kein Anbieter für Zuordnungen
 core-prefs-provider-count = { $provider } steht { $count }-mal drin; jeder Anbieter steht genau einmal drin
@@ -471,16 +471,16 @@ core-host-not-an-address = { $text } ist keine Adresse mit Port
 
 core-host-not-a-key = { $key } ist kein Geräteschlüssel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = Zeitüberschreitung nach { $ms } ms
 core-net-rate-limited = { $provider } drosselt die Anfragen
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: eben eine Zeitüberschreitung; { -app-name } wartet { $seconds } s, bevor es wieder fragt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = keine Daten
 
@@ -509,7 +509,7 @@ core-update-cannot-copy = Die neue App konnte nicht neben diese kopiert werden: 
 core-calendar-season-episode = { $title } - Staffel { $season } Folge { $number }
 core-calendar-episode = { $title } - Folge { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = kein Home-Verzeichnis
 
@@ -520,6 +520,9 @@ core-first-run-not-absolute = der Videoordner muss ein absoluter Pfad sein
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Gemeinsam schauen
+core-presence-in-room = In einem Raum
+core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
 
 ## core/src/trackers/accounts.rs
 
@@ -575,7 +578,7 @@ core-trackers-page-failed = Die Anmeldung wurde nicht abgeschlossen
 core-trackers-page-go-back = Geh zurück zu { $app } und versuch es nochmal.
 core-trackers-page-finishing-title = { $app }, wird noch abgeschlossen
 core-trackers-page-finishing = Wird noch abgeschlossen
-core-trackers-page-finishing-body = { $site } hat geantwortet, und AniBeam schließt die Anmeldung ab. Geh zurück zu { $app }, dort steht, wann es fertig ist.
+core-trackers-page-finishing-body = { $site } hat geantwortet, und Anibeam schließt die Anmeldung ab. Geh zurück zu { $app }, dort steht, wann es fertig ist.
 core-trackers-page-cancelled-title = { $app }, Anmeldung abgebrochen
 core-trackers-page-cancelled = Diese Anmeldung wurde abgebrochen
 core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du das wolltest.
@@ -838,7 +841,7 @@ core-metadata-progress-imdb-ratings = IMDb-Bewertungen
 
 core-franchise-relation-character = Gemeinsame Charaktere
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = Bilder werden geladen
 
@@ -859,7 +862,7 @@ core-transfer-wrong-format = kein { $format }-Dokument
 
 core-transfer-imported = Deine Bibliothek wurde aus der Datei geladen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = keine Datei { $id } in der Bibliothek
 core-library-file-elsewhere-not-removed = Datei { $id } gehört zu einer anderen Serie, also wurde nichts entfernt
@@ -889,7 +892,7 @@ core-library-watched-removed =
        *[trash] in den Papierkorb verschoben
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Die einzige Datei hier wird gelesen als { $read ->
@@ -911,7 +914,7 @@ core-library-fix-numbered-on = Die Folgen { $from } sehen aus wie { $to } dieses
 core-library-runs-span = { $first } bis { $last }
 core-library-runs-list = { $init } und { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = eine Folgennummer liegt zwischen 0 und 10000
 core-library-fix-season-range = eine Staffel geht bis 200
@@ -928,7 +931,7 @@ core-library-fixed =
        *[other] Lesart von { $count } Dateien von { $title } korrigiert.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } ausgeblendet.
 core-library-back-one = { $title } ist wieder da.
@@ -937,12 +940,12 @@ core-library-back-many = { $count } Serien sind wieder da.
 core-library-episode-count-set = { $title } hat jetzt { $count } Folgen.
 core-library-episode-count-cleared = Folgenzahl von { $title } gelöscht.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Sendeplan-Notizen von { $title } gelöscht.
 core-library-schedule-saved = { $count } Sendeplan-Notizen für { $title } gespeichert.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = ein Quellpfad muss absolut sein
 core-library-source-exists = schon eine Quelle
@@ -984,7 +987,7 @@ core-library-scan-done =
         }{ $removed } fehlen
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = keine Antwort innerhalb von { $span }
 core-library-agent-stopped-code = er hat mit Code { $code } aufgehört
@@ -1020,8 +1023,8 @@ core-downloads-anirss-slow-start = anirss ist nicht innerhalb von { $seconds } S
 core-downloads-anirss-slow-start-said = anirss ist nicht innerhalb von { $seconds } Sekunden gestartet: { $said }
 core-downloads-anirss-install-mac = Installiere anirss { $version } oder neuer mit: { $command }
 core-downloads-anirss-install-linux = Installiere anirss { $version } oder neuer: das Paket anirss aus dem AUR, oder { $command }
-core-downloads-anirss-too-old = anirss { $version } ist zu alt für AniBeam, das { $minimum } oder neuer braucht. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } kann die Anmeldung jedes Torrent-Clients nicht getrennt halten, was AniBeam zum Wechseln der Clients braucht; anirss { $minimum } und neuer kann das. { $update }.
+core-downloads-anirss-too-old = anirss { $version } ist zu alt für Anibeam, das { $minimum } oder neuer braucht. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } kann die Anmeldung jedes Torrent-Clients nicht getrennt halten, was Anibeam zum Wechseln der Clients braucht; anirss { $minimum } und neuer kann das. { $update }.
 core-downloads-anirss-update-mac = Aktualisiere es mit: { $command }
 core-downloads-anirss-update-linux = Aktualisiere das Paket anirss, oder führe aus: { $command }
 
@@ -1049,19 +1052,19 @@ core-downloads-anirss-missing = { $install }. Oder trag in den Einstellungen ein
 core-downloads-anirss-command-missing = { $command } wurde nicht gefunden. { $install }. Oder trag in den Einstellungen einen laufenden Server ein.
 core-downloads-anirss-start-failed = { $command } konnte nicht starten: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Es meldete: { $message }
-core-downloads-no-torrent-client = Unter { $address } antwortet kein qBittorrent, und AniBeam hat kein eigenes zum Starten. Installiere qBittorrent und schalte sein Web UI ein, oder installiere qbittorrent-nox, das AniBeam dann für dich startet
-core-downloads-own-client-gone = Das qBittorrent von AniBeam ist weg: qbittorrent-nox ist nicht installiert. Installiere AniBeam neu, oder trag in den Einstellungen ein eigenes qBittorrent ein
+core-downloads-no-torrent-client = Unter { $address } antwortet kein qBittorrent, und Anibeam hat kein eigenes zum Starten. Installiere qBittorrent und schalte sein Web UI ein, oder installiere qbittorrent-nox, das Anibeam dann für dich startet
+core-downloads-own-client-gone = Das qBittorrent von Anibeam ist weg: qbittorrent-nox ist nicht installiert. Installiere Anibeam neu, oder trag in den Einstellungen ein eigenes qBittorrent ein
 core-downloads-no-port = kein Port in { $address }
 core-downloads-own-client-settings = die Einstellungen von qBittorrent lassen sich nicht schreiben: { $error }
 core-downloads-own-client-start-failed = { $command } konnte nicht starten: { $error }
-core-downloads-own-client-slow-start = Das qBittorrent von AniBeam ist nicht gestartet
-core-downloads-own-client-slow-start-said = Das qBittorrent von AniBeam ist nicht gestartet: { $said }
+core-downloads-own-client-slow-start = Das qBittorrent von Anibeam ist nicht gestartet
+core-downloads-own-client-slow-start-said = Das qBittorrent von Anibeam ist nicht gestartet: { $said }
 core-downloads-not-ready = Downloads sind nicht bereit. Prüfe Downloads in den Einstellungen.
 core-downloads-ready = Downloads sind bereit.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads suchen jetzt mit AniBeam selbst, das die { $count } Quelle aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
-       *[other] Downloads suchen jetzt mit AniBeam selbst, das die { $count } Quellen aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
+        [one] Downloads suchen jetzt mit Anibeam selbst, das die { $count } Quelle aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
+       *[other] Downloads suchen jetzt mit Anibeam selbst, das die { $count } Quellen aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
     }
 core-downloads-client-connected = Die Download-App ist verbunden.
 core-downloads-client-not-connected = Die Download-App ist nicht verbunden. Prüfe ihre Adresse in den Einstellungen.
@@ -1150,7 +1153,7 @@ core-downloads-name-not-folder = { $name } ist kein Ordnername
 core-downloads-pruned = Abo von { $title } beendet, die Serie ist zu Ende gelaufen.
 core-downloads-prune-failed = Abo von { $title } konnte nicht beendet werden. Prüfe Downloads in den Einstellungen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } ist kein einfacher absoluter Pfad, also wurde nichts entfernt
 core-downloads-refuse-root = { $path } ist die Wurzel des Dateisystems, also wurde nichts entfernt
@@ -1262,7 +1265,7 @@ core-releases-episode-range = { $from } bis { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1274,6 +1277,7 @@ core-room-service = Gemeinsam schauen
 core-room-not-found = Kein Raum hat diesen Code. Vielleicht wurde er geschlossen.
 core-room-full = Dieser Raum ist voll.
 core-room-proto = Dieses Relay nutzt eine andere Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
+core-room-needs-episode = Dieses Relay braucht eine Folge, um einen Raum zu starten. Starte ihn im Player oder aktualisiere das Relay.
 core-room-unreachable = Relay nicht erreichbar: { $message }
 core-room-refused = Das Relay hat abgelehnt: { $message }
 core-room-not-in = Du bist in keinem Raum.
@@ -1287,3 +1291,20 @@ core-room-member-left = { $name } hat den Raum verlassen.
 core-room-closed = Der Raum zum gemeinsamen Schauen wurde geschlossen.
 core-room-lost = Verbindung zum Raum zum gemeinsamen Schauen verloren. Neuer Versuch läuft.
 core-room-back = Wieder im Raum zum gemeinsamen Schauen.
+core-room-media-asked = Den Host um die Folge gebeten.
+core-room-media-cannot = Der Host kann diese Folge gerade nicht teilen.
+core-room-media-sent = { $name } den Torrent der Folge geschickt.
+core-room-media-sent-name = { $name } den Namen des Releases der Folge geschickt.
+core-room-media-nothing = Der Host hat keine Kopie der Folge zum Teilen.
+core-room-media-no-answer = Die App des Hosts hat nicht geantwortet. Versuch es gleich noch einmal.
+core-room-media-torrent = Lade die Folge über den Torrent des Hosts herunter.
+core-room-media-searching = Suche in deinen Quellen nach dem Release des Hosts.
+core-room-media-not-found = Keine deiner Quellen hat das Release des Hosts.
+core-room-media-no-sources = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
+core-room-media-no-start = Der Download ließ sich nicht starten: { $message }
+core-room-media-client = der Torrent-Client hat ihn nicht angenommen
+core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.
+core-room-media-stalled = Der Download ist seit zehn Minuten nicht weitergekommen. Versuch es später noch einmal.
+core-room-media-not-in-library = Die Folge ist heruntergeladen, aber nicht in deiner Bibliothek. Prüfe, ob Downloads in einem Bibliotheksordner landen.
+core-room-media-here = Die Folge ist jetzt in deiner Bibliothek.
+core-room-media-rest-missing = Der Rest der Serie war nicht zu bekommen. Nur diese Folge wird geladen.

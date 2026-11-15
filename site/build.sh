@@ -19,7 +19,12 @@ rm -rf "$out"
 mkdir -p "$out/img"
 cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh"
-cp "$root/assets/icon.png" "$out/img/icon.png"
+# The logos live in assets/logo/ with the app's icons; the pages name them by these paths.
+cp "$root/assets/logo/logo.svg" "$root/assets/logo/logo-nightly.svg" \
+  "$root/assets/logo/logo-dev.svg" "$out/img/"
+cp "$root/assets/logo/logo.png" "$out/img/icon.png"
+cp "$root/assets/logo/logo-nightly.png" "$out/img/icon-nightly.png"
+cp "$root/assets/logo/logo-dev.png" "$out/img/icon-dev.png"
 # Every language in site/i18n/ gets the home page and the download page, and every page a menu.
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/i18n.py" build "$out"
 rm -rf "$out/i18n"

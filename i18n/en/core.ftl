@@ -5,7 +5,7 @@
 
 ## Names that stay the same in every language. Messages use them; none is shown alone.
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -97,7 +97,7 @@ event-problem-trackers = Something went wrong with your lists. Developer options
 event-problem-franchise = Something went wrong with related shows. Developer options have the details.
 event-problem-playback = Something went wrong with playback. Developer options have the details.
 event-problem-store = Something went wrong with saving your data. Developer options have the details.
-event-problem-system = Something went wrong with AniBeam. Developer options have the details.
+event-problem-system = Something went wrong with Anibeam. Developer options have the details.
 event-problem-downloads = Something went wrong with downloads. Developer options have the details.
 
 ## Errors (contract::CoreError)
@@ -124,8 +124,8 @@ core-error-io = Could not read or write a file: { $message }
 core-error-storage = Could not save your library: { $message }
 core-error-keyring = Could not reach the system password store: { $message }
 core-error-unsupported = { $what } is not supported yet.
-core-error-version = This export is from a newer AniBeam (format { $found }). Update AniBeam to import it.
-core-error-internal = AniBeam hit an internal error: { $message }
+core-error-version = This export is from a newer Anibeam (format { $found }). Update Anibeam to import it.
+core-error-internal = Anibeam hit an internal error: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -469,7 +469,7 @@ core-core-guest-not-interested = Not interested on that computer is its owner's 
 core-core-guest-recommended = the recommendations on that computer are learnt from its owner's list
 core-core-nothing-picked = nothing picked
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is not a match provider
 core-prefs-provider-count = { $provider } appears { $count } times; every provider appears once
@@ -515,16 +515,16 @@ core-host-not-an-address = { $text } is not an address and port
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } is not a device key
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = timed out after { $ms }ms
 core-net-rate-limited = { $provider } rate limited
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: timed out a moment ago; { -app-name } waits { $seconds } s before asking it again
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = no data
 
@@ -555,7 +555,7 @@ core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
 core-calendar-episode = { $title } - Episode { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no home directory
 
@@ -570,6 +570,7 @@ core-room-service = Watch together
 core-room-not-found = No room has that code. It may have closed.
 core-room-full = That room is full.
 core-room-proto = That relay runs another version of rooms. Update { -app-name } to join it.
+core-room-needs-episode = That relay needs an episode to start a room. Start it from the player, or update the relay.
 # $message is the network's own words.
 core-room-unreachable = Could not reach the relay: { $message }
 core-room-refused = The relay said no: { $message }
@@ -584,11 +585,31 @@ core-room-member-left = { $name } left the room.
 core-room-closed = The watch together room closed.
 core-room-lost = Lost the connection to the watch together room. Trying again.
 core-room-back = Back in the watch together room.
+core-room-media-asked = Asked the host for the episode.
+core-room-media-cannot = The host can't share this episode right now.
+core-room-media-sent = Sent { $name } the episode's torrent.
+core-room-media-sent-name = Sent { $name } the episode's release name.
+core-room-media-nothing = The host has no copy of the episode to share.
+core-room-media-no-answer = The host's app did not answer. Try again in a moment.
+core-room-media-torrent = Downloading the episode from the host's torrent.
+core-room-media-searching = Searching your sources for the host's release.
+core-room-media-not-found = None of your sources has the host's release.
+core-room-media-no-sources = Every source is switched off. Switch one on to search.
+core-room-media-no-start = Could not start the download: { $message }
+core-room-media-client = the torrent client did not take it
+core-room-media-lost = The torrent client lost the episode's download.
+core-room-media-stalled = The download has not moved in ten minutes. Try again later.
+core-room-media-not-in-library = The episode downloaded, but it is not in your library. Check that downloads save into a library folder.
+core-room-media-here = The episode is in your library now.
+core-room-media-rest-missing = Could not get the rest of the show. Only this episode is downloading.
 
 ## core/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Extra
+core-presence-room = Watching together
+core-presence-in-room = In a room
+core-presence-no-room = That Discord invite has no room yet. Ask them to start one.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -648,7 +669,7 @@ core-trackers-oauth-port-failed = port { $port } on this computer could not be o
 core-trackers-oauth-port-busy = port { $port } on this computer is in use by another program. Wait a moment and try again, or close the program using it if it stays busy.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } returned an error: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } is connected to { $app }
 core-trackers-page-close-tab = You can close this tab.
@@ -657,7 +678,7 @@ core-trackers-page-failed = The sign-in did not finish
 core-trackers-page-go-back = Go back to { $app } and try again.
 core-trackers-page-finishing-title = { $app }, still finishing
 core-trackers-page-finishing = Still finishing
-core-trackers-page-finishing-body = { $site } answered and AniBeam is finishing the sign-in. Return to { $app }, which says when it is done.
+core-trackers-page-finishing-body = { $site } answered and Anibeam is finishing the sign-in. Return to { $app }, which says when it is done.
 core-trackers-page-cancelled-title = { $app }, sign-in cancelled
 core-trackers-page-cancelled = This sign-in was cancelled
 core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } if you meant to.
@@ -949,7 +970,7 @@ core-metadata-progress-imdb-ratings = IMDb ratings
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = fetching images
@@ -974,7 +995,7 @@ core-transfer-wrong-format = not an { $format } document
 
 core-transfer-imported = Loaded your library from the file.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = no file { $id } in the library
@@ -1008,7 +1029,7 @@ core-library-watched-removed =
        *[trash] moved to the trash
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1036,7 +1057,7 @@ core-library-runs-span = { $first } to { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } and { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = an episode number runs from 0 to 10000
 core-library-fix-season-range = a season runs up to 200
@@ -1054,7 +1075,7 @@ core-library-fixed =
        *[other] Fixed how { $count } files of { $title } are read.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = Hid { $title }.
@@ -1064,12 +1085,12 @@ core-library-back-many = { $count } shows are back.
 core-library-episode-count-set = { $title } now has { $count } episodes.
 core-library-episode-count-cleared = Cleared the episode count of { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Cleared the schedule notes of { $title }.
 core-library-schedule-saved = Saved { $count } schedule notes for { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = a source path must be absolute
 core-library-source-exists = already a source
@@ -1115,7 +1136,7 @@ core-library-scan-done =
         }{ $removed } missing
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1162,8 +1183,8 @@ core-downloads-anirss-slow-start-said = anirss did not start within { $seconds }
 core-downloads-anirss-install-mac = Install anirss { $version } or newer with: { $command }
 core-downloads-anirss-install-linux = Install anirss { $version } or newer: the anirss package on the AUR, or { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } is too old for AniBeam, which needs { $minimum } or newer. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } cannot keep each torrent client's login to itself, which AniBeam needs to switch clients; anirss { $minimum } and newer can. { $update }.
+core-downloads-anirss-too-old = anirss { $version } is too old for Anibeam, which needs { $minimum } or newer. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } cannot keep each torrent client's login to itself, which Anibeam needs to switch clients; anirss { $minimum } and newer can. { $update }.
 core-downloads-anirss-update-mac = Update it with: { $command }
 core-downloads-anirss-update-linux = Update the anirss package, or run: { $command }
 
@@ -1196,21 +1217,21 @@ core-downloads-anirss-command-missing = { $command } was not found. { $install }
 core-downloads-anirss-start-failed = { $command } could not start: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } It said: { $message }
-core-downloads-no-torrent-client = No qBittorrent answers at { $address }, and AniBeam has none of its own to run. Install qBittorrent and turn on its Web UI, or install qbittorrent-nox, which AniBeam then runs for you
-core-downloads-own-client-gone = AniBeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall AniBeam, or point Settings at a qBittorrent of your own
+core-downloads-no-torrent-client = No qBittorrent answers at { $address }, and Anibeam has none of its own to run. Install qBittorrent and turn on its Web UI, or install qbittorrent-nox, which Anibeam then runs for you
+core-downloads-own-client-gone = Anibeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall Anibeam, or point Settings at a qBittorrent of your own
 core-downloads-no-port = no port in { $address }
 core-downloads-own-client-settings = cannot write qBittorrent's settings: { $error }
 core-downloads-own-client-start-failed = { $command } could not start: { $error }
-core-downloads-own-client-slow-start = AniBeam's qBittorrent did not start
+core-downloads-own-client-slow-start = Anibeam's qBittorrent did not start
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = AniBeam's qBittorrent did not start: { $said }
+core-downloads-own-client-slow-start-said = Anibeam's qBittorrent did not start: { $said }
 core-downloads-not-ready = Downloads are not ready. Check Downloads in Settings.
 core-downloads-ready = Downloads are ready.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads now search with AniBeam itself, which does not read the { $count } source in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
-       *[other] Downloads now search with AniBeam itself, which does not read the { $count } sources in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
+        [one] Downloads now search with Anibeam itself, which does not read the { $count } source in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
+       *[other] Downloads now search with Anibeam itself, which does not read the { $count } sources in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.
     }
 core-downloads-client-connected = The download app is connected.
 core-downloads-client-not-connected = The download app is not connected. Check its address in Settings.
@@ -1317,7 +1338,7 @@ core-downloads-name-not-folder = { $name } is not a folder name
 core-downloads-pruned = Unsubscribed from { $title }, it finished airing.
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is not a plain absolute path, so nothing was removed
 core-downloads-refuse-root = { $path } is the filesystem root, so nothing was removed

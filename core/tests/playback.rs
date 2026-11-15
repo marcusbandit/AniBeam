@@ -362,7 +362,7 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
             .iter()
             .any(|b| matches!(b, EventBody::Marked { .. }))
     );
-    session::report_chapters(&core, s.session, 1400.0, None);
+    session::report_chapters(core.playback(), s.session, 1400.0, None);
     let seen = c.events().len();
     tick(&core, s.session, 1201.0);
     let marked = common::wait_for(
@@ -446,7 +446,7 @@ fn an_extras_session_records_no_view_and_no_mark() {
     let lib = library(&core);
 
     let s = open(&core, lib.extra);
-    session::report_chapters(&core, s.session, 100.0, None);
+    session::report_chapters(core.playback(), s.session, 100.0, None);
     for step in 0..40 {
         tick(&core, s.session, f64::from(step));
     }
@@ -587,7 +587,7 @@ fn the_resume_point_is_throttled_but_a_pause_and_the_close_are_not() {
     let lib = library(&core);
 
     let s = open(&core, lib.ep2);
-    session::report_chapters(&core, s.session, 1400.0, None);
+    session::report_chapters(core.playback(), s.session, 1400.0, None);
     for step in 0..12 {
         tick(&core, s.session, f64::from(step));
     }

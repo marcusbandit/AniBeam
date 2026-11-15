@@ -1,4 +1,4 @@
-//! Another AniBeam's library, read from its tailnet snapshot, in the shapes the Slint pages
+//! Another Anibeam's library, read from its tailnet snapshot, in the shapes the Slint pages
 //! take. The phone never changes that library; its episodes stream from there.
 
 use std::collections::HashMap;

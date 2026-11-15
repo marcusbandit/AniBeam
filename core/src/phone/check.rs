@@ -8,9 +8,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
+use crate::foundation::services::Services;
 use crate::i18n::tr;
-use crate::net::{HttpRequest, Method};
+use crate::net::HttpRequest;
 
 const STEP: Duration = Duration::from_secs(6);
 
@@ -26,10 +27,10 @@ const ALWAYS: [(&str, &str); 2] = [
 
 /// The hosts a search on this phone goes to, one each, with the site's front page to fetch
 /// and the port its searches connect to.
-fn searched_hosts(core: &Core) -> Vec<(String, String, u16)> {
+fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
     let mut out: Vec<(String, String, u16)> = Vec::new();
     // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
-    for (_, e) in super::searched(core) {
+    for (_, e) in super::searched(services) {
         let host = crate::repos::index::host_of(&e.url);
         let port = port_of(&e.url);
         // By host and port: a Prowlarr and a Jackett on one machine are two servers.
@@ -96,7 +97,7 @@ async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
 }
 
 async fn host(
-    core: &Core,
+    services: &Services,
     doh: &crate::net::doh::Doh,
     name: &str,
     url: &str,
@@ -222,30 +223,22 @@ async fn host(
     }
 
     let start = Instant::now();
-    let answer = core
+    let answer = services
         .http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".into(),
-                    crate::releases::fetch::USER_AGENT.into(),
-                ),
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", crate::releases::fetch::USER_AGENT)
                 // Cloudflare's resolver refuses anything but exactly its own type.
-                (
-                    "Accept".into(),
+                .header(
+                    "Accept",
                     if url.contains("dns-query") {
                         "application/dns-json"
                     } else {
                         "*/*"
-                    }
-                    .into(),
-                ),
-            ],
-            body: None,
-            timeout: Some(STEP * 2),
-        })
+                    },
+                )
+                .timeout(STEP * 2),
+        )
         .await;
     match answer {
         Ok(r) => out.push(line(
@@ -270,8 +263,15 @@ async fn host(
     out
 }
 
+/// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
+pub(crate) fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneNetCheck {
+        checks: downloads.services.handle.block_on(run(downloads)),
+    })
+}
+
 /// Every check, hosts side by side so the whole run takes about as long as the slowest.
-pub async fn run(core: &Core) -> Vec<NetCheck> {
+pub async fn run(downloads: &std::sync::Arc<Downloads>) -> Vec<NetCheck> {
     let client = match crate::net::resolver_client() {
         Ok(c) => c,
         Err(e) => {
@@ -284,10 +284,8 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         }
     };
     let doh = crate::net::doh::Doh::new(client);
-    let Ok(owner) = core.owner() else {
-        return Vec::new();
-    };
-    let mut hosts = searched_hosts(core);
+    let owner = downloads.clone();
+    let mut hosts = searched_hosts(&downloads.services);
     hosts.extend(
         ALWAYS
             .iter()
@@ -298,8 +296,10 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         .into_iter()
         .map(|(name, url, port)| {
             let (owner, doh) = (owner.clone(), doh.clone());
-            core.handle
-                .spawn(async move { host(&owner, &doh, &name, &url, port).await })
+            downloads
+                .services
+                .handle
+                .spawn(async move { host(&owner.services, &doh, &name, &url, port).await })
         })
         .collect();
     let mut out = Vec::new();

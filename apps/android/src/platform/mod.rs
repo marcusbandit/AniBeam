@@ -2,20 +2,26 @@
 //! `crate::platform::*` and never names a platform itself.
 //!
 //! `android.rs` is the phone: its entry point and the calls only Java answers, over JNI.
-//! `other.rs` stands in on every other target (the desktop the tests and host clippy run
-//! on, and any shell that has not brought its own yet) and does the harmless thing: nothing,
-//! None, or the value a phone without the feature would give. Both offer the same free
-//! functions with the same signatures, and this module re-exports the one for the target.
-//! What every platform shares sits here.
+//! `ios.rs` is the iPhone: its entry point and the hinge, with `other.rs`'s stand-ins for
+//! the rest. `other.rs` stands in on every other target (the desktop the tests and host
+//! clippy run on, and any shell that has not brought its own yet) and does the harmless
+//! thing: nothing, None, or the value a phone without the feature would give. All offer the
+//! same free functions with the same signatures, and this module re-exports the one for the
+//! target. What every platform shares sits here.
 
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
 pub use android::*;
 
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(target_os = "ios")]
+pub use ios::*;
+
 #[cfg(not(target_os = "android"))]
 mod other;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use other::*;
 
 /// What the platform said to a request for the audio focus.

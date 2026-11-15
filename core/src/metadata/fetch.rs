@@ -13,7 +13,7 @@
 use rusqlite::{Transaction, params};
 
 use crate::contract::{CoreError, Provider};
-use crate::core::Core;
+use crate::metadata::Metadata;
 use crate::metadata::automatch::AUTO_MATCH_VERSION;
 use crate::metadata::record;
 use crate::net::anilist::{Enrichment, Media};
@@ -40,7 +40,7 @@ use crate::store::sql::as_i64;
 /// enrichment would empty both tables for this series; an enrichment that
 /// cannot be had fails the whole call instead.
 pub async fn fetch_and_write(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     anilist_id: u64,
     media: Option<Media>,
@@ -50,20 +50,20 @@ pub async fn fetch_and_write(
     let (media, media_raw) = match media {
         Some(media) => (media, None),
         None => {
-            let (media, raw) = core.anilist.media_by_id_raw(anilist_id).await?;
+            let (media, raw) = metadata.net.anilist.media_by_id_raw(anilist_id).await?;
             (media.ok_or_else(|| no_such_media(anilist_id))?, Some(raw))
         }
     };
-    let (enrichment, enrichment_raw) = core.anilist.enrichment_raw(anilist_id).await?;
+    let (enrichment, enrichment_raw) = metadata.net.anilist.enrichment_raw(anilist_id).await?;
     let enrichment: Enrichment = enrichment.ok_or_else(|| no_such_media(anilist_id))?;
-    let (schedule, schedule_raw) = core.anilist.schedule_raw(anilist_id).await?;
+    let (schedule, schedule_raw) = metadata.net.anilist.schedule_raw(anilist_id).await?;
 
     let mal_id = media.id_mal.or(enrichment.id_mal);
     let jikan = match mal_id {
-        Some(mal_id) => match core.jikan.episodes(mal_id).await {
+        Some(mal_id) => match metadata.net.jikan.episodes(mal_id).await {
             Ok(episodes) => episodes,
             Err(e) => {
-                core.report_jikan_outage(&message_of(&e));
+                metadata.report_jikan_outage(&message_of(&e));
                 Vec::new()
             }
         },
@@ -82,7 +82,9 @@ pub async fn fetch_and_write(
     let urls = record::image_urls(&write);
     let row_mal_id = write.mal_id;
 
-    core.store
+    metadata
+        .services
+        .store
         .tx_async(move |tx| {
             record::write_media(tx, &write, &raw, now)?;
             // The schedule was just fetched, so the airing refresh has
@@ -107,23 +109,24 @@ pub async fn fetch_and_write(
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
     // match that takes those seconds to report.
-    core.images.ensure(&urls).await;
-    reread_after_record(core, series).await;
+    metadata.net.images.ensure(&urls).await;
+    reread_after_record(metadata, series).await;
     Ok(())
 }
 
 /// A record of specials or OVAs reads a series' numbered specials as its
 /// episodes, and any other record, or none, reads them as specials (#167).
 /// When the series' rows disagree with the record it has now, it is scanned.
-pub(crate) async fn reread_after_record(core: &Core, series: u64) {
-    let reread = core
+pub(crate) async fn reread_after_record(metadata: &Metadata, series: u64) {
+    let reread = metadata
+        .services
         .store
         .write_async(move |c| crate::library::readings::record_matters(c, series))
         .await
         .unwrap_or(false);
     if reread {
         // A source that is away right now gets its scan when it is back.
-        let _ = crate::library::scan::rescan_series(core, series);
+        let _ = crate::library::scan::rescan_series(&metadata.library, series);
     }
 }
 
@@ -170,28 +173,32 @@ pub fn write_match_only(
 /// embedded, so there is no half-fetched shape to guard against; the show
 /// and the match land in one transaction all the same.
 pub async fn fetch_and_write_tvmaze(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     show_id: u64,
     confirmed: bool,
     now: i64,
 ) -> Result<(), CoreError> {
-    let show = fetch_show(core, show_id).await?;
+    let show = fetch_show(metadata, show_id).await?;
     let urls = show_image_urls(&show);
-    core.store
+    metadata
+        .services
+        .store
         .tx_async(move |tx| {
             write_show(tx, &show, now)?;
             write_tvmaze_match(tx, series, show_id, confirmed, now)
         })
         .await?;
-    core.images.ensure(&urls).await;
-    reread_after_record(core, series).await;
+    metadata.net.images.ensure(&urls).await;
+    reread_after_record(metadata, series).await;
     Ok(())
 }
 
 /// The show behind an id, or the provider's 404 when TVmaze has none.
-pub async fn fetch_show(core: &Core, show_id: u64) -> Result<Show, CoreError> {
-    core.tvmaze
+pub async fn fetch_show(metadata: &Metadata, show_id: u64) -> Result<Show, CoreError> {
+    metadata
+        .net
+        .tvmaze
         .show(show_id)
         .await?
         .ok_or_else(|| no_such_show(show_id))
@@ -298,30 +305,28 @@ pub fn write_tvmaze_match(
 
 /// TVmaze answered that there is no such show: an attempt that was made.
 fn no_such_show(show_id: u64) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Tvmaze,
-        status: Some(404),
-        message: crate::i18n::tr(
+    CoreError::provider(
+        Provider::Tvmaze,
+        Some(404),
+        crate::i18n::tr(
             "core-metadata-no-such-show",
             &[("id", show_id.to_string().into())],
         ),
-        retry_after: None,
-    }
+    )
 }
 
 /// AniList answered, and what it said is that there is no such media. That
 /// is the provider's answer rather than a transport failure, so it carries
 /// a status and the caller treats it as an attempt that was made.
 fn no_such_media(anilist_id: u64) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Anilist,
-        status: Some(404),
-        message: crate::i18n::tr(
+    CoreError::provider(
+        Provider::Anilist,
+        Some(404),
+        crate::i18n::tr(
             "core-metadata-no-such-media",
             &[("id", anilist_id.to_string().into())],
         ),
-        retry_after: None,
-    }
+    )
 }
 
 /// A provider error's own message, without the `Provider:` prefix Display

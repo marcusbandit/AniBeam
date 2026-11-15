@@ -5,11 +5,15 @@
 
 use crate::theme::config::AppIcon;
 
-/// The 512 PNG the window and the Rail show.
-pub fn qrc(icon: AppIcon) -> &'static str {
+/// The Default icon's file under assets/: the release mark, the nightly's or the dev
+/// blueprint, by what kind of build this is (build.rs decides).
+pub const DEFAULT_FILE: &str = env!("ANIBEAM_ICON_FILE");
+
+/// The 512 PNG the window shows; the Rail and Appearance read the same files.
+pub fn qrc(icon: AppIcon) -> String {
     match icon {
-        AppIcon::Default => ":/qt/qml/com/marcusrosado/AniBeam/assets/icon.png",
-        AppIcon::Dark => ":/qt/qml/com/marcusrosado/AniBeam/assets/icon-dark.png",
+        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/AniBeam/assets/{DEFAULT_FILE}"),
+        AppIcon::Dark => ":/qt/qml/com/marcusrosado/AniBeam/assets/icon-dark.png".to_string(),
     }
 }
 
@@ -63,7 +67,7 @@ mod linux {
         out
     }
 
-    /// The files the last Dark pick wrote, one path a line, in AniBeam's own data folder.
+    /// The files the last Dark pick wrote, one path a line, in Anibeam's own data folder.
     /// Default removes exactly these, so a dark set from an older build goes too, and a file
     /// the user put in hicolor themselves is never written over nor removed.
     fn ledger() -> PathBuf {

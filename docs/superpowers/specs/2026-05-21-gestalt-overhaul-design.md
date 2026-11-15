@@ -1,4 +1,4 @@
-# AniBeam — Gestalt Overhaul Design
+# Anibeam: Gestalt Overhaul Design
 
 **Date:** 2026-05-21
 **Status:** Approved for implementation planning

@@ -23,12 +23,12 @@ use tokio_tungstenite::tungstenite::protocol::{Role, WebSocketConfig};
 use tokio_util::sync::CancellationToken;
 
 use anibeam_room::proto::{
-    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, ServerMsg,
+    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, SEAL_NOBODY, ServerMsg,
 };
 use anibeam_room::room::{CLOSED_BYE, CLOSED_REPLACED};
 
 use crate::contract::CoreError;
-use crate::core::Core;
+use crate::playback::Playback;
 
 /// How long a connection to the relay may take to open.
 pub const CONNECT_WAIT: Duration = Duration::from_secs(10);
@@ -62,12 +62,17 @@ pub enum Fail {
     Refused(String),
     /// The relay did not answer.
     Unreachable(String),
+    /// The relay is from before rooms could start with nothing picked (#922).
+    NeedsEpisode,
 }
 
 impl Fail {
     pub fn to_error(&self) -> CoreError {
         match self {
             Fail::NotFound => super::error("not_found", crate::words!("core-room-not-found")),
+            Fail::NeedsEpisode => {
+                super::error("needs_episode", crate::words!("core-room-needs-episode"))
+            }
             Fail::Refused(m) => {
                 super::error("refused", crate::words!("core-room-refused", message = m))
             }
@@ -79,21 +84,26 @@ impl Fail {
     }
 }
 
-/// Makes a room on the relay: its code and the host key.
+/// Makes a room on the relay: its code and the host key. With no episode the
+/// room starts with nothing picked (#922).
 pub async fn create(
     client: &reqwest::Client,
     relay: &str,
-    episode: &EpisodeRef,
+    episode: Option<&EpisodeRef>,
 ) -> Result<CreatedRoom, Fail> {
     let response = client
         .post(format!("{relay}/rooms"))
         .json(&CreateRoom {
-            episode: episode.clone(),
+            episode: episode.cloned(),
         })
         .send()
         .await
         .map_err(|e| Fail::Unreachable(crate::net::url_shown(relay) + ": " + &plain(&e)))?;
     let status = response.status();
+    // A relay from before #922 wants an episode in every new room
+    if episode.is_none() && status == StatusCode::BAD_REQUEST {
+        return Err(Fail::NeedsEpisode);
+    }
     if status != StatusCode::CREATED {
         let body = response.text().await.unwrap_or_default();
         return Err(Fail::Refused(refusal(status, &body)));
@@ -173,6 +183,8 @@ pub struct Start {
     pub code: String,
     pub name: String,
     pub host_key: Option<String>,
+    /// This member's public key for the session, which the hello carries.
+    pub key: String,
     pub client: reqwest::Client,
     pub rx: mpsc::UnboundedReceiver<ClientMsg>,
     pub cancel: CancellationToken,
@@ -193,13 +205,14 @@ enum End {
 
 /// The room's task: connects, and connects again with backoff for `GIVE_UP` after
 /// a drop, until the member leaves or the room is gone.
-pub async fn run(core: Weak<Core>, st: Start) {
+pub async fn run(playback: Weak<Playback>, st: Start) {
     let Start {
         serial,
         relay,
         code,
         name,
         host_key,
+        key,
         client,
         mut rx,
         cancel,
@@ -220,10 +233,11 @@ pub async fn run(core: Weak<Core>, st: Start) {
         let end = match opened {
             Ok(ws) => {
                 let link = Link {
-                    core: &core,
+                    playback: &playback,
                     serial,
                     name: &name,
                     host_key: host_key.as_deref(),
+                    key: &key,
                 };
                 link.serve(ws, &mut rx, &cancel, &kick, &mut rejoin, &mut first)
                     .await
@@ -250,8 +264,8 @@ pub async fn run(core: Weak<Core>, st: Start) {
         match end {
             End::Left => return,
             End::Closed => {
-                if let Some(core) = core.upgrade() {
-                    super::finish(&core, serial);
+                if let Some(playback) = playback.upgrade() {
+                    super::finish(&playback, serial);
                 }
                 return;
             }
@@ -261,7 +275,7 @@ pub async fn run(core: Weak<Core>, st: Start) {
                     wait = BACKOFF_FIRST;
                 }
                 let since = *lost.get_or_insert_with(Instant::now);
-                let Some(strong) = core.upgrade() else {
+                let Some(strong) = playback.upgrade() else {
                     return;
                 };
                 if !super::on_lost(&strong, serial) {
@@ -284,10 +298,11 @@ pub async fn run(core: Weak<Core>, st: Start) {
 
 /// One connection's view of the room it serves.
 struct Link<'a> {
-    core: &'a Weak<Core>,
+    playback: &'a Weak<Playback>,
     serial: u64,
     name: &'a str,
     host_key: Option<&'a str>,
+    key: &'a str,
 }
 
 impl Link<'_> {
@@ -307,6 +322,8 @@ impl Link<'_> {
             client: format!("anibeam/{}", crate::VERSION),
             host_key: self.host_key.map(str::to_string),
             rejoin_key: rejoin.clone(),
+            key: Some(self.key.to_string()),
+            unpicked: true,
         };
         if sink.send(text(&hello)).await.is_err() {
             return End::Dropped { welcomed: false };
@@ -371,14 +388,14 @@ impl Link<'_> {
                             continue;
                         }
                     };
-                    let Some(core) = self.core.upgrade() else {
+                    let Some(playback) = self.playback.upgrade() else {
                         return End::Left;
                     };
                     match msg {
                         ServerMsg::Welcome { you, rejoin_key, room, server_ms } => {
                             *rejoin = Some(rejoin_key);
                             welcomed = true;
-                            if !super::on_welcome(&core, self.serial, you, room, server_ms) {
+                            if !super::on_welcome(&playback, self.serial, you, room, server_ms) {
                                 return End::Left;
                             }
                             if let Some(tx) = first.take() {
@@ -390,7 +407,7 @@ impl Link<'_> {
                             }
                         }
                         ServerMsg::Pong { c, s } => {
-                            super::on_pong(&core, self.serial, c, s);
+                            super::on_pong(&playback, self.serial, c, s);
                             if pings_left > 0 {
                                 pings_left -= 1;
                                 if sink.send(text(&ping())).await.is_err() {
@@ -402,6 +419,9 @@ impl Link<'_> {
                             let fatal = code.is_fatal() || (code == ErrorCode::BadName && !welcomed);
                             if !fatal {
                                 tracing::debug!("room: the relay said {code:?}: {message}");
+                                if code == ErrorCode::NotAllowed && message == SEAL_NOBODY {
+                                    super::media::seal_refused(&playback, self.serial);
+                                }
                                 continue;
                             }
                             if let Some(tx) = first.take() {
@@ -421,7 +441,7 @@ impl Link<'_> {
                             return End::Closed;
                         }
                         other => {
-                            if !super::on_message(&core, self.serial, other) {
+                            if !super::on_message(&playback, self.serial, other) {
                                 // The room was left while this frame was on
                                 // its way: the bye queued behind it must still
                                 // go out, or the seat and the host role wait

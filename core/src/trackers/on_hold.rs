@@ -30,22 +30,18 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::prefs;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::{NO_TOKEN, accounts, cache, no_token, writes};
 
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
-
-/// The days a preference may ask for. Under a week would move a show the
-/// user skipped one weekend; over a year is the same as never.
-pub const MIN_DAYS: u32 = 7;
-pub const MAX_DAYS: u32 = 365;
 
 /// Whether On hold runs in this build at all: the desktop's, never the
 /// phone's (the module comment says why).
@@ -134,7 +130,7 @@ pub fn wants_sweep(before: &Preferences, after: &Preferences) -> bool {
 /// The days a stored preference asks for, inside the bounds `SetPreferences`
 /// keeps: a blob written some other way is held to them too.
 fn bounded(days: u32) -> u32 {
-    days.clamp(MIN_DAYS, MAX_DAYS)
+    days.clamp(ON_HOLD_MIN_DAYS, ON_HOLD_MAX_DAYS)
 }
 
 // The read -------------------------------------------------------------------
@@ -356,13 +352,18 @@ fn decide(live: &Live, here: &Local, now: i64, days: u32) -> Result<(), &'static
 /// After a refresh that left a list inside the window: the sweep, when On
 /// hold is on. A preference that cannot be read is no reason to fail the
 /// refresh, so it is a debug line and no sweep.
-pub(crate) async fn after_refresh(core: &Arc<Core>) {
+pub(crate) async fn after_refresh(trackers: &Arc<Trackers>) {
     if !RUNS_HERE {
         return;
     }
-    match core.store.write_async(|c| prefs::load_preferences(c)).await {
+    match trackers
+        .services
+        .store
+        .write_async(|c| prefs::load_preferences(c))
+        .await
+    {
         Ok(p) if p.on_hold_auto => {
-            start(core);
+            start(trackers);
         }
         Ok(_) => {}
         Err(e) => tracing::debug!("On hold: the preferences could not be read: {e}"),
@@ -377,12 +378,12 @@ pub(crate) async fn after_refresh(core: &Arc<Core>) {
 /// cover is left for the next refresh (a launch or a Sync). The
 /// preferences are saved by then, so a failed read here is a warning and a
 /// sweep that waits for the next refresh, never a failed call.
-pub(crate) fn kick(core: &Arc<Core>) {
+pub(crate) fn kick(trackers: &Arc<Trackers>) {
     if !RUNS_HERE {
         return;
     }
     let now = time::now();
-    let read = core.store.read(|c| {
+    let read = trackers.services.store.read(|c| {
         let (mut connected, mut stale) = (false, false);
         for t in [Tracker::Anilist, Tracker::Mal] {
             if let Some(row) = accounts::load_row(c, t)?
@@ -397,10 +398,10 @@ pub(crate) fn kick(core: &Arc<Core>) {
     match read {
         Ok((false, _)) => {}
         Ok((true, true)) => {
-            cache::start_refresh(core, None, false);
+            cache::start_refresh(trackers, None, false);
         }
         Ok((true, false)) => {
-            start(core);
+            start(trackers);
         }
         Err(e) => tracing::warn!("On hold: the tracker accounts could not be read: {e}"),
     }
@@ -408,12 +409,16 @@ pub(crate) fn kick(core: &Arc<Core>) {
 
 /// Starts the sweep. One at a time: a start while one runs answers with
 /// the running one's id.
-pub fn start(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.jobs.clone().start(
-        JobKind::OnHold,
-        move |ctx| async move { run(owner, ctx).await },
-    )
+pub fn start(trackers: &Arc<Trackers>) -> u64 {
+    let owner = trackers.clone();
+    trackers
+        .services
+        .jobs
+        .clone()
+        .start(
+            JobKind::OnHold,
+            move |ctx| async move { run(owner, ctx).await },
+        )
 }
 
 /// What one pass did.
@@ -432,8 +437,9 @@ struct Pass {
     due: Vec<Due>,
 }
 
-async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
-    let p = core
+async fn run(trackers: Arc<Trackers>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
+    let p = trackers
+        .services
         .store
         .write_async(|c| prefs::load_preferences(c))
         .await?;
@@ -448,7 +454,8 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
     let mut passes: Vec<Pass> = Vec::new();
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
-        let row = core
+        let row = trackers
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -467,7 +474,8 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
             continue;
         }
         let now = time::now_secs();
-        let due = core
+        let due = trackers
+            .services
             .store
             .write_async(move |c| due(c, t, now, days))
             .await?;
@@ -484,7 +492,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
         if pass.due.is_empty() {
             continue;
         }
-        let token = match accounts::access_token(&core, t).await {
+        let token = match accounts::access_token(&trackers, t).await {
             Ok(Some(token)) => token,
             Ok(None) => {
                 tally.failed += pass.due.len();
@@ -515,7 +523,8 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
                 cut_short(&ctx, &mut tally, t, moved, days);
                 return Err(e);
             }
-            let on = core
+            let on = trackers
+                .services
                 .store
                 .write_async(|c| prefs::load_preferences(c))
                 .await?
@@ -524,7 +533,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
                 cut_short(&ctx, &mut tally, t, moved, days);
                 return Ok(quiet("On hold was switched off during the pass"));
             }
-            match move_one(&core, &ctx, t, pass.user_id, &token, entry, days).await {
+            match move_one(&trackers, &ctx, t, pass.user_id, &token, entry, days).await {
                 Ok(None) => {
                     moved += 1;
                     ctx.emit(
@@ -609,7 +618,7 @@ fn cut_short(ctx: &Arc<JobCtx>, tally: &mut Tally, t: Tracker, moved: usize, day
 /// one entry at a time, so a pass cut short leaves no card behind its
 /// list.
 async fn move_one(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     t: Tracker,
     user_id: Option<u64>,
@@ -618,8 +627,8 @@ async fn move_one(
     days: u32,
 ) -> Result<Option<&'static str>, CoreError> {
     let media_id = entry.media_id;
-    let cached = core
-        .store
+    let cached = trackers
+        .services.store
         .write_async(move |c| {
             c.query_row(
                 "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
@@ -635,21 +644,23 @@ async fn move_one(
             if status == ListStatus::Watching.as_str() && stamp == entry.updated_at => {}
         _ => return Ok(Some("it changed here during the pass")),
     }
-    let Some(live) = writes::read_live(core, t, media_id, user_id, token).await? else {
+    let Some(live) = writes::read_live(trackers, t, media_id, user_id, token).await? else {
         return Ok(Some("it is no longer on the list"));
     };
     let (anilist_id, mal_id, progress) = (entry.anilist_id, entry.mal_id, live.progress);
-    let here = core
+    let here = trackers
+        .services
         .store
         .write_async(move |c| local(c, t, anilist_id, mal_id, progress))
         .await?;
     if let Err(why) = decide(&live, &here, time::now_secs(), days) {
         return Ok(Some(why));
     }
-    let stamp = writes::send_status(core, t, media_id, token, ListStatus::Paused).await?;
-    writes::record_status(core, t, media_id, ListStatus::Paused, stamp).await?;
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let stamp = writes::send_status(trackers, t, media_id, token, ListStatus::Paused).await?;
+    writes::record_status(&trackers.services, t, media_id, ListStatus::Paused, stamp).await?;
+    let images_dir = trackers.services.paths.images_dir();
+    let cards = trackers
+        .services
         .store
         .write_async(move |c| {
             let ids = series_for(c, t, media_id)?;
@@ -779,11 +790,11 @@ fn finished(tally: &Tally, days: u32) -> Finished {
 /// On hold switched on only. Called by the playback session once a play
 /// counts as a view; whatever goes wrong is a debug line, never the
 /// session's failure.
-pub(crate) fn played(core: &Core, series: u64) {
+pub(crate) fn played(trackers: &Arc<Trackers>, series: u64) {
     if !RUNS_HERE {
         return;
     }
-    let paused = match core.store.read(|c| paused_entries(c, series)) {
+    let paused = match trackers.services.store.read(|c| paused_entries(c, series)) {
         Ok(paused) => paused,
         Err(e) => {
             tracing::debug!("On hold: series {series} could not be read: {e}");
@@ -793,10 +804,8 @@ pub(crate) fn played(core: &Core, series: u64) {
     if paused.is_empty() {
         return;
     }
-    let Some(owner) = core.arc() else {
-        return;
-    };
-    let jobs = owner.jobs.clone();
+    let owner = trackers.clone();
+    let jobs = owner.services.jobs.clone();
     jobs.start(JobKind::SetStatus, move |ctx| async move {
         back_to_watching(owner, ctx, series, paused).await
     });
@@ -850,7 +859,7 @@ fn paused_entries(
 /// The SetStatus job behind `played`: each entry read live first, so one
 /// moved off hold somewhere else since the list was read is left alone.
 async fn back_to_watching(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     series: u64,
     paused: Vec<(Tracker, u64, Option<u64>)>,
@@ -860,16 +869,17 @@ async fn back_to_watching(
     for (t, media_id, user_id) in paused {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&core, t)
+            let token = accounts::access_token(&trackers, t)
                 .await?
                 .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
+            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
             if live.is_none_or(|l| l.status != Some(ListStatus::Paused)) {
                 return Ok(false);
             }
             let stamp =
-                writes::send_status(&core, t, media_id, &token, ListStatus::Watching).await?;
-            writes::record_status(&core, t, media_id, ListStatus::Watching, stamp).await?;
+                writes::send_status(&trackers, t, media_id, &token, ListStatus::Watching).await?;
+            writes::record_status(&trackers.services, t, media_id, ListStatus::Watching, stamp)
+                .await?;
             Ok::<bool, CoreError>(true)
         };
         match attempt.await {
@@ -889,10 +899,11 @@ async fn back_to_watching(
             }
         }
     }
-    if let Some(card) = card_for(&core, series).await? {
+    if let Some(card) = card_for(&trackers.services, series).await? {
         ctx.changed(card);
     }
-    let name = core
+    let name = trackers
+        .services
         .store
         .write_async(move |c| {
             c.query_row(
@@ -1112,19 +1123,14 @@ mod tests {
 
     #[test]
     fn the_days_stay_inside_their_bounds() {
-        assert_eq!(bounded(0), MIN_DAYS);
+        assert_eq!(bounded(0), ON_HOLD_MIN_DAYS);
         assert_eq!(bounded(60), 60);
-        assert_eq!(bounded(10_000), MAX_DAYS);
+        assert_eq!(bounded(10_000), ON_HOLD_MAX_DAYS);
     }
 
     #[test]
     fn only_a_refusal_of_one_entry_lets_a_pass_go_on() {
-        let provider = |status| CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(status),
-            message: String::new(),
-            retry_after: None,
-        };
+        let provider = |status| CoreError::provider(Provider::Anilist, Some(status), String::new());
         for status in [400, 404, 409, 422] {
             assert!(refuses_one(&provider(status)), "{status}");
         }

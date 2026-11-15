@@ -1,13 +1,14 @@
 //! Ties a download folder to the library series it fills. anirss and the
 //! torrent client speak in save paths; the library speaks in series. A
 //! folder links by its exact path first, then by its last component, then
-//! by that component with case and everything but letters and digits
-//! dropped: a client's save path can name the library folder under another
-//! mount (`/srv/media/Anime/X` for `/mnt/media/Anime/X`), and a rule's
-//! name can spell the folder a little differently ("Ranma 1 2" for
-//! "Ranma 1_2").
+//! by that component with case, a video extension and everything but
+//! letters and digits dropped: a client's save path can name the library
+//! folder under another mount (`/srv/media/Anime/X` for
+//! `/mnt/media/Anime/X`), and a rule's name can spell the folder a little
+//! differently ("Ranma 1 2" for "Ranma 1_2").
 
 use crate::contract::*;
+use crate::foundation::names::title_key;
 use crate::library::snapshot::Snapshot;
 use rusqlite::Connection;
 use std::collections::{BTreeSet, HashMap};
@@ -48,7 +49,7 @@ impl Linker {
             // The first one in wins a clash: two library folders with one
             // name under two sources is ambiguous, and the lower id was
             // there first.
-            linker.by_key.entry(key(&name)).or_insert(id);
+            linker.by_key.entry(title_key(&name)).or_insert(id);
             linker.by_name.entry(name).or_insert(id);
             linker.by_path.insert(path, id);
         }
@@ -68,7 +69,7 @@ impl Linker {
         if let Some(id) = self.by_name.get(name) {
             return Some(*id);
         }
-        let k = key(name);
+        let k = title_key(name);
         if k.is_empty() {
             return None;
         }
@@ -96,15 +97,6 @@ fn trim(path: &str) -> &str {
 
 fn last(path: &str) -> &str {
     path.rsplit(std::path::is_separator).next().unwrap_or(path)
-}
-
-/// Letters and digits, lower case. Empty for a name of only punctuation,
-/// which then matches nothing.
-pub fn key(name: &str) -> String {
-    name.chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(|c| c.to_lowercase())
-        .collect()
 }
 
 /// Words in a search query that say nothing about which show it is.
@@ -167,7 +159,7 @@ pub fn query_words(query: &str) -> Vec<String> {
         if raw.starts_with('-') {
             continue;
         }
-        let k = key(raw);
+        let k = title_key(raw);
         let digits = !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
         if k.is_empty() || (k.chars().count() < 3 && !digits) {
             continue;
@@ -221,7 +213,7 @@ pub fn series_for_query(conn: &Connection, query: &str) -> Result<Option<u64>, C
     for row in rows {
         let (id, titles) = row?;
         for t in titles {
-            let k = key(&t);
+            let k = title_key(&t);
             if words.iter().all(|w| k.contains(w.as_str()))
                 && best.is_none_or(|(len, _)| k.len() < len)
             {
@@ -385,6 +377,11 @@ mod tests {
             "punctuation aside"
         );
         assert_eq!(l.find("/mnt/media/TV/Avatar Seven Havens"), Some(3));
+        assert_eq!(
+            l.find("/srv/media/Films/Perfect Blue (1997)"),
+            Some(4),
+            "a film's file and a folder of its name key alike"
+        );
         assert_eq!(l.find("/mnt/media/Anime"), None, "the base is no show");
         assert_eq!(l.find(""), None);
         assert_eq!(

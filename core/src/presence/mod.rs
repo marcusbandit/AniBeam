@@ -14,7 +14,9 @@
 //! the worker must do is lost to a burst.
 
 pub mod discord;
+pub mod join;
 
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, LockResult, Mutex};
@@ -23,8 +25,8 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::events::EventBus;
+use crate::playback::Playback;
 use crate::prefs;
 use crate::sync::recover;
 
@@ -76,7 +78,52 @@ pub struct Activity {
     /// clock reads how far into the episode playback is. None while paused,
     /// so the clock stops.
     pub start: Option<u64>,
+    /// Who can join and how: the worker puts it on from what the core says
+    /// last, so the rule over playback never sees it.
+    pub party: Option<Party>,
 }
+
+/// The party an activity carries, which is what makes Discord offer Ask to
+/// Join, Join and invites. Its join secret is handed only to someone this
+/// person lets in, or to anyone when the party is open.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Party {
+    /// Groups everyone in the same room on Discord; never the code itself.
+    pub id: String,
+    pub size: u32,
+    pub max: u32,
+    /// `room:<code>` in a room, `ask` outside one: a request then asks this
+    /// person to start a room.
+    pub secret: String,
+    /// Anyone may join straight away, with no request.
+    pub open: bool,
+}
+
+/// What Discord tells this app without being asked.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Incoming {
+    /// Someone pressed Ask to Join on this person's profile.
+    JoinRequest {
+        user_id: String,
+        name: String,
+        avatar: Option<String>,
+    },
+    /// This person pressed Join or accepted an invite: the other side's
+    /// join secret.
+    Join { secret: String },
+}
+
+/// The secret outside a room.
+pub const ASK_SECRET: &str = "ask";
+/// What a room's join secret starts with, before its code.
+pub const ROOM_SECRET: &str = "room:";
+/// How long an Ask to Join stands: Discord lets it go after 30 seconds.
+pub const ASK_STANDS: Duration = Duration::from_secs(30);
+/// How long the connection stays up for a Discord that launched the app to
+/// hand over a join, with nothing to show.
+pub const LISTEN: Duration = Duration::from_secs(60);
+/// How often an open connection is read for events.
+const POLL: Duration = Duration::from_millis(500);
 
 impl Activity {
     /// The activity for one file. An extra says so in place of an episode
@@ -105,6 +152,7 @@ impl Activity {
             poster: poster.filter(|p| p.starts_with("https://") || p.starts_with("http://")),
             large_text: field(series_title),
             start: None,
+            party: None,
         }
     }
 
@@ -124,6 +172,14 @@ impl Activity {
         }
         if let Some(start) = self.start {
             v["timestamps"] = json!({"start": start});
+        }
+        if let Some(p) = &self.party {
+            v["party"] = json!({"id": p.id, "size": [p.size, p.max]});
+            if p.open {
+                v["party"]["privacy"] = json!(1);
+            }
+            v["secrets"] = json!({"join": p.secret});
+            v["instance"] = json!(false);
         }
         v
     }
@@ -154,6 +210,11 @@ fn field(s: &str) -> String {
     out
 }
 
+/// A party id for this run outside any room, so two runs never share one.
+fn solo_party_id() -> String {
+    format!("solo-{:032x}", rand::random::<u128>())
+}
+
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
 fn unpoison<T>(r: LockResult<T>) -> T {
     r.unwrap_or_else(|e| e.into_inner())
@@ -180,6 +241,14 @@ pub trait Transport: Send {
     fn connect(&mut self, client_id: &str) -> Result<(), SendError>;
     /// Sets the activity, or clears it with `None`.
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError>;
+    /// What Discord has said unasked since the last poll, never blocking.
+    fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
+        Ok(Vec::new())
+    }
+    /// Answers an Ask to Join: an invite, or a close of the request.
+    fn answer(&mut self, _user_id: &str, _invite: bool) -> Result<(), SendError> {
+        Ok(())
+    }
     fn close(&mut self);
 }
 
@@ -419,7 +488,46 @@ struct Inner {
     injected: Option<Box<dyn Transport>>,
     /// A stand-in was given, which makes presence available without an id.
     fake: bool,
+    /// The room Discord shows, as the room team last said.
+    room: Option<RoomShow>,
+    /// Anyone on Discord may join this person's room without asking.
+    room_open: bool,
+    /// The party id outside a room, fixed for the run.
+    solo: String,
+    /// The party id of the room this person is in, new with each room.
+    room_party: String,
+    /// Asks waiting on an answer, by Discord user id.
+    asks: HashMap<String, Ask>,
+    /// Who this person let in to the room they are in now: a second ask
+    /// from them is let in again without a question.
+    let_in: HashSet<String>,
+    /// A room Discord handed over to join, until the shell takes it.
+    pending_join: Option<(String, Instant)>,
+    /// Asked to listen before the switch came on at launch: handed to the
+    /// worker when it starts.
+    listen: Option<Instant>,
 }
+
+/// The room as Discord shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RoomShow {
+    pub code: String,
+    /// People in the room, this person included.
+    pub size: u32,
+    /// The series the room is on, when it has picked one.
+    pub title: Option<String>,
+}
+
+/// Someone who pressed Ask to Join and has not had an answer.
+#[derive(Clone, Debug)]
+struct Ask {
+    name: String,
+    /// Bumped per ask, so the timer of an older one lets a newer one stand.
+    serial: u64,
+}
+
+/// Called on the worker's thread with each event Discord sends.
+type Handler = Arc<dyn Fn(Incoming) + Send + Sync>;
 
 /// What the worker is to bring Discord to. A send overwrites it rather than
 /// queueing behind the last, so a worker stuck on a socket comes back to
@@ -428,6 +536,14 @@ struct Inner {
 struct Desired {
     /// What Discord should show; `None` clears it.
     want: Option<Activity>,
+    /// The party every activity carries, and what shows when nothing plays.
+    party: Option<Party>,
+    idle: Option<Activity>,
+    /// Stay connected with nothing to show until then, so a Discord that
+    /// launched the app can hand over a join.
+    listen: Option<Instant>,
+    /// Answers to Ask to Join, sent once what they hand over has been shown.
+    answers: Vec<(String, bool)>,
     /// Let the connection go before showing `want`. It stays set until the
     /// worker has done it, so a show that follows cannot hide it.
     disconnect: bool,
@@ -473,7 +589,10 @@ impl Presence {
             connected: Arc::new(AtomicBool::new(false)),
             pause_clear_ms: AtomicU64::new(PAUSE_CLEAR.as_millis() as u64),
             check_ms: Arc::new(AtomicU64::new(CHECK.as_millis() as u64)),
-            inner: Mutex::new(Inner::default()),
+            inner: Mutex::new(Inner {
+                solo: solo_party_id(),
+                ..Inner::default()
+            }),
             bus,
         }
     }
@@ -526,17 +645,23 @@ impl Drop for Presence {
 }
 
 /// One tick of a session, after the sessions lock is let go.
-pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, position: f64, paused: bool) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn tick(
+    playback: &Arc<Playback>,
+    session: u64,
+    activity: &Activity,
+    position: f64,
+    paused: bool,
+) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
-    let mut inner = recover(&core.presence.inner);
+    let mut inner = recover(&playback.presence.inner);
     // A tick runs after the sessions lock is let go, so its session's close
     // can come in between. `close` takes the session out of the map before
     // it reaches presence, and this looks in the map under the presence
     // lock: a tick that lost that race finds its session gone and shows
     // nothing, and one that won is decided before the close, which clears.
-    if !core.sessions.is_open(session) {
+    if !playback.sessions.is_open(session) {
         return;
     }
     let actions = decide(
@@ -549,40 +674,51 @@ pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, position: f64
         },
         crate::time::now_secs() as u64,
     );
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
 }
 
-pub(crate) fn close(core: &Core, session: u64) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn close(playback: &Arc<Playback>, session: u64) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
-    feed(core, Input::Close { session });
+    feed(playback, Input::Close { session });
 }
 
 /// The switch at launch, from the stored preference.
-pub(crate) fn sync(core: &Core) {
-    let on = core
+pub(crate) fn sync(playback: &Arc<Playback>) {
+    let on = playback
+        .services
         .store
         .read(prefs::load_preferences)
         .map(|p| p.discord_presence)
         .unwrap_or(false);
-    set_enabled(core, on);
+    set_enabled(playback, on);
+}
+
+/// `GetPresence`: whether this build can show what plays on Discord, and
+/// whether it is talking to a Discord client right now.
+pub(crate) fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
+    Ok(Reply::Presence {
+        available: playback.presence.available(),
+        connected: playback.presence.connected(),
+        room_open: recover(&playback.presence.inner).room_open,
+    })
 }
 
 /// The switch. On shows the session playing now, if there is one; off
 /// clears and lets the connection go. A build that cannot reach Discord
 /// stays off whatever is asked.
-pub(crate) fn set_enabled(core: &Core, on: bool) {
-    let p = &core.presence;
+pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
+    let p = &playback.presence;
     if on && !p.available() {
         return;
     }
     // Read before the presence lock is taken: presence takes the sessions
     // lock inside its own, never the other way round.
-    let playing = on.then(|| core.sessions.playing()).flatten();
+    let playing = on.then(|| playback.sessions.playing()).flatten();
     let mut inner = recover(&p.inner);
     // Checked again under the presence lock, as a tick is.
-    let playing = playing.filter(|s| core.sessions.is_open(s.id));
+    let playing = playing.filter(|s| playback.sessions.is_open(s.id));
     p.enabled.store(on, Ordering::Relaxed);
     let input = match &playing {
         Some(s) => Input::Enable(Some((
@@ -593,27 +729,47 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
         None if on => Input::Enable(None),
         None => Input::Disable,
     };
-    if on && inner.worker.is_none() {
+    let first = on && inner.worker.is_none();
+    if first {
         let transport = inner
             .injected
             .take()
             .unwrap_or_else(|| Box::new(discord::Discord::default()));
         let client_id = bundled_client_id().unwrap_or_default().to_string();
+        let weak = Arc::downgrade(playback);
+        let handler: Handler = Arc::new(move |event| {
+            if let Some(playback) = weak.upgrade() {
+                join::incoming(&playback, event);
+            }
+        });
         inner.worker = spawn(
             transport,
             client_id,
             p.connected.clone(),
             p.check_ms.clone(),
             p.bus.clone(),
+            handler,
         );
     }
     let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
+    if on {
+        join::post_party(&inner);
+        if let (Some(until), Some(worker)) = (inner.listen.take(), &inner.worker) {
+            worker.post(move |d| d.listen = Some(until));
+        }
+    }
+    drop(inner);
+    // The room team says each change of room on the bus; presence follows it from the
+    // first switch on, starting from the room open now.
+    if first {
+        join::follow_rooms(playback);
+    }
 }
 
 /// Clears what Discord shows and ends the worker, waiting a moment for it.
-pub(crate) fn shutdown(core: &Core) {
-    let p = &core.presence;
+pub(crate) fn shutdown(playback: &Playback) {
+    let p = &playback.presence;
     p.enabled.store(false, Ordering::Relaxed);
     let worker = {
         let mut inner = recover(&p.inner);
@@ -626,30 +782,34 @@ pub(crate) fn shutdown(core: &Core) {
     }
 }
 
-fn feed(core: &Core, input: Input) {
-    let mut inner = recover(&core.presence.inner);
+fn feed(playback: &Arc<Playback>, input: Input) {
+    let mut inner = recover(&playback.presence.inner);
     let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
-    run(core, &inner, actions);
+    run(playback, &inner, actions);
 }
 
 /// Carries the actions out under the presence lock, so two callers' sends
 /// reach the worker in the order their decisions were made. Nothing here
 /// blocks: a send only overwrites the desired state, and the timer is a
 /// spawned task.
-fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
+fn run(playback: &Arc<Playback>, inner: &Inner, actions: Vec<Action>) {
     for action in actions {
         let change: Box<dyn FnOnce(&mut Desired)> = match action {
             Action::Set(activity) => Box::new(move |d| d.want = Some(activity)),
             Action::Clear => Box::new(|d| d.want = None),
+            // Off takes the room and the party with it, so nothing shows again until on
             Action::Disconnect => Box::new(|d| {
                 d.want = None;
+                d.party = None;
+                d.idle = None;
+                d.answers.clear();
                 d.disconnect = true;
             }),
             Action::Arm {
                 session,
                 generation,
             } => {
-                arm(core, session, generation);
+                arm(playback, session, generation);
                 continue;
             }
         };
@@ -660,26 +820,26 @@ fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
 }
 
 /// The one-shot pause timer.
-fn arm(core: &Core, session: u64, generation: u64) {
-    let Some(owner) = core.arc() else { return };
+fn arm(playback: &Arc<Playback>, session: u64, generation: u64) {
+    let owner = playback.clone();
     let weak = Arc::downgrade(&owner);
     drop(owner);
-    let wait = Duration::from_millis(core.presence.pause_clear_ms.load(Ordering::Relaxed));
-    core.handle.spawn(async move {
+    let wait = Duration::from_millis(playback.presence.pause_clear_ms.load(Ordering::Relaxed));
+    playback.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
-        if let Some(core) = weak.upgrade() {
-            elapsed(&core, session, generation);
+        if let Some(playback) = weak.upgrade() {
+            elapsed(&playback, session, generation);
         }
     });
 }
 
 /// The pause timer's handler.
-pub(crate) fn elapsed(core: &Core, session: u64, generation: u64) {
-    if !core.presence.enabled.load(Ordering::Relaxed) {
+pub(crate) fn elapsed(playback: &Arc<Playback>, session: u64, generation: u64) {
+    if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
     feed(
-        core,
+        playback,
         Input::Elapsed {
             session,
             generation,
@@ -697,6 +857,7 @@ fn spawn(
     connected: Arc<AtomicBool>,
     check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
+    on_event: Handler,
 ) -> Option<Arc<Mailbox>> {
     let mailbox = Arc::new(Mailbox::default());
     let mut worker = Worker {
@@ -705,11 +866,18 @@ fn spawn(
         connected,
         check_ms,
         bus,
+        on_event,
         want: None,
+        party: None,
+        idle: None,
+        listen_until: None,
+        answers: Vec::new(),
         dirty: false,
         last_attempt: None,
         last_sent: None,
         posters: true,
+        privacy: true,
+        parties: true,
     };
     let theirs = mailbox.clone();
     let spawned = std::thread::Builder::new()
@@ -732,8 +900,15 @@ struct Worker {
     connected: Arc<AtomicBool>,
     check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
-    /// What Discord should show.
+    on_event: Handler,
+    /// What plays, as the rule says.
     want: Option<Activity>,
+    party: Option<Party>,
+    /// What shows while nothing plays: the room, in one.
+    idle: Option<Activity>,
+    listen_until: Option<Instant>,
+    /// Answers not yet sent.
+    answers: Vec<(String, bool)>,
     /// `want` has not reached Discord yet.
     dirty: bool,
     last_attempt: Option<Instant>,
@@ -741,21 +916,34 @@ struct Worker {
     last_sent: Option<Instant>,
     /// Whether this connection takes a poster's URL as the image.
     posters: bool,
+    /// Whether this connection takes an open party.
+    privacy: bool,
+    /// Whether this connection takes a party at all.
+    parties: bool,
+}
+
+/// A new desired state, as the worker takes it.
+struct Change {
+    want: Option<Activity>,
+    party: Option<Party>,
+    idle: Option<Activity>,
+    listen: Option<Instant>,
+    answers: Vec<(String, bool)>,
+    disconnect: bool,
+    version: u64,
 }
 
 /// What the worker does next.
 enum Step {
     /// The desired state changed: show `want`, letting the connection go
     /// first if asked.
-    Apply {
-        want: Option<Activity>,
-        disconnect: bool,
-        version: u64,
-    },
+    Apply(Box<Change>),
     /// Time to try reaching Discord again.
     Retry,
     /// The connection has been quiet for `CHECK`.
     Check,
+    /// Time to read what Discord has said.
+    Poll,
     Quit,
 }
 
@@ -764,25 +952,42 @@ impl Worker {
         let mut seen = 0;
         loop {
             match self.next(mailbox, seen) {
-                Step::Apply {
-                    want,
-                    disconnect,
-                    version,
-                } => {
+                Step::Apply(change) => {
+                    let Change {
+                        want,
+                        party,
+                        idle,
+                        listen,
+                        answers,
+                        disconnect,
+                        version,
+                    } = *change;
                     seen = version;
                     if disconnect {
                         self.disconnect("Discord presence switched off");
                     }
-                    // Nothing shows on a connection that is not there.
-                    self.dirty = want.is_some() || self.is_connected();
                     self.want = want;
+                    self.party = party;
+                    self.idle = idle;
+                    if listen.is_some() {
+                        self.listen_until = listen;
+                    }
+                    self.answers.extend(answers);
+                    // Nothing shows on a connection that is not there.
+                    self.dirty = self.shown().is_some() || self.is_connected();
                     self.deliver();
+                    self.answer();
+                    self.poll();
                     recover(&mailbox.desired).done = version;
                     mailbox.handled.notify_all();
                 }
-                Step::Retry => self.deliver(),
+                Step::Retry => {
+                    self.deliver();
+                    self.answer();
+                }
+                Step::Poll => self.poll(),
                 Step::Check => {
-                    if self.want.is_some() {
+                    if self.shown().is_some() || self.listening() {
                         // Sent again: a Discord that left answers Gone.
                         self.dirty = true;
                         self.deliver();
@@ -810,13 +1015,18 @@ impl Worker {
                 return Step::Quit;
             }
             if d.version != seen {
-                return Step::Apply {
+                return Step::Apply(Box::new(Change {
                     want: d.want.clone(),
+                    party: d.party.clone(),
+                    idle: d.idle.clone(),
+                    listen: d.listen.take(),
+                    answers: std::mem::take(&mut d.answers),
                     disconnect: std::mem::take(&mut d.disconnect),
                     version: d.version,
-                };
+                }));
             }
-            d = if self.dirty && self.want.is_some() && !self.is_connected() {
+            let wants_up = (self.dirty && self.shown().is_some()) || self.listening();
+            d = if wants_up && !self.is_connected() {
                 let since = self.last_attempt.map_or(RETRY, |t| t.elapsed());
                 let wait = RETRY.saturating_sub(since);
                 if wait.is_zero() {
@@ -830,7 +1040,13 @@ impl Worker {
                 if wait.is_zero() {
                     return Step::Check;
                 }
-                unpoison(mailbox.changed.wait_timeout(d, wait)).0
+                // Read for events between checks; the wait for a change is
+                // cut short to do it.
+                let (back, timeout) = unpoison(mailbox.changed.wait_timeout(d, wait.min(POLL)));
+                if timeout.timed_out() && back.version == seen && !back.quit && wait > POLL {
+                    return Step::Poll;
+                }
+                back
             } else {
                 unpoison(mailbox.changed.wait(d))
             };
@@ -839,6 +1055,64 @@ impl Worker {
 
     fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
+    }
+
+    fn listening(&self) -> bool {
+        self.listen_until.is_some_and(|t| Instant::now() < t)
+    }
+
+    /// What Discord should show: what plays, or the room while nothing
+    /// does, either carrying the party.
+    fn shown(&self) -> Option<Activity> {
+        let mut a = self.want.clone().or_else(|| self.idle.clone())?;
+        a.party = self.party.clone();
+        Some(a)
+    }
+
+    /// Sends the answers that wait, once connected. One whose connection is
+    /// gone is dropped: the ask it answered has lapsed with it.
+    fn answer(&mut self) {
+        if !self.is_connected() {
+            if !self.listening() && self.shown().is_none() {
+                self.answers.clear();
+            }
+            return;
+        }
+        for (user, invite) in std::mem::take(&mut self.answers) {
+            match self.transport.answer(&user, invite) {
+                Ok(()) => {}
+                Err(SendError::Rejected(e)) => {
+                    tracing::debug!("discord did not take the answer to a join request: {e}");
+                }
+                Err(SendError::Gone(e)) => {
+                    tracing::debug!("discord presence lost the connection: {e}");
+                    self.transport.close();
+                    self.set_connected(false, Level::Info, "Discord stopped answering");
+                    self.dirty = self.shown().is_some();
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Reads what Discord said and hands it to the core.
+    fn poll(&mut self) {
+        if !self.is_connected() {
+            return;
+        }
+        match self.transport.poll() {
+            Ok(events) => {
+                for event in events {
+                    (self.on_event)(event);
+                }
+            }
+            Err(e) => {
+                tracing::debug!("discord presence lost the connection: {e:?}");
+                self.transport.close();
+                self.set_connected(false, Level::Info, "Discord stopped answering");
+                self.dirty = self.shown().is_some();
+            }
+        }
     }
 
     /// Records the connection, and tells the shells when it really changed:
@@ -865,13 +1139,16 @@ impl Worker {
         self.transport.close();
         self.set_connected(false, Level::Debug, why);
         self.want = None;
+        self.listen_until = None;
+        self.answers.clear();
         self.dirty = false;
         self.last_attempt = None;
     }
 
     /// Sends `want` if it has not landed, connecting first if need be.
     fn deliver(&mut self) {
-        if !self.dirty {
+        let listen = self.listening() && !self.is_connected();
+        if !self.dirty && !listen {
             return;
         }
         if !self.is_connected() {
@@ -883,18 +1160,31 @@ impl Worker {
                 Ok(()) => {
                     self.set_connected(true, Level::Info, "Discord is showing what plays");
                     self.posters = true;
+                    self.privacy = true;
+                    self.parties = true;
                 }
                 Err(e) => {
                     tracing::debug!("discord presence could not connect: {e:?}");
                     return;
                 }
             }
+            if !self.dirty {
+                return;
+            }
         }
-        let mut activity = self.want.clone();
-        if !self.posters
-            && let Some(a) = activity.as_mut()
-        {
-            a.poster = None;
+        let mut activity = self.shown();
+        if let Some(a) = activity.as_mut() {
+            if !self.posters {
+                a.poster = None;
+            }
+            if !self.privacy
+                && let Some(p) = a.party.as_mut()
+            {
+                p.open = false;
+            }
+            if !self.parties {
+                a.party = None;
+            }
         }
         self.last_sent = Some(Instant::now());
         let mut result = self.transport.send(activity.as_ref());
@@ -911,6 +1201,32 @@ impl Worker {
             // reason, so the next series tries its own again.
             if matches!(result, Err(SendError::Rejected(_))) {
                 self.posters = true;
+            }
+        }
+        // Nor an open party, which an older Discord may not know: shown as
+        // one to ask, and never again on this connection.
+        if let (Err(SendError::Rejected(e)), Some(a)) = (&result, activity.as_mut())
+            && let Some(p) = a.party.as_mut()
+            && p.open
+        {
+            tracing::debug!("discord refused an open party, showing it as one to ask: {e}");
+            self.privacy = false;
+            p.open = false;
+            result = self.transport.send(Some(a));
+            if matches!(result, Err(SendError::Rejected(_))) {
+                self.privacy = true;
+            }
+        }
+        // Nor a party at all, which a client without joins may not take: what plays
+        // still shows, and the next connection tries the party again.
+        if let (Err(SendError::Rejected(e)), Some(a)) = (&result, activity.as_mut())
+            && a.party.is_some()
+        {
+            tracing::debug!("discord refused the party, showing the activity without it: {e}");
+            a.party = None;
+            result = self.transport.send(Some(a));
+            if result.is_ok() {
+                self.parties = false;
             }
         }
         match result {

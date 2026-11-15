@@ -17,10 +17,12 @@ use axum::response::{IntoResponse, Response};
 use rusqlite::{OptionalExtension, params};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
+use super::Front;
 use super::convert::{self, Converter, Key, Source};
 use super::server::{Served, error};
-use crate::contract::{Call, CoreError, Sidecar};
-use crate::core::call_name;
+use crate::contract::{Call, CoreError, Sidecar, call_name};
+use crate::foundation::range::{Range, byte_range};
+use crate::foundation::services::Services;
 use crate::sync::recover;
 
 /// The parts of the host only streaming uses, made on first use.
@@ -31,47 +33,11 @@ pub struct Streams {
     subtitles: Mutex<HashMap<(u64, usize), Bytes>>,
 }
 
-/// What a request's `Range` asks of a file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Range {
-    /// No range: the whole file.
-    Whole,
-    /// The first and the last byte.
-    Part(u64, u64),
-    /// A range the file cannot meet.
-    Unmet,
-}
-
-/// The one range a request asks for of a `len` byte file.
-pub fn byte_range(header: Option<&str>, len: u64) -> Range {
-    let Some(header) = header else {
-        return Range::Whole;
-    };
-    let parsed = header
-        .strip_prefix("bytes=")
-        .and_then(|v| v.split(',').next())
-        .and_then(|v| {
-            let (a, b) = v.split_once('-')?;
-            let (start, end) = match (a.trim(), b.trim()) {
-                ("", suffix) => (
-                    len.saturating_sub(suffix.parse().ok()?),
-                    len.saturating_sub(1),
-                ),
-                (a, "") => (a.parse().ok()?, len.saturating_sub(1)),
-                (a, b) => (
-                    a.parse().ok()?,
-                    b.parse::<u64>().ok()?.min(len.saturating_sub(1)),
-                ),
-            };
-            (start <= end && start < len).then_some((start, end))
-        });
-    parsed.map_or(Range::Unmet, |(s, e)| Range::Part(s, e))
-}
-
 /// The file and its sidecars, by row id.
 fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
-    let core = st.core.upgrade()?;
-    core.store
+    let team = st.live()?;
+    team.services
+        .store
         .read(|c| {
             Ok(c.query_row(
                 "SELECT path, sidecars FROM files WHERE id = ?1",
@@ -105,6 +71,7 @@ fn video_type(path: &std::path::Path) -> &'static str {
         Some("webm") => "video/webm",
         Some("avi") => "video/x-msvideo",
         Some("ts" | "m2ts") => "video/mp2t",
+        Some("ogm") => "video/ogg",
         _ => "video/x-matroska",
     }
 }
@@ -235,10 +202,10 @@ pub async fn subtitle(
 }
 
 pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Response {
-    let Some(core) = st.core.upgrade() else {
+    let Some(front) = st.live().and_then(|team| team.front.get()) else {
         return not_found();
     };
-    match crate::playback::session::windows_of(&core, session) {
+    match front.skip_windows(session) {
         Ok(windows) => match serde_json::to_vec(&windows) {
             Ok(body) => json(StatusCode::OK, body),
             Err(_) => not_found(),
@@ -338,13 +305,13 @@ pub async fn hls(
         path,
         probe: (*probe).clone(),
     };
-    let Some(core) = st.core.upgrade() else {
+    let Some(team) = st.live() else {
         return not_found();
     };
     let converter = st
         .streams
         .converter
-        .get_or_init(|| Converter::new(std::path::Path::new(&core.paths.cache_dir)));
+        .get_or_init(|| Converter::new(std::path::Path::new(&team.services.paths.cache_dir)));
     match converter.piece(&key, &source, i).await {
         Some(bytes) => ([(header::CONTENT_TYPE, "video/mp2t")], Body::from(bytes)).into_response(),
         None => error(StatusCode::SERVICE_UNAVAILABLE, "the conversion failed"),
@@ -377,7 +344,8 @@ const DOWNLOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 /// the torrents went in, not only that a job started. The listener is up before the call,
 /// so a job that ends at once is not missed.
 pub(crate) fn run_to_end(
-    core: &crate::Core,
+    services: &Services,
+    front: &dyn Front,
     profile: u64,
     call: Call,
     wait: std::time::Duration,
@@ -390,8 +358,8 @@ pub(crate) fn run_to_end(
         }
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let sub = crate::events::Subscription::new(core.bus.clone(), Arc::new(Relay(tx)));
-    let job = match core.call_as(profile, call) {
+    let sub = crate::events::Subscription::new(services.bus.clone(), Arc::new(Relay(tx)));
+    let job = match front.answer(profile, call) {
         Ok(Reply::Started { job }) => job,
         other => {
             sub.unsubscribe();
@@ -454,21 +422,24 @@ pub async fn call(
     }
     // Downloads fill this computer's disk and its torrent client, so only the
     // person it belongs to may send them (#733).
-    if download && profile != crate::profiles::OWNER {
+    if download && profile != crate::foundation::trust::OWNER {
         return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
-    let Some(core) = st.core.upgrade() else {
+    let Some((team, front)) = st
+        .live()
+        .and_then(|team| team.front.get().map(|front| (team, front)))
+    else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let hiding = matches!(name.as_str(), "SetNotInterested" | "ListNotInterested");
-    if !hiding && !download && !core.host.streaming() {
+    if !hiding && !download && !team.streaming() {
         return error(StatusCode::FORBIDDEN, super::server::STREAMING_OFF);
     }
     let reply = tokio::task::spawn_blocking(move || {
         if download {
-            run_to_end(&core, profile, call, DOWNLOAD_WAIT)
+            run_to_end(&team.services, &*front, profile, call, DOWNLOAD_WAIT)
         } else {
-            core.call_as(profile, call)
+            front.answer(profile, call)
         }
     })
     .await;
@@ -505,17 +476,6 @@ impl From<&CoreError> for CallError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_range_reads_like_a_browser_sends_it() {
-        assert_eq!(byte_range(None, 100), Range::Whole);
-        assert_eq!(byte_range(Some("bytes=0-"), 100), Range::Part(0, 99));
-        assert_eq!(byte_range(Some("bytes=10-19"), 100), Range::Part(10, 19));
-        assert_eq!(byte_range(Some("bytes=-10"), 100), Range::Part(90, 99));
-        assert_eq!(byte_range(Some("bytes=50-500"), 100), Range::Part(50, 99));
-        assert_eq!(byte_range(Some("bytes=200-"), 100), Range::Unmet);
-        assert_eq!(byte_range(Some("pages=1"), 100), Range::Unmet);
-    }
 
     #[test]
     fn the_picks_round_trip_through_the_query() {

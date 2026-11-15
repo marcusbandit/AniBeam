@@ -17,7 +17,7 @@ use axum::extract::connect_info::MockConnectInfo;
 /// The owner (user 100) has this machine and a phone; a friend (user 200) has a tablet;
 /// the laptop names no user.
 const STATUS: &[u8] = br#"{
-    "Self": {"ID": "nSelf", "HostName": "banditbox", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+    "Self": {"ID": "nSelf", "HostName": "desk", "UserID": 100, "TailscaleIPs": ["100.64.0.1"]},
     "Peer": {
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
         "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},
@@ -35,7 +35,7 @@ const LAPTOP: &str = "100.70.1.4";
 
 fn serve_as(rt: &tokio::runtime::Runtime, core: &Arc<Core>, from: &str) -> String {
     let from: SocketAddr = format!("{from}:40000").parse().unwrap();
-    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(from));
+    let app = core.host_router().layer(MockConnectInfo(from));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();

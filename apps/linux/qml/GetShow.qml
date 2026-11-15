@@ -1090,7 +1090,7 @@ Item {
             if (t.resolution) bits.push(t.resolution)
             return bits.length ? bits.join(", ") : words.t("get-show-no-group")
         }
-        // The endpoint AniBeam picked it on, when it did; else the one whose name the release
+        // The endpoint Anibeam picked it on, when it did; else the one whose name the release
         // group carries (a group that runs its own source), said to be a guess
         readonly property string guess: {
             var g = String(t.group || "").toLowerCase()

@@ -4,7 +4,7 @@
 // handlers run wherever Apple runs them and only call back into Rust, which queues the
 // page's signal. Built on its own with ARC, see build.rs.
 //
-// AniBeam holds the keys only while a player page is up: the targets go on with the first
+// Anibeam holds the keys only while a player page is up: the targets go on with the first
 // Playing or Paused and all come off with the Stopped the page sends as it goes, the release
 // IINA's rule asks for. ANIBEAM_NP_TRACE=1 prints each publish, elapsed write, release and
 // command.
@@ -72,7 +72,7 @@ void remove_all(NSArray<NSArray *> *pairs) {
 // so they are offered only to an episode with no neighbour either way, and an episode that
 // has one gets previous and next, as MPRIS gives it on Linux. Their targets come off as well
 // as `enabled`: a command that still has a target can be drawn dimmed in that slot, and with
-// none the system has nothing to offer. Skips are 15 s, the spec's default, since AniBeam has
+// none the system has nothing to offer. Skips are 15 s, the spec's default, since Anibeam has
 // no seek preference.
 void offer_skips(bool on) {
     if (on == (skips != nil)) return;

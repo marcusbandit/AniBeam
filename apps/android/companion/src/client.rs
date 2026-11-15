@@ -31,12 +31,12 @@ pub fn agent() -> ureq::Agent {
 pub enum HostError {
     /// Nothing answered: off, asleep, not sharing, or the tailnet is down.
     Unreachable(String),
-    /// Something answered, but it is not AniBeam. Holds the whole sentence, worded in the
+    /// Something answered, but it is not Anibeam. Holds the whole sentence, worded in the
     /// language the app spoke when it happened.
     NotAniBeam(String),
-    /// An AniBeam that speaks a newer API than this app reads.
+    /// An Anibeam that speaks a newer API than this app reads.
     TooNew(u32),
-    /// AniBeam answered with an error or something unreadable.
+    /// Anibeam answered with an error or something unreadable.
     Bad(String),
 }
 
@@ -234,7 +234,7 @@ impl HostClient {
         let (status, body, _) = self.fetch(api::HELLO, 64 * 1024)?;
         if status != 200 {
             // A refusal is the computer's own word; any other status on the hello route is
-            // a web server that is not AniBeam.
+            // a web server that is not Anibeam.
             return Err(match refusal(status, &body) {
                 Some(why) => HostError::Bad(why),
                 None => HostError::NotAniBeam(tr!(
@@ -335,7 +335,7 @@ impl HostClient {
         Ok((status, body))
     }
 
-    /// The other AniBeams the host sees on the tailnet.
+    /// The other Anibeams the host sees on the tailnet.
     pub fn peers(&self) -> Result<Vec<api::PeerHost>, HostError> {
         let (body, _) = self.get(api::PEERS, 256 * 1024)?;
         serde_json::from_slice::<api::Peers>(&body)

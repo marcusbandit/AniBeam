@@ -1,9 +1,9 @@
-//! Watch history, resume points and matches merged between trusted AniBeam
+//! Watch history, resume points and matches merged between trusted Anibeam
 //! computers (#561).
 //!
 //! Each computer serves its own as an `anibeam-export` document at
 //! [`wire::HISTORY`]. While Share over Tailscale is on, a computer pulls from
-//! every trusted AniBeam on the tailnet once it serves there, and pulls back
+//! every trusted Anibeam on the tailnet once it serves there, and pulls back
 //! from any computer that asks for its own, so two that see each other end with
 //! the same history whichever came up first. Nothing is polled.
 //!
@@ -25,7 +25,8 @@ use anibeam_host_api as wire;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
+use crate::host::Host;
 use crate::library::cards;
 use crate::paths::normalise;
 use crate::sync::recover;
@@ -45,11 +46,11 @@ const DOCUMENT_MAX: usize = 64 * 1024 * 1024;
 /// out, so the other computer never takes a guess for the person's choice.
 /// No sources or fixes: those belong to this machine, and a library export
 /// already leaves out accounts, keys and preferences.
-pub fn document(core: &Core) -> Result<Document, CoreError> {
-    let mut doc = export::build(core, false, SystemTime::now())?;
-    doc.history = Some(export::history_section(core)?);
+pub fn document(services: &Services) -> Result<Document, CoreError> {
+    let mut doc = export::build(services, false, SystemTime::now())?;
+    doc.history = Some(export::history_section(services)?);
     doc.sources.clear();
-    let confirmed: std::collections::HashSet<String> = core.store.read(|c| {
+    let confirmed: std::collections::HashSet<String> = services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM series WHERE confirmed = 1")?;
         let rows = stmt
             .query_map([], |r| r.get::<_, String>(0))?
@@ -325,9 +326,9 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
 }
 
 /// Merges another computer's document into this library.
-pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError> {
+pub async fn merge(services: &Services, doc: Document) -> Result<Merged, CoreError> {
     // A read, on the writer the async side has, so no runtime thread blocks.
-    let here = core.store.write_async(|c| locals(c)).await?;
+    let here = services.store.write_async(|c| locals(c)).await?;
     let mapping = map(&doc.series, &here);
     let paths: HashMap<String, String> = mapping
         .iter()
@@ -347,7 +348,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
         .collect();
     let now = time::now_secs();
     let mut touched: Vec<u64> = adopt.iter().map(|(id, _)| *id).collect();
-    let matches = core
+    let matches = services
         .store
         .tx_async(move |tx| {
             let mut n = 0u64;
@@ -372,7 +373,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
                     .chain(history.completed.iter().map(|c| &c.series))
                     .filter_map(|p| ids_by_path.get(p.as_str()).copied()),
             );
-            import::merge_history(core, history).await?
+            import::merge_history(services, history).await?
         }
         None => (0, 0, 0),
     };
@@ -385,13 +386,13 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
     if merged.any() {
         touched.sort_unstable();
         touched.dedup();
-        let images = core.paths.images_dir();
-        let cards = core
+        let images = services.paths.images_dir();
+        let cards = services
             .store
             .write_async(move |c| cards::cards_for(c, &images, &touched))
             .await?;
         if !cards.is_empty() {
-            core.bus.debug(
+            services.bus.debug(
                 Stage::Library,
                 "series changed by another computer's history",
                 EventBody::SeriesChanged { series: cards },
@@ -401,10 +402,10 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
     Ok(merged)
 }
 
-/// Pulls the history of the AniBeam at `base` (`http://<address>:<port>`)
-/// and merges it. Nothing is merged from something that is not AniBeam or
+/// Pulls the history of the Anibeam at `base` (`http://<address>:<port>`)
+/// and merges it. Nothing is merged from something that is not Anibeam or
 /// does not serve its history.
-pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
+pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> {
     let http = reqwest::Client::builder()
         .timeout(PULL_FOR)
         .redirect(reqwest::redirect::Policy::none())
@@ -444,14 +445,14 @@ pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
         }
     }
     let (doc, _) = format::parse(&bytes)?;
-    let merged = merge(core, doc).await?;
+    let merged = merge(services, doc).await?;
     if merged.any() {
         let name = if hello.host.is_empty() {
             base
         } else {
             &hello.host
         };
-        core.bus.info(
+        services.bus.info(
             Stage::Library,
             format!(
                 "Merged history from {name}: {} watched, {} resume points, {} matches",
@@ -467,23 +468,22 @@ pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
 
 /// The device a pull is from, by its Tailscale id when the last read knows
 /// its address, so its IPv4 and IPv6 addresses count as one computer.
-fn device(core: &Core, base: &str) -> String {
+fn device(host: &Host, base: &str) -> String {
     let ip = base
         .strip_prefix("http://")
         .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
         .map(|a| super::trust::canonical(a.ip()));
     ip.and_then(|ip| {
-        core.host
-            .tailnet_now()
+        host.tailnet_now()
             .and_then(|t| t.peer(ip).map(|p| p.id.clone()))
     })
     .unwrap_or_else(|| base.to_string())
 }
 
 /// Whether the computer at `base` is due a pull, marking it pulled when it is.
-fn due(core: &Core, base: &str) -> bool {
-    let key = device(core, base);
-    let mut pulled = recover(&core.host.pulled);
+fn due(host: &Host, base: &str) -> bool {
+    let key = device(host, base);
+    let mut pulled = recover(&host.pulled);
     if pulled
         .get(&key)
         .is_some_and(|at| at.elapsed() < AGAIN_AFTER)
@@ -496,27 +496,27 @@ fn due(core: &Core, base: &str) -> bool {
 
 /// Pulls from `base` once it is due. A pull that fails leaves it due again, so
 /// the next ask from that computer, or the next start, tries once more.
-async fn pull_if_due(core: &Arc<Core>, base: &str) {
-    if !due(core, base) {
+async fn pull_if_due(host: &Host, base: &str) {
+    if !due(host, base) {
         return;
     }
-    if let Err(e) = pull(core, base).await {
+    if let Err(e) = pull(&host.services, base).await {
         tracing::debug!("history: pulling from {base} failed: {e}");
-        recover(&core.host.pulled).remove(&device(core, base));
+        recover(&host.pulled).remove(&device(host, base));
     }
 }
 
-/// Pulls from every trusted AniBeam on the tailnet that is due, on a worker.
-pub fn pull_all(core: &Core) {
-    let Some(core) = core.arc() else { return };
-    let handle = core.handle.clone();
+/// Pulls from every trusted Anibeam on the tailnet that is due, on a worker.
+pub fn pull_all(host: &Arc<Host>) {
+    let host = host.clone();
+    let handle = host.services.handle.clone();
     handle.spawn(async move {
-        let reader = core.clone();
+        let reader = host.clone();
         let asked = tokio::task::spawn_blocking(move || {
-            let tailnet = reader.host.tailnet(false)?;
+            let tailnet = reader.tailnet(false)?;
             Some(super::peers::candidates(
                 &tailnet,
-                &reader.host.switched_off(),
+                &reader.switched_off(),
                 wire::DEFAULT_PORT,
             ))
         })
@@ -525,14 +525,14 @@ pub fn pull_all(core: &Core) {
         .flatten()
         .unwrap_or_default();
         for found in super::peers::find(asked).await {
-            pull_if_due(&core, &found.url).await;
+            pull_if_due(&host, &found.url).await;
         }
     });
 }
 
 /// Pulls back from the computer at `from` that just asked for this one's
 /// history, when it is due.
-pub fn pull_back(core: &Core, from: IpAddr) {
+pub fn pull_back(host: &Arc<Host>, from: IpAddr) {
     let from = super::trust::canonical(from);
     if !super::addr::is_tailscale(&from) {
         return;
@@ -541,9 +541,9 @@ pub fn pull_back(core: &Core, from: IpAddr) {
         "http://{}",
         std::net::SocketAddr::new(from, wire::DEFAULT_PORT)
     );
-    let Some(core) = core.arc() else { return };
-    let handle = core.handle.clone();
-    handle.spawn(async move { pull_if_due(&core, &base).await });
+    let host = host.clone();
+    let handle = host.services.handle.clone();
+    handle.spawn(async move { pull_if_due(&host, &base).await });
 }
 
 #[cfg(test)]

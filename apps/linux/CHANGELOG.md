@@ -1,4 +1,4 @@
-# AniBeam for desktop
+# Anibeam for desktop
 
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
@@ -29,7 +29,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Sort Airing by score, next episode, episode count or title
 - Airing can show any season: open the arrow beside the next season
 - Hide what is on your lists or in your library from Airing
-- Run AniBeam as a service with no window, so your devices always reach it
+- Run Anibeam as a service with no window, so your devices always reach it
 - Settings shows whether that service runs, under Phone app
 - Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
@@ -74,7 +74,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A missing episode in Metadata opens Get
 - This week on Home links to Airing now
 - Airing now's menu leads with Play next for shows you have
-- Mark episodes watched on a show with no tracker; AniBeam keeps them
+- Mark episodes watched on a show with no tracker; Anibeam keeps them
 - An unmatched show shows what folder and file names match
 - Right-click a release to copy its magnet or open its page
 - Open the folder a download is saving to
@@ -114,7 +114,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Help in Settings answers common questions, each with a button to the fix
 - Ask Claude Code to look a show's episode dates up, under Episodes and dates
 - Errors say what to do next, with a button for it and details a click away
-- Settings, Downloads picks whether AniBeam or anirss runs searches
+- Settings, Downloads picks whether Anibeam or anirss runs searches
 - Switch off any device on your tailnet in Settings, Phone app
 - Stream episodes has its own switch in Settings, Phone app
 - Watch history, resume points and matches merge between your computers
@@ -148,7 +148,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Tracks read in plain words, like English (file)
 - Switching a track says which one on the video
 - The rating prompt goes away by itself
-- AniBeam opens at the size and place you left it
+- Anibeam opens at the size and place you left it
 - Settings opens on the tab you left it on
 - A page from the rail comes back with its search, filter and scroll
 - The rail icon of the page you are on takes it back to the top
@@ -166,7 +166,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Rows hold still until seeders and dates are in, then sort once
 - Your column sort stays for the next search
 - Speeds say down or up, sizes go up to TB, and seeders are called seeders
-- Later on an update hides it until AniBeam opens again, not for good
+- Later on an update hides it until Anibeam opens again, not for good
 - Unsaved Downloads settings survive a switch to another tab
 - Test saves your changes first, then tests them
 - A subtitle value Settings cannot use turns red
@@ -184,10 +184,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Downloads errors say what to do next, with a button that does it
 - Settings errors say what to do next, with a button that does it
 - Empty and failed pages say why, with the button that fills them
-- With AniBeam's own engine, best fit follows the preferences saved in anirss
-- On AniBeam's own engine, Downloads lists your sources and needs no helper
-- Downloads search and follow on AniBeam itself, unless you picked the helper
-- Sources set only in the helper's own config need adding again in AniBeam
+- With Anibeam's own engine, best fit follows the preferences saved in anirss
+- On Anibeam's own engine, Downloads lists your sources and needs no helper
+- Downloads search and follow on Anibeam itself, unless you picked the helper
+- Sources set only in the helper's own config need adding again in Anibeam
 - A source added by hand needs {query} where the search goes
 - Get show names each source by the kind of search it runs
 - Best fit prefers the release groups your sources list as trusted
@@ -210,7 +210,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - The activity log keeps no feed key after a new subscription
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
-- A busy sign-in port says to try again, not that another AniBeam is open
+- A busy sign-in port says to try again, not that another Anibeam is open
 - A qBittorrent address with a backslash is no longer read as this computer
 - Spy x Family episodes no longer show up as specials
 - A subscription from a show's page saves new episodes into that show's folder
@@ -285,7 +285,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.3.0 · 2026-10-27
 
 ### New
-- AniBeam runs on Windows: an installer, or a zip to run from anywhere
+- Anibeam runs on Windows: an installer, or a zip to run from anywhere
 - Long shows download a few episodes at a time, 12 ahead by default
 - Each episode you finish starts the next; older watched ones leave the disk
 - Get more episodes now, or all of them, from a rolling download
@@ -367,7 +367,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.0.0 · 2026-10-13
 
 ### New
-- AniBeam is rebuilt as a native app
+- Anibeam is rebuilt as a native app
 - Home: the series to go on with, the week ahead, episodes waiting
 - The library as sections of one grid, filtered by a genre picked on Home
 - A slim sidebar with Home and Library first

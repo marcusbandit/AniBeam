@@ -1,4 +1,4 @@
-// Library: the folders AniBeam watches (each with its counts and its own Open, Rescan and
+// Library: the folders Anibeam watches (each with its counts and its own Open, Rescan and
 // Remove, then Add a folder and the last scan with Scan all), Matching (the providers in
 // the order matching tries them, and the way to the Metadata page where each match is
 // reviewed), the session's Show hidden shows, and the shows hidden from Airing now, each

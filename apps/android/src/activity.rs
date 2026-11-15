@@ -225,7 +225,7 @@ impl Page {
 
     fn copy_all(&mut self) {
         let text = self.rows.iter().map(line).collect::<Vec<_>>().join("\n");
-        let ok = crate::platform::copy_text("AniBeam activity", &text);
+        let ok = crate::platform::copy_text("Anibeam activity", &text);
         if let Some(w) = self.window.upgrade() {
             w.global::<ActivityData>().set_copied(ok);
         }
@@ -233,7 +233,7 @@ impl Page {
 
     fn copy_line(&mut self, i: i32) {
         if let Some(r) = usize::try_from(i).ok().and_then(|i| self.rows.get(i)) {
-            crate::platform::copy_text("AniBeam activity", &line(r));
+            crate::platform::copy_text("Anibeam activity", &line(r));
         }
     }
 
