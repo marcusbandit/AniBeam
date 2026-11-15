@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::protocol::{Role, WebSocketConfig};
 use tokio_util::sync::CancellationToken;
 
 use anibeam_room::proto::{
-    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, ServerMsg,
+    ClientMsg, CreateRoom, CreatedRoom, EpisodeRef, ErrorCode, PROTO, SEAL_NOBODY, ServerMsg,
 };
 use anibeam_room::room::{CLOSED_BYE, CLOSED_REPLACED};
 
@@ -173,6 +173,8 @@ pub struct Start {
     pub code: String,
     pub name: String,
     pub host_key: Option<String>,
+    /// This member's public key for the session, which the hello carries.
+    pub key: String,
     pub client: reqwest::Client,
     pub rx: mpsc::UnboundedReceiver<ClientMsg>,
     pub cancel: CancellationToken,
@@ -200,6 +202,7 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
         code,
         name,
         host_key,
+        key,
         client,
         mut rx,
         cancel,
@@ -224,6 +227,7 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
                     serial,
                     name: &name,
                     host_key: host_key.as_deref(),
+                    key: &key,
                 };
                 link.serve(ws, &mut rx, &cancel, &kick, &mut rejoin, &mut first)
                     .await
@@ -288,6 +292,7 @@ struct Link<'a> {
     serial: u64,
     name: &'a str,
     host_key: Option<&'a str>,
+    key: &'a str,
 }
 
 impl Link<'_> {
@@ -307,6 +312,7 @@ impl Link<'_> {
             client: format!("anibeam/{}", crate::VERSION),
             host_key: self.host_key.map(str::to_string),
             rejoin_key: rejoin.clone(),
+            key: Some(self.key.to_string()),
         };
         if sink.send(text(&hello)).await.is_err() {
             return End::Dropped { welcomed: false };
@@ -402,6 +408,9 @@ impl Link<'_> {
                             let fatal = code.is_fatal() || (code == ErrorCode::BadName && !welcomed);
                             if !fatal {
                                 tracing::debug!("room: the relay said {code:?}: {message}");
+                                if code == ErrorCode::NotAllowed && message == SEAL_NOBODY {
+                                    super::media::seal_refused(&playback, self.serial);
+                                }
                                 continue;
                             }
                             if let Some(tx) = first.take() {

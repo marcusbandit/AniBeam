@@ -39,6 +39,7 @@ fn main() {
             .qml_file("qml/Switch.qml")
             .qml_file("qml/Button.qml")
             .qml_file("qml/Field.qml")
+            .qml_file("qml/CodeInput.qml")
             .qml_file("qml/Dropdown.qml")
             .qml_file("qml/Swatches.qml")
             .qml_file("qml/SliderRow.qml")
@@ -219,6 +220,7 @@ fn main() {
         "assets/icons/clapperboard.svg",
         "assets/icons/clock.svg",
         "assets/icons/copy.svg",
+        "assets/icons/crown.svg",
         "assets/icons/database.svg",
         "assets/icons/download.svg",
         "assets/icons/ellipsis.svg",
