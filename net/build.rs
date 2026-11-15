@@ -1,14 +1,14 @@
 use std::path::Path;
 use std::process::Command;
 
-/// `phone_os`, as in the core's build.rs, and the build's version for `VERSION` in
+/// `phone_os`, as in library/build.rs, and the build's version for `VERSION` in
 /// `lib.rs`. The version is worked out here, the lowest crate that names it, because every
 /// provider client sends it in its user agent; the core hands it on. A commit moves it, so
 /// it rebuilds this crate and the ones above, never the foundation (#971).
 fn main() {
     // `phone_os`: the target is a phone's, Android or iOS. The phone's clients resolve
-    // over HTTPS and keep a front's cookies (lib.rs). core/build.rs makes the same switch
-    // for the core; a new phone platform is one line in each.
+    // over HTTPS and keep a front's cookies (lib.rs). library/build.rs makes the same
+    // switch for the library; a new phone platform is one line in each.
     println!("cargo::rustc-check-cfg=cfg(phone_os)");
     let phone = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android" || os == "ios");
     if phone {

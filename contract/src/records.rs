@@ -1003,7 +1003,9 @@ pub struct RoomInfo {
     pub host: bool,
     /// Who is connected now, in the order they joined.
     pub members: Vec<RoomMember>,
-    pub episode: EpisodeRef,
+    /// What the room watches; None until the host picks something (#922).
+    #[serde(default)]
+    pub episode: Option<EpisodeRef>,
     /// Seconds this member's file is from the host's: local position is the room's
     /// position plus the offset.
     pub offset: f64,
@@ -1021,6 +1023,10 @@ pub struct RoomInfo {
     /// can be asked for it.
     #[serde(default)]
     pub can_fetch: bool,
+    /// The host's ready gate (#922): the host pressed play while not everyone had the
+    /// episode open. Always `Off` for everyone else.
+    #[serde(default)]
+    pub gate: RoomGate,
     /// Why Get media stopped short, while `fetch` is `Failed`: the words to show.
     #[serde(default)]
     pub fetch_error: Option<Words>,
@@ -1057,6 +1063,9 @@ pub struct EpisodeRef {
     pub duration: Option<f64>,
     /// Where the opening starts in the host's file, in seconds.
     pub opening_start: Option<f64>,
+    /// The host's show is a film: Get media has no rest of the show to offer.
+    #[serde(default)]
+    pub film: bool,
 }
 
 /// What a cast session is doing. Positions are seconds into the episode.
@@ -1417,4 +1426,11 @@ pub struct HostStatus {
     /// serving.
     pub urls: Vec<String>,
     pub message: String,
+}
+
+/// Someone on Discord, as an Ask to Join named them (#966).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct DiscordPerson {
+    pub id: String,
+    pub name: String,
 }

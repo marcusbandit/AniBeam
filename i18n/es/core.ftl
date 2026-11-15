@@ -518,6 +518,9 @@ core-first-run-not-absolute = la carpeta de vídeos debe ser una ruta absoluta
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Viendo juntos
+core-presence-in-room = En una sala
+core-presence-no-room = Esa invitación de Discord aún no tiene sala. Pídele que abra una.
 
 ## core/src/trackers/accounts.rs
 
@@ -860,7 +863,7 @@ core-transfer-wrong-format = no es un documento { $format }
 
 core-transfer-imported = Se cargó tu biblioteca desde el archivo.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = no hay ningún archivo { $id } en la biblioteca
 core-library-file-elsewhere-not-removed = el archivo { $id } pertenece a otra serie, así que no se quitó nada
@@ -908,7 +911,7 @@ core-library-watched-removed =
         } a la papelera
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     El único archivo aquí se lee como { $read ->
@@ -930,7 +933,7 @@ core-library-fix-numbered-on = Los episodios { $from } parecen los { $to } de es
 core-library-runs-span = { $first } a { $last }
 core-library-runs-list = { $init } y { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = un número de episodio va de 0 a 10000
 core-library-fix-season-range = una temporada llega hasta 200
@@ -947,7 +950,7 @@ core-library-fixed =
        *[other] Se corrigió cómo se leen { $count } archivos de { $title }.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } oculta.
 core-library-back-one = { $title } ha vuelto.
@@ -956,12 +959,12 @@ core-library-back-many = { $count } series han vuelto.
 core-library-episode-count-set = { $title } tiene ahora { $count } episodios.
 core-library-episode-count-cleared = Se borró el número de episodios de { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Se borraron las notas de horario de { $title }.
 core-library-schedule-saved = Se guardaron { $count } notas de horario de { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = la ruta de una fuente debe ser absoluta
 core-library-source-exists = ya es una fuente
@@ -1006,7 +1009,7 @@ core-library-scan-done =
         }
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = sin respuesta en { $span }
 core-library-agent-stopped-code = se detuvo con el código { $code }
@@ -1163,6 +1166,10 @@ core-downloads-refuse-library-folder = { $path } es una carpeta de la biblioteca
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent no indica ninguna carpeta de descarga predeterminada; pon una en qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } no es una ruta completa a una carpeta
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } no puede guardar descargas: elige una carpeta que exista y que no sea tu carpeta personal
 core-downloads-name-empty = el nombre no puede estar vacío
 core-downloads-name-slash = el nombre no puede contener / ni \
 core-downloads-name-not-folder = { $name } no es un nombre de carpeta
@@ -1172,7 +1179,7 @@ core-downloads-name-not-folder = { $name } no es un nombre de carpeta
 core-downloads-pruned = Ya no estás suscrito a { $title }, terminó de emitirse.
 core-downloads-prune-failed = No se pudo cancelar la suscripción a { $title }. Revisa Descargas en Ajustes.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } no es una ruta absoluta simple, así que no se quitó nada
 core-downloads-refuse-root = { $path } es la raíz del sistema de archivos, así que no se quitó nada
@@ -1296,6 +1303,7 @@ core-room-service = Ver juntos
 core-room-not-found = Ninguna sala tiene ese código. Puede que se haya cerrado.
 core-room-full = Esa sala está llena.
 core-room-proto = Ese relay usa otra versión de las salas. Actualiza { -app-name } para unirte.
+core-room-needs-episode = Ese relay necesita un episodio para abrir una sala. Ábrela desde el reproductor o actualiza el relay.
 core-room-unreachable = No se pudo llegar al relay: { $message }
 core-room-refused = El relay dijo que no: { $message }
 core-room-not-in = No estás en ninguna sala.
@@ -1325,3 +1333,4 @@ core-room-media-lost = El cliente de torrents perdió la descarga del episodio.
 core-room-media-stalled = La descarga no ha avanzado en diez minutos. Inténtalo de nuevo más tarde.
 core-room-media-not-in-library = El episodio se descargó, pero no está en tu biblioteca. Comprueba que las descargas se guarden en una carpeta de la biblioteca.
 core-room-media-here = El episodio ya está en tu biblioteca.
+core-room-media-rest-missing = No se pudo conseguir el resto de la serie. Solo se descarga este episodio.

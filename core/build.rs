@@ -12,14 +12,8 @@ const CREDENTIALS: [&str; 4] = [
 ];
 
 fn main() {
-    // `phone_os`: the target is a phone's, Android or iOS. Every switch in the core that
-    // means "the phone" reads it. net/build.rs makes the same switch for the net crate, so
-    // a new phone platform is one line here and one there.
-    println!("cargo::rustc-check-cfg=cfg(phone_os)");
-    let phone = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android" || os == "ios");
-    if phone {
-        println!("cargo::rustc-cfg=phone_os");
-    }
+    // `phone_os`, the switch for a phone's target, is made in net/build.rs and
+    // library/build.rs, beside the code that reads it; nothing left in the core does.
     credentials();
     // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
     // That string names the build and decides which updates it is offered; a build without
