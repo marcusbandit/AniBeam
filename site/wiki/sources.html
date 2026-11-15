@@ -1,0 +1,94 @@
+<section>
+  <h2 id="what">What a source is</h2>
+  <p>A source is a place Anibeam searches for releases of a show: a feed or a search on some website. Downloads needs at least one before a search can find anything.</p>
+  <p>Anibeam comes with no sources, and this site names none. You add them yourself, from a source list.</p>
+</section>
+
+<section>
+  <h2 id="lists">What a source list is</h2>
+  <p>A source list is one file, made by a person and shared by its address. It holds the definitions of some sources: where each one searches and what it needs, such as an API key. Nothing in it runs on your computer.</p>
+  <ul>
+    <li>The list is signed. Anibeam checks the signature when you add it and keeps the key it was signed with. The key's fingerprint shows on the list's row under <b class="ui">Source lists</b>.</li>
+    <li>Adding a list turns on every source in it that needs nothing. A source that needs a key or a login waits until you fill it in.</li>
+    <li>When the list's maker updates a source, Anibeam offers the update.</li>
+  </ul>
+  <p>A list's sources decide where your searches go, so add a list only from someone you trust.</p>
+</section>
+
+<section>
+  <h2 id="add">Add a source list</h2>
+  <p>The step that adds a list is the same in three places: <b class="ui">Somewhere to search</b> in the first setup, the Downloads page while it has no sources, and <b class="ui">Source lists</b> at the top of <span class="where"><b>Settings</b><b>Downloads</b></span>.</p>
+  <ol class="steps">
+    <li>Copy the list's address. It is the address of one file, usually ending in <code>.json</code>.</li>
+    <li>Paste it into <b class="ui">Paste the address of a source list</b> and press <b class="ui">Add</b>.</li>
+    <li>Anibeam checks the list and says what it turned on, such as <b class="ui">Added Example: 5 sources are on.</b> Those sources search from now on.</li>
+    <li>A source that needs a key or a login is named, with <b class="ui">asks for a value first</b>. Press <b class="ui">Fill in</b>, then <b class="ui">Install</b> next to that source, fill in its value and press <b class="ui">Install</b>. The value stays in your system's password store, never in the library or an export.</li>
+  </ol>
+  <p>A list you added before and removed shows under <b class="ui">Used before</b>, one click each. To check a list is the one its maker published, compare the <b class="ui">Key fingerprint</b> on its row with the one the maker shared.</p>
+  <p>The sources that are on show under <b class="ui">Search sources</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>, in the order they are tried, and as chips on the Downloads page.</p>
+</section>
+
+<section>
+  <h2 id="updates">Keep sources up to date</h2>
+  <ul>
+    <li>Anibeam reads every list again when it starts. <b class="ui">Refresh lists</b> reads them now.</li>
+    <li>A source with a newer version shows <b class="ui">Update to v2</b>, with its own number. An update that sends your key to a different address asks you again first.</li>
+    <li>A source its list no longer offers stays installed and says so. Remove it with its <b class="ui">Remove</b> button.</li>
+    <li>A list signed with a different key from the one Anibeam kept when you added it is refused. To accept the new key, remove the list and add it again.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="by-hand">Add one source by hand</h2>
+  <p>For a feed no list carries, use <b class="ui">Add one by hand</b> under <b class="ui">Source lists</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>.</p>
+  <ol class="steps">
+    <li>Type a name.</li>
+    <li>Type the feed's address with <code>{query}</code> where the search goes, as in <code>https://feeds.example.org/rss?q={query}</code>.</li>
+    <li>Press <b class="ui">Add</b>.</li>
+  </ol>
+  <p>A key in the address, such as <code>apikey=</code>, is moved into the password store and kept out of the address.</p>
+</section>
+
+<section>
+  <h2 id="make">Make your own source list</h2>
+  <p>A list is a JSON file, format <code>anibeam-endpoint-repo</code> version 1. It holds the index as base64 in <code>payload</code> and an ed25519 signature over those bytes in <code>signature</code>. The index has the list's name, its public key, a <code>serial</code> and every definition in full.</p>
+  <ol class="steps">
+    <li>Make a signing key and keep it private: <code>openssl genpkey -algorithm ed25519 -out list-key.pem</code>.</li>
+    <li>Write one definition per source. Each has a fixed <code>id</code>, a <code>name</code>, a <code>version</code>, a <code>kind</code> and a <code>url</code> with <code>{query}</code> in it.</li>
+    <li>Build and sign the index. The project's endpoint repo, in <a href="#contribute">the next section</a>, has the schema, a check script and the script that builds and signs an index, so you can copy its layout.</li>
+    <li>Put the signed file where anyone can fetch it over https, such as a public GitHub repository, and share its raw address with the key's fingerprint.</li>
+  </ol>
+  <pre class="tree">{
+  "id": "example-rss",
+  "name": "Example",
+  "version": 1,
+  "lang": "en",
+  "kind": "rss",
+  "url": "https://feeds.example.org/rss?q={query}&amp;key={api_key}",
+  "auth": [
+    { "key": "api_key", "label": "API key", "secret": true }
+  ],
+  "rate": { "per_minute": 30 }
+}</pre>
+  <p>The kind says what shape the source answers in, never which site it is:</p>
+  <dl class="fixes">
+    <dt><code>rss</code></dt>
+    <dd>Any RSS feed whose address holds <code>{query}</code>.</dd>
+    <dt><code>filtered-rss</code></dt>
+    <dd>A site address the core turns into an RSS search with a category and a filter.</dd>
+    <dt><code>json-feed</code></dt>
+    <dd>A JSON feed of torrent entries in one fixed layout.</dd>
+    <dt><code>json</code></dt>
+    <dd>A JSON search API, with a map that says which field holds the title, the hash or link and the size.</dd>
+    <dt><code>torznab</code></dt>
+    <dd>A torznab search, such as an indexer proxy you run yourself.</dd>
+  </dl>
+  <p>Each <code>auth</code> key goes in the address as a placeholder next to <code>{query}</code>, so a stored address never holds a secret. <code>rate</code> can only slow Anibeam down.</p>
+  <p>Every time you publish, raise <code>serial</code>; Anibeam refuses an index older than the last one it read. Raise a definition's <code>version</code> when it changes, so people get the update. Keep the same key: a list signed with another one is refused.</p>
+  <p>To try a list before you host it, paste a path to the file on your computer into <b class="ui">Paste the address of a source list</b>.</p>
+</section>
+
+<section>
+  <h2 id="contribute">Add a source to the project's list</h2>
+  <p>Open a pull request to <a href="https://github.com/marcusbandit/anibeam-endpoints">marcusbandit/anibeam-endpoints</a>. Its README says how to write a definition and check it. Anibeam's own repository takes no pull request that adds a source.</p>
+</section>
