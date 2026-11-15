@@ -8,8 +8,8 @@
   <h2 id="lists">What a source list is</h2>
   <p>A source list is one file, made by a person and shared by its address. It holds the definitions of some sources: where each one searches and what it needs, such as an API key. Nothing in it runs on your computer.</p>
   <ul>
-    <li>The list is signed. Anibeam checks the signature and shows you the key's fingerprint before it saves anything.</li>
-    <li>You install the sources you want from it, one at a time.</li>
+    <li>The list is signed. Anibeam checks the signature when you add it and keeps the key it was signed with. The key's fingerprint shows on the list's row under <b class="ui">Source lists</b>.</li>
+    <li>Adding a list turns on every source in it that needs nothing. A source that needs a key or a login waits until you fill it in.</li>
     <li>When the list's maker updates a source, Anibeam offers the update.</li>
   </ul>
   <p>A list's sources decide where your searches go, so add a list only from someone you trust.</p>
@@ -17,15 +17,15 @@
 
 <section>
   <h2 id="add">Add a source list</h2>
+  <p>The step that adds a list is the same in three places: <b class="ui">Somewhere to search</b> in the first setup, the Downloads page while it has no sources, and <b class="ui">Source lists</b> at the top of <span class="where"><b>Settings</b><b>Downloads</b></span>.</p>
   <ol class="steps">
     <li>Copy the list's address. It is the address of one file, usually ending in <code>.json</code>.</li>
-    <li>Open <span class="where"><b>Settings</b><b>Downloads</b></span> and scroll to <b class="ui">Source lists</b>.</li>
-    <li>Paste the address into <b class="ui">Add a source list</b> and press <b class="ui">Add</b>.</li>
-    <li>Anibeam asks <b class="ui">Trust Example?</b> with the list's own name, its <b class="ui">Key fingerprint</b> and how many sources it has. Check the fingerprint against the one the list's maker published, then press <b class="ui">Trust</b>.</li>
-    <li>Press <b class="ui">Install</b> next to each source you want.</li>
-    <li>A source that needs a key or a login asks for it. Fill it in and press <b class="ui">Install</b>. It stays in your system's password store, never in the library or an export.</li>
+    <li>Paste it into <b class="ui">Paste the address of a source list</b> and press <b class="ui">Add</b>.</li>
+    <li>Anibeam checks the list and says what it turned on, such as <b class="ui">Added Example: 5 sources are on.</b> Those sources search from now on.</li>
+    <li>A source that needs a key or a login is named, with <b class="ui">asks for a value first</b>. Press <b class="ui">Fill in</b>, then <b class="ui">Install</b> next to that source, fill in its value and press <b class="ui">Install</b>. The value stays in your system's password store, never in the library or an export.</li>
   </ol>
-  <p>Installed sources show up under <b class="ui">Search sources</b> at the top of the same page, in the order they are tried. The next search on Downloads uses them.</p>
+  <p>A list you added before and removed shows under <b class="ui">Used before</b>, one click each. To check a list is the one its maker published, compare the <b class="ui">Key fingerprint</b> on its row with the one the maker shared.</p>
+  <p>The sources that are on show under <b class="ui">Search sources</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>, in the order they are tried, and as chips on the Downloads page.</p>
 </section>
 
 <section>
@@ -34,13 +34,13 @@
     <li>Anibeam reads every list again when it starts. <b class="ui">Refresh lists</b> reads them now.</li>
     <li>A source with a newer version shows <b class="ui">Update to v2</b>, with its own number. An update that sends your key to a different address asks you again first.</li>
     <li>A source its list no longer offers stays installed and says so. Remove it with its <b class="ui">Remove</b> button.</li>
-    <li>A list signed with a different key from the one you trusted is refused. To accept the new key, remove the list and add it again.</li>
+    <li>A list signed with a different key from the one Anibeam kept when you added it is refused. To accept the new key, remove the list and add it again.</li>
   </ul>
 </section>
 
 <section>
   <h2 id="by-hand">Add one source by hand</h2>
-  <p>For a feed no list carries, use <b class="ui">Add one by hand</b> under <b class="ui">Source lists</b>.</p>
+  <p>For a feed no list carries, use <b class="ui">Add one by hand</b> under <b class="ui">Source lists</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>.</p>
   <ol class="steps">
     <li>Type a name.</li>
     <li>Type the feed's address with <code>{query}</code> where the search goes, as in <code>https://feeds.example.org/rss?q={query}</code>.</li>
@@ -85,7 +85,7 @@
   </dl>
   <p>Each <code>auth</code> key goes in the address as a placeholder next to <code>{query}</code>, so a stored address never holds a secret. <code>rate</code> can only slow Anibeam down.</p>
   <p>Every time you publish, raise <code>serial</code>; Anibeam refuses an index older than the last one it read. Raise a definition's <code>version</code> when it changes, so people get the update. Keep the same key: a list signed with another one is refused.</p>
-  <p>To try a list before you host it, paste a path to the file on your computer into <b class="ui">Add a source list</b>.</p>
+  <p>To try a list before you host it, paste a path to the file on your computer into <b class="ui">Paste the address of a source list</b>.</p>
 </section>
 
 <section>
