@@ -543,6 +543,9 @@ core-first-run-not-absolute = 動画フォルダは絶対パスで指定して�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = 特典映像
+core-presence-room = 一緒に視聴中
+core-presence-in-room = ルームにいます
+core-presence-no-room = この Discord の招待にはまだルームがありません。ルームを始めてもらってください。
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -1083,6 +1086,10 @@ core-downloads-refuse-library-folder = { $path }はライブラリフォルダ�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } はフォルダへの完全なパスではありません
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } にはダウンロードを保存できません。存在するフォルダで、ホームフォルダ以外を選んでください
 core-downloads-name-empty = 名前を空にはできません
 core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes
@@ -1241,6 +1248,7 @@ core-room-service = 一緒に見る
 core-room-not-found = そのコードのルームはありません。終了した可能性があります。
 core-room-full = そのルームは満員です。
 core-room-proto = そのリレーは別のバージョンのルームを使っています。参加するには{ -app-name }を更新してください。
+core-room-needs-episode = そのリレーはルームを作るのにエピソードが必要です。プレーヤーから作るか、リレーを更新してください。
 core-room-unreachable = リレーに接続できませんでした: { $message }
 core-room-refused = リレーに拒否されました: { $message }
 core-room-not-in = ルームに参加していません。
@@ -1270,3 +1278,4 @@ core-room-media-lost = トレントクライアントがエピソードのダウ
 core-room-media-stalled = ダウンロードが10分間進んでいません。後でもう一度お試しください。
 core-room-media-not-in-library = エピソードはダウンロードされましたが、ライブラリにありません。ダウンロードの保存先がライブラリのフォルダか確認してください。
 core-room-media-here = エピソードがライブラリに入りました。
+core-room-media-rest-missing = シリーズの残りを取得できませんでした。このエピソードだけをダウンロードしています。

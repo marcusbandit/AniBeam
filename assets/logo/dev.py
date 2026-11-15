@@ -6,11 +6,13 @@ before anyone got round to it: white outline on blueprint blue, construction lin
 off the edges, a dimension nobody filled in, hatching that stops halfway, and a strip of
 tape saying DEV. A fixed seed keeps it repeatable.
 
-usage: python3 site/tools/dev_logo.py site/img/logo.svg site/img/logo-dev.svg
-       rsvg-convert -w 512 -h 512 site/img/logo-dev.svg -o site/img/icon-dev.png
+usage: python3 assets/logo/dev.py assets/logo/logo.svg assets/logo/logo-dev.svg
+       rsvg-convert -w 512 -h 512 assets/logo/logo-dev.svg -o assets/logo/logo-dev.png
+
+make.py runs both lines and copies the PNG into the desktop app, for a build from source.
 
 Every word on it is drawn as strokes, not set in a font, so it looks the same wherever the SVG
-is opened. Only the glyph's bounding box is read here; nightly_logo.py needs the full outline.
+is opened. Only the glyph's bounding box is read here; nightly.py needs the full outline.
 """
 import random
 import re
@@ -109,7 +111,7 @@ hatch_svg = (f'<g clip-path="url(#half)"><g clip-path="url(#glyph)">'
 half_y = gy0 + (gy1 - gy0) * 0.48
 
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-<!-- Made by site/tools/dev_logo.py from site/img/logo.svg; edit the script, not this file. -->
+<!-- Made by assets/logo/dev.py from assets/logo/logo.svg; edit the script, not this file. -->
 <defs>
 <clipPath id="sq"><rect x="{X0}" y="{Y0}" width="{SIZE}" height="{SIZE}" rx="{R}"/></clipPath>
 <clipPath id="glyph"><path d="{glyph_d}"/></clipPath>

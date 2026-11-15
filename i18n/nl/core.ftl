@@ -521,6 +521,9 @@ core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Samen kijken
+core-presence-in-room = In een kamer
+core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
 
 ## trackers/src/accounts.rs
 
@@ -1142,6 +1145,10 @@ core-downloads-refuse-library-folder = { $path } is een bibliotheekmap of bevat 
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent noemt geen standaard opslagmap; stel er een in qBittorrent in
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } is geen volledig pad naar een map
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kan geen downloads bevatten: kies een map die bestaat en niet je thuismap is
 core-downloads-name-empty = de naam mag niet leeg zijn
 core-downloads-name-slash = de naam mag geen / of \ bevatten
 core-downloads-name-not-folder = { $name } is geen mapnaam
@@ -1275,6 +1282,7 @@ core-room-service = Samen kijken
 core-room-not-found = Geen kamer met die code. Misschien is hij gesloten.
 core-room-full = Die kamer is vol.
 core-room-proto = Die relay draait een andere versie van kamers. Werk { -app-name } bij om mee te doen.
+core-room-needs-episode = Die relay heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler of werk de relay bij.
 core-room-unreachable = Kon de relay niet bereiken: { $message }
 core-room-refused = De relay weigerde: { $message }
 core-room-not-in = Je zit niet in een kamer.
@@ -1304,3 +1312,4 @@ core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
 core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
 core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
 core-room-media-here = De aflevering staat nu in je bibliotheek.
+core-room-media-rest-missing = De rest van de serie kon niet worden opgehaald. Alleen deze aflevering wordt gedownload.

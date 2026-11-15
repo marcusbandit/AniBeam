@@ -565,7 +565,7 @@ impl Core {
                 ));
             }
             Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
-            Call::SetNotInterested { .. } => {
+            Call::SetNotInterested { .. } | Call::PruneNotInterested => {
                 return Err(CoreError::invalid(
                     "not_interested",
                     crate::i18n::tr("core-core-guest-not-interested", &[]),
@@ -710,6 +710,7 @@ impl Core {
                 not_interested,
             } => airing_now::set_not_interested(&self.services, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(&self.services),
+            Call::PruneNotInterested => airing_now::prune_and_list(&self.services),
             Call::PlanToWatch { anilist_id } => {
                 plan_to_watch::plan_to_watch(&self.trackers, anilist_id)
             }
@@ -873,6 +874,7 @@ impl Core {
                 torrent_password.as_deref(),
             ),
             Call::UseTorrentClient { id } => downloads::use_client(&self.downloads, id),
+            Call::SetSaveFolder { folder } => downloads::set_save_folder(&self.downloads, folder),
             Call::TestTorrentClient => downloads::test_torrent_client(&self.downloads).map(started),
             Call::CheckEndpoints => downloads::check_endpoints(&self.downloads).map(started),
             Call::StartEndpoint { name } => {
@@ -886,6 +888,7 @@ impl Core {
             }
             Call::AddEndpointRepo { url } => repos::add_repo(&self.releases, url),
             Call::TrustEndpointRepo { url, key } => repos::trust_repo(&self.releases, url, key),
+            Call::AttachEndpointRepo { url } => repos::attach_repo(&self.releases, url),
             Call::RemoveEndpointRepo { url } => repos::remove_repo(&self.releases, url),
             Call::RefreshEndpointRepos => repos::refresh(&self.releases),
             Call::InstallEndpoint {
@@ -991,6 +994,18 @@ impl Core {
                 subtitle,
             } => session::set_track_choice(&self.services, series, audio, subtitle),
             Call::GetPresence => presence::status_call(&self.playback),
+            Call::DiscordAnswer { user_id, allow } => {
+                presence::join::answer_call(&self.playback, user_id, allow)
+            }
+            Call::DiscordBlocked => presence::join::blocked_call(&self.playback),
+            Call::DiscordUnblock { user_id } => {
+                presence::join::unblock_call(&self.playback, user_id)
+            }
+            Call::DiscordSetRoomOpen { open } => {
+                presence::join::set_open_call(&self.playback, open)
+            }
+            Call::DiscordListen => presence::join::listen_call(&self.playback),
+            Call::DiscordTakeJoin => presence::join::take_join_call(&self.playback),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }
@@ -1006,7 +1021,8 @@ impl Core {
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
             | Call::RoomStatus
-            | Call::RoomGetMedia) => room::call(&self.playback, c),
+            | Call::RoomGetMedia { .. }
+            | Call::RoomStart { .. }) => room::call(&self.playback, c),
         }
     }
 

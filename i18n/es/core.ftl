@@ -518,6 +518,9 @@ core-first-run-not-absolute = la carpeta de vídeos debe ser una ruta absoluta
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Viendo juntos
+core-presence-in-room = En una sala
+core-presence-no-room = Esa invitación de Discord aún no tiene sala. Pídele que abra una.
 
 ## trackers/src/accounts.rs
 
@@ -1163,6 +1166,10 @@ core-downloads-refuse-library-folder = { $path } es una carpeta de la biblioteca
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent no indica ninguna carpeta de descarga predeterminada; pon una en qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } no es una ruta completa a una carpeta
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } no puede guardar descargas: elige una carpeta que exista y que no sea tu carpeta personal
 core-downloads-name-empty = el nombre no puede estar vacío
 core-downloads-name-slash = el nombre no puede contener / ni \
 core-downloads-name-not-folder = { $name } no es un nombre de carpeta
@@ -1296,6 +1303,7 @@ core-room-service = Ver juntos
 core-room-not-found = Ninguna sala tiene ese código. Puede que se haya cerrado.
 core-room-full = Esa sala está llena.
 core-room-proto = Ese relay usa otra versión de las salas. Actualiza { -app-name } para unirte.
+core-room-needs-episode = Ese relay necesita un episodio para abrir una sala. Ábrela desde el reproductor o actualiza el relay.
 core-room-unreachable = No se pudo llegar al relay: { $message }
 core-room-refused = El relay dijo que no: { $message }
 core-room-not-in = No estás en ninguna sala.
@@ -1325,3 +1333,4 @@ core-room-media-lost = El cliente de torrents perdió la descarga del episodio.
 core-room-media-stalled = La descarga no ha avanzado en diez minutos. Inténtalo de nuevo más tarde.
 core-room-media-not-in-library = El episodio se descargó, pero no está en tu biblioteca. Comprueba que las descargas se guarden en una carpeta de la biblioteca.
 core-room-media-here = El episodio ya está en tu biblioteca.
+core-room-media-rest-missing = No se pudo conseguir el resto de la serie. Solo se descarga este episodio.

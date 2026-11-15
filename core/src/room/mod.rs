@@ -156,10 +156,21 @@ struct Active {
     /// half, which the hello carries (#889).
     keys: Arc<seal::Keys>,
     /// Where Get media is, the download's progress the status carries, and the
-    /// fetch running now: its number, and the token that stops it.
+    /// fetch running now: its number, and the token that stops it. `whole_show`
+    /// when the member asked for the rest of the show with it (#922), and `rest`
+    /// once the search for that rest has started for the room's episode: it runs
+    /// once an episode, and stops with the room or when the host moves on.
     fetch: RoomFetch,
     progress: Option<proto::Progress>,
     fetching: Option<(u64, CancellationToken)>,
+    whole_show: bool,
+    rest: Option<CancellationToken>,
+    /// The host's ready gate (#922), and the position on the room's timeline the
+    /// host pressed play at. `started` once the episode has played: the gate asks
+    /// only before that, so a pause later never brings it back.
+    gate: RoomGate,
+    gate_at: f64,
+    started: bool,
     /// Why the last Get media stopped short, until the next one starts.
     fetch_error: Option<Words>,
     tx: mpsc::UnboundedSender<ClientMsg>,
@@ -171,22 +182,70 @@ struct Active {
 
 impl Active {
     fn info(&self) -> Option<RoomInfo> {
-        let episode = self.episode.as_ref()?;
+        // A joiner the relay has yet to welcome is not in the room yet
+        if self.you.is_none() && self.episode.is_none() {
+            return None;
+        }
         Some(RoomInfo {
             code: self.code.clone(),
             link: format!("{}/{}", self.relay, self.code),
             you: self.you.map_or(0, |m| m.0),
             host: self.is_host(),
             members: self.members.iter().map(member).collect(),
-            episode: episode::to_contract(episode),
+            episode: self.episode.as_ref().map(episode::to_contract),
             offset: self.offset,
             suggested_offset: self.suggested,
             session: self.session,
             connected: self.connected,
             fetch: self.fetch,
             can_fetch: self.can_fetch(),
+            gate: self.gate,
             fetch_error: self.fetch_error.clone(),
         })
+    }
+
+    /// Whether everyone in the room has the episode open: this member by its own
+    /// state, which the relay's list may not carry yet.
+    fn all_ready(&self) -> bool {
+        self.members.iter().all(|m| {
+            if Some(m.id) == self.you {
+                self.ready == Ready::Ready
+            } else {
+                m.ready == Ready::Ready
+            }
+        })
+    }
+
+    /// A new episode: it has not played, and nothing waits to start it.
+    fn fresh_episode(&mut self) {
+        self.gate = RoomGate::Off;
+        self.started = false;
+        if let Some(rest) = self.rest.take() {
+            rest.cancel();
+        }
+    }
+
+    /// The host starts the room at the position play was pressed at, for
+    /// everyone, ready or not (#922).
+    fn open_gate(&mut self) -> Vec<Say> {
+        self.gate = RoomGate::Off;
+        self.started = true;
+        let now = Instant::now();
+        let at = self.gate_at;
+        self.state.playing = true;
+        self.state.position = at;
+        self.state.at_ms = self.clock.server_now(local_ms());
+        self.held_seek = None;
+        self.send_cmd(Action::Play, at, now);
+        let mut out = Vec::new();
+        if let Some(session) = self.session {
+            out.push(self.bring(session));
+        }
+        out.push(Say::debug(
+            format!("Room {}: the host starts it at {at:.2}", self.code),
+            self.changed(),
+        ));
+        out
     }
 
     /// The status this member's relay sees: ready or not, and the download's
@@ -437,6 +496,7 @@ fn save_offset(conn: &Connection, file: u64, offset: f64) -> Result<(), CoreErro
 pub(crate) fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
     let room = match call {
         Call::RoomCreate { session } => Some(create(playback, session)?),
+        Call::RoomStart { wait } => start_room(playback, wait)?,
         Call::RoomJoin { code } => Some(join(playback, &code)?),
         Call::RoomAttach { session } => attach(playback, session)?,
         Call::RoomCommand { action, position } => command(playback, action, position)?,
@@ -446,7 +506,7 @@ pub(crate) fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreEr
             None
         }
         Call::RoomStatus => playback.rooms.lock().as_ref().and_then(Active::info),
-        Call::RoomGetMedia => media::get(playback)?,
+        Call::RoomGetMedia { whole_show } => media::get(playback, whole_show)?,
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
@@ -469,20 +529,23 @@ struct Begin {
     session: Option<(u64, u64)>,
 }
 
-fn create(playback: &Arc<Playback>, session: u64) -> Result<RoomInfo, CoreError> {
-    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
-        what: Entity::Session,
-        id: session,
-    })?;
+fn create(playback: &Arc<Playback>, session: Option<u64>) -> Result<RoomInfo, CoreError> {
+    let s = match session {
+        Some(id) => Some(playback.sessions.get(id).ok_or(CoreError::NotFound {
+            what: Entity::Session,
+            id,
+        })?),
+        None => None,
+    };
     let (name, relay) = who(&playback.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
-    let episode = episode::of_session(&s);
+    let episode = s.as_ref().map(episode::of_session);
     leave(playback);
     let created = playback
         .services
         .handle
         .block_on(async {
-            tokio::time::timeout(JOIN_WAIT, socket::create(&client, &relay, &episode)).await
+            tokio::time::timeout(JOIN_WAIT, socket::create(&client, &relay, episode.as_ref())).await
         })
         .map_err(|_| socket::Fail::Unreachable("timed out".into()).to_error())?
         .map_err(|f| f.to_error())?;
@@ -494,20 +557,22 @@ fn create(playback: &Arc<Playback>, session: u64) -> Result<RoomInfo, CoreError>
             code: created.code,
             name,
             host_key: Some(created.host_key),
-            episode: Some(episode),
-            session: Some((s.id, s.file)),
+            episode,
+            session: s.map(|s| (s.id, s.file)),
         },
     )?;
+    let what = match &info.episode {
+        Some(e) => format!("for {} {}", e.series_title, e.episode_key),
+        None => "with nothing picked yet".into(),
+    };
     playback.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-created", code = &info.code)),
         format!(
-            "Room {} created on {} for {} {}",
+            "Room {} created on {} {what}",
             info.code,
             crate::net::url_shown(&relay),
-            info.episode.series_title,
-            info.episode.episode_key
         ),
         None,
         EventBody::RoomChanged {
@@ -603,6 +668,11 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         fetch: RoomFetch::Idle,
         progress: None,
         fetching: None,
+        whole_show: false,
+        rest: None,
+        gate: RoomGate::Off,
+        gate_at: 0.0,
+        started: false,
         fetch_error: None,
         tx,
         cancel: cancel.clone(),
@@ -664,36 +734,34 @@ fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreErr
     let info = {
         let mut slot = playback.rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
-        let room_episode = a.episode.clone().ok_or_else(not_in_room)?;
+        let host = a.is_host();
+        // Only the host picks for a room that has nothing yet (#922)
+        if a.episode.is_none() && !host {
+            return Err(not_in_room());
+        }
+        let mine = episode::of_session(&s);
+        // A member's player still on another episode, as the room moves on,
+        // does not take the room's: it stays as it was, Get media on offer
+        if !host
+            && let Some(room) = &a.episode
+            && !episode::plays(&mine, room)
+        {
+            return Ok(a.info());
+        }
+        // The room's episode, unless this session moves the room off it or
+        // picks the first one
+        let room_episode = a
+            .episode
+            .clone()
+            .filter(|r| !host || episode::same(&mine, r));
         a.drift = Drift::default();
         a.session = Some(session);
         a.file = Some(s.file);
         a.ready = Ready::Ready;
         // Whatever Get media was doing, the episode is open now
         a.stop_fetch();
-        let mine = episode::of_session(&s);
         a.mine = Some(mine.clone());
-        if a.is_host() && !episode::same(&mine, &room_episode) {
-            // The whole room moves, and this file is its timeline now. The
-            // relay starts it paused at nought, and its answer brings this
-            // player there too; until then the room is taken to be there
-            // already, so no tick corrects against the old episode.
-            a.timeline = Some((s.file, 0.0));
-            a.offset = 0.0;
-            a.offset_fixed = true;
-            a.suggested = None;
-            let reset = PlayState {
-                playing: false,
-                position: 0.0,
-                rate: 1.0,
-                at_ms: a.clock.server_now(local_ms()),
-                rev: a.relayed.rev,
-            };
-            a.settle(a.relayed);
-            a.state = reset;
-            a.episode = Some(mine.clone());
-            a.send(ClientMsg::Episode { episode: mine });
-        } else {
+        if let Some(room_episode) = room_episode {
             // The file that set the timeline plays at its own offset, nought
             // unless set by hand. Every other file, a new host's after a
             // handover included, keeps the offset stored for it or takes the
@@ -710,6 +778,28 @@ fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreErr
             }
             a.send(a.status());
             out.push(a.bring(session));
+        } else {
+            // The whole room moves, or takes its first episode, and this file
+            // is its timeline now. The relay starts it paused at nought, and
+            // its answer brings this player there too; until then the room is
+            // taken to be there already, so no tick corrects against the old
+            // episode.
+            a.fresh_episode();
+            a.timeline = Some((s.file, 0.0));
+            a.offset = 0.0;
+            a.offset_fixed = true;
+            a.suggested = None;
+            let reset = PlayState {
+                playing: false,
+                position: 0.0,
+                rate: 1.0,
+                at_ms: a.clock.server_now(local_ms()),
+                rev: a.relayed.rev,
+            };
+            a.settle(a.relayed);
+            a.state = reset;
+            a.episode = Some(mine.clone());
+            a.send(ClientMsg::Episode { episode: mine });
         }
         out.push(Say::debug(
             format!("Room: session {session} attached"),
@@ -739,17 +829,58 @@ fn command(
             ),
         ));
     }
-    let mut slot = playback.rooms.lock();
-    let a = slot.as_mut().ok_or_else(not_in_room)?;
-    if a.you.is_none() {
-        return Err(not_in_room());
-    }
+    let mut out = Vec::new();
+    let info = {
+        let mut slot = playback.rooms.lock();
+        let a = slot.as_mut().ok_or_else(not_in_room)?;
+        if a.you.is_none() {
+            return Err(not_in_room());
+        }
+        command_in(playback, a, action, position, &mut out);
+        a.info()
+    };
+    emit(&playback.services, out);
+    Ok(info)
+}
+
+/// `command`, under the room's lock.
+fn command_in(
+    playback: &Playback,
+    a: &mut Active,
+    action: RoomAction,
+    position: f64,
+    out: &mut Vec<Say>,
+) {
     let canonical = (position - a.offset).clamp(0.0, proto::MAX_POSITION);
     let action = match action {
         RoomAction::Play => Action::Play,
         RoomAction::Pause => Action::Pause,
         RoomAction::Seek => Action::Seek,
     };
+    // The ready gate (#922): the host's first play of an episode waits while
+    // someone lacks it or is still opening it, and the host chooses.
+    if a.gate != RoomGate::Off || (action == Action::Play && a.is_host() && !a.started) {
+        match action {
+            Action::Play if !a.all_ready() => {
+                a.gate_at = canonical;
+                if a.gate == RoomGate::Off {
+                    a.gate = RoomGate::Asking;
+                }
+                // The player played on its own press: it stays paused here
+                if let Some(session) = a.session {
+                    out.push(apply(session, false, Some(position), 1.0));
+                }
+                out.push(Say::debug(
+                    format!("Room {}: not everyone is ready", a.code),
+                    a.changed(),
+                ));
+                return;
+            }
+            Action::Seek => a.gate_at = canonical,
+            // A pause takes the wait back; a play with everyone ready starts
+            _ => a.gate = RoomGate::Off,
+        }
+    }
     // Taken as done at once, so the ticks before the relay's answer measure
     // against what this member just did rather than what came before.
     let now = Instant::now();
@@ -794,7 +925,30 @@ fn command(
             a.send_cmd(action, canonical, now);
         }
     }
-    Ok(a.info())
+}
+
+/// `RoomStart`: the host's answer to the ready gate. Waiting with everyone
+/// ready already starts at once. Anyone else, or no gate, changes nothing.
+fn start_room(playback: &Playback, wait: bool) -> Result<Option<RoomInfo>, CoreError> {
+    let mut out = Vec::new();
+    let info = {
+        let mut slot = playback.rooms.lock();
+        let a = slot.as_mut().ok_or_else(not_in_room)?;
+        if a.is_host() && a.gate != RoomGate::Off {
+            if wait && !a.all_ready() {
+                a.gate = RoomGate::Waiting;
+                out.push(Say::debug(
+                    format!("Room {}: waiting for everyone", a.code),
+                    a.changed(),
+                ));
+            } else {
+                out.extend(a.open_gate());
+            }
+        }
+        a.info()
+    };
+    emit(&playback.services, out);
+    Ok(info)
 }
 
 /// Sends the seek `command` held back, once `SEEK_GAP` is up.
@@ -1026,16 +1180,21 @@ fn on_welcome(
         a.connected = true;
         // Anything sent before this welcome was dropped with the connection.
         a.settle(room.state);
-        let moved = a
-            .episode
-            .as_ref()
-            .is_none_or(|e| !episode::same(e, &room.episode));
+        if played(&room.state) {
+            a.started = true;
+        }
+        let same = |a: Option<&proto::EpisodeRef>, b: Option<&proto::EpisodeRef>| match (a, b) {
+            (Some(a), Some(b)) => episode::same(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        let moved = !same(a.episode.as_ref(), room.episode.as_ref());
         // The host moved the room while the connection was down: that move
         // never reached the relay, so it is made again rather than undone.
         let remake = (!first && moved && room.host == Some(you) && a.session.is_some())
             .then(|| a.mine.clone())
             .flatten()
-            .filter(|mine| !episode::same(mine, &room.episode));
+            .filter(|mine| !same(Some(mine), room.episode.as_ref()));
         if let Some(mine) = remake {
             a.state = PlayState {
                 playing: false,
@@ -1048,11 +1207,15 @@ fn on_welcome(
             a.send(ClientMsg::Episode { episode: mine });
             to_match = None;
         } else {
-            a.episode = Some(room.episode.clone());
+            a.episode = room.episode.clone();
             if moved && !first {
                 // The host moved on while this member was away.
                 a.detach();
                 a.timeline = None;
+                a.fresh_episode();
+                if played(&room.state) {
+                    a.started = true;
+                }
             }
             if let Some(session) = a.session
                 && !first
@@ -1060,7 +1223,9 @@ fn on_welcome(
                 out.push(a.bring(session));
             }
             // A member who comes back to the same episode was already told about it.
-            to_match = (a.session.is_none() && (first || moved)).then(|| room.episode.clone());
+            to_match = (a.session.is_none() && (first || moved))
+                .then(|| room.episode.clone())
+                .flatten();
         }
         a.send(a.status());
         if was_down {
@@ -1082,6 +1247,13 @@ fn on_welcome(
         find(playback, serial, e);
     }
     true
+}
+
+/// Whether a room's state shows its episode has played: playing now, or
+/// paused past the start. A core that joins late, comes back after a restart
+/// or takes over as host learns it from here, having seen no play itself.
+fn played(state: &PlayState) -> bool {
+    state.playing || state.position > 0.0
 }
 
 /// Looks for the room's episode in this library and says what it found.
@@ -1154,6 +1326,11 @@ fn take_state(a: &mut Active, state: PlayState, by: MemberId) -> Option<Say> {
         return None;
     }
     a.relayed = state;
+    if state.playing {
+        // The episode has started, however it came to: no gate from here
+        a.started = true;
+        a.gate = RoomGate::Off;
+    }
     let own = a.you == Some(by);
     if own {
         a.in_flight = a.in_flight.saturating_sub(1);
@@ -1196,6 +1373,15 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             ServerMsg::State { state, by } => out.extend(take_state(a, state, by)),
             ServerMsg::Members { members } => {
                 let before = std::mem::replace(&mut a.members, members);
+                // The gate ends with the host role. Waiting for everyone opens it
+                // once everyone is ready; asking still waits for the host's choice.
+                if a.gate != RoomGate::Off {
+                    if !a.is_host() {
+                        a.gate = RoomGate::Off;
+                    } else if a.gate == RoomGate::Waiting && a.all_ready() {
+                        out.extend(a.open_gate());
+                    }
+                }
                 let info = a.info();
                 let others = |m: &&Member| Some(m.id) != a.you;
                 let mut said = false;
@@ -1231,6 +1417,7 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             ServerMsg::Episode { episode, state, by } => {
                 a.episode = Some(episode.clone());
                 a.settle(state);
+                a.fresh_episode();
                 if a.you == Some(by) {
                     // This member, the host, moved the room: their player follows
                     // the fresh state, paused at the start.
@@ -1393,6 +1580,11 @@ mod tests {
             fetch: RoomFetch::Idle,
             progress: None,
             fetching: None,
+            whole_show: false,
+            rest: None,
+            gate: RoomGate::Off,
+            gate_at: 0.0,
+            started: false,
             fetch_error: None,
             tx,
             cancel: CancellationToken::new(),

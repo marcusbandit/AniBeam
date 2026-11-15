@@ -102,5 +102,10 @@
     open.open = false;
     open.querySelector("summary").focus();
   });
-  addEventListener("popstate", () => { go(location.href, false).catch(() => location.reload()); });
+  // Back and forward over an in-page anchor stay on the page whose words are on screen
+  const bare = (url) => new URL(url, location.href).href.split("#")[0];
+  addEventListener("popstate", () => {
+    if (bare(location.href) === bare(shown)) return;
+    go(location.href, false).catch(() => location.reload());
+  });
 })();

@@ -182,6 +182,7 @@ async fn status_async(downloads: &Downloads) -> Result<DownloadsStatus, CoreErro
 }
 
 fn assemble(downloads: &Downloads, settings: DownloadSettings) -> DownloadsStatus {
+    let save_folder = save_folder(&downloads.services, &settings);
     let st = downloads.state();
     let mut anirss = st.anirss.clone();
     anirss.config_path = settings::anirss_config_path(&downloads.services)
@@ -192,6 +193,27 @@ fn assemble(downloads: &Downloads, settings: DownloadSettings) -> DownloadsStatu
         anirss,
         torrent: st.torrent.clone(),
         endpoints: st.endpoints.clone(),
+        save_folder,
+    }
+}
+
+/// Where a new show goes, as the settings tab shows it. A store that cannot be read shows
+/// the client's own folder rather than failing the whole status.
+fn save_folder(services: &Services, s: &DownloadSettings) -> SaveFolder {
+    let here = settings::files_here(s);
+    match paths::planned(services, s, here) {
+        Ok(p) => SaveFolder {
+            path: p.save_base.unwrap_or_default(),
+            from: p.from,
+            here,
+        },
+        Err(e) => {
+            tracing::warn!("save folder not read: {e}");
+            SaveFolder {
+                here,
+                ..SaveFolder::default()
+            }
+        }
     }
 }
 
@@ -673,7 +695,15 @@ async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), 
             ))
         })?;
     let profile = managed::profile_dir(&services.paths.data_dir);
-    let save = AnirssHome::of(&services.paths).save_dir();
+    // qBittorrent's own default, for a profile that has none yet: the folder Anibeam saves
+    // into, the library's first (#1005), else a folder in Downloads. Every add and rule
+    // names its folder anyway; this is for a torrent added in qBittorrent itself.
+    let save = paths::planned(services, s, true)
+        .ok()
+        .filter(|p| matches!(p.from, SaveFolderFrom::Chosen | SaveFolderFrom::Library))
+        .and_then(|p| p.save_base)
+        .map(std::path::PathBuf::from)
+        .or_else(|| AnirssHome::of(&services.paths).save_dir());
     managed::write_config(&profile, port, save.as_deref()).map_err(|e| {
         failed(crate::i18n::tr(
             "core-downloads-own-client-settings",
@@ -3403,6 +3433,22 @@ pub fn set_settings(
     Ok(Reply::Ok)
 }
 
+/// `SetSaveFolder`: where a new show goes on the core's own engine, then the status again.
+pub fn set_save_folder(downloads: &Downloads, folder: Option<String>) -> Result<Reply, CoreError> {
+    paths::set_save_folder(&downloads.services, folder.as_deref())?;
+    let status = status(downloads)?;
+    let message = match status.save_folder.path.as_str() {
+        "" => "New downloads save to the torrent client's own folder".to_string(),
+        path => format!("New downloads save to {path}"),
+    };
+    downloads.services.bus.info(
+        Stage::Downloads,
+        message,
+        EventBody::DownloadsStatusChanged { status },
+    );
+    Ok(Reply::Ok)
+}
+
 /// Switches the downloads to the saved client `id`, or to Anibeam's own
 /// when there is none. The rest of the settings stay as they are.
 pub fn use_client(downloads: &Downloads, id: Option<String>) -> Result<Reply, CoreError> {
@@ -4069,6 +4115,7 @@ mod tests {
             anirss: AnirssStatus::default(),
             torrent: TorrentClientStatus::default(),
             endpoints: Vec::new(),
+            save_folder: SaveFolder::default(),
         };
         status.anirss.version = "0.3.4".to_string();
         status.torrent.message = "unreachable".to_string();

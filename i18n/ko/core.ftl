@@ -515,6 +515,9 @@ core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 ## core/src/presence/mod.rs
 
 core-presence-extra = 번외
+core-presence-room = 함께 보는 중
+core-presence-in-room = 방에 있음
+core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
 ## trackers/src/accounts.rs
 
@@ -1049,6 +1052,10 @@ core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder }은(는) 폴더의 전체 경로가 아니에요
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder }에는 다운로드를 저장할 수 없어요. 실제로 있고 홈 폴더가 아닌 폴더를 고르세요
 core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
@@ -1181,6 +1188,7 @@ core-room-service = 함께 보기
 core-room-not-found = 그 코드의 방이 없어요. 닫혔을 수 있어요.
 core-room-full = 방이 꽉 찼어요.
 core-room-proto = 그 릴레이는 다른 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+core-room-needs-episode = 그 릴레이는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들거나 릴레이를 업데이트하세요.
 core-room-unreachable = 릴레이에 연결하지 못했어요: { $message }
 core-room-refused = 릴레이가 거부했어요: { $message }
 core-room-not-in = 방에 있지 않아요.
@@ -1210,3 +1218,4 @@ core-room-media-lost = 토렌트 클라이언트가 에피소드 다운로드를
 core-room-media-stalled = 다운로드가 10분 동안 진행되지 않았어요. 나중에 다시 시도하세요.
 core-room-media-not-in-library = 에피소드는 내려받았지만 라이브러리에 없어요. 다운로드가 라이브러리 폴더에 저장되는지 확인하세요.
 core-room-media-here = 에피소드가 이제 라이브러리에 있어요.
+core-room-media-rest-missing = 시리즈의 나머지를 가져오지 못했어요. 이 에피소드만 다운로드하고 있어요.

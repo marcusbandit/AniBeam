@@ -520,6 +520,9 @@ core-first-run-not-absolute = der Videoordner muss ein absoluter Pfad sein
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Gemeinsam schauen
+core-presence-in-room = In einem Raum
+core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
 
 ## trackers/src/accounts.rs
 
@@ -1141,6 +1144,10 @@ core-downloads-refuse-library-folder = { $path } ist ein Bibliotheksordner oder 
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent nennt keinen Standard-Speicherordner; leg einen in qBittorrent fest
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } ist kein vollständiger Pfad zu einem Ordner
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kann keine Downloads aufnehmen: wähle einen Ordner, den es gibt und der nicht dein Home-Ordner ist
 core-downloads-name-empty = der Name darf nicht leer sein
 core-downloads-name-slash = der Name darf kein / oder \ enthalten
 core-downloads-name-not-folder = { $name } ist kein Ordnername
@@ -1274,6 +1281,7 @@ core-room-service = Gemeinsam schauen
 core-room-not-found = Kein Raum hat diesen Code. Vielleicht wurde er geschlossen.
 core-room-full = Dieser Raum ist voll.
 core-room-proto = Dieses Relay nutzt eine andere Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
+core-room-needs-episode = Dieses Relay braucht eine Folge, um einen Raum zu starten. Starte ihn im Player oder aktualisiere das Relay.
 core-room-unreachable = Relay nicht erreichbar: { $message }
 core-room-refused = Das Relay hat abgelehnt: { $message }
 core-room-not-in = Du bist in keinem Raum.
@@ -1303,3 +1311,4 @@ core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.
 core-room-media-stalled = Der Download ist seit zehn Minuten nicht weitergekommen. Versuch es später noch einmal.
 core-room-media-not-in-library = Die Folge ist heruntergeladen, aber nicht in deiner Bibliothek. Prüfe, ob Downloads in einem Bibliotheksordner landen.
 core-room-media-here = Die Folge ist jetzt in deiner Bibliothek.
+core-room-media-rest-missing = Der Rest der Serie war nicht zu bekommen. Nur diese Folge wird geladen.

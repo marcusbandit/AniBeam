@@ -559,6 +559,9 @@ core-first-run-not-absolute = folder z filmami musi być ścieżką bezwzględn�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Dodatek
+core-presence-room = Oglądamy razem
+core-presence-in-room = W pokoju
+core-presence-no-room = To zaproszenie z Discorda nie ma jeszcze pokoju. Poproś o założenie go.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -1372,6 +1375,10 @@ core-downloads-refuse-library-folder = { $path } to folder biblioteki lub go zaw
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent nie ma domyślnego folderu zapisu; ustaw go w qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } nie jest pełną ścieżką do folderu
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } nie może przechowywać pobranych plików: wybierz folder, który istnieje i nie jest folderem domowym
 core-downloads-name-empty = nazwa nie może być pusta
 core-downloads-name-slash = nazwa nie może zawierać / ani \
 # $name is the name given, in quotes
@@ -1536,6 +1543,7 @@ core-room-service = Wspólne oglądanie
 core-room-not-found = Nie ma pokoju o tym kodzie. Mógł zostać zamknięty.
 core-room-full = Ten pokój jest pełny.
 core-room-proto = Ten przekaźnik używa innej wersji pokojów. Zaktualizuj { -app-name }, aby dołączyć.
+core-room-needs-episode = Ten przekaźnik potrzebuje odcinka, by utworzyć pokój. Utwórz go z odtwarzacza albo zaktualizuj przekaźnik.
 core-room-unreachable = Nie udało się połączyć z przekaźnikiem: { $message }
 core-room-refused = Przekaźnik odmówił: { $message }
 core-room-not-in = Nie jesteś w żadnym pokoju.
@@ -1565,3 +1573,4 @@ core-room-media-lost = Klient torrent zgubił pobieranie odcinka.
 core-room-media-stalled = Pobieranie nie posunęło się od dziesięciu minut. Spróbuj ponownie później.
 core-room-media-not-in-library = Odcinek został pobrany, ale nie ma go w Twojej bibliotece. Sprawdź, czy pobrane pliki trafiają do folderu biblioteki.
 core-room-media-here = Odcinek jest już w Twojej bibliotece.
+core-room-media-rest-missing = Nie udało się pobrać reszty serii. Pobiera się tylko ten odcinek.

@@ -520,6 +520,9 @@ core-first-run-not-absolute = le dossier des vidéos doit être un chemin absolu
 ## core/src/presence/mod.rs
 
 core-presence-extra = Bonus
+core-presence-room = Regarder ensemble
+core-presence-in-room = Dans un salon
+core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demandez-lui d'en ouvrir un.
 
 ## trackers/src/accounts.rs
 
@@ -1153,6 +1156,10 @@ core-downloads-refuse-library-folder = { $path } est un dossier de bibliothèque
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent n'indique aucun dossier d'enregistrement par défaut ; définissez-en un dans qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } n'est pas un chemin complet vers un dossier
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } ne peut pas recevoir de téléchargements : choisissez un dossier qui existe et qui n'est pas votre dossier personnel
 core-downloads-name-empty = le nom ne peut pas être vide
 core-downloads-name-slash = le nom ne doit contenir ni / ni \
 core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
@@ -1286,6 +1293,7 @@ core-room-service = Regarder ensemble
 core-room-not-found = Aucun salon n'a ce code. Il est peut-être fermé.
 core-room-full = Ce salon est plein.
 core-room-proto = Ce relais utilise une autre version des salons. Mettez à jour { -app-name } pour le rejoindre.
+core-room-needs-episode = Ce relais a besoin d'un épisode pour ouvrir un salon. Ouvrez-le depuis le lecteur ou mettez à jour le relais.
 core-room-unreachable = Impossible de joindre le relais : { $message }
 core-room-refused = Le relais a refusé : { $message }
 core-room-not-in = Vous n'êtes dans aucun salon.
@@ -1315,3 +1323,4 @@ core-room-media-lost = Le client torrent a perdu le téléchargement de l'épiso
 core-room-media-stalled = Le téléchargement n'a pas avancé depuis dix minutes. Réessayez plus tard.
 core-room-media-not-in-library = L'épisode est téléchargé, mais il n'est pas dans votre bibliothèque. Vérifiez que les téléchargements vont dans un dossier de la bibliothèque.
 core-room-media-here = L'épisode est maintenant dans votre bibliothèque.
+core-room-media-rest-missing = Impossible d'obtenir le reste de la série. Seul cet épisode se télécharge.

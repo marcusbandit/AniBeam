@@ -570,6 +570,7 @@ core-room-service = Watch together
 core-room-not-found = No room has that code. It may have closed.
 core-room-full = That room is full.
 core-room-proto = That relay runs another version of rooms. Update { -app-name } to join it.
+core-room-needs-episode = That relay needs an episode to start a room. Start it from the player, or update the relay.
 # $message is the network's own words.
 core-room-unreachable = Could not reach the relay: { $message }
 core-room-refused = The relay said no: { $message }
@@ -600,11 +601,15 @@ core-room-media-lost = The torrent client lost the episode's download.
 core-room-media-stalled = The download has not moved in ten minutes. Try again later.
 core-room-media-not-in-library = The episode downloaded, but it is not in your library. Check that downloads save into a library folder.
 core-room-media-here = The episode is in your library now.
+core-room-media-rest-missing = Could not get the rest of the show. Only this episode is downloading.
 
 ## core/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Extra
+core-presence-room = Watching together
+core-presence-in-room = In a room
+core-presence-no-room = That Discord invite has no room yet. Ask them to start one.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -1322,6 +1327,10 @@ core-downloads-refuse-library-folder = { $path } is a library folder or holds on
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent names no default save folder; set one in qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } is not a full path to a folder
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } cannot hold downloads: pick a folder that exists and is not the home folder
 core-downloads-name-empty = the name cannot be empty
 core-downloads-name-slash = the name must not contain / or \
 # $name is the name given, in quotes
