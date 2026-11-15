@@ -212,8 +212,9 @@ A screenshot and the version from Settings > About help a lot.
 
 ## Build from source
 
-[docs/build-from-source.md](docs/build-from-source.md) covers building, running from a
-checkout and the CLI. [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests and how
+`./build.sh` builds the app from a checkout.
+[docs/build-from-source.md](docs/build-from-source.md) covers what it needs, running from a
+checkout and the CLI. The logos are in [assets/logo/](assets/logo/). [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests and how
 releases ship.
 
 ## Support

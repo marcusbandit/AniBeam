@@ -7,7 +7,7 @@ thin lines side by side, some of which skip where the brush runs dry, with now a
 hair. Everything is clipped to the shape, so the silhouette is exactly the release logo's. The
 grid is drawn line by line, a little off true. A fixed seed keeps it repeatable.
 
-usage: python3 site/tools/nightly_logo.py site/img/logo.svg site/img/logo-nightly.svg
+usage: python3 assets/logo/nightly.py assets/logo/logo.svg assets/logo/logo-nightly.svg
 """
 import math
 import random
@@ -182,7 +182,7 @@ for i in range(1, 7):
 
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
 <!-- The nightly logo, after the owner's sketch: the release mark on yellow graph paper, inked
-     with a brush. Built by site/tools/nightly_logo.py; the ink sits inside each shape, so the
+     with a brush. Built by assets/logo/nightly.py; the ink sits inside each shape, so the
      silhouette is exactly the release logo's. -->
 <defs>
   <clipPath id="sq"><rect x="{X0}" y="{Y0}" width="{SIZE}" height="{SIZE}" rx="{R}"/></clipPath>

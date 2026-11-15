@@ -39,6 +39,8 @@ build() {
   # keep git from finding whatever repository the build directory sits in (an AUR clone)
   # and let the binary say the Cargo version, which is the tag's.
   export GIT_CEILING_DIRECTORIES="$srcdir"
+  # A release built from source: the release icon, not the dev one a checkout gets.
+  export ANIBEAM_ICON=release
   cargo build --frozen --release -p anibeam
 }
 

@@ -17,8 +17,16 @@ pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt
 ```bash
 git clone https://github.com/marcusbandit/AniBeam.git
 cd Anibeam
-cargo build --release -p anibeam     # target/release/anibeam
+./build.sh                           # target/release/anibeam
 ```
+
+`build.sh` checks for everything above, says what is missing, and runs
+`cargo build --release -p anibeam`; plain cargo works just as well.
+
+A build from source shows the dev icon, the blueprint mark, in its window and sidebar, so it
+is never mistaken for a release; a nightly shows the nightly icon. `ANIBEAM_ICON=release`
+(or `nightly`, `dev`) picks one by hand. All three logos
+are in [assets/logo/](../assets/logo/).
 
 An installed build reads its themes and its bundled `mpv.conf` from `/usr/share/anibeam`. A
 run straight from the checkout points at the checkout's copies instead. `--root` keeps all of

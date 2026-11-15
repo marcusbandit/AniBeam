@@ -8,6 +8,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     changes();
+    app_icon();
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -179,6 +180,8 @@ fn main() {
         "shaders/poster.frag.qsb",
         "assets/icon.png",
         "assets/icon-dark.png",
+        "assets/icon-dev.png",
+        "assets/icon-nightly.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
         "assets/fonts/Archivo-Variable-ExtraBold.ttf",
@@ -365,4 +368,31 @@ fn changes() {
         .collect();
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("changes.rs");
     std::fs::write(out, format!("&[{list}]")).unwrap();
+}
+
+/// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
+/// under assets/: the release mark, the nightly's graph paper, or the dev blueprint, so a
+/// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
+/// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
+/// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
+/// AUR's source package does.
+fn app_icon() {
+    println!("cargo:rerun-if-env-changed=ANIBEAM_ICON");
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let version = std::env::var("ANIBEAM_RELEASE_VERSION").unwrap_or_default();
+    let version = version.trim();
+    let icon = match std::env::var("ANIBEAM_ICON").unwrap_or_default().trim() {
+        "" if version.is_empty() || version.contains("-pr.") => "dev",
+        "" if version.contains("-nightly") => "nightly",
+        "" => "release",
+        pick @ ("release" | "nightly" | "dev") => pick,
+        other => panic!("ANIBEAM_ICON is {other:?}; it takes release, nightly or dev"),
+    }
+    .to_string();
+    let file = match icon.as_str() {
+        "release" => "icon.png".to_string(),
+        kind => format!("icon-{kind}.png"),
+    };
+    println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
 }

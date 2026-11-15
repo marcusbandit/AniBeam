@@ -14,14 +14,14 @@ on:
     branches: [main]
     paths:
       - site/**
-      - assets/icon.png
+      - assets/logo/**
       - .github/workflows/site.yml
       - apps/linux/packaging/linux/repos.sh
       - apps/linux/packaging/linux/publish-repos.sh
   pull_request:
     paths:
       - site/**
-      - assets/icon.png
+      - assets/logo/**
       - .github/workflows/site.yml
       - apps/linux/CHANGELOG.md
       - apps/android/CHANGELOG.md

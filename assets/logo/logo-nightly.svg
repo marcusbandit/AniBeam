@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
 <!-- The nightly logo, after the owner's sketch: the release mark on yellow graph paper, inked
-     with a brush. Built by site/tools/nightly_logo.py; the ink sits inside each shape, so the
+     with a brush. Built by assets/logo/nightly.py; the ink sits inside each shape, so the
      silhouette is exactly the release logo's. -->
 <defs>
   <clipPath id="sq"><rect x="14" y="14" width="996" height="996" rx="225"/></clipPath>
