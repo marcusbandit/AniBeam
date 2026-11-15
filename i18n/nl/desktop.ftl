@@ -274,7 +274,6 @@ frame-downloads-not-read = Niet gelezen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestart
 home-ago-minutes = { $count } min geleden
 home-ago-hours = { $count } u geleden
 home-ago-days = { $count } d geleden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } te kijken
 home-day-nothing = Niets
 home-now = Nu { $time }
-home-card-aired = { $episode } uit { $ago }
 home-continue = Verder kijken
 home-continue-fact = { $count } series om mee verder te gaan
 home-on-hold = In de wacht
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } bestand nog op schijf
    *[other] { $count } bestanden nog op schijf
 }
-home-out-now = Nu uit
-home-out-now-fact = Nieuwe afleveringen deze week, van AniList
-home-popular = Populair dit seizoen
-home-add-folder-title = Je eigen series komen hier ook
-home-add-folder-body = Voeg de map toe waar je anime staat en Start vult zich met wat je kijkt.
-home-add-folder-button = Map toevoegen
-home-empty-scanned-title = Nog niets gevonden in je mappen
-home-empty-title = Nog geen series
-home-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-home-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf.
-home-scan-all = Alles scannen
-home-library-settings = Bibliotheekinstellingen
 home-failed-title = Start is niet geladen
 home-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
 
@@ -456,9 +442,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } bron klaar om te doorzoeken.
    *[other] { $count } bronnen klaar om te doorzoeken.
 }
-onboarding-search-none = Anibeam heeft geen eigen bronnen. Je voegt ze toe uit een bronrepo: een link die iemand met je deelt, en die je plakt in Instellingen, Downloads.
-onboarding-sources-after = Opent na de introductie
-onboarding-sources-add = Repo toevoegen na introductie
 onboarding-fetch-title = Wie haalt op
 onboarding-fetch-auto = Laat Anibeam het regelen
 onboarding-fetch-recommended = Aanbevolen
@@ -483,7 +466,7 @@ onboarding-ready-lists = Je lijst
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Nog niet gekoppeld. Dat staat in Instellingen, Accounts wanneer je wilt.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Nog geen bronnen
     [one] { $sources } bron
    *[other] { $sources } bronnen
@@ -493,9 +476,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alles klaar.
     [opens] Instellingen, Downloads opent hierna.
-   *[both] Beide staan in Instellingen, Downloads.
+   *[sources] Voeg een bronlijst toe om te zoeken.
 }
-onboarding-ready-open-downloads = Instellingen, Downloads openen
 onboarding-ready-set-up = Nu instellen
 
 ## Rail.qml
@@ -706,7 +688,28 @@ library-group-season = Seizoen
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Kijkstatus
-library-scan-started = Scan gestart
+library-empty-none = Je bibliotheek is leeg
+library-empty-scanning = { $count ->
+    [1] Zoeken naar video's in je map
+   *[other] Zoeken naar video's in je mappen
+}
+library-empty-nothing = { $count ->
+    [1] Nog geen video's in deze map
+   *[other] Nog geen video's in deze mappen
+}
+library-empty-missing = { $count ->
+    [1] Deze map is er niet
+   *[other] Deze mappen zijn er niet
+}
+library-empty-more-folders = { $count ->
+    [one] en nog { $count } map
+   *[other] en nog { $count } mappen
+}
+library-empty-add-folder = Map toevoegen
+library-empty-get = Iets zoeken om te kijken
+library-empty-scan-again = Opnieuw scannen
+library-empty-settings = Bibliotheekinstellingen
+library-empty-pick-folder = Kies een map voor je bibliotheek
 library-tab-all = Alles
 library-tab-series = Series
 library-tab-movies = Films
@@ -769,18 +772,6 @@ library-rescan = Opnieuw scannen
 library-find-match = Koppeling zoeken
 library-find-match-tip = Zoek voor elke keuze zonder koppeling
 library-all-matched = Elke keuze is gekoppeld
-library-empty-scanned-title = Nog niets gevonden in je mappen
-library-empty-title = Je bibliotheek is leeg
-library-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-library-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf, of importeer een Anibeam-export.
-library-scan-all = Alles scannen
-library-add-folder = Map toevoegen
-library-settings = Bibliotheekinstellingen
-library-import = Importeren
-library-import-title = Een Anibeam-export importeren
-library-import-filter-export = Anibeam-export (*.json)
-library-import-filter-all = Alle bestanden (*)
-library-import-started = Import gestart
 
 ## MetadataPage.qml
 
@@ -1683,6 +1674,7 @@ downloads-error-unknown = Er ging iets mis. Probeer het opnieuw.
 downloads-search-all-off = Elke bron staat uit. Zet er een aan om te zoeken.
 downloads-turn-on = { $name } aanzetten
 downloads-search-no-sources = Er zijn nog geen bronnen om te doorzoeken. Voeg een bronlijst toe in Instellingen, onder Downloads.
+downloads-no-sources = Nog geen bronnen om te doorzoeken
 downloads-search-none-started = Geen bron kon de zoekopdracht starten. Probeer het zo opnieuw.
 downloads-auto-resolution = Verfijnd tot { $resolution }, de scherpste die er is
 downloads-search-one-failed = Zoeken op { $name } werkte niet. Probeer het opnieuw, of doorzoek een andere bron.
@@ -2164,7 +2156,6 @@ player-not-now = Niet nu
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Bronlijsten
-endpoint-repos-panel-helper = Een bronlijst is een ondertekende set zoekplekken die je via het adres toevoegt. Anibeam controleert de handtekening en toont de sleutel vóór opslaan; daarna installeer je wat je wilt. Die komen bij Zoekbronnen hierboven.
 endpoint-repos-panel-could-not-start = Anibeam kon dat niet starten. Probeer het zo opnieuw.
 endpoint-repos-panel-needs-value = { $name } heeft een waarde nodig
 endpoint-repos-panel-values-of = Waarden van { $name }
@@ -2177,19 +2168,9 @@ endpoint-repos-panel-needs-fields = Heeft { $fields } nodig voordat het zoekt.
 endpoint-repos-panel-no-longer-offered = Wordt niet meer aangeboden door de bronlijst.
 endpoint-repos-panel-update-requests-to = De update stuurt verzoeken naar { $host }.
 endpoint-repos-panel-unreadable = Deze lijst kon niet worden gelezen. Lijsten vernieuwen probeert het opnieuw.
-endpoint-repos-panel-add-list = Bronlijst toevoegen
-endpoint-repos-panel-add-list-helper = Het adres van het indexbestand, of een pad ernaar op deze machine.
 endpoint-repos-panel-checking = Controleren
 endpoint-repos-panel-add = Toevoegen
-endpoint-repos-panel-trust-question = { $name } vertrouwen?
 endpoint-repos-panel-fingerprint = Vingerafdruk sleutel  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } bronnen, ondertekend. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } bronnen, ondertekend, al vertrouwd. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-trust = Vertrouwen
 endpoint-repos-panel-saving = Opslaan
 endpoint-repos-panel-install = Installeren
 endpoint-repos-panel-update = Bijwerken
@@ -2204,6 +2185,22 @@ endpoint-repos-panel-by-hand-helper = Voor sites zonder lijst: elke feed met {"{
 endpoint-repos-panel-name = Naam
 endpoint-repos-panel-refreshing = Vernieuwen
 endpoint-repos-panel-refresh = Lijsten vernieuwen
+
+## SourceAttach.qml
+
+source-attach-placeholder = Plak het adres van een bronlijst
+source-attach-what = Wat is een bronlijst?
+source-attach-recent = Eerder gebruikt
+source-attach-added = { $count ->
+    [one] { $name } toegevoegd: { $count } bron staat aan.
+   *[other] { $name } toegevoegd: { $count } bronnen staan aan.
+}
+source-attach-added-none = { $name } toegevoegd. Geen nieuwe bron om aan te zetten.
+source-attach-waiting = { $count ->
+    [one] { $names } vraagt eerst om een waarde.
+   *[other] { $names } vragen eerst om een waarde.
+}
+source-attach-fill-in = Invullen
 
 ## ScheduleSheet.qml
 
@@ -2384,6 +2381,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Elke toets waar Anibeam op reageert
 settings-status-downloads-unread = Nog niet gelezen
+settings-status-downloads-no-sources = Nog geen bronnen
 settings-status-downloads-answered = qBittorrent antwoordde
 settings-status-downloads-missing = Zoekhulp niet geïnstalleerd
 settings-status-downloads-unconnected = Nog niet gekoppeld
@@ -2636,7 +2634,6 @@ settings-downloads-sources-title = Zoekbronnen
 settings-downloads-sources-helper = Waar zoeken heen gaat, op volgorde. Vindt een bron niets, dan de volgende.
 settings-downloads-sources-empty = Nog geen bronnen ingesteld
 settings-downloads-sources-connect = Koppel de zoekhulp om ze te tonen
-settings-downloads-sources-empty-helper = Bronnen uit een bronlijst hieronder verschijnen hier.
 settings-downloads-config-file = Instellingenbestand van de zoekhulp
 settings-downloads-config-native-helper = Bevat de opslagmappen, de tags en de regels voor beste match, die Anibeam zelf volgt als het de hulp draait. De eigen bronnen zijn alleen van de hulp.
 settings-downloads-config-helper = Bevat de bronnen, de opslagmappen, de tags en de regels voor beste match.
