@@ -27,6 +27,10 @@ pub const KEY: &str = kv::DOWNLOAD_PATHS;
 /// anirss's `[qbittorrent].tags` default.
 const DEFAULT_TAG: &str = "Anime";
 
+/// The films' folder under a library or picked save folder, the name the library scan reads
+/// films from (`library::walk::is_movies_folder_name`).
+const MOVIES: &str = "Movies";
+
 /// Where one add or subscription saves, and how it is tagged.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SavePaths {
@@ -120,9 +124,14 @@ pub fn library_folder(services: &Services) -> Result<Option<String>, CoreError> 
 
 /// The blob's folder, then the first library folder for Anibeam's own qBittorrent, then
 /// anirss's config. A folder picked here is a path on this machine, so it counts only for a
-/// client that keeps its files here (`files_here`). The user's own client never gets the
-/// library folder: it keeps the folders it had.
-pub fn planned(services: &Services, s: &DownloadSettings) -> Result<Planned, CoreError> {
+/// client that keeps its files here (`here`, from `settings::files_here`) and only while it
+/// is on disk: an unmounted drive falls back rather than being recreated under its mount
+/// point. The user's own client never gets the library folder: it keeps the folders it had.
+pub fn planned(
+    services: &Services,
+    s: &DownloadSettings,
+    here: bool,
+) -> Result<Planned, CoreError> {
     let stored: Chosen = services
         .store
         .read(|c| kv::get(c, KEY))?
@@ -141,7 +150,7 @@ pub fn planned(services: &Services, s: &DownloadSettings) -> Result<Planned, Cor
     let picked = stored
         .save_base
         .clone()
-        .filter(|p| !p.trim().is_empty() && settings::files_here(s));
+        .filter(|p| !p.trim().is_empty() && here && Path::new(p).is_dir());
     let library = match s.torrent_mode {
         TorrentMode::Managed if picked.is_none() => library_folder(services)?,
         _ => None,
@@ -154,17 +163,22 @@ pub fn planned(services: &Services, s: &DownloadSettings) -> Result<Planned, Cor
             None => (None, SaveFolderFrom::Client),
         },
     };
-    // anirss's films' folder goes with its save folder: a folder picked here, or the
-    // library, takes the films too. Its tags stand either way.
+    // anirss's films' folder goes with its save folder. A folder picked here, or the
+    // library, takes the films into a Movies folder under it, the folder the library reads
+    // films from, so they never land loose beside the shows. Its tags stand either way.
     let theirs = matches!(from, SaveFolderFrom::Helper | SaveFolderFrom::Client);
+    let films = match (&save_base, theirs) {
+        (Some(base), false) => Some(join(base, MOVIES)),
+        _ => config.movie_path.clone(),
+    };
     let rest = Chosen {
         save_base: None,
         ..stored
     }
     .or(Chosen {
         save_base: None,
-        movie_path: config.movie_path.filter(|_| theirs),
-        tags: config.tags,
+        movie_path: films,
+        tags: config.tags.clone(),
     });
     Ok(Planned {
         save_base,
@@ -189,6 +203,21 @@ pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), 
             ),
         ));
     }
+    if let Some(f) = folder {
+        let real = real(f);
+        let home = std::env::home_dir().map(|h| real(&h.to_string_lossy()));
+        // The folder's own subfolders are what removing a subscription with its files
+        // trashes, so the root and the home folder are never one
+        if !Path::new(f).is_dir() || real.parent().is_none() || home.as_ref() == Some(&real) {
+            return Err(CoreError::invalid(
+                "folder",
+                crate::i18n::tr(
+                    "core-downloads-save-folder-unusable",
+                    &[("folder", f.into())],
+                ),
+            ));
+        }
+    }
     let folder = folder.map(str::to_string);
     services.store.write(move |c| {
         let mut blob: Chosen = kv::get(c, KEY)?.unwrap_or_default();
@@ -201,7 +230,7 @@ pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), 
 /// only when nothing else names one.
 pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
     let s = settings::read(services)?;
-    let chosen = planned(services, &s)?;
+    let chosen = planned(services, &s, settings::files_here(&s))?;
     let save_base = match chosen.save_base {
         Some(base) => base,
         None => {
@@ -220,6 +249,35 @@ pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, 
         tags: chosen.tags.unwrap_or_else(|| vec![DEFAULT_TAG.to_string()]),
         save_base,
     })
+}
+
+/// The folders removing a subscription with its files may trash under: where `saving`
+/// saves now, and every folder Anibeam has saved under before for this client, so a
+/// subscription made before the save folder moved (the library's turn in #1005, a folder
+/// picked or reset) can still be removed with its files. A library show among them is
+/// still guarded on its own (`confined`).
+pub fn remove_roots(services: &Services, saving: &SavePaths) -> Result<Vec<String>, CoreError> {
+    let s = settings::read(services)?;
+    let home = AnirssHome::of(&services.paths);
+    let config = settings::anirss_config_path(services)
+        .map(|p| from_anirss_config(&p, &home))
+        .unwrap_or_default();
+    let mut roots = vec![saving.save_base.clone(), saving.movie_path.clone()];
+    roots.extend(config.save_base);
+    roots.extend(config.movie_path);
+    if s.torrent_mode == TorrentMode::Managed {
+        // The managed client's default before #1005, and the library folders since
+        roots.extend(home.save_dir().map(|d| d.to_string_lossy().into_owned()));
+        let folders: Vec<String> = services.store.read(|c| {
+            let mut stmt = c.prepare("SELECT path FROM sources")?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        })?;
+        roots.extend(folders);
+    }
+    roots.retain(|r| !r.trim().is_empty());
+    roots.dedup();
+    Ok(roots)
 }
 
 /// A download or subscription name becomes a folder, so it is one plain

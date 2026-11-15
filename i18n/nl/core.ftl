@@ -1142,6 +1142,10 @@ core-downloads-refuse-library-folder = { $path } is een bibliotheekmap of bevat 
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent noemt geen standaard opslagmap; stel er een in qBittorrent in
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } is geen volledig pad naar een map
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kan geen downloads bevatten: kies een map die bestaat en niet je thuismap is
 core-downloads-name-empty = de naam mag niet leeg zijn
 core-downloads-name-slash = de naam mag geen / of \ bevatten
 core-downloads-name-not-folder = { $name } is geen mapnaam

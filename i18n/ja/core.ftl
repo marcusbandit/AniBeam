@@ -1083,6 +1083,10 @@ core-downloads-refuse-library-folder = { $path }はライブラリフォルダ�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } はフォルダへの完全なパスではありません
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } にはダウンロードを保存できません。存在するフォルダで、ホームフォルダ以外を選んでください
 core-downloads-name-empty = 名前を空にはできません
 core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes

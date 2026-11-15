@@ -1143,6 +1143,8 @@ core-downloads-refuse-library-folder = { $path } er en biblioteksmappe eller ind
 core-downloads-no-default-folder = qBittorrent har ingen standardmappe at gemme i; vælg en i qBittorrent
 # $folder is the folder given
 core-downloads-save-folder-not-absolute = { $folder } er ikke en fuld sti til en mappe
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kan ikke rumme downloads: vælg en mappe, der findes og ikke er din hjemmemappe
 core-downloads-name-empty = navnet må ikke være tomt
 core-downloads-name-slash = navnet må ikke indeholde / eller \
 core-downloads-name-not-folder = { $name } er ikke et mappenavn

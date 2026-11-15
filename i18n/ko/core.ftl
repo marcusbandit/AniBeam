@@ -1049,6 +1049,10 @@ core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder }은(는) 폴더의 전체 경로가 아니에요
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder }에는 다운로드를 저장할 수 없어요. 실제로 있고 홈 폴더가 아닌 폴더를 고르세요
 core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요

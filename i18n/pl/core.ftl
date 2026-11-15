@@ -1372,6 +1372,10 @@ core-downloads-refuse-library-folder = { $path } to folder biblioteki lub go zaw
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent nie ma domyślnego folderu zapisu; ustaw go w qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } nie jest pełną ścieżką do folderu
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } nie może przechowywać pobranych plików: wybierz folder, który istnieje i nie jest folderem domowym
 core-downloads-name-empty = nazwa nie może być pusta
 core-downloads-name-slash = nazwa nie może zawierać / ani \
 # $name is the name given, in quotes

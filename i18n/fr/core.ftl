@@ -1153,6 +1153,10 @@ core-downloads-refuse-library-folder = { $path } est un dossier de bibliothèque
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent n'indique aucun dossier d'enregistrement par défaut ; définissez-en un dans qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } n'est pas un chemin complet vers un dossier
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } ne peut pas recevoir de téléchargements : choisissez un dossier qui existe et qui n'est pas votre dossier personnel
 core-downloads-name-empty = le nom ne peut pas être vide
 core-downloads-name-slash = le nom ne doit contenir ni / ni \
 core-downloads-name-not-folder = { $name } n'est pas un nom de dossier

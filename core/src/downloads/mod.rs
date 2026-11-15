@@ -202,7 +202,7 @@ fn assemble(downloads: &Downloads, settings: DownloadSettings) -> DownloadsStatu
 /// the client's own folder rather than failing the whole status.
 fn save_folder(services: &Services, s: &DownloadSettings) -> SaveFolder {
     let here = settings::files_here(s);
-    match paths::planned(services, s) {
+    match paths::planned(services, s, here) {
         Ok(p) => SaveFolder {
             path: p.save_base.unwrap_or_default(),
             from: p.from,
@@ -699,7 +699,7 @@ async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), 
     // qBittorrent's own default, for a profile that has none yet: the folder Anibeam saves
     // into, the library's first (#1005), else a folder in Downloads. Every add and rule
     // names its folder anyway; this is for a torrent added in qBittorrent itself.
-    let save = paths::planned(services, s)
+    let save = paths::planned(services, s, true)
         .ok()
         .filter(|p| matches!(p.from, SaveFolderFrom::Chosen | SaveFolderFrom::Library))
         .and_then(|p| p.save_base)

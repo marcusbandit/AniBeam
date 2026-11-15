@@ -1141,6 +1141,10 @@ core-downloads-refuse-library-folder = { $path } ist ein Bibliotheksordner oder 
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent nennt keinen Standard-Speicherordner; leg einen in qBittorrent fest
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } ist kein vollständiger Pfad zu einem Ordner
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } kann keine Downloads aufnehmen: wähle einen Ordner, den es gibt und der nicht dein Home-Ordner ist
 core-downloads-name-empty = der Name darf nicht leer sein
 core-downloads-name-slash = der Name darf kein / oder \ enthalten
 core-downloads-name-not-folder = { $name } ist kein Ordnername

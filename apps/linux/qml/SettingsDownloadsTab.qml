@@ -46,6 +46,8 @@ SettingsTab {
     // Anibeam itself, the default (#552), and the core keeps it stored until the search
     // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
+    // The saved engine, as the Save to row applies at once and reads the saved client's folder
+    readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
@@ -220,7 +222,7 @@ SettingsTab {
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); helper: tab.passwordLine
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
-        SettingRow { objectName: "downloads-save-to"; visible: tab.nativeEngine && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
+        SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
             status: tab.saveFolder.path || words.t("settings-downloads-save-to-client")
             Row { spacing: theme.space(2)
                 Button { visible: tab.saveFolder.from === "Chosen"; msg: "settings-downloads-save-to-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.setSaveFolder(null) }

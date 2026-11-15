@@ -209,6 +209,7 @@ fn a_folder_picked_in_settings_wins_and_reset_goes_back_to_the_library() {
     let r = managed();
     let lib = add_library(&r, "Anime");
     let picked = r.dir.path().join("Picked").to_string_lossy().into_owned();
+    std::fs::create_dir_all(&picked).unwrap();
     let reply = r
         .core
         .call(Call::SetSaveFolder {
@@ -222,7 +223,7 @@ fn a_folder_picked_in_settings_wins_and_reset_goes_back_to_the_library() {
         (picked.as_str(), SaveFolderFrom::Chosen)
     );
     assert_eq!(download(&r, None), format!("{picked}/Show"));
-    // Films follow the picked folder too
+    // Films follow the picked folder too, into its Movies folder
     r.http.push_for("app/version", 200, "v5.0.0");
     r.http.push_for("torrents/add", 200, "Ok.");
     let job = started(
@@ -232,7 +233,12 @@ fn a_folder_picked_in_settings_wins_and_reset_goes_back_to_the_library() {
         },
     );
     common::wait_job(&r.c, job);
-    assert_eq!(add_field(&r.http, "savepath"), picked);
+    assert_eq!(add_field(&r.http, "savepath"), format!("{picked}/Movies"));
+
+    // An unmounted drive falls back instead of being recreated under its mount point
+    std::fs::remove_dir_all(&picked).unwrap();
+    assert_eq!(status(&r.core).save_folder.from, SaveFolderFrom::Library);
+    std::fs::create_dir_all(&picked).unwrap();
 
     r.core.call(Call::SetSaveFolder { folder: None }).unwrap();
     let st = status(&r.core).save_folder;
@@ -243,15 +249,18 @@ fn a_folder_picked_in_settings_wins_and_reset_goes_back_to_the_library() {
 }
 
 #[test]
-fn a_folder_that_is_not_a_full_path_is_refused() {
+fn a_folder_that_is_not_a_full_path_missing_or_the_root_is_refused() {
     let r = managed();
-    let refused = r.core.call(Call::SetSaveFolder {
-        folder: Some("Anime".to_string()),
-    });
-    assert!(
-        matches!(refused, Err(CoreError::Invalid { ref field, .. }) if field == "folder"),
-        "{refused:?}"
-    );
+    let missing = r.dir.path().join("Gone").to_string_lossy().into_owned();
+    for folder in ["Anime".to_string(), missing, "/".to_string()] {
+        let refused = r.core.call(Call::SetSaveFolder {
+            folder: Some(folder),
+        });
+        assert!(
+            matches!(refused, Err(CoreError::Invalid { ref field, .. }) if field == "folder"),
+            "{refused:?}"
+        );
+    }
     assert_eq!(status(&r.core).save_folder.from, SaveFolderFrom::Client);
 }
 
@@ -266,6 +275,7 @@ fn the_users_own_client_keeps_its_own_default_folder() {
     assert_eq!(download(&r, None), "/srv/TV/Show");
     // A folder picked on this machine is no path on a client elsewhere
     let picked = r.dir.path().join("Picked").to_string_lossy().into_owned();
+    std::fs::create_dir_all(&picked).unwrap();
     r.core
         .call(Call::SetSaveFolder {
             folder: Some(picked),
