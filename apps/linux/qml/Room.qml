@@ -183,6 +183,17 @@ QtObject {
         else frame.go("player", { file: episode.file }, title)
     }
 
+    // Whether two episode refs name the same episode of the same show, as the core's
+    // episode::same does: the key and every show id
+    function sameEpisode(a, b) {
+        if (!a || !b) return false
+        var id = function(v) { return v === null || v === undefined ? "" : String(v) }
+        return String(a.episode_key) === String(b.episode_key)
+            && id(a.anilist_id) === id(b.anilist_id)
+            && id(a.mal_id) === id(b.mal_id)
+            && id(a.tvmaze_id) === id(b.tvmaze_id)
+    }
+
     // Every room error as a sentence that says what to do
     function errorText(e) {
         if (!e) return ""
@@ -214,8 +225,7 @@ QtObject {
             root.info = room && room.code ? room : null
             if (!root.info) { root.episode = null; return }
             // The room moved on: what was found for the last episode no longer holds
-            var now = root.info.episode ? String(root.info.episode.episode_key) : ""
-            if (root.episode && String(root.episode.episode.episode_key) !== now) root.episode = null
+            if (root.episode && !root.sameEpisode(root.episode.episode, root.info.episode)) root.episode = null
             root.settle()
             // A Get media that stopped short carries why in the room itself
             var why = root.info.fetch_error
