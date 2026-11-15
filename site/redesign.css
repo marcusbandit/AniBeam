@@ -648,3 +648,78 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 }
 @keyframes bl-down { 0% { top: -10%; opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
 
+
+/* ---- Solid surfaces. Nothing on the page is see-through any more: every panel and card is a
+   solid dark fill, one step darker than the one it sits on. The beams pass behind them. ---- */
+body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3: #1c1d22; }
+.rd .card { background: var(--solid-2); }
+.rd .row-vis { background: var(--solid-1); }
+.rd .pickup-art { background: linear-gradient(90deg, #0b0c0f 38%, rgba(11, 12, 15, 0.9)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; filter: brightness(0.75); }
+.rd .mk-row { background: var(--solid-1); }
+.rd .r2-code { background: var(--solid-0); }
+.rd .r2-copy, .rd .r2-people em { background: var(--solid-3); }
+.rd .scan-files { background: var(--solid-1); }
+.rd .pr-pill { background: var(--solid-2); }
+.rd a.pr-pill:hover { background: var(--solid-3); }
+.rd .tour-window { background: var(--solid-0); }
+.rd .dev .lp-screen { background: var(--solid-1); }
+
+/* ---- Phones: their own layout, not the desktop stacked up. ----
+   The hero keeps one strong action. The features are a deck: each is a solid card that sticks
+   under the bar while the next slides up over it, edged at the top with a line of the beam. */
+@media (max-width: 760px) {
+  .rd .nav-gh { display: none; }
+
+  .bhero { min-height: max(640px, min(100svh, 860px)); padding-bottom: 40px; }
+  .bhero .hero-actions { gap: 4px; }
+  .bhero .dl-other, .endcard .dl-other { height: 44px; background: none; box-shadow: none; color: var(--fg-2); font-weight: 560; }
+  .bhero .dl-other::after, .endcard .dl-other::after { display: none; }
+
+  .rows { gap: 18px; padding-top: 72px; }
+  .rows .feat.row, .rows .feat.row.flip, .rows .feat.row.stack {
+    position: sticky;
+    top: calc(80px + var(--k, 0) * 10px);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+    padding: 24px 18px 22px;
+    border-radius: 26px;
+    background: var(--solid-1);
+    box-shadow: inset 0 0 0 1px var(--hair), 0 -18px 40px -12px #000;
+    overflow: hidden;
+  }
+  .rows .feat.row::before {
+    content: "";
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.85) 30%, rgba(255, 238, 170, 1) 60%, transparent);
+    box-shadow: 0 0 14px 2px rgba(253, 201, 1, 0.45);
+  }
+  .rows .feat:nth-child(1) { --k: 0; }
+  .rows .feat:nth-child(2) { --k: 1; }
+  .rows .feat:nth-child(3) { --k: 2; }
+  .rows .feat:nth-child(4) { --k: 3; }
+  .rows .feat:nth-child(5) { --k: 4; }
+  .rows .feat:nth-child(6) { --k: 5; }
+  .rows .feat:nth-child(7) { --k: 6; }
+  .rows .feat.row h3 { font-size: 28px; }
+  .rows .feat.row .row-text { gap: 14px; }
+  .rd .rows .card { background: var(--solid-2); }
+  .rows .row-vis > * { width: 100% !important; }
+
+  /* Each card fits the screen under the bar, so the deck never hides half a demo. */
+  .feat-scan .scan-shelf { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 14px; }
+  .feat-scan .sp:nth-child(n+4) { display: none; }
+  .feat-scan .sf:nth-of-type(n+5) { display: none; }
+  .bl { gap: 8px; }
+  .bl-stop { grid-template-columns: 38px minmax(0, 1fr); }
+  .bl-stop img { width: 38px; }
+  .bl-stop span { font-size: 14px; }
+  .feat-room .row-text { display: flex; }
+  .feat-room .room-open { display: none; }
+}
