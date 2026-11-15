@@ -678,7 +678,7 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
 @media (prefers-reduced-motion: no-preference) {
   .cast-lines path { animation: cast-up 0.9s linear infinite; animation-play-state: var(--motion, running); }
 }
-@keyframes cast-up { to { stroke-dashoffset: 11; } }
+@keyframes cast-up { to { stroke-dashoffset: -11; } }
 .feat-cast .senders { position: relative; left: auto; bottom: auto; display: flex; justify-content: space-between; align-items: flex-end; width: 100%; aspect-ratio: auto; }
 .feat-cast .dev { position: relative; left: auto; bottom: auto; opacity: 1; animation: none; }
 .feat-cast .dev-phone { width: 14%; }
