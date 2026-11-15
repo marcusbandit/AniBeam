@@ -171,6 +171,35 @@ pub fn hls_path(file: u64, height: u32, audio: Option<usize>, burn: Option<usize
     path
 }
 
+/// Seconds per piece of the playlist [`hls_path`] answers. Every piece starts
+/// on a keyframe the host forces at its start.
+pub const HLS_PIECE: f64 = 6.0;
+
+/// How many pieces an episode `duration` seconds long comes in: one at least.
+pub fn hls_pieces(duration: f64) -> u32 {
+    (duration / HLS_PIECE).ceil().max(1.0) as u32
+}
+
+/// The playlist [`hls_path`] answers for an episode `duration` seconds long:
+/// every piece of the whole episode up front, so a player seeks it like a
+/// file. Piece `n` is `seg<n>.ts` with `query` after it, so each piece asks
+/// for the same conversion the playlist did. A computer casting a conversion
+/// to a TV reads the pieces back out of this text.
+pub fn hls_playlist(duration: f64, query: &str) -> String {
+    let count = hls_pieces(duration);
+    let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+    out.push_str(&format!(
+        "#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n",
+        HLS_PIECE.ceil() as u32
+    ));
+    for i in 0..count {
+        let len = (duration - f64::from(i) * HLS_PIECE).min(HLS_PIECE);
+        out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
+    }
+    out.push_str("#EXT-X-ENDLIST\n");
+    out
+}
+
 /// `GET /api/v1/hello`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
@@ -501,6 +530,16 @@ pub struct Torrent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_playlist_covers_the_whole_episode() {
+        let list = hls_playlist(14.5, "?audio=1");
+        assert!(list.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
+        assert!(list.contains("#EXTINF:6.000,\nseg0.ts?audio=1\n"));
+        assert!(list.contains("#EXTINF:2.500,\nseg2.ts?audio=1\n"));
+        assert!(!list.contains("seg3.ts"));
+        assert!(list.ends_with("#EXT-X-ENDLIST\n"));
+    }
 
     #[test]
     fn the_fixture_reads_as_a_snapshot() {
