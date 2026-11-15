@@ -15,12 +15,12 @@ pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt
 ## Build and run
 
 ```bash
-git clone https://github.com/marcusbandit/AniBeam.git
+git clone https://github.com/marcusbandit/Anibeam.git
 cd Anibeam
 ./build.sh                           # target/release/anibeam
 ```
 
-`build.sh` checks for everything above, says what is missing, and runs
+`build.sh` checks for cargo, Qt, libmpv and MpvQt, says what is missing, and runs
 `cargo build --release -p anibeam`; plain cargo works just as well.
 
 A build from source shows the dev icon, the blueprint mark, in its window and sidebar, so it

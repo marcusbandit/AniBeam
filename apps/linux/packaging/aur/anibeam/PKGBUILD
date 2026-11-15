@@ -49,6 +49,7 @@ check() {
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
   export GIT_CEILING_DIRECTORIES="$srcdir"
+  export ANIBEAM_ICON=release
   cargo test --frozen --release -p anibeam
 }
 

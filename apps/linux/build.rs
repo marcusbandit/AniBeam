@@ -8,7 +8,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     changes();
-    app_icon();
+    let icon = format!("assets/{}", app_icon());
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -178,10 +178,9 @@ fn main() {
     .qrc_resources([
         "shaders/poster.vert.qsb",
         "shaders/poster.frag.qsb",
-        "assets/icon.png",
+        // The Default icon this kind of build shows, and Dark.
+        icon.as_str(),
         "assets/icon-dark.png",
-        "assets/icon-dev.png",
-        "assets/icon-nightly.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
         "assets/fonts/Archivo-Variable-ExtraBold.ttf",
@@ -371,13 +370,13 @@ fn changes() {
 }
 
 /// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
-/// under assets/: the release mark, the nightly's graph paper, or the dev blueprint, so a
+/// under assets/ and the only one of the three in the qrc: the release mark, the nightly's graph paper, or the dev blueprint, so a
 /// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
 /// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
 /// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
 /// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
 /// AUR's source package does.
-fn app_icon() {
+fn app_icon() -> String {
     println!("cargo:rerun-if-env-changed=ANIBEAM_ICON");
     println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
     let version = std::env::var("ANIBEAM_RELEASE_VERSION").unwrap_or_default();
@@ -395,4 +394,5 @@ fn app_icon() {
         kind => format!("icon-{kind}.png"),
     };
     println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    file
 }

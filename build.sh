@@ -10,21 +10,27 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")" && pwd)"
 
 missing=()
-need() { command -v "$1" >/dev/null 2>&1 || missing+=("$2"); }
-need cargo "Rust 1.95 or newer (rustup.rs)"
-need qmake6 "Qt 6.11 or newer, with qmake6 on PATH (base, declarative, svg)"
-need pkg-config "pkg-config"
-if command -v pkg-config >/dev/null 2>&1 && ! pkg-config --exists mpv; then
+command -v cargo >/dev/null 2>&1 || missing+=("Rust 1.95 or newer (rustup.rs)")
+# The same qmake the build takes: QMAKE when set, else qmake6 on PATH.
+qmake="${QMAKE:-qmake6}"
+if ! command -v "$qmake" >/dev/null 2>&1; then
+  missing+=("Qt 6.11 or newer, with qmake6 on PATH or QMAKE naming it (base, declarative, svg)")
+else
+  qt="$("$qmake" -query QT_VERSION 2>/dev/null || true)"
+  if [ -z "$qt" ] || [ "$(printf '%s\n6.11\n' "$qt" | sort -V | head -n1)" != "6.11" ]; then
+    missing+=("Qt 6.11 or newer ($qmake reports ${qt:-no version})")
+  fi
+fi
+# libmpv: under MPV_PREFIX when set, as the build looks for it, else wherever pkg-config knows.
+if [ -n "${MPV_PREFIX:-}" ]; then
+  [ -f "$MPV_PREFIX/include/mpv/client.h" ] || missing+=("libmpv under MPV_PREFIX ($MPV_PREFIX)")
+elif command -v pkg-config >/dev/null 2>&1; then
+  pkg-config --exists mpv || missing+=("libmpv and its headers")
+elif [ ! -f /usr/include/mpv/client.h ]; then
   missing+=("libmpv and its headers")
 fi
 if [ ! -d "${MPVQT_PREFIX:-/usr}/include/MpvQt" ]; then
   missing+=("KDE's MpvQt (or MPVQT_PREFIX pointing at it)")
-fi
-if command -v qmake6 >/dev/null 2>&1; then
-  qt="$(qmake6 -query QT_VERSION)"
-  if [ "$(printf '%s\n6.11\n' "$qt" | sort -V | head -n1)" != "6.11" ]; then
-    missing+=("Qt 6.11 or newer (qmake6 reports $qt)")
-  fi
 fi
 if [ ${#missing[@]} -gt 0 ]; then
   echo "build.sh: missing:" >&2
