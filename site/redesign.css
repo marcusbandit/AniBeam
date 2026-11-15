@@ -433,3 +433,108 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .credits dt { font-size: 14px; }
   .credits dd { font-size: 15px; }
 }
+
+/* ---- The feature demos, each showing the feature doing its job ---- */
+
+/* Files in a folder on the left, the shows they turned out to be on the right. Each file gets
+   its tick as its poster lands. */
+.scan { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 0; overflow: hidden; padding: 0; }
+.scan-files { display: flex; flex-direction: column; gap: 2px; padding: 18px 14px; border-right: 1px solid var(--hair); background: rgba(0, 0, 0, 0.25); }
+.sf-head { display: flex; align-items: center; gap: 8px; padding: 2px 8px 10px; color: var(--fg); font-size: 14px; font-weight: 640; }
+.sf-head svg, .sf-ok svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sf-head svg { color: var(--brand); }
+.sf { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 8px; border-radius: 8px; color: var(--fg-2); font: 400 12.5px/1.3 var(--mono); }
+.sf-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sf-ok { display: grid; place-items: center; flex: none; color: var(--done); }
+.scan-shelf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 18px; align-content: center; }
+.sp { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sp img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.sp b { overflow: hidden; color: var(--fg); font-size: 12px; font-weight: 600; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: no-preference) {
+  .js .feat-scan .sp { transition: opacity 0.45s var(--ease) calc(0.3s + var(--n) * 0.28s), transform 0.45s var(--ease) calc(0.3s + var(--n) * 0.28s); }
+  .js .feat-scan:not(.in) .sp { opacity: 0; transform: translateX(-16px) scale(0.94); }
+  .js .feat-scan .sf { transition: background-color 0.3s ease calc(0.2s + var(--n) * 0.28s), color 0.3s ease calc(0.2s + var(--n) * 0.28s); }
+  .js .feat-scan:not(.in) .sf { background: rgba(253, 201, 1, 0.08); color: var(--fg); }
+  .js .feat-scan .sf-ok { transition: opacity 0.3s ease calc(0.45s + var(--n) * 0.28s); }
+  .js .feat-scan:not(.in) .sf-ok { opacity: 0; }
+}
+
+/* An episode played to its end, and both lists moving up one. */
+.mark { display: grid; gap: 18px; padding: 26px; }
+.mk-ep { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 16px; row-gap: 14px; align-items: center; }
+.mk-ep img { grid-row: 1; width: 52px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.mk-ep-text { display: flex; flex-direction: column; gap: 2px; }
+.mk-ep-text b { color: var(--fg); font-size: 19px; font-weight: 640; letter-spacing: -0.015em; }
+.mk-ep-text span { color: var(--fg-2); font-size: 14px; }
+.mk-watched { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; background: color-mix(in srgb, var(--done) 16%, transparent); color: var(--done); font-size: 13.5px; font-weight: 640; }
+.mk-watched svg, .r2-ok svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.mk-seek { grid-column: 1 / -1; position: relative; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); }
+.mk-seek i { position: absolute; inset: 0 auto 0 0; width: 100%; border-radius: inherit; background: var(--done); }
+.mk-lists { display: grid; gap: 8px; }
+.mk-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair); }
+.mk-row > b { color: var(--fg); font-size: 15px; font-weight: 600; }
+.mk-al { width: 22px; height: 22px; fill: var(--anilist); }
+.mk-mal { width: 28px; height: 14px; fill: #fff; }
+.mk-row.mal > svg { padding: 3px 2px; border-radius: 5px; background: #2e51a2; width: 28px; height: 18px; }
+.mark .al-num .n { font-size: 26px; }
+.mark .al-num { font-size: 14px; }
+@media (prefers-reduced-motion: no-preference) {
+  .js .feat-sync .mk-seek i { transition: width 1s linear 0.2s; }
+  .js .feat-sync:not(.in) .mk-seek i { width: 93%; }
+  .js .feat-sync .mk-watched { transition: opacity 0.35s ease 1.1s, transform 0.35s var(--ease) 1.1s; }
+  .js .feat-sync:not(.in) .mk-watched { opacity: 0; transform: scale(0.9); }
+  .js .feat-sync .al-num .old, .js .feat-sync .al-num .new { transition-delay: 1.5s; }
+  .js .feat-sync .mk-row.mal .al-num .old, .js .feat-sync .mk-row.mal .al-num .new { transition-delay: 1.75s; }
+}
+
+/* The Home card says what the app's own does. */
+.pickup-kicker { color: var(--brand); font-size: 13px; font-weight: 640; }
+
+/* Sequels: how many of the franchise are here, and each one named as the sequel it is. */
+.rel-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.rel-count { color: var(--fg-2); font-size: 14px; font-weight: 600; }
+.stone em { color: var(--brand); font-size: 11.5px; font-style: normal; font-weight: 640; }
+.stone:not(.owned) em { color: var(--fg-3); }
+
+/* Casting: the TV plays the episode; the computer shows the app's own "Playing on" tile. */
+.laptop { position: absolute; z-index: 3; left: 0; bottom: 2%; width: 50%; }
+.lp-screen { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border: 7px solid #141518; border-radius: 12px 12px 4px 4px; background: radial-gradient(80% 80% at 50% 40%, #1a1c22, #0b0c0f); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 30px 60px -20px #000; }
+.lp-tile { position: absolute; left: 50%; top: 44%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.lp-tile svg { width: 30px; height: 30px; fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lp-tile b { color: var(--fg); font-size: 14px; font-weight: 640; white-space: nowrap; }
+.lp-tile span { color: var(--fg-2); font: 400 11.5px/1 var(--mono); }
+.lp-bar { position: absolute; left: 8%; right: 8%; bottom: 10%; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); }
+.lp-bar i { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--done); }
+.lp-base { display: block; width: 116%; height: 9px; margin-left: -8%; border-radius: 0 0 10px 10px; background: linear-gradient(#26282d, #141518); }
+.feat-cast .cast-arc { left: 30%; bottom: 30%; width: 34%; height: 28%; }
+
+/* Watch together: the app's room panel, with the last friend's copy opening and then ready. */
+.room2 { display: grid; gap: 16px; padding: 22px 24px; }
+.r2-head { display: flex; align-items: center; justify-content: space-between; }
+.r2-head b { color: var(--fg); font-size: 18px; font-weight: 660; letter-spacing: -0.01em; }
+.r2-code { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 10px 16px; border-radius: 12px; background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 1px var(--hair); }
+.r2-copy { padding: 7px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); color: var(--fg); font-size: 13px; font-weight: 600; }
+.r2-show { display: flex; align-items: center; gap: 12px; color: var(--fg); font-size: 15px; font-weight: 600; }
+.r2-show img { width: 34px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; }
+.r2-people { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.r2-people li { display: grid; grid-template-columns: 28px auto auto minmax(0, 1fr); gap: 10px; align-items: center; padding: 7px 0; }
+.r2-people i { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--c); color: #0b0d11; font-size: 12.5px; font-style: normal; font-weight: 760; }
+.r2-people b { color: var(--fg); font-size: 15px; font-weight: 600; }
+.r2-people em { padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--fg-2); font-size: 12px; font-style: normal; font-weight: 600; }
+.r2-state { grid-column: -2 / -1; position: relative; justify-self: end; display: grid; font-size: 13.5px; font-weight: 600; }
+.r2-state > span { grid-area: 1 / 1; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; transition: opacity 0.3s ease 1.4s; }
+.r2-ok { color: var(--done); }
+.r2-wait { color: var(--fg-3); }
+.late .r2-ok { opacity: 1; }
+.late .r2-wait { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .js .feat-room:not(.in) .late .r2-ok { opacity: 0; }
+  .js .feat-room:not(.in) .late .r2-wait { opacity: 1; }
+  .js .feat-room .room-live { transition: opacity 0.4s ease 0.3s; }
+}
+@media (max-width: 760px) {
+  .scan { grid-template-columns: minmax(0, 1fr); }
+  .scan-files { border-right: 0; border-bottom: 1px solid var(--hair); }
+  .laptop { width: 56%; }
+  .lp-tile b { font-size: 11px; }
+}

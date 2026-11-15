@@ -107,8 +107,18 @@
 
 <section class="rows" id="features" aria-label="What it does">
 
-  <article class="feat row feat-player">
-    <div class="row-text"><h3>Plays your own files</h3></div>
+  <article class="feat row feat-scan">
+    <div class="row-text"><h3>Finds the show in every file</h3></div>
+    <div class="row-vis">
+      <div class="scan card" aria-hidden="true">
+        <div class="scan-files"><span class="sf-head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Anime</span><span class="sf" style="--n:0"><span class="sf-name">Cowboy.Bebop.S01E05.1080p.BluRay.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:1"><span class="sf-name">Ghost in the Shell (1995) 1080p.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:2"><span class="sf-name">steins_gate_12_bd.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:3"><span class="sf-name">Akira.1988.REMASTER.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:4"><span class="sf-name">FMA Brotherhood - 03 [1080p].mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:5"><span class="sf-name">Mononoke-hime.2160p.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span></div>
+        <div class="scan-shelf"><span class="sp" style="--n:0"><img src="img/posters/bebop.webp" alt="" loading="lazy"><b>Cowboy Bebop</b></span><span class="sp" style="--n:1"><img src="img/posters/gits.webp" alt="" loading="lazy"><b>Ghost in the Shell</b></span><span class="sp" style="--n:2"><img src="img/posters/steinsgate.webp" alt="" loading="lazy"><b>Steins;Gate</b></span><span class="sp" style="--n:3"><img src="img/posters/akira.webp" alt="" loading="lazy"><b>Akira</b></span><span class="sp" style="--n:4"><img src="img/posters/fmab.webp" alt="" loading="lazy"><b>Fullmetal Alchemist: Brotherhood</b></span><span class="sp" style="--n:5"><img src="img/posters/mononoke.webp" alt="" loading="lazy"><b>Princess Mononoke</b></span></div>
+      </div>
+    </div>
+  </article>
+
+  <article class="feat row feat-player flip">
+    <div class="row-text"><h3>Plays every track you have</h3></div>
     <div class="row-vis">
       <div class="player" aria-hidden="true">
         <div class="pl-stage">
@@ -146,37 +156,34 @@
     </div>
   </article>
 
-  <article class="feat row feat-sync flip">
-    <div class="row-text"><h3>Syncs with AniList</h3></div>
+  <article class="feat row feat-sync">
+    <div class="row-text"><h3>Keeps AniList and MyAnimeList up to date</h3></div>
     <div class="row-vis">
-      <div class="sync card" aria-hidden="true">
-        <div class="al-entry">
-          <img src="img/posters/frieren.webp" alt="" loading="lazy">
-          <div class="al-meta">
-            <b>Sousou no Frieren</b>
-            <span class="al-status">Watching</span>
-          </div>
-          <div class="al-num"><span class="n"><span class="old">12</span><span class="new">13</span></span><span class="of">/ 28</span></div>
+      <div class="mark card" aria-hidden="true">
+        <div class="mk-ep">
+          <img src="img/posters/steinsgate.webp" alt="" loading="lazy">
+          <div class="mk-ep-text"><b>Steins;Gate</b><span>Episode 12</span></div>
+          <span class="mk-watched"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Watched</span>
+          <span class="mk-seek"><i></i></span>
         </div>
-        <span class="al-eps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-        <div class="al-foot">
-          <svg viewBox="0 0 24 24"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>
-          <span>AniList</span>
-          <span class="al-synced"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Synced</span>
+        <div class="mk-lists">
+          <div class="mk-row al"><svg class="mk-al" viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg><b>AniList</b><span class="al-num"><span class="n"><span class="old">11</span><span class="new">12</span></span><span class="of">/ 24</span></span></div>
+          <div class="mk-row mal"><svg class="mk-mal" viewBox="0 6.6 24 10.8" aria-hidden="true"><path d="M8.273 7.247v8.423l-2.103-.003v-5.216l-2.03 2.404-1.989-2.458-.02 5.285H.001L0 7.247h2.203l1.865 2.545 2.015-2.546 2.19.001zm8.628 2.069l.025 6.335h-2.365l-.008-2.871h-2.8c.07.499.21 1.266.417 1.779.155.381.298.751.583 1.128l-1.705 1.125c-.349-.636-.622-1.337-.878-2.082a9.296 9.296 0 0 1-.507-2.179c-.085-.75-.097-1.471.107-2.212a3.908 3.908 0 0 1 1.161-1.866c.313-.293.749-.5 1.1-.687.351-.187.743-.264 1.107-.359a7.405 7.405 0 0 1 1.191-.183c.398-.034 1.107-.066 2.39-.028l.545 1.749H14.51c-.593.008-.878.001-1.341.209a2.236 2.236 0 0 0-1.278 1.92l2.663.033.038-1.81h2.309zm3.992-2.099v6.627l3.107.032-.43 1.775h-4.807V7.187l2.13.03z"/></svg><b>MyAnimeList</b><span class="al-num"><span class="n"><span class="old">11</span><span class="new">12</span></span><span class="of">/ 24</span></span></div>
         </div>
       </div>
     </div>
   </article>
 
-  <article class="feat row feat-resume">
-    <div class="row-text"><h3>Picks up where you left off</h3></div>
+  <article class="feat row feat-resume flip">
+    <div class="row-text"><h3>Remembers where you stopped</h3></div>
     <div class="row-vis">
       <div class="pickup" aria-hidden="true">
         <div class="pickup-art"></div>
         <img class="pickup-poster" src="img/posters/frieren.webp" alt="" loading="lazy">
         <div class="pickup-text">
+          <span class="pickup-kicker">Pick up where you stopped</span>
           <b>Sousou no Frieren</b>
-          <span class="pickup-ep">Episode 13</span>
+          <span class="pickup-ep">Episode 13, 9 min left</span>
           <span class="cubes"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
           <span class="pickup-btns"><span class="pk-resume"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg>Resume episode 13</span><span class="pk-open">Open series</span></span>
         </div>
@@ -188,22 +195,22 @@
     <div class="row-text"><h3>Finds every sequel</h3></div>
     <div class="row-vis">
       <div class="related card" aria-hidden="true">
-        <b class="rel-head">Attack on Titan</b>
+        <div class="rel-top"><b class="rel-head">Attack on Titan</b><span class="rel-count">2 of 6 in your library</span></div>
         <span class="rel-rail"><i class="on" style="--i:0"></i><i class="on" style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i></span>
         <div class="rel-row">
-          <div class="stone owned" style="--i:0"><span class="stone-art"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><b>Season 2</b><span>2017</span></div></div>
-          <div class="stone owned" style="--i:1"><span class="stone-art"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><b>Season 3</b><span>2018</span></div></div>
-          <div class="stone" style="--i:2"><span class="stone-art"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"></span><div><b>Season 3 Part 2</b><span>2019</span></div></div>
-          <div class="stone" style="--i:3"><span class="stone-art"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"></span><div><b>The Final Season</b><span>2021</span></div></div>
-          <div class="stone" style="--i:4"><span class="stone-art"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"></span><div><b>Final Season Part 2</b><span>2022</span></div></div>
-          <div class="stone" style="--i:5"><span class="stone-art"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"></span><div><b>The Final Chapters</b><span>2023</span></div></div>
+          <div class="stone owned" style="--i:0"><span class="stone-art"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><em>Sequel</em><b>Season 2</b><span>2017</span></div></div>
+          <div class="stone owned" style="--i:1"><span class="stone-art"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><em>Sequel</em><b>Season 3</b><span>2018</span></div></div>
+          <div class="stone" style="--i:2"><span class="stone-art"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"></span><div><em>Sequel</em><b>Season 3 Part 2</b><span>2019</span></div></div>
+          <div class="stone" style="--i:3"><span class="stone-art"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"></span><div><em>Sequel</em><b>The Final Season</b><span>2021</span></div></div>
+          <div class="stone" style="--i:4"><span class="stone-art"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"></span><div><em>Sequel</em><b>Final Season Part 2</b><span>2022</span></div></div>
+          <div class="stone" style="--i:5"><span class="stone-art"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"></span><div><em>Sequel</em><b>The Final Chapters</b><span>2023</span></div></div>
         </div>
       </div>
     </div>
   </article>
 
   <article class="feat row feat-cast">
-    <div class="row-text"><h3>Throws it on the big screen</h3></div>
+    <div class="row-text"><h3>Casts to your TV</h3></div>
     <div class="row-vis">
       <div class="cast-scene" aria-hidden="true">
     <div class="tv">
@@ -224,36 +231,27 @@
       <path class="arc-line" d="M10 210 C 120 60, 260 40, 390 20" fill="none"/>
       <circle class="arc-dot" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto"><mpath href="#arc"/></animateMotion></circle>
     </svg>
-    <div class="remote card">
-      <div class="remote-head">
-        <svg class="cast-on" viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="6" y="7.5" width="12.5" height="9" rx="1" fill="currentColor"/><path d="M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="2.6" cy="20" r="1.2" fill="currentColor"/></svg>
-        <span>Living room TV</span>
+    <div class="laptop">
+        <div class="lp-screen">
+          <div class="lp-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg><b>Playing on Living room TV</b><span>8:12 / 23:40</span></div>
+          <span class="lp-bar"><i></i></span>
+        </div>
+        <span class="lp-base"></span>
       </div>
-      <div class="remote-now">
-        <img src="img/art/tv-thumb.webp" alt="" loading="lazy">
-        <div class="remote-text"><b>City the Animation</b><span>Episode 1</span></div>
-        <span class="remote-play"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></span>
-      </div>
-      <span class="remote-bar"><i></i></span>
     </div>
-  </div>
     </div>
   </article>
 
   <article class="feat row feat-room flip">
-    <div class="row-text">
-      <h3>Watches together</h3>
+    <div class="row-text"><h3>Plays in sync with friends</h3>
       <a class="btn btn-ghost room-open" href="https://rooms.anibeam.app/">Open a room</a>
     </div>
     <div class="row-vis">
-      <div class="room card" aria-hidden="true">
-        <div class="room-head"><span class="room-code">K7Q 2MF</span><span class="room-live"><i></i>In sync</span></div>
-        <div class="room-show">
-          <img src="img/posters/bebop.webp" alt="" loading="lazy">
-          <div><b>Cowboy Bebop</b><span>Episode 5</span></div>
-        </div>
-        <div class="room-seek"><span class="rs-fill"></span><span class="rs-who" style="--c:#fdc901">A</span><span class="rs-who" style="--c:#46e0c4">S</span><span class="rs-who" style="--c:#02a9ff">K</span></div>
-        <div class="room-people"><span style="--c:#fdc901">Alex</span><span style="--c:#46e0c4">Sam</span><span style="--c:#02a9ff">Kai</span></div>
+      <div class="room2 card" aria-hidden="true">
+        <div class="r2-head"><b>Watch together</b><span class="room-live"><i></i>Connected</span></div>
+        <div class="r2-code"><span class="room-code">K7QM2X</span><span class="r2-copy">Copy link</span></div>
+        <div class="r2-show"><img src="img/posters/bebop.webp" alt="" loading="lazy"><span>Cowboy Bebop · Episode 5</span></div>
+        <ul class="r2-people"><li><i style="--c:#fdc901">A</i><b>Alex</b><em>Host</em><span class="r2-state"><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li><li><i style="--c:#46e0c4">S</i><b>Sam</b><em>You</em><span class="r2-state"><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li><li class="late"><i style="--c:#02a9ff">K</i><b>Kai</b><span class="r2-state"><span class="r2-wait">Opening</span><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li></ul>
       </div>
     </div>
   </article>
