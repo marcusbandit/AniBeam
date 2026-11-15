@@ -48,11 +48,12 @@ pub fn ios_main() {
     // that fails runs this launch from the old folder, so the next launch tries again
     // instead of finding an empty new one.
     let before = data_dir.with_file_name(concat!("Ani", "Beam"));
-    if before.is_dir() && !data_dir.exists() {
-        if let Err(e) = std::fs::rename(&before, &data_dir) {
-            eprintln!("Anibeam: could not move {}: {e}", before.display());
-            data_dir = before;
-        }
+    if before.is_dir()
+        && !data_dir.exists()
+        && let Err(e) = std::fs::rename(&before, &data_dir)
+    {
+        eprintln!("Anibeam: could not move {}: {e}", before.display());
+        data_dir = before;
     }
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         eprintln!("Anibeam: no data directory at {}: {e}", data_dir.display());
