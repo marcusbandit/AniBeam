@@ -12,7 +12,6 @@ Panel {
     id: root
     objectName: "endpoint-repos"
     title: words.t("endpoint-repos-panel-title"); icon: "archive"; grows: true
-    helper: words.t("endpoint-repos-panel-helper")
 
     property var catalog: null
     property var preview: null
@@ -150,15 +149,13 @@ Panel {
             required property var modelData
             label: modelData.name + (modelData.nsfw ? "  (18+)" : "")
             line: modelData.fingerprint
-            helper: modelData.url
-            status: modelData.error ? words.t("endpoint-repos-panel-unreadable") : ""
+            status: modelData.error ? modelData.url + "\n" + words.t("endpoint-repos-panel-unreadable") : modelData.url
             Button { msg: "action-remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.remove(modelData.url) }
         }
     }
     SettingRow {
         visible: !root.preview
         label: words.t("endpoint-repos-panel-add-list")
-        helper: words.t("endpoint-repos-panel-add-list-helper")
         Row {
             spacing: theme.space(1.5)
             Field { objectName: "repos-url"; text: root.repoUrl; mono: true; width: theme.space(56); placeholder: "https://.../index.json"; onEdited: function(t) { root.repoUrl = t } }
@@ -169,7 +166,7 @@ Panel {
         visible: !!root.preview
         label: root.preview ? words.t("endpoint-repos-panel-trust-question", { name: root.preview.name + (root.preview.nsfw ? " (18+)" : "") }) : ""
         line: root.preview ? words.t("endpoint-repos-panel-fingerprint", { fingerprint: root.preview.fingerprint }) : ""
-        helper: root.preview ? words.t(root.preview.trusted ? "endpoint-repos-panel-preview-trusted" : "endpoint-repos-panel-preview", { url: root.preview.url, count: root.preview.endpoints.length }) : ""
+        status: root.preview ? words.t(root.preview.trusted ? "endpoint-repos-panel-preview-trusted" : "endpoint-repos-panel-preview", { url: root.preview.url, count: root.preview.endpoints.length }) : ""
         Row {
             spacing: theme.space(1.5)
             Button { msg: "endpoint-repos-panel-trust"; icon: "badge-check"; primary: true; enabled: !root.busy; onClicked: root.trust() }
@@ -197,7 +194,8 @@ Panel {
                 required property var modelData
                 required property int index
                 label: modelData.label
-                helper: modelData.help + (modelData.help_url ? "\n" + modelData.help_url : "")
+                // The source's own words on where to get the value: a fact it ships, not ours
+                status: modelData.help + (modelData.help_url ? "\n" + modelData.help_url : "")
                 Field { secret: modelData.secret; mono: true; width: theme.space(44); placeholder: modelData.label
                         onEdited: function(t) { root.asking.values[index] = t } }
             }
@@ -234,7 +232,7 @@ Panel {
             required property var modelData
             label: modelData.name + (modelData.nsfw ? "  (18+)" : "")
             line: root.hostLine(modelData)
-            helper: modelData.auth.length > 0 ? words.t("endpoint-repos-panel-asks-for", { fields: modelData.auth.map(function(a) { return a.label }).join(", ") }) : ""
+            status: modelData.auth.length > 0 ? words.t("endpoint-repos-panel-asks-for", { fields: modelData.auth.map(function(a) { return a.label }).join(", ") }) : ""
             Button { msg: "endpoint-repos-panel-install"; icon: "download"; small: true; onClicked: root.install(modelData) }
         }
     }
@@ -242,7 +240,6 @@ Panel {
     // By hand.
     SettingRow {
         label: words.t("endpoint-repos-panel-by-hand")
-        helper: words.t("endpoint-repos-panel-by-hand-helper")
         hairline: false
         Column {
             spacing: theme.space(1)

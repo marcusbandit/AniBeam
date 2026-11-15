@@ -1,4 +1,6 @@
-// Appearance: Colours (mode, where the colours come from, the theme pair, the accent), then
+// Appearance: Language (the app's language, then which title a series shows: romaji,
+// English or Japanese, the same preference the series pages read), Colours (mode, where
+// the colours come from, the theme pair, the accent), then
 // the preview right under them (the same sample page drawn once per mode, so the pair being
 // chosen is what is shown, in view of the knobs that change it), then Size and motion
 // (density, poster size, reduced motion). Every knob writes through the Theme singleton's pick*
@@ -15,7 +17,6 @@ SettingsTab {
                                       { id: "larger", msg: "settings-appearance-text-larger" }, { id: "largest", msg: "settings-appearance-text-largest" }]
     id: tab
     title: words.t("settings-appearance-title")
-    lead: words.t("settings-appearance-lead")
     readonly property var darkThemes: Theme.themes.filter(function(t) { return t.mode === "dark" })
     readonly property var lightThemes: Theme.themes.filter(function(t) { return t.mode === "light" })
     function indexOf(list, stem) { for (var i = 0; i < list.length; i++) if (list[i].stem === stem) return i; return 0 }
@@ -24,6 +25,17 @@ SettingsTab {
     // reads the same keys
     Settings { id: airingKept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayouts: ["3x2", "4x2", "5x2", "4x3"]
+    // Which title a series shows, as the core names the choice; a stored value it does not
+    // know reads as Romaji, the default
+    readonly property var titleLanguages: ["Romaji", "English", "Native"] // i18n: none
+    // Romaji and 日本語 name themselves in every language; English is a word
+    readonly property var titleLanguageNames: ["Romaji", words.t("settings-appearance-title-language-english"), "日本語"] // i18n: none
+    function setTitleLanguage(v) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.title_language = v
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setTitleLanguage(v) })
+    }
 
     // The preview's sample cards carry relative labels (last-viewed, countdowns); this
     // tick keeps them fresh. It only runs while this section exists.
@@ -40,6 +52,9 @@ SettingsTab {
                 onPicked: function(i) { words.pick(words.pickCodes[i]) }
             }
         }
+        SettingRow { label: words.t("settings-appearance-title-language")
+            Seg { objectName: "title-language"; options: tab.titleLanguageNames; index: Math.max(0, tab.titleLanguages.indexOf(Door.preferences.title_language))
+                  onPicked: function(i) { tab.setTitleLanguage(tab.titleLanguages[i]) } } }
     }
     Panel {
         title: words.t("settings-appearance-colours")
@@ -47,16 +62,14 @@ SettingsTab {
             Seg { options: [{ text: words.t("settings-appearance-mode-dark"), icon: "moon" }, { text: words.t("settings-appearance-mode-light"), icon: "sun" }, { text: words.t("settings-appearance-mode-system"), icon: "monitor" }]
                 index: ["dark", "light", "system"].indexOf(Theme.mode); onPicked: function(i) { Theme.pickMode(["dark", "light", "system"][i]) } } }
         SettingRow { label: words.t("settings-appearance-colours-from")
-            helper: tab.fromTheme ? words.t("settings-appearance-from-theme-helper")
-                                  : words.t("settings-appearance-from-desktop-helper")
             Seg { objectName: "colour-source"; options: [words.t("settings-appearance-from-desktop"), words.t("settings-appearance-from-theme")]; index: tab.fromTheme ? 1 : 0; onPicked: function(i) { Theme.pickSource(i === 1 ? "theme" : "system") } } }
         SettingRow { visible: tab.fromTheme; label: words.t("settings-appearance-dark-theme")
             Dropdown { objectName: "theme-dark"; options: tab.darkThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.darkThemes, Theme.themeDark)
                 onPicked: function(i) { Theme.pickTheme("dark", tab.darkThemes[i].stem) } } }
-        SettingRow { visible: tab.fromTheme; label: words.t("settings-appearance-light-theme"); helper: words.t("settings-appearance-themes-helper")
+        SettingRow { visible: tab.fromTheme; label: words.t("settings-appearance-light-theme")
             Dropdown { objectName: "theme-light"; options: tab.lightThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.lightThemes, Theme.themeLight)
                 onPicked: function(i) { Theme.pickTheme("light", tab.lightThemes[i].stem) } } }
-        SettingRow { label: words.t("settings-appearance-accent"); helper: words.t("settings-appearance-accent-helper")
+        SettingRow { label: words.t("settings-appearance-accent")
             Swatches { slot: Theme.accent; onPicked: function(s) { Theme.pickAccent(s) } } }
     }
     Panel {
@@ -65,7 +78,7 @@ SettingsTab {
     }
     Panel {
         title: words.t("settings-appearance-icon")
-        SettingRow { label: words.t("settings-appearance-app-icon"); helper: words.t("settings-appearance-app-icon-helper")
+        SettingRow { label: words.t("settings-appearance-app-icon")
             Row {
                 spacing: theme.space(3)
                 Repeater {
@@ -122,19 +135,19 @@ SettingsTab {
     }
     Panel {
         title: words.t("settings-appearance-size-motion")
-        SettingRow { label: words.t("settings-appearance-text-size"); helper: words.t("settings-appearance-text-size-helper")
+        SettingRow { label: words.t("settings-appearance-text-size")
             Seg { objectName: "text-size"; options: tab.textSizes.map(function(s) { return words.t(s.msg) })
                   index: Math.max(0, tab.textSizes.map(function(s) { return s.id }).indexOf(Theme.textSize))
                   onPicked: function(i) { Theme.pickTextSize(tab.textSizes[i].id) } } }
-        SettingRow { label: words.t("settings-appearance-density"); helper: words.t("settings-appearance-density-helper")
+        SettingRow { label: words.t("settings-appearance-density")
             Seg { options: [words.t("settings-appearance-density-compact"), words.t("settings-appearance-density-normal"), words.t("settings-appearance-density-comfortable")]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
-        SettingRow { label: words.t("settings-appearance-poster-size"); helper: words.t("settings-appearance-poster-size-helper")
+        SettingRow { label: words.t("settings-appearance-poster-size")
             Seg { options: [words.t("settings-appearance-poster-small"), words.t("settings-appearance-poster-medium"), words.t("settings-appearance-poster-large")]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-        SettingRow { label: words.t("settings-appearance-out-now"); helper: words.t("settings-appearance-out-now-helper")
+        SettingRow { label: words.t("settings-appearance-out-now")
             Seg { objectName: "out-now-style"; options: [words.t("settings-appearance-out-now-cards"), words.t("settings-appearance-out-now-list")]; index: airingKept.outStyle === "list" ? 1 : 0; onPicked: function(i) { airingKept.outStyle = i === 1 ? "list" : "cards" } } }
-        SettingRow { visible: airingKept.outStyle !== "list"; label: words.t("settings-appearance-out-now-grid"); helper: words.t("settings-appearance-out-now-grid-helper")
+        SettingRow { visible: airingKept.outStyle !== "list"; label: words.t("settings-appearance-out-now-grid")
             Seg { objectName: "out-now-layout"; options: tab.outLayouts.map(function(l) { var cr = l.split("x"); return words.t("settings-appearance-grid", { columns: Number(cr[0]), rows: Number(cr[1]) }) }); index: Math.max(0, tab.outLayouts.indexOf(airingKept.outLayout)); onPicked: function(i) { airingKept.outLayout = tab.outLayouts[i] } } }
-        SettingRow { label: words.t("settings-appearance-reduce-motion"); helper: words.t("settings-appearance-reduce-motion-helper")
+        SettingRow { label: words.t("settings-appearance-reduce-motion")
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
     }
 }

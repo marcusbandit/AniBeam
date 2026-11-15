@@ -1,5 +1,5 @@
 // One settings section, the base every section extends: a Flickable over the section's
-// heading (its name in the display cut and one plain sentence on what lives here) and a
+// heading (its name in the display cut, nothing under it) and a
 // ColumnLayout of groups (`Panel.qml`), at a readable measure (`measure`) set at the left of
 // the content column beside the index. `wide` lets a section with tables (Developer) take
 // the whole column. The layout is the viewport's height while its content fits and
@@ -16,7 +16,6 @@ Flickable {
     id: root
     default property alias body: layout.data
     property string title: ""
-    property string lead: ""
     property bool wide: false
     property real footInset: theme.space(16)
     readonly property real viewport: Math.max(0, height - footInset - layout.y)
@@ -66,14 +65,6 @@ Flickable {
             text: root.title
             role: "display"
             font.pointSize: theme.typeHeading
-        }
-        Label {
-            visible: root.lead !== ""
-            width: Math.min(parent.width, theme.space(180))
-            text: root.lead
-            color: theme.textDim
-            wrapMode: Text.Wrap
-            role: "ui"
         }
     }
     ColumnLayout {

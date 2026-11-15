@@ -13,7 +13,6 @@ import com.marcusrosado.AniBeam
 SettingsTab {
     id: tab
     title: words.t("settings-library-title")
-    lead: words.t("settings-library-lead")
     property var sources: []
     property var lastScan: null              // the newest ScanFinished event
     function sourcePath(id) { for (var i = 0; i < sources.length; i++) if (sources[i].id === id) return sources[i].path; return "" }
@@ -51,7 +50,6 @@ SettingsTab {
     Component.onCompleted: { reload(); reloadNotInterested() }
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
-    readonly property var providerAbout: ({ Anilist: "settings-library-anilist-about", Tvmaze: "settings-library-tvmaze-about" })
     function ordinal(i) {
         var named = (["settings-library-tried-first", "settings-library-tried-second", "settings-library-tried-third", "settings-library-tried-fourth"])[i]
         return named ? words.t(named) : words.t("settings-library-tried-nth", { number: i + 1 })
@@ -75,7 +73,6 @@ SettingsTab {
     Panel {
         objectName: "settings-folders"
         title: words.t("settings-library-folders")
-        helper: words.t("settings-library-folders-helper")
         Repeater {
             model: tab.sources
             SourceRow {
@@ -91,13 +88,11 @@ SettingsTab {
             objectName: "settings-folders-failed"
             visible: tab.loadFailed
             label: words.t("settings-library-load-failed")
-            helper: words.t("settings-library-load-failed-helper")
             Button { msg: "action-try-again"; icon: "refresh-cw"; onClicked: tab.reload() }
         }
         SettingRow {
             visible: tab.sources.length === 0 && !tab.loadFailed
             label: words.t("settings-library-no-folders")
-            helper: words.t("settings-library-no-folders-helper")
         }
         SettingRow {
             label: tab.sources.length ? (tab.lastScan ? words.t("settings-library-scanned", { when: words.relative(tab.lastScan.at, Date.now() / 1000) }) : words.t("settings-library-not-scanned")) : words.t("settings-library-add-a-folder")
@@ -112,7 +107,6 @@ SettingsTab {
     Panel {
         objectName: "settings-providers"
         title: words.t("settings-library-matching")
-        helper: words.t("settings-library-matching-helper")
         Repeater {
             model: tab.providerOrder
             SettingRow {
@@ -121,7 +115,6 @@ SettingsTab {
                 objectName: "provider-row-" + String(modelData).toLowerCase()
                 label: frame.providerName(modelData)
                 line: tab.ordinal(index)
-                helper: tab.providerAbout[modelData] ? words.t(tab.providerAbout[modelData]) : ""
                 Button {
                     objectName: "provider-" + (index === 0 ? "down-" : "up-") + String(modelData).toLowerCase()
                     text: index === 0 ? words.t("settings-library-try-later") : words.t("settings-library-try-first")
@@ -133,7 +126,6 @@ SettingsTab {
         }
         SettingRow {
             label: words.t("settings-library-check-matches")
-            helper: words.t("settings-library-check-matches-helper")
             Button { msg: "settings-library-open-show-info"; icon: "database"; flat: true; onClicked: frame.go("metadata") }
         }
     }
@@ -142,13 +134,11 @@ SettingsTab {
         title: words.t("settings-library-hidden-shows")
         SettingRow {
             label: words.t("settings-library-show-hidden")
-            helper: words.t("settings-library-show-hidden-helper")
             Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } }
         }
         SettingRow {
             label: words.t("settings-library-hidden-from-airing")
-            helper: tab.notInterested.length ? words.t("settings-library-hidden-from-airing-helper")
-                                             : words.t("settings-library-hidden-from-airing-empty")
+            status: tab.notInterested.length ? "" : words.t("settings-library-hidden-from-airing-empty")
         }
         Repeater {
             model: tab.notInterested
@@ -178,14 +168,12 @@ SettingsTab {
         title: words.t("settings-library-calendar")
         SettingRow {
             label: words.t("settings-library-calendar-feed")
-            helper: words.t("settings-library-calendar-feed-helper")
             Switch { objectName: "settings-calendar-switch"; checked: !!Door.preferences.calendar_feed; onToggled: function(on) { tab.setCalendar(on) } }
         }
         SettingRow {
             objectName: "settings-calendar-file"
             visible: !!Door.preferences.calendar_feed && tab.calendarPath !== ""
             label: words.t("settings-library-calendar-file")
-            helper: words.t("settings-library-calendar-file-helper")
             status: tab.calendarPath
             Row { spacing: theme.space(2)
                 Button { objectName: "settings-calendar-copy"; msg: "settings-library-copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(tab.calendarPath, words.t("settings-library-path-copied")) }
@@ -204,7 +192,6 @@ SettingsTab {
         title: words.t("settings-library-notifications")
         SettingRow {
             label: words.t("settings-library-new-episodes")
-            helper: words.t("settings-library-new-episodes-helper")
             Switch { objectName: "settings-episode-notifications"; checked: Door.preferences.episode_notifications !== false; onToggled: function(on) { tab.setEpisodeNotifications(on) } }
         }
     }
