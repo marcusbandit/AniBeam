@@ -159,7 +159,7 @@ def notes_html(apps, named=True):
 # What's new index, so the pages share them exactly; deeper pages climb one more level.
 _dl = (out / "download/index.html").read_text()
 NAV = re.search(r'<header class="nav">.*?</header>', _dl, re.S).group(0)
-FOOT = re.search(r'<footer class="foot">.*?</footer>', _dl, re.S).group(0)
+FOOT = re.search(r'<footer class="credits">.*?</footer>', _dl, re.S).group(0)
 
 
 # The notes are English only, so the language menu here leads to each language's home page.
@@ -196,9 +196,11 @@ def page(title, prefix, body, canonical, description):
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="{prefix}style.css">
+<link rel="stylesheet" href="{prefix}redesign.css">
 <script src="{prefix}lang.js" defer></script>
+<script src="{prefix}redesign.js" defer></script>
 </head>
-<body>
+<body class="rd">
 {chrome(NAV, prefix)}
 <main class="wn-page">
 {body}
