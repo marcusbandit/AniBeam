@@ -99,6 +99,16 @@ pub fn write_config(profile: &Path, port: u16, save: Option<&Path>) -> std::io::
         ("RSS", "Session\\EnableProcessing", "true"),
         ("RSS", "AutoDownloader\\EnableProcessing", "true"),
     ];
+    // Downloads land in the watched library folder (#1005): a file still being written
+    // carries qBittorrent's .!qB on its name, so the scan never reads a part file as an
+    // episode. Only a profile that has not chosen yet gets it.
+    text = set_ini(
+        &text,
+        "BitTorrent",
+        "Session\\AddExtensionToIncompleteFiles",
+        "true",
+        false,
+    );
     for (section, key, value) in always {
         text = set_ini(&text, section, key, value, true);
     }
@@ -219,6 +229,7 @@ mod tests {
             "[RSS]\nSession\\EnableProcessing=true\nAutoDownloader\\EnableProcessing=true\n"
         ));
         assert!(text.contains("Session\\DefaultSavePath=/home/u/Downloads/Anime\n"));
+        assert!(text.contains("Session\\AddExtensionToIncompleteFiles=true\n"));
     }
 
     #[test]

@@ -1291,4 +1291,131 @@ mod tests {
         assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(t, random_token());
     }
+
+    fn health(version: &str, features: &[&str]) -> Health {
+        Health {
+            version: version.to_string(),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    /// The installed endpoints go into anirss through this client (#499): the releases'
+    /// `sync_anirss` writes ours and leaves what was written by hand.
+    #[test]
+    fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
+        use crate::core::Core;
+        use crate::foundation::secrets::Secrets;
+        use crate::repos::{add_custom, sync_anirss};
+        use crate::{CorePaths, SearchEndpoint};
+
+        let custom = |core: &Core, name: &str, url: &str| {
+            add_custom(&core.releases, name.into(), url.into(), Vec::new()).unwrap();
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "mine", "https://a.example/rss?q={query}&token=t1");
+        custom(
+            &core,
+            "proxied",
+            "http://127.0.0.1:9117/x?apikey=k&q={query}",
+        );
+        let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
+
+        // anirss has its own search-proxy endpoint from config.toml; Anibeam writes only "mine".
+        let theirs = |name: &str, url: &str| SearchEndpoint {
+            name: name.into(),
+            kind: "rss".into(),
+            url: url.into(),
+            client_side_refine: false,
+            on_demand: None,
+            running: None,
+            followable: true,
+        };
+        // An anirss that does not list endpoint writes has no endpoint API, whatever its
+        // version says: nothing is sent.
+        let have = vec![theirs("proxied", "http://elsewhere/")];
+        let without = health("0.6.0", &["qbt_env_session"]);
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            without.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert!(http.requests().is_empty());
+
+        // One that lists it takes them, even with a version no parser reads.
+        let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
+        http.push_json(201, serde_json::json!({}));
+        assert!(core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].method, Method::Post);
+        let body = format!("{:?}", sent[0].body);
+        assert!(
+            body.contains("\"mine\"") && body.contains("token=t1"),
+            "{body}"
+        );
+
+        // Listed back with its token masked, as anirss lists it: unchanged, so not sent again.
+        let have = vec![
+            theirs("proxied", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token=***"),
+        ];
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert_eq!(http.requests().len(), 1);
+
+        // Switched off: it comes out of anirss again, and the hand-written one stays.
+        core.services
+            .store
+            .write(|c| {
+                c.execute(
+                    "UPDATE installed_endpoints SET enabled = 0 WHERE endpoint_id = 'mine'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        http.push_json(200, serde_json::json!({}));
+        let have = vec![
+            theirs("proxied", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token={token}"),
+        ];
+        assert!(core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].method, Method::Delete);
+        assert!(sent[1].url.ends_with("/endpoints/mine"));
+        // Nothing left to do: nothing is sent.
+        let have = vec![theirs("proxied", "http://elsewhere/")];
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert_eq!(http.requests().len(), 2);
+        core.shutdown();
+    }
 }

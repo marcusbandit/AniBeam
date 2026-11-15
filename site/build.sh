@@ -33,5 +33,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/releases.py" "$out"
 # What's new: a page per version, from the apps' own patch notes. Its nav comes from the
 # translated download page, so it runs after.
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/whats-new.py" "$root" "$out"
-rm -rf "$out/whats-new.py" "$out/__pycache__" "$out/tools"
+# The wiki: its pages from the fragments in site/wiki/, in the same nav and footer.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/wiki.py" "$root" "$out"
+rm -rf "$out/whats-new.py" "$out/wiki.py" "$out/__pycache__" "$out/tools"
 echo "site assembled in $out"

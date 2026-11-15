@@ -108,7 +108,7 @@ core-error-version = 这份导出来自更新版本的 Anibeam（格式 { $found
 core-error-internal = Anibeam 遇到内部错误：{ $message }
 core-error-service = { $service }：{ $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = 粘贴仓库地址
 core-repos-must-be-https = 地址必须是 https
@@ -145,7 +145,7 @@ core-repos-note-theirs = 这个 anirss 由你自己运行，电脑端从不更�
 core-repos-note-sandbox = 这次运行从不写入 anirss 的配置，所以电脑端在这里不搜索 { $id }
 core-repos-note-old = anirss { $version } 无法接收来自 { -app-name } 的端点；请更新到 { $min } 或更高版本，电脑端才能搜索它
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = 索引的密钥不是 ed25519 密钥
 core-repos-key-not-base64 = 索引的密钥不是 32 字节的 base64
@@ -965,6 +965,10 @@ core-downloads-refuse-library-folder = { $path } 是媒体库文件夹或包含�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent 没有默认保存文件夹，请在 qBittorrent 中设置
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } 不是文件夹的完整路径
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } 无法保存下载：请选择一个存在且不是主文件夹的文件夹
 core-downloads-name-empty = 名称不能为空
 core-downloads-name-slash = 名称不能包含 / 或 \
 core-downloads-name-not-folder = { $name } 不是文件夹名称
@@ -1020,7 +1024,7 @@ core-downloads-rolled = 《{ $title }》：现在保留第 { $from } 至 { $to }
 core-downloads-roll-ahead = 至少提前保留一集
 core-downloads-roll-nothing = 没有可获取的内容
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON 搜索来源必须来自端点仓库，由其定义映射字段
 core-releases-endpoint-no-name = 缺少 `name`
@@ -1032,17 +1036,17 @@ core-releases-endpoint-not-http = { $name }：地址必须以 http:// 或 https:
 core-releases-endpoint-needs-query = { $name }：{ $kind } 的 url 必须包含 {"{"}query{"}"} 占位符
 core-releases-endpoint-no-query = { $name }：{ $kind } 的 url 会自行添加搜索词，所以不需要 {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = 索引器返回错误 { $code }
 core-releases-bad-feed = 订阅源有误：{ $error }
 core-releases-feed-answered = 订阅源返回 { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = 不是订阅源的 JSON：{ $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = 不是 JSON：{ $error }
 core-releases-search-error-said = 搜索返回错误：{ $message }
@@ -1051,7 +1055,7 @@ core-releases-no-results-field = 响应中 { $path } 处没有结果
 core-releases-results-not-list = 响应中的结果不是列表
 core-releases-search-answered = 搜索返回 { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = 还没有端点：请在“更多”的“端点”中添加仓库，或手动添加一个
 core-releases-no-source-named = 没有名为 { $name } 的来源
@@ -1059,7 +1063,7 @@ core-releases-empty-query = 请输入要搜索的内容
 core-releases-cannot-follow = 无法追更 { $name }：它能响应搜索，但没有可检查新剧集的订阅源
 core-releases-endpoint-gone = { $name } 已不可用：已被移除、关闭，或缺少密钥
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } 必须是一个简短的词
 core-releases-quirks-pattern-count = show_feed 需要 1 到 { $most } 个页面模式
@@ -1070,11 +1074,11 @@ core-releases-quirks-url-https = show_feed url 必须是 https
 core-releases-quirks-url-host = show_feed url 必须在端点自己的主机上
 core-releases-quirks-url-slug = show_feed url 只能包含一次 {"{"}slug{"}"}，且不能有其他占位符
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = 操作 'tokens' 需要非空的 `tokens` 列表
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = { $group } 的合集
 core-releases-episodes-phrase = 第 { $list } 集

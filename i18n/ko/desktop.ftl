@@ -233,7 +233,6 @@ frame-downloads-not-read = 읽지 않음.
 ## HomePage
 
 home-title = 홈
-home-scan-started = 스캔 시작됨
 home-ago-minutes = { $count }분 전
 home-ago-hours = { $count }시간 전
 home-ago-days = { $count }일 전
@@ -284,7 +283,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = 볼 에피소드 { $count }개
 home-day-nothing = 없음
 home-now = 지금 { $time }
-home-card-aired = { $episode } { $ago } 공개
 home-continue = 이어 보기
 home-continue-fact = 이어 볼 작품 { $count }개
 home-on-hold = 보류
@@ -305,6 +303,7 @@ home-week = 이번 주
 home-week-show-empty = 빈 날 보기
 home-week-hide-empty = 빈 날 숨기기
 home-week-airing = 방영 중
+home-week-feed = 피드
 home-week-out = 공개됨
 home-week-coming-up = 방영 예정
 home-recommended = 추천 작품
@@ -325,18 +324,6 @@ home-dropped = 중단
 home-dropped-fact = { $count ->
    *[other] 디스크에 남은 파일 { $count }개
 }
-home-out-now = 지금 공개
-home-out-now-fact = AniList 기준 이번 주 새 에피소드
-home-popular = 이번 시즌 인기작
-home-add-folder-title = 내 작품도 여기에 표시돼요
-home-add-folder-body = 애니가 있는 폴더를 추가하면 홈에 보고 있는 작품이 채워져요.
-home-add-folder-button = 폴더 추가
-home-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-home-empty-title = 아직 작품이 없어요
-home-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-home-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요.
-home-scan-all = 모두 스캔
-home-library-settings = 라이브러리 설정
 home-failed-title = 홈을 불러오지 못했어요
 home-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
 
@@ -406,9 +393,6 @@ onboarding-search-title = 검색할 곳
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-search-none = Anibeam에는 자체 소스가 없어요. 소스 저장소에서 추가해요: 누군가 공유해 준 링크를 설정, 다운로드에 붙여넣으면 돼요.
-onboarding-sources-after = 설정 후에 열려요
-onboarding-sources-add = 설정 후 저장소 추가
 onboarding-fetch-title = 받아 오는 곳
 onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천
@@ -430,7 +414,7 @@ onboarding-ready-lists = 내 목록
 onboarding-ready-lists-as = { $tracker }, { $user }
 onboarding-ready-lists-none = 아직 연결 안 됨. 원할 때 설정, 계정에서 연결하세요.
 onboarding-ready-downloads = 다운로드
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 아직 소스 없음
    *[other] 소스 { $sources }개
 }, { $client ->
@@ -439,9 +423,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] 모두 준비됐어요.
     [opens] 다음으로 설정, 다운로드가 열려요.
-   *[both] 둘 다 설정, 다운로드에 있어요.
+   *[sources] 검색하려면 소스 목록을 추가하세요.
 }
-onboarding-ready-open-downloads = 설정, 다운로드 열기
 onboarding-ready-set-up = 지금 설정
 
 ## Rail.qml
@@ -449,20 +432,12 @@ onboarding-ready-set-up = 지금 설정
 rail-home = 홈
 rail-library = 라이브러리
 rail-airing = 방영 중
-rail-feed = 피드
-rail-stats = 통계
-rail-show-info = 작품 정보
 rail-downloads = 다운로드
 rail-settings = 설정
 rail-downloads-complete =
     { $count ->
        *[other] 다운로드: 구독 { $count }개 완료
     }
-rail-title-language-name = 제목 언어: { $language }. 누르면 다음 언어로
-rail-title-language-english = 영어
-rail-title-language-tip = 제목 언어: 로마자, 영어, 일본어
-rail-whats-new-in = { $release }의 새로운 기능
-rail-whats-new = 새로운 기능
 rail-settings-note = 설정: { $note }
 
 ## FixSheet.qml
@@ -638,12 +613,32 @@ library-group-season = 시즌
 library-group-type = 유형
 library-group-genre = 장르
 library-group-watch-state = 시청 상태
-library-scan-started = 스캔 시작됨
+library-empty-none = 라이브러리가 비어 있어요
+library-empty-scanning = { $count ->
+   *[other] 폴더에서 동영상을 찾고 있어요
+}
+library-empty-nothing = { $count ->
+   *[other] 폴더에 아직 동영상이 없어요
+}
+library-empty-missing = { $count ->
+   *[other] 폴더를 찾을 수 없어요
+}
+library-empty-more-folders = { $count ->
+   *[other] 외 폴더 { $count }개
+}
+library-empty-add-folder = 폴더 추가
+library-empty-get = 볼 거리 찾기
+library-empty-scan-again = 다시 스캔
+library-empty-settings = 라이브러리 설정
+library-empty-pick-folder = 라이브러리 폴더 선택
 library-tab-all = 전체
 library-tab-series = 시리즈
 library-tab-movies = 영화
 library-tab-watched = 시청함
 library-tab-hidden = 숨김
+library-tab-on-my-list = 내 목록
+library-tab-stats = 통계
+library-tab-fix-matches = 매칭 수정
 library-count-movies =
     { $count ->
        *[other] 영화 { $count }개
@@ -699,18 +694,6 @@ library-rescan = 다시 스캔
 library-find-match = 매칭 찾기
 library-find-match-tip = 선택한 작품 중 매칭이 없는 것을 하나씩 검색해요
 library-all-matched = 선택한 작품이 모두 매칭돼 있어요
-library-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-library-empty-title = 라이브러리가 비어 있어요
-library-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-library-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요. Anibeam 내보내기 파일을 가져와도 돼요.
-library-scan-all = 모두 스캔
-library-add-folder = 폴더 추가
-library-settings = 라이브러리 설정
-library-import = 가져오기
-library-import-title = Anibeam 내보내기 파일 가져오기
-library-import-filter-export = Anibeam 내보내기 (*.json)
-library-import-filter-all = 모든 파일 (*)
-library-import-started = 가져오기 시작됨
 
 ## MetadataPage.qml
 
@@ -1245,9 +1228,10 @@ get-show-kind-indexer-search = 인덱서 검색
 get-show-ready = 준비됨
 get-show-running = 실행 중
 get-show-not-running = 실행 안 됨
-get-show-not-running-start = 실행 중이 아니에요. 위의 소스를 클릭해서 시작하세요.
 get-show-switched-off = 꺼짐
-get-show-click-to-see = 클릭해서 이 작품의 릴리스 보기
+get-show-show-releases = 릴리스 보기
+get-show-show-releases-on = { $name } 릴리스 보기
+get-show-try-again = 다시 시도
 get-show-searching = 검색 중
 get-show-searching-source = { $name } 검색 중
 get-show-searching-elapsed = { $label }, { $seconds }초
@@ -1404,7 +1388,6 @@ torrent-row-stop = 중지
 
 ## SourceRow
 
-source-row-unavailable-fix = 드라이브를 연결한 뒤 다시 스캔하세요. 옮겼다면 제거하고 새 위치를 추가하세요.
 source-row-counts = 작품 { $count }개
 source-row-counts-movies =
     { $movies ->
@@ -1455,6 +1438,7 @@ release-table-season-batch = 시즌 { $season } 일괄
 release-table-batch = 일괄
 release-table-via = { $source }에서
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = yyyy년 M월 d일 HH:mm
 release-table-download = 다운로드
 release-table-more = 외 { $count }개. 다른 항목을 먼저 보려면 목록을 좁히거나 정렬하세요.
@@ -1512,6 +1496,7 @@ downloads-error-unknown = 문제가 생겼어요. 다시 시도하세요.
 downloads-search-all-off = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
 downloads-turn-on = { $name } 켜기
 downloads-search-no-sources = 아직 검색할 소스가 없어요. 설정의 다운로드에서 소스 목록을 추가하세요.
+downloads-no-sources = 아직 검색할 소스가 없습니다
 downloads-search-none-started = 검색을 시작할 수 있는 소스가 없어요. 잠시 후 다시 시도하세요.
 downloads-auto-resolution = 제공되는 가장 선명한 { $resolution }(으)로 좁혔어요
 downloads-search-one-failed = { $name } 검색이 실패했어요. 다시 시도하거나 다른 소스를 검색하세요.
@@ -1972,7 +1957,6 @@ player-not-now = 나중에
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 소스 목록
-endpoint-repos-panel-helper = 소스 목록은 주소로 추가하는, 서명된 검색 장소 모음이에요. 저장하기 전에 Anibeam이 서명을 확인하고 키를 보여 주며, 그다음 원하는 소스를 설치하면 돼요. 설치한 소스는 위의 검색 소스에 추가돼요.
 endpoint-repos-panel-could-not-start = Anibeam이 시작하지 못했어요. 잠시 후 다시 시도하세요.
 endpoint-repos-panel-needs-value = { $name }에 값이 필요해요
 endpoint-repos-panel-values-of = { $name }의 값
@@ -1985,19 +1969,9 @@ endpoint-repos-panel-needs-fields = 검색하려면 { $fields }이(가) 필요�
 endpoint-repos-panel-no-longer-offered = 소스 목록에서 더 이상 제공하지 않아요.
 endpoint-repos-panel-update-requests-to = 업데이트하면 { $host }에 요청을 보내요.
 endpoint-repos-panel-unreadable = 이 목록을 읽지 못했어요. 목록 새로고침으로 다시 시도해요.
-endpoint-repos-panel-add-list = 소스 목록 추가
-endpoint-repos-panel-add-list-helper = 인덱스 파일의 주소나 이 기기에 있는 파일 경로.
 endpoint-repos-panel-checking = 확인 중
 endpoint-repos-panel-add = 추가
-endpoint-repos-panel-trust-question = { $name }을(를) 신뢰할까요?
 endpoint-repos-panel-fingerprint = 키 지문  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    소스 { $count }개, 서명됨. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    소스 { $count }개, 서명됨, 이미 신뢰함. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-trust = 신뢰
 endpoint-repos-panel-saving = 저장 중
 endpoint-repos-panel-install = 설치
 endpoint-repos-panel-update = 업데이트
@@ -2008,10 +1982,25 @@ endpoint-repos-panel-add-value = 값 추가
 endpoint-repos-panel-change = { $fields } 변경
 endpoint-repos-panel-asks-for = { $fields }이(가) 필요해요.
 endpoint-repos-panel-by-hand = 직접 추가
-endpoint-repos-panel-by-hand-helper = 어떤 목록에도 없는 사이트용이에요. 검색어 자리에 {"{"}query{"}"}가 있는 피드면 무엇이든 되고, 검색 프록시의 피드도 돼요. 주소에 든 키는 따로 보관되며, 시스템 비밀번호 저장소가 있으면 거기에 저장돼요.
 endpoint-repos-panel-name = 이름
 endpoint-repos-panel-refreshing = 새로고침 중
 endpoint-repos-panel-refresh = 목록 새로고침
+
+## SourceAttach.qml
+
+source-attach-placeholder = 소스 목록 주소 붙여 넣기
+source-attach-what = 소스 목록이란?
+source-attach-recent = 이전에 사용함
+source-attach-added = { $count ->
+    [one] { $name } 추가됨: 소스 { $count }개 켜짐.
+   *[other] { $name } 추가됨: 소스 { $count }개 켜짐.
+}
+source-attach-added-none = { $name } 추가됨. 새로 켤 소스가 없습니다.
+source-attach-waiting = { $count ->
+    [one] { $names }에는 먼저 값이 필요합니다.
+   *[other] { $names }에는 먼저 값이 필요합니다.
+}
+source-attach-fill-in = 입력
 
 ## ScheduleSheet.qml
 
@@ -2127,70 +2116,15 @@ settings-section-library = 라이브러리
 settings-section-accounts = 계정
 settings-section-appearance = 모양
 settings-section-playback = 재생
-settings-section-subtitles = 자막
 settings-section-keys = 키보드
 settings-section-downloads = 다운로드
-settings-section-phone = 휴대전화 앱
-settings-section-storage = 저장 공간 및 백업
-settings-section-help = 도움말
 settings-section-about = 정보
 settings-section-developer = 개발자
-settings-status-library-empty = 아직 폴더 없음
-settings-status-library = 폴더 { $folders }개에 작품 { $count }개
-settings-status-library-missing = 폴더 { $gone }개 없음, 폴더 { $folders }개에 작품 { $count }개
-settings-status-accounts-anilist = AniList에 동기화 중
-settings-status-accounts-mal = MyAnimeList에 동기화 중
-settings-status-accounts-both = AniList와 MyAnimeList에 동기화 중
-settings-status-accounts-none = 연결된 목록 없음
-settings-status-appearance =
-    { $mode ->
-        [system] 시스템 설정 따름
-        [light] 라이트
-       *[dark] 다크
-    }, { $source ->
-        [theme] 테마 색상
-       *[desktop] 데스크톱 색상
-    }
-settings-status-playback =
-    { $skip ->
-        [both] 오프닝과 엔딩 스킵
-        [intro] 오프닝 스킵
-        [outro] 엔딩 스킵
-       *[none] 모두 끝까지 재생
-    }
-settings-status-playback-audio =
-    { $skip ->
-        [both] 오프닝과 엔딩 스킵
-        [intro] 오프닝 스킵
-        [outro] 엔딩 스킵
-       *[none] 모두 끝까지 재생
-    }, 오디오 { $languages }
-settings-status-subtitles =
-    크기 { $percent }%, { $override ->
-        [AsScripted] 스타일 파일은 원본대로
-        [Force] 모든 파일에 내 스타일
-       *[ScaleOnly] 스타일 파일은 모양 유지
-    }
-settings-status-keys = Anibeam이 반응하는 모든 키
-settings-status-downloads-unread = 아직 읽지 않음
-settings-status-downloads-answered = qBittorrent 응답함
-settings-status-downloads-missing = 검색 도우미 미설치
-settings-status-downloads-unconnected = 아직 연결 안 됨
-settings-status-phone-shared = tailnet에 공유 중
-settings-status-phone-off = 공유 안 함
-settings-status-storage = 캐시된 이미지 { $size }
-settings-status-storage-unread = 이미지, 내보내기, 가져오기
-settings-status-help = 자주 묻는 질문과 답
-settings-status-about-update = 버전 { $version } 출시
-settings-status-developer = 모든 페이지 시간 측정 중
-settings-status-developer-last = { $page } { $ms } ms 만에 생성
 settings-results =
     { $count ->
        *[other] 일치하는 설정 { $count }개
     }
 settings-results-none = 일치하는 항목 없음
-settings-results-hint = Enter를 누르면 첫 번째 항목이 열려요.
-settings-results-none-hint = 더 쉬운 단어로 검색해 보세요: 테마, 자막, 트래커, 비밀번호, 폴더.
 
 settings-find-folders =
     .words = 폴더 추가 스캔 다시 스캔 제거 소스 경로 컬렉션
@@ -2212,6 +2146,8 @@ settings-find-on-hold =
     .words = 보류 일시정지 비활성 방치 일수
 settings-find-language =
     .words = 언어 번역 로케일 영어 한국어
+settings-find-title-language =
+    .words = 제목 로마자 영어 일본어 이름
 settings-find-mode =
     .words = 다크 라이트 시스템 테마 야간 모드
 settings-find-colours-from =
@@ -2306,14 +2242,6 @@ settings-find-files =
     .words = 데이터베이스 데이터 설정 캐시 폴더 경로 파일
 settings-find-help-folders =
     .words = 도움말 폴더 구조 이름 규칙 에피소드 시즌 영화 파일
-settings-find-help-recognised =
-    .words = 도움말 매칭 잘못된 작품 찾을 수 없음 인식 안 됨
-settings-find-help-anilist =
-    .words = 도움말 anilist myanimelist mal 로그인 연결 트래커
-settings-find-help-downloads =
-    .words = 도움말 다운로드 비어 있음 소스 없음 토렌트 qbittorrent
-settings-find-help-data =
-    .words = 도움말 데이터 파일 백업 데이터베이스 개인정보
 settings-find-help-else =
     .words = 도움말 설정 온보딩 안내 신고 버그 문제 이슈
 settings-find-version =
@@ -2330,9 +2258,6 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = 다운로드
-settings-downloads-lead = 받은 항목을 Anibeam이 어디로 보내고, 릴리스 피드를 어떻게 검색하는지 정해요.
-settings-downloads-keep-none = 에피소드를 다 보면 바로 전 에피소드가 삭제돼요.
-settings-downloads-keep-line = 방금 다 본 에피소드 앞에 남겨 둘 시청한 에피소드 수예요. { $count }(으)로 하면 { $finishing }화를 다 볼 때 1화가 삭제돼요.
 settings-downloads-anirss-ready = 실행 중, 버전 { $version }, 주소 { $url }.
 settings-downloads-anirss-starting = 검색 도우미 시작 중.
 settings-downloads-anirss-missing = 검색 도우미가 설치되지 않았어요. Anibeam을 다시 설치하거나 명령에 직접 쓰는 anirss를 지정하세요.
@@ -2342,31 +2267,29 @@ settings-downloads-torrent-trying = { $client } 시도 중.
 settings-downloads-torrent-answered = { $client } { $version } 응답함.
 settings-downloads-torrent-failed = { $client }에 연결되지 않았어요. 위의 주소와 비밀번호를 확인하고 다시 테스트하세요.
 settings-downloads-torrent-untried = 아직 시도하지 않았어요.
-settings-downloads-mode-existing = 직접 실행하는 qBittorrent, Web UI가 켜져 있어야 해요.
-settings-downloads-mode-managed = Anibeam이 자체 qBittorrent를 실행해 ~/Downloads/Anime에 저장해요. Anibeam을 종료해도 계속 실행되어 구독한 작품을 계속 받아요.
-settings-downloads-mode-auto = 아래 주소에서 응답하는 qBittorrent를 쓰고, 없으면 자체 qBittorrent를 실행해요.
 settings-downloads-password-saved = 이 클라이언트의 비밀번호가 여기에 저장돼 있어요.
 settings-downloads-password-anirss = 검색 도우미가 저장한 비밀번호를 쓰고 있어요. 여기에 저장하면 더 이상 의존하지 않아요.
 settings-downloads-password-none = 저장된 비밀번호가 없어요. 이 기기에 대해 로그인을 생략하는 클라이언트라면 필요 없어요.
 settings-downloads-mismatch = 검색 도우미는 { $helperUrl }와(과), Anibeam은 { $url }와(과) 통신해요. 직접 실행하는 검색 도우미는 자체 config.toml에서 주소를 읽으므로, 여기서 클라이언트를 바꿔도 따라오지 않아요.
 settings-downloads-torrent-title = 토렌트 클라이언트
-settings-downloads-torrent-helper = 다운로드를 맡는 qBittorrent예요. 비밀번호는 시스템 비밀번호 저장소에 보관돼요.
 settings-downloads-which-client = 클라이언트
 settings-downloads-pick-for-me = 자동 선택
 settings-downloads-my-own = 내 클라이언트
 settings-downloads-built-in = 내장
 settings-downloads-saved-clients = 저장된 클라이언트
-settings-downloads-saved-clients-helper = 예를 들어 시드박스와 이 기기의 클라이언트. 다운로드 페이지의 클라이언트 칩으로도 전환할 수 있어요.
 settings-downloads-add-client = 추가
 settings-downloads-name = 이름
 settings-downloads-name-placeholder = 주소를 따라 이름 지정
 settings-downloads-address = 주소
-settings-downloads-address-managed-helper = 이 기기에서만 접근할 수 있고 비밀번호가 필요 없어요.
-settings-downloads-address-helper = Web UI 주소.
 settings-downloads-username = 사용자 이름
 settings-downloads-password = 비밀번호
 settings-downloads-secret-saved = 저장됨
 settings-downloads-secret-unset = 설정 안 됨
+settings-downloads-save-to = 저장 위치
+settings-downloads-save-to-client = qBittorrent 자체 폴더
+settings-downloads-save-to-choose = 폴더 선택
+settings-downloads-save-to-reset = 초기화
+settings-downloads-save-to-pick = 다운로드 저장 위치
 settings-downloads-connection = 연결
 settings-downloads-open-config = 설정 파일 열기
 settings-downloads-details = 세부 정보
@@ -2376,78 +2299,48 @@ settings-downloads-test-save = 저장하고 테스트
 settings-downloads-test = 테스트
 settings-downloads-searching = 검색
 settings-downloads-search-helper = 검색 도우미
-settings-downloads-searching-helper = Anibeam이 소스를 직접 검색하고 선택한 항목을 토렌트 클라이언트로 보내요. 검색 도우미는 필요 없어요.
-settings-downloads-search-helper-helper = Anibeam에서 검색과 구독을 맡는 부분으로, anirss라는 프로그램이에요. Anibeam이 대신 실행하니, 직접 실행하는 경우에만 바꾸세요.
 settings-downloads-runs-in = 검색 실행 위치
-settings-downloads-runs-in-native-helper = 구독은 여전히 토렌트 클라이언트로 가므로 Anibeam이 닫혀 있어도 새 에피소드가 들어와요.
-settings-downloads-runs-in-helper = Anibeam이 실행하거나 직접 실행하는 별도 프로그램인 검색 도우미.
 settings-downloads-engine-native = Anibeam 자체
 settings-downloads-how-runs = 실행 방식
-settings-downloads-how-runs-sidecar = Anibeam이 열릴 때 시작하고 종료할 때 멈춰요.
-settings-downloads-how-runs-remote = 이미 실행 중인 것을 아래 주소와 키로 사용해요.
 settings-downloads-runs-sidecar = Anibeam이 실행
 settings-downloads-runs-remote = 직접 실행
 settings-downloads-command = 명령
-settings-downloads-command-helper = PATH의 이름이나 전체 경로. ~/.local/bin도 검색해요.
-settings-downloads-server-address-helper = /api/v1을 뺀 서버 기본 주소.
 settings-downloads-key = 키
-settings-downloads-key-saved-helper = 키가 저장돼 있어요. 새 키를 입력하면 바뀌고, 칸을 비우면 제거돼요.
-settings-downloads-key-helper = 검색 도우미가 시작할 때 보여 준 키예요. 이 키로 Anibeam이 접속해요.
 settings-downloads-details-anirss = 검색 도우미가 멈출 때 남긴 말이에요.
 settings-downloads-starting = 시작 중
 settings-downloads-reconnect = 다시 연결
 settings-downloads-save-first = 먼저 변경 사항을 저장하세요
 settings-downloads-roll-title = 다음 몇 화 미리 받기
-settings-downloads-roll-helper = 긴 작품은 몇 화씩 다운로드하고, 한 화를 다 볼 때마다 다음 화를 받아요. 전체가 디스크에 다 들어갈 필요가 없어요.
 settings-downloads-roll-big = 긴 작품
-settings-downloads-roll-big-helper = { $count }화가 넘는 작품은 저절로 몇 화씩 받아요. 다운로드 페이지에서 그 행으로 한꺼번에 받을 수도 있어요.
 settings-downloads-roll-ahead = 미리 받을 화수
-settings-downloads-roll-ahead-helper = 지금 보는 화 이후로 받아 둘 화수예요. 12화가 대략 한 시즌이에요.
 settings-downloads-unit-episodes = 화
 settings-downloads-roll-over = 긴 작품 기준
-settings-downloads-roll-over-helper = 이보다 에피소드가 많으면 몇 화씩 받아요.
 settings-downloads-roll-watched = 시청한 에피소드
-settings-downloads-roll-watched-delete-helper = 더 진행하면 삭제돼서 디스크에는 남은 화만 있어요.
-settings-downloads-roll-watched-keep-helper = 보고 나도 모든 파일이 디스크에 남아요.
 settings-downloads-keep-all = 모두 보관
 settings-downloads-keep-behind = 뒤에 남길 화수
 settings-downloads-subscriptions-title = 구독과 검색
 settings-downloads-last-search = 마지막 검색 유지
-settings-downloads-last-search-helper = 다운로드 페이지가 마지막 검색으로 열려요. 끄면 빈 상태로 열려요.
 settings-downloads-prune = 완결 작품 구독 해지
-settings-downloads-prune-helper = 마지막 화 방영 후 16일이 지나면 피드를 정리해요. 작품과 파일은 남아요.
 settings-downloads-sources-title = 검색 소스
-settings-downloads-sources-helper = 검색이 가는 곳, 시도하는 순서대로. 찾은 게 없으면 다음 소스로 넘어가요.
 settings-downloads-sources-empty = 아직 설정된 소스가 없어요
 settings-downloads-sources-connect = 목록을 보려면 검색 도우미를 연결하세요
-settings-downloads-sources-empty-helper = 아래에서 소스 목록을 추가하면 그 소스가 여기에 표시돼요.
 settings-downloads-config-file = 검색 도우미 설정 파일
-settings-downloads-config-native-helper = 저장 폴더, 태그, 최적 일치 규칙이 들어 있고, Anibeam이 도우미를 실행할 때 이를 따라요. 도우미 자체 소스는 도우미만 써요.
-settings-downloads-config-helper = 소스, 저장 폴더, 태그, 최적 일치 규칙이 들어 있어요.
 settings-downloads-unsaved = 저장 안 된 변경 사항
-settings-downloads-unsaved-helper = 저장하면 새 설정으로 검색 도우미가 다시 시작돼요.
 settings-downloads-discard = 취소
 
 ## SettingsDeveloperTab
 
 settings-developer-title = 개발자
-settings-developer-lead = 페이지가 느린 이유를 측정해요. 각 스위치는 다음에 여는 페이지부터 적용돼요.
 settings-developer-ms = { $ms } ms
 settings-developer-mb = { $mb } MB
 settings-developer-seconds = { $seconds }초
 settings-developer-switches = 스위치
 settings-developer-load-images = 이미지 불러오기
-settings-developer-load-images-helper = 끄면 포스터, 배너, 인물 사진을 읽거나 디코딩하지 않아요.
 settings-developer-overlay = 페이지 로드 오버레이
-settings-developer-overlay-helper = 마지막 페이지 로드와 메모리를 창 오른쪽 아래에 표시해요.
 settings-developer-read-cache = 라이브러리 읽기 캐시
-settings-developer-read-cache-helper = 라이브러리 전체 읽기 결과를 라이브러리가 바뀔 때까지 보관해요. 끄면 페이지마다 코어에 다시 요청해요.
 settings-developer-poster-pool = 백그라운드에서 포스터 미리 불러오기
-settings-developer-poster-pool-helper = 볼 가능성이 높은 포스터 60개를 디코딩해 메모리에 둬요.
 settings-developer-options = 개발자 옵션
-settings-developer-options-helper = 이 탭, 오버레이, 측정을 끕니다.
 settings-developer-memory = 메모리
-settings-developer-memory-helper = 커널이 이 프로세스에 대해 집계한 값이에요. 이미지는 디코딩된 픽셀을 메모리와 그래픽 카드에 보관해요.
 settings-developer-memory-unknown = 이 시스템은 앱의 메모리 사용량을 알려 주지 않아요.
 settings-developer-in-use = 사용 중
 settings-developer-peak = 최대
@@ -2455,13 +2348,11 @@ settings-developer-heap = 힙
 settings-developer-files-mapped = 매핑된 파일
 settings-developer-threads = 스레드
 settings-developer-give-back = 메모리 반환
-settings-developer-give-back-helper = 씬 그래프가 다시 만들 수 있는 것을 버리고, JavaScript 가비지를 수집하고, 빈 힙을 시스템에 돌려줘요. 해제된 양은 앱이 필요 없이 쥐고 있던 양이에요.
 settings-developer-released = { $before } → { $after }
 settings-developer-free-now = 지금 해제
 settings-developer-images-total = 시작 이후 이미지
 settings-developer-images-total-line = 디코딩 { $decodes }회, 디스크 { $disk }에서 픽셀 { $pixels }, { $ms } ms
 settings-developer-loads = 페이지 로드
-settings-developer-loads-helper = 생성은 클릭 후 기다리는 시간이에요: 페이지가 생길 때까지 Qt 스레드는 다른 일을 하지 않아요. 안정은 마지막 이미지가 도착한 시점이에요.
 settings-developer-touring = 측정 중, { $steps }개 중 { $at }번째
 settings-developer-tour = 모든 페이지 측정
 settings-developer-copy-report = 보고서 복사
@@ -2498,7 +2389,6 @@ settings-developer-scene = 페이지 구성
 settings-developer-scene-line = 항목 { $items }개, 창 밖 { $offscreen }개. 텍스트 { $texts }개, 도형 { $shapes }개, 아이콘 { $icons }개. 이미지 { $images }개, 그중 창 밖 { $imagesOffscreen }개가 { $size } 차지
 settings-developer-copy-load = 이 로드 복사
 settings-developer-tour-title = 모든 페이지, 이미지 켬과 끔
-settings-developer-tour-helper = 각 페이지를 세 번 방문한 값의 중간값이에요. 두 열이 같다면 이미지 때문에 페이지가 느린 게 아니에요.
 settings-developer-col-built-on = 생성, 이미지 켬
 settings-developer-col-built-off = 생성, 이미지 끔
 settings-developer-col-settled-on = 안정, 켬
@@ -2507,7 +2397,6 @@ settings-developer-col-decodes-time = 디코딩, 시간
 settings-developer-col-data = 데이터
 settings-developer-tour-peak = 측정 중 최대 메모리 { $size }
 settings-developer-events = 이벤트
-settings-developer-events-helper = 코어가 보내는 모든 것, 모든 수준, 최신순. 각 이벤트는 JSON으로 Qt 스레드에 복사되며, 크기는 전송 비용이에요.
 settings-developer-event-rate = { $kind } 분당 { $count }회, { $size }
 settings-developer-events-filter = 단어, 종류, 단계로 필터
 settings-developer-event-plain = { $message }   (일반: { $plain })
@@ -2516,7 +2405,6 @@ settings-developer-copy-events = 이벤트 복사
 ## SettingsKeysTab
 
 settings-keys-title = 키보드
-settings-keys-lead = Anibeam이 반응하는 모든 키예요. 어디서든 ?를 누르면 그 자리에서 쓸 수 있는 키가 보여요.
 settings-keys-player = 플레이어에서
 settings-keys-player-around = 플레이어 이동
 settings-keys-around = 이동
@@ -2583,7 +2471,6 @@ key-help-pick-all = 보이는 모든 카드 선택
 ## SettingsAboutTab
 
 settings-about-title = 정보
-settings-about-lead = 지금 쓰는 Anibeam 버전과 새 버전 소식을 받는 방식이에요.
 settings-about-update-failed = 업데이트를 마치지 못했어요. 다시 시도하거나 릴리스 페이지에서 받으세요.
 settings-about-update-ready = { $version } 설치 준비 완료.
 settings-about-update-command = { $version } 출시. 다음 명령으로 업데이트하세요: { $command }
@@ -2595,16 +2482,12 @@ settings-about-build = Anibeam { $build }
 settings-about-whats-new = 새로운 기능
 settings-about-install = { $version } 설치
 settings-about-setup = 설정 안내
-settings-about-setup-helper = 새로 설치하면 처음 나오는 안내예요: 폴더, 목록, 다운로드.
 settings-about-run-setup = 설정 안내 다시 하기
 settings-about-updates = 업데이트
-settings-about-nightly-helper = 거의 매일 새 빌드. 더 새롭지만 덜 테스트됐어요.
-settings-about-stable-helper = 테스트를 거쳐 출시된 새 버전.
 settings-about-stable = 안정 버전
 settings-about-nightly = Nightly
 settings-about-check-now = 지금 확인
 settings-about-developer = 개발자 옵션
-settings-about-developer-helper = 모든 페이지의 시간을 재고, 메모리와 전체 기술 로그를 보여 주고, 이미지를 끌 수 있는 개발자 섹션을 추가해요.
 settings-about-credits = 크레딧
 settings-about-ratings = 평점
 settings-about-ratings-helper = 정보 제공: IMDb (https://www.imdb.com). 허가를 받아 사용해요.
@@ -2614,17 +2497,12 @@ settings-about-series-helper = AniList와 TVmaze. 스킵 구간은 AniSkip 제�
 ## SettingsPlaybackTab
 
 settings-playback-title = 재생
-settings-playback-lead = 플레이어가 알아서 하는 일이에요. 필요할 때만 손대면 돼요.
 settings-playback-skipping = 스킵
-settings-playback-skipping-helper = 파일 챕터를, 없으면 시청자들이 공유한 스킵 구간을 써요. 플레이어에서 되돌리면 Anibeam을 닫을 때까지 꺼져요.
 settings-playback-skip-intros = 오프닝 스킵
 settings-playback-skip-outros = 엔딩 스킵
-settings-playback-skip-outros-helper = 엔딩에 도달하면 에피소드를 시청함으로 표시해요.
 settings-playback-next-episode = 다음 에피소드
 settings-playback-name-next = 다음 에피소드 제목 표시
-settings-playback-name-next-helper = 에피소드 끝의 다음 버튼에 다음 화 제목이 보여요. 끄면 번호만 보여요.
 settings-playback-languages = 언어
-settings-playback-languages-helper = 언어 코드, 원하는 순서대로. 파일에 있는 첫 번째 언어가 선택돼요. 플레이어에서 고른 트랙은 그 작품에 기억돼요.
 settings-playback-subtitle-languages = 자막 언어
 settings-playback-audio-languages = 오디오 언어
 settings-playback-discord = 보는 작품을 Discord에 표시
@@ -2642,7 +2520,6 @@ room-panel-discord-open = 공개
 room-panel-discord-invite = 초대 전용
 settings-playback-advanced = 고급
 settings-playback-my-mpv = 내 mpv 설정 사용
-settings-playback-my-mpv-helper = mpv.conf를 읽어요. 시작할 때만 동작하는 옵션은 건너뛰고, 스크립트는 불러오지 않아요.
 settings-playback-no-mpv-conf = mpv 설정 파일이 없어요. mpv.conf에 옵션을 넣은 뒤 켜세요.
 
 ## SliderRow
@@ -2667,45 +2544,33 @@ look-preview-light = 라이트
 ## SettingsAccountsTab
 
 settings-accounts-title = 계정
-settings-accounts-lead = AniList나 MyAnimeList를 연결하면 다 본 에피소드가 자동으로 기록돼요. 기록은 늘기만 하고 줄지 않아요.
 settings-accounts-syncing = 목록 동기화 중
 settings-accounts-synced = 목록 동기화됨
 settings-accounts-lists = 애니 목록
-settings-accounts-lists-helper = 없어도 Anibeam은 이 컴퓨터에서 본 것을 기억해요. AniList나 MyAnimeList 목록이 있으면 휴대전화와 프로필로도 이어져요.
 settings-accounts-progress = 진행 상황
 settings-accounts-main-list = 기본 목록
-settings-accounts-main-list-helper = 카드에는 이 목록의 진행 상황이 보여요. 다른 목록도 모든 업데이트를 받아요.
 settings-accounts-local-lists = 이 컴퓨터의 목록
-settings-accounts-local-lists-helper = 작품 { $count }개의 상태나 점수가 여기에만 있어요. { $tracker }(으)로 옮기면 휴대전화와 프로필에서도 볼 수 있어요.
+settings-accounts-local-lists-helper = 작품 { $count }개의 상태나 점수가 여기에만 있어요.
 settings-accounts-review-move = 확인하고 옮기기
 settings-accounts-nothing-to-move = 옮길 항목 없음
 settings-accounts-sync-now = 지금 동기화
-settings-accounts-sync-now-helper = 연결된 모든 목록을 다시 읽어요. Anibeam이 시작할 때도 해요.
 settings-accounts-sync = 동기화
 settings-accounts-move-on-hold = 보류로 옮기기
-settings-accounts-move-on-hold-helper = 한동안 손대지 않은 시청 중 작품을 목록에서 보류로 옮겨요. 재생하면 다시 돌아와요. 다음 에피소드를 기다리는 작품은 그대로 둬요.
 settings-accounts-after = 기간
 settings-accounts-after-line = 에피소드를 재생하지 않은 일수
 settings-accounts-days-unit = 일
 
-## SettingsPhoneTab
+## SettingsAccountsTab: the phone app
 
 settings-phone-title = 휴대전화 앱
-settings-phone-lead = 휴대전화의 Anibeam으로 어디서든 이 라이브러리를 재생하고, 방영 중인 작품을 보고, 다운로드를 확인할 수 있어요.
 settings-phone-online = 온라인
 settings-phone-offline = 오프라인
 settings-phone-untrusted = 이 컴퓨터에서 받는 것 없음
-settings-phone-sharing = 공유
-settings-phone-sharing-helper = Tailscale에 있는 내 기기만 접근할 수 있어요. 휴대전화에서 본 에피소드의 위치와 진행 상황이 여기에도 유지돼요.
 settings-phone-share = Tailscale로 공유
 settings-phone-stream = 에피소드 스트리밍
-settings-phone-stream-on = 내 기기에서 이 컴퓨터의 에피소드를 재생하고 캐스트할 수 있어요.
-settings-phone-stream-off = 내 기기에서 라이브러리와 방영 중인 작품은 볼 수 있지만 여기서 재생할 수는 없어요.
 settings-phone-host-service = 호스트 서비스
 settings-phone-not-running = 실행 안 됨
 settings-phone-running = 실행 중
-settings-phone-service-off-helper = 명령을 한 번 실행하면 로그인할 때부터 창을 열지 않아도 내 기기가 Anibeam에 접근해요.
-settings-phone-service-on-helper = 창을 열지 않아도 내 기기가 Anibeam에 접근해요. 이 창이 열려 있는 동안은 서비스 대신 창이 공유해요.
 settings-phone-copy-command = 명령 복사
 settings-phone-command-copied = 명령 복사됨
 settings-phone-nobody = 받는 것 없음: Tailscale에 소유자 이름이 없어요
@@ -2721,79 +2586,29 @@ settings-phone-person-devices =
        *[other] 기기 { $count }대
     }
 settings-phone-devices = tailnet의 기기
-settings-phone-devices-helper = 공유가 켜져 있으면 tailnet의 모든 기기가 이 컴퓨터에 접근할 수 있어요. 기기를 끄면 여기서 아무것도 받지 않아요.
-settings-phone-addresses = 주소
-settings-phone-addresses-helper = 휴대전화 앱이 처음 물어볼 때 이 중 하나를 입력하세요.
 settings-phone-copy = 복사
 settings-phone-address-copied = 주소 복사됨
 
-## SettingsHelpTab
+## SettingsAboutTab: the questions people ask most
 
-settings-help-title = 도움말
-settings-help-lead = 자주 묻는 질문에 대한 짧은 답과 바로 해결하는 방법이에요.
+settings-about-help = 도움말
 settings-help-folders = 폴더는 어떻게 구성해야 하나요?
-settings-help-folders-helper = 작품마다 폴더 하나, 그 안에 에피소드. 각 파일 이름에는 릴리스처럼 에피소드 번호를 넣으세요: "Frieren - 01.mkv" 또는 "Frieren S01E01.mkv". 2기는 별도 폴더로 두거나 작품 폴더 안에 "Season 2" 폴더로 둬도 돼요. 영화는 Movies라는 폴더에 파일 하나씩 넣으세요.
-settings-help-for-example = 예시
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = 아직 추가한 폴더가 없어요
-settings-help-reads-folders =
-    { $count ->
-       *[other] Anibeam이 폴더 { $count }개를 읽어요
-    }
-settings-help-add-folder-helper = 작품 하나하나가 아니라 작품들이 들어 있는 폴더를 추가하세요.
-settings-help-add-folder = 폴더 추가
-settings-help-open-folders = 폴더 열기
-settings-help-match = 작품이 왜 인식되지 않았나요?
-settings-help-match-helper = Anibeam은 폴더 이름으로 먼저 AniList, 다음으로 TVmaze에서 작품을 찾아요. 단어가 더 붙었거나, 오타가 있거나, 다른 언어로 된 이름이면 놓칠 수 있어요. 작품 정보에서 직접 골라 주세요. 직접 고른 것은 절대 바뀌지 않아요.
-settings-help-all-recognised = 모든 작품이 인식됐어요
-settings-help-unrecognised =
-    { $count ->
-       *[other] 작품 { $count }개가 인식되지 않았어요
-    }
-settings-help-open-show-info = 작품 정보 열기
-settings-help-connect = AniList는 어떻게 연결하나요?
-settings-help-connect-helper = 연결하면 다 본 에피소드가 목록에 기록돼서 휴대전화와 프로필도 최신 상태를 유지해요. AniList는 처음 한 번 작은 앱을 직접 만들어야 해요. Anibeam이 안내하고 1분 정도 걸려요. MyAnimeList도 같은 방식이에요.
-settings-help-both-connected = 둘 다 연결됨
-settings-help-anilist-connected = AniList 연결됨
-settings-help-mal-connected = MyAnimeList 연결됨
-settings-help-none-connected = 아직 둘 다 연결 안 됨
-settings-help-connect-anilist = AniList 연결
-settings-help-connect-mal = MyAnimeList 연결
-settings-help-downloads = 다운로드가 왜 비어 있나요?
-settings-help-downloads-helper = Anibeam에는 검색할 곳이 들어 있지 않아요. 설정의 다운로드에서 소스 목록을 추가하고 원하는 소스를 설치하세요. 다운로드하려면 토렌트 클라이언트도 필요해요: Anibeam이 자체 클라이언트를 실행하거나, 이미 쓰는 qBittorrent를 사용할 수 있어요.
-settings-help-sources = 소스와 토렌트 클라이언트
-settings-help-open-downloads = 다운로드 설정 열기
-settings-help-data = 내 데이터는 어디에 있나요?
-settings-help-data-helper = 라이브러리, 시청 기록, 설정은 이 컴퓨터에 남아요. AniList와 MyAnimeList 로그인 정보는 시스템 비밀번호 저장소에, 없으면 나만 읽을 수 있는 파일에 저장돼요. 저장 공간 및 백업에서 모두 파일 하나로 백업할 수 있어요.
-settings-help-library-history = 라이브러리와 기록
-settings-help-show-folder = 폴더 보기
-settings-help-backup = 백업 또는 복원
-settings-help-open-storage = 저장 공간 및 백업 열기
 settings-help-more = 다른 문제가 있나요?
-settings-help-more-helper = 처음 설정을 다시 하거나, 무엇이 잘못됐는지 알려 주세요. 스크린샷이 큰 도움이 돼요.
-settings-help-first-setup = 처음 설정
-settings-help-first-setup-helper = 폴더, 목록, 다운로드를 한 단계씩.
-settings-help-run-setup = 설정 다시 하기
 settings-help-report = 문제 신고
-settings-help-report-helper = 이 버전 정보가 채워진 GitHub 버그 신고를 브라우저에서 열어요.
 
-## SettingsSubtitlesTab
+## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = 자막
-settings-subtitles-lead = 모든 에피소드가 이 설정으로 시작해요. 바꾸는 대로 아래 화면에 보여요.
 settings-subtitles-reset-done = 자막이 처음 상태로 돌아갔어요
 settings-subtitles-size-place = 크기와 위치
 settings-subtitles-size = 크기
 settings-subtitles-position = 위치
-settings-subtitles-position-helper = 100은 아래쪽 가장자리예요. 숫자가 작을수록 자막이 화면 위로 올라가요.
 settings-subtitles-style = 스타일
 settings-subtitles-styled = 스타일 자막
-settings-subtitles-as-made-helper = 스타일(ASS) 파일은 제작자가 정한 모양 그대로 보여요.
-settings-subtitles-mine-helper = 아래 내 스타일이 모든 파일에 적용돼요. 사인과 가라오케가 깨질 수 있어요.
-settings-subtitles-size-only-helper = 스타일 자막 파일은 모양을 유지하고 내 크기만 따라요. 일반 파일은 내 스타일을 따라요.
 settings-subtitles-as-made = 원본
 settings-subtitles-size-only = 크기만
 settings-subtitles-mine = 내 설정
@@ -2805,20 +2620,14 @@ settings-subtitles-colour-invalid = #ffcc00 같은 색을 입력하세요.
 settings-subtitles-outline = 윤곽선
 settings-subtitles-outline-invalid = 너비는 0 이상의 숫자예요.
 settings-subtitles-outline-colour-invalid = #000000처럼 색을 입력하세요.
-settings-subtitles-outline-helper = 너비, 그다음 색.
 settings-subtitles-shadow = 그림자
 settings-subtitles-shadow-invalid = 0 이상의 숫자예요. 0은 그림자 없음.
-settings-subtitles-shadow-helper = 그림자가 떨어지는 거리, 0이면 없음.
 settings-subtitles-box = 배경 상자
-settings-subtitles-box-helper = 자막 뒤에 깔리는 어두운 상자예요. 0이면 없애요.
 settings-subtitles-start-over = 처음 상태로
-settings-subtitles-start-over-helper = 크기, 글꼴, 색상, 윤곽선, 상자, 위치를 기본값으로 되돌려요.
 settings-subtitles-reset = 초기화
 
-## SettingsDataTab
+## SettingsAboutTab: storage and backup
 
-settings-data-title = 저장 공간 및 백업
-settings-data-lead = 라이브러리를 다른 컴퓨터로 옮기거나, 사본을 안전하게 보관하거나, 이미지가 차지하는 공간을 비워요.
 settings-data-backed-up = { $path }에 백업했어요
 settings-data-restore-finished = 복원 완료
 settings-data-images-removed =
@@ -2855,24 +2664,19 @@ settings-data-summary-unavailable =
 settings-data-summary-left-out = 제외됨: { $fields }.
 settings-data-backup = 백업
 settings-data-back-up-library = 라이브러리 백업
-settings-data-back-up-helper = 폴더, 매칭, 시청 기록을 담은 파일 하나예요.
 settings-data-last-written = 마지막 저장 위치: { $path }
 settings-data-open-folder = 폴더 열기
 settings-data-back-up = 백업
-settings-data-private = 비공개 데이터 포함
-settings-data-private-helper = AniList와 MyAnimeList 로그인 정보, 시청 기록, 환경설정을 추가해요. 로그인 정보는 일반 텍스트로 저장되니 파일을 다른 사람에게 보이지 마세요.
+settings-data-private = 로그인 정보 포함, 일반 텍스트로 저장
 settings-data-restore-from = 백업에서 복원
-settings-data-restore-helper = 백업을 이 라이브러리로 읽어 와요. 디스크에 있는 내용이 우선이고, 파일은 나머지를 채워요.
 settings-data-restore = 복원
 settings-data-image-cache = 이미지 캐시
-settings-data-image-cache-helper = 포스터, 배너, 인물 사진을 디스크에 보관해서 오프라인에서도 라이브러리가 동작해요. 지운 이미지는 페이지에서 필요할 때 다시 받아 와요.
 settings-data-cache-unmeasured = 이미지 캐시 크기를 측정하지 못했어요
 settings-data-cache-size =
     { $count ->
        *[other] 이미지 { $count }개, { $size }
     }
 settings-data-cache-empty = 캐시된 이미지 없음
-settings-data-cache-unmeasured-helper = 잠시 후 다시 시도하세요. 이미지는 문제없어요.
 settings-data-remove-images =
     { $count ->
        *[other] 이미지 { $count }개를 삭제할까요?
@@ -2890,62 +2694,53 @@ settings-data-restoring = 복원 중
 ## SettingsLibraryTab
 
 settings-library-title = 라이브러리
-settings-library-lead = Anibeam이 지켜보는 폴더와, 그 안에 무엇이 있는지 알아내는 방식이에요.
 settings-library-not-scanned = 아직 스캔 안 됨
 settings-library-scan-nothing-changed = 변경 없음
 settings-library-scan-added = { $count }개 추가
 settings-library-scan-changed = { $count }개 변경
 settings-library-scan-removed = { $count }개 제거
 settings-library-scan-in-folder = { $folder }: { $what }
-settings-library-anilist-about = 애니: 시리즈, 영화, 그리고 작품 간 관계. 본 작품이 트래커에 기록돼요.
-settings-library-tvmaze-about = 그 밖의 TV: 실사, 카툰, 다큐멘터리. 트래커에 기록되지 않아요.
 settings-library-tried-first = 1순위
 settings-library-tried-second = 2순위
 settings-library-tried-third = 3순위
 settings-library-tried-fourth = 4순위
 settings-library-tried-nth = { $number }순위
 settings-library-folders = 폴더
-settings-library-folders-helper = 이 폴더 안의 각 폴더가 작품이 돼요. Movies 폴더 바로 아래 파일은 영화예요.
 settings-library-rescan-started = 다시 스캔 시작됨
 settings-library-load-failed = 폴더를 읽지 못했어요
-settings-library-load-failed-helper = Anibeam이 폴더 목록을 읽지 못했어요. 잠시 후 다시 시도하세요.
 settings-library-no-folders = 아직 폴더 없음
-settings-library-no-folders-helper = 애니가 있는 폴더를 Anibeam에 알려 주세요. 작품과 영화는 알아서 찾아요.
 settings-library-scanned = { $when } 스캔함
 settings-library-add-a-folder = 폴더 추가
 settings-library-scan-all = 모두 스캔
 settings-library-scan-started = 스캔 시작됨
 settings-library-add-folder = 폴더 추가
 settings-library-matching = 매칭
-settings-library-matching-helper = 새 폴더는 이 순서로 조회하고 처음 맞는 결과를 써요. 직접 지정한 매칭은 절대 바뀌지 않아요.
 settings-library-try-later = 나중에 시도
 settings-library-try-first = 먼저 시도
 settings-library-check-matches = 매칭 확인
-settings-library-check-matches-helper = 작품 정보 페이지에서 Anibeam이 찾은 정보와 함께 모든 작품을 보고, 잘못된 것을 고칠 수 있어요.
 settings-library-open-show-info = 작품 정보 열기
 settings-library-hidden-shows = 숨긴 작품
 settings-library-show-hidden = 숨긴 작품 보기
-settings-library-show-hidden-helper = Anibeam을 닫을 때까지 숨긴 작품을 모든 페이지에 다시 보여 줘요.
 settings-library-hidden-from-airing = 방영 중에서 숨긴 작품
-settings-library-hidden-from-airing-helper = 관심 없음으로 표시한 작품이에요. 되돌리기 전까지 방영 중에 나오지 않아요.
-settings-library-hidden-from-airing-empty = 아직 없어요. 방영 중에서 관심 없음으로 표시한 작품이 여기 모이고, 언제든 되돌릴 수 있어요.
+settings-library-hidden-from-airing-empty = 아직 없어요
 settings-library-show-again = 다시 보이기
+settings-hidden-airing-filter = 제목 필터
+settings-hidden-airing-ended = 방영이 끝난 작품 { $count }개를 목록에서 뺐어요
 settings-library-calendar = 캘린더
 settings-library-calendar-feed = 캘린더 속 방영 시간
-settings-library-calendar-feed-helper = 목록에 있는 작품의 다가오는 에피소드를 캘린더 파일로 만들어 두고, 일정이 바뀌면 업데이트해요.
 settings-library-calendar-file = 캘린더 파일
-settings-library-calendar-file-helper = 캘린더 앱에서 이 파일을 구독하세요.
 settings-library-copy = 복사
 settings-library-path-copied = 경로 복사됨
 settings-library-open-folder = 폴더 열기
 settings-library-notifications = 알림
 settings-library-new-episodes = 새 에피소드
-settings-library-new-episodes-helper = 시청 중 목록에 있는 작품의 에피소드가 방영되면 데스크톱 알림을 보내요. 클릭하면 작품이 열려요.
 settings-library-folder-added = 폴더 추가됨, 스캔 중
 
 ## SettingsAppearanceTab
 
 settings-appearance-language = 언어
+settings-appearance-title-language = 제목 표시 언어
+settings-appearance-title-language-english = 영어
 settings-appearance-language-system = 시스템과 동일({ $language })
 settings-appearance-text-smaller = 작게
 settings-appearance-text-normal = 보통
@@ -2953,51 +2748,39 @@ settings-appearance-text-large = 크게
 settings-appearance-text-larger = 더 크게
 settings-appearance-text-largest = 최대
 settings-appearance-title = 모양
-settings-appearance-lead = 변경 사항이 여기와 모든 페이지에 바로 적용돼요. ~/.config/anibeam/theme.toml에 저장되며 직접 편집할 수도 있어요.
 settings-appearance-colours = 색상
 settings-appearance-mode = 모드
 settings-appearance-mode-dark = 다크
 settings-appearance-mode-light = 라이트
 settings-appearance-mode-system = 시스템
 settings-appearance-colours-from = 색상 출처
-settings-appearance-from-theme-helper = 아래 테마 한 쌍, 다크용과 라이트용.
-settings-appearance-from-desktop-helper = 터미널 색상, 없으면 데스크톱의 색 구성표와 강조색.
 settings-appearance-from-desktop = 데스크톱
 settings-appearance-from-theme = 테마
 settings-appearance-dark-theme = 다크 테마
 settings-appearance-light-theme = 라이트 테마
-settings-appearance-themes-helper = ~/.config/anibeam/themes에 넣은 테마 파일이 두 목록에 나타나요.
 settings-appearance-accent = 강조색
-settings-appearance-accent-helper = 선택됨, 재생 중, 새 항목을 표시해요.
 settings-appearance-icon = 아이콘
 settings-appearance-app-icon = 앱 아이콘
-settings-appearance-app-icon-helper = 창, 작업 표시줄, 런처의 아이콘이에요. 다크는 노랑과 검정을 바꿔요.
 settings-appearance-icon-default = 기본
 settings-appearance-icon-default-name = 기본 앱 아이콘
 settings-appearance-icon-dark = 다크
 settings-appearance-icon-dark-name = 다크 앱 아이콘
 settings-appearance-size-motion = 크기와 움직임
 settings-appearance-text-size = 글자 크기
-settings-appearance-text-size-helper = Anibeam 전체의 글자 크기예요. 시스템의 글자 크기 설정에 더해져요.
 settings-appearance-density = 밀도
-settings-appearance-density-helper = 요소 사이 여백, 촘촘하게부터 여유 있게까지.
 settings-appearance-density-compact = 촘촘
 settings-appearance-density-normal = 보통
 settings-appearance-density-comfortable = 여유
 settings-appearance-poster-size = 포스터 크기
-settings-appearance-poster-size-helper = 라이브러리와 홈에서 작품이 보이는 크기예요.
 settings-appearance-poster-small = 작게
 settings-appearance-poster-medium = 중간
 settings-appearance-poster-large = 크게
 settings-appearance-out-now = 방영 중의 지금 공개
-settings-appearance-out-now-helper = 작품마다 배너가 있는 카드, 또는 작은 포스터와 제목 목록을 세 줄로.
 settings-appearance-out-now-cards = 카드
 settings-appearance-out-now-list = 목록
 settings-appearance-out-now-grid = 지금 공개 카드
-settings-appearance-out-now-grid-helper = 전체를 열기 전에 보이는 카드 수, 열 × 행.
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = 움직임 줄이기
-settings-appearance-reduce-motion-helper = 라이브러리의 시작 애니메이션과 보여 주기용 움직임을 생략해요.
 
 ## LookPane
 
@@ -3545,4 +3328,3 @@ settings-playback-together = 함께 보기
 settings-playback-room-name = 함께 보기 방에서 쓸 이름
 settings-playback-room-name-placeholder = 이름
 settings-playback-room-relay = 방 서버
-settings-playback-room-relay-helper = 방은 여기서 만들어져요. 직접 운영하는 서버일 때만 바꾸세요.

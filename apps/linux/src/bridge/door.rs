@@ -195,6 +195,8 @@ pub mod qobject {
         #[qinvokable]
         fn list_not_interested(self: &Door) -> QJsonObject;
         #[qinvokable]
+        fn prune_not_interested(self: &Door) -> QJsonObject;
+        #[qinvokable]
         fn plan_to_watch(self: &Door, anilist_id: f64) -> QJsonObject;
         // Franchise
         #[qinvokable]
@@ -1824,6 +1826,9 @@ impl qobject::Door {
     }
     pub fn list_not_interested(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListNotInterested))
+    }
+    pub fn prune_not_interested(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::PruneNotInterested))
     }
     pub fn plan_to_watch(&self, anilist_id: f64) -> QJsonObject {
         self.dispatch(Ok(Call::PlanToWatch {

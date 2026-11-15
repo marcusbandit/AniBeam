@@ -236,6 +236,13 @@ synced to anirss as kind `rss`.
   and the key's fingerprint, and the user accepts it. The key is pinned from then
   on: an index signed by a different key is refused with a plain message, and the
   user has to remove and re-add the repo to accept a new key.
+- Changed 2026-11-15 (#1003), after the first beta tester could not get through
+  Add, Trust and one Install per source: the desktop adds a repo in one step,
+  `AttachEndpointRepo { url }`. It fetches and verifies the index, pins the key
+  on first use and installs every endpoint that asks for no value (an NSFW one
+  only from an NSFW repo). The fingerprint shows on the repo's row afterwards,
+  and a later index under another key is still refused. The phone keeps the
+  two-step preview and trust.
 - Installing an endpoint takes its definition from the verified index; there is
   nothing else to fetch or check.
 - Trusting a repo means trusting where its endpoints send requests. The owner's

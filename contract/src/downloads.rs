@@ -366,7 +366,7 @@ pub struct Torrent {
     #[serde(default)]
     pub series_id: Option<u64>,
     /// The episode the torrent's name says it carries, read as a release
-    /// title is (`downloads::facts`); None for a batch or a name that
+    /// title is (`releases::facts`); None for a batch or a name that
     /// names none.
     #[serde(default)]
     pub episode: Option<f64>,
@@ -388,7 +388,7 @@ pub struct Torrent {
     #[serde(default)]
     pub tracker: String,
     /// The release group in the torrent's name, read as a release title is
-    /// (`downloads::facts`).
+    /// (`releases::facts`).
     #[serde(default)]
     pub group: String,
     /// The resolution in the torrent's name.
@@ -768,6 +768,34 @@ pub struct DownloadsStatus {
     pub anirss: AnirssStatus,
     pub torrent: TorrentClientStatus,
     pub endpoints: Vec<SearchEndpoint>,
+    /// Where a new show's folder goes on the core's own engine.
+    #[serde(default)]
+    pub save_folder: SaveFolder,
+}
+
+/// Where the core's own engine saves a show that is not in the library yet: a folder of its
+/// own under `path`. A show already in the library saves into its own folder instead.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SaveFolder {
+    /// Empty when only the torrent client knows: its own default folder, asked at each add.
+    pub path: String,
+    pub from: SaveFolderFrom,
+    /// The torrent client keeps its files on this machine, so a folder here can be picked.
+    pub here: bool,
+}
+
+/// What decided the save folder, first that has one winning.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum SaveFolderFrom {
+    /// Picked in Settings (`SetSaveFolder`).
+    Chosen,
+    /// The first library folder, for Anibeam's own qBittorrent with nothing picked (#1005).
+    Library,
+    /// The search helper's own `config.toml`.
+    Helper,
+    /// The torrent client's own default folder.
+    #[default]
+    Client,
 }
 
 /// A place the phone searches. `kind` is one of `releases::endpoints::VALID_KINDS`: most often

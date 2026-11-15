@@ -114,7 +114,7 @@ core-error-version = 더 새로운 Anibeam에서 내보낸 파일이에요(형�
 core-error-internal = Anibeam 내부 오류가 발생했어요: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = 저장소 주소를 붙여넣으세요
 core-repos-must-be-https = 주소는 https여야 해요
@@ -151,7 +151,7 @@ core-repos-note-theirs = 직접 실행하는 anirss라서 데스크톱은 설정
 core-repos-note-sandbox = 이번 실행은 anirss 설정에 쓰지 않으므로 여기서 데스크톱은 { $id }을(를) 검색하지 않아요
 core-repos-note-old = anirss { $version }은(는) { -app-name }에서 엔드포인트를 받을 수 없어요. 데스크톱에서 검색하려면 { $min } 이상으로 업데이트하세요
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = 인덱스의 키가 ed25519 키가 아니에요
 core-repos-key-not-base64 = 인덱스의 키가 32바이트 base64가 아니에요
@@ -1052,6 +1052,10 @@ core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder }은(는) 폴더의 전체 경로가 아니에요
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder }에는 다운로드를 저장할 수 없어요. 실제로 있고 홈 폴더가 아닌 폴더를 고르세요
 core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
@@ -1107,7 +1111,7 @@ core-downloads-rolled = { $title }: 이제 { $total }화 중 { $from }~{ $to }�
 core-downloads-roll-ahead = 최소 한 화는 앞서 받아 두세요
 core-downloads-roll-nothing = 가져올 항목이 없어요
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON 검색 소스는 필드를 매핑한 정의가 있는 엔드포인트 저장소에서만 와요
 core-releases-endpoint-no-name = `name`이 없어요
@@ -1119,17 +1123,17 @@ core-releases-endpoint-not-http = { $name }: 주소는 http:// 또는 https://�
 core-releases-endpoint-needs-query = { $name }: { $kind } url에는 {"{"}query{"}"} 자리표시자가 있어야 해요
 core-releases-endpoint-no-query = { $name }: { $kind } url은 검색어를 직접 붙이므로 {"{"}query{"}"}를 쓰지 않아요
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = 인덱서가 오류 { $code }(으)로 응답했어요
 core-releases-bad-feed = 잘못된 피드: { $error }
 core-releases-feed-answered = 피드 응답 { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = 피드의 JSON이 아니에요: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = JSON이 아니에요: { $error }
 core-releases-search-error-said = 검색이 오류를 보냈어요: { $message }
@@ -1138,7 +1142,7 @@ core-releases-no-results-field = 응답의 { $path }에 결과가 없어요
 core-releases-results-not-list = 응답의 결과가 목록이 아니에요
 core-releases-search-answered = 검색 응답 { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = 아직 엔드포인트가 없어요. 더보기의 엔드포인트에서 저장소를 추가하거나 직접 추가하세요
 core-releases-no-source-named = { $name } 소스가 없어요
@@ -1146,7 +1150,7 @@ core-releases-empty-query = 검색어를 입력하세요
 core-releases-cannot-follow = { $name }은(는) 구독할 수 없어요. 검색에는 응답하지만 새 에피소드를 확인할 피드가 없어요
 core-releases-endpoint-gone = { $name }을(를) 더 이상 쓸 수 없어요. 제거됐거나, 꺼졌거나, 키가 없어요
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word }은(는) 짧은 한 단어여야 해요
 core-releases-quirks-pattern-count = show_feed는 페이지 패턴을 1~{ $most }개 받아요
@@ -1157,11 +1161,11 @@ core-releases-quirks-url-https = show_feed url은 https여야 해요
 core-releases-quirks-url-host = show_feed url은 엔드포인트와 같은 호스트에 있어야 해요
 core-releases-quirks-url-slug = show_feed url에는 {"{"}slug{"}"}가 한 번만 있고 다른 자리표시자는 없어야 해요
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = op 'tokens'에는 비어 있지 않은 `tokens` 목록이 필요해요
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = { $group } 일괄
 core-releases-episodes-phrase =

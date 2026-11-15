@@ -233,7 +233,7 @@ the app points at a site: no address, no host, no default, no onboarding link, a
 test or fixture that names one. A PR that adds a site gets closed, however well it is built.
 CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
 the known site names and fails on any hit. It skips what is kept as history (the changelogs
-and dated plans), applied SQL migrations, lockfiles, and `core/src/releases/kinds.rs`, the one
+and dated plans), applied SQL migrations, lockfiles, and `releases/src/kinds.rs`, the one
 module that holds the kinds' old names to rename them.
 
 What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
@@ -273,7 +273,9 @@ kind, open an issue about the kind and leave the source out.
 
 A push to a pull request runs only the fast checks: CI (fmt, clippy and the core's tests),
 Strings, No sites, the PR checks and the Android check when the phone or the core changed,
-about seven minutes. Work on one platform at a time and check it locally with
+about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
+the phone's code changed, and a PR that only touches iPhone files skips the Android check.
+Work on one platform at a time and check it locally with
 `.github/local-ci.sh`.
 
 When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
