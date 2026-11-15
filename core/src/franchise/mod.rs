@@ -15,22 +15,21 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::metadata::Metadata;
 pub(crate) use crate::store::sql::{as_i64, as_u64};
 use crate::time;
 
 pub mod closure;
 pub mod crawl;
-pub mod groups;
 pub mod layout;
 
 use closure::{Closure, Node};
 
 /// `GetFranchiseGraph`: the graph is drawn off the tables as they stand, and
 /// the crawl behind it fills in whatever the walk found missing.
-pub(crate) fn graph_call(core: &Core, series: u64) -> Result<Reply, CoreError> {
+pub(crate) fn graph_call(metadata: &Arc<Metadata>, series: u64) -> Result<Reply, CoreError> {
     Ok(Reply::Graph {
-        layout: graph(&core.owner()?, series)?,
+        layout: graph(metadata, series)?,
     })
 }
 
@@ -40,9 +39,9 @@ pub(crate) fn graph_call(core: &Core, series: u64) -> Result<Reply, CoreError> {
 /// Two shapes come back as no layout at all: a series with no AniList id
 /// to close a graph around, and a node standing on no edge, since a graph
 /// of one card is not a graph.
-pub fn graph(core: &Arc<Core>, series: u64) -> Result<Option<FranchiseLayout>, CoreError> {
+pub fn graph(metadata: &Arc<Metadata>, series: u64) -> Result<Option<FranchiseLayout>, CoreError> {
     let now = time::now_secs();
-    let built = core.store.read(|conn| {
+    let built = metadata.services.store.read(|conn| {
         let matched: Option<Option<i64>> = conn
             .query_row(
                 "SELECT anilist_id FROM series WHERE id = ?1",
@@ -62,7 +61,7 @@ pub fn graph(core: &Arc<Core>, series: u64) -> Result<Option<FranchiseLayout>, C
         let closure = closure::close(conn, seed, closure::CAP, now)?;
         let layout = match closure.nodes.len() {
             0 | 1 => None,
-            _ => Some(draw(conn, core, &closure, seed)?),
+            _ => Some(draw(conn, metadata, &closure, seed)?),
         };
         Ok(Some((seed, closure.root, layout)))
     })?;
@@ -75,7 +74,7 @@ pub fn graph(core: &Arc<Core>, series: u64) -> Result<Option<FranchiseLayout>, C
     let Some((seed, root, layout)) = built else {
         return Ok(None);
     };
-    crawl::maybe_crawl_for_read(core, seed, root);
+    crawl::maybe_crawl_for_read(metadata, seed, root);
     Ok(layout)
 }
 
@@ -83,7 +82,7 @@ pub fn graph(core: &Arc<Core>, series: u64) -> Result<Option<FranchiseLayout>, C
 /// labels; the rest is what the tables say about each node.
 fn draw(
     conn: &Connection,
-    core: &Core,
+    metadata: &Metadata,
     closure: &Closure,
     current: u64,
 ) -> Result<FranchiseLayout, CoreError> {
@@ -110,7 +109,7 @@ fn draw(
             h: layout::NODE_H,
             title: title_of(n),
             poster: match n.cover_url.as_deref() {
-                Some(url) => core.images.path_for(conn, url)?,
+                Some(url) => metadata.net.images.path_for(conn, url)?,
                 None => None,
             },
             owned: owned_by(conn, n)?,
@@ -186,36 +185,4 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
 }
 
 #[cfg(test)]
-pub(crate) mod testing {
-    use rusqlite::{Connection, params};
-
-    /// A migrated database in memory. The store's own WAL pragma is a file
-    /// mode and does not apply here, but foreign keys do: a relation's
-    /// other end must have a row, which is what makes a missing node the
-    /// defensive case it is.
-    pub fn conn() -> Connection {
-        let mut c = Connection::open_in_memory().unwrap();
-        c.pragma_update(None, "foreign_keys", "ON").unwrap();
-        crate::store::migrations::apply(&mut c).unwrap();
-        c
-    }
-
-    /// One media row. `fetched` is whether the crawl has already taken this
-    /// node's edges, which is what keeps it out of `owed`.
-    pub fn media(c: &Connection, id: u64, fetched: bool) {
-        c.execute(
-            "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, relations_fetched_at)
-             VALUES (?1, 'ANIME', ?2, ?3)",
-            params![super::as_i64(id), format!("T{id}"), fetched.then_some(1_000i64)],
-        )
-        .unwrap();
-    }
-
-    pub fn edge(c: &Connection, from: u64, to: u64, relation: &str) {
-        c.execute(
-            "INSERT OR REPLACE INTO relations (from_id, to_id, relation) VALUES (?1, ?2, ?3)",
-            params![super::as_i64(from), super::as_i64(to), relation],
-        )
-        .unwrap();
-    }
-}
+pub(crate) use crate::store::testing;

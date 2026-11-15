@@ -16,10 +16,11 @@ use std::time::Duration;
 
 use crate::atomic_file;
 use crate::contract::*;
-use crate::core::Core;
 use crate::events::Subscription;
+use crate::foundation::services::Services;
 use crate::foundation::titles;
 use crate::library::snapshot::{AiringRow, SeriesRow, Snapshot};
+use crate::metadata::Metadata;
 use crate::prefs;
 use crate::sync::recover;
 use crate::time;
@@ -251,8 +252,9 @@ fn fold(line: &str) -> String {
     out
 }
 
-fn enabled(core: &Core) -> bool {
-    core.store
+fn enabled(services: &Services) -> bool {
+    services
+        .store
         .read(prefs::load_preferences)
         .map(|p| p.calendar_feed)
         .unwrap_or(false)
@@ -269,14 +271,14 @@ fn without_stamps(text: &str) -> String {
 
 /// Writes the file unless what is on disk already says the same. Ok(true)
 /// when it wrote.
-fn write_file(core: &Core) -> Result<bool, CoreError> {
-    let images_dir = core.paths.images_dir();
+fn write_file(services: &Services) -> Result<bool, CoreError> {
+    let images_dir = services.paths.images_dir();
     let now = time::now_secs();
-    let text = core.store.read(|c| {
+    let text = services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, time::now(), None)?;
         Ok(render(&entries(&snap, now), now))
     })?;
-    let target = core.paths.calendar_path();
+    let target = services.paths.calendar_path();
     if let Ok(old) = std::fs::read_to_string(&target)
         && without_stamps(&old) == without_stamps(&text)
     {
@@ -292,21 +294,21 @@ fn write_file(core: &Core) -> Result<bool, CoreError> {
 /// that stays full should not fill the activity log too. A success says
 /// nothing on the bus, since every event there invalidates the shell's
 /// caches.
-pub(crate) fn write(core: &Core) {
-    let _file = recover(&core.calendar.file);
-    if !enabled(core) {
+pub(crate) fn write(metadata: &Metadata) {
+    let _file = recover(&metadata.calendar.file);
+    if !enabled(&metadata.services) {
         return;
     }
-    match write_file(core) {
+    match write_file(&metadata.services) {
         Ok(wrote) => {
-            core.calendar.failing.store(false, Ordering::SeqCst);
+            metadata.calendar.failing.store(false, Ordering::SeqCst);
             if wrote {
                 tracing::debug!("calendar written");
             }
         }
         Err(e) => {
-            if !core.calendar.failing.swap(true, Ordering::SeqCst) {
-                core.bus.warn(
+            if !metadata.calendar.failing.swap(true, Ordering::SeqCst) {
+                metadata.services.bus.warn(
                     Stage::System,
                     format!("the calendar file could not be written: {e}"),
                     EventBody::Notice,
@@ -318,15 +320,15 @@ pub(crate) fn write(core: &Core) {
 
 /// Deletes the file, as turning the switch off does. A file that is not
 /// there is already the wanted state.
-pub(crate) fn remove(core: &Core) {
-    let _file = recover(&core.calendar.file);
-    core.calendar.failing.store(false, Ordering::SeqCst);
-    let path = core.paths.calendar_path();
+pub(crate) fn remove(metadata: &Metadata) {
+    let _file = recover(&metadata.calendar.file);
+    metadata.calendar.failing.store(false, Ordering::SeqCst);
+    let path = metadata.services.paths.calendar_path();
     match std::fs::remove_file(&path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            core.bus.warn(
+            metadata.services.bus.warn(
                 Stage::System,
                 format!("the calendar file could not be removed: {e}"),
                 EventBody::Notice,
@@ -336,8 +338,12 @@ pub(crate) fn remove(core: &Core) {
 }
 
 /// Follows a change of the switch: on writes the file now, off deletes it.
-pub(crate) fn set_enabled(core: &Core, on: bool) {
-    if on { write(core) } else { remove(core) }
+pub(crate) fn set_enabled(metadata: &Metadata, on: bool) {
+    if on {
+        write(metadata)
+    } else {
+        remove(metadata)
+    }
 }
 
 /// Whether an event can change what the file shows. Any job that ends, and
@@ -370,23 +376,24 @@ pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 
 /// Subscribes the listener that rewrites the file after a change. Called
 /// once, by `Core::open`; `shutdown` drops it.
-pub(crate) fn listen(core: &Arc<Core>) {
+pub(crate) fn listen(metadata: &Arc<Metadata>) {
     let listener = Arc::new(AfterChange {
-        core: Arc::downgrade(core),
+        metadata: Arc::downgrade(metadata),
     });
-    *recover(&core.calendar.listener) = Some(core.subscribe(listener));
+    *recover(&metadata.calendar.listener) =
+        Some(Subscription::new(metadata.services.bus.clone(), listener));
 }
 
 /// Unsubscribes the listener. Taken out of the mutex before it is dropped,
 /// since the drop takes the bus's own lock.
-pub(crate) fn stop(core: &Core) {
-    let sub = recover(&core.calendar.listener).take();
+pub(crate) fn stop(metadata: &Metadata) {
+    let sub = recover(&metadata.calendar.listener).take();
     drop(sub);
 }
 
 /// Holds a `Weak`, so the bus never keeps the core alive through it.
 struct AfterChange {
-    core: Weak<Core>,
+    metadata: Weak<Metadata>,
 }
 
 impl EventListener for AfterChange {
@@ -394,25 +401,25 @@ impl EventListener for AfterChange {
         if !may_change(&event) {
             return;
         }
-        let Some(core) = self.core.upgrade() else {
+        let Some(metadata) = self.metadata.upgrade() else {
             return;
         };
         // One rewrite queued at a time: the events of a burst join it.
-        if core.calendar.queued.swap(true, Ordering::SeqCst) {
+        if metadata.calendar.queued.swap(true, Ordering::SeqCst) {
             return;
         }
         // Off the emitting thread: the bus calls listeners inline, and a
         // job's runner should not wait on a file write.
-        let weak = self.core.clone();
-        core.handle.spawn(async move {
+        let weak = self.metadata.clone();
+        metadata.services.handle.spawn(async move {
             tokio::time::sleep(SETTLE).await;
-            let Some(core) = weak.upgrade() else {
+            let Some(metadata) = weak.upgrade() else {
                 return;
             };
             // Cleared before the write, so a change during it queues the next.
-            core.calendar.queued.store(false, Ordering::SeqCst);
-            let handle = core.handle.clone();
-            let _ = handle.spawn_blocking(move || write(&core)).await;
+            metadata.calendar.queued.store(false, Ordering::SeqCst);
+            let handle = metadata.services.handle.clone();
+            let _ = handle.spawn_blocking(move || write(&metadata)).await;
         });
     }
 }

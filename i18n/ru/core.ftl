@@ -465,7 +465,7 @@ core-core-guest-not-interested = «Не интересно» на том ком�
 core-core-guest-recommended = рекомендации на том компьютере подобраны по списку его владельца
 core-core-nothing-picked = ничего не выбрано
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } не является источником данных
 core-prefs-provider-count = { $provider } указан несколько раз ({ $count }); каждый источник указывается один раз
@@ -509,16 +509,16 @@ core-host-not-an-address = { $text } не является адресом с п�
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = время ожидания истекло через { $ms } мс
 core-net-rate-limited = { $provider } ограничил частоту запросов
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: только что не ответил вовремя; { -app-name } ждёт { $seconds } с перед новым запросом
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = нет данных
 
@@ -549,7 +549,7 @@ core-update-cannot-copy = Не удалось скопировать новое 
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
 core-calendar-episode = { $title }, серия { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = нет домашней папки
 
@@ -561,6 +561,9 @@ core-first-run-not-absolute = папка с видео должна быть у�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал
+core-presence-room = Смотрим вместе
+core-presence-in-room = В комнате
+core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -977,7 +980,7 @@ core-metadata-progress-imdb-ratings = рейтинги IMDb
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений
@@ -1004,7 +1007,7 @@ core-transfer-wrong-format = это не документ { $format }
 
 core-transfer-imported = Библиотека загружена из файла.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = в библиотеке нет файла { $id }
@@ -1047,7 +1050,7 @@ core-library-watched-removed =
        *[trash] перемещено в корзину
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1077,7 +1080,7 @@ core-library-runs-span = с { $first } по { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } и { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = номер серии от 0 до 10000
 core-library-fix-season-range = номер сезона не больше 200
@@ -1099,7 +1102,7 @@ core-library-fixed =
        *[other] «{ $title }»: исправлено чтение { $count } файла.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = «{ $title }» скрыт.
@@ -1109,12 +1112,12 @@ core-library-back-many = Снова видно сериалов: { $count }.
 core-library-episode-count-set = Число серий «{ $title }»: { $count }.
 core-library-episode-count-cleared = Число серий «{ $title }» сброшено.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Заметки о расписании «{ $title }» удалены.
 core-library-schedule-saved = Сохранено заметок о расписании «{ $title }»: { $count }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = путь к источнику должен быть абсолютным
 core-library-source-exists = уже есть такой источник
@@ -1166,7 +1169,7 @@ core-library-scan-done =
         }{ $removed } пропало
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1384,7 +1387,7 @@ core-downloads-name-not-folder = { $name } не подходит как имя �
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
 core-downloads-prune-failed = Не удалось отписаться от «{ $title }». Проверьте раздел «Загрузки» в настройках.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } не является простым абсолютным путём, поэтому ничего не удалено
 core-downloads-refuse-root = { $path } это корень файловой системы, поэтому ничего не удалено
@@ -1535,6 +1538,7 @@ core-room-service = Совместный просмотр
 core-room-not-found = Комнаты с таким кодом нет. Возможно, она закрылась.
 core-room-full = Эта комната заполнена.
 core-room-proto = Этот ретранслятор работает на другой версии комнат. Обновите { -app-name }, чтобы войти.
+core-room-needs-episode = Этому ретранслятору нужна серия, чтобы создать комнату. Создайте её из плеера или обновите ретранслятор.
 core-room-unreachable = Не удалось связаться с ретранслятором: { $message }
 core-room-refused = Ретранслятор отказал: { $message }
 core-room-not-in = Вы не в комнате.
@@ -1548,3 +1552,20 @@ core-room-member-left = { $name } покидает комнату.
 core-room-closed = Комната совместного просмотра закрыта.
 core-room-lost = Связь с комнатой совместного просмотра потеряна. Пробуем снова.
 core-room-back = Снова в комнате совместного просмотра.
+core-room-media-asked = Вы попросили серию у ведущего.
+core-room-media-cannot = Ведущий сейчас не может поделиться этой серией.
+core-room-media-sent = Торрент серии отправлен: { $name }.
+core-room-media-sent-name = Название релиза серии отправлено: { $name }.
+core-room-media-nothing = У ведущего нет копии серии, которой можно поделиться.
+core-room-media-no-answer = Приложение ведущего не ответило. Попробуйте ещё раз чуть позже.
+core-room-media-torrent = Серия скачивается по торренту ведущего.
+core-room-media-searching = Поиск релиза ведущего в ваших источниках.
+core-room-media-not-found = Ни в одном из ваших источников нет релиза ведущего.
+core-room-media-no-sources = Все источники выключены. Включите один, чтобы искать.
+core-room-media-no-start = Не удалось начать загрузку: { $message }
+core-room-media-client = торрент-клиент его не принял
+core-room-media-lost = Торрент-клиент потерял загрузку серии.
+core-room-media-stalled = Загрузка не продвигается уже десять минут. Попробуйте ещё раз позже.
+core-room-media-not-in-library = Серия скачана, но её нет в вашей библиотеке. Проверьте, что загрузки сохраняются в папку библиотеки.
+core-room-media-here = Серия теперь в вашей библиотеке.
+core-room-media-rest-missing = Не удалось получить остальные серии. Скачивается только эта серия.

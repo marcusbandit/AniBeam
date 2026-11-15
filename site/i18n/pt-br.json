@@ -50,6 +50,7 @@
  "Copy": "Copiar",
  "For Linux and Mac": "Para Linux e Mac",
  "What's new": "Novidades",
+ "Watch together": "Assistir juntos",
  "Report a problem": "Relatar problema",
  "Download Anibeam for Linux, Mac, Windows and Android. Free and open source.": "Baixe o Anibeam para Linux, Mac, Windows e Android. Grátis e código aberto.",
  "Release channel": "Canal",
@@ -86,5 +87,8 @@
  "Download IPA": "Baixar o IPA",
  "Nightly test build, unsigned, for sideloading": "Versão de teste nightly, sem assinatura, para sideload",
  "Unsigned, for sideloading": "Sem assinatura, para sideload",
- "Or install this build once in": "Ou instale esta versão uma única vez no"
+ "Or install this build once in": "Ou instale esta versão uma única vez no",
+ "Every platform": "Todas as plataformas",
+ "Installer": "Instalador",
+ "From a terminal": "Pelo terminal"
 }

@@ -432,7 +432,7 @@ core-core-guest-not-interested = Niet interessant op die computer is de lijst va
 core-core-guest-recommended = de aanbevelingen op die computer komen uit de lijst van de eigenaar
 core-core-nothing-picked = niets gekozen
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is geen bron voor koppelen
 core-prefs-provider-count = { $provider } staat er { $count } keer in; elke bron staat er één keer in
@@ -472,16 +472,16 @@ core-host-not-an-address = { $text } is geen adres met poort
 
 core-host-not-a-key = { $key } is geen apparaatsleutel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = time-out na { $ms }ms
 core-net-rate-limited = { $provider } remt verzoeken af
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: zojuist een time-out; { -app-name } wacht { $seconds } s voordat het weer vraagt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = geen gegevens
 
@@ -510,7 +510,7 @@ core-update-cannot-copy = Kon de nieuwe app niet naast deze kopiëren: { $error 
 core-calendar-season-episode = { $title } - Seizoen { $season } Aflevering { $number }
 core-calendar-episode = { $title } - Aflevering { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = geen thuismap
 
@@ -521,6 +521,9 @@ core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Samen kijken
+core-presence-in-room = In een kamer
+core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
 
 ## core/src/trackers/accounts.rs
 
@@ -839,7 +842,7 @@ core-metadata-progress-imdb-ratings = IMDb-beoordelingen
 
 core-franchise-relation-character = Gedeelde personages
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = afbeeldingen ophalen
 
@@ -860,7 +863,7 @@ core-transfer-wrong-format = geen { $format }-document
 
 core-transfer-imported = Je bibliotheek is uit het bestand geladen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = geen bestand { $id } in de bibliotheek
 core-library-file-elsewhere-not-removed = bestand { $id } hoort bij een andere serie, dus er is niets weggehaald
@@ -890,7 +893,7 @@ core-library-watched-removed =
        *[trash] naar de prullenbak verplaatst
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Het enige bestand hier wordt gelezen als { $read ->
@@ -912,7 +915,7 @@ core-library-fix-numbered-on = Afleveringen { $from } lijken de afleveringen { $
 core-library-runs-span = { $first } t/m { $last }
 core-library-runs-list = { $init } en { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = een afleveringsnummer loopt van 0 tot 10000
 core-library-fix-season-range = een seizoen loopt tot 200
@@ -929,7 +932,7 @@ core-library-fixed =
        *[other] Hersteld hoe { $count } bestanden van { $title } worden gelezen.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } verborgen.
 core-library-back-one = { $title } is terug.
@@ -938,12 +941,12 @@ core-library-back-many = { $count } series zijn terug.
 core-library-episode-count-set = { $title } heeft nu { $count } afleveringen.
 core-library-episode-count-cleared = Het aantal afleveringen van { $title } gewist.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = De schemanotities van { $title } gewist.
 core-library-schedule-saved = { $count } schemanotities voor { $title } opgeslagen.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = een bronpad moet absoluut zijn
 core-library-source-exists = is al een bron
@@ -985,7 +988,7 @@ core-library-scan-done =
         }{ $removed } ontbreken
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = geen antwoord binnen { $span }
 core-library-agent-stopped-code = gestopt met code { $code }
@@ -1151,7 +1154,7 @@ core-downloads-name-not-folder = { $name } is geen mapnaam
 core-downloads-pruned = Abonnement op { $title } opgezegd, de uitzending is afgelopen.
 core-downloads-prune-failed = Kon het abonnement op { $title } niet opzeggen. Controleer Downloads in Instellingen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is geen gewoon absoluut pad, dus er is niets weggehaald
 core-downloads-refuse-root = { $path } is de root van het bestandssysteem, dus er is niets weggehaald
@@ -1275,6 +1278,7 @@ core-room-service = Samen kijken
 core-room-not-found = Geen kamer met die code. Misschien is hij gesloten.
 core-room-full = Die kamer is vol.
 core-room-proto = Die relay draait een andere versie van kamers. Werk { -app-name } bij om mee te doen.
+core-room-needs-episode = Die relay heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler of werk de relay bij.
 core-room-unreachable = Kon de relay niet bereiken: { $message }
 core-room-refused = De relay weigerde: { $message }
 core-room-not-in = Je zit niet in een kamer.
@@ -1288,3 +1292,20 @@ core-room-member-left = { $name } verliet de kamer.
 core-room-closed = De kamer om samen te kijken is gesloten.
 core-room-lost = Verbinding met de kamer om samen te kijken verloren. Opnieuw proberen.
 core-room-back = Weer in de kamer om samen te kijken.
+core-room-media-asked = De host om de aflevering gevraagd.
+core-room-media-cannot = De host kan deze aflevering nu niet delen.
+core-room-media-sent = { $name } de torrent van de aflevering gestuurd.
+core-room-media-sent-name = { $name } de naam van de release van de aflevering gestuurd.
+core-room-media-nothing = De host heeft geen kopie van de aflevering om te delen.
+core-room-media-no-answer = De app van de host antwoordde niet. Probeer het zo opnieuw.
+core-room-media-torrent = De aflevering wordt gedownload via de torrent van de host.
+core-room-media-searching = Je bronnen worden doorzocht op de release van de host.
+core-room-media-not-found = Geen van je bronnen heeft de release van de host.
+core-room-media-no-sources = Elke bron staat uit. Zet er een aan om te zoeken.
+core-room-media-no-start = De download kon niet starten: { $message }
+core-room-media-client = de torrentclient nam hem niet aan
+core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
+core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
+core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
+core-room-media-here = De aflevering staat nu in je bibliotheek.
+core-room-media-rest-missing = De rest van de serie kon niet worden opgehaald. Alleen deze aflevering wordt gedownload.

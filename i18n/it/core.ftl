@@ -429,7 +429,7 @@ core-core-guest-not-interested = Non mi interessa su quel computer è la lista d
 core-core-guest-recommended = i consigli su quel computer sono basati sulla lista del suo proprietario
 core-core-nothing-picked = niente di scelto
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } non è un provider di abbinamento
 core-prefs-provider-count = { $provider } compare { $count } volte; ogni provider compare una volta
@@ -469,16 +469,16 @@ core-host-not-an-address = { $text } non è un indirizzo con porta
 
 core-host-not-a-key = { $key } non è una chiave di dispositivo
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = tempo scaduto dopo { $ms } ms
 core-net-rate-limited = { $provider } ha limitato le richieste
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: tempo scaduto poco fa; { -app-name } aspetta { $seconds } s prima di richiedere
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = nessun dato
 
@@ -507,7 +507,7 @@ core-update-cannot-copy = Impossibile copiare la nuova app accanto a questa: { $
 core-calendar-season-episode = { $title } - Stagione { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = nessuna cartella home
 
@@ -518,6 +518,9 @@ core-first-run-not-absolute = la cartella dei video deve essere un percorso asso
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Guardiamo insieme
+core-presence-in-room = In una stanza
+core-presence-no-room = Quell'invito di Discord non ha ancora una stanza. Chiedi di aprirne una.
 
 ## core/src/trackers/accounts.rs
 
@@ -836,7 +839,7 @@ core-metadata-progress-imdb-ratings = voti IMDb
 
 core-franchise-relation-character = Personaggi in comune
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = download delle immagini
 
@@ -857,7 +860,7 @@ core-transfer-wrong-format = non è un documento { $format }
 
 core-transfer-imported = Libreria caricata dal file.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = nessun file { $id } nella libreria
 core-library-file-elsewhere-not-removed = il file { $id } appartiene a un'altra serie, quindi non è stato rimosso nulla
@@ -899,7 +902,7 @@ core-library-watched-removed =
         }
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     L'unico file qui viene letto come { $read ->
@@ -921,7 +924,7 @@ core-library-fix-numbered-on = Gli episodi { $from } sembrano i { $to } di quest
 core-library-runs-span = da { $first } a { $last }
 core-library-runs-list = { $init } e { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = il numero di un episodio va da 0 a 10000
 core-library-fix-season-range = una stagione arriva fino a 200
@@ -938,7 +941,7 @@ core-library-fixed =
        *[other] Corretto come si leggono { $count } file di { $title }.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } nascosta.
 core-library-back-one = { $title } è tornata.
@@ -947,12 +950,12 @@ core-library-back-many = { $count } serie sono tornate.
 core-library-episode-count-set = { $title } ora ha { $count } episodi.
 core-library-episode-count-cleared = Numero di episodi di { $title } cancellato.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Note sul calendario di { $title } cancellate.
 core-library-schedule-saved = { $count } note sul calendario salvate per { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = il percorso di una fonte deve essere assoluto
 core-library-source-exists = è già una fonte
@@ -994,7 +997,7 @@ core-library-scan-done =
         }{ $removed } mancanti
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = nessuna risposta entro { $span }
 core-library-agent-stopped-code = si è fermato con codice { $code }
@@ -1160,7 +1163,7 @@ core-downloads-name-not-folder = { $name } non è un nome di cartella
 core-downloads-pruned = Iscrizione a { $title } annullata, ha finito di andare in onda.
 core-downloads-prune-failed = Impossibile annullare l'iscrizione a { $title }. Controlla Download nelle Impostazioni.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } non è un semplice percorso assoluto, quindi non è stato rimosso nulla
 core-downloads-refuse-root = { $path } è la radice del filesystem, quindi non è stato rimosso nulla
@@ -1284,6 +1287,7 @@ core-room-service = Guarda insieme
 core-room-not-found = Nessuna stanza ha quel codice. Potrebbe essere stata chiusa.
 core-room-full = Quella stanza è piena.
 core-room-proto = Quel relay usa un'altra versione delle stanze. Aggiorna { -app-name } per entrare.
+core-room-needs-episode = Quel relay vuole un episodio per avviare una stanza. Avviala dal lettore o aggiorna il relay.
 core-room-unreachable = Impossibile raggiungere il relay: { $message }
 core-room-refused = Il relay ha rifiutato: { $message }
 core-room-not-in = Non sei in una stanza.
@@ -1297,3 +1301,20 @@ core-room-member-left = { $name } è uscito dalla stanza.
 core-room-closed = La stanza Guarda insieme è stata chiusa.
 core-room-lost = Connessione alla stanza Guarda insieme persa. Nuovo tentativo.
 core-room-back = Di nuovo nella stanza Guarda insieme.
+core-room-media-asked = Hai chiesto l'episodio all'host.
+core-room-media-cannot = L'host non può condividere questo episodio adesso.
+core-room-media-sent = Inviato a { $name } il torrent dell'episodio.
+core-room-media-sent-name = Inviato a { $name } il nome della release dell'episodio.
+core-room-media-nothing = L'host non ha una copia dell'episodio da condividere.
+core-room-media-no-answer = L'app dell'host non ha risposto. Riprova tra un attimo.
+core-room-media-torrent = Download dell'episodio dal torrent dell'host.
+core-room-media-searching = Ricerca della release dell'host nelle tue fonti.
+core-room-media-not-found = Nessuna delle tue fonti ha la release dell'host.
+core-room-media-no-sources = Tutte le fonti sono spente. Accendine una per cercare.
+core-room-media-no-start = Impossibile avviare il download: { $message }
+core-room-media-client = il client torrent non l'ha accettato
+core-room-media-lost = Il client torrent ha perso il download dell'episodio.
+core-room-media-stalled = Il download non è avanzato da dieci minuti. Riprova più tardi.
+core-room-media-not-in-library = L'episodio è scaricato, ma non è nella tua libreria. Controlla che i download finiscano in una cartella della libreria.
+core-room-media-here = L'episodio ora è nella tua libreria.
+core-room-media-rest-missing = Impossibile ottenere il resto della serie. Si scarica solo questo episodio.

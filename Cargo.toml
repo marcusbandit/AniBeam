@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
+members = ["contract", "foundation", "net", "library", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
 
 [workspace.package]
 version = "2.5.0"
@@ -12,7 +12,10 @@ repository = "https://github.com/marcusbandit/AniBeam"
 [workspace.dependencies]
 anibeam-contract = { path = "contract" }
 anibeam-core = { path = "core" }
+anibeam-foundation = { path = "foundation" }
 anibeam-host-api = { path = "host-api" }
+anibeam-library = { path = "library" }
+anibeam-net = { path = "net" }
 anibeam-recs = { path = "recs" }
 anibeam-room = { path = "room" }
 serde = { version = "1", features = ["derive"] }
@@ -21,7 +24,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "process", "macros", "fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4", features = ["derive"] }
-# Pinned once: the contract and the core must agree on these, or uniffi's derives and the
+# Pinned once: every crate that uses one must agree on it, or uniffi's derives and the
 # core's export disagree, and two libsqlite3-sys cannot link into one build.
 uniffi = "=0.32.0"
 rusqlite = "0.40"
@@ -29,3 +32,11 @@ rusqlite_migration = "2.6"
 
 [profile.release]
 debug = 1
+
+# A build to hand test on a machine (#927): the release build without debug info, into
+# target/tester/, so the binary is small to copy. Built with the anibeam package's `dev-qml`
+# feature it loads the QML from disk when ANIBEAM_QML_DIR is set, so a QML-only change needs no
+# build at all. Never shipped.
+[profile.tester]
+inherits = "release"
+debug = 0

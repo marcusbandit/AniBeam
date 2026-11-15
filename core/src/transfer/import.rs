@@ -19,7 +19,9 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::secrets::StoreKind;
+use crate::foundation::services::Services;
+use crate::host::Host;
 use crate::i18n::tr;
 use crate::images;
 use crate::jobs::{Finished, JobCtx};
@@ -34,7 +36,6 @@ use crate::paths::{normalise, under};
 use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
-use crate::trackers::secrets::StoreKind;
 use crate::transfer::file_name;
 use crate::transfer::format::{
     self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
@@ -46,7 +47,7 @@ const SECTIONS: u64 = 5;
 /// Reads and parses on the calling thread, so a file this core is too old
 /// to read is `Err(Version)` before any job starts and an unreadable path
 /// is refused the same way. Everything after that is the job's.
-pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
+pub fn start(host: &Arc<Host>, path: &str) -> Result<u64, CoreError> {
     // The spec lists no synchronous `Io` for this call, and the argument
     // that failed is the path, so an unreadable file is refused as one.
     let bytes = std::fs::read(path).map_err(|e| CoreError::Invalid {
@@ -54,9 +55,10 @@ pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
         message: e.to_string(),
     })?;
     let (doc, ignored) = format::parse(&bytes)?;
-    let owner = core.owner()?;
+    let owner = host.clone();
     let started = owner.clone();
     Ok(started
+        .services
         .jobs
         .clone()
         .start(JobKind::Import, move |ctx| async move {
@@ -65,7 +67,7 @@ pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
 }
 
 async fn run(
-    core: Arc<Core>,
+    host: Arc<Host>,
     ctx: Arc<JobCtx>,
     doc: Document,
     ignored: Vec<String>,
@@ -98,10 +100,10 @@ async fn run(
         &tr("core-transfer-progress-sources", &[]),
     );
     let now = time::now_secs();
-    let sources = import_sources(&core, sources, now, &mut summary).await?;
+    let sources = import_sources(&host.services, sources, now, &mut summary).await?;
 
     ctx.progress(1, Some(SECTIONS), &tr("core-transfer-progress-series", &[]));
-    let (touched, unscanned) = import_series(&core, series, now, &mut summary).await?;
+    let (touched, unscanned) = import_series(&host.services, series, now, &mut summary).await?;
 
     ctx.progress(
         2,
@@ -109,7 +111,7 @@ async fn run(
         &tr("core-transfer-progress-history", &[]),
     );
     if let Some(history) = history {
-        import_history(&core, history, &mut summary).await?;
+        import_history(&host.services, history, &mut summary).await?;
     }
 
     ctx.progress(
@@ -126,7 +128,7 @@ async fn run(
     }
     let imported_accounts = accounts.is_some();
     if let Some(accounts) = accounts {
-        import_accounts(&core, accounts, now, &mut summary).await?;
+        import_accounts(&host.services, accounts, now, &mut summary).await?;
     }
 
     ctx.progress(
@@ -135,7 +137,7 @@ async fn run(
         &tr("core-transfer-progress-preferences", &[]),
     );
     let imported_preferences = match preferences {
-        Some(entry) => Some(import_preferences(&core, entry).await?),
+        Some(entry) => Some(import_preferences(&host.services, entry).await?),
         None => None,
     };
     ctx.progress(
@@ -149,10 +151,11 @@ async fn run(
     // import itself starts one only for a series with a fixed file the
     // library does not hold yet, so that file comes in with its fix.
     for id in sources {
-        let state = core.clone();
-        if let Some(source) = core
+        let state = host.clone();
+        if let Some(source) = host
+            .services
             .store
-            .write_async(move |c| scan::load_source(c, &state.library, id))
+            .write_async(move |c| scan::load_source(c, &state.library.state, id))
             .await?
         {
             ctx.emit(
@@ -163,15 +166,16 @@ async fn run(
         }
     }
     if !touched.is_empty() {
-        let images_dir = core.paths.images_dir();
-        let cards = core
+        let images_dir = host.services.paths.images_dir();
+        let cards = host
+            .services
             .store
             .write_async(move |c| cards::cards_for(c, &images_dir, &touched))
             .await?;
         ctx.changed_all(cards);
     }
     if imported_accounts {
-        let state = accounts::state_async(&core).await?;
+        let state = accounts::state_async(&host.services).await?;
         ctx.emit(
             Level::Debug,
             "trackers changed",
@@ -186,9 +190,9 @@ async fn run(
         );
     }
     for series in unscanned {
-        let _ = scan::rescan_series(&core, series);
+        let _ = scan::rescan_series(&host.library, series);
     }
-    images::sweep_after(&core, "an import").await;
+    images::sweep_after(&host.net, "an import").await;
 
     let message = format!(
         "imported: {} sources, {} series, {} matches, {} views, {} completed, {} resume points, {} accounts, {} fixes, {} fields ignored",
@@ -216,7 +220,7 @@ async fn run(
 /// same state as an unplugged drive: its series stay dormant and attach
 /// when the path comes back.
 async fn import_sources(
-    core: &Arc<Core>,
+    services: &Services,
     entries: Vec<format::SourceEntry>,
     now: i64,
     summary: &mut ImportSummary,
@@ -229,7 +233,7 @@ async fn import_sources(
             (path, available)
         })
         .collect();
-    let (ids, added, unavailable) = core
+    let (ids, added, unavailable) = services
         .store
         .tx_async(move |tx| {
             let (mut ids, mut added, mut unavailable) = (Vec::new(), 0u64, 0u64);
@@ -285,12 +289,12 @@ async fn import_sources(
 /// section after it finds every file on its new key. Answers the series
 /// touched, and the ones with a fixed file the library does not hold yet.
 async fn import_series(
-    core: &Arc<Core>,
+    services: &Services,
     entries: Vec<SeriesEntry>,
     now: i64,
     summary: &mut ImportSummary,
 ) -> Result<(Vec<u64>, Vec<u64>), CoreError> {
-    let (touched, unscanned, applied, created, matched, ignored) = core
+    let (touched, unscanned, applied, created, matched, ignored) = services
         .store
         .tx_async(move |tx| {
             // Every source, not only the file's: a series may well belong
@@ -686,11 +690,11 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
 /// path and the episode's number. The newer `at` wins on every one of
 /// them, so a re-import never rewinds what the library already knows.
 async fn import_history(
-    core: &Arc<Core>,
+    services: &Services,
     history: format::History,
     summary: &mut ImportSummary,
 ) -> Result<(), CoreError> {
-    let (views, completed, resume) = merge_history(core, history).await?;
+    let (views, completed, resume) = merge_history(services, history).await?;
     summary.views_merged = views;
     summary.completed_merged = completed;
     summary.resume_points_merged = resume;
@@ -700,10 +704,10 @@ async fn import_history(
 /// [`import_history`]'s merge, for a caller with no import summary: the
 /// views, completed episodes and resume points it wrote.
 pub(crate) async fn merge_history(
-    core: &Arc<Core>,
+    services: &Services,
     history: format::History,
 ) -> Result<(u64, u64, u64), CoreError> {
-    core
+    services
         .store
         .tx_async(move |tx| {
             let series = series_by_path(tx)?;
@@ -857,7 +861,7 @@ fn resume_target(
 /// the transaction: a keyring that will not take a token should fail the
 /// section before it has changed a row.
 async fn import_accounts(
-    core: &Arc<Core>,
+    services: &Services,
     accounts: format::Accounts,
     now: i64,
     summary: &mut ImportSummary,
@@ -870,14 +874,14 @@ async fn import_accounts(
         (Tracker::Mal, accounts.mal),
     ] {
         let Some(account) = account else { continue };
-        let (store, wrote) = write_secrets(core, t, &account).await?;
+        let (store, wrote) = write_secrets(services, t, &account).await?;
         if wrote {
             imported += 1;
         }
         rows.push((t, account, store));
     }
 
-    core.store
+    services.store
         .tx_async(move |tx| {
             for (t, account, store) in &rows {
                 // `connected_at` is what says an account is connected, so
@@ -920,11 +924,11 @@ async fn import_accounts(
 /// Every call goes through the blocking pool: the keyring is synchronous
 /// zbus underneath and a tokio worker must never block on it.
 async fn write_secrets(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     account: &Account,
 ) -> Result<(Option<StoreKind>, bool), CoreError> {
-    let hint = core
+    let hint = services
         .store
         .write_async(move |c| accounts::load_row(c, t))
         .await?
@@ -933,7 +937,7 @@ async fn write_secrets(
     let mut wrote = false;
     if !account.access_token.is_empty() {
         let token = account.access_token.clone();
-        if let Some(kind) = write_secret(core, access_key(t), token, hint).await? {
+        if let Some(kind) = write_secret(services, access_key(t), token, hint).await? {
             store = Some(kind);
             wrote = true;
         }
@@ -945,7 +949,7 @@ async fn write_secrets(
         let Some(value) = value.filter(|v| !v.is_empty()) else {
             continue;
         };
-        write_secret(core, key, value, hint).await?;
+        write_secret(services, key, value, hint).await?;
     }
     Ok((store, wrote))
 }
@@ -953,17 +957,17 @@ async fn write_secrets(
 /// One secret, written only when the store holds something else. `None`
 /// when it already held exactly this, so nothing is counted as imported.
 async fn write_secret(
-    core: &Arc<Core>,
+    services: &Services,
     key: String,
     value: String,
     hint: Option<StoreKind>,
 ) -> Result<Option<StoreKind>, CoreError> {
     let read = key.clone();
-    let held = accounts::with_secrets(core, move |s| s.get(&read, hint)).await?;
+    let held = accounts::with_secrets(services, move |s| s.get(&read, hint)).await?;
     if held.as_ref().map(|(v, _)| v.as_str()) == Some(value.as_str()) {
         return Ok(None);
     }
-    accounts::with_secrets(core, move |s| s.set(&key, &value))
+    accounts::with_secrets(services, move |s| s.set(&key, &value))
         .await
         .map(Some)
 }
@@ -974,10 +978,11 @@ async fn write_secret(
 /// A value this core does not know keeps whatever the library had, rather
 /// than resetting the whole record over one word.
 async fn import_preferences(
-    core: &Arc<Core>,
+    services: &Services,
     entry: format::PrefsEntry,
 ) -> Result<Preferences, CoreError> {
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             let current = prefs::load_preferences(tx)?;
             let preferences = Preferences {

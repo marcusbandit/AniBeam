@@ -206,8 +206,8 @@ pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
         });
     };
     let brief = brief(core, series)?;
-    let owner = core.owner()?;
-    Ok(owner
+    Ok(core
+        .services
         .jobs
         .clone()
         .start(JobKind::ScheduleAgent, move |ctx| async move {
@@ -217,7 +217,7 @@ pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
 
 /// The brief, off the series page's own read.
 fn brief(core: &Core, series: u64) -> Result<Brief, CoreError> {
-    let detail = match crate::library::reads::get_series(core, series)? {
+    let detail = match crate::library::reads::get_series(&core.library, series)? {
         Reply::SeriesDetail { detail } => detail,
         _ => {
             return Err(CoreError::NotFound {

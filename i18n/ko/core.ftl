@@ -426,7 +426,7 @@ core-core-guest-not-interested = 그 컴퓨터의 관심 없음 목록은 소유
 core-core-guest-recommended = 그 컴퓨터의 추천은 소유자의 목록을 바탕으로 해요
 core-core-nothing-picked = 선택한 항목 없음
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }은(는) 매칭 제공처가 아니에요
 core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제공처는 한 번씩만 넣어야 해요
@@ -466,16 +466,16 @@ core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 후 시간 초과
 core-net-rate-limited = { $provider } 요청 한도 초과
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 방금 시간이 초과됐어요. { -app-name }이(가) { $seconds }초 기다린 뒤 다시 요청해요
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 데이터 없음
 
@@ -504,7 +504,7 @@ core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: {
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 홈 디렉터리가 없어요
 
@@ -515,6 +515,9 @@ core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 ## core/src/presence/mod.rs
 
 core-presence-extra = 번외
+core-presence-room = 함께 보는 중
+core-presence-in-room = 방에 있음
+core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
 ## core/src/trackers/accounts.rs
 
@@ -780,7 +783,7 @@ core-metadata-progress-imdb-ratings = IMDb 평점
 
 core-franchise-relation-character = 같은 캐릭터
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 이미지 가져오는 중
 
@@ -800,7 +803,7 @@ core-transfer-wrong-format = { $format } 문서가 아니에요
 
 core-transfer-imported = 파일에서 라이브러리를 불러왔어요.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 라이브러리에 파일 { $id }이(가) 없어요
 core-library-file-elsewhere-not-removed = 파일 { $id }은(는) 다른 작품의 파일이라 아무것도 제거하지 않았어요
@@ -821,7 +824,7 @@ core-library-watched-removed =
        *[trash] 휴지통으로 옮겼어요
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     여기 있는 파일 하나가 { $read ->
@@ -836,7 +839,7 @@ core-library-fix-numbered-on = { $from }화는 이전 시즌에서 이어 매긴
 core-library-runs-span = { $first }~{ $last }
 core-library-runs-list = { $init }, { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 에피소드 번호는 0부터 10000까지예요
 core-library-fix-season-range = 시즌은 200까지예요
@@ -851,7 +854,7 @@ core-library-fixed =
        *[other] { $title } 파일 { $count }개를 읽는 방식을 수정했어요.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title }을(를) 숨겼어요.
 core-library-back-one = { $title }이(가) 다시 보여요.
@@ -860,12 +863,12 @@ core-library-back-many = 작품 { $count }개가 다시 보여요.
 core-library-episode-count-set = 이제 { $title }은(는) 에피소드 { $count }개예요.
 core-library-episode-count-cleared = { $title }의 에피소드 수를 지웠어요.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = { $title }의 방영 일정 메모를 지웠어요.
 core-library-schedule-saved = { $title }의 방영 일정 메모 { $count }개를 저장했어요.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 소스 경로는 절대 경로여야 해요
 core-library-source-exists = 이미 추가된 소스예요
@@ -900,7 +903,7 @@ core-library-scan-done =
         }누락 { $removed }개
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 안에 응답 없음
 core-library-agent-stopped-code = 코드 { $code }(으)로 멈췄어요
@@ -1058,7 +1061,7 @@ core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
 core-downloads-pruned = { $title } 방영이 끝나서 구독을 해지했어요.
 core-downloads-prune-failed = { $title } 구독을 해지하지 못했어요. 설정의 다운로드를 확인하세요.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path }은(는) 일반 절대 경로가 아니라서 아무것도 제거하지 않았어요
 core-downloads-refuse-root = { $path }은(는) 파일 시스템 루트라서 아무것도 제거하지 않았어요
@@ -1181,6 +1184,7 @@ core-room-service = 함께 보기
 core-room-not-found = 그 코드의 방이 없어요. 닫혔을 수 있어요.
 core-room-full = 방이 꽉 찼어요.
 core-room-proto = 그 릴레이는 다른 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+core-room-needs-episode = 그 릴레이는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들거나 릴레이를 업데이트하세요.
 core-room-unreachable = 릴레이에 연결하지 못했어요: { $message }
 core-room-refused = 릴레이가 거부했어요: { $message }
 core-room-not-in = 방에 있지 않아요.
@@ -1194,3 +1198,20 @@ core-room-member-left = { $name }님이 방에서 나갔어요.
 core-room-closed = 함께 보기 방이 닫혔어요.
 core-room-lost = 함께 보기 방과 연결이 끊겼어요. 다시 시도하는 중이에요.
 core-room-back = 함께 보기 방에 다시 연결됐어요.
+core-room-media-asked = 호스트에게 에피소드를 요청했어요.
+core-room-media-cannot = 호스트가 지금은 이 에피소드를 공유할 수 없어요.
+core-room-media-sent = { $name }님에게 에피소드 토렌트를 보냈어요.
+core-room-media-sent-name = { $name }님에게 에피소드 릴리스 이름을 보냈어요.
+core-room-media-nothing = 호스트에게 공유할 에피소드 사본이 없어요.
+core-room-media-no-answer = 호스트의 앱이 응답하지 않았어요. 잠시 후 다시 시도하세요.
+core-room-media-torrent = 호스트의 토렌트로 에피소드를 내려받고 있어요.
+core-room-media-searching = 내 소스에서 호스트의 릴리스를 찾고 있어요.
+core-room-media-not-found = 내 소스 중 호스트의 릴리스가 있는 곳이 없어요.
+core-room-media-no-sources = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
+core-room-media-no-start = 다운로드를 시작할 수 없었어요: { $message }
+core-room-media-client = 토렌트 클라이언트가 받지 않았어요
+core-room-media-lost = 토렌트 클라이언트가 에피소드 다운로드를 놓쳤어요.
+core-room-media-stalled = 다운로드가 10분 동안 진행되지 않았어요. 나중에 다시 시도하세요.
+core-room-media-not-in-library = 에피소드는 내려받았지만 라이브러리에 없어요. 다운로드가 라이브러리 폴더에 저장되는지 확인하세요.
+core-room-media-here = 에피소드가 이제 라이브러리에 있어요.
+core-room-media-rest-missing = 시리즈의 나머지를 가져오지 못했어요. 이 에피소드만 다운로드하고 있어요.

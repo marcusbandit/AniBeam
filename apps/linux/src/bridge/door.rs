@@ -97,7 +97,7 @@ pub mod qobject {
         /// The library page in one read: `{ series, airing, counts: { all, series,
         /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
         /// listSeries, carries `franchise: { id, title, size }` when other library
-        /// series share its franchise, else null (core `franchise::groups`).
+        /// series share its franchise, else null (core `library::franchises`).
         #[qinvokable]
         fn list_library(
             self: &Door,
@@ -1373,6 +1373,9 @@ impl qobject::Door {
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
             | EventBody::RecommendedRefreshed
+            | EventBody::DiscordJoinAsk { .. }
+            | EventBody::DiscordAskGone { .. }
+            | EventBody::DiscordJoin { .. }
             | EventBody::ShowPageRead { .. } => {}
             EventBody::RoomChanged { room } => {
                 let room = match room {

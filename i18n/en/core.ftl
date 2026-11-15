@@ -469,7 +469,7 @@ core-core-guest-not-interested = Not interested on that computer is its owner's 
 core-core-guest-recommended = the recommendations on that computer are learnt from its owner's list
 core-core-nothing-picked = nothing picked
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is not a match provider
 core-prefs-provider-count = { $provider } appears { $count } times; every provider appears once
@@ -515,16 +515,16 @@ core-host-not-an-address = { $text } is not an address and port
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } is not a device key
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = timed out after { $ms }ms
 core-net-rate-limited = { $provider } rate limited
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: timed out a moment ago; { -app-name } waits { $seconds } s before asking it again
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = no data
 
@@ -555,7 +555,7 @@ core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
 core-calendar-episode = { $title } - Episode { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = no home directory
 
@@ -570,6 +570,7 @@ core-room-service = Watch together
 core-room-not-found = No room has that code. It may have closed.
 core-room-full = That room is full.
 core-room-proto = That relay runs another version of rooms. Update { -app-name } to join it.
+core-room-needs-episode = That relay needs an episode to start a room. Start it from the player, or update the relay.
 # $message is the network's own words.
 core-room-unreachable = Could not reach the relay: { $message }
 core-room-refused = The relay said no: { $message }
@@ -584,11 +585,31 @@ core-room-member-left = { $name } left the room.
 core-room-closed = The watch together room closed.
 core-room-lost = Lost the connection to the watch together room. Trying again.
 core-room-back = Back in the watch together room.
+core-room-media-asked = Asked the host for the episode.
+core-room-media-cannot = The host can't share this episode right now.
+core-room-media-sent = Sent { $name } the episode's torrent.
+core-room-media-sent-name = Sent { $name } the episode's release name.
+core-room-media-nothing = The host has no copy of the episode to share.
+core-room-media-no-answer = The host's app did not answer. Try again in a moment.
+core-room-media-torrent = Downloading the episode from the host's torrent.
+core-room-media-searching = Searching your sources for the host's release.
+core-room-media-not-found = None of your sources has the host's release.
+core-room-media-no-sources = Every source is switched off. Switch one on to search.
+core-room-media-no-start = Could not start the download: { $message }
+core-room-media-client = the torrent client did not take it
+core-room-media-lost = The torrent client lost the episode's download.
+core-room-media-stalled = The download has not moved in ten minutes. Try again later.
+core-room-media-not-in-library = The episode downloaded, but it is not in your library. Check that downloads save into a library folder.
+core-room-media-here = The episode is in your library now.
+core-room-media-rest-missing = Could not get the rest of the show. Only this episode is downloading.
 
 ## core/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Extra
+core-presence-room = Watching together
+core-presence-in-room = In a room
+core-presence-no-room = That Discord invite has no room yet. Ask them to start one.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -949,7 +970,7 @@ core-metadata-progress-imdb-ratings = IMDb ratings
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = fetching images
@@ -974,7 +995,7 @@ core-transfer-wrong-format = not an { $format } document
 
 core-transfer-imported = Loaded your library from the file.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = no file { $id } in the library
@@ -1008,7 +1029,7 @@ core-library-watched-removed =
        *[trash] moved to the trash
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1036,7 +1057,7 @@ core-library-runs-span = { $first } to { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } and { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = an episode number runs from 0 to 10000
 core-library-fix-season-range = a season runs up to 200
@@ -1054,7 +1075,7 @@ core-library-fixed =
        *[other] Fixed how { $count } files of { $title } are read.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = Hid { $title }.
@@ -1064,12 +1085,12 @@ core-library-back-many = { $count } shows are back.
 core-library-episode-count-set = { $title } now has { $count } episodes.
 core-library-episode-count-cleared = Cleared the episode count of { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Cleared the schedule notes of { $title }.
 core-library-schedule-saved = Saved { $count } schedule notes for { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = a source path must be absolute
 core-library-source-exists = already a source
@@ -1115,7 +1136,7 @@ core-library-scan-done =
         }{ $removed } missing
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1317,7 +1338,7 @@ core-downloads-name-not-folder = { $name } is not a folder name
 core-downloads-pruned = Unsubscribed from { $title }, it finished airing.
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is not a plain absolute path, so nothing was removed
 core-downloads-refuse-root = { $path } is the filesystem root, so nothing was removed

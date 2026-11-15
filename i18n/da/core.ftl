@@ -431,7 +431,7 @@ core-core-guest-not-interested = Ikke interesseret på den computer er dens ejer
 core-core-guest-recommended = anbefalingerne på den computer er lært af dens ejers liste
 core-core-nothing-picked = intet valgt
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } er ikke en matchkilde
 core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde optræder én gang
@@ -471,16 +471,16 @@ core-host-not-an-address = { $text } er ikke en adresse og port
 
 core-host-not-a-key = { $key } er ikke en enhedsnøgle
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = fik timeout efter { $ms } ms
 core-net-rate-limited = { $provider } begrænser antallet af forespørgsler
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: fik timeout for et øjeblik siden; { -app-name } venter { $seconds } s, før den spørger igen
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = ingen data
 
@@ -509,7 +509,7 @@ core-update-cannot-copy = Kunne ikke kopiere den nye app ved siden af denne: { $
 core-calendar-season-episode = { $title } - Sæson { $season } Afsnit { $number }
 core-calendar-episode = { $title } - Afsnit { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = ingen hjemmemappe
 
@@ -520,6 +520,9 @@ core-first-run-not-absolute = videomappen skal være en absolut sti
 ## core/src/presence/mod.rs
 
 core-presence-extra = Ekstra
+core-presence-room = Ser sammen
+core-presence-in-room = I et rum
+core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 
 ## core/src/trackers/accounts.rs
 
@@ -838,7 +841,7 @@ core-metadata-progress-imdb-ratings = IMDb-bedømmelser
 
 core-franchise-relation-character = Fælles figurer
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = henter billeder
 
@@ -859,7 +862,7 @@ core-transfer-wrong-format = ikke et { $format }-dokument
 
 core-transfer-imported = Indlæste dit bibliotek fra filen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = ingen fil { $id } i biblioteket
 core-library-file-elsewhere-not-removed = fil { $id } hører til en anden serie, så intet blev fjernet
@@ -889,7 +892,7 @@ core-library-watched-removed =
        *[trash] flyttet til papirkurven
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Den ene fil her læses som { $read ->
@@ -911,7 +914,7 @@ core-library-fix-numbered-on = Afsnit { $from } ligner denne posts { $to }, numm
 core-library-runs-span = { $first } til { $last }
 core-library-runs-list = { $init } og { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = et afsnitsnummer går fra 0 til 10000
 core-library-fix-season-range = en sæson går op til 200
@@ -928,7 +931,7 @@ core-library-fixed =
        *[other] Rettede, hvordan { $count } filer fra { $title } læses.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = Skjulte { $title }.
 core-library-back-one = { $title } er tilbage.
@@ -937,12 +940,12 @@ core-library-back-many = { $count } serier er tilbage.
 core-library-episode-count-set = { $title } har nu { $count } afsnit.
 core-library-episode-count-cleared = Ryddede antallet af afsnit for { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Ryddede datonoterne for { $title }.
 core-library-schedule-saved = Gemte { $count } datonoter for { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = en kildesti skal være absolut
 core-library-source-exists = allerede en kilde
@@ -984,7 +987,7 @@ core-library-scan-done =
         }{ $removed } mangler
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = intet svar inden for { $span }
 core-library-agent-stopped-code = den stoppede med kode { $code }
@@ -1150,7 +1153,7 @@ core-downloads-name-not-folder = { $name } er ikke et mappenavn
 core-downloads-pruned = Afmeldte { $title }, den er færdig med at blive sendt.
 core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i Indstillinger.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } er ikke en almindelig absolut sti, så intet blev fjernet
 core-downloads-refuse-root = { $path } er filsystemets rod, så intet blev fjernet
@@ -1274,6 +1277,7 @@ core-room-service = Se sammen
 core-room-not-found = Intet rum har den kode. Det er måske lukket.
 core-room-full = Det rum er fuldt.
 core-room-proto = Det relæ kører en anden version af rum. Opdater { -app-name } for at gå ind i det.
+core-room-needs-episode = Det relæ skal have et afsnit for at starte et rum. Start det fra afspilleren, eller opdater relæet.
 core-room-unreachable = Kunne ikke nå relæet: { $message }
 core-room-refused = Relæet sagde nej: { $message }
 core-room-not-in = Du er ikke i et rum.
@@ -1287,3 +1291,20 @@ core-room-member-left = { $name } forlod rummet.
 core-room-closed = Se sammen-rummet lukkede.
 core-room-lost = Mistede forbindelsen til se sammen-rummet. Prøver igen.
 core-room-back = Tilbage i se sammen-rummet.
+core-room-media-asked = Bad værten om afsnittet.
+core-room-media-cannot = Værten kan ikke dele dette afsnit lige nu.
+core-room-media-sent = Sendte afsnittets torrent til { $name }.
+core-room-media-sent-name = Sendte navnet på afsnittets udgivelse til { $name }.
+core-room-media-nothing = Værten har ingen kopi af afsnittet at dele.
+core-room-media-no-answer = Værtens app svarede ikke. Prøv igen om lidt.
+core-room-media-torrent = Henter afsnittet fra værtens torrent.
+core-room-media-searching = Søger i dine kilder efter værtens udgivelse.
+core-room-media-not-found = Ingen af dine kilder har værtens udgivelse.
+core-room-media-no-sources = Alle kilder er slået fra. Slå en til for at søge.
+core-room-media-no-start = Kunne ikke starte hentningen: { $message }
+core-room-media-client = torrentklienten tog den ikke
+core-room-media-lost = Torrentklienten mistede afsnittets hentning.
+core-room-media-stalled = Hentningen har ikke rykket sig i ti minutter. Prøv igen senere.
+core-room-media-not-in-library = Afsnittet er hentet, men det er ikke i dit bibliotek. Tjek at hentninger gemmes i en biblioteksmappe.
+core-room-media-here = Afsnittet er i dit bibliotek nu.
+core-room-media-rest-missing = Kunne ikke hente resten af serien. Kun dette afsnit hentes.

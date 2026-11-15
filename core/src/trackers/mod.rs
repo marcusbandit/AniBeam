@@ -7,18 +7,20 @@ pub mod local;
 pub mod move_up;
 pub mod oauth;
 pub mod on_hold;
-pub mod secrets;
+pub mod plan_to_watch;
+mod team;
 pub mod watching;
 pub mod writes;
 
-pub use secrets::{Secrets, StoreKind};
+pub use team::Trackers;
 
-/// How long one tracker request may take. Per request, never per call: the
-/// limiter's 429 schedule sits under this and keeps its own bounds, so a
-/// rate limit is always reported as a rate limit and never as a timeout.
-/// A user is waiting on every one of these, which is why they are capped
-/// tighter than the client's own 30 seconds.
-pub(crate) const TRACKER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+/// Where the tokens live moved down to the foundation with `Services`, which
+/// holds it (#854); the shells and tests still name it here.
+pub use crate::foundation::secrets::{Secrets, StoreKind};
+
+/// The tracker timeout and the number readers moved down to the network team,
+/// whose MAL client and Airing now read them too (#854).
+pub(crate) use crate::net::{TRACKER_TIMEOUT, as_count, as_u32};
 
 /// The account says it is connected but there is no token behind it: an
 /// AniList keyring entry the store lost, or a MAL session whose refresh has
@@ -28,16 +30,4 @@ pub(crate) const NO_TOKEN: &str = "no access token stored, reconnect in Settings
 /// [`NO_TOKEN`] in the current language, for an error a person reads.
 pub(crate) fn no_token() -> String {
     crate::i18n::tr("core-trackers-no-token", &[])
-}
-
-/// A count off a provider's JSON, which is unsigned and small: anything
-/// missing or absurd is nought rather than a wrap-around.
-pub(crate) fn as_count(value: Option<u64>) -> u32 {
-    as_u32(value).unwrap_or(0)
-}
-
-/// The same number when the provider sent one it can hold, and nothing when
-/// it sent none or sent something absurd.
-pub(crate) fn as_u32(value: Option<u64>) -> Option<u32> {
-    value.and_then(|v| u32::try_from(v).ok())
 }
