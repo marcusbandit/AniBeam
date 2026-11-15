@@ -304,7 +304,6 @@ frame-downloads-not-read = Не прочитано.
 ## HomePage
 
 home-title = Главная
-home-scan-started = Сканирование запущено
 home-ago-minutes = { $count } мин назад
 home-ago-hours = { $count } ч назад
 home-ago-days = { $count } дн. назад
@@ -367,7 +366,6 @@ home-tile-season-span = С{ $season } { $span }
 home-tile-to-watch = { $count } к просмотру
 home-day-nothing = Пусто
 home-now = Сейчас { $time }
-home-card-aired = { $episode } вышла { $ago }
 home-continue = Продолжить
 home-continue-fact = Можно продолжить: { $count }
 home-on-hold = Отложено
@@ -416,18 +414,6 @@ home-dropped-fact = { $count ->
     [many] { $count } файлов ещё на диске
    *[other] { $count } файла ещё на диске
 }
-home-out-now = Уже вышло
-home-out-now-fact = Новые серии этой недели, по данным AniList
-home-popular = Популярное в этом сезоне
-home-add-folder-title = Сюда попадут и ваши сериалы
-home-add-folder-body = Добавьте папку с аниме, и на главной появится то, что вы смотрите.
-home-add-folder-button = Добавить папку
-home-empty-scanned-title = В папках пока ничего не найдено
-home-empty-title = Сериалов пока нет
-home-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-home-empty-body = Добавьте папку с аниме, и библиотека заполнится сама.
-home-scan-all = Сканировать всё
-home-library-settings = Настройки библиотеки
 home-failed-title = Главная не загрузилась
 home-failed-body = Anibeam не смог прочитать библиотеку. Попробуйте ещё раз через минуту.
 
@@ -500,9 +486,6 @@ onboarding-search-ready = { $count ->
     [many] { $count } источников готовы к поиску.
    *[other] { $count } источника готовы к поиску.
 }
-onboarding-search-none = В Anibeam нет своих источников. Их добавляют из репозитория источников: это ссылка, которой с вами поделились, её нужно вставить в «Настройки, Загрузки».
-onboarding-sources-after = Откроется после настройки
-onboarding-sources-add = Добавить репозиторий после настройки
 onboarding-fetch-title = Кто скачивает
 onboarding-fetch-auto = Пусть Anibeam всё сделает
 onboarding-fetch-recommended = Рекомендуется
@@ -533,7 +516,7 @@ onboarding-ready-lists = Ваш список
 onboarding-ready-lists-as = { $tracker }, как { $user }
 onboarding-ready-lists-none = Пока не подключено. Это можно сделать в «Настройки, Аккаунты».
 onboarding-ready-downloads = Загрузки
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Источников пока нет
     [one] { $sources } источник
     [few] { $sources } источника
@@ -545,9 +528,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Всё готово.
     [opens] Дальше откроется «Настройки, Загрузки».
-   *[both] Оба находятся в «Настройки, Загрузки».
+   *[sources] Добавьте список источников, чтобы искать.
 }
-onboarding-ready-open-downloads = Открыть «Настройки, Загрузки»
 onboarding-ready-set-up = Настроить сейчас
 
 ## Rail.qml
@@ -780,7 +762,30 @@ library-group-season = Сезон
 library-group-type = Тип
 library-group-genre = Жанр
 library-group-watch-state = Статус просмотра
-library-scan-started = Сканирование запущено
+library-empty-none = Библиотека пуста
+library-empty-scanning = { $count ->
+    [1] Ищем видео в папке
+   *[other] Ищем видео в папках
+}
+library-empty-nothing = { $count ->
+    [1] В этой папке пока нет видео
+   *[other] В этих папках пока нет видео
+}
+library-empty-missing = { $count ->
+    [1] Этой папки нет
+   *[other] Этих папок нет
+}
+library-empty-more-folders = { $count ->
+    [one] и ещё { $count } папка
+    [few] и ещё { $count } папки
+    [many] и ещё { $count } папок
+   *[other] и ещё { $count } папки
+}
+library-empty-add-folder = Добавить папку
+library-empty-get = Найти, что посмотреть
+library-empty-scan-again = Сканировать снова
+library-empty-settings = Настройки библиотеки
+library-empty-pick-folder = Выберите папку для библиотеки
 library-tab-all = Все
 library-tab-series = Сериалы
 library-tab-movies = Фильмы
@@ -848,18 +853,6 @@ library-rescan = Пересканировать
 library-find-match = Найти совпадение
 library-find-match-tip = Искать каждый выбранный сериал без привязки
 library-all-matched = У всех выбранных есть привязка
-library-empty-scanned-title = В папках пока ничего не найдено
-library-empty-title = Библиотека пуста
-library-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-library-empty-body = Добавьте папку с аниме, и библиотека заполнится сама, или импортируйте экспорт Anibeam.
-library-scan-all = Сканировать всё
-library-add-folder = Добавить папку
-library-settings = Настройки библиотеки
-library-import = Импорт
-library-import-title = Импорт экспорта Anibeam
-library-import-filter-export = Экспорт Anibeam (*.json)
-library-import-filter-all = Все файлы (*)
-library-import-started = Импорт запущен
 
 ## MetadataPage.qml
 
@@ -1878,6 +1871,7 @@ downloads-error-unknown = Что-то пошло не так. Попробуйт
 downloads-search-all-off = Все источники выключены. Включите один, чтобы искать.
 downloads-turn-on = Включить { $name }
 downloads-search-no-sources = Пока нет источников для поиска. Добавьте список источников в настройках, раздел «Загрузки».
+downloads-no-sources = Пока нет источников для поиска
 downloads-search-none-started = Ни один источник не смог начать поиск. Попробуйте ещё раз через минуту.
 downloads-auto-resolution = Сужено до { $resolution }, лучшего из доступного
 downloads-search-one-failed = Поиск в { $name } не сработал. Попробуйте снова или ищите в другом источнике.
@@ -2399,7 +2393,6 @@ player-not-now = Не сейчас
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Списки источников
-endpoint-repos-panel-helper = Список источников: подписанный набор мест для поиска, по адресу. Anibeam проверяет подпись и показывает ключ до сохранения, затем вы ставите нужное. Оно попадёт в «Источники поиска» выше.
 endpoint-repos-panel-could-not-start = Anibeam не смог это запустить. Попробуйте ещё раз через минуту.
 endpoint-repos-panel-needs-value = Для { $name } нужно значение
 endpoint-repos-panel-values-of = Значения { $name }
@@ -2413,19 +2406,9 @@ endpoint-repos-panel-needs-fields = Перед поиском нужно ука�
 endpoint-repos-panel-no-longer-offered = Больше не предлагается списком источников.
 endpoint-repos-panel-update-requests-to = Обновление отправляет запросы на { $host }.
 endpoint-repos-panel-unreadable = Этот список не читается. «Обновить списки» попробует снова.
-endpoint-repos-panel-add-list = Добавить список источников
-endpoint-repos-panel-add-list-helper = Адрес его индексного файла или путь к нему на этом компьютере.
 endpoint-repos-panel-checking = Проверка
 endpoint-repos-panel-add = Добавить
-endpoint-repos-panel-trust-question = Доверять { $name }?
 endpoint-repos-panel-fingerprint = Отпечаток ключа  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    Источников: { $count }, подписано. Его источники решают, куда уходят ваши поиски; доверяйте списку, только если доверяете его автору.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    Источников: { $count }, подписано, уже доверенный. Его источники решают, куда уходят ваши поиски; доверяйте списку, только если доверяете его автору.
-endpoint-repos-panel-trust = Доверять
 endpoint-repos-panel-saving = Сохранение
 endpoint-repos-panel-install = Установить
 endpoint-repos-panel-update = Обновить
@@ -2440,6 +2423,22 @@ endpoint-repos-panel-by-hand-helper = Сайт не из списков: лен�
 endpoint-repos-panel-name = Имя
 endpoint-repos-panel-refreshing = Обновление
 endpoint-repos-panel-refresh = Обновить списки
+
+## SourceAttach.qml
+
+source-attach-placeholder = Вставьте адрес списка источников
+source-attach-what = Что такое список источников?
+source-attach-recent = Использовались раньше
+source-attach-added = { $count ->
+    [one] { $name } добавлен: включено источников: { $count }.
+   *[other] { $name } добавлен: включено источников: { $count }.
+}
+source-attach-added-none = { $name } добавлен. Новых источников для включения нет.
+source-attach-waiting = { $count ->
+    [one] { $names } сначала нужно значение.
+   *[other] { $names } сначала нужны значения.
+}
+source-attach-fill-in = Заполнить
 
 ## ScheduleSheet.qml
 
@@ -2636,6 +2635,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Все клавиши Anibeam
 settings-status-downloads-unread = Ещё не прочитано
+settings-status-downloads-no-sources = Источников пока нет
 settings-status-downloads-answered = qBittorrent ответил
 settings-status-downloads-missing = Помощник поиска не установлен
 settings-status-downloads-unconnected = Ещё не подключено
@@ -2811,7 +2811,7 @@ settings-downloads-torrent-answered = { $client } { $version } ответил.
 settings-downloads-torrent-failed = { $client } не подключился. Проверьте адрес и пароль выше и повторите.
 settings-downloads-torrent-untried = Ещё не проверялось.
 settings-downloads-mode-existing = Ваш собственный qBittorrent с включённым веб-интерфейсом.
-settings-downloads-mode-managed = Anibeam запускает свой qBittorrent, который качает в ~/Downloads/Anime. Он продолжает работать после выхода из Anibeam, поэтому подписки продолжают качать.
+settings-downloads-mode-managed = Anibeam запускает свой qBittorrent. Он продолжает работать после выхода из Anibeam, поэтому подписки продолжают качать.
 settings-downloads-mode-auto = Использует qBittorrent по адресу ниже или свой.
 settings-downloads-password-saved = Пароль для этого клиента сохранён здесь.
 settings-downloads-password-anirss = Используется пароль, сохранённый помощником поиска; сохраните пароль здесь, чтобы не зависеть от него.
@@ -2835,6 +2835,11 @@ settings-downloads-username = Имя пользователя
 settings-downloads-password = Пароль
 settings-downloads-secret-saved = Сохранён
 settings-downloads-secret-unset = Не задан
+settings-downloads-save-to = Сохранять в
+settings-downloads-save-to-client = Собственная папка qBittorrent
+settings-downloads-save-to-choose = Выбрать папку
+settings-downloads-save-to-reset = Сбросить
+settings-downloads-save-to-pick = Сохранять загрузки в
 settings-downloads-connection = Подключение
 settings-downloads-open-config = Открыть его конфиг
 settings-downloads-details = Подробности
@@ -2889,7 +2894,6 @@ settings-downloads-sources-title = Источники поиска
 settings-downloads-sources-helper = Куда идёт поиск, по порядку. Пустой источник передаёт поиск следующему.
 settings-downloads-sources-empty = Источники пока не настроены
 settings-downloads-sources-connect = Подключите помощника поиска, чтобы увидеть их
-settings-downloads-sources-empty-helper = Добавьте список ниже, источники появятся тут.
 settings-downloads-config-file = Файл настроек помощника поиска
 settings-downloads-config-native-helper = Папки сохранения, теги и правила выбора лучшего: Anibeam сам следует им при запуске помощника. Источники тут только для него.
 settings-downloads-config-helper = Содержит источники, папки сохранения, теги и правила выбора лучшего.

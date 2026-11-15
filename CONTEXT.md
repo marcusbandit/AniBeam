@@ -286,6 +286,10 @@ _Avoid_: remove RSS, delete subscription
 Every torrent the client holds for one folder, as one entry: the series that folder fills when the library has it, else the folder by name. Its state is what the client is doing with the torrents: downloading, seeding, done, stopped, or files missing (the torrents point at a folder that is not there). Removing it takes the torrents, and ticked, the files to the trash; a subscription it has stays.
 _Avoid_: group, torrent list
 
+**Save folder**:
+Where a show that is not in the library yet downloads to: a folder of its own under it. The first that has one wins: a folder picked in Settings, then, for the managed torrent client, the first library folder still on disk (#1005), then the search helper's config, then the client's own default. A show already in the library downloads into its own folder instead. The user's own client never gets the library folder.
+_Avoid_: save base, download folder
+
 **Show link**:
 How a subscription or a torrent finds its library series: by the save folder's exact path, else its last component, else that component with case and punctuation dropped. A client can name the library's folder under another mount, and anirss can spell a rule's folder a little differently.
 _Avoid_: match (that is the metadata match), mapping
