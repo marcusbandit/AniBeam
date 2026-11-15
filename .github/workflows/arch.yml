@@ -3,26 +3,11 @@ name: Arch
 # The tarball the AUR's anibeam-bin installs (#235). It is built in an Arch container, not on
 # the Ubuntu runner linux.yml uses, because the binary links against the system's Qt, MpvQt and
 # libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
-# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256; a pull request that touches
-# the packaging builds it too, to show it still packs.
-# The pull request paths are linux.yml's: whatever can break the shell's build in the
-# container breaks it here too, and a release finds out only if a pull request did not.
+# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256, and nightly.yml calls it so
+# a rolling Arch update that breaks the container build shows up on the next nightly rather
+# than on a release. A pull request does not run it (#993); run it from the Actions tab (Run
+# workflow) to try a packaging change.
 on:
-  pull_request:
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'library/**'
-      - 'releases/**'
-      - 'metadata/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/arch.yml'
   workflow_dispatch:
   workflow_call:
     inputs:

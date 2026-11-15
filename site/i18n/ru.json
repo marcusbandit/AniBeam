@@ -50,6 +50,7 @@
  "Copy": "Копировать",
  "For Linux and Mac": "Для Linux и Mac",
  "What's new": "Что нового",
+ "Watch together": "Совместный просмотр",
  "Report a problem": "Сообщить об ошибке",
  "Download Anibeam for Linux, Mac, Windows and Android. Free and open source.": "Скачайте Anibeam для Linux, Mac, Windows и Android. Бесплатно, код открыт.",
  "Release channel": "Канал релизов",
@@ -86,5 +87,8 @@
  "Download IPA": "Скачать IPA",
  "Nightly test build, unsigned, for sideloading": "Тестовая сборка nightly, без подписи, для сайдлоада",
  "Unsigned, for sideloading": "Без подписи, для сайдлоада",
- "Or install this build once in": "Или установить эту сборку один раз в"
+ "Or install this build once in": "Или установить эту сборку один раз в",
+ "Every platform": "Все платформы",
+ "Installer": "Установщик",
+ "From a terminal": "Из терминала"
 }
