@@ -6,6 +6,8 @@ use std::sync::Arc;
 use crate::cast::Cast;
 use crate::downloads::Downloads;
 use crate::foundation::services::Services;
+use crate::library::Library;
+use crate::metadata::Metadata;
 use crate::net::Net;
 use crate::playback::session::Sessions;
 use crate::presence::Presence;
@@ -17,6 +19,10 @@ pub struct Playback {
     pub(crate) net: Arc<Net>,
     pub(crate) trackers: Arc<Trackers>,
     pub(crate) downloads: Arc<Downloads>,
+    /// The library a room's Get media brings a file into, and the matching
+    /// that points it at the room's show (#889).
+    pub(crate) library: Arc<Library>,
+    pub(crate) metadata: Arc<Metadata>,
     /// Every open playback session, and the counter that names the next
     /// one. A session lives in memory for one run of the player: the rows
     /// its rules write are the record, and none of it survives a restart.
@@ -37,6 +43,8 @@ impl Playback {
         net: Arc<Net>,
         trackers: Arc<Trackers>,
         downloads: Arc<Downloads>,
+        library: Arc<Library>,
+        metadata: Arc<Metadata>,
     ) -> Playback {
         let presence = Presence::new(services.bus.clone());
         Playback {
@@ -44,6 +52,8 @@ impl Playback {
             net,
             trackers,
             downloads,
+            library,
+            metadata,
             sessions: Arc::new(Sessions::default()),
             presence,
             cast: Cast::default(),
