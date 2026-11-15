@@ -140,21 +140,33 @@ pub fn without_secrets(url: &str) -> String {
     let url = &without_userinfo(url);
     let (base, params) = crate::redact::split_params(url);
     let mut out = base.to_string();
-    // The `?` or `#` of a dropped pair, which the next kept pair stands behind instead.
+    // Whether `out` has opened its query and its fragment yet.
+    let (mut query, mut fragment) = (false, false);
+    // The `?` or `#` that opened the query or the fragment with a dropped pair, which the
+    // next kept pair stands behind instead of its own `&` or `;`.
     let mut lead: Option<&str> = None;
     for (sep, pair) in params {
-        let name = pair.split('=').next().unwrap_or("");
-        let opens = matches!(sep, "?" | "#");
-        if crate::redact::secret_param(name).is_some() {
-            if opens {
-                lead = Some(sep);
+        let secret = pair
+            .split_once('=')
+            .is_some_and(|(name, _)| crate::redact::secret_param(name).is_some());
+        if secret {
+            if sep == "#" && !fragment {
+                lead = Some("#");
+            } else if sep == "?" && !query && !fragment {
+                lead = Some("?");
             }
             continue;
         }
-        out.push_str(match lead.take() {
-            Some(lead) if !opens => lead,
+        let sep = match lead.take() {
+            Some(lead) if !matches!(sep, "?" | "#") => lead,
             _ => sep,
-        });
+        };
+        match sep {
+            "#" => fragment = true,
+            "?" if !fragment => query = true,
+            _ => {}
+        }
+        out.push_str(sep);
         out.push_str(pair);
     }
     out
@@ -284,11 +296,11 @@ mod tests {
             "https://h.example/feed?q=x"
         );
         assert_eq!(
-            without_secrets("https://h.example/feed?q=x;passkey=K;c=1"),
-            "https://h.example/feed?q=x;c=1"
+            without_secrets("https://h.example/feed?q=x;passkey=K&c=1"),
+            "https://h.example/feed?q=x&c=1"
         );
         assert_eq!(
-            without_secrets("https://h.example/feed?apikey=K;q=x#token=T&f=1"),
+            without_secrets("https://h.example/feed?apikey=K&q=x#token=T&f=1"),
             "https://h.example/feed?q=x#f=1"
         );
         assert_eq!(
@@ -297,6 +309,42 @@ mod tests {
         );
         let anchored = "https://h.example/feed?q=x#latest";
         assert_eq!(without_secrets(anchored), anchored);
+        let anchored = "https://h.example/feed#key";
+        assert_eq!(without_secrets(anchored), anchored);
+    }
+
+    #[test]
+    fn a_key_with_a_semicolon_or_a_question_mark_in_it_goes_whole() {
+        // Its value runs to the next & or #, so no tail of it is kept as a pair of its own.
+        assert_eq!(
+            without_secrets("https://h.example/feed?password=ab;cd&q=1"),
+            "https://h.example/feed?q=1"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/feed?apikey=K;q=x"),
+            "https://h.example/feed"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/cb#token=K?x=1"),
+            "https://h.example/cb"
+        );
+    }
+
+    #[test]
+    fn a_dropped_key_leaves_the_rest_where_it_was() {
+        // A query already open keeps its &, and a fragment keeps its #.
+        assert_eq!(
+            without_secrets("https://h.example/feed?q=x?apikey=K&c=1"),
+            "https://h.example/feed?q=x&c=1"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/feed?apikey=K#a=1&token=T&b=2"),
+            "https://h.example/feed#a=1&b=2"
+        );
+        assert_eq!(
+            without_secrets("https://h.example/feed?apikey=K&amp;q=x"),
+            "https://h.example/feed?q=x"
+        );
     }
 
     use super::*;

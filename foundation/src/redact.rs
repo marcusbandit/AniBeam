@@ -51,20 +51,42 @@ fn separator_at(text: &str) -> Option<&'static str> {
 /// `url` cut at its parameters: the address up to its first `?` or `#`, then each
 /// parameter after it with the separator in front of it. Joining the pieces back in order
 /// gives `url`, so a caller can keep, mask or drop each pair and rebuild the rest.
+///
+/// A secret parameter's value runs to the next `&` or `#`, the way [`scrub_secrets`] reads
+/// it, so a `;` or `?` inside a password stays part of the one pair rather than starting a
+/// harmless-looking one that would carry the rest of it.
 pub fn split_params(url: &str) -> (&str, Vec<(&'static str, &str)>) {
     let Some(start) = url.find(['?', '#']) else {
         return (url, Vec::new());
     };
     let (base, mut rest) = url.split_at(start);
-    let mut params = Vec::new();
+    let mut params: Vec<(&'static str, &str)> = Vec::new();
+    // Where the pair being read starts in `url`, while it is a secret one.
+    let mut secret_from: Option<usize> = None;
     while let Some(sep) = separator_at(rest) {
+        let at = url.len() - rest.len();
         let after = &rest[sep.len()..];
         let end = after
             .char_indices()
             .find(|(i, _)| separator_at(&after[*i..]).is_some())
             .map_or(after.len(), |(i, _)| i);
-        params.push((sep, &after[..end]));
+        let pair = &after[..end];
         rest = &after[end..];
+        let ends_value = sep.starts_with('&') || sep == "#";
+        match secret_from {
+            Some(from) if !ends_value => {
+                // Still the secret's value: widen the last pair to take this piece too.
+                let (last_sep, _) = params.pop().expect("a secret pair was read");
+                let to = url.len() - rest.len();
+                params.push((last_sep, &url[from..to]));
+            }
+            _ => {
+                let name = pair.split('=').next().unwrap_or("");
+                secret_from = (pair.contains('=') && secret_param(name).is_some())
+                    .then_some(at + sep.len());
+                params.push((sep, pair));
+            }
+        }
     }
     (base, params)
 }
@@ -97,7 +119,8 @@ static LOGIN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
 });
 
 /// A secret parameter's value, written plain: `?apikey=abc`, `&passkey=abc`, after an
-/// `&amp;` in quoted XML, or in a fragment (`#token=abc`).
+/// `&amp;` in quoted XML, or in a fragment (`#token=abc`). The value runs to the next `&`
+/// or `#`, the same end [`split_params`] gives a secret pair.
 static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(&format!(
         r#"(?i)({}(?:{})=)[^&#\s"'<>]*"#,
@@ -173,7 +196,7 @@ mod tests {
 
     #[test]
     fn an_address_splits_at_every_parameter_separator_and_joins_back_whole() {
-        let url = "https://h/a;b?q=x&amp;apikey=K;sig=S&p=1#token=T";
+        let url = "https://h/a;b?q=x&amp;apikey=K&sig=S;p=1#token=T";
         let (base, params) = split_params(url);
         assert_eq!(base, "https://h/a;b");
         assert_eq!(
@@ -181,10 +204,14 @@ mod tests {
             vec![
                 ("?", "q=x"),
                 ("&amp;", "apikey=K"),
-                (";", "sig=S"),
-                ("&", "p=1"),
+                ("&", "sig=S;p=1"),
                 ("#", "token=T"),
             ]
+        );
+        // Any other pair ends at a ; or ?.
+        assert_eq!(
+            split_params("https://h/f?q=x;c=1?d=2"),
+            ("https://h/f", vec![("?", "q=x"), (";", "c=1"), ("?", "d=2")])
         );
         let joined: String = std::iter::once(base.to_string())
             .chain(params.iter().map(|(sep, pair)| format!("{sep}{pair}")))

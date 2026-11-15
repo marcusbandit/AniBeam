@@ -355,7 +355,7 @@ fn gone(name: &str) -> String {
 }
 
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
-/// query parameter, and the password of a `user:password@` login.
+/// parameter, in the query or the fragment, and the password of a `user:password@` login.
 pub fn mask(url: &str) -> String {
     let (base, params) = crate::redact::split_params(url);
     let hidden = |part: &str| part.is_empty() || part.starts_with('{');
@@ -592,8 +592,13 @@ mod tests {
             "https://h.example/feed?q=x#token=..."
         );
         assert_eq!(
-            mask("https://h.example/feed?q={query};passkey=K;c=1"),
-            "https://h.example/feed?q={query};passkey=...;c=1"
+            mask("https://h.example/feed?q={query};passkey=K&c=1"),
+            "https://h.example/feed?q={query};passkey=...&c=1"
+        );
+        // A key's value runs to the next & or #, so none of it shows after a ; or ? in it.
+        assert_eq!(
+            mask("https://h.example/feed?password=ab;cd?ef&q=1"),
+            "https://h.example/feed?password=...&q=1"
         );
         assert_eq!(
             mask("https://h.example/cb#sig=S"),
