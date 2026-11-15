@@ -24,6 +24,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
+**Build only the crate you changed.** The core is splitting into one crate per team (#854), and each of `contract/`, `foundation/`, `net/` and `library/` builds and tests on its own. Iterate with `cargo test -p anibeam-library` (or `check`/`clippy -p`), not `--workspace` and not the shell; run the whole workspace once before the PR.
+
 The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld. The owner's launcher entry (`com.marcusrosado.AniBeam.desktop`) runs `target/release/anibeam` with `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF` pointed at `apps/linux/`, so rebuild the release binary when a feature is done; source edits are invisible to the launcher until then.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
