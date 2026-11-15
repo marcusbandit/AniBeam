@@ -521,6 +521,9 @@ core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Samen kijken
+core-presence-in-room = In een kamer
+core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
 
 ## core/src/trackers/accounts.rs
 

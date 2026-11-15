@@ -67,6 +67,7 @@ QtObject {
         var w = waiting
         waiting = null
         if (w && w.kind === "create") create(w.session)
+        else if (w && w.kind === "letin") letIn(w.user)
         else if (w && w.kind === "join") join(w.code)
         return true
     }
@@ -104,6 +105,27 @@ QtObject {
         if (needsName) { waiting = { kind: "join", code: code }; return }
         episode = null
         callAsync("join", "RoomJoin", { code: code })
+    }
+    // Discord (#966): someone who asked to join is let in, into this room or one started
+    // for what plays. It waits on the relay like Create, and on a name like Create too.
+    // False while another room call waits on the relay: the ask stays up to press again
+    function letIn(user) {
+        if (busy !== "") return false
+        error = ""
+        if (needsName) { waiting = { kind: "letin", user: user }; frame.openRoom(); return true }
+        callAsync(inRoom ? "letin" : "create", "DiscordAnswer", { user_id: user, allow: true })
+        if (!inRoom) frame.openRoom()
+        return true
+    }
+    // Whether this build can show anything on Discord, and the switch is on
+    property bool discordAvailable: false
+    readonly property bool onDiscord: discordAvailable && !!Door.preferences.discord_presence
+    // Whether anyone on Discord may join this room without asking; each room starts invite only
+    property bool discordOpen: false
+    function setDiscordOpen(open) {
+        var r = Door.call("DiscordSetRoomOpen", { open: open })
+        if (r.error) { frame.fail(r.error); return }
+        discordOpen = !!r.reply.room_open
     }
     function cancelWaiting() { waiting = null; error = "" }
     function leave() {
@@ -215,6 +237,8 @@ QtObject {
     function refresh() {
         var r = Door.call("RoomStatus", {})
         if (!r.error) info = r.reply.room || null
+        var p = Door.call("GetPresence", {})
+        if (!p.error) discordAvailable = !!p.reply.available
     }
 
     property Connections events: Connections {
@@ -222,7 +246,9 @@ QtObject {
         function onPreferencesChanged() { root.savedName = "" }
         function onRoomChanged(room) {
             var was = root.info ? String(root.info.fetch || "") : ""
+            var wasCode = root.info ? root.info.code : ""
             root.info = room && room.code ? room : null
+            if (!root.info || root.info.code !== wasCode) root.discordOpen = false
             if (!root.info) { root.episode = null; return }
             // The room moved on: what was found for the last episode no longer holds
             if (root.episode && !root.sameEpisode(root.episode.episode, root.info.episode)) root.episode = null

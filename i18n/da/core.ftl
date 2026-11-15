@@ -520,6 +520,9 @@ core-first-run-not-absolute = videomappen skal være en absolut sti
 ## core/src/presence/mod.rs
 
 core-presence-extra = Ekstra
+core-presence-room = Ser sammen
+core-presence-in-room = I et rum
+core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 
 ## core/src/trackers/accounts.rs
 

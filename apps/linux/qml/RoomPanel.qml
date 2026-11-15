@@ -302,6 +302,20 @@ Item {
                         msg: "room-panel-copy"; icon: "copy"; small: true; takesFocus: false
                         onClicked: frame.copyText(root.info.link, words.t("room-panel-link-copied"))
                     }
+                    // Discord (#966): an open room can be joined from Discord with no ask
+                    Column {
+                        visible: frame.room.onDiscord
+                        spacing: theme.space(1)
+                        Label { msg: "room-panel-discord"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                        Seg {
+                            objectName: "room-panel-discord-seg"
+                            small: true
+                            accessibleName: words.t("room-panel-discord")
+                            options: [words.t("room-panel-discord-invite"), words.t("room-panel-discord-open")]
+                            index: frame.room.discordOpen ? 1 : 0
+                            onPicked: function(i) { frame.room.setDiscordOpen(i === 1) }
+                        }
+                    }
                 }
                 // Who is here, the offset, and Leave
                 Item {

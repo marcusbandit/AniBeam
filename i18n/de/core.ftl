@@ -520,6 +520,9 @@ core-first-run-not-absolute = der Videoordner muss ein absoluter Pfad sein
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Gemeinsam schauen
+core-presence-in-room = In einem Raum
+core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
 
 ## core/src/trackers/accounts.rs
 
