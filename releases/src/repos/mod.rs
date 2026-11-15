@@ -1876,11 +1876,7 @@ pub fn endpoint_http(services: &Services) -> Paced {
 mod tests {
     use super::*;
 
-    use anibeam_foundation::events::EventBus;
-    use anibeam_foundation::jobs::Jobs;
-    use anibeam_foundation::paths::CorePaths;
-    use anibeam_foundation::secrets::Secrets;
-    use anibeam_foundation::store::Store;
+    use anibeam_foundation::testing::Running;
     use anibeam_net::FakeHttp;
 
     use crate::Searcher;
@@ -1890,14 +1886,13 @@ mod tests {
     const MIN_VERSION: &str = "0.6.0";
 
     /// What these tests need of a running core: the services over a store in a temporary
-    /// directory, with the fake transport, and the releases team over them, linked to a
-    /// searcher that answers as a fresh core's downloads do. The runtime lives as long as
-    /// it does.
+    /// directory, opened as the core opens them, with the fake transport, and the releases
+    /// team over them, linked to a searcher that answers as a fresh core's downloads do.
     struct Fake {
         services: Arc<Services>,
         releases: Arc<Releases>,
         _searcher: Arc<FreshDownloads>,
-        runtime: Option<tokio::runtime::Runtime>,
+        running: Running,
     }
 
     /// The downloads of a core that has just opened: the native engine, the default, and
@@ -1918,24 +1913,8 @@ mod tests {
 
     impl Fake {
         fn open(dir: &std::path::Path, http: Arc<FakeHttp>) -> Fake {
-            let paths = CorePaths::under(dir);
-            let store = Store::open(&paths.db_path()).unwrap();
-            let bus = EventBus::new(store.clone()).unwrap();
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .unwrap();
-            let handle = runtime.handle().clone();
-            let services = Arc::new(Services {
-                secrets: Secrets::file_only(paths.secrets_path()),
-                paths,
-                store,
-                jobs: Jobs::new(handle.clone(), bus.clone()),
-                bus,
-                handle,
-                http,
-            });
+            let running = Running::open(dir, http);
+            let services = running.services.clone();
             let releases = Arc::new(Releases::new(services.clone()));
             let searcher = Arc::new(FreshDownloads);
             releases
@@ -1945,16 +1924,13 @@ mod tests {
                 services,
                 releases,
                 _searcher: searcher,
-                runtime: Some(runtime),
+                running,
             }
         }
 
-        /// As `Core::shutdown` does: the jobs are cancelled before the runtime goes.
-        fn shutdown(mut self) {
-            self.services.jobs.cancel_all();
-            if let Some(runtime) = self.runtime.take() {
-                runtime.shutdown_background();
-            }
+        /// As `Core::shutdown` ends: the jobs are cancelled before the runtime goes.
+        fn shutdown(self) {
+            self.running.shutdown();
         }
     }
 
