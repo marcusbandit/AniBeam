@@ -17,7 +17,7 @@ Anibeam browses, plays and tracks a local anime library: it scans configured fol
 Cargo builds everything. There is no Bun or Node in the tree any more.
 
 ```bash
-cargo build --release -p anibeam        # the Qt shell, target/release/anibeam
+cargo build --release -p anibeam        # the Qt shell for shipping; to try a change, see below
 cargo build --release -p anibeam-cli    # the terminal shell over the same core
 cargo test --workspace                  # unit tests plus core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
@@ -28,15 +28,20 @@ cargo fmt --all --check
 
 The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld.
 
-**A QML-only change needs no cargo build.** The owner tries branches in AniBeam Dev: `~/.local/opt/anibeam-dev`, launched by `anibeam-dev` and the `com.marcusrosado.AniBeam.Dev.desktop` entry. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads its QML and themes from that folder through `ANIBEAM_QML_DIR` and `ANIBEAM_THEMES_DIR`. When a branch changes nothing outside `apps/linux/qml/` and `apps/linux/themes/`, copy them in and restart it. That takes seconds:
+**A QML-only change needs no cargo build.** Where a box has an AniBeam Dev install (`~/.local/opt/anibeam-dev`, launched by `anibeam-dev`), the branch is tried there. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads `qml/`, `themes/` and `mpv.conf` from that folder through `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF`. When a branch changes nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf`, copy them in and restart it. That takes seconds:
 
 ```bash
-rsync -a --delete apps/linux/qml/ ~/.local/opt/anibeam-dev/qml/
-rsync -a --delete apps/linux/themes/ ~/.local/opt/anibeam-dev/themes/
-pkill -f "$HOME/.local/opt/anibeam-dev/anibeam"; setsid -f anibeam-dev >/dev/null 2>&1
+dev=~/.local/opt/anibeam-dev
+rsync -a --delete apps/linux/qml/ "$dev/qml/"
+rsync -a --delete apps/linux/themes/ "$dev/themes/"
+cp apps/linux/mpv.conf "$dev/mpv.conf"
+pkill -f "$dev/anibeam"; pidwait -f "$dev/anibeam"
+setsid -f anibeam-dev >"$XDG_RUNTIME_DIR/anibeam-dev.log" 2>&1
 ```
 
-QML that reads a bridge property the installed binary lacks fails at load with an error on stderr. Then the change needs Rust after all. A branch that touches Rust needs `cargo build --profile tester -p anibeam --features dev-qml` and the binary copied in from `target/tester/anibeam`. Never run a release build just to look at a change.
+Only one AniBeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
+
+A branch that touches Rust takes `cargo build --profile tester -p anibeam --features dev-qml`: copy `target/tester/anibeam` into the install along with the three steps above, then restart. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
