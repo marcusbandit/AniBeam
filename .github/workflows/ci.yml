@@ -127,6 +127,11 @@ jobs:
       - name: Clippy (playback alone)
         run: cargo clippy --locked -p anibeam-playback --all-targets -- -D warnings
 
+      # Casting and its tests sit behind the crate's own `cast` feature, for the same reason as
+      # the downloads' phone engine above.
+      - name: Clippy (playback with cast)
+        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
+
       # Only the phone build compiles the core's phone and cast features, and no other
       # workflow builds the phone, so without this a desktop change can break the APK and
       # stay green (#309). The host target is enough: these features need no NDK.
