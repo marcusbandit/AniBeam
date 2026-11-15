@@ -316,7 +316,6 @@ frame-downloads-not-read = Nie odczytano.
 ## HomePage
 
 home-title = Start
-home-scan-started = Skanowanie ruszyło
 home-ago-minutes = { $count } min temu
 home-ago-hours = { $count } godz. temu
 home-ago-days = { $count } d temu
@@ -379,7 +378,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } do obejrzenia
 home-day-nothing = Nic
 home-now = Teraz { $time }
-home-card-aired = { $episode } wyszedł { $ago }
 home-continue = Kontynuuj
 home-continue-fact = Seriale do kontynuowania: { $count }
 home-on-hold = Wstrzymane
@@ -428,18 +426,6 @@ home-dropped-fact = { $count ->
     [many] { $count } plików wciąż na dysku
    *[other] { $count } pliku wciąż na dysku
 }
-home-out-now = Już wyszło
-home-out-now-fact = Nowe odcinki w tym tygodniu, z AniList
-home-popular = Popularne w tym sezonie
-home-add-folder-title = Twoje seriale też tu trafią
-home-add-folder-body = Dodaj folder z anime, a Start wypełni się tym, co oglądasz.
-home-add-folder-button = Dodaj folder
-home-empty-scanned-title = W folderach jeszcze nic nie znaleziono
-home-empty-title = Jeszcze brak seriali
-home-empty-scanned-body = Anibeam nie znalazł seriali ani filmów w obserwowanych folderach. Przeskanuj je ponownie albo sprawdź foldery w Ustawieniach.
-home-empty-body = Dodaj folder z anime, a biblioteka wypełni się sama.
-home-scan-all = Skanuj wszystko
-home-library-settings = Ustawienia biblioteki
 home-failed-title = Start się nie wczytał
 home-failed-body = Anibeam nie mógł teraz odczytać biblioteki. Spróbuj za chwilę.
 
@@ -806,7 +792,30 @@ library-group-season = Sezon
 library-group-type = Typ
 library-group-genre = Gatunek
 library-group-watch-state = Stan oglądania
-library-scan-started = Skanowanie ruszyło
+library-empty-none = Biblioteka jest pusta
+library-empty-scanning = { $count ->
+    [1] Szukam filmów w folderze
+   *[other] Szukam filmów w folderach
+}
+library-empty-nothing = { $count ->
+    [1] W tym folderze nie ma jeszcze filmów
+   *[other] W tych folderach nie ma jeszcze filmów
+}
+library-empty-missing = { $count ->
+    [1] Tego folderu nie ma
+   *[other] Tych folderów nie ma
+}
+library-empty-more-folders = { $count ->
+    [one] i jeszcze { $count } folder
+    [few] i jeszcze { $count } foldery
+    [many] i jeszcze { $count } folderów
+   *[other] i jeszcze { $count } folderu
+}
+library-empty-add-folder = Dodaj folder
+library-empty-get = Znajdź coś do obejrzenia
+library-empty-scan-again = Skanuj ponownie
+library-empty-settings = Ustawienia biblioteki
+library-empty-pick-folder = Wybierz folder dla biblioteki
 library-tab-all = Wszystko
 library-tab-series = Seriale
 library-tab-movies = Filmy
@@ -874,18 +883,6 @@ library-rescan = Przeskanuj
 library-find-match = Znajdź dopasowanie
 library-find-match-tip = Szukaj każdego wybranego bez dopasowania
 library-all-matched = Każdy wybrany ma dopasowanie
-library-empty-scanned-title = W folderach jeszcze nic nie znaleziono
-library-empty-title = Biblioteka jest pusta
-library-empty-scanned-body = Anibeam nie znalazł seriali ani filmów w obserwowanych folderach. Przeskanuj je ponownie albo sprawdź foldery w Ustawieniach.
-library-empty-body = Dodaj folder z anime, a biblioteka wypełni się sama, albo zaimportuj eksport Anibeam.
-library-scan-all = Skanuj wszystko
-library-add-folder = Dodaj folder
-library-settings = Ustawienia biblioteki
-library-import = Importuj
-library-import-title = Importuj eksport Anibeam
-library-import-filter-export = Eksport Anibeam (*.json)
-library-import-filter-all = Wszystkie pliki (*)
-library-import-started = Import ruszył
 
 ## MetadataPage.qml
 

@@ -223,7 +223,6 @@ frame-downloads-not-read = 読み込まれていません。
 ## HomePage
 
 home-title = ホーム
-home-scan-started = スキャンを開始しました
 home-ago-minutes = { $count }分前
 home-ago-hours = { $count }時間前
 home-ago-days = { $count }日前
@@ -266,7 +265,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = 未視聴{ $count }話
 home-day-nothing = なし
 home-now = 現在 { $time }
-home-card-aired = { $episode }、{ $ago }公開
 home-continue = 続きを見る
 home-continue-fact = 続きのある作品が{ $count }件
 home-on-hold = 保留
@@ -305,18 +303,6 @@ home-genres = ジャンル
 home-open-library = ライブラリを開く
 home-dropped = 中止
 home-dropped-fact = ディスクに残っているファイルが{ $count }個
-home-out-now = 公開中
-home-out-now-fact = 今週の新エピソード、AniListから
-home-popular = 今期の人気作品
-home-add-folder-title = 手持ちの作品もここに
-home-add-folder-body = アニメを保存しているフォルダを追加すると、視聴中の作品がホームに並びます。
-home-add-folder-button = フォルダを追加
-home-empty-scanned-title = フォルダにはまだ何も見つかりません
-home-empty-title = まだ作品がありません
-home-empty-scanned-body = 監視中のフォルダに作品や映画が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-home-empty-body = アニメを保存しているフォルダを追加すると、ライブラリが自動で埋まります。
-home-scan-all = すべてスキャン
-home-library-settings = ライブラリの設定
 home-failed-title = ホームを読み込めませんでした
 home-failed-body = 今はライブラリを読み込めませんでした。少し待ってからもう一度お試しください。
 
@@ -576,7 +562,24 @@ library-group-season = シーズン
 library-group-type = 種類
 library-group-genre = ジャンル
 library-group-watch-state = 視聴状況
-library-scan-started = スキャンを開始しました
+library-empty-none = ライブラリは空です
+library-empty-scanning = { $count ->
+   *[other] フォルダ内の動画を探しています
+}
+library-empty-nothing = { $count ->
+   *[other] フォルダにまだ動画がありません
+}
+library-empty-missing = { $count ->
+   *[other] フォルダが見つかりません
+}
+library-empty-more-folders = { $count ->
+   *[other] ほかフォルダ{ $count }個
+}
+library-empty-add-folder = フォルダを追加
+library-empty-get = 見るものを探す
+library-empty-scan-again = もう一度スキャン
+library-empty-settings = ライブラリの設定
+library-empty-pick-folder = ライブラリのフォルダを選択
 library-tab-all = すべて
 library-tab-series = シリーズ
 library-tab-movies = 映画
@@ -632,18 +635,6 @@ library-rescan = 再スキャン
 library-find-match = 照合先を探す
 library-find-match-tip = 照合されていない作品をそれぞれ検索します
 library-all-matched = 選んだ作品はすべて照合済みです
-library-empty-scanned-title = フォルダにはまだ何も見つかりません
-library-empty-title = ライブラリは空です
-library-empty-scanned-body = 監視中のフォルダに作品や映画が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-library-empty-body = アニメを保存しているフォルダを追加するとライブラリが自動で埋まります。Anibeamのエクスポートを読み込むこともできます。
-library-scan-all = すべてスキャン
-library-add-folder = フォルダを追加
-library-settings = ライブラリの設定
-library-import = インポート
-library-import-title = Anibeamのエクスポートをインポート
-library-import-filter-export = Anibeamエクスポート (*.json)
-library-import-filter-all = すべてのファイル (*)
-library-import-started = インポートを開始しました
 
 ## MetadataPage.qml
 

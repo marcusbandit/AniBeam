@@ -276,7 +276,6 @@ frame-downloads-not-read = Not read.
 ## HomePage
 
 home-title = Home
-home-scan-started = Scan started
 home-ago-minutes = { $count }m ago
 home-ago-hours = { $count }h ago
 home-ago-days = { $count }d ago
@@ -331,7 +330,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } to watch
 home-day-nothing = Nothing
 home-now = Now { $time }
-home-card-aired = { $episode } out { $ago }
 home-continue = Continue
 home-continue-fact = { $count } series to go on with
 home-on-hold = On hold
@@ -376,18 +374,6 @@ home-dropped-fact = { $count ->
     [one] { $count } file still on disk
    *[other] { $count } files still on disk
 }
-home-out-now = Out now
-home-out-now-fact = New episodes this week, from AniList
-home-popular = Popular this season
-home-add-folder-title = Your own shows go here too
-home-add-folder-body = Add the folder your anime lives in and Home fills with what you are watching.
-home-add-folder-button = Add a folder
-home-empty-scanned-title = Nothing found in your folders yet
-home-empty-title = No series yet
-home-empty-scanned-body = Anibeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings.
-home-empty-body = Add the folder your anime lives in and the library fills itself.
-home-scan-all = Scan all
-home-library-settings = Library settings
 home-failed-title = Home did not load
 home-failed-body = Anibeam could not read the library just now. Try again in a moment.
 
@@ -732,7 +718,28 @@ library-group-season = Season
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Watch state
-library-scan-started = Scan started
+library-empty-none = Your library is empty
+library-empty-scanning = { $count ->
+    [1] Looking for videos in your folder
+   *[other] Looking for videos in your folders
+}
+library-empty-nothing = { $count ->
+    [1] No videos in this folder yet
+   *[other] No videos in these folders yet
+}
+library-empty-missing = { $count ->
+    [1] This folder is not there
+   *[other] These folders are not there
+}
+library-empty-more-folders = { $count ->
+    [one] and { $count } more folder
+   *[other] and { $count } more folders
+}
+library-empty-add-folder = Add a folder
+library-empty-get = Get something to watch
+library-empty-scan-again = Scan again
+library-empty-settings = Library settings
+library-empty-pick-folder = Pick a folder for your library
 library-tab-all = All
 library-tab-series = Series
 library-tab-movies = Movies
@@ -796,18 +803,6 @@ library-rescan = Rescan
 library-find-match = Find a match
 library-find-match-tip = Search for each pick without a match
 library-all-matched = Every pick has a match
-library-empty-scanned-title = Nothing found in your folders yet
-library-empty-title = Your library is empty
-library-empty-scanned-body = Anibeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings.
-library-empty-body = Add the folder your anime lives in and the library fills itself, or import an Anibeam export.
-library-scan-all = Scan all
-library-add-folder = Add a folder
-library-settings = Library settings
-library-import = Import
-library-import-title = Import an Anibeam export
-library-import-filter-export = Anibeam export (*.json)
-library-import-filter-all = All files (*)
-library-import-started = Import started
 
 ## MetadataPage.qml
 

@@ -274,7 +274,6 @@ frame-downloads-not-read = Ikke læst.
 ## HomePage
 
 home-title = Hjem
-home-scan-started = Scanning startet
 home-ago-minutes = { $count } min. siden
 home-ago-hours = { $count } t siden
 home-ago-days = { $count } d siden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } at se
 home-day-nothing = Intet
 home-now = Nu { $time }
-home-card-aired = { $episode } udkom { $ago }
 home-continue = Se videre
 home-continue-fact = { $count } serier at se videre i
 home-on-hold = På pause
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } fil stadig på disken
    *[other] { $count } filer stadig på disken
 }
-home-out-now = Udkommet nu
-home-out-now-fact = Nye afsnit denne uge, fra AniList
-home-popular = Populært denne sæson
-home-add-folder-title = Dine egne serier hører også til her
-home-add-folder-body = Tilføj mappen med din anime, så fyldes Hjem med det, du ser.
-home-add-folder-button = Tilføj en mappe
-home-empty-scanned-title = Intet fundet i dine mapper endnu
-home-empty-title = Ingen serier endnu
-home-empty-scanned-body = Anibeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-home-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv.
-home-scan-all = Scan alle
-home-library-settings = Biblioteksindstillinger
 home-failed-title = Hjem kunne ikke indlæses
 home-failed-body = Anibeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
 
@@ -706,7 +692,28 @@ library-group-season = Sæson
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Status
-library-scan-started = Scanning startet
+library-empty-none = Dit bibliotek er tomt
+library-empty-scanning = { $count ->
+    [1] Leder efter videoer i din mappe
+   *[other] Leder efter videoer i dine mapper
+}
+library-empty-nothing = { $count ->
+    [1] Ingen videoer i denne mappe endnu
+   *[other] Ingen videoer i disse mapper endnu
+}
+library-empty-missing = { $count ->
+    [1] Denne mappe findes ikke
+   *[other] Disse mapper findes ikke
+}
+library-empty-more-folders = { $count ->
+    [one] og { $count } mappe mere
+   *[other] og { $count } mapper mere
+}
+library-empty-add-folder = Tilføj en mappe
+library-empty-get = Find noget at se
+library-empty-scan-again = Scan igen
+library-empty-settings = Biblioteksindstillinger
+library-empty-pick-folder = Vælg en mappe til dit bibliotek
 library-tab-all = Alle
 library-tab-series = Serier
 library-tab-movies = Film
@@ -769,18 +776,6 @@ library-rescan = Genscan
 library-find-match = Find et match
 library-find-match-tip = Søg efter hver valgt serie uden et match
 library-all-matched = Alle valgte har et match
-library-empty-scanned-title = Intet fundet i dine mapper endnu
-library-empty-title = Dit bibliotek er tomt
-library-empty-scanned-body = Anibeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-library-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv, eller importer en Anibeam-eksport.
-library-scan-all = Scan alle
-library-add-folder = Tilføj en mappe
-library-settings = Biblioteksindstillinger
-library-import = Importer
-library-import-title = Importer en Anibeam-eksport
-library-import-filter-export = Anibeam-eksport (*.json)
-library-import-filter-all = Alle filer (*)
-library-import-started = Import startet
 
 ## MetadataPage.qml
 

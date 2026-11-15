@@ -274,7 +274,6 @@ frame-downloads-not-read = Non letto.
 ## HomePage
 
 home-title = Home
-home-scan-started = Scansione avviata
 home-ago-minutes = { $count } min fa
 home-ago-hours = { $count } h fa
 home-ago-days = { $count } g fa
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } da vedere
 home-day-nothing = Niente
 home-now = Ora { $time }
-home-card-aired = { $episode } uscito { $ago }
 home-continue = Continua
 home-continue-fact = { $count } serie da continuare
 home-on-hold = In pausa
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } file ancora su disco
    *[other] { $count } file ancora su disco
 }
-home-out-now = Usciti ora
-home-out-now-fact = Nuovi episodi di questa settimana, da AniList
-home-popular = Popolari questa stagione
-home-add-folder-title = Anche le tue serie vanno qui
-home-add-folder-body = Aggiungi la cartella dei tuoi anime e la Home si riempie di quello che stai guardando.
-home-add-folder-button = Aggiungi cartella
-home-empty-scanned-title = Ancora niente nelle tue cartelle
-home-empty-title = Ancora nessuna serie
-home-empty-scanned-body = Anibeam non ha trovato serie né film nelle cartelle che controlla. Scansionale di nuovo, o controlla le cartelle nelle Impostazioni.
-home-empty-body = Aggiungi la cartella dei tuoi anime e la libreria si riempie da sola.
-home-scan-all = Scansiona tutto
-home-library-settings = Impostazioni libreria
 home-failed-title = La Home non si è caricata
 home-failed-body = Anibeam non è riuscito a leggere la libreria. Riprova tra un attimo.
 
@@ -706,7 +692,28 @@ library-group-season = Stagione
 library-group-type = Tipo
 library-group-genre = Genere
 library-group-watch-state = Stato visione
-library-scan-started = Scansione avviata
+library-empty-none = La tua libreria è vuota
+library-empty-scanning = { $count ->
+    [1] Cerco video nella tua cartella
+   *[other] Cerco video nelle tue cartelle
+}
+library-empty-nothing = { $count ->
+    [1] Ancora nessun video in questa cartella
+   *[other] Ancora nessun video in queste cartelle
+}
+library-empty-missing = { $count ->
+    [1] Questa cartella non c'è
+   *[other] Queste cartelle non ci sono
+}
+library-empty-more-folders = { $count ->
+    [one] e { $count } cartella in più
+   *[other] e { $count } cartelle in più
+}
+library-empty-add-folder = Aggiungi cartella
+library-empty-get = Trova qualcosa da guardare
+library-empty-scan-again = Scansiona di nuovo
+library-empty-settings = Impostazioni libreria
+library-empty-pick-folder = Scegli una cartella per la libreria
 library-tab-all = Tutto
 library-tab-series = Serie
 library-tab-movies = Film
@@ -769,18 +776,6 @@ library-rescan = Riscansiona
 library-find-match = Trova abbinamento
 library-find-match-tip = Cerca ogni scelta senza abbinamento
 library-all-matched = Ogni scelta è abbinata
-library-empty-scanned-title = Ancora niente nelle tue cartelle
-library-empty-title = La tua libreria è vuota
-library-empty-scanned-body = Anibeam non ha trovato serie né film nelle cartelle che controlla. Scansionale di nuovo, o controlla le cartelle nelle Impostazioni.
-library-empty-body = Aggiungi la cartella dei tuoi anime e la libreria si riempie da sola, oppure importa un'esportazione di Anibeam.
-library-scan-all = Scansiona tutto
-library-add-folder = Aggiungi cartella
-library-settings = Impostazioni libreria
-library-import = Importa
-library-import-title = Importa un'esportazione di Anibeam
-library-import-filter-export = Esportazione di Anibeam (*.json)
-library-import-filter-all = Tutti i file (*)
-library-import-started = Importazione avviata
 
 ## MetadataPage.qml
 

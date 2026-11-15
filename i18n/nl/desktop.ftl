@@ -274,7 +274,6 @@ frame-downloads-not-read = Niet gelezen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestart
 home-ago-minutes = { $count } min geleden
 home-ago-hours = { $count } u geleden
 home-ago-days = { $count } d geleden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } te kijken
 home-day-nothing = Niets
 home-now = Nu { $time }
-home-card-aired = { $episode } uit { $ago }
 home-continue = Verder kijken
 home-continue-fact = { $count } series om mee verder te gaan
 home-on-hold = In de wacht
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } bestand nog op schijf
    *[other] { $count } bestanden nog op schijf
 }
-home-out-now = Nu uit
-home-out-now-fact = Nieuwe afleveringen deze week, van AniList
-home-popular = Populair dit seizoen
-home-add-folder-title = Je eigen series komen hier ook
-home-add-folder-body = Voeg de map toe waar je anime staat en Start vult zich met wat je kijkt.
-home-add-folder-button = Map toevoegen
-home-empty-scanned-title = Nog niets gevonden in je mappen
-home-empty-title = Nog geen series
-home-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-home-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf.
-home-scan-all = Alles scannen
-home-library-settings = Bibliotheekinstellingen
 home-failed-title = Start is niet geladen
 home-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
 
@@ -706,7 +692,28 @@ library-group-season = Seizoen
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Kijkstatus
-library-scan-started = Scan gestart
+library-empty-none = Je bibliotheek is leeg
+library-empty-scanning = { $count ->
+    [1] Zoeken naar video's in je map
+   *[other] Zoeken naar video's in je mappen
+}
+library-empty-nothing = { $count ->
+    [1] Nog geen video's in deze map
+   *[other] Nog geen video's in deze mappen
+}
+library-empty-missing = { $count ->
+    [1] Deze map is er niet
+   *[other] Deze mappen zijn er niet
+}
+library-empty-more-folders = { $count ->
+    [one] en nog { $count } map
+   *[other] en nog { $count } mappen
+}
+library-empty-add-folder = Map toevoegen
+library-empty-get = Iets zoeken om te kijken
+library-empty-scan-again = Opnieuw scannen
+library-empty-settings = Bibliotheekinstellingen
+library-empty-pick-folder = Kies een map voor je bibliotheek
 library-tab-all = Alles
 library-tab-series = Series
 library-tab-movies = Films
@@ -769,18 +776,6 @@ library-rescan = Opnieuw scannen
 library-find-match = Koppeling zoeken
 library-find-match-tip = Zoek voor elke keuze zonder koppeling
 library-all-matched = Elke keuze is gekoppeld
-library-empty-scanned-title = Nog niets gevonden in je mappen
-library-empty-title = Je bibliotheek is leeg
-library-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-library-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf, of importeer een Anibeam-export.
-library-scan-all = Alles scannen
-library-add-folder = Map toevoegen
-library-settings = Bibliotheekinstellingen
-library-import = Importeren
-library-import-title = Een Anibeam-export importeren
-library-import-filter-export = Anibeam-export (*.json)
-library-import-filter-all = Alle bestanden (*)
-library-import-started = Import gestart
 
 ## MetadataPage.qml
 
