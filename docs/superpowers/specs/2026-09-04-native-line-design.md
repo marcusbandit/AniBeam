@@ -1,6 +1,6 @@
 # Anibeam native line: the core and the shells
 
-Date: 2026-09-04. Branch: `docs/native-line-spec`, merged to main together with the research and spike write-ups it cites. Map: [Native line: core and Linux shell spec](https://github.com/marcusbandit/AniBeam/issues/2). This document is that map's destination.
+Date: 2026-09-04. Branch: `docs/native-line-spec`, merged to main together with the research and spike write-ups it cites. Map: [Native line: core and Linux shell spec](https://github.com/marcusbandit/Anibeam/issues/2). This document is that map's destination.
 
 ## How to read this document
 
@@ -65,7 +65,7 @@ The research write-ups live under `docs/research/`, the spike write-ups with the
 
 ### 1.1 Destination and audience
 
-This document is the one thing the effort that builds phases 1 to 4 reads besides the code. It closes every architecture decision for the core and the Linux shell, records the phase 0 spikes as facts, keeps its shell chapter platform-neutral, and carries a macOS appendix good enough for another person's Claude to build the macOS shell later. The map [Native line: core and Linux shell spec](https://github.com/marcusbandit/AniBeam/issues/2) charted it as twenty-two closed tickets. The vocabulary both halves share is `CONTEXT.md` at the repository root, and this document uses its terms.
+This document is the one thing the effort that builds phases 1 to 4 reads besides the code. It closes every architecture decision for the core and the Linux shell, records the phase 0 spikes as facts, keeps its shell chapter platform-neutral, and carries a macOS appendix good enough for another person's Claude to build the macOS shell later. The map [Native line: core and Linux shell spec](https://github.com/marcusbandit/Anibeam/issues/2) charted it as twenty-two closed tickets. The vocabulary both halves share is `CONTEXT.md` at the repository root, and this document uses its terms.
 
 Two readers. The agent that builds the core and the Linux shell reads all of it. Liam's Claude reads the shell chapter and the macOS appendix later.
 
@@ -75,7 +75,7 @@ The audience for the app was settled while charting, in conversation on 2026-09-
 
 Settled while charting on 2026-09-03: the same repository. Native code lands in `core/`, `apps/linux/` and `apps/macos/` beside the untouched Electron tree, through short branches merged into `main`. `main` stays green for both worlds until phase 3 deletes Electron in one commit. Electron is frozen: it got one more feature, the export (section 2.5), and from then on takes fixes only on the `electron` branch. Also settled then: the shell installs through a PKGBUILD, and the package ships the `.desktop` entry and the current icon; section 5.3 carries the rest.
 
-Decided on [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/AniBeam/issues/12), 2026-09-04. `main`, the tag and the `electron` branch are all on origin.
+Decided on [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/Anibeam/issues/12), 2026-09-04. `main`, the tag and the `electron` branch are all on origin.
 
 - `v1.0.0` is an annotated tag at `1b0fb08` on `main`. That commit is the export commit `1b4c9d4` plus the stranded Watching tab spec (`docs/superpowers/specs/2026-05-28-watching-tab-design.md`, already implemented on `main`) committed as history as `0002f7a` and merged as `1b0fb08`, so the tag covers every Electron feature including the export. `package.json` already said 1.0.0 and is unchanged.
 - `electron` is cut at `v1.0.0` and pushed. Fixes to the Electron app go there.
@@ -90,13 +90,13 @@ What remains unmerged on origin: the six `research/*` branches and the two `spik
 
 The owner handed these technical choices to the agent while charting on 2026-09-03. They are decisions, not questions, and the later tickets built on them without reopening one. Each is listed with the ticket that fixed its detail.
 
-- Calls return fast and long work is a job that reports through events. Fixed as the four enums and the `Started { job }` reply on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15).
-- tokio inside the core behind a synchronous facade. The same ticket; [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/AniBeam/issues/5) confirmed tokio stays inside behind spawn on the macOS side too.
-- rusqlite with bundled SQLite. rusqlite 0.40 with `rusqlite_migration`, one connection-owning thread and IMMEDIATE transactions under WAL, from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6); the tables on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21).
+- Calls return fast and long work is a job that reports through events. Fixed as the four enums and the `Started { job }` reply on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15).
+- tokio inside the core behind a synchronous facade. The same ticket; [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/Anibeam/issues/5) confirmed tokio stays inside behind spawn on the macOS side too.
+- rusqlite with bundled SQLite. rusqlite 0.40 with `rusqlite_migration`, one connection-owning thread and IMMEDIATE transactions under WAL, from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6); the tables on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21).
 - notify with a debouncer replaces chokidar, and no polling. notify 8.2 with `notify-debouncer-full` on the same research ticket; the subtree walk stays because new directories can miss files on every backend.
 - The Linux shell builds with Cargo alone through cxx-qt-build. Proved on the PKGBUILD spike, section 2.3.
 - Tokens go to the keyring (gnome-keyring on the owner's desktop) with a file fallback. The fallback is a 0600 JSON file at `<data_dir>/secrets.json`, chosen when the Secret Service store fails to construct, with `secret_store` remembering the choice; fixed on the schema ticket.
-- XDG paths. The directories are named `anibeam`, fixed on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19).
+- XDG paths. The directories are named `anibeam`, fixed on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19).
 - The Electron end point is tagged `v1.0.0` and its branch is named `electron`; the native line starts at 2.0.0. Done on the freeze ticket, section 1.2.
 
 Two standing preferences shaped every ticket. Speed to the core: Electron is frozen, and every week spent on it is written twice. One spec document: the shell chapter is platform-neutral, and the macOS appendix is suggestions. Questions to the owner went in batches of at most four per round, which is why the resolutions read "decided with the owner in two rounds of four".
@@ -115,7 +115,7 @@ Settled while charting, 2026-09-03, no ticket:
 - The grid FLIP animation.
 - The franchise graph ships simplified: rendered once from a layout the core computes, pan and zoom only, nothing interactive, no filters. Do not over-invest; the systems behind it will change.
 
-Dropped beyond the border on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, as dead or superseded in Electron:
+Dropped beyond the border on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, as dead or superseded in Electron:
 
 - The Metadata sources priority toggles and the Auto-scan on launch toggle, never wired.
 - The ASS Style tab, whose apply effect begins with `return`.
@@ -126,11 +126,11 @@ Dropped beyond the border on [Parity checklist: what the Linux shell must do bef
 - Everything on the graph beyond click, pan and zoom: hover highlight, the node menu, the Relations and Formats filters, the Chrono and Release toggle, Inline source, graph fullscreen, Fit and Center.
 - Leftovers in the config directory with no code behind them, ignored: `mpv-input.conf`, `ui_scale`, `library_roots`, `lastScanned`.
 
-Struck on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04: Open with mpv. One application, one window. Nothing in the native line opens a second window and no mpv process is launched. `OpenExternal`, `ExternalPlaybackEnded` and the ExternalPlayback job left the contract, the "no mpv binary" case left `Unsupported`, the parity checklist's unit 5 and the Open with mpv entry on the episode row's context menu are struck, and the mpv socket service and its verify script die with Electron. The same ticket dropped Electron's 2.5x volume gain stage (section 1.6).
+Struck on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04: Open with mpv. One application, one window. Nothing in the native line opens a second window and no mpv process is launched. `OpenExternal`, `ExternalPlaybackEnded` and the ExternalPlayback job left the contract, the "no mpv binary" case left `Unsupported`, the parity checklist's unit 5 and the Open with mpv entry on the episode row's context menu are struck, and the mpv socket service and its verify script die with Electron. The same ticket dropped Electron's 2.5x volume gain stage (section 1.6).
 
-Struck on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04: episode thumbnails. The old main process rendered one per file with ffmpeg at five call sites and no page ever displayed them, so the native line renders none, in the core or in the shell. This corrected the libmpv spikes' consequence that thumbnails would be a core job running a child mpv; sections 2.1 and 2.2 keep the measurements as facts and nothing is built on them.
+Struck on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04: episode thumbnails. The old main process rendered one per file with ffmpeg at five call sites and no page ever displayed them, so the native line renders none, in the core or in the shell. This corrected the libmpv spikes' consequence that thumbnails would be a core job running a child mpv; sections 2.1 and 2.2 keep the measurements as facts and nothing is built on them.
 
-Out on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04: TMDB. The owner has no key and wants none. No key, no search, no fetch, no Film & TV switch in the match modal. A TMDB match carried in from an export keeps `provider`, `tmdb_id` and `tmdb_kind` on its series row as a confirmed match with nothing behind it: the source chip says TMDB, the title is the folder name, there is no poster, auto-match leaves it alone, and Clear match makes it unmatched. The import ignores `keys.tmdb` and counts it under `fields_ignored`.
+Out on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04: TMDB. The owner has no key and wants none. No key, no search, no fetch, no Film & TV switch in the match modal. A TMDB match carried in from an export keeps `provider`, `tmdb_id` and `tmdb_kind` on its series row as a confirmed match with nothing behind it: the source chip says TMDB, the title is the folder name, there is no poster, auto-match leaves it alone, and Clear match makes it unmatched. The import ignores `keys.tmdb` and counts it under `fields_ignored`.
 
 Gone with the pipeline, from the proposal of 2026-09-03 (https://claude.ai/code/artifact/2ef1a582-b212-4ae1-a762-c70b35d089f7). The contract ticket confirmed it by ending every transcode, probe, encoder and subtitle-extract call, 26 channels and 3 push events, at the border:
 
@@ -145,15 +145,15 @@ Gone with the pipeline, from the proposal of 2026-09-03 (https://claude.ai/code/
 The proposal set five phases; the tickets since changed their exits.
 
 - Phase 0, done. The proposal asked for two spikes on the NVIDIA desktop: a QML window with an MpvItem playing 10-bit HEVC with ASS subtitles under Hyprland, and one Rust QObject through cxx-qt with a property bound in QML, both running from a packaged binary. If mpv failed, stop and rethink playback before the core exists. It grew to five spike tickets, the AMD laptop and the bundled `mpv.conf` on both machines included. mpv did not fail. Chapter 2 records the results.
-- Phase 1, the core. Module by module with tests: `shared/` first since it is already pure, then library, metadata, trackers, franchise, playback, store. The verify scripts become cargo tests. The proposal's one-time importer that read today's JSON into SQLite is superseded: [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11), 2026-09-04, made it the import of an `anibeam-export` file, the one format every core version reads from then on. Exit: a CLI scans the real library and lists it identically to the Electron app. The contract ticket ships that CLI as `anibeam-cli` in the package.
-- Phase 2, the Linux shell. Home, series detail, player, feed, watching, subscriptions, metadata and settings, in that order, with the look redesigned on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17) rather than ported from `App.css`. Exit: the parity checklist's switch line, units 1 to 4, 6 and 7, green on the real library on both machines. Then the launcher entry points at the native binary, Electron stays installed under its own entry renamed Anibeam (Electron), and `v2.0.0` is cut.
+- Phase 1, the core. Module by module with tests: `shared/` first since it is already pure, then library, metadata, trackers, franchise, playback, store. The verify scripts become cargo tests. The proposal's one-time importer that read today's JSON into SQLite is superseded: [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11), 2026-09-04, made it the import of an `anibeam-export` file, the one format every core version reads from then on. Exit: a CLI scans the real library and lists it identically to the Electron app. The contract ticket ships that CLI as `anibeam-cli` in the package.
+- Phase 2, the Linux shell. Home, series detail, player, feed, watching, subscriptions, metadata and settings, in that order, with the look redesigned on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17) rather than ported from `App.css`. Exit: the parity checklist's switch line, units 1 to 4, 6 and 7, green on the real library on both machines. Then the launcher entry points at the native binary, Electron stays installed under its own entry renamed Anibeam (Electron), and `v2.0.0` is cut.
 - Phase 3, retire Electron. Gates on the retire line, units 8 to 11. Delete `src/main`, `src/renderer`, the transcode cache, the probe queue and JASSUB in one commit; the old app stays on the tag. On each machine the retire, once the import has carried the library and history across, deletes everything in the three XDG directories that is not the native line's own set, then the Electron entry, its icon and the focus-or-launch wrapper. Exit: no Electron in the repository, no `transcode-cache` directory on disk.
 - Phase 4, the macOS shell, Liam's. uniffi generates the Swift package from the same crate; SwiftUI over it, MPVKit for the video layer, Sparkle for updates. Exit: the same parity checklist on a Mac. Out of scope for this map; the appendix feeds it.
 
 ### 1.6 Left open
 
 - A volume gain above 100. The player ticket fixed volume at 0 to 100 with `volume-max=100`, dropped Electron's 2.5x gain stage, and rejected a gain above 100 for now. The owner wants to hear the native player on both machines before deciding on a boost; mpv's `volume-max` makes it one setting. Nothing on the map could settle it before the player exists, so the spec records it as open.
-- The owner's polish list against the prototype's QML (primitives, wording, padding). Per [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22), 2026-09-04, they will file it as its own issue outside this map once the build stops moving. Nothing on it changes a decision. The QML itself carries into the Linux shell; the Rust glue around it (the Electron JSON loader, the busctl palette read, the string bridge, the fake data, the knob bar) is replaced by the core and the bridge.
+- The owner's polish list against the prototype's QML (primitives, wording, padding). Per [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22), 2026-09-04, they will file it as its own issue outside this map once the build stops moving. Nothing on it changes a decision. The QML itself carries into the Linux shell; the Rust glue around it (the Electron JSON loader, the busctl palette read, the string bridge, the fake data, the knob bar) is replaced by the core and the bridge.
 - Smaller questions no ticket reached. Several sections end with a "Left open" list: the contract in 3.1, scanning and matching in 3.3 and 3.4, trackers, the franchise and the feed in 3.5 to 3.7, the playback rules and import in 3.8 and 3.9, the look in 4.3, the player in 4.4, the frame in 4.5, the Linux shell in 5.5 and the Mac in A.7. Each is a question for phase 1 to settle in code, listed so nobody mistakes silence for a decision. None of them changes a decision on the map.
 
 ### 1.7 Out of scope
@@ -175,8 +175,8 @@ From the map, with the reasons:
 The proposal weighed three roads and the charting closed each.
 
 - Keep the TypeScript and run it as a Bun daemon. It ships two runtimes on every platform, keeps JSON files as the database, and the playback rules still move client-side because mpv would live in the shell. Closed by the choices in section 1.3: one Rust core with tokio inside, rusqlite, and one contract whether the core is linked in-process or later wrapped as a daemon.
-- GTK 4 and libadwaita, one Rust process. No bridge, but Adwaita fights any custom look, there is no GNOME on this desktop, and the owner already writes QML. Kept as the fallback if cxx-qt disappointed in phase 0. It did not: [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/AniBeam/issues/3) built and ran the example against Qt 6.11.1, and the PKGBUILD spike (section 2.3) packaged a Cargo-only build.
-- One Qt app on both platforms. Qt on macOS runs fine and never feels like a Mac. Taken as the interim Mac build only, for free since the QML shell compiles on macOS the day Linux ships; the real macOS shell is SwiftUI over uniffi, from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8).
+- GTK 4 and libadwaita, one Rust process. No bridge, but Adwaita fights any custom look, there is no GNOME on this desktop, and the owner already writes QML. Kept as the fallback if cxx-qt disappointed in phase 0. It did not: [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/Anibeam/issues/3) built and ran the example against Qt 6.11.1, and the PKGBUILD spike (section 2.3) packaged a Cargo-only build.
+- One Qt app on both platforms. Qt on macOS runs fine and never feels like a Mac. Taken as the interim Mac build only, for free since the QML shell compiles on macOS the day Linux ships; the real macOS shell is SwiftUI over uniffi, from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8).
 
 The proposal also asked four questions, and they went this way. Which Mac: none in the fleet; Liam has one and will build that shell later with his own Claude. Does ffmpeg survive: no. Redesign the look in phase 2 or port it: redesign, done on the prototype ticket. Freeze Electron now or keep it alive until phase 3: freeze, done on the freeze ticket.
 
@@ -186,7 +186,7 @@ Five spike tickets, run on 2026-09-03 and 2026-09-04 on the owner's two machines
 
 ### 2.1 libmpv renders inside a QML window on the NVIDIA desktop
 
-Decided on [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/9), 2026-09-03. Write-up: `docs/spikes/libmpv-qml.md`. Pictures under `docs/spikes/libmpv-qml/`: `op-karaoke-nvdec.jpg` (the OP karaoke drawn by libass through nvdec), `fullscreen-with-preview.jpg` (fullscreen on DP-1 with the preview item in the corner) and `mpv-screenshot-sw-part-a.jpg` (a still written by `screenshot-to-file` under software decode).
+Decided on [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/9), 2026-09-03. Write-up: `docs/spikes/libmpv-qml.md`. Pictures under `docs/spikes/libmpv-qml/`: `op-karaoke-nvdec.jpg` (the OP karaoke drawn by libass through nvdec), `fullscreen-with-preview.jpg` (fullscreen on DP-1 with the preview item in the corner) and `mpv-screenshot-sw-part-a.jpg` (a still written by `screenshot-to-file` under software decode).
 
 The answer is yes. libmpv renders inside a Qt 6 QML window on this hardware with no environment variables and no driver flags. Hardware decoding engages through nvdec, the ASS track renders from its embedded fonts, chapters and frame stepping work, fullscreen toggles cleanly, and dropped frames stay at zero once the window is visible. The transcode pipeline goes away on Linux.
 
@@ -207,7 +207,7 @@ The owner was in a fullscreen game on the 144 Hz main monitor for the whole sess
 
 #### Hardware decoding
 
-`hwdec=auto` lands on `hwdec-current=nvdec` with `video-params/hw-pixelformat=p010`, the decoder handing mpv `cuda[p010]` frames. The log shows mpv looking at `hevc-vulkan` first and skipping it, as [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/AniBeam/issues/4) predicted for the render API. `hwdec-interop` reports `vaapi,cuda,drmprime`, the load-all behaviour of `vo=libmpv`. Software decode (`hwdec=no`) also plays 10-bit 1080p HEVC on this CPU without a dropped frame.
+`hwdec=auto` lands on `hwdec-current=nvdec` with `video-params/hw-pixelformat=p010`, the decoder handing mpv `cuda[p010]` frames. The log shows mpv looking at `hevc-vulkan` first and skipping it, as [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/Anibeam/issues/4) predicted for the render API. `hwdec-interop` reports `vaapi,cuda,drmprime`, the load-all behaviour of `vo=libmpv`. Software decode (`hwdec=no`) also plays 10-bit 1080p HEVC on this CPU without a dropped frame.
 
 #### Frame pacing
 
@@ -270,7 +270,7 @@ The Linux shell hosts an `MpvAbstractItem` subclass on the OpenGL RHI backend wi
 
 ### 2.2 libmpv renders inside a QML window on the AMD laptop
 
-Decided on [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/18), 2026-09-03. Write-up: `docs/spikes/libmpv-qml-laptop.md` (branch commit `f346c40`). Pictures under `docs/spikes/libmpv-qml/`: `op-karaoke-vaapi.jpg` (the OP karaoke through vaapi with syllable highlighting) and `fullscreen-with-preview-laptop.jpg` (fullscreen on the laptop panel with the preview item, both on vaapi).
+Decided on [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/18), 2026-09-03. Write-up: `docs/spikes/libmpv-qml-laptop.md` (branch commit `f346c40`). Pictures under `docs/spikes/libmpv-qml/`: `op-karaoke-vaapi.jpg` (the OP karaoke through vaapi with syllable highlighting) and `fullscreen-with-preview-laptop.jpg` (fullscreen on the laptop panel with the preview item, both on vaapi).
 
 The answer is yes. The same app plays the same file the same way on the Radeon 860M, and better in two places: Qt picks the threaded render loop by itself, so frame steps settle in half the desktop's default time, and the hidden-workspace case the desktop could not test was measured. The one place the laptop differs in kind is XWayland, where Qt's default GLX integration hides the EGL that vaapi's interop needs.
 
@@ -366,7 +366,7 @@ Every step moves `time-pos` by exactly 41.7 ms, and five forward plus five back 
 
 ### 2.3 A Cargo-only cxx-qt app packages through a PKGBUILD
 
-Decided on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/AniBeam/issues/10), findings on 2026-09-03 and the install confirmed on 2026-09-04. Write-up: `docs/spikes/cxx-qt-pkgbuild.md`. Pictures under `docs/spikes/cxx-qt-pkgbuild/`: `cargo-run.jpg` (the plain binary) and `launcher-run.jpg` (started from the desktop entry), both on the portrait DP-1 monitor; the icon at the top left is the qrc resource, the black strip is the mpv item's framebuffer. Code: `spikes/cxx-qt-pkgbuild/` on `spike/cxx-qt-pkgbuild`.
+Decided on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/Anibeam/issues/10), findings on 2026-09-03 and the install confirmed on 2026-09-04. Write-up: `docs/spikes/cxx-qt-pkgbuild.md`. Pictures under `docs/spikes/cxx-qt-pkgbuild/`: `cargo-run.jpg` (the plain binary) and `launcher-run.jpg` (started from the desktop entry), both on the portrait DP-1 monitor; the icon at the top left is the qrc resource, the black strip is the mpv item's framebuffer. Code: `spikes/cxx-qt-pkgbuild/` on `spike/cxx-qt-pkgbuild`.
 
 The answer is yes. A Cargo-only cxx-qt build produces an installable Arch package with QML bound to a Rust QObject and a C++ `MpvAbstractItem` subclass linked into the same binary. `cargo build --release` links it, `makepkg` turns it into `anibeam-spike-0.1.0-1-x86_64.pkg.tar.zst`, `pacman -U` installed it on 2026-09-04, and the launcher entry under `/usr/share/applications` started `/usr/bin/anibeam-spike` with the same ticks and mpv version in the journal as the direct run and no portal app-id complaint. Nothing needed CMake.
 
@@ -416,7 +416,7 @@ fn main() {
 
 What that one call does, read off the build output: finds Qt through `qmake6`, writes the qmldir and the qrc, runs moc on the generated bridge header and on `spikevideo.h`, rcc on the resources, qmlcachegen on `Main.qml`, qmltyperegistrar on the moc JSON, compiles the generated C++ plus the three listed files with `c++ -std=c++17 -O3` and the Qt include paths, and emits the link lines for Qt6Quick, Qt6OpenGL, Qt6Qml, Qt6Network, Qt6Gui and Qt6Core. The Rust link goes through `-fuse-ld=lld` because the system `ld` is GNU bfd.
 
-Paths that follow from the module URI: `Main.qml` is `qrc:/qt/qml/dev/anibeam/spike/qml/Main.qml` and the icon is `qrc:/qt/qml/dev/anibeam/spike/assets/icon.png`. Every Rust file holding a bridge must sit in one directory per QML module (cxx-qt panics otherwise, citing QTBUG-93443), so the bridge lives in `src/spike.rs` alone and `src/main.rs` carries none. The URI `dev.anibeam.spike` was the spike's own; the packaging ticket ruled `dev.anibeam` out as not the owner's domain, and the shell's app id is `com.marcusrosado.AniBeam`.
+Paths that follow from the module URI: `Main.qml` is `qrc:/qt/qml/dev/anibeam/spike/qml/Main.qml` and the icon is `qrc:/qt/qml/dev/anibeam/spike/assets/icon.png`. Every Rust file holding a bridge must sit in one directory per QML module (cxx-qt panics otherwise, citing QTBUG-93443), so the bridge lives in `src/spike.rs` alone and `src/main.rs` carries none. The URI `dev.anibeam.spike` was the spike's own; the packaging ticket ruled `dev.anibeam` out as not the owner's domain, and the shell's app id is `com.marcusrosado.Anibeam`.
 
 #### The bridge and the signal path
 
@@ -470,7 +470,7 @@ The PKGBUILD lives in `packaging/` rather than beside `Cargo.toml` because makep
 
 makepkg's `CFLAGS` and `CXXFLAGS` reach the C++ half through cc-rs, so the generated bridge and the item compile with `-march=x86-64 -O2 -fstack-clash-protection -fcf-protection -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS` and the rest of the distribution set. cargo ignores `LDFLAGS`.
 
-Corrected on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19), 2026-09-04: the write-up's line "nothing from makepkg reaches rustc" is wrong. `/etc/makepkg.conf.d/rust.conf` sets `RUSTFLAGS="-C force-frame-pointers=yes"` always and appends `DEBUG_RUSTFLAGS="-C debuginfo=2"` under the `debug` option. So the release build carries full debuginfo, makepkg strips it into a `-debug` package, and `makepkg -i` installs both. That is why the packaging ticket keeps the debug package: Rust's backtrace code and coredumpctl look symbols up by build id under `/usr/lib/debug`, so a panic or a segfault at the Qt, mpv and Rust seams comes back with file and line during phases 1 to 4.
+Corrected on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19), 2026-09-04: the write-up's line "nothing from makepkg reaches rustc" is wrong. `/etc/makepkg.conf.d/rust.conf` sets `RUSTFLAGS="-C force-frame-pointers=yes"` always and appends `DEBUG_RUSTFLAGS="-C debuginfo=2"` under the `debug` option. So the release build carries full debuginfo, makepkg strips it into a `-debug` package, and `makepkg -i` installs both. That is why the packaging ticket keeps the debug package: Rust's backtrace code and coredumpctl look symbols up by build id under `/usr/lib/debug`, so a panic or a segfault at the Qt, mpv and Rust seams comes back with file and line during phases 1 to 4.
 
 makepkg's packaging checks reported nothing. It produced an `anibeam-spike-debug` package from the stripped symbols, as the default `debug` option does.
 
@@ -521,7 +521,7 @@ The window maps on the focused monitor; the runs here moved it to DP-1 workspace
 
 ### 2.4 The bundled mpv.conf: quality options on both machines
 
-Decided on [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/23) and [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/25), both 2026-09-04. Write-ups: `docs/spikes/mpv-quality-options-laptop.md` (branch commit `032ddfd`) and `docs/spikes/mpv-quality-options-desktop.md` (`470bdf2`). Pictures under `docs/spikes/mpv-quality-options/`: `base-frame.jpg` and `base-frame-desktop.jpg` (the frames the differences are taken from); `diff-fhd-deband.jpg`, `diff-fhd-deband-desktop.jpg`, `diff-uhd-scale.jpg`, `diff-fhd-scale-desktop.jpg`, `diff-uhd-dscale.jpg` and `diff-uhd-dscale-desktop.jpg` (each difference amplified 64 times); and `pixels-fhd-lanczos-vs-ewa.jpg` (a 480 by 270 patch of the desktop's 1.33x upscale, lanczos left and ewa_lanczossharp right, doubled with nearest neighbour).
+Decided on [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/23) and [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/25), both 2026-09-04. Write-ups: `docs/spikes/mpv-quality-options-laptop.md` (branch commit `032ddfd`) and `docs/spikes/mpv-quality-options-desktop.md` (`470bdf2`). Pictures under `docs/spikes/mpv-quality-options/`: `base-frame.jpg` and `base-frame-desktop.jpg` (the frames the differences are taken from); `diff-fhd-deband.jpg`, `diff-fhd-deband-desktop.jpg`, `diff-uhd-scale.jpg`, `diff-fhd-scale-desktop.jpg`, `diff-uhd-dscale.jpg` and `diff-uhd-dscale-desktop.jpg` (each difference amplified 64 times); and `pixels-fhd-lanczos-vs-ewa.jpg` (a 480 by 270 patch of the desktop's 1.33x upscale, lanczos left and ewa_lanczossharp right, doubled with nearest neighbour).
 
 The player ticket fixed `hwdec=auto` and the layering; the lines themselves waited on a test of the candidate quality options on both GPUs: `profile=high-quality` and its parts (`scale`, `cscale`, `dscale`, `dither-depth`, `deband` with its defaults), and `interpolation` with `video-sync=display-resample`, with `gpu-api` left alone. The rule was to keep what drops nothing and costs nothing visible.
 
@@ -726,7 +726,7 @@ Raw output for the desktop document stayed under the session scratchpad, not in 
 
 ### 2.5 The export shipped in Electron and the freeze
 
-Decided on [Ship the export in Electron](https://github.com/marcusbandit/AniBeam/issues/20), 2026-09-03. Nothing was decided on this ticket. It built exactly the format fixed on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11), on a `feat/export` branch merged to `main` as commit `1b4c9d4`, a fast-forward with no conflicts, so that the `v1.0.0` tag includes it.
+Decided on [Ship the export in Electron](https://github.com/marcusbandit/Anibeam/issues/20), 2026-09-03. Nothing was decided on this ticket. It built exactly the format fixed on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11), on a `feat/export` branch merged to `main` as commit `1b4c9d4`, a fast-forward with no conflicts, so that the `v1.0.0` tag includes it.
 
 What shipped:
 
@@ -741,7 +741,7 @@ Two gaps the ticket recorded. The Settings UI itself was not exercised in a live
 
 The native line reads this file. The import on the export-format ticket ignores `keys.tmdb` and counts it under `fields_ignored`, since the schema ticket dropped TMDB (section 1.4).
 
-The rest of [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/AniBeam/issues/12), 2026-09-04, beyond section 1.2:
+The rest of [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/Anibeam/issues/12), 2026-09-04, beyond section 1.2:
 
 - How the six audited branches were checked before deletion: each with `git cherry` and a grep of the identifiers its commits add against `main`. Seven of the eight commits have every identifier on `main`; the one on `feat/mpv-player` (`attemptOpen`) is the in-window auto-transcode that `transcodeCacheHandler` replaced.
 - The icon. `assets/icon.png~` was the same frame as the tracked icon with the dark background left in; about a quarter of the pixels differed. The owner saw both side by side and chose delete. Removed from the working tree, nothing committed.
@@ -753,7 +753,7 @@ The core is the Rust crate that holds every rule: scanning, matching, trackers, 
 
 ### 3.1 The contract: calls, replies, events and errors
 
-Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, with the owner in one round: one product call, the CLI ships in the package; one correction, episode thumbnails were never a feature and leave entirely; and the technical shape below, none of it vetoed. Two later tickets edited the contract in place on the same day, and this section carries the edited text. [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16) removed `OpenExternal`, `ExternalPlaybackEnded` and the ExternalPlayback job, added `SetTrackChoice` and `SetAutoSkip`, filled in `SubtitleDefaults` with `TextStyle`, `Colour`, `AutoSkip`, `TrackChoice`, `TrackRef` and `Sidecar` beside it, put `track_choice` and typed sidecars on `PlaybackSession`, put `auto_skip` on `Settings`, and widened completion to a known outro window's start and the end of the file. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21) added `ForgetSeries` with `Refused(OnDisk)`, `SeriesCard.missing`, the missing-series rule on `ListSeries` and `ListMetadata` and the coalesced `FillImages` job kind, and took TMDB out of the native line: `SetTmdbKey`, `TmdbKeyValidated`, the ValidateTmdbKey job, `NoApiKey`, `MatchTarget::Tmdb`, `SearchResult.tmdb_kind` and `Settings.tmdb_key_present` are gone, `SearchProvider` is AniList only, and `MatchInfo` keeps `tmdb_id` and `tmdb_kind` for a match carried in from an export.
+Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, with the owner in one round: one product call, the CLI ships in the package; one correction, episode thumbnails were never a feature and leave entirely; and the technical shape below, none of it vetoed. Two later tickets edited the contract in place on the same day, and this section carries the edited text. [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16) removed `OpenExternal`, `ExternalPlaybackEnded` and the ExternalPlayback job, added `SetTrackChoice` and `SetAutoSkip`, filled in `SubtitleDefaults` with `TextStyle`, `Colour`, `AutoSkip`, `TrackChoice`, `TrackRef` and `Sidecar` beside it, put `track_choice` and typed sidecars on `PlaybackSession`, put `auto_skip` on `Settings`, and widened completion to a known outro window's start and the end of the file. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21) added `ForgetSeries` with `Refused(OnDisk)`, `SeriesCard.missing`, the missing-series rule on `ListSeries` and `ListMetadata` and the coalesced `FillImages` job kind, and took TMDB out of the native line: `SetTmdbKey`, `TmdbKeyValidated`, the ValidateTmdbKey job, `NoApiKey`, `MatchTarget::Tmdb`, `SearchResult.tmdb_kind` and `Settings.tmdb_key_present` are gone, `SearchProvider` is AniList only, and `MatchInfo` keeps `tmdb_id` and `tmdb_kind` for a match carried in from an export.
 
 The contract replaces today's 80 channels: 71 renderer-to-main calls (70 `invoke`, one `send`) and 9 push events. The transcode, probe and subtitle-extract families, 26 channels and 3 events, end at the border with the transcode pipeline; the rest regroup below by core module. Phase 1 codes straight from this section. The ticket added Reply, Session and Skip window to CONTEXT.md's glossary, and the vocabulary here is CONTEXT.md's: core, shell, bridge, call, reply, event, job, session, tick, view, mark, resume point, skip window, source, series, match, export, import.
 
@@ -946,7 +946,7 @@ The job kinds are Scan, AutoMatch, Search, ResolveLink, ApplyMatch, Refresh, Ref
 
 #### Records
 
-Records have named fields and owned data over the closed type set from the constraints below. Every field the parity checklist demands is here. A field may be added later without touching this contract, never removed. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21) carries these records into tables, with the confirmed flag, the unavailable state and kind-plus-path identity from the export ticket, and the image cache policy behind the "local path or none" rule.
+Records have named fields and owned data over the closed type set from the constraints below. Every field the parity checklist demands is here. A field may be added later without touching this contract, never removed. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21) carries these records into tables, with the confirmed flag, the unavailable state and kind-plus-path identity from the export ticket, and the image cache policy behind the "local path or none" rule.
 
 ```rust
 Source        { id, path, available: bool, series_count: u64, movie_folders: Vec<String> }
@@ -1056,7 +1056,7 @@ Writes from the CLI while the app is open are unsupported until a socket transpo
 
 #### What crosses each bridge
 
-Found on [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/AniBeam/issues/3) and [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/AniBeam/issues/5), both 2026-09-03, written up in [docs/research/cxx-qt.md](../../research/cxx-qt.md) and [docs/research/uniffi.md](../../research/uniffi.md). The two write-ups hold the mechanics, the build scripts, the thread hop and the Swift package layout; section 5.1 and Appendix A lift those. This subsection states only what the contract's enums meet at each border.
+Found on [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/Anibeam/issues/3) and [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/Anibeam/issues/5), both 2026-09-03, written up in [docs/research/cxx-qt.md](../../research/cxx-qt.md) and [docs/research/uniffi.md](../../research/uniffi.md). The two write-ups hold the mechanics, the build scripts, the thread hop and the Swift package layout; section 5.1 and Appendix A lift those. This subsection states only what the contract's enums meet at each border.
 
 The cxx-qt findings. The Linux bridge is cxx-qt 0.10.0 (2026-08-24, MSRV 1.85, cxx 1.0.176). KDAB's CI stops at Qt 6.10.1 and nothing upstream mentions 6.11, so the evidence for Qt 6.11.1 is the owner's own box: the v0.10.0 Cargo-only example built there in 1m 53s with rustc 1.92.0 and GCC 16, linked the pacman Qt and ran offscreen with no QML errors. Cargo alone builds the shell: one `build.rs` registers the QML module, bundles qrc, runs moc, rcc, qmlcachegen and qmltyperegistrar, compiles shim C++ and links Qt through `qmake6`, with no CMake; the PKGBUILD needs rust, qt6-base, qt6-declarative and lld at build time and qt6-base and qt6-declarative at run time. Dynamic QML plugins are CMake-only and broken for a cdylib, so the shell uses the default static module. The core's bridge object is one Rust QObject marked `#[qml_singleton]`; invokables carry calls, Qt signals carry events. Events cross from tokio threads through `CxxQtThread::queue`, a Clone, Send and Sync handle that posts a queued invocation to the Qt thread and returns `ObjectDestroyed` instead of crashing once the object is gone; each queue call allocates twice and takes a shared lock, so a job batches its progress rather than queueing per file. Invokables cannot be async; the maintainers' pattern is `#[tokio::main]` around `QGuiApplication`, `tokio::spawn` inside the invokable and `queue` on the way back, which is the synchronous facade the map decided on. A Rust `QAbstractListModel` works with no safe wrapper by maintainer choice, so the shell writes a Drop guard for the begin and end row pairs. A QQuickItem can be subclassed from Rust, but cxx-qt-lib ships no QQuickItem, QSGNode or OpenGL types, so the video surface keeps a small C++ helper header either way. The gotchas: the API is pre-1.0 and moves every minor, so the version is pinned exactly; Qt 6.9.2 broke `#[qenum]` code generation for three and a half weeks and Arch users hit it first; a panic in any bridge function aborts the process; there is no runtime borrow check on the inner struct, so a bridge method finishes its `rust_mut` borrow before emitting; a QObject returned without a parent becomes JavaScript-owned.
 
@@ -1072,7 +1072,7 @@ The reply variants are written with positional data, `Sources(Vec<Source>)`, `Se
 
 ### 3.2 Storage: the schema, the image cache and the secrets
 
-Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, with the owner in one round. The mechanics under the schema, the crate versions, the connection thread, the transaction shape and the keyring stores, were fixed earlier on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6), 2026-09-03, and written up in [docs/research/core-crates.md](../../research/core-crates.md); the schema ticket kept them as they stood.
+Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, with the owner in one round. The mechanics under the schema, the crate versions, the connection thread, the transaction shape and the keyring stores, were fixed earlier on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6), 2026-09-03, and written up in [docs/research/core-crates.md](../../research/core-crates.md); the schema ticket kept them as they stood.
 
 The owner made two product calls on the schema ticket. A series whose folder disappears is missing, not gone, and keeps its match and history until the user forgets it. Every image a record references is fetched when the record is written, so the library works offline. One scope call came with them: TMDB leaves the native line, since the owner has no key and wants none. The rest of the schema below was not vetoed.
 
@@ -1396,7 +1396,7 @@ The indexes in the schema are for uniqueness and lookup: sources by path; series
 
 #### What the import writes
 
-`sources` are upserted by path, with `available` set from whether the path exists. `series` are upserted by `(kind, path)`, with the match columns, `confirmed` set, `hidden` from the file and `missing_since` set for a path not on disk; an AniList match also inserts a media stub. `history.views` and `history.completed` land by series path and episode number, the newer `at` winning. A resume point keyed by series and episode lands on episode key `<number>`; one keyed by file lands on the series that owns the file, its folder for a show and the file itself for a film, with the file name as the key. Accounts go to `tracker_accounts` and the keyring. `keys.tmdb` is ignored and counted under `fields_ignored`. Preferences go to `settings`. Importing the same file twice changes nothing, as [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11) requires.
+`sources` are upserted by path, with `available` set from whether the path exists. `series` are upserted by `(kind, path)`, with the match columns, `confirmed` set, `hidden` from the file and `missing_since` set for a path not on disk; an AniList match also inserts a media stub. `history.views` and `history.completed` land by series path and episode number, the newer `at` winning. A resume point keyed by series and episode lands on episode key `<number>`; one keyed by file lands on the series that owns the file, its folder for a show and the file itself for a film, with the file name as the key. Accounts go to `tracker_accounts` and the keyring. `keys.tmdb` is ignored and counted under `fields_ignored`. Preferences go to `settings`. Importing the same file twice changes nothing, as [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11) requires.
 
 #### TMDB
 
@@ -1431,7 +1431,7 @@ From the research ticket:
 
 ### 3.3 Scanning
 
-Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, whose core rules name the scanning behaviours; on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, for identity, the missing state, renames and Forget; on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6), 2026-09-03, written up in [docs/research/core-crates.md](../../research/core-crates.md), for the watcher; and on the contract section, 3.1, for the calls, the Scan job and its events. The folder and file rules that no ticket restated are carried from Electron, each with its file.
+Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, whose core rules name the scanning behaviours; on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, for identity, the missing state, renames and Forget; on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6), 2026-09-03, written up in [docs/research/core-crates.md](../../research/core-crates.md), for the watcher; and on the contract section, 3.1, for the calls, the Scan job and its events. The folder and file rules that no ticket restated are carried from Electron, each with its file.
 
 #### Sources and the launch walk
 
@@ -1533,7 +1533,7 @@ The labels a row shows come from `src/shared/extraLabels.ts`, carried, so the se
 
 #### Sidecars
 
-A sidecar is a subtitle file beside its video. The extensions are `.srt`, `.vtt`, `.ass` and `.ssa`, case-insensitive, and the match is by base name within the same folder, carried from `src/main/handlers/folderHandler.ts`, which matched a subtitle to the video with exactly the same base name, `Show - 01.srt` to `Show - 01.mkv`, kept every match and named the first one primary. The player ticket, [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04, adds the suffix, which widens that match: whatever sits between the video's base name and the subtitle extension carries the language and an optional title, so `Show - 01.en.srt`, `Show - 01.eng.ass` and `Show - 01.en.forced.srt` all belong to `Show - 01.mkv`, and the core parses them into `Sidecar { path, language?, title? }`. A file with no suffix is a sidecar with neither.
+A sidecar is a subtitle file beside its video. The extensions are `.srt`, `.vtt`, `.ass` and `.ssa`, case-insensitive, and the match is by base name within the same folder, carried from `src/main/handlers/folderHandler.ts`, which matched a subtitle to the video with exactly the same base name, `Show - 01.srt` to `Show - 01.mkv`, kept every match and named the first one primary. The player ticket, [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04, adds the suffix, which widens that match: whatever sits between the video's base name and the subtitle extension carries the language and an optional title, so `Show - 01.en.srt`, `Show - 01.eng.ass` and `Show - 01.en.forced.srt` all belong to `Show - 01.mkv`, and the core parses them into `Sidecar { path, language?, title? }`. A file with no suffix is a sidecar with neither.
 
 Sidecars are stored as the JSON `sidecars` column on the file row and carried on `Episode`, `Extra` and `PlaybackSession`; section 4.4 says how the shell adds them to mpv and how the track choice matches them.
 
@@ -1563,7 +1563,7 @@ Left open:
 
 ### 3.4 Matching
 
-Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, for the core rules and the match modal; on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, for the Metadata calls; on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, for the provider records, the confirmed flag and TMDB; on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11), 2026-09-04, for imported matches; and on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6), 2026-09-03, for the client and the limiter. The scoring, the fetch set and the airing rules are carried from Electron with their files.
+Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, for the core rules and the match modal; on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, for the Metadata calls; on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, for the provider records, the confirmed flag and TMDB; on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11), 2026-09-04, for imported matches; and on [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6), 2026-09-03, for the client and the limiter. The scoring, the fetch set and the airing rules are carried from Electron with their files.
 
 A match is the link from a series to one provider record: AniList, carrying the MAL id when AniList knows it, or MAL alone. AniList is the only matching provider, an owner decision of 2026-07-14 recorded in `src/main/utils/posterMatch.ts` and `src/main/utils/metadataMatcher.ts`: MAL was removed as a matching and fetching provider and is not to be re-added, and Jikan survives only as the per-episode side-fetch below. A series has at most one match, held in the match columns of its own row: `provider`, `anilist_id`, `mal_id`, `tmdb_id`, `tmdb_kind`, `confirmed`, `matched_at`, `attempted_at` and `attempt_version`. `MatchInfo` is what a card carries of it: the provider, the ids and `confirmed`.
 
@@ -1676,7 +1676,7 @@ Left open:
 
 ### 3.5 Trackers
 
-Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, and [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, with the client mechanics from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6), 2026-09-03, written up in [docs/research/core-crates.md](../../research/core-crates.md). No ticket owns the tracker rules as a whole. The checklist names them as core rules no unit goes green without: "monotonic marks, completed at the total, scores to every connected tracker, the hidden guard, bulk progress cached for five minutes, sanitized errors, disconnect wiping that provider's cache, tokens in the keyring". The detail behind each name is carried from Electron, with the file path at each rule. Calls and events are named as the contract section, 3.1, defines them.
+Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, and [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, with the client mechanics from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6), 2026-09-03, written up in [docs/research/core-crates.md](../../research/core-crates.md). No ticket owns the tracker rules as a whole. The checklist names them as core rules no unit goes green without: "monotonic marks, completed at the total, scores to every connected tracker, the hidden guard, bulk progress cached for five minutes, sanitized errors, disconnect wiping that provider's cache, tokens in the keyring". The detail behind each name is carried from Electron, with the file path at each rule. Calls and events are named as the contract section, 3.1, defines them.
 
 #### The two providers
 
@@ -1790,7 +1790,7 @@ Rejected:
 
 ### 3.6 Franchise
 
-Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, and [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04; the shell's half on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, unit 9. The map settled the scope while charting: the graph ships simplified, rendered once from a layout the core computes, pan and zoom only, nothing interactive, no filters, and the effort is not to over-invest, because the systems behind it will change. The proposal moved the layout out of the renderer so both shells draw the same graph, and the checklist records the owner wanting far more interaction later as its own effort after this map.
+Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, and [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04; the shell's half on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, unit 9. The map settled the scope while charting: the graph ships simplified, rendered once from a layout the core computes, pan and zoom only, nothing interactive, no filters, and the effort is not to over-invest, because the systems behind it will change. The proposal moved the layout out of the renderer so both shells draw the same graph, and the checklist records the owner wanting far more interaction later as its own effort after this map.
 
 #### The store
 
@@ -1859,7 +1859,7 @@ Related draws the graph from the layout as handed over, once. Pan by drag, zoom 
 Rejected:
 
 - Per-root franchise files with a stored root. The over-merge came from exactly that.
-- A graph library in either shell. The shell draws positions; [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17) renders the nodes with the same `Corner` primitive as the cards and one `Shape` of edges.
+- A graph library in either shell. The shell draws positions; [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17) renders the nodes with the same `Corner` primitive as the cards and one `Shape` of edges.
 - Layout in the shell. Two shells would draw two graphs.
 
 #### Left open
@@ -1873,7 +1873,7 @@ Rejected:
 
 ### 3.7 Feed, watching and subscriptions
 
-Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, units 8 and 11 of the retire line, with the calls from [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, and the tables from [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04. The Watching page's original decisions are in [docs/superpowers/specs/2026-05-28-watching-tab-design.md](../../superpowers/specs/2026-05-28-watching-tab-design.md), committed as history with the Electron freeze. The proposal digest fixes one thing for subscriptions: the core still shells out to anirss.
+Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, units 8 and 11 of the retire line, with the calls from [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, and the tables from [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04. The Watching page's original decisions are in [docs/superpowers/specs/2026-05-28-watching-tab-design.md](../../superpowers/specs/2026-05-28-watching-tab-design.md), committed as history with the Electron freeze. The proposal digest fixes one thing for subscriptions: the core still shells out to anirss.
 
 #### The feed
 
@@ -1920,7 +1920,7 @@ A row shows the name, active or paused from `active`, the torrent count, the dec
 
 ### 3.8 The playback rules
 
-Decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04, which changed the tick paragraph of [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, in one place. The history rows the rules write are those of [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04.
+Decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04, which changed the tick paragraph of [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, in one place. The history rows the rules write are those of [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04.
 
 This section is the core's half of the player: what a session is, what a tick carries, and the rules the core applies to it. The shell's half, the mpv configuration layers, the subtitle defaults, track choice, frame step and the properties the shell observes, is the player behaviours section, 4.4. The calls, records and events named here are defined in the contract section, 3.1, and are not restated.
 
@@ -2013,7 +2013,7 @@ The Debug events drive bars and models and never reach the activity log. `Viewed
 
 ### 3.9 Import and export
 
-Decided on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11), 2026-09-04, and built on [Ship the export in Electron](https://github.com/marcusbandit/AniBeam/issues/20), 2026-09-03. What the import writes was fixed on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, which also took TMDB out of the native line and edited the export ticket accordingly.
+Decided on [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11), 2026-09-04, and built on [Ship the export in Electron](https://github.com/marcusbandit/Anibeam/issues/20), 2026-09-03. What the import writes was fixed on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, which also took TMDB out of the native line and edited the export ticket accordingly.
 
 The owner made four product calls on the export ticket: merge with file wins, missing sources kept as unavailable, manual at both ends, and one format that doubles as the native backup. Two more followed in the second round: hidden shows export with their flag in both variants, and a new Export section at the end of Electron's Settings. Nine technical choices, none vetoed. The map had settled the checkbox while charting, in conversation on 2026-09-03: unticked exports the sources and every series with its match; ticked exports everything, tokens and API keys included, as plain JSON, trusting the user, with no encryption.
 
@@ -2166,7 +2166,7 @@ A shell owns the window, the input and the video surface. It draws what the core
 
 ### 4.1 The parity checklist
 
-Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, and edited in place three times that same day. [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15) struck the episode thumbnails. [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16) struck external mpv and filled in the player's open lines. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21) took TMDB out and put the missing state in. What follows is the edited text. CONTEXT.md says the checklist lives on its ticket and the spec lifts it; this section is that lift, with every struck item left visible so a reader can see what fell away and which ticket cut it.
+Decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, and edited in place three times that same day. [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15) struck the episode thumbnails. [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16) struck external mpv and filled in the player's open lines. [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21) took TMDB out and put the missing state in. What follows is the edited text. CONTEXT.md says the checklist lives on its ticket and the spec lifts it; this section is that lift, with every struck item left visible so a reader can see what fell away and which ticket cut it.
 
 #### How the list works
 
@@ -2179,7 +2179,7 @@ The list is in build order, and two lines cut it.
 
 Four additions count as parity, each marked where it sits: single instance in unit 1, the audio track picker in unit 4, and in unit 7 both Clear match in place of Delete and Forget on the Missing files rows. The ticket's header says three. It was written before the schema ticket's edit marked Forget as an addition in unit 7, and the edit did not touch the header, so the marked items in the body are the count.
 
-Look is not parity. [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17) and the theme and frame sections of this chapter decide how things look; this list says what they do. A unit that behaves as listed but looks unlike the prototype is green.
+Look is not parity. [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17) and the theme and frame sections of this chapter decide how things look; this list says what they do. A unit that behaves as listed but looks unlike the prototype is green.
 
 #### Switch line
 
@@ -2192,9 +2192,9 @@ Look is not parity. [Prototype: the home grid in QML with the theme knobs live](
 - Escape closes any open popover, menu or modal.
 - Every page reachable from the keyboard.
 - The window title follows the page.
-- The theme knobs from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14) applied: dark, light or system; density or scale; poster grid size; corner style; and the colour source. The checklist's own wording was "colours from the portal or a built-in theme"; the theme ticket settled the terminal palette as the default colour source, with the portal behind it, and the cross-ticket list wins.
+- The theme knobs from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14) applied: dark, light or system; density or scale; poster grid size; corner style; and the colour source. The checklist's own wording was "colours from the portal or a built-in theme"; the theme ticket settled the terminal palette as the default colour source, with the portal behind it, and the cross-ticket list wins.
 - Single instance, so a second launch focuses the running window. An addition; today a wrapper script around the launcher entry does this. Section 4.5 carries the mechanism.
-- The empty home offers Import, from [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11), and points at Settings.
+- The empty home offers Import, from [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11), and points at Settings.
 
 **2. Library.**
 
@@ -2308,11 +2308,11 @@ Dead or superseded in Electron and not carried:
 
 Leftovers in the config directory with no code behind them are ignored: `mpv-input.conf`, `ui_scale`, `library_roots`, `lastScanned`.
 
-Three things were handed to other tickets rather than gating the switch. Volume persistence went to the player ticket and came back into unit 4 as the remembered mute and slider. The drawer on every page went to the map's fog and section 4.5 answers it with the status strip. Two launcher entries during the gap between the lines went to [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19).
+Three things were handed to other tickets rather than gating the switch. Volume persistence went to the player ticket and came back into unit 4 as the remembered mute and slider. The drawer on every page went to the map's fog and section 4.5 answers it with the status strip. Two launcher entries during the gap between the lines went to [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19).
 
 ### 4.2 The theme model
 
-Decided on [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14), 2026-09-04, settled with the owner with the system-colours research open. The words are CONTEXT.md's Look group: token, terminal palette, colour source, theme, mode, accent, density.
+Decided on [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14), 2026-09-04, settled with the owner with the system-colours research open. The words are CONTEXT.md's Look group: token, terminal palette, colour source, theme, mode, accent, density.
 
 Everything in this section is Linux only. Mode, density, poster size, corner style, colour source and the theme pair exist in the Linux shell and nowhere else; macOS gets none of them.
 
@@ -2469,13 +2469,13 @@ The code lives in the Linux shell's Rust half: zbus for the portal, notify for t
 
 ### 4.3 The look
 
-Decided on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17), 2026-09-04. One round of four questions went to the owner and every recommendation was taken; the rest was the agent's discretion with bandit shell as the reference, as the owner asked when leaving. The prototype followed the owner's UI rules: just try then iterate, G2 corners, three type sizes, the system font.
+Decided on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17), 2026-09-04. One round of four questions went to the owner and every recommendation was taken; the rest was the agent's discretion with bandit shell as the reference, as the owner asked when leaving. The prototype followed the owner's UI rules: just try then iterate, G2 corners, three type sizes, the system font.
 
 #### What the prototype is and where it lives
 
-The prototype is a Cargo-only cxx-qt window with no mpv, built on branch [prototype/home-grid-qml](https://github.com/marcusbandit/AniBeam/tree/prototype/home-grid-qml) in the crate `spikes/home-grid-qml/`, now merged with this spec. Its captures are under `docs/prototypes/home-grid-qml/`. The Rust singleton reads `metadata.json`, the AniList progress cache, view history and the kitty config chain (includes resolved, last write wins), all read-only, and hands QML two JSON strings. `qml/Theme.qml` derives the tokens from the theme ticket's ratios and slot mappings; `qml/Corner.qml` is the one rounded-shape primitive. Every knob is live in a floating bar and settable at launch with `--preset`, so `scripts/shoot.sh` captures any state unattended. The posters are real, from the owner's image cache, 46 series.
+The prototype is a Cargo-only cxx-qt window with no mpv, built on branch [prototype/home-grid-qml](https://github.com/marcusbandit/Anibeam/tree/prototype/home-grid-qml) in the crate `spikes/home-grid-qml/`, now merged with this spec. Its captures are under `docs/prototypes/home-grid-qml/`. The Rust singleton reads `metadata.json`, the AniList progress cache, view history and the kitty config chain (includes resolved, last write wins), all read-only, and hands QML two JSON strings. `qml/Theme.qml` derives the tokens from the theme ticket's ratios and slot mappings; `qml/Corner.qml` is the one rounded-shape primitive. Every knob is live in a floating bar and settable at launch with `--preset`, so `scripts/shoot.sh` captures any state unattended. The posters are real, from the owner's image cache, 46 series.
 
-It was a thing to react to, not the shell, but the look it settled is the shell's, and [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22) records that its QML carries into the Linux shell with the Rust glue around it replaced (section 4.5).
+It was a thing to react to, not the shell, but the look it settled is the shell's, and [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22) records that its QML carries into the Linux shell with the Rust glue around it replaced (section 4.5).
 
 ![The default state: terminal palette, dark, medium posters, normal density](../../prototypes/home-grid-qml/p1-default.jpg)
 
@@ -2558,7 +2558,7 @@ cxx-qt-build watches the QML files, so a QML edit is a 7 s rebuild. A QML-define
 
 ### 4.4 The player
 
-Decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04, with the owner in two rounds of four. What the player must do comes from unit 4 of [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04, and the hardware it stands on from the two libmpv spikes ([NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/9), [AMD laptop](https://github.com/marcusbandit/AniBeam/issues/18), 2026-09-03) and the two bundled-config tickets ([laptop](https://github.com/marcusbandit/AniBeam/issues/23), [desktop](https://github.com/marcusbandit/AniBeam/issues/25), 2026-09-04). Chapter 2 records those spikes as facts; this section cites each fact where the player leans on it. The playback rules, view, mark, completion, resume point and skip windows, are the core's and live in section 3.8. Here they appear only as what the shell sends and what it shows.
+Decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04, with the owner in two rounds of four. What the player must do comes from unit 4 of [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04, and the hardware it stands on from the two libmpv spikes ([NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/9), [AMD laptop](https://github.com/marcusbandit/Anibeam/issues/18), 2026-09-03) and the two bundled-config tickets ([laptop](https://github.com/marcusbandit/Anibeam/issues/23), [desktop](https://github.com/marcusbandit/Anibeam/issues/25), 2026-09-04). Chapter 2 records those spikes as facts; this section cites each fact where the player leans on it. The playback rules, view, mark, completion, resume point and skip windows, are the core's and live in section 3.8. Here they appear only as what the shell sends and what it shows.
 
 The player ticket added three terms to CONTEXT.md, track choice, subtitle defaults and completion, and the tick lost "whichever player is running": there is one player now.
 
@@ -2754,11 +2754,11 @@ The player ticket edited four other tickets in place, and their chapters carry t
 
 ### 4.5 Frame and settings
 
-Decided on [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22), 2026-09-04. The owner grilled it against a sketch built in the prototype's QML on branch `prototype/home-grid-qml` (commits `e77df4a`, `51989ff`, `8441fdc`, `0400a94`, `d9f7823`), captured under docs/prototypes/home-grid-qml/: `a1` to `a7` on the ultrawide, `b1` to `b4` at 16:9, `c1` on the portrait monitor. Two facts were checked before anything was decided. Electron has no single-instance handling at all; two launches are two processes writing the same files. Its activity drawer is a floating bottom-right panel mounted only on Settings and Metadata. Nothing in this section inherits a layout from Electron.
+Decided on [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22), 2026-09-04. The owner grilled it against a sketch built in the prototype's QML on branch `prototype/home-grid-qml` (commits `e77df4a`, `51989ff`, `8441fdc`, `0400a94`, `d9f7823`), captured under docs/prototypes/home-grid-qml/: `a1` to `a7` on the ultrawide, `b1` to `b4` at 16:9, `c1` on the portrait monitor. Two facts were checked before anything was decided. Electron has no single-instance handling at all; two launches are two processes writing the same files. Its activity drawer is a floating bottom-right panel mounted only on Settings and Metadata. Nothing in this section inherits a layout from Electron.
 
 #### Single instance
 
-The shell's Rust half owns `com.marcusrosado.AniBeam` on the session bus with zbus and serves `org.freedesktop.Application` at `/com/marcusrosado/AniBeam`. `Activate` raises the window. `Open` ignores its URIs and behaves as `Activate`, since the app opens nothing from the launcher. `ActivateAction` answers from a table that is empty today; a later launcher action is a `[Desktop Action]` group whose `Exec` is `anibeam --action <name>`, which the second launch forwards as `ActivateAction`. The core knows nothing of any of this. This is the Linux shell's mechanism; the macOS appendix carries the Mac's as an open question.
+The shell's Rust half owns `com.marcusrosado.Anibeam` on the session bus with zbus and serves `org.freedesktop.Application` at `/com/marcusrosado/Anibeam`. `Activate` raises the window. `Open` ignores its URIs and behaves as `Activate`, since the app opens nothing from the launcher. `ActivateAction` answers from a table that is empty today; a later launcher action is a `[Desktop Action]` group whose `Exec` is `anibeam --action <name>`, which the second launch forwards as `ActivateAction`. The core knows nothing of any of this. This is the Linux shell's mechanism; the macOS appendix carries the Mac's as an open question.
 
 The guarantee is a lock, not the bus. The shell takes a flock on a file under `$XDG_RUNTIME_DIR` before anything else. A second launch that loses the lock calls `Activate` on the running one, forwarding the launcher's activation token when `XDG_ACTIVATION_TOKEN` is set, and exits 0. With no session bus it prints one line on stderr and exits 1, so the no-bus case never produces two windows; it just cannot raise. Raising is standard xdg-activation: Qt's Wayland plugin consumes a token from that environment variable on `requestActivate` and asks the compositor for a fresh one when none is set. Hyprland honours fresh tokens but only marks the window urgent unless `misc:focus_on_activate` is on. That is the compositor's setting, not an app rule.
 
@@ -2829,7 +2829,7 @@ The Linux shell is the Qt app under `apps/linux/`: QML on top of a Rust half tha
 
 ### 5.1 The stack
 
-Decided on [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/AniBeam/issues/3), 2026-09-03, and [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/AniBeam/issues/4), 2026-09-03; proved on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/AniBeam/issues/10), 2026-09-03, and on the two libmpv spikes, [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/9) and [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/18), both 2026-09-03. The D-Bus owner comes from [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22), 2026-09-04, and the theme code's home from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14), 2026-09-04. The map settled "Cargo alone through cxx-qt-build" while charting, on 2026-09-03.
+Decided on [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/Anibeam/issues/3), 2026-09-03, and [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/Anibeam/issues/4), 2026-09-03; proved on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/Anibeam/issues/10), 2026-09-03, and on the two libmpv spikes, [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/9) and [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/18), both 2026-09-03. The D-Bus owner comes from [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22), 2026-09-04, and the theme code's home from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14), 2026-09-04. The map settled "Cargo alone through cxx-qt-build" while charting, on 2026-09-03.
 
 #### Qt 6.11 QML through cxx-qt 0.10.0, built with Cargo alone
 
@@ -2881,9 +2881,9 @@ The list models. The poster grid and every other list sit on Rust models: `#[bas
 
 Safety rules. A panic in any bridge function aborts the process: cxx wraps every one in `prevent_unwind`. The bridge catches or avoids panics and reports failures as events. There is no runtime borrow check on the Rust struct inside the QObject, only the static borrow of `Pin<&mut Self>`, so the bridge finishes every `rust_mut()` borrow before it emits a Qt signal, or emits through `queue`. Shared state lives in the core behind `Arc`; the QObject is touched only from the Qt thread or through `CxxQtThread`.
 
-The theme code. The colour source, the terminal palette reader, the portal reader, the palette derivation and `theme.toml` all live in this Rust half: zbus for `org.freedesktop.appearance` over D-Bus, notify for the terminal config chain and the theme files, `material-colors` 0.4.2 for the derived palette, toml_edit so hand edits and comments survive. Nothing of it crosses the bridge; the core stays platform-neutral and knows no colour. Built-in themes ship at `/usr/share/anibeam/themes/`, user themes live at `~/.config/anibeam/themes/`, and the settings sit in `~/.config/anibeam/theme.toml`, watched for live reload. The token set, the mappings and the thirty built-ins are the theme model's own section, lifted from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14).
+The theme code. The colour source, the terminal palette reader, the portal reader, the palette derivation and `theme.toml` all live in this Rust half: zbus for `org.freedesktop.appearance` over D-Bus, notify for the terminal config chain and the theme files, `material-colors` 0.4.2 for the derived palette, toml_edit so hand edits and comments survive. Nothing of it crosses the bridge; the core stays platform-neutral and knows no colour. Built-in themes ship at `/usr/share/anibeam/themes/`, user themes live at `~/.config/anibeam/themes/`, and the settings sit in `~/.config/anibeam/theme.toml`, watched for live reload. The token set, the mappings and the thirty built-ins are the theme model's own section, lifted from [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14).
 
-The D-Bus owner. The same Rust half owns `com.marcusrosado.AniBeam` on the session bus with zbus and serves `org.freedesktop.Application` at `/com/marcusrosado/AniBeam`, so a second launch can hand its activation token to the running window. The guarantee is a flock on a file under `$XDG_RUNTIME_DIR`, taken before anything else; the bus is only the way to raise. MPRIS lives on the same connection as `org.mpris.MediaPlayer2.anibeam` with `DesktopEntry` set to the app id, so the desktop pairs the player with the entry and its icon. With no session bus the app prints one line on stderr and carries on without MPRIS or media keys; a second launch with no bus prints one line and exits 1. The core knows nothing of any of it. The full mechanism, `Activate`, `Open`, `ActivateAction`, the token hand-off and the compositor's side, is section 4.5. Single instance is a parity addition from [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13): today a wrapper script around the Electron entry focuses or launches, and the native app must do it itself from day one, which is why the packaging ticket made the app id a valid bus name.
+The D-Bus owner. The same Rust half owns `com.marcusrosado.Anibeam` on the session bus with zbus and serves `org.freedesktop.Application` at `/com/marcusrosado/Anibeam`, so a second launch can hand its activation token to the running window. The guarantee is a flock on a file under `$XDG_RUNTIME_DIR`, taken before anything else; the bus is only the way to raise. MPRIS lives on the same connection as `org.mpris.MediaPlayer2.anibeam` with `DesktopEntry` set to the app id, so the desktop pairs the player with the entry and its icon. With no session bus the app prints one line on stderr and carries on without MPRIS or media keys; a second launch with no bus prints one line and exits 1. The core knows nothing of any of it. The full mechanism, `Activate`, `Open`, `ActivateAction`, the token hand-off and the compositor's side, is section 4.5. Single instance is a parity addition from [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13): today a wrapper script around the Electron entry focuses or launches, and the native app must do it itself from day one, which is why the packaging ticket made the app id a valid bus name.
 
 #### The C++ half
 
@@ -2891,7 +2891,7 @@ Two things sit in C++ because cxx-qt-lib does not wrap them, and both go through
 
 The video item is a C++ subclass of MpvQt's `MpvAbstractItem` with `Q_OBJECT` and `QML_ELEMENT`, registered beside the Rust singleton as above. cxx-qt-lib ships no `QQuickItem`, `QSGNode` or OpenGL types, so whichever route the surface took it would keep a small C++ header; the spike settled it as a plain C++ item, and section 5.2 carries it.
 
-A helpers header holds free functions for the two calls the shell needs before or beside the application object: `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)`, which must run before the first window exists because the mpv item is a `QQuickFramebufferObject` and wants the OpenGL scene graph, and `QGuiApplication::setDesktopFileName`, which makes the Wayland app id `com.marcusrosado.AniBeam` so the compositor pairs the window with the entry's icon. Both are declared to Rust inside the bridge in an `unsafe extern "C++"` block with `include!("helpers.h")`. Without an installed entry Qt logs `qt.qpa.services: Failed to register with host portal ... App info not found`; with the entry installed the line is gone.
+A helpers header holds free functions for the two calls the shell needs before or beside the application object: `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)`, which must run before the first window exists because the mpv item is a `QQuickFramebufferObject` and wants the OpenGL scene graph, and `QGuiApplication::setDesktopFileName`, which makes the Wayland app id `com.marcusrosado.Anibeam` so the compositor pairs the window with the entry's icon. Both are declared to Rust inside the bridge in an `unsafe extern "C++"` block with `include!("helpers.h")`. Without an installed entry Qt logs `qt.qpa.services: Failed to register with host portal ... App info not found`; with the entry installed the line is gone.
 
 #### Wayland, the render loop and XWayland
 
@@ -2907,7 +2907,7 @@ XWayland is the fallback, and it works with one variable. Under XWayland both GP
 
 ### 5.2 The video surface
 
-Decided on [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/AniBeam/issues/4), 2026-09-03; proved on [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/9) and [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/18), both 2026-09-03, with the registration into a Cargo-only build proved on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/AniBeam/issues/10), 2026-09-03. What the player does with the surface is section 4.4's; this section is the surface itself.
+Decided on [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/Anibeam/issues/4), 2026-09-03; proved on [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/9) and [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/18), both 2026-09-03, with the registration into a Cargo-only build proved on [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/Anibeam/issues/10), 2026-09-03. What the player does with the surface is section 4.4's; this section is the surface itself.
 
 MpvQt 1.2.0 on Qt 6.11 and mpv 0.41. The surface is a C++ subclass of `MpvAbstractItem` from MpvQt 1.2.0, the KDE libmpv wrapper for Qt Quick that Haruna is built on, marked `Q_OBJECT` and `QML_ELEMENT` and compiled into the shell's QML module through `cpp_files`. MpvQt asks for Qt 6.5 and libmpv client API 2.x (2.0 is the effective floor since the 1.2.0 release dropped the pre-2.0 guard); mpv 0.41 is client API 2.5 with additions only since 2.0, and Arch builds `mpvqt` 1.2.0-1 against exactly Qt 6.11 and mpv 0.41. Its soname is 3. Everything MpvQt asks of the render API (`API_TYPE`, `OPENGL_INIT_PARAMS`, `OPENGL_FBO`, `FLIP_Y`, `X11_DISPLAY`, `WL_DISPLAY`) is in the 0.41 headers; the one 2.5 deprecation, `AMBIENT_LIGHT`, MpvQt never used. Every control method on the item is `Q_INVOKABLE`: `observeProperty`, `setProperty`, `setPropertyAsync`, `getProperty`, `getPropertyAsync`, `command`, `commandAsync`, their blocking forms, `expandText` and `requestUpdateFromRenderer`; its one signal is `ready()`, and `propertyChanged` and `asyncReply` live on the controller behind `mpvController()`.
 
@@ -2939,7 +2939,7 @@ Not measured by the spikes: an external monitor on the laptop, battery against m
 
 ### 5.3 Packaging
 
-Decided on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19), 2026-09-04, on top of [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/AniBeam/issues/10), 2026-09-03. The map settled "installed through a PKGBUILD, shipping the .desktop entry and the current icon" and the repository layout while charting on 2026-09-03; the Electron end point is from [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/AniBeam/issues/12), 2026-09-04. The packaging ticket added two terms to CONTEXT.md, app id and install.
+Decided on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19), 2026-09-04, on top of [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/Anibeam/issues/10), 2026-09-03. The map settled "installed through a PKGBUILD, shipping the .desktop entry and the current icon" and the repository layout while charting on 2026-09-03; the Electron end point is from [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/Anibeam/issues/12), 2026-09-04. The packaging ticket added two terms to CONTEXT.md, app id and install.
 
 The native line lives in the same repository as the frozen Electron tree: `core/`, `apps/linux/` and `apps/macos/`, merged into `main` through short branches, with `main` green for both worlds until phase 3 deletes Electron in one commit. The Electron line ends at the annotated tag `v1.0.0` at `1b0fb08`; the `electron` branch is cut there for fixes, and `main` belongs to the native line from `f1dcb06` on. The native line starts at 2.0.0. An install is a build of the checkout put on a machine, and every install carries a version unique to the commit it came from: a build is a version, never just a file.
 
@@ -2949,7 +2949,7 @@ The spike answered the question the packaging hangs on: a Cargo-only cxx-qt buil
 
 Package: `anibeam`. Nothing in pacman carries the name, Electron was never a package, and the spike's `anibeam-spike` is already removed from the desktop.
 
-App id: `com.marcusrosado.AniBeam`, the owner's own domain. One string for the desktop file (`com.marcusrosado.AniBeam.desktop`), `StartupWMClass`, `QGuiApplication::setDesktopFileName` and so the Wayland app id, the hicolor icon name, the D-Bus name single instance owns, and MPRIS's `DesktopEntry`. Reverse-DNS for three reasons: a bare `anibeam` is not a valid D-Bus bus name; Electron's user-level `anibeam.desktop` would shadow a system entry of the same id for the whole gap; and Flatpak later would demand exactly this id. `dev.anibeam`, the spike's QML base, is not the owner's domain and is gone.
+App id: `com.marcusrosado.Anibeam`, the owner's own domain. One string for the desktop file (`com.marcusrosado.Anibeam.desktop`), `StartupWMClass`, `QGuiApplication::setDesktopFileName` and so the Wayland app id, the hicolor icon name, the D-Bus name single instance owns, and MPRIS's `DesktopEntry`. Reverse-DNS for three reasons: a bare `anibeam` is not a valid D-Bus bus name; Electron's user-level `anibeam.desktop` would shadow a system entry of the same id for the whole gap; and Flatpak later would demand exactly this id. `dev.anibeam`, the spike's QML base, is not the owner's domain and is gone.
 
 The desktop entry, with `StartupNotify=true` added by the frame ticket after the packaging ticket wrote the list, because GLib and KDE launchers only pass an activation token when it is set:
 
@@ -2959,11 +2959,11 @@ Type=Application
 Name=Anibeam
 Comment=Browse, play, and track your local anime library
 Exec=anibeam
-Icon=com.marcusrosado.AniBeam
+Icon=com.marcusrosado.Anibeam
 Terminal=false
 Categories=AudioVideo;Video;Player;
 Keywords=anibeam;anime;media;video;
-StartupWMClass=com.marcusrosado.AniBeam
+StartupWMClass=com.marcusrosado.Anibeam
 StartupNotify=true
 ```
 
@@ -2987,7 +2987,7 @@ At a tag that yields `2.0.0`; fourteen commits later `2.0.0.r14.g1a2b3c4`; with 
 
 `makedepends=(rust lld git)`, git for `pkgver()`. `prepare()` runs `cargo fetch --locked` for the host target. `build()` exports `RUSTUP_TOOLCHAIN=stable` and runs `cargo build --frozen --release -p anibeam -p anibeam-cli` with `CARGO_TARGET_DIR="$_repo/target/makepkg-cargo"`, a directory of its own: makepkg's `RUSTFLAGS` and `CXXFLAGS` differ from the dev loop's, and sharing `target/release` would rebuild everything on every switch between the two. Kept warm, an install after a small change takes seconds rather than the spike's 104 s. No `check()`: tests run in the dev loop, and an install is not a gate.
 
-The tag-sourced release PKGBUILD (`git+https://github.com/marcusbandit/AniBeam.git#tag=v$pkgver`, `sha256sums=(SKIP)`) is the AUR shape. It arrives with that effort, out of scope here, and nothing above precludes it. The spike write-up's line that the shell's PKGBUILD "fetches a tagged tarball" is superseded by this.
+The tag-sourced release PKGBUILD (`git+https://github.com/marcusbandit/Anibeam.git#tag=v$pkgver`, `sha256sums=(SKIP)`) is the AUR shape. It arrives with that effort, out of scope here, and nothing above precludes it. The spike write-up's line that the shell's PKGBUILD "fetches a tagged tarball" is superseded by this.
 
 #### Options and the debug package
 
@@ -2998,8 +2998,8 @@ Everything else at makepkg's defaults, `debug` included. The spike write-up said
 #### What the package installs
 
 - `/usr/bin/anibeam` and `/usr/bin/anibeam-cli`; the contract ticket put the CLI in the package as a second binary in the workspace that links the core in-process.
-- `/usr/share/applications/com.marcusrosado.AniBeam.desktop`, the entry above.
-- `/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png`, the current icon; new branding is out of scope until the owner finds something better.
+- `/usr/share/applications/com.marcusrosado.Anibeam.desktop`, the entry above.
+- `/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png`, the current icon; new branding is out of scope until the owner finds something better.
 - `/usr/share/anibeam/mpv.conf`, the bundled config from the player tickets, section 5.4.
 - `/usr/share/anibeam/themes/`, the thirty built-ins from the theme ticket; this resolves that ticket's `<app>` to the package name.
 - `/usr/share/licenses/anibeam/LICENSE`.
@@ -3021,7 +3021,7 @@ pkgver=2.0.0   # rewritten by pkgver() on every build
 pkgrel=1
 pkgdesc="Browse, play, and track your local anime library"
 arch=(x86_64)
-url="https://github.com/marcusbandit/AniBeam"
+url="https://github.com/marcusbandit/Anibeam"
 license=(GPL-3.0-or-later)
 depends=(qt6-base qt6-declarative qt6-svg mpvqt mpv gcc-libs glibc hicolor-icon-theme)
 optdepends=('xdg-desktop-portal: colour source fallback when no terminal config is found'
@@ -3058,10 +3058,10 @@ build() {
 package() {
   install -Dm755 "$_target/release/anibeam"     "$pkgdir/usr/bin/anibeam"
   install -Dm755 "$_target/release/anibeam-cli" "$pkgdir/usr/bin/anibeam-cli"
-  install -Dm644 "$_linux/com.marcusrosado.AniBeam.desktop" \
-    "$pkgdir/usr/share/applications/com.marcusrosado.AniBeam.desktop"
+  install -Dm644 "$_linux/com.marcusrosado.Anibeam.desktop" \
+    "$pkgdir/usr/share/applications/com.marcusrosado.Anibeam.desktop"
   install -Dm644 "$_linux/assets/icon.png" \
-    "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png"
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png"
   install -Dm644 "$_linux/mpv.conf" "$pkgdir/usr/share/anibeam/mpv.conf"
   install -Dm644 -t "$pkgdir/usr/share/anibeam/themes" "$_linux"/themes/*
   install -Dm644 "$_repo/LICENSE" "$pkgdir/usr/share/licenses/anibeam/LICENSE"
@@ -3085,7 +3085,7 @@ makepkg -fi
 
 Electron on both machines is a user-level install: `~/.local/share/applications/anibeam.desktop` with class `anibeam`, launched through the focus-or-launch wrapper, and the icon under `~/.local/share/icons`. The native package installs system-wide under a different id, so both entries show and neither shadows the other. Between the switch line going green and the retire line going green, both apps are installed and both launchable, which is what made a new app id the right answer.
 
-Install day, per machine: run `package.sh`, then edit the Electron entry's `Name` to `Anibeam (Electron)` by hand. The wrapper's `^anibeam$` match still finds only Electron; the native window is `com.marcusrosado.AniBeam`. Single instance for the native app is its own job from day one, and the app id being a valid bus name is the way in.
+Install day, per machine: run `package.sh`, then edit the Electron entry's `Name` to `Anibeam (Electron)` by hand. The wrapper's `^anibeam$` match still finds only Electron; the native window is `com.marcusrosado.Anibeam`. Single instance for the native app is its own job from day one, and the app id being a valid bus name is the way in.
 
 The three XDG directories are shared through the gap. Electron holds, on the desktop: in `~/.config/anibeam`, `config.json`, `metadata.json`, `franchiseStore.json`, `franchiseStore.raw.json`, `franchiseGraphCache.json.bak-*`, `franchises/`, `image-cache/`, `subtitle-cache/`, `thumbnails/`, `logs/`, `mpv-input.conf`, the `*.bak-*` and `*.corrupted-*` copies, and Chromium's own (`Cache`, `Code Cache`, `GPUCache`, `Local Storage`, `Session Storage`, `IndexedDB`, `Crashpad`, `Preferences`, `Local State`, `Cookies*`, `Network Persistent State`, `blob_storage`, `component_crx_cache`, `Dawn*Cache`, `Dictionaries`, `DIPS`, `shared_proto_db`, `Shared Dictionary`, `SharedStorage*`); in `~/.cache/anibeam`, `images/`, `thumbs/`, `watch-later/`; in `~/.local/share/anibeam`, `metadata.json`. The native line never creates a file or directory with one of those names; its image cache is not `images/`. The retire line, once the import has carried the library and history across, deletes everything in the three directories that is not the native line's own set, then the Electron entry, its icon and the wrapper.
 
@@ -3095,12 +3095,12 @@ The three XDG directories are shared through the gap. Electron holds, on the des
 - `dev.anibeam.*`: not the owner's domain.
 - A tag-sourced release PKGBUILD plus a `-git` one now: two files for one owner and two machines, and every install between tags would go through the `-git` one anyway.
 - `!debug`: a shorter build for address-only crashes, the wrong trade for phases 1 to 4.
-- The app id as the XDG directory name: a clean retire at the price of typing `~/.config/com.marcusrosado.AniBeam/` for life.
+- The app id as the XDG directory name: a clean retire at the price of typing `~/.config/com.marcusrosado.Anibeam/` for life.
 - MIT, the spike's license: fine for the owner's own builds, but a distributed build is GPL through mpv regardless, so the file would say something untrue the day it mattered.
 
 ### 5.4 The bundled mpv.conf
 
-Decided on [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/23), 2026-09-04, and [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/25), 2026-09-04. The file's place in the load order was fixed on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04, and is section 4.4's.
+Decided on [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/23), 2026-09-04, and [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/25), 2026-09-04. The file's place in the load order was fixed on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04, and is section 4.4's.
 
 Nothing on the candidate list earned a line on either machine. `/usr/share/anibeam/mpv.conf` holds `hwdec=auto` and nothing else, on both machines. The player ticket's earlier expectation that the file would also carry "the quality lines that survive a test on both GPUs" resolved to none surviving.
 
@@ -3139,7 +3139,7 @@ Not covered by either run: a real 4K release (both 4K blocks are re-encodes of t
 
 ## Appendix A. The macOS shell
 
-Suggestions for the shell that runs on a Mac, drawn from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8) and [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/AniBeam/issues/5), both checked against primary sources on 2026-09-03, laid over the platform-neutral decisions the other chapters fix. Nothing in either research ran on a Mac. The write-ups, docs/research/macos-shell-blocks.md and docs/research/uniffi.md, carry a source per claim and are the place to zoom; A.7 lists what they could not verify.
+Suggestions for the shell that runs on a Mac, drawn from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8) and [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/Anibeam/issues/5), both checked against primary sources on 2026-09-03, laid over the platform-neutral decisions the other chapters fix. Nothing in either research ran on a Mac. The write-ups, docs/research/macos-shell-blocks.md and docs/research/uniffi.md, carry a source per claim and are the place to zoom; A.7 lists what they could not verify.
 
 ### A.1 Who this is for and what is fixed
 
@@ -3150,21 +3150,21 @@ A shell, in CONTEXT.md's words, owns the window, the input and the video surface
 #### Fixed by the core, the same on a Mac
 
 - The contract, section 3.1. One `Arc<Core>` with `open`, `start`, `call`, `subscribe` and `shutdown`; the `Call`, `Reply`, `Event` and `CoreError` enums; calls that return in milliseconds and jobs that reply `Started { job }` and finish through events. A.3 says how Swift reaches it.
-- The playback rules, decided on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15) and [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), both 2026-09-04. The shell sends a tick a second plus one on pause, seek and close; the core writes the resume point on every tick after the first five seconds, records a view after 30 s of forward playback at real time, fires a mark at the earlier of the outro start and 85 percent, and reaches completion within 30 s of the end, at or past a known outro start, or at the end of the file. A session with no tick changes nothing. The Mac shell implements none of this; it reports positions.
+- The playback rules, decided on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15) and [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), both 2026-09-04. The shell sends a tick a second plus one on pause, seek and close; the core writes the resume point on every tick after the first five seconds, records a view after 30 s of forward playback at real time, fires a mark at the earlier of the outro start and 85 percent, and reaches completion within 30 s of the end, at or past a known outro start, or at the end of the file. A session with no tick changes nothing. The Mac shell implements none of this; it reports positions.
 - The player behaviours, section 4.4: the mpv config layering, the subtitle defaults as mpv options, the per-series track choice, skip windows and auto-skip with Undo, frame step, volume 0 to 100, and one application in one window with playback continuing while the window is not presented. A.4 walks them with their Mac consequences.
 - Storage, section 3.2, and import and export, section 3.9: one SQLite file, the image cache, the export and import, and secrets in the platform's keyring. On a Mac the `directories` crate the core-crates research chose maps `ProjectDirs::from("", "", "anibeam")` to `$HOME/Library/Application Support/anibeam` for both `config_dir` and `data_dir`, `$HOME/Library/Caches/anibeam` for `cache_dir`, `$HOME/Library/Preferences/anibeam` for `preference_dir`, and `None` for `state_dir` and `runtime_dir`, so the core puts logs in a `logs` folder under the data directory and picks its other folders under data and cache (docs/research/core-crates.md). Electron's `userData` on macOS was `~/Library/Application Support/anibeam`, the same place. `Core::open` takes a `CorePaths`, and `About` hands the resolved `data_dir`, `config_dir`, `cache_dir` and `db_path` back for the settings page.
 - Watching, on the core's side: FSEvents has no close-on-write, so on macOS the core keeps chokidar's rule for a new file, a stat every 100 ms until the size has held for 500 ms, and the debouncer's `FileIdMap` stats every file once at watch time to stitch renames; the subtree walk after a new directory stays on every platform (docs/research/core-crates.md). Nothing for the shell to do.
-- The parity checklist, decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13), 2026-09-04: the same list is the Mac's exit, per the proposal's phase 4. Its items are behaviours, and "look is not parity". A few items name Linux mechanisms and read on a Mac as their platform equivalents: the undecorated window that Hyprland tiles becomes a window with traffic lights, MPRIS over D-Bus becomes Now Playing (A.5), the native folder picker is the Mac's, and the theme knobs from the theme ticket do not exist (below). `ListSubscriptions` replies `Started` and runs anirss as a child process, and `SubscriptionsListed` carries `Missing` when it is absent, which is the handled state on a machine without it.
+- The parity checklist, decided on [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13), 2026-09-04: the same list is the Mac's exit, per the proposal's phase 4. Its items are behaviours, and "look is not parity". A few items name Linux mechanisms and read on a Mac as their platform equivalents: the undecorated window that Hyprland tiles becomes a window with traffic lights, MPRIS over D-Bus becomes Now Playing (A.5), the native folder picker is the Mac's, and the theme knobs from the theme ticket do not exist (below). `ListSubscriptions` replies `Started` and runs anirss as a child process, and `SubscriptionsListed` carries `Missing` when it is absent, which is the handled state on a machine without it.
 
 #### Decided by the Mac for itself
 
-- The look and the theme. Decided on [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14), 2026-09-04, and noted while charting: the Linux theme settings (mode, density, poster size, corner style, colour source, themes) exist on Linux only, their code lives in the Linux shell's Rust half, nothing of them crosses the bridge, and macOS gets none of them. What the Mac draws with instead is the platform's own; the ticket decides nothing for it. The prototype's tokens and rules on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17) are the Linux look, not parity, and do not bind the Mac.
+- The look and the theme. Decided on [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14), 2026-09-04, and noted while charting: the Linux theme settings (mode, density, poster size, corner style, colour source, themes) exist on Linux only, their code lives in the Linux shell's Rust half, nothing of them crosses the bridge, and macOS gets none of them. What the Mac draws with instead is the platform's own; the ticket decides nothing for it. The prototype's tokens and rules on [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17) are the Linux look, not parity, and do not bind the Mac.
 - The frame: the window, the rail, the status strip and the settings page are shell matters, and A.5 says what the proposal asked for and what the behaviours require.
 - Single instance, media keys, updates and signing: A.5 and A.6.
 
 ### A.2 The core as a Swift package
 
-Decided on [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/AniBeam/issues/5), 2026-09-03, and carried into the contract's rule 10 (pin uniffi 0.32.0). Detail in docs/research/uniffi.md.
+Decided on [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/Anibeam/issues/5), 2026-09-03, and carried into the contract's rule 10 (pin uniffi 0.32.0). Detail in docs/research/uniffi.md.
 
 #### The version and the declaration
 
@@ -3248,7 +3248,7 @@ The probe crate then ran `cargo check --features <one>` for 26 questionable cons
 
 ### A.3 Calls and events from Swift
 
-Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15), 2026-09-04, with the Swift half from the uniffi research above. The enums, records, error variants and every call row live in the contract section, 3.1; this section says how the Swift side reaches them.
+Decided on [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15), 2026-09-04, with the Swift half from the uniffi research above. The enums, records, error variants and every call row live in the contract section, 3.1; this section says how the Swift side reaches them.
 
 #### The door
 
@@ -3326,7 +3326,7 @@ The contract adds that every one of these types also derives `serde::Serialize` 
 
 ### A.4 The video layer
 
-Decided on [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8), 2026-09-03; the behaviours it must carry are in section 4.4, decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16), 2026-09-04. Detail in docs/research/macos-shell-blocks.md.
+Decided on [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8), 2026-09-03; the behaviours it must carry are in section 4.4, decided on [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16), 2026-09-04. Detail in docs/research/macos-shell-blocks.md.
 
 #### MPVKit
 
@@ -3374,7 +3374,7 @@ That is the proven shape of an OpenGL host: an `NSView` with a `CAOpenGLLayer`, 
 
 The player behaviours are platform-neutral and apply unchanged. What each means here:
 
-- Configuration layers in order, each overriding the one before: the bundled `mpv.conf`, always, which holds `hwdec=auto` and nothing else on both of the owner's machines; the user's own `mpv.conf` only while Use my mpv.conf is on, off by default, with the init-only lines (`load-scripts`, `input-conf`, `config-dir`, `script`) ignored and the settings page saying so; an AniBeam-only `mpv.conf` if it exists, toggle or not; then the options the shell owns, set last so no config line takes them back. The Mac creates mpv itself with `mpv_create`; the layers still go in through `include` after `mpv_initialize`, as on Linux, and `config=no` keeps mpv away from any scripts directory. Where the bundled file and the AniBeam-only file live inside a bundle, and which path the user's file has on a Mac, are open (A.7); the ticket names them by their Linux paths and files the toggle under `player.toml` "since only the Linux shell has an mpv.conf to honour".
+- Configuration layers in order, each overriding the one before: the bundled `mpv.conf`, always, which holds `hwdec=auto` and nothing else on both of the owner's machines; the user's own `mpv.conf` only while Use my mpv.conf is on, off by default, with the init-only lines (`load-scripts`, `input-conf`, `config-dir`, `script`) ignored and the settings page saying so; an Anibeam-only `mpv.conf` if it exists, toggle or not; then the options the shell owns, set last so no config line takes them back. The Mac creates mpv itself with `mpv_create`; the layers still go in through `include` after `mpv_initialize`, as on Linux, and `config=no` keeps mpv away from any scripts directory. Where the bundled file and the Anibeam-only file live inside a bundle, and which path the user's file has on a Mac, are open (A.7); the ticket names them by their Linux paths and files the toggle under `player.toml` "since only the Linux shell has an mpv.conf to honour".
 - The shell-owned options: `osc=no`, `osd-level=0`, `input-default-bindings=no`, `input-vo-keyboard=no`, `input-media-keys=no`, `resume-playback=no`, `save-position-on-quit=no`, `keep-open=always`, `pause=no`, `fullscreen=no`, `loop-file=no`, `loop-playlist=no`, `ytdl=no`, `sub-auto=no`, `audio-file-auto=no`, `reset-on-next-file=sub-delay,audio-delay`, `volume-max=100`, plus every option a setting covers (the subtitle defaults, the language orders, volume and mute). The one line that changes with the render path is `vo`: `vo=libmpv` on Linux and on the OpenGL render API path, `vo=gpu-next` with `gpu-api=vulkan` and `gpu-context=moltenvk` on the Metal path. `input-media-keys` is already off at libmpv's default ("Default: yes (except for libmpv). macOS and Windows only"); the shell sets it anyway and never copies the demo's `yes`.
 - Scripts never load, the shell draws every overlay itself, and mpv's OSD stays off. The render API delivers no keyboard input, and `input-default-bindings=no` with `input-vo-keyboard=no` are among the options the shell sets on either path, so the shell's own key handling is the only input path.
 - Subtitle defaults: one core-owned `SubtitleDefaults` record, each field one mpv option (`slang`, `alang`, `sub-scale`, `sub-ass-override`, `sub-font`, `sub-color`, `sub-outline-size`, `sub-outline-color`, `sub-shadow-offset`, `sub-border-style=background-box` with `sub-back-color` above zero box opacity, `sub-bold`, `sub-pos`), set after the config layers at session start and again live on `SettingsChanged`; defaults are mpv's stock values. Delay on `z` and `Z` in 100 ms steps is session-only. Rendering is libass inside mpv, embedded fonts first, bitmap tracks natively. The default `sub-font` of `sans-serif` resolves through fontconfig on Linux; what libass in MPVKit's build resolves it to is not in the research.
@@ -3390,7 +3390,7 @@ Hardware decode: the proposal expects VideoToolbox on macOS, MPVKit builds with 
 
 ### A.5 The frame and platform services
 
-The proposal's macOS card: traffic lights and a menu bar with a Cmd shortcut for every action; native fullscreen on its own Space; Now Playing in Control Center; a rail that collapses like Music's and Finder's; and an interim build for free, since the QML shell compiles on macOS the day Linux ships (A.6). The platform facts below are from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8), 2026-09-03.
+The proposal's macOS card: traffic lights and a menu bar with a Cmd shortcut for every action; native fullscreen on its own Space; Now Playing in Control Center; a rail that collapses like Music's and Finder's; and an interim build for free, since the QML shell compiles on macOS the day Linux ships (A.6). The platform facts below are from [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8), 2026-09-03.
 
 #### The frame
 
@@ -3414,15 +3414,15 @@ Media keys. Apple's MediaPlayer pages never mention keyboards or the Touch Bar, 
 
 #### Single instance
 
-Decided on [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22), 2026-09-04, as a shell matter: on Linux the shell's Rust half owns `com.marcusrosado.AniBeam` on the session bus with zbus, serves `org.freedesktop.Application`, takes a flock under `$XDG_RUNTIME_DIR` first, and a second launch forwards its activation token through `Activate` and exits; "the core knows nothing of any of this". The parity checklist counts single instance as parity: a second launch focuses the running window. On a Mac the research for this appendix did not examine what an app bundle gets from the system or whether the shell needs anything more; A.7 carries the question.
+Decided on [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22), 2026-09-04, as a shell matter: on Linux the shell's Rust half owns `com.marcusrosado.Anibeam` on the session bus with zbus, serves `org.freedesktop.Application`, takes a flock under `$XDG_RUNTIME_DIR` first, and a second launch forwards its activation token through `Activate` and exits; "the core knows nothing of any of this". The parity checklist counts single instance as parity: a second launch focuses the running window. On a Mac the research for this appendix did not examine what an app bundle gets from the system or whether the shell needs anything more; A.7 carries the question.
 
 #### The app id
 
-Decided on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19), 2026-09-04: the app id is `com.marcusrosado.AniBeam`, the owner's own domain in reverse-DNS, one string for the Linux desktop file, `StartupWMClass`, the icon, the D-Bus name and MPRIS's `DesktopEntry`, and the id Flatpak would demand. CONTEXT.md says each shell has its own app id. The ticket names no Mac id; the suggestion is the same string as the value of `CFBundleIdentifier`, the `$(PRODUCT_BUNDLE_IDENTIFIER)` Sparkle's sandbox entitlements refer to in A.6. The XDG layout does not carry over; A.1 has the Mac's directories, which keep the name `anibeam`.
+Decided on [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19), 2026-09-04: the app id is `com.marcusrosado.Anibeam`, the owner's own domain in reverse-DNS, one string for the Linux desktop file, `StartupWMClass`, the icon, the D-Bus name and MPRIS's `DesktopEntry`, and the id Flatpak would demand. CONTEXT.md says each shell has its own app id. The ticket names no Mac id; the suggestion is the same string as the value of `CFBundleIdentifier`, the `$(PRODUCT_BUNDLE_IDENTIFIER)` Sparkle's sandbox entitlements refer to in A.6. The XDG layout does not carry over; A.1 has the Mac's directories, which keep the name `anibeam`.
 
 #### Secrets in the Keychain
 
-Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21), 2026-09-04, carried as section 3.2's Trackers and secrets, with the stores from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6), 2026-09-03. Access tokens, refresh tokens and client secrets go through keyring-core 1.0.0 (`set_default_store` at startup, `Entry::new(service, user)` with `set_password`, `get_password`, `set_secret`, `get_secret`, `delete_credential`), with the platform store chosen by the core: `zbus-secret-service-keyring-store` 1.0.1 on Linux and `apple-native-keyring-store` 1.0.2 on macOS, skipping the `keyring` 4.2.0 wrapper so the core owns store selection. Keyring calls run on a blocking thread, never inside a tokio task. `tracker_accounts` holds the non-secret half and a `secret_store` column (`keyring` or `file`) recording which store took the write, so a later read looks in the same place; disconnecting a tracker deletes its secret; secrets never enter the database. The file fallback is `<data_dir>/secrets.json` at mode 0600, a store the core writes itself against the keyring-core traits, chosen when the platform store fails to construct (the ticket and the research phrase it for the Secret Service store, whose `Store::new()` failing is the trigger; the Keychain store is constructed with the same `Store::new()`, and nothing says more about a Mac).
+Decided on [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21), 2026-09-04, carried as section 3.2's Trackers and secrets, with the stores from [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6), 2026-09-03. Access tokens, refresh tokens and client secrets go through keyring-core 1.0.0 (`set_default_store` at startup, `Entry::new(service, user)` with `set_password`, `get_password`, `set_secret`, `get_secret`, `delete_credential`), with the platform store chosen by the core: `zbus-secret-service-keyring-store` 1.0.1 on Linux and `apple-native-keyring-store` 1.0.2 on macOS, skipping the `keyring` 4.2.0 wrapper so the core owns store selection. Keyring calls run on a blocking thread, never inside a tokio task. `tracker_accounts` holds the non-secret half and a `secret_store` column (`keyring` or `file`) recording which store took the write, so a later read looks in the same place; disconnecting a tracker deletes its secret; secrets never enter the database. The file fallback is `<data_dir>/secrets.json` at mode 0600, a store the core writes itself against the keyring-core traits, chosen when the platform store fails to construct (the ticket and the research phrase it for the Secret Service store, whose `Store::new()` failing is the trigger; the Keychain store is constructed with the same `Store::new()`, and nothing says more about a Mac).
 
 The Mac-specific fact: `apple-native-keyring-store` 1.0.2 has two modules. `keychain` (feature `keychain`) is for apps "not code-signed by a provisioning profile (e.g., command-line apps)", and `protected` needs a provisioning profile and fails in an unsigned app with "PlatformError with code -34018 A required entitlement isn't present". It builds on security-framework 3.7. The macOS shell uses the `keychain` module until it ships signed. Nothing about this is the shell's code; it is the core's, and the only thing the shell decides is how the bundle is signed (A.6).
 
@@ -3436,7 +3436,7 @@ Section A.1 has the decision: the Linux theme settings do not exist on the Mac, 
 
 ### A.6 Building, signing and updating
 
-From [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8), 2026-09-03; every claim is sourced in docs/research/macos-shell-blocks.md.
+From [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8), 2026-09-03; every claim is sourced in docs/research/macos-shell-blocks.md.
 
 #### Two kinds of build
 
@@ -3513,32 +3513,32 @@ Flagged by the two research write-ups as unverified, or not covered by any ticke
 
 ## Appendix B. Sources
 
-Every decision in this document lives on one of these tickets, each a child of the map [Native line: core and Linux shell spec](https://github.com/marcusbandit/AniBeam/issues/2). The proposal that started the effort is the owner's artifact at https://claude.ai/code/artifact/2ef1a582-b212-4ae1-a762-c70b35d089f7.
+Every decision in this document lives on one of these tickets, each a child of the map [Native line: core and Linux shell spec](https://github.com/marcusbandit/Anibeam/issues/2). The proposal that started the effort is the owner's artifact at https://claude.ai/code/artifact/2ef1a582-b212-4ae1-a762-c70b35d089f7.
 
 | Ticket | Type | Resolved |
 | --- | --- | --- |
-| [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/AniBeam/issues/3) | research | 2026-09-03 |
-| [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/AniBeam/issues/4) | research | 2026-09-03 |
-| [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/AniBeam/issues/5) | research | 2026-09-03 |
-| [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/AniBeam/issues/6) | research | 2026-09-03 |
-| [Research: where a Linux app reads the user's system colours](https://github.com/marcusbandit/AniBeam/issues/7) | research | 2026-09-03 |
-| [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/AniBeam/issues/8) | research | 2026-09-03 |
-| [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/9) | task | 2026-09-03 |
-| [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/AniBeam/issues/10) | task | 2026-09-03 |
-| [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/AniBeam/issues/11) | grilling | 2026-09-04 |
-| [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/AniBeam/issues/12) | task | 2026-09-04 |
-| [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/AniBeam/issues/13) | grilling | 2026-09-04 |
-| [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/AniBeam/issues/14) | grilling | 2026-09-04 |
-| [The call and event contract between core and shells](https://github.com/marcusbandit/AniBeam/issues/15) | grilling | 2026-09-04 |
-| [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/AniBeam/issues/16) | grilling | 2026-09-04 |
-| [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/AniBeam/issues/17) | prototype | 2026-09-04 |
-| [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/18) | task | 2026-09-03 |
-| [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/AniBeam/issues/19) | grilling | 2026-09-04 |
-| [Ship the export in Electron](https://github.com/marcusbandit/AniBeam/issues/20) | task | 2026-09-03 |
-| [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/AniBeam/issues/21) | grilling | 2026-09-04 |
-| [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/AniBeam/issues/22) | grilling | 2026-09-04 |
-| [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/AniBeam/issues/23) | task | 2026-09-04 |
-| [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/AniBeam/issues/25) | task | 2026-09-04 |
+| [Research: what cxx-qt can and cannot do today](https://github.com/marcusbandit/Anibeam/issues/3) | research | 2026-09-03 |
+| [Research: MpvQt and the libmpv render API on Wayland](https://github.com/marcusbandit/Anibeam/issues/4) | research | 2026-09-03 |
+| [Research: uniffi constraints on the core API and Swift event delivery](https://github.com/marcusbandit/Anibeam/issues/5) | research | 2026-09-03 |
+| [Research: notify, rusqlite, keyring and the AniList client in Rust](https://github.com/marcusbandit/Anibeam/issues/6) | research | 2026-09-03 |
+| [Research: where a Linux app reads the user's system colours](https://github.com/marcusbandit/Anibeam/issues/7) | research | 2026-09-03 |
+| [Research: building blocks for the macOS shell appendix](https://github.com/marcusbandit/Anibeam/issues/8) | research | 2026-09-03 |
+| [Spike: libmpv renders inside a QML window on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/9) | task | 2026-09-03 |
+| [Spike: a Cargo-only cxx-qt app packages through a PKGBUILD](https://github.com/marcusbandit/Anibeam/issues/10) | task | 2026-09-03 |
+| [Export format: the last Electron feature and the core's import](https://github.com/marcusbandit/Anibeam/issues/11) | grilling | 2026-09-04 |
+| [Freeze the Electron line: tag, branch, prune](https://github.com/marcusbandit/Anibeam/issues/12) | task | 2026-09-04 |
+| [Parity checklist: what the Linux shell must do before the launcher switches](https://github.com/marcusbandit/Anibeam/issues/13) | grilling | 2026-09-04 |
+| [Theme model: how the Linux choices and colour sources become tokens](https://github.com/marcusbandit/Anibeam/issues/14) | grilling | 2026-09-04 |
+| [The call and event contract between core and shells](https://github.com/marcusbandit/Anibeam/issues/15) | grilling | 2026-09-04 |
+| [Player behaviours under libmpv: config, subtitles, tracks, skips](https://github.com/marcusbandit/Anibeam/issues/16) | grilling | 2026-09-04 |
+| [Prototype: the home grid in QML with the theme knobs live](https://github.com/marcusbandit/Anibeam/issues/17) | prototype | 2026-09-04 |
+| [Spike: libmpv renders inside a QML window on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/18) | task | 2026-09-03 |
+| [PKGBUILD for the shell: package name, app id, source and pkgver](https://github.com/marcusbandit/Anibeam/issues/19) | grilling | 2026-09-04 |
+| [Ship the export in Electron](https://github.com/marcusbandit/Anibeam/issues/20) | task | 2026-09-03 |
+| [Schema and image cache: the contract's records become tables](https://github.com/marcusbandit/Anibeam/issues/21) | grilling | 2026-09-04 |
+| [Frame and settings: single instance, the drawer's home, the settings page layout](https://github.com/marcusbandit/Anibeam/issues/22) | grilling | 2026-09-04 |
+| [Bundled mpv.conf: the quality options on the AMD laptop](https://github.com/marcusbandit/Anibeam/issues/23) | task | 2026-09-04 |
+| [Bundled mpv.conf: the same quality options on the NVIDIA desktop](https://github.com/marcusbandit/Anibeam/issues/25) | task | 2026-09-04 |
 
 Research write-ups, one per research ticket, under `docs/research/`:
 

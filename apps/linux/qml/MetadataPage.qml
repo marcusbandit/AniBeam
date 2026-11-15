@@ -20,7 +20,7 @@
 // page cuts the sections off the filtered rows and the figures off the whole library.
 import QtQuick
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bin-tarball.sh <version> <outdir>        e.g. bin-tarball.sh 2.5.0 dist
 # Builds the release binary and packs what the AUR's anibeam-bin installs into
-# <outdir>/AniBeam-<version>-linux-x86_64.tar.zst, with a .sha256 beside it. The tarball holds
+# <outdir>/Anibeam-<version>-linux-x86_64.tar.zst, with a .sha256 beside it. The tarball holds
 # a usr/ tree laid out by install-tree.sh, the same files the anibeam package installs, so
 # anibeam-bin's package() is one copy. Build it on Arch: the binary links against the system's
 # Qt, MpvQt and libmpv, which is what anibeam-bin depends on. CI runs it in an Arch container
@@ -23,7 +23,7 @@ trap 'rm -rf "$stage"' EXIT
 strip --strip-unneeded "$stage/usr/bin/anibeam"
 
 mkdir -p "$out"
-name="AniBeam-$version-linux-x86_64.tar.zst"
+name="Anibeam-$version-linux-x86_64.tar.zst"
 # Sorted, owned by root and dated to the commit, so the same build packs the same bytes.
 stamp="$(git -C "$src" log -1 --format=%ct 2>/dev/null || date +%s)"
 tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$stamp" \

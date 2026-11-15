@@ -5,7 +5,7 @@
 # Pinned by version and checked by hash on every run, so every bundle is built by the same
 # bundletool. vendor/ is not in git.
 #
-#   java -jar "$(scripts/fetch-bundletool.sh)" validate --bundle build/AniBeam-release.aab
+#   java -jar "$(scripts/fetch-bundletool.sh)" validate --bundle build/Anibeam-release.aab
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

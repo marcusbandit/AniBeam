@@ -11,7 +11,7 @@
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

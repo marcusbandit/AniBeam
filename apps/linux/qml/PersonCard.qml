@@ -2,7 +2,7 @@
 // case under that. No portrait: a users glyph on the tile fill. One with an AniList id is a
 // link to its page there: a pointer, a ring round the portrait and the name lit on hover.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 Item {
     id: root
     property var person: ({})

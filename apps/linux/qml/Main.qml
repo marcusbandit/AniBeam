@@ -5,7 +5,7 @@
 import QtQuick
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Window {
     id: window

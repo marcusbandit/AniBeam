@@ -17,6 +17,7 @@ mod library_view;
 mod macnp;
 mod media;
 mod nowplaying;
+mod old_name;
 mod paths;
 mod player_config;
 mod problem;
@@ -31,8 +32,8 @@ mod winpower;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
-pub const APP_ID: &str = "com.marcusrosado.AniBeam";
-pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
+pub const APP_ID: &str = "com.marcusrosado.Anibeam";
+pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/Anibeam/qml/Main.qml";
 
 /// Debug builds and the `dev-qml` feature only: ANIBEAM_QML_DIR=qml (relative to where it runs;
 /// shoot.sh and drive.sh make it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
@@ -175,6 +176,9 @@ fn main() {
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
     paths::name_bundled_helpers();
+    // The user's entries and icons from before the id lost its capital B (#1047) take the
+    // new id first, so the entry the next line looks for is there.
+    old_name::adopt();
     // anibeam:// links come here even on an install from before rooms (#888). A thread,
     // so after the setenvs above.
     scheme::ensure();

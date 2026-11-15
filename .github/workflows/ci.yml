@@ -1,7 +1,8 @@
 name: CI
 
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
-# the tests for the core and the terminal shell. The Qt shell (apps/linux, package
+# the tests for the crates the pull request changed and every crate that builds on them
+# (.github/affected-crates.py, #1075). The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
 # tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
 # (#986), which sets those up for the AppImage. Runs on main
@@ -74,6 +75,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge commit and its first parent, the base it merges into, for the crates
+          # the pull request changed.
+          fetch-depth: 2
 
       - name: Rust toolchain
         run: |
@@ -81,65 +86,70 @@ jobs:
           # A runner can hold a partial toolchain without rustc (#674)
           rustup component add rustc cargo rust-std
 
+      # Only the crates this pull request changed and every crate that builds on them (#1075).
+      # The log lists what was picked, why, and what was not checked. Main and a run by hand
+      # check every crate, so main keeps the full signal and a cache every PR can restore. The
+      # Qt shell (anibeam) needs Qt, which this runner lacks; local-ci.sh checks it.
+      - name: Affected crates
+        id: affected
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 .github/affected-crates.py --self-test
+          if [ "$EVENT" = pull_request ]; then pick=(--base HEAD^1); else pick=(--all); fi
+          python3 .github/affected-crates.py "${pick[@]}" --skip anibeam --github-output
+
       - uses: Swatinem/rust-cache@v2
+        if: steps.affected.outputs.crates != ''
         with:
           # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
           # longer push the repo past its 10 GB and evict the ones every PR needs.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
-        run: cargo clippy --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-downloads -p anibeam-playback -p anibeam-host -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
+        if: steps.affected.outputs.crates != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.crates }}
+        run: cargo clippy --locked $(printf -- '-p %s ' $CRATES) --all-targets -- -D warnings
 
-      # The contract alone, without the sqlite feature the core turns on: one cargo call
-      # with the core merges their features, and would hide an ungated rusqlite use here.
-      - name: Clippy (contract alone)
-        run: cargo clippy --locked -p anibeam-contract --all-targets -- -D warnings
-
-      # The foundation alone, for the same reason: a feature of a shared dependency that only
-      # the core turns on would build here with the core and fail for the crate on its own.
-      - name: Clippy (foundation alone)
-        run: cargo clippy --locked -p anibeam-foundation --all-targets -- -D warnings
-
-      - name: Clippy (net alone)
-        run: cargo clippy --locked -p anibeam-net --all-targets -- -D warnings
-
-      - name: Clippy (library alone)
-        run: cargo clippy --locked -p anibeam-library --all-targets -- -D warnings
-
-      - name: Clippy (releases alone)
-        run: cargo clippy --locked -p anibeam-releases --all-targets -- -D warnings
-
-      - name: Clippy (metadata alone)
-        run: cargo clippy --locked -p anibeam-metadata --all-targets -- -D warnings
-
-      - name: Clippy (trackers alone)
-        run: cargo clippy --locked -p anibeam-trackers --all-targets -- -D warnings
-
-      - name: Clippy (downloads alone)
-        run: cargo clippy --locked -p anibeam-downloads --all-targets -- -D warnings
-
-      # The phone's torrent engine and its tests sit behind the crate's own `phone` feature.
-      # The core's `phone` turns it on for the library only, so without this nothing compiles
-      # those tests, which the core's phone clippy did while they were in the core.
-      - name: Clippy (downloads with phone)
-        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
-
-      - name: Clippy (playback alone)
-        run: cargo clippy --locked -p anibeam-playback --all-targets -- -D warnings
-
-      # Casting and its tests sit behind the crate's own `cast` feature, for the same reason as
-      # the downloads' phone engine above.
-      - name: Clippy (playback with cast)
-        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
-
-      - name: Clippy (host alone)
-        run: cargo clippy --locked -p anibeam-host --all-targets -- -D warnings
+      # Each picked crate another one builds on, by itself: one cargo call over several crates
+      # merges their features, and would hide a use the crate does not turn on itself, such as
+      # rusqlite in the contract, whose sqlite feature only the core turns on.
+      - name: Clippy (each crate alone)
+        if: steps.affected.outputs.alone != ''
+        env:
+          ALONE: ${{ steps.affected.outputs.alone }}
+        run: |
+          status=0
+          for crate in $ALONE; do
+            echo "::group::$crate alone"
+            cargo clippy --locked -p "$crate" --all-targets -- -D warnings || { status=1; echo "::error::clippy $crate alone failed"; }
+            echo "::endgroup::"
+          done
+          exit $status
 
       # Only the phone build compiles the core's phone and cast features, and no other
       # workflow builds the phone, so without this a desktop change can break the APK and
       # stay green (#309). The host target is enough: these features need no NDK.
       - name: Clippy (phone features)
+        if: steps.affected.outputs.core == 'true'
         run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
 
+      # The phone's torrent engine and its tests sit behind the downloads crate's own `phone`
+      # feature. The core's `phone` turns it on for the library only, so without this nothing
+      # compiles those tests, which the step above did while they were in the core.
+      - name: Clippy (downloads with phone)
+        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-downloads ')
+        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+
+      # Casting and its tests sit behind the playback crate's own `cast` feature, for the same
+      # reason.
+      - name: Clippy (playback with cast)
+        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-playback ')
+        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
+
       - name: Test
-        run: cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-downloads -p anibeam-playback -p anibeam-host -p anibeam-core -p anibeam-host-api -p anibeam-cli
+        if: steps.affected.outputs.crates != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.crates }}
+        run: cargo test --locked $(printf -- '-p %s ' $CRATES)

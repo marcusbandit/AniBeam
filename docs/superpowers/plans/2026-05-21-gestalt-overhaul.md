@@ -430,7 +430,7 @@ Expected: clean exit.
 - [ ] **Step 1: Package the app**
 
 Run: `bun run package`
-Expected: build succeeds, `out/AniBeam-linux-x64/anibeam` exists.
+Expected: build succeeds, `out/Anibeam-linux-x64/anibeam` exists.
 
 - [ ] **Step 2: Open the app from the launcher** (per project memory; the .desktop file runs the packaged binary)
 

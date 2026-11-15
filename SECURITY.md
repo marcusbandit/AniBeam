@@ -4,7 +4,7 @@
 
 If you found a way Anibeam could harm the people who use it, report it privately: open the
 repo's **Security** tab and click **Report a vulnerability**, or go straight to
-<https://github.com/marcusbandit/AniBeam/security/advisories/new>. Only you, the maintainers
+<https://github.com/marcusbandit/Anibeam/security/advisories/new>. Only you, the maintainers
 and anyone you add to the report see what you send there.
 
 Please do not open a public issue, discussion or pull request about it first. A public

@@ -45,7 +45,7 @@ const AB = (() => {
   // The iPhone has no store to install from: its IPA is opened in a sideloading app through the
   // install page (install/index.html), which passes on only an IPA of this project's releases.
   const installLink = (to, ipa) => `${ROOT}install/?to=${to}&url=${encodeURIComponent(ipa)}`;
-  // Adding the site's one source (AniBeam and AniBeam Nightly) to the app, through the same page:
+  // Adding the site's one source (Anibeam and Anibeam Nightly) to the app, through the same page:
   // GitHub strips custom schemes from a README, so every link goes through https.
   const sourceLink = (to) => `${ROOT}install/?to=${to}&source=1`;
 

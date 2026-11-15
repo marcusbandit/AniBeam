@@ -9,7 +9,7 @@
 // unmatched series draws the same band off its folder name, with the match where the
 // synopsis would be.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

@@ -2,7 +2,7 @@
 // same switch over it and the same hover card. The scope is Home's preference, so a pick
 // here holds there too.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page

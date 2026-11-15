@@ -191,7 +191,7 @@ jobs:
       - name: Smoke test
         run: |
           export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i -E 'anibeam-deps|/Qt/' | paste -sd: -)"
-          apps/linux/packaging/windows/smoke.sh dist/AniBeam target/release/anibeam-cli.exe smoke
+          apps/linux/packaging/windows/smoke.sh dist/Anibeam target/release/anibeam-cli.exe smoke
 
       - name: Upload the build
         if: always()

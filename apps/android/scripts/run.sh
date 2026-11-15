@@ -18,5 +18,5 @@ if [[ "${1:-}" == "--no-build" ]]; then
 else
   scripts/build.sh "$@"
 fi
-"$ADB" install -r build/AniBeam-debug.apk
+"$ADB" install -r build/Anibeam-debug.apk
 "$ADB" shell am start -W -n "$PKG/$ACT"

@@ -7,7 +7,7 @@
 // with what the client has of it (a missing one can be fetched from here), and the
 // torrents the client holds for the show's folder.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Column {
     id: root

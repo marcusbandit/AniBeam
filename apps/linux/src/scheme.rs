@@ -153,8 +153,8 @@ pub(crate) mod linux {
 
     use super::{MIME, patch, program};
 
-    const MAIN: &str = "com.marcusrosado.AniBeam.desktop";
-    const DEV: &str = "com.marcusrosado.AniBeam.Dev.desktop";
+    const MAIN: &str = "com.marcusrosado.Anibeam.desktop";
+    const DEV: &str = "com.marcusrosado.Anibeam.Dev.desktop";
 
     fn applications() -> Option<PathBuf> {
         let data = std::env::var_os("XDG_DATA_HOME")
@@ -240,7 +240,7 @@ pub(crate) mod linux {
     /// Puts `text` in the file at `path`: written beside the file and moved over it, so a
     /// reader never sees half a file. An entry that is a symlink (into a dotfiles checkout,
     /// say) gets its target written and stays a link.
-    pub(super) fn replace(path: &Path, text: &str) -> bool {
+    pub(crate) fn replace(path: &Path, text: &str) -> bool {
         let Ok(target) = path.canonicalize() else {
             return false;
         };
@@ -272,8 +272,8 @@ pub(crate) mod linux {
 mod tests {
     use super::*;
 
-    const OLD: &str = "[Desktop Entry]\nType=Application\nName=AniBeam\n\
-        Exec=env APPIMAGELAUNCHER_DISABLE=1 /opt/anibeam %U\nIcon=com.marcusrosado.AniBeam\n\
+    const OLD: &str = "[Desktop Entry]\nType=Application\nName=Anibeam\n\
+        Exec=env APPIMAGELAUNCHER_DISABLE=1 /opt/anibeam %U\nIcon=com.marcusrosado.Anibeam\n\
         Terminal=false\n";
 
     #[test]

@@ -7,6 +7,12 @@ license.workspace = true
 repository.workspace = true
 description = "Anibeam's host team: the tailnet host the phone reads, its keys, trust, history, conversions and streams, and the library's export and import"
 
+# Files outside this folder the tests read, so a change to one checks this crate
+# (.github/affected-crates.py): the export format's fixture, which core/tests reads too
+# (transfer/format.rs).
+[package.metadata.ci]
+reads = ["../core/tests/fixtures/anibeam-export-v1.json"]
+
 [lib]
 name = "anibeam_host"
 crate-type = ["lib"]

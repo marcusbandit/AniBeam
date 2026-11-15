@@ -1,13 +1,13 @@
 # The iPhone app's Xcode project, which scripts/build-ios.sh generates with xcodegen. The
 # app has no Swift or Objective-C: its executable is the Rust bin `anibeam-ios`, which
 # cargo.sh builds into the bundle after Xcode's own (empty) compile step.
-name: AniBeam
+name: Anibeam
 options:
   bundleIdPrefix: com.marcusrosado
 settings:
   ENABLE_USER_SCRIPT_SANDBOXING: NO
 targets:
-  AniBeam:
+  Anibeam:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
@@ -26,7 +26,7 @@ targets:
         buildPhase: resources
     settings:
       INFOPLIST_FILE: Info.plist
-      PRODUCT_NAME: AniBeam
+      PRODUCT_NAME: Anibeam
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIconDark AppIconLine
       # The Android app's applicationId. A nightly overrides both on the xcodebuild line

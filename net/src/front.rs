@@ -135,7 +135,7 @@ pub fn client(
     timeout: Duration,
 ) -> Result<reqwest::Client, CoreError> {
     let builder = reqwest::Client::builder()
-        .user_agent(format!("AniBeam/{}", crate::VERSION))
+        .user_agent(format!("Anibeam/{}", crate::VERSION))
         .timeout(timeout)
         .http1_only()
         .redirect(reqwest::redirect::Policy::none());

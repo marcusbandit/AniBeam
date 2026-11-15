@@ -36,7 +36,7 @@
       const from = ["apk", "ipa"].includes(el.dataset.size) ? phone : desktop;
       el.textContent = size(from?.sizes?.[el.dataset.size]);
     }
-    // The iPhone's card: the one AniBeam source carries both channels, so its rows do not follow
+    // The iPhone's card: the one Anibeam source carries both channels, so its rows do not follow
     // the toggle. The IPA and the one-off installs do: they are the picked channel's build, shown
     // only when that release holds an IPA, and only the nightly's is called a test build. The card
     // itself is there when either channel has an IPA, so nothing shows before the first one.

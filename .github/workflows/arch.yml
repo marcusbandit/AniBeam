@@ -3,7 +3,7 @@ name: Arch
 # The tarball the AUR's anibeam-bin installs (#235). It is built in an Arch container, not on
 # the Ubuntu runner linux.yml uses, because the binary links against the system's Qt, MpvQt and
 # libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
-# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256, and nightly.yml calls it so
+# carries Anibeam-<version>-linux-x86_64.tar.zst and its .sha256, and nightly.yml calls it so
 # a rolling Arch update that breaks the container build shows up on the next nightly rather
 # than on a release. A pull request does not run it on a push (#993); the `full ci` label builds
 # it through full-ci.yml (#986), and the Actions tab (Run workflow) runs it by hand.
@@ -64,7 +64,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version="${ANIBEAM_RELEASE_VERSION:-$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)}"
           apps/linux/packaging/aur/bin-tarball.sh "$version" dist
-          tar -tf "dist/AniBeam-$version-linux-x86_64.tar.zst" | head -n 5
+          tar -tf "dist/Anibeam-$version-linux-x86_64.tar.zst" | head -n 5
           # It runs on the libraries it was linked against: nothing missing, and it starts.
           if ldd target/release/anibeam | grep 'not found'; then exit 1; fi
           target/release/anibeam --version
@@ -72,5 +72,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: anibeam-arch-x86_64
-          path: dist/AniBeam-*-linux-x86_64.tar.zst*
+          path: dist/Anibeam-*-linux-x86_64.tar.zst*
           if-no-files-found: error

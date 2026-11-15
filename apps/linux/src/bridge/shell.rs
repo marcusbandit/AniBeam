@@ -473,7 +473,7 @@ impl qobject::Shell {
                             &version,
                             "",
                             &format!(
-                                "https://github.com/marcusbandit/AniBeam/releases/tag/v{version}"
+                                "https://github.com/marcusbandit/Anibeam/releases/tag/v{version}"
                             ),
                             "command",
                             command,

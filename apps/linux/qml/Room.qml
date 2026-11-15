@@ -16,7 +16,7 @@
 // - The host's first play of an episode waits while someone is not ready (#922): the core
 //   holds the player and sets the gate, and startAnyway() or waitForEveryone() answers it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: root

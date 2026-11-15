@@ -2,7 +2,7 @@ name: Android APK
 
 # Builds the phone's APK, for phones and the emulator (arm64-v8a and x86_64 in one file), as the
 # version it ships as, signed with the project's key, and uploads it as the phone-apk artifact,
-# with the App Bundle for Google Play (AniBeam-<version>.aab, the Play flavor) beside it.
+# with the App Bundle for Google Play (Anibeam-<version>.aab, the Play flavor) beside it.
 # nightly.yml and release.yml call it and put both on their release. It has no Run workflow
 # of its own: an APK without a train version would sit below every nightly and not install
 # over one, so a build to try is a Nightly run. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a

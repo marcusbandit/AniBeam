@@ -4,7 +4,7 @@
 // (per 120 of angle, so the compositor's scroll factor still applies) and the content
 // glides there. A touchpad's pixels go on 1:1. A drag takes over the moment it starts.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 WheelHandler {
     id: root

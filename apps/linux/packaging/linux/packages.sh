@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: packages.sh <AniBeam.AppImage> <version> <out-dir>
+# usage: packages.sh <Anibeam.AppImage> <version> <out-dir>
 # Turns the AppImage appimage.sh built into the two packages the apt and dnf repos serve:
 #   <out-dir>/anibeam_<pkgver>_amd64.deb
 #   <out-dir>/anibeam-<pkgver>-1.x86_64.rpm
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-[ $# -eq 3 ] || { echo "usage: $0 <AniBeam.AppImage> <version> <out-dir>" >&2; exit 2; }
+[ $# -eq 3 ] || { echo "usage: $0 <Anibeam.AppImage> <version> <out-dir>" >&2; exit 2; }
 image="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 version="${2#v}"
 mkdir -p "$3"
@@ -59,14 +59,14 @@ mv "$appdir" "$tree/opt/anibeam"
 app="$tree/opt/anibeam"
 # The AppImage's own entry points: AppRun and the top-level desktop file and icon links are
 # replaced by /usr/bin/anibeam and the files under /usr/share.
-cp "$app/com.marcusrosado.AniBeam.desktop" "$tree/usr/share/applications/"
-cp -L "$app/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png" \
+cp "$app/com.marcusrosado.Anibeam.desktop" "$tree/usr/share/applications/"
+cp -L "$app/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png" \
   "$tree/usr/share/icons/hicolor/512x512/apps/"
 rm -f "$app/AppRun" "$app/AppRun.wrapped" "$app/.DirIcon" \
-  "$app/com.marcusrosado.AniBeam.desktop" "$app/com.marcusrosado.AniBeam.png"
+  "$app/com.marcusrosado.Anibeam.desktop" "$app/com.marcusrosado.Anibeam.png"
 # The desktop file runs the command on PATH, with the anibeam:// link it was opened for; the
 # version stamp is the AppImage tooling's.
-desktop="$tree/usr/share/applications/com.marcusrosado.AniBeam.desktop"
+desktop="$tree/usr/share/applications/com.marcusrosado.Anibeam.desktop"
 sed -i -e '/^X-AppImage-/d' -e 's/^Exec=.*/Exec=anibeam %u/' "$desktop"
 install -m 755 "$here/anibeam.sh" "$tree/usr/bin/anibeam"
 # squashfs-root comes out drwx------; every user has to read the install.
