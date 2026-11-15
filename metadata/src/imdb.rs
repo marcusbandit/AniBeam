@@ -23,17 +23,17 @@ use std::time::Duration;
 
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::jobs::{Finished, JobCtx};
-use crate::library::cards;
-use crate::library::snapshot::{ImdbPick, imdb_picks};
-use crate::net::Fault;
-use crate::net::imdb::{self, Dump, Ratings};
-use crate::net::wikidata::{self, ImdbLink};
-use crate::store::settings;
-use crate::store::sql::as_i64;
-use crate::time;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::store::sql::as_i64;
+use anibeam_foundation::time;
+use anibeam_library::cards;
+use anibeam_library::snapshot::{ImdbPick, imdb_picks};
+use anibeam_net::Fault;
+use anibeam_net::imdb::{self, Dump, Ratings};
+use anibeam_net::wikidata::{self, ImdbLink};
 
 /// How old the stored dump may get before a launch asks IMDb again. IMDb
 /// rebuilds it daily, but a rating does not move enough in a week for a
@@ -96,7 +96,7 @@ async fn run(services: &Services, ctx: &Arc<JobCtx>) -> Result<Finished, CoreErr
         ctx.progress(
             0,
             None,
-            &crate::i18n::tr("core-metadata-progress-imdb-links", &[]),
+            &anibeam_contract::i18n::tr("core-metadata-progress-imdb-links", &[]),
         );
         refresh_links(services, now).await?
     } else {
@@ -107,7 +107,7 @@ async fn run(services: &Services, ctx: &Arc<JobCtx>) -> Result<Finished, CoreErr
         ctx.progress(
             0,
             None,
-            &crate::i18n::tr("core-metadata-progress-imdb-ratings", &[]),
+            &anibeam_contract::i18n::tr("core-metadata-progress-imdb-ratings", &[]),
         );
         refresh_ratings(services, since, now).await?
     } else {

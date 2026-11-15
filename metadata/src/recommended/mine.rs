@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use anibeam_recs::{Entry, Status};
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
+use anibeam_contract::*;
 
 /// One show on the user's list, as the row reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]

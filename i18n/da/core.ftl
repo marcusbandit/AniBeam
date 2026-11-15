@@ -302,7 +302,7 @@ core-jobs-start-endpoint = Starter en downloadkilde
 core-jobs-schedule-agent = Spørger din kodeagent om en sendeplan
     .stopped = Spørgsmålet til din kodeagent om en sendeplan stoppede med et problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Sendes nu
 core-airing-now-winter = Vinter { $year }
@@ -322,7 +322,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Kunne ikke føje { $title } til din Planlagt-liste. Prøv igen senere.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Afsnit { $number } af { $title } er udkommet.
 
@@ -438,18 +438,18 @@ core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde
 core-prefs-outside = { $value } er uden for { $low } til { $high }
 core-prefs-empty = tom
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Rangerer serier til dig
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Finder folk med din smag
 core-recommended-reading-lists = Læser deres lister
 core-recommended-reading-yours = Læser dine serier
 core-recommended-reading-suggestions = Læser serier at foreslå
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } har ingen anime { $id }
 
@@ -504,7 +504,7 @@ core-update-cannot-read-dmg = Kunne ikke læse dmg-filen: { $error }
 core-update-no-app = dmg-filen indeholder ingen app
 core-update-cannot-copy = Kunne ikke kopiere den nye app ved siden af denne: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Sæson { $season } Afsnit { $number }
 core-calendar-episode = { $title } - Afsnit { $number }
@@ -712,7 +712,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } serier gemmes på denne computer uden en tracker at sende til.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = Matchede { $show } med { $title }.
 core-metadata-auto-matched =
@@ -794,7 +794,7 @@ core-metadata-find-busy =
        *[other] { $busy } serier er allerede ved at blive matchet.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Kunne ikke læse det link. Indsæt en sideadresse fra AniList, MyAnimeList, TVmaze eller IMDb.
 core-metadata-no-mal-entry = AniList har ingen post for det MyAnimeList-id.
@@ -824,17 +824,17 @@ core-metadata-updated-some =
        *[other] Opdaterede info om { $count } serier; { $failed } kunne ikke opdateres.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze har ingen serie { $id }
 core-metadata-no-such-media = AniList har intet medie { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidatas IMDb-links
 core-metadata-progress-imdb-ratings = IMDb-bedømmelser
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Fælles figurer
 

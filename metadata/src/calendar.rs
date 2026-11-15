@@ -14,16 +14,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use crate::atomic_file;
-use crate::contract::*;
-use crate::events::Subscription;
-use crate::foundation::services::Services;
-use crate::foundation::titles;
-use crate::library::snapshot::{AiringRow, SeriesRow, Snapshot};
-use crate::metadata::Metadata;
-use crate::prefs;
-use crate::sync::recover;
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+use anibeam_foundation::atomic_file;
+use anibeam_foundation::events::Subscribed;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
+use anibeam_library::snapshot::{AiringRow, SeriesRow, Snapshot};
 
 /// How far back an episode still goes in the file: one that aired in the
 /// last few days stays on the calendar rather than vanishing the moment it
@@ -41,7 +41,7 @@ const FOLD_OCTETS: usize = 75;
 /// delete) from crossing on the same file.
 #[derive(Default)]
 pub(crate) struct Calendar {
-    listener: Mutex<Option<Arc<Subscription>>>,
+    listener: Mutex<Option<Subscribed>>,
     file: Mutex<()>,
     /// A rewrite is waiting out `SETTLE`.
     queued: AtomicBool,
@@ -179,7 +179,7 @@ pub fn render(entries: &[Entry], now: i64) -> String {
 /// where the schedule has one.
 fn summary(e: &Entry) -> String {
     match e.season {
-        Some(s) => crate::i18n::tr(
+        Some(s) => anibeam_contract::i18n::tr(
             "core-calendar-season-episode",
             &[
                 ("title", e.title.as_str().into()),
@@ -187,7 +187,7 @@ fn summary(e: &Entry) -> String {
                 ("number", e.number.to_string().into()),
             ],
         ),
-        None => crate::i18n::tr(
+        None => anibeam_contract::i18n::tr(
             "core-calendar-episode",
             &[
                 ("title", e.title.as_str().into()),
@@ -338,7 +338,7 @@ pub(crate) fn remove(metadata: &Metadata) {
 }
 
 /// Follows a change of the switch: on writes the file now, off deletes it.
-pub(crate) fn set_enabled(metadata: &Metadata, on: bool) {
+pub fn set_enabled(metadata: &Metadata, on: bool) {
     if on {
         write(metadata)
     } else {
@@ -376,17 +376,17 @@ pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 
 /// Subscribes the listener that rewrites the file after a change. Called
 /// once, by `Core::open`; `shutdown` drops it.
-pub(crate) fn listen(metadata: &Arc<Metadata>) {
+pub fn listen(metadata: &Arc<Metadata>) {
     let listener = Arc::new(AfterChange {
         metadata: Arc::downgrade(metadata),
     });
     *recover(&metadata.calendar.listener) =
-        Some(Subscription::new(metadata.services.bus.clone(), listener));
+        Some(Subscribed::new(metadata.services.bus.clone(), listener));
 }
 
 /// Unsubscribes the listener. Taken out of the mutex before it is dropped,
 /// since the drop takes the bus's own lock.
-pub(crate) fn stop(metadata: &Metadata) {
+pub fn stop(metadata: &Metadata) {
     let sub = recover(&metadata.calendar.listener).take();
     drop(sub);
 }

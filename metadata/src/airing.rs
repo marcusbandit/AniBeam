@@ -29,16 +29,16 @@ use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::contract::*;
-use crate::events::Signal;
-use crate::foundation::services::Services;
-use crate::jobs::{Finished, JobCtx};
-use crate::metadata::Metadata;
-use crate::metadata::apply::{card_for, provider_stopped};
-use crate::metadata::fetch::{self, message_of};
-use crate::metadata::record;
-use crate::net::tvmaze;
-use crate::time;
+use crate::Metadata;
+use crate::apply::{card_for, provider_stopped};
+use crate::fetch::{self, message_of};
+use crate::record;
+use anibeam_contract::*;
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_net::tvmaze;
 
 /// How long a series' schedule is taken to be current. Electron's
 /// `AIRING_REFRESH_TTL_MS`: a broadcast slot does not move by the hour,

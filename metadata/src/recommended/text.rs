@@ -4,7 +4,7 @@
 /// The description as plain text, cut where a source credit or a note
 /// starts: those are about the release, not the story.
 pub fn story(description: &str) -> String {
-    let text = crate::html::plain_text(description);
+    let text = anibeam_foundation::html::plain_text(description);
     let cut = ["(Source:", "[Written by", "Note:", "(Note:"]
         .iter()
         .filter_map(|m| text.find(m))

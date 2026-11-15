@@ -319,7 +319,7 @@ core-jobs-start-endpoint = Запуск источника загрузки
 core-jobs-schedule-agent = Запрос расписания у ИИ-агента
     .stopped = Запрос расписания у ИИ-агента остановился из-за проблемы.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Сейчас в эфире
 core-airing-now-winter = Зима { $year }
@@ -340,7 +340,7 @@ core-airing-now-already-on =
     }».
 core-airing-now-plan-failed = Не удалось добавить «{ $title }» в «В планах». Попробуйте позже.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Вышла серия { $number } сериала «{ $title }».
 
@@ -473,18 +473,18 @@ core-prefs-provider-count = { $provider } указан несколько раз
 core-prefs-outside = { $value } вне диапазона от { $low } до { $high }
 core-prefs-empty = пусто
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Подбор сериалов для вас
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Поиск людей с похожим вкусом
 core-recommended-reading-lists = Чтение их списков
 core-recommended-reading-yours = Чтение ваших сериалов
 core-recommended-reading-suggestions = Чтение сериалов для рекомендаций
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = На { -anilist } нет аниме { $id }
 
@@ -543,7 +543,7 @@ core-update-cannot-read-dmg = Не удалось прочитать dmg: { $err
 core-update-no-app = В dmg нет приложения
 core-update-cannot-copy = Не удалось скопировать новое приложение рядом с этим: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
@@ -817,7 +817,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } сериала хранятся на этом компьютере, трекера для отправки нет.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = «{ $show }» привязан к «{ $title }».
@@ -920,7 +920,7 @@ core-metadata-find-busy =
        *[other] { $busy } сериала уже привязываются.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Не удалось прочитать ссылку. Вставьте адрес страницы AniList, MyAnimeList, TVmaze или IMDb.
 core-metadata-no-mal-entry = На AniList нет записи для этого id MyAnimeList.
@@ -960,19 +960,19 @@ core-metadata-updated-some =
        *[other] Обновлены данные о { $count } сериалах; не удалось обновить: { $failed }.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = На TVmaze нет сериала { $id }
 core-metadata-no-such-media = На AniList нет записи { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = ссылки IMDb из Wikidata
 core-metadata-progress-imdb-ratings = рейтинги IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи

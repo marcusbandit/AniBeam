@@ -324,7 +324,7 @@ core-jobs-start-endpoint = Starting a download source
 core-jobs-schedule-agent = Asking your coding agent for a schedule
     .stopped = Asking your coding agent for a schedule stopped with a problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Airing now
 core-airing-now-winter = Winter { $year }
@@ -345,7 +345,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Could not add { $title } to your Planning list. Try again later.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Episode { $number } of { $title } is out.
 
@@ -479,18 +479,18 @@ core-prefs-empty = empty
 core-prefs-room-name = a name is 1 to { $max } characters, with no control characters
 core-prefs-room-relay = the relay address must start with https:// or http://
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ranking shows for you
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Finding people with your taste
 core-recommended-reading-lists = Reading their lists
 core-recommended-reading-yours = Reading your shows
 core-recommended-reading-suggestions = Reading shows to suggest
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } has no anime { $id }
 
@@ -549,7 +549,7 @@ core-update-cannot-read-dmg = Could not read the dmg: { $error }
 core-update-no-app = The dmg holds no app
 core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
@@ -811,7 +811,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } shows are kept on this computer, with no tracker to send to.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = Matched { $show } to { $title }.
@@ -898,7 +898,7 @@ core-metadata-find-busy =
        *[other] { $busy } shows are being matched already.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.
 core-metadata-no-mal-entry = AniList has no entry for that MyAnimeList id.
@@ -932,19 +932,19 @@ core-metadata-updated-some =
        *[other] Updated the info for { $count } shows; { $failed } could not be updated.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmaze has no show { $id }
 core-metadata-no-such-media = AniList has no media { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = Wikidata's IMDb links
 core-metadata-progress-imdb-ratings = IMDb ratings
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters

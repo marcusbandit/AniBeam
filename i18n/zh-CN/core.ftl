@@ -292,7 +292,7 @@ core-jobs-start-endpoint = 正在启动下载来源
 core-jobs-schedule-agent = 正在向编程助手询问播出时间
     .stopped = 向编程助手询问播出时间时出现问题，已停止。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 正在播出
 core-airing-now-winter = { $year } 年冬季
@@ -312,7 +312,7 @@ core-airing-now-already-on =
     }”。
 core-airing-now-plan-failed = 无法把《{ $title }》加入“想看”列表，请稍后再试。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = 《{ $title }》第 { $number } 集已播出。
 
@@ -424,18 +424,18 @@ core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服�
 core-prefs-outside = { $value } 不在 { $low } 到 { $high } 之间
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 正在为你排列番剧
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 正在寻找口味相近的人
 core-recommended-reading-lists = 正在读取他们的列表
 core-recommended-reading-yours = 正在读取你的番剧
 core-recommended-reading-suggestions = 正在读取推荐番剧
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } 上没有动画 { $id }
 
@@ -490,7 +490,7 @@ core-update-cannot-read-dmg = 无法读取 dmg：{ $error }
 core-update-no-app = dmg 中没有应用
 core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
@@ -648,7 +648,7 @@ core-trackers-left-out =
        *[other] 有 { $kept } 部番剧保存在这台电脑上，没有可发送的追踪服务。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = 已把《{ $show }》匹配为《{ $title }》。
 core-metadata-auto-matched = 已匹配 { $count } 部番剧。
@@ -697,7 +697,7 @@ core-metadata-find-failed = 有 { $failed } 部番剧无法搜索，请稍后再
 core-metadata-find-had = 有 { $had } 部番剧已有匹配。
 core-metadata-find-busy = 有 { $busy } 部番剧正在匹配中。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 无法读取该链接。请粘贴 AniList、MyAnimeList、TVmaze 或 IMDb 页面的网址。
 core-metadata-no-mal-entry = AniList 上没有与该 MyAnimeList ID 对应的条目。
@@ -715,17 +715,17 @@ core-metadata-updated-many = 已更新 { $count } 部番剧的信息。
 core-metadata-update-failed-many = 无法更新 { $count } 部番剧的信息，请稍后再试。
 core-metadata-updated-some = 已更新 { $count } 部番剧的信息；{ $failed } 部无法更新。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze 上没有剧集 { $id }
 core-metadata-no-such-media = AniList 上没有作品 { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata 的 IMDb 链接
 core-metadata-progress-imdb-ratings = IMDb 评分
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 共同角色
 

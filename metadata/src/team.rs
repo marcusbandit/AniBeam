@@ -6,20 +6,20 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::OUTAGE_WINDOW;
 use crate::aired::Aired;
+use crate::automatch;
 use crate::calendar::Calendar;
-use crate::contract::{EventBody, Stage};
-use crate::events::Signal;
-use crate::foundation::services::Services;
-use crate::library::Library;
-use crate::metadata::OUTAGE_WINDOW;
-use crate::metadata::automatch;
-use crate::net::Net;
-use crate::sync::recover;
+use anibeam_contract::{EventBody, Stage};
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_library::Library;
+use anibeam_net::Net;
 
 pub struct Metadata {
-    pub(crate) services: Arc<Services>,
-    pub(crate) net: Arc<Net>,
+    pub services: Arc<Services>,
+    pub net: Arc<Net>,
     pub(crate) library: Arc<Library>,
     /// The calendar feed's listener and file lock (`calendar`).
     pub(crate) calendar: Calendar,
@@ -35,7 +35,7 @@ pub struct Metadata {
     /// requests to AniList, on top of the shared limiter: its first read is
     /// some seventy requests, and AniList's limit while degraded is thirty
     /// a minute (#732). A test shortens it.
-    pub(crate) recommender_gap_ms: AtomicU64,
+    pub recommender_gap_ms: AtomicU64,
     /// When the core last said out loud that Jikan was not answering.
     /// Jikan is the episode-title side-fetch, so an outage costs a series
     /// its titles rather than its match, and a job walking a whole library
@@ -49,7 +49,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub(crate) fn new(services: Arc<Services>, net: Arc<Net>, library: Arc<Library>) -> Metadata {
+    pub fn new(services: Arc<Services>, net: Arc<Net>, library: Arc<Library>) -> Metadata {
         Metadata {
             services,
             net,
@@ -67,7 +67,7 @@ impl Metadata {
     /// Hears what the teams below tell this one (#854): a settled folder is
     /// worth a match, and a tracker list read again is what Recommended
     /// learns from. Set once, by `Core::open`.
-    pub(crate) fn listen(self: &Arc<Self>) {
+    pub fn listen(self: &Arc<Self>) {
         let metadata = Arc::downgrade(self);
         self.services.bus.on_signal(Arc::new(move |signal| {
             let Some(metadata) = metadata.upgrade() else {

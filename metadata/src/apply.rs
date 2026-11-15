@@ -14,19 +14,19 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::i18n::tr;
-use crate::images;
-use crate::jobs::Finished;
-use crate::library::cards;
-use crate::metadata::Metadata;
-use crate::metadata::fetch::{self, message_of};
-use crate::metadata::link::{self, Link};
-use crate::metadata::record;
-use crate::net::anilist::Media;
-use crate::net::tvmaze::Show;
-use crate::time;
+use crate::Metadata;
+use crate::fetch::{self, message_of};
+use crate::link::{self, Link};
+use crate::record;
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_library::cards;
+use anibeam_net::anilist::Media;
+use anibeam_net::images;
+use anibeam_net::tvmaze::Show;
 
 /// What the modal says when the text was a URL the core knows the host of
 /// but cannot follow: a themoviedb.org page, an AniList user profile, an
@@ -217,7 +217,10 @@ pub fn apply_match(
                         ctx.changed(card);
                     }
                     return Ok(Finished {
-                        plain: Some(crate::words!("core-metadata-matched", show = &folder)),
+                        plain: Some(anibeam_contract::words!(
+                            "core-metadata-matched",
+                            show = &folder
+                        )),
                         level: Level::Info,
                         message: format!("matched {folder} to TVmaze {id}"),
                         body: EventBody::MatchApplied { series },
@@ -248,7 +251,10 @@ pub fn apply_match(
                         // A MAL-only match carries no record format.
                         fetch::reread_after_record(&owner, series).await;
                         return Ok(Finished {
-                            plain: Some(crate::words!("core-metadata-matched", show = &folder)),
+                            plain: Some(anibeam_contract::words!(
+                                "core-metadata-matched",
+                                show = &folder
+                            )),
                             level: Level::Info,
                             message: format!("Matched {folder} to MyAnimeList {id}"),
                             body: EventBody::MatchApplied { series },
@@ -323,7 +329,10 @@ pub fn apply_match(
             }
 
             Ok(Finished {
-                plain: Some(crate::words!("core-metadata-matched", show = &folder)),
+                plain: Some(anibeam_contract::words!(
+                    "core-metadata-matched",
+                    show = &folder
+                )),
                 level: Level::Info,
                 message: format!("Matched {folder} to AniList {anilist_id}"),
                 body: EventBody::MatchApplied { series },
@@ -388,9 +397,9 @@ pub fn refresh_series(metadata: &Arc<Metadata>, series: u64) -> Result<u64, Core
             images::sweep_after(&owner.net, "a refresh").await;
             Ok(Finished {
                 plain: Some(if failed == 0 {
-                    crate::words!("core-metadata-updated", show = &folder)
+                    anibeam_contract::words!("core-metadata-updated", show = &folder)
                 } else {
-                    crate::words!("core-metadata-update-failed", show = &folder)
+                    anibeam_contract::words!("core-metadata-update-failed", show = &folder)
                 }),
                 level: if failed == 0 {
                     Level::Info
@@ -541,9 +550,15 @@ fn start_refresh_walk(
             images::sweep_after(&owner.net, label).await;
             let said = match (refreshed, failed) {
                 (0, 0) => None,
-                (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),
-                (0, f) => Some(crate::words!("core-metadata-update-failed-many", count = f)),
-                (n, f) => Some(crate::words!(
+                (n, 0) => Some(anibeam_contract::words!(
+                    "core-metadata-updated-many",
+                    count = n
+                )),
+                (0, f) => Some(anibeam_contract::words!(
+                    "core-metadata-update-failed-many",
+                    count = f
+                )),
+                (n, f) => Some(anibeam_contract::words!(
                     "core-metadata-updated-some",
                     count = n,
                     failed = f
@@ -599,7 +614,7 @@ fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, 
 
 /// One search hit as the modal draws it. AniList orders by relevance and
 /// the shell keeps that order, so nothing here sorts or filters.
-pub(crate) fn to_result(m: &Media) -> SearchResult {
+pub fn to_result(m: &Media) -> SearchResult {
     let title = m
         .title
         .romaji
@@ -707,10 +722,7 @@ fn folder_name(services: &Services, series: u64) -> Result<String, CoreError> {
 
 /// The one card a single-series job reports. `None` when the series went
 /// away underneath the job, which is not worth failing over.
-pub(crate) async fn card_for(
-    services: &Services,
-    series: u64,
-) -> Result<Option<SeriesCard>, CoreError> {
+pub async fn card_for(services: &Services, series: u64) -> Result<Option<SeriesCard>, CoreError> {
     let dir = services.paths.images_dir();
     let cards = services
         .store

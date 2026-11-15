@@ -580,7 +580,7 @@ pub fn anirss_saved_password(home: &AnirssHome) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::franchise::testing::conn as store;
+    use crate::store::testing::conn as store;
 
     /// A home with nothing in it, so no test reads the machine's own anirss.
     fn nowhere() -> AnirssHome {

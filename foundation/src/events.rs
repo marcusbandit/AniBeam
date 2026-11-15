@@ -351,6 +351,27 @@ impl EventBus {
     }
 }
 
+/// A listener a team keeps on the bus for as long as it holds this: dropping it
+/// unsubscribes, once. A shell's listener is the core's `Subscription`, which does the
+/// same behind uniffi; a team below the core keeps this instead.
+pub struct Subscribed {
+    bus: Arc<EventBus>,
+    id: u64,
+}
+
+impl Subscribed {
+    pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Subscribed {
+        let id = bus.subscribe(listener);
+        Subscribed { bus, id }
+    }
+}
+
+impl Drop for Subscribed {
+    fn drop(&mut self) {
+        self.bus.unsubscribe(self.id);
+    }
+}
+
 /// The plain line for a warning or an error whose site has no wording of its
 /// own: which part of the app it touched, and where the details are.
 pub fn stage_problem(stage: Stage) -> Words {

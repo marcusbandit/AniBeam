@@ -307,7 +307,7 @@ core-jobs-start-endpoint = ダウンロードソースを起動中
 core-jobs-schedule-agent = コーディングエージェントにスケジュールを問い合わせ中
     .stopped = コーディングエージェントへのスケジュールの問い合わせが問題で停止しました。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 放送中
 core-airing-now-winter = { $year }年冬
@@ -328,7 +328,7 @@ core-airing-now-already-on =
     }」で入っています。
 core-airing-now-plan-failed = { $title }を視聴予定リストに追加できませんでした。あとでもう一度お試しください。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title }の第{ $number }話が公開されました。
 
@@ -455,18 +455,18 @@ core-prefs-provider-count = { $provider }が{ $count }回出てきます。各�
 core-prefs-outside = { $value }は{ $low }〜{ $high }の範囲外です
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = おすすめを順位付け中
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 好みの近い人を探しています
 core-recommended-reading-lists = その人たちのリストを読み込み中
 core-recommended-reading-yours = あなたの作品を読み込み中
 core-recommended-reading-suggestions = おすすめ候補を読み込み中
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }にアニメ{ $id }はありません
 
@@ -525,7 +525,7 @@ core-update-cannot-read-dmg = dmgを読み込めませんでした: { $error }
 core-update-no-app = dmgにアプリが入っていません
 core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピーできませんでした: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - シーズン{ $season } 第{ $number }話
@@ -715,7 +715,7 @@ core-trackers-left-out =
        *[other] { $kept }作品は送信先のトラッカーがなく、このパソコンに保存されています。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = { $show }を{ $title }に照合しました。
@@ -757,7 +757,7 @@ core-metadata-find-failed = { $failed }作品を検索できませんでした�
 core-metadata-find-had = { $had }作品はすでに照合済みでした。
 core-metadata-find-busy = { $busy }作品はすでに照合中です。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = そのリンクを読めませんでした。AniList、MyAnimeList、TVmaze、IMDbのページURLを貼り付けてください。
 core-metadata-no-mal-entry = そのMyAnimeList IDに対応するエントリーはAniListにありません。
@@ -779,19 +779,19 @@ core-metadata-updated-many = { $count }作品の情報を更新しました。
 core-metadata-update-failed-many = { $count }作品の情報を更新できませんでした。あとでもう一度お試しください。
 core-metadata-updated-some = { $count }作品の情報を更新しました。{ $failed }作品は更新できませんでした。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmazeに作品{ $id }はありません
 core-metadata-no-such-media = AniListにメディア{ $id }はありません
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = WikidataのIMDbリンク
 core-metadata-progress-imdb-ratings = IMDbの評価
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = 共通キャラクター

@@ -17,15 +17,15 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::titles::{self, fallback_title};
-use crate::jobs::Finished;
-use crate::metadata::Metadata;
-use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
-use crate::net::as_u32;
-use crate::prefs;
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_foundation::titles::{self, fallback_title};
+use anibeam_net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
+use anibeam_net::as_u32;
 
 /// How old a season may be before `RefreshAiringNow` without `force` goes
 /// back to AniList.
@@ -71,7 +71,7 @@ pub fn season_of(pick: SeasonPick, now: i64) -> Season {
     match pick {
         SeasonPick::Now => Season {
             key: "NOW".to_string(),
-            label: crate::i18n::tr("core-airing-now-now", &[]),
+            label: anibeam_contract::i18n::tr("core-airing-now-now", &[]),
             status: Some("RELEASING"),
             season: None,
             year: None,
@@ -95,7 +95,7 @@ fn named(index: usize, year: i32) -> Season {
     let (name, label) = SEASONS[index];
     Season {
         key: format!("{name}-{year}"),
-        label: crate::i18n::tr(label, &[("year", year.to_string().into())]),
+        label: anibeam_contract::i18n::tr(label, &[("year", year.to_string().into())]),
         status: None,
         season: Some(name),
         year: Some(year),
