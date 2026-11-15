@@ -274,7 +274,6 @@ frame-downloads-not-read = Nicht gelesen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestartet
 home-ago-minutes = vor { $count } Min.
 home-ago-hours = vor { $count } Std.
 home-ago-days = vor { $count } T.
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } zu schauen
 home-day-nothing = Nichts
 home-now = Jetzt { $time }
-home-card-aired = { $episode } erschienen { $ago }
 home-continue = Weiterschauen
 home-continue-fact = { $count } Serien zum Weiterschauen
 home-on-hold = Pausiert
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } Datei noch auf der Platte
    *[other] { $count } Dateien noch auf der Platte
 }
-home-out-now = Jetzt da
-home-out-now-fact = Neue Folgen dieser Woche, von AniList
-home-popular = Beliebt diese Saison
-home-add-folder-title = Deine eigenen Serien gehören auch hierher
-home-add-folder-body = Füge den Ordner mit deinen Anime hinzu, und Start füllt sich mit dem, was du schaust.
-home-add-folder-button = Ordner hinzufügen
-home-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-home-empty-title = Noch keine Serien
-home-empty-scanned-body = Anibeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-home-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst.
-home-scan-all = Alle scannen
-home-library-settings = Bibliothekseinstellungen
 home-failed-title = Start wurde nicht geladen
 home-failed-body = Anibeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
 
@@ -456,9 +442,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } Quelle bereit zum Suchen.
    *[other] { $count } Quellen bereit zum Suchen.
 }
-onboarding-search-none = Anibeam bringt keine eigenen Quellen mit. Du fügst sie aus einem Quellen-Repo hinzu: ein Link, den dir jemand gibt und den du unter Einstellungen, Downloads einfügst.
-onboarding-sources-after = Öffnet nach der Einrichtung
-onboarding-sources-add = Repo nach der Einrichtung hinzufügen
 onboarding-fetch-title = Wer lädt
 onboarding-fetch-auto = Anibeam kümmert sich
 onboarding-fetch-recommended = Empfohlen
@@ -483,7 +466,7 @@ onboarding-ready-lists = Deine Liste
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Noch nicht verbunden. Das findet sich unter Einstellungen, Konten, wenn du es brauchst.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Noch keine Quellen
     [one] { $sources } Quelle
    *[other] { $sources } Quellen
@@ -493,9 +476,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alles bereit.
     [opens] Als Nächstes öffnet Einstellungen, Downloads.
-   *[both] Beides findest du unter Einstellungen, Downloads.
+   *[sources] Füge eine Quellenliste hinzu, um zu suchen.
 }
-onboarding-ready-open-downloads = Einstellungen, Downloads öffnen
 onboarding-ready-set-up = Jetzt einrichten
 
 ## Rail.qml
@@ -706,7 +688,28 @@ library-group-season = Saison
 library-group-type = Typ
 library-group-genre = Genre
 library-group-watch-state = Schaustatus
-library-scan-started = Scan gestartet
+library-empty-none = Deine Bibliothek ist leer
+library-empty-scanning = { $count ->
+    [1] Suche nach Videos in deinem Ordner
+   *[other] Suche nach Videos in deinen Ordnern
+}
+library-empty-nothing = { $count ->
+    [1] Noch keine Videos in diesem Ordner
+   *[other] Noch keine Videos in diesen Ordnern
+}
+library-empty-missing = { $count ->
+    [1] Dieser Ordner ist nicht da
+   *[other] Diese Ordner sind nicht da
+}
+library-empty-more-folders = { $count ->
+    [one] und { $count } weiterer Ordner
+   *[other] und { $count } weitere Ordner
+}
+library-empty-add-folder = Ordner hinzufügen
+library-empty-get = Etwas zum Schauen holen
+library-empty-scan-again = Erneut scannen
+library-empty-settings = Bibliothekseinstellungen
+library-empty-pick-folder = Ordner für deine Bibliothek wählen
 library-tab-all = Alle
 library-tab-series = Serien
 library-tab-movies = Filme
@@ -769,18 +772,6 @@ library-rescan = Neu scannen
 library-find-match = Zuordnung suchen
 library-find-match-tip = Für jede Auswahl ohne Zuordnung suchen
 library-all-matched = Jede Auswahl ist zugeordnet
-library-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-library-empty-title = Deine Bibliothek ist leer
-library-empty-scanned-body = Anibeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-library-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst, oder importiere einen Anibeam-Export.
-library-scan-all = Alle scannen
-library-add-folder = Ordner hinzufügen
-library-settings = Bibliothekseinstellungen
-library-import = Importieren
-library-import-title = Anibeam-Export importieren
-library-import-filter-export = Anibeam-Export (*.json)
-library-import-filter-all = Alle Dateien (*)
-library-import-started = Import gestartet
 
 ## MetadataPage.qml
 
@@ -1396,9 +1387,10 @@ get-show-kind-indexer-search = Indexer-Suche
 get-show-ready = Bereit
 get-show-running = Läuft
 get-show-not-running = Läuft nicht
-get-show-not-running-start = Läuft nicht. Klicke oben auf die Quelle, um sie zu starten.
 get-show-switched-off = Ausgeschaltet
-get-show-click-to-see = Klicken, um zu sehen, was sie für diese Serie hat
+get-show-show-releases = Releases anzeigen
+get-show-show-releases-on = Releases auf { $name } anzeigen
+get-show-try-again = Erneut versuchen
 get-show-searching = Sucht
 get-show-searching-source = Durchsuche { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1616,6 +1608,7 @@ release-table-season-batch = Batch Staffel { $season }
 release-table-batch = Batch
 release-table-via = über { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d. MMMM yyyy, HH:mm
 release-table-download = Laden
 release-table-more = und { $count } weitere. Grenze die Liste ein oder sortiere sie, um andere zuerst zu sehen.
@@ -1680,6 +1673,7 @@ downloads-error-unknown = Etwas ist schiefgegangen. Versuch es nochmal.
 downloads-search-all-off = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
 downloads-turn-on = { $name } einschalten
 downloads-search-no-sources = Es gibt noch keine Quellen zum Suchen. Füge in den Einstellungen unter Downloads eine Quellenliste hinzu.
+downloads-no-sources = Noch keine Quellen zum Suchen
 downloads-search-none-started = Keine Quelle konnte die Suche starten. Versuch es gleich nochmal.
 downloads-auto-resolution = Eingegrenzt auf { $resolution }, die schärfste im Angebot
 downloads-search-one-failed = Die Suche bei { $name } hat nicht geklappt. Versuch es nochmal oder durchsuche eine andere Quelle.
@@ -2161,7 +2155,6 @@ player-not-now = Nicht jetzt
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Quellenlisten
-endpoint-repos-panel-helper = Eine Quellenliste ist eine signierte Liste von Suchorten, per Adresse hinzugefügt. Anibeam prüft die Signatur und zeigt den Schlüssel vor dem Speichern, dann installierst du, was du willst. Sie ergänzen die Suchquellen oben.
 endpoint-repos-panel-could-not-start = Anibeam konnte das nicht starten. Versuch es gleich nochmal.
 endpoint-repos-panel-needs-value = { $name } braucht einen Wert
 endpoint-repos-panel-values-of = Werte von { $name }
@@ -2174,19 +2167,9 @@ endpoint-repos-panel-needs-fields = Braucht { $fields }, bevor es sucht.
 endpoint-repos-panel-no-longer-offered = Von seiner Quellenliste nicht mehr angeboten.
 endpoint-repos-panel-update-requests-to = Das Update sendet Anfragen an { $host }.
 endpoint-repos-panel-unreadable = Diese Liste war nicht lesbar. Listen aktualisieren versucht es erneut.
-endpoint-repos-panel-add-list = Quellenliste hinzufügen
-endpoint-repos-panel-add-list-helper = Die Adresse ihrer Indexdatei oder ein Pfad zu einer auf diesem Rechner.
 endpoint-repos-panel-checking = Prüfe
 endpoint-repos-panel-add = Hinzufügen
-endpoint-repos-panel-trust-question = { $name } vertrauen?
 endpoint-repos-panel-fingerprint = Schlüssel-Fingerabdruck  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } Quellen, signiert. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } Quellen, signiert, schon vertraut. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-trust = Vertrauen
 endpoint-repos-panel-saving = Speichere
 endpoint-repos-panel-install = Installieren
 endpoint-repos-panel-update = Aktualisieren
@@ -2201,6 +2184,22 @@ endpoint-repos-panel-by-hand-helper = Für Seiten ohne Liste: jeder Feed mit {"{
 endpoint-repos-panel-name = Name
 endpoint-repos-panel-refreshing = Aktualisiere
 endpoint-repos-panel-refresh = Listen aktualisieren
+
+## SourceAttach.qml
+
+source-attach-placeholder = Adresse einer Quellenliste einfügen
+source-attach-what = Was ist eine Quellenliste?
+source-attach-recent = Schon verwendet
+source-attach-added = { $count ->
+    [one] { $name } hinzugefügt: { $count } Quelle ist an.
+   *[other] { $name } hinzugefügt: { $count } Quellen sind an.
+}
+source-attach-added-none = { $name } hinzugefügt. Keine neue Quelle zum Einschalten.
+source-attach-waiting = { $count ->
+    [one] { $names } braucht zuerst einen Wert.
+   *[other] { $names } brauchen zuerst einen Wert.
+}
+source-attach-fill-in = Ausfüllen
 
 ## ScheduleSheet.qml
 
@@ -2381,6 +2380,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Jede Taste, auf die Anibeam hört
 settings-status-downloads-unread = Noch nicht gelesen
+settings-status-downloads-no-sources = Noch keine Quellen
 settings-status-downloads-answered = qBittorrent hat geantwortet
 settings-status-downloads-missing = Suchhelfer nicht installiert
 settings-status-downloads-unconnected = Noch nicht verbunden
@@ -2552,7 +2552,7 @@ settings-downloads-torrent-answered = { $client } { $version } hat geantwortet.
 settings-downloads-torrent-failed = { $client } hat sich nicht verbunden. Prüfe Adresse und Passwort oben und teste erneut.
 settings-downloads-torrent-untried = Noch nicht probiert.
 settings-downloads-mode-existing = Ein qBittorrent, das du selbst betreibst, mit eingeschaltetem Web UI.
-settings-downloads-mode-managed = Anibeam betreibt ein eigenes qBittorrent, das nach ~/Downloads/Anime lädt. Es läuft weiter, wenn Anibeam beendet wird, also laden Abos weiter.
+settings-downloads-mode-managed = Anibeam betreibt ein eigenes qBittorrent. Es läuft weiter, wenn Anibeam beendet wird, also laden Abos weiter.
 settings-downloads-mode-auto = qBittorrent an der Adresse unten, sonst ein eigenes.
 settings-downloads-password-saved = Für diesen Client ist hier ein Passwort gespeichert.
 settings-downloads-password-anirss = Nutzt das Passwort, das der Suchhelfer gespeichert hat; speichere hier eins, um nicht davon abzuhängen.
@@ -2576,6 +2576,11 @@ settings-downloads-username = Benutzername
 settings-downloads-password = Passwort
 settings-downloads-secret-saved = Gespeichert
 settings-downloads-secret-unset = Nicht gesetzt
+settings-downloads-save-to = Speichern in
+settings-downloads-save-to-client = qBittorrents eigener Ordner
+settings-downloads-save-to-choose = Ordner wählen
+settings-downloads-save-to-reset = Zurücksetzen
+settings-downloads-save-to-pick = Downloads speichern in
 settings-downloads-connection = Verbindung
 settings-downloads-open-config = Konfiguration öffnen
 settings-downloads-details = Details
@@ -2629,7 +2634,6 @@ settings-downloads-sources-title = Suchquellen
 settings-downloads-sources-helper = Wohin eine Suche geht, in Probierreihenfolge. Findet eine nichts, kommt die nächste.
 settings-downloads-sources-empty = Noch keine Quellen eingerichtet
 settings-downloads-sources-connect = Verbinde den Suchhelfer, um sie aufzulisten
-settings-downloads-sources-empty-helper = Füge unten eine Liste hinzu, um Quellen zu sehen.
 settings-downloads-config-file = Einstellungsdatei des Suchhelfers
 settings-downloads-config-native-helper = Enthält die Speicherordner, die Tags und die Regeln für die beste Wahl, denen Anibeam selbst folgt, wenn es den Helfer startet. Seine eigenen Quellen gehören nur dem Helfer.
 settings-downloads-config-helper = Enthält die Quellen, die Speicherordner, die Tags und die Regeln für die beste Wahl.

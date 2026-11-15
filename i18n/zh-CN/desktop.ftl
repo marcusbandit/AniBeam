@@ -217,7 +217,6 @@ frame-downloads-not-read = 未读取。
 ## HomePage
 
 home-title = 首页
-home-scan-started = 已开始扫描
 home-ago-minutes = { $count } 分钟前
 home-ago-hours = { $count } 小时前
 home-ago-days = { $count } 天前
@@ -260,7 +259,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } 集待看
 home-day-nothing = 无
 home-now = 现在 { $time }
-home-card-aired = { $episode }，{ $ago }播出
 home-continue = 继续观看
 home-continue-fact = { $count } 部番剧可以接着看
 home-on-hold = 搁置
@@ -299,18 +297,6 @@ home-genres = 类型
 home-open-library = 打开媒体库
 home-dropped = 抛弃
 home-dropped-fact = 磁盘上还有 { $count } 个文件
-home-out-now = 已播出
-home-out-now-fact = 本周新剧集，来自 AniList
-home-popular = 本季热门
-home-add-folder-title = 你自己的番剧也会显示在这里
-home-add-folder-body = 添加存放动漫的文件夹，首页就会填满你在看的番剧。
-home-add-folder-button = 添加文件夹
-home-empty-scanned-title = 文件夹里还没找到内容
-home-empty-title = 还没有番剧
-home-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-home-empty-body = 添加存放动漫的文件夹，媒体库会自动填满。
-home-scan-all = 全部扫描
-home-library-settings = 媒体库设置
 home-failed-title = 首页没有加载
 home-failed-body = Anibeam 刚才无法读取媒体库。请稍后再试。
 
@@ -378,9 +364,6 @@ onboarding-lists-connected = 已连接。你在这里看的内容现在会计入
 onboarding-lists-no-account = 还没有账号？两个都免费，有一个就够了。随时可以在设置的“账号”中断开连接。
 onboarding-search-title = 可以搜索的地方
 onboarding-search-ready = 有 { $count } 个来源可供搜索。
-onboarding-search-none = Anibeam 本身不带任何来源。你需要从来源仓库添加：别人分享给你的一个链接，粘贴到设置的“下载”中即可。
-onboarding-sources-after = 设置完成后打开
-onboarding-sources-add = 设置完成后添加仓库
 onboarding-fetch-title = 由谁下载
 onboarding-fetch-auto = 交给 Anibeam
 onboarding-fetch-recommended = 推荐
@@ -396,7 +379,7 @@ onboarding-ready-lists = 你的列表
 onboarding-ready-lists-as = { $tracker }，账号 { $user }
 onboarding-ready-lists-none = 尚未连接。需要时可在设置的“账号”中连接。
 onboarding-ready-downloads = 下载
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 还没有来源
    *[other] { $sources } 个来源
 }，{ $client ->
@@ -405,9 +388,8 @@ onboarding-ready-downloads-line = { $sources ->
 }{ $next ->
     [ready] 一切就绪。
     [opens] 接下来会打开设置的“下载”。
-   *[both] 两者都在设置的“下载”中。
+   *[sources] 添加一个来源列表即可搜索。
 }
-onboarding-ready-open-downloads = 打开设置中的“下载”
 onboarding-ready-set-up = 立即设置
 
 ## Rail.qml
@@ -562,7 +544,24 @@ library-group-season = 季度
 library-group-type = 类型
 library-group-genre = 题材
 library-group-watch-state = 观看状态
-library-scan-started = 已开始扫描
+library-empty-none = 媒体库是空的
+library-empty-scanning = { $count ->
+   *[other] 正在文件夹中查找视频
+}
+library-empty-nothing = { $count ->
+   *[other] 文件夹里还没有视频
+}
+library-empty-missing = { $count ->
+   *[other] 找不到文件夹
+}
+library-empty-more-folders = { $count ->
+   *[other] 还有 { $count } 个文件夹
+}
+library-empty-add-folder = 添加文件夹
+library-empty-get = 找点东西看
+library-empty-scan-again = 重新扫描
+library-empty-settings = 媒体库设置
+library-empty-pick-folder = 为媒体库选择文件夹
 library-tab-all = 全部
 library-tab-series = 番剧
 library-tab-movies = 剧场版
@@ -617,18 +616,6 @@ library-rescan = 重新扫描
 library-find-match = 查找匹配
 library-find-match-tip = 为每个没有匹配的选中项搜索
 library-all-matched = 所有选中项都已匹配
-library-empty-scanned-title = 文件夹里还没找到内容
-library-empty-title = 媒体库是空的
-library-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-library-empty-body = 添加存放动漫的文件夹，媒体库会自动填满；也可以导入 Anibeam 导出文件。
-library-scan-all = 全部扫描
-library-add-folder = 添加文件夹
-library-settings = 媒体库设置
-library-import = 导入
-library-import-title = 导入 Anibeam 导出文件
-library-import-filter-export = Anibeam 导出文件 (*.json)
-library-import-filter-all = 所有文件 (*)
-library-import-started = 已开始导入
 
 ## MetadataPage.qml
 
@@ -1055,9 +1042,10 @@ get-show-kind-indexer-search = 索引器搜索
 get-show-ready = 就绪
 get-show-running = 运行中
 get-show-not-running = 未运行
-get-show-not-running-start = 未运行。点击上方的来源即可启动。
 get-show-switched-off = 已关闭
-get-show-click-to-see = 点击查看它有这部番剧的哪些资源
+get-show-show-releases = 查看资源
+get-show-show-releases-on = 查看 { $name } 上的资源
+get-show-try-again = 重试
 get-show-searching = 搜索中
 get-show-searching-source = 正在搜索 { $name }
 get-show-searching-elapsed = { $label }，{ $seconds } 秒
@@ -1235,6 +1223,7 @@ release-table-season-batch = 第 { $season } 季合集
 release-table-batch = 合集
 release-table-via = 来自 { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = yyyy年M月d日 HH:mm
 release-table-download = 下载
 release-table-more = 还有 { $count } 个。缩小范围或排序可以先看到其他资源。
@@ -1271,6 +1260,7 @@ downloads-error-unknown = 出了点问题，请重试。
 downloads-search-all-off = 所有来源都已关闭。开启一个才能搜索。
 downloads-turn-on = 开启 { $name }
 downloads-search-no-sources = 还没有可搜索的来源。请在设置的“下载”中添加来源列表。
+downloads-no-sources = 还没有可搜索的来源
 downloads-search-none-started = 没有来源能开始搜索，请稍后再试。
 downloads-auto-resolution = 已筛选为 { $resolution }，可选的最高清晰度
 downloads-search-one-failed = 在 { $name } 上的搜索没有成功。请重试，或换个来源搜索。
@@ -1668,7 +1658,6 @@ player-not-now = 以后再说
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 来源列表
-endpoint-repos-panel-helper = 来源列表是一组经过签名的搜索位置，通过地址添加。Anibeam 会检查签名，并在保存前向你展示密钥，然后你可以安装需要的来源。已安装的来源会加入上方的“搜索来源”。
 endpoint-repos-panel-could-not-start = Anibeam 无法启动它，请稍后再试。
 endpoint-repos-panel-needs-value = { $name } 需要填写值
 endpoint-repos-panel-values-of = { $name } 的值
@@ -1681,19 +1670,9 @@ endpoint-repos-panel-needs-fields = 需要先填写 { $fields } 才能搜索。
 endpoint-repos-panel-no-longer-offered = 它的来源列表已不再提供。
 endpoint-repos-panel-update-requests-to = 更新后会向 { $host } 发送请求。
 endpoint-repos-panel-unreadable = 无法读取此列表。“刷新列表”会重试。
-endpoint-repos-panel-add-list = 添加来源列表
-endpoint-repos-panel-add-list-helper = 索引文件的地址，或这台机器上的文件路径。
 endpoint-repos-panel-checking = 检查中
 endpoint-repos-panel-add = 添加
-endpoint-repos-panel-trust-question = 信任 { $name }？
 endpoint-repos-panel-fingerprint = 密钥指纹  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } 个来源，已签名。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } 个来源，已签名，已信任。它的来源决定你的搜索发往何处；只信任来自你信任的人的列表。
-endpoint-repos-panel-trust = 信任
 endpoint-repos-panel-saving = 保存中
 endpoint-repos-panel-install = 安装
 endpoint-repos-panel-update = 更新
@@ -1708,6 +1687,22 @@ endpoint-repos-panel-by-hand-helper = 适用于没有列表收录的站点：任
 endpoint-repos-panel-name = 名称
 endpoint-repos-panel-refreshing = 正在刷新
 endpoint-repos-panel-refresh = 刷新列表
+
+## SourceAttach.qml
+
+source-attach-placeholder = 粘贴来源列表的地址
+source-attach-what = 什么是来源列表？
+source-attach-recent = 用过的
+source-attach-added = { $count ->
+    [one] 已添加 { $name }：已开启 { $count } 个来源。
+   *[other] 已添加 { $name }：已开启 { $count } 个来源。
+}
+source-attach-added-none = 已添加 { $name }。没有可新开启的来源。
+source-attach-waiting = { $count ->
+    [one] { $names } 需要先填一个值。
+   *[other] { $names } 需要先填值。
+}
+source-attach-fill-in = 填写
 
 ## ScheduleSheet.qml
 
@@ -1865,6 +1860,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Anibeam 响应的所有按键
 settings-status-downloads-unread = 尚未读取
+settings-status-downloads-no-sources = 还没有来源
 settings-status-downloads-answered = qBittorrent 已响应
 settings-status-downloads-missing = 未安装搜索助手
 settings-status-downloads-unconnected = 尚未连接
@@ -2032,7 +2028,7 @@ settings-downloads-torrent-answered = { $client } { $version } 已响应。
 settings-downloads-torrent-failed = { $client } 没有连接。请检查上方的地址和密码，然后重新测试。
 settings-downloads-torrent-untried = 尚未尝试。
 settings-downloads-mode-existing = 你自己运行的 qBittorrent，需开启 Web UI。
-settings-downloads-mode-managed = Anibeam 运行自带的 qBittorrent，下载到 ~/Downloads/Anime。Anibeam 退出后它会继续运行，订阅会持续下载。
+settings-downloads-mode-managed = Anibeam 运行自带的 qBittorrent。Anibeam 退出后它会继续运行，订阅会持续下载。
 settings-downloads-mode-auto = 如果下方地址有 qBittorrent 响应就使用它，否则运行自带的。
 settings-downloads-password-saved = 这里已为此客户端保存了密码。
 settings-downloads-password-anirss = 正在使用搜索助手保存的密码；在这里保存一个就不再依赖它。
@@ -2056,6 +2052,11 @@ settings-downloads-username = 用户名
 settings-downloads-password = 密码
 settings-downloads-secret-saved = 已保存
 settings-downloads-secret-unset = 未设置
+settings-downloads-save-to = 保存到
+settings-downloads-save-to-client = qBittorrent 自己的文件夹
+settings-downloads-save-to-choose = 选择文件夹
+settings-downloads-save-to-reset = 重置
+settings-downloads-save-to-pick = 下载保存到
 settings-downloads-connection = 连接
 settings-downloads-open-config = 打开它的配置
 settings-downloads-details = 详情
@@ -2109,7 +2110,6 @@ settings-downloads-sources-title = 搜索来源
 settings-downloads-sources-helper = 搜索的去处，按尝试顺序排列。一个找不到就交给下一个。
 settings-downloads-sources-empty = 还没有设置来源
 settings-downloads-sources-connect = 连接搜索助手后即可列出
-settings-downloads-sources-empty-helper = 在下方添加来源列表，它的来源就会显示在这里。
 settings-downloads-config-file = 搜索助手的设置文件
 settings-downloads-config-native-helper = 包含保存文件夹、标签和最佳匹配规则，Anibeam 运行助手时自己也会遵循。其中的来源只属于助手。
 settings-downloads-config-helper = 包含来源、保存文件夹、标签和最佳匹配规则。
