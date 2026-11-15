@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::net::Http;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_net::Http;
 
 use super::{BestfitConfig, Endpoint, endpoints, refinement, stats};
 
@@ -104,7 +104,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                crate::i18n::tr("core-releases-no-endpoints", &[]),
+                anibeam_contract::i18n::tr("core-releases-no-endpoints", &[]),
             ));
         }
         match name {
@@ -116,7 +116,10 @@ impl Native {
                 .ok_or_else(|| {
                     CoreError::invalid(
                         "endpoint",
-                        crate::i18n::tr("core-releases-no-source-named", &[("name", name.into())]),
+                        anibeam_contract::i18n::tr(
+                            "core-releases-no-source-named",
+                            &[("name", name.into())],
+                        ),
                     )
                 }),
         }
@@ -169,7 +172,7 @@ impl Native {
         if query.is_empty() {
             return Err(CoreError::invalid(
                 "query",
-                crate::i18n::tr("core-releases-empty-query", &[]),
+                anibeam_contract::i18n::tr("core-releases-empty-query", &[]),
             ));
         }
         let active = self.endpoint(endpoint)?;
@@ -339,7 +342,7 @@ impl Native {
         if !endpoints::answers_rss(&ep.kind) {
             return Err(CoreError::invalid(
                 "endpoint",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-releases-cannot-follow",
                     &[("name", ep.name.as_str().into())],
                 ),
@@ -351,7 +354,7 @@ impl Native {
 
 /// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
+    anibeam_contract::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
@@ -378,7 +381,10 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if crate::redact::secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v))
+                    if anibeam_foundation::redact::secret_param(k).is_some()
+                        && !v.starts_with('{') =>
+                {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),
@@ -392,7 +398,7 @@ pub fn mask(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     fn code_of(err: CoreError) -> (String, String) {
         match err {
@@ -408,13 +414,9 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
-                Endpoint::new("search", crate::releases::kinds::FILTERED_RSS, "https://e/"),
+                Endpoint::new("search", crate::kinds::FILTERED_RSS, "https://e/"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new(
-                    "anime",
-                    crate::releases::kinds::JSON_FEED,
-                    "https://d/?q={query}",
-                ),
+                Endpoint::new("anime", crate::kinds::JSON_FEED, "https://d/?q={query}"),
             ],
         );
         assert!(native.feed_is_rss("feed"));
@@ -481,11 +483,7 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new(
-                    "anime",
-                    crate::releases::kinds::JSON_FEED,
-                    "https://d/?q={query}",
-                ),
+                Endpoint::new("anime", crate::kinds::JSON_FEED, "https://d/?q={query}"),
             ],
         );
         for name in ["api", "anime"] {

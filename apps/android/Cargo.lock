@@ -199,13 +199,13 @@ dependencies = [
  "anibeam-library",
  "anibeam-net",
  "anibeam-recs",
+ "anibeam-releases",
  "anibeam-room",
  "anyhow",
  "axum",
  "base64",
  "chacha20poly1305",
  "ed25519-dalek",
- "fancy-regex",
  "flate2",
  "futures-core",
  "futures-util",
@@ -315,6 +315,29 @@ name = "anibeam-recs"
 version = "2.5.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "anibeam-releases"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-net",
+ "base64",
+ "ed25519-dalek",
+ "fancy-regex",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "roxmltree 0.20.0",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

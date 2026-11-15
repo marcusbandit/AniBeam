@@ -11,13 +11,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
-use crate::sync::recover;
+use anibeam_foundation::sync::recover;
+use anibeam_net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
 /// or when it has none: `net::front`'s gap, which keeps a front's edge answering (#135). A
 /// person's own server (localhost, a home-network address) has no floor, only its rate.
-pub const FLOOR: Duration = crate::net::front::GAP;
+pub const FLOOR: Duration = anibeam_net::front::GAP;
 
 /// A host on this machine or the home network, a person's own Jackett or Prowlarr.
 fn is_own_host(host: &str) -> bool {
@@ -90,7 +90,7 @@ impl Http for Paced {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     /// Says which door a request came in by.
     #[derive(Default)]

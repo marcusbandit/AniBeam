@@ -127,7 +127,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = вставьте адрес репозитория
 core-repos-must-be-https = адрес должен начинаться с https
@@ -166,7 +166,7 @@ core-repos-note-theirs = Этот anirss запущен вами, и компь�
 core-repos-note-sandbox = Этот запуск не пишет в конфиг anirss, поэтому здесь компьютер не ищет по { $id }
 core-repos-note-old = anirss { $version } не принимает источники от { -app-name }; обновите его до { $min } или новее, чтобы компьютер искал по нему
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = ключ индекса не является ключом ed25519
 core-repos-key-not-base64 = ключ индекса не является 32 байтами в base64
@@ -1449,7 +1449,7 @@ core-downloads-rolled = «{ $title }»: теперь серии с { $from } п�
 core-downloads-roll-ahead = держите хотя бы одну серию впрок
 core-downloads-roll-nothing = скачивать нечего
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = источник поиска JSON берётся из репозитория источников, где описано, как читать его поля
 core-releases-endpoint-no-name = не указано `name`
@@ -1465,7 +1465,7 @@ core-releases-endpoint-not-http = { $name }: адрес должен начин�
 core-releases-endpoint-needs-query = { $name }: url типа { $kind } должен содержать подстановку {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: url типа { $kind } сам добавляет запрос, поэтому {"{"}query{"}"} в нём не нужен
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = индексатор ответил ошибкой { $code }
@@ -1473,11 +1473,11 @@ core-releases-bad-feed = некорректная лента: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = лента ответила { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = это не JSON ленты: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = это не JSON: { $error }
 # $message is what the search said about itself
@@ -1488,7 +1488,7 @@ core-releases-no-results-field = в ответе нет результатов �
 core-releases-results-not-list = результаты в ответе не являются списком
 core-releases-search-answered = поиск ответил { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = источников пока нет: добавьте репозиторий или источник вручную в разделе «Источники» в меню «Ещё»
 core-releases-no-source-named = нет источника { $name }
@@ -1496,7 +1496,7 @@ core-releases-empty-query = введите, что искать
 core-releases-cannot-follow = на { $name } нельзя подписаться: он отвечает на поиск, но у него нет ленты для проверки новых серий
 core-releases-endpoint-gone = { $name } больше недоступен: удалён, выключен или потерял ключ
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1510,12 +1510,12 @@ core-releases-quirks-url-https = url в show_feed должен быть https
 core-releases-quirks-url-host = url в show_feed должен быть на хосте самого источника
 core-releases-quirks-url-slug = url в show_feed содержит {"{"}slug{"}"} ровно один раз и никаких других подстановок
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = операции 'tokens' нужен непустой список `tokens`
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = пакет { $group }

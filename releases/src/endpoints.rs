@@ -12,8 +12,8 @@ use super::Endpoint;
 use super::fetch::{self, DEFAULT_TIMEOUT};
 use super::kinds::{FILTERED_RSS, JSON_FEED};
 use super::quirks;
-use crate::contract::{CoreError, Release, SubscriptionSpec};
-use crate::net::Http;
+use anibeam_contract::{CoreError, Release, SubscriptionSpec};
+use anibeam_net::Http;
 
 /// The kinds an endpoint can be, each named for the shape it reads (`kinds.rs`).
 /// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is Anibeam's
@@ -40,7 +40,7 @@ pub fn answers_rss(kind: &str) -> bool {
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
 pub fn json_needs_repo() -> String {
-    crate::i18n::tr("core-releases-json-needs-repo", &[])
+    anibeam_contract::i18n::tr("core-releases-json-needs-repo", &[])
 }
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
@@ -64,7 +64,7 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if name.is_empty() {
         return Err(CoreError::invalid(
             "endpoint name",
-            crate::i18n::tr("core-releases-endpoint-no-name", &[]),
+            anibeam_contract::i18n::tr("core-releases-endpoint-no-name", &[]),
         ));
     }
     if !name
@@ -73,7 +73,7 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     {
         return Err(CoreError::invalid(
             "endpoint name",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-bad-name",
                 &[("name", format!("{name:?}").into())],
             ),
@@ -91,7 +91,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if kind == "json" {
         return Err(CoreError::invalid(
             "endpoint kind",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-json",
                 &[
                     ("name", format!("{name:?}").into()),
@@ -103,7 +103,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if !VALID_KINDS.contains(&kind) {
         return Err(CoreError::invalid(
             "endpoint kind",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-unknown-kind",
                 &[
                     ("name", format!("{name:?}").into()),
@@ -125,7 +125,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if url.is_empty() {
         return Err(CoreError::invalid(
             "endpoint url",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-no-url",
                 &[("name", format!("{name:?}").into())],
             ),
@@ -134,7 +134,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(CoreError::invalid(
             "endpoint url",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-not-http",
                 &[("name", format!("{name:?}").into())],
             ),
@@ -143,7 +143,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if needs_query(kind) && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-needs-query",
                 &[("name", format!("{name:?}").into()), ("kind", kind.into())],
             ),
@@ -152,7 +152,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if !needs_query(kind) && url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-endpoint-no-query",
                 &[("name", format!("{name:?}").into()), ("kind", kind.into())],
             ),
@@ -641,7 +641,7 @@ pub fn source_of<'a>(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     fn tracker() -> Endpoint {
         Endpoint {

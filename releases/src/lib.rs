@@ -6,9 +6,16 @@
 //!
 //! The core's contract types are anirss's wire types already: `Release` is anirss's
 //! `Item`, `ReleaseGroup` its `Group`, `BestFit` and `Refinement` its answers.
+//!
+//! The releases team (#854) is this crate: that logic, what a release title says
+//! (`facts`), the endpoint repos the definitions come from (`repos`), and the Feed
+//! page's reads (`feed`). The core hands it on as `anibeam_core::releases`, with
+//! `repos` and `feed` at the core's root where they were.
 
 pub mod bestfit;
 pub mod endpoints;
+pub mod facts;
+pub mod feed;
 pub mod fetch;
 pub mod grid;
 pub mod json;
@@ -17,13 +24,14 @@ pub mod kinds;
 pub mod native;
 pub mod quirks;
 pub mod refinement;
+pub mod repos;
 pub mod rules;
 pub mod stats;
 mod team;
 pub mod titles;
 
 pub use team::Releases;
-pub(crate) use team::{AnirssView, EndpointSync, Searcher};
+pub use team::{AnirssView, EndpointSync, Searcher};
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).

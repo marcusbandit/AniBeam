@@ -9,8 +9,8 @@ use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
-use crate::contract::*;
-use crate::sync::recover;
+use anibeam_contract::*;
+use anibeam_foundation::sync::recover;
 
 /// One subscription: a feed, its filter, and where its episodes go.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -67,7 +67,7 @@ impl RuleStore {
     pub fn save(&self, rules: &[Rule]) -> Result<(), CoreError> {
         let bytes =
             serde_json::to_vec_pretty(rules).map_err(|e| CoreError::internal(e.to_string()))?;
-        crate::atomic_file::write(&self.path, bytes)
+        anibeam_foundation::atomic_file::write(&self.path, bytes)
             .map_err(|e| CoreError::internal(e.source.to_string()))
     }
 
