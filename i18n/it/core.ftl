@@ -522,7 +522,7 @@ core-presence-room = Guardiamo insieme
 core-presence-in-room = In una stanza
 core-presence-no-room = Quell'invito di Discord non ha ancora una stanza. Chiedi di aprirne una.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Nessun client ID impostato per { $tracker }.
 core-trackers-mal-reconnect = Ricollega MyAnimeList nelle Impostazioni.
@@ -530,15 +530,15 @@ core-trackers-mal-wants-secret = MyAnimeList vuole il client secret di questa ap
 core-trackers-token-reply-unreadable = risposta del token illeggibile: { $error }
 core-trackers-token-reply-no-token = la risposta del token non conteneva un access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = nessun access token salvato, ricollega nelle Impostazioni
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = l'account non ha un id utente
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = nessuna serie scelta da spostare
 core-trackers-moved-up =
@@ -556,7 +556,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } non ha accettato { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Autorizzazione scaduta, riprova.
 core-trackers-oauth-state-mismatch = state non corrispondente, possibile CSRF, interrotto.
@@ -581,7 +581,7 @@ core-trackers-page-cancelled-title = { $app }, accesso annullato
 core-trackers-page-cancelled = Questo accesso è stato annullato
 core-trackers-page-cancelled-body = Puoi chiudere questa scheda. Se volevi accedere, ricomincia da { $app }.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Spostamento in In pausa su { $tracker }
 core-trackers-on-hold-moved =
@@ -620,7 +620,7 @@ core-trackers-back-on-watching = { $name } è tornata in In visione su { $site }
 core-trackers-back-on-watching-two = { $name } è tornata in In visione su { $site } e { $secondSite }.
 core-trackers-back-on-watching-failed = Impossibile rimettere { $name } in In visione. Riprova più tardi.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } ha limitato le richieste, riprova tra un minuto.
 core-trackers-auth-expired = Accesso a { $tracker } scaduto, ricollega nelle Impostazioni.

@@ -524,7 +524,7 @@ core-presence-no-room = Esse convite do Discord ainda não tem sala. Peça para 
 
 # As palavras do core para o grupo da biblioteca (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Nenhum client ID definido para { $tracker }.
 core-trackers-mal-reconnect = Reconecte o MyAnimeList nas Configurações.
@@ -532,15 +532,15 @@ core-trackers-mal-wants-secret = O MyAnimeList pede o client secret deste app. I
 core-trackers-token-reply-unreadable = resposta de token ilegível: { $error }
 core-trackers-token-reply-no-token = a resposta de token não trouxe access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = nenhum access token guardado, reconecte nas Configurações
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = a conta não tem id de usuário
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = nenhuma série escolhida para mover
 core-trackers-moved-up =
@@ -558,7 +558,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = O { $site } não aceitou { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = A autorização expirou, tente de novo.
 core-trackers-oauth-state-mismatch = state não confere, possível CSRF, cancelado.
@@ -583,7 +583,7 @@ core-trackers-page-cancelled-title = { $app }, login cancelado
 core-trackers-page-cancelled = Este login foi cancelado
 core-trackers-page-cancelled-body = Você pode fechar esta aba. Comece de novo pelo { $app } se quiser.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Movendo para Em pausa no { $tracker }
 core-trackers-on-hold-moved =
@@ -622,7 +622,7 @@ core-trackers-back-on-watching = { $name } voltou para Assistindo no { $site }.
 core-trackers-back-on-watching-two = { $name } voltou para Assistindo no { $site } e no { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } não pôde voltar para Assistindo. Tente de novo mais tarde.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = O { $tracker } limitou as requisições, tente de novo em um minuto.
 core-trackers-auth-expired = O login no { $tracker } expirou, reconecte nas Configurações.

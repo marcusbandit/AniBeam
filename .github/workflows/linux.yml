@@ -160,7 +160,7 @@ jobs:
         # ffmpeg needs Ubuntu's libavcodec with its encoders. Only the shell links the lean
         # FFmpeg in DEPS_PREFIX, so only the shell's tests get it on the library path.
         run: |
-          cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-core
+          cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-core
           LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam
 
       - name: AppImage

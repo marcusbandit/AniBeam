@@ -1,0 +1,31 @@
+[package]
+name = "anibeam-trackers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Anibeam's trackers team: AniList and MyAnimeList, their accounts and sign-in, the list cache and the writes, Watching, On hold and Plan to watch"
+build = "build.rs"
+
+[lib]
+name = "anibeam_trackers"
+crate-type = ["lib"]
+
+[dependencies]
+anibeam-contract = { workspace = true, features = ["sqlite"] }
+anibeam-foundation.workspace = true
+anibeam-net.workspace = true
+anibeam-library.workspace = true
+anibeam-metadata.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+rusqlite.workspace = true
+rand = "0.10"
+base64 = "0.23"
+time = { version = "0.3", features = ["parsing"] }
+tracing = "0.1"
+
+[features]
+# The phone's build, where On hold does not run (on_hold.rs). The core's `phone` turns it on.
+phone = []
