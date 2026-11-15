@@ -200,7 +200,10 @@ FocusScope {
         // A rail page opens as it was left; the icon of the page already open takes it back
         // to its top
         onPicked: function(p) {
-            if (nav.current.page !== p) nav.openRail(p, frame.leavingScroll())
+            // From a page the place holds (Stats under Library) it is a sideways move, as the
+            // place's own tabs make, so Back still leaves the place
+            if (rail.holders[nav.current.page] === p) nav.sideways(p, frame.leavingScroll())
+            else if (nav.current.page !== p) nav.openRail(p, frame.leavingScroll())
             else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
         }
         inRoom: roomState.inRoom

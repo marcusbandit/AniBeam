@@ -67,7 +67,8 @@ Item {
         SearchField {
             id: search
             objectName: "settings-hidden-filter"
-            visible: tab.shows.length > 8
+            // Shown for a long list, and kept while it is filtering so it can be cleared
+            visible: tab.shows.length > 8 || tab.filter !== ""
             width: Math.min(parent.width, theme.space(100))
             placeholder: words.t("settings-hidden-airing-filter")
             onTextChanged: tab.filter = text

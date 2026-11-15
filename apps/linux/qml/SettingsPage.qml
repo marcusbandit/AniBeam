@@ -32,7 +32,12 @@ FocusScope {
     readonly property var aliases: ({ subtitles: "playback", phone: "accounts", storage: "about", data: "about", help: "about", trackers: "accounts" })
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
     property string current: sectionIndex(aliases[frame.settingsTab] || frame.settingsTab) >= 0 ? (aliases[frame.settingsTab] || frame.settingsTab) : "library"
-    onCurrentChanged: frame.settingsTab = current
+    // The trail remembers the section, so the rail comes back to it; the hidden sub-page comes
+    // back as Library, the section that opens it
+    onCurrentChanged: {
+        frame.settingsTab = current
+        frame.nav.current.props = Object.assign({}, frame.nav.current.props, { tab: current === "hidden" ? "library" : current })
+    }
     // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
     // a beat in every case: a section just loaded, or one coming back from behind the search
     // results, has not laid out yet. Unsaved Downloads edits ride along on the frame

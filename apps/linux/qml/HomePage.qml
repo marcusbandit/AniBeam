@@ -1196,7 +1196,7 @@ Item {
                         onClicked: page.setHideEmptyDays(!page.hideEmptyDays)
                     }
                     // The feed left the rail (#1012): its way in is here, beside the week it extends
-                    Button { objectName: "home-week-feed"; flat: true; small: true; msg: "home-week-feed"; icon: "rss"; onClicked: frame.go("feed") }
+                    Button { objectName: "home-week-feed"; flat: true; small: true; msg: "home-week-feed"; icon: "rss"; onClicked: frame.nav.openRail("feed", frame.leavingScroll()) }
                     Button { objectName: "home-week-airing"; flat: true; small: true; msg: "home-week-airing"; icon: "chevron-right"; onClicked: frame.go("airing") }
                 }
             }

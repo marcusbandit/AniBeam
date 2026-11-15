@@ -46,6 +46,14 @@ Item {
     // The frame cuts its status strip to this, so the two share one band along the foot
     readonly property real footHeight: theme.space(9)
     readonly property real roundSize: itemWidth
+    // A short window shrinks the place tiles before they run under the round buttons at the
+    // foot; a tall one leaves them square. Upper: the brand, a gap and four tiles, a gap between
+    // each; lower: two round buttons over the bottom gap.
+    readonly property real tileSize: {
+        var brand = itemWidth - theme.space(2)
+        var free = height - (pad + theme.space(1)) - brand - pad * 6 - pad - (roundSize * 2 + pad * 2)
+        return Math.max(theme.space(8), Math.min(itemWidth, Math.floor(free / 4)))
+    }
 
     Rectangle { anchors.fill: parent; color: theme.tile }
     Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
@@ -81,7 +89,7 @@ Item {
                 Accessible.selected: on
                 Accessible.onPressAction: root.picked(modelData.key)
                 width: root.itemWidth
-                height: width
+                height: root.tileSize
                 radius: theme.radiusTile
                 color: on ? theme.accentSoft : m.containsMouse ? theme.raised : "transparent"
                 border.color: entry.activeFocus ? theme.focusRing : "transparent"
