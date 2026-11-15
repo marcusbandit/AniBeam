@@ -873,6 +873,7 @@ impl Core {
                 torrent_password.as_deref(),
             ),
             Call::UseTorrentClient { id } => downloads::use_client(&self.downloads, id),
+            Call::SetSaveFolder { folder } => downloads::set_save_folder(&self.downloads, folder),
             Call::TestTorrentClient => downloads::test_torrent_client(&self.downloads).map(started),
             Call::CheckEndpoints => downloads::check_endpoints(&self.downloads).map(started),
             Call::StartEndpoint { name } => {

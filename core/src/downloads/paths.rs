@@ -2,10 +2,12 @@
 //! saves under, as anirss decides both.
 //!
 //! Each of the three settings is taken from the first place that has it: the
-//! core's own blob (`store::settings::DOWNLOAD_PATHS`, unset until something
-//! sets it), then anirss's `config.toml` when there is one (read, never
-//! written), then qBittorrent's own default save folder, the films' folder
-//! being the same, and the tag `Anime`, as anirss's defaults tag.
+//! core's own blob (`store::settings::DOWNLOAD_PATHS`, its save folder set by
+//! `SetSaveFolder` and only for a client that keeps its files here), then, for
+//! Anibeam's own qBittorrent, the first library folder (#1005), then anirss's
+//! `config.toml` when there is one (read, never written), then qBittorrent's
+//! own default save folder, the films' folder being the same, and the tag
+//! `Anime`, as anirss's defaults tag.
 
 use std::path::{Path, PathBuf};
 
@@ -93,9 +95,34 @@ pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
     }
 }
 
-/// The three settings as they stand: the blob, anirss's config, then
-/// qBittorrent's default folder, asked only when nothing else names one.
-pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
+/// The settings as far as the core can tell without asking the torrent client.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Planned {
+    /// `None` when only the client's own default folder is left.
+    pub save_base: Option<String>,
+    pub from: SaveFolderFrom,
+    pub movie_path: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+/// The first library folder still on disk, in the order the folders were added: where
+/// Anibeam's own qBittorrent saves when nothing else is picked, so a new show lands where
+/// the library finds it.
+pub fn library_folder(services: &Services) -> Result<Option<String>, CoreError> {
+    let folders: Vec<String> = services.store.read(|c| {
+        let mut stmt =
+            c.prepare("SELECT path FROM sources WHERE available = 1 ORDER BY added_at, id")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    })?;
+    Ok(folders.into_iter().find(|p| Path::new(p).is_dir()))
+}
+
+/// The blob's folder, then the first library folder for Anibeam's own qBittorrent, then
+/// anirss's config. A folder picked here is a path on this machine, so it counts only for a
+/// client that keeps its files here (`files_here`). The user's own client never gets the
+/// library folder: it keeps the folders it had.
+pub fn planned(services: &Services, s: &DownloadSettings) -> Result<Planned, CoreError> {
     let stored: Chosen = services
         .store
         .read(|c| kv::get(c, KEY))?
@@ -111,7 +138,70 @@ pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, 
     let config = settings::anirss_config_path(services)
         .map(|p| from_anirss_config(&p, &home))
         .unwrap_or_default();
-    let chosen = stored.or(config);
+    let picked = stored
+        .save_base
+        .clone()
+        .filter(|p| !p.trim().is_empty() && settings::files_here(s));
+    let library = match s.torrent_mode {
+        TorrentMode::Managed if picked.is_none() => library_folder(services)?,
+        _ => None,
+    };
+    let (save_base, from) = match (picked, library) {
+        (Some(base), _) => (Some(base), SaveFolderFrom::Chosen),
+        (None, Some(base)) => (Some(base), SaveFolderFrom::Library),
+        (None, None) => match config.save_base.clone() {
+            Some(base) => (Some(base), SaveFolderFrom::Helper),
+            None => (None, SaveFolderFrom::Client),
+        },
+    };
+    // anirss's films' folder goes with its save folder: a folder picked here, or the
+    // library, takes the films too. Its tags stand either way.
+    let theirs = matches!(from, SaveFolderFrom::Helper | SaveFolderFrom::Client);
+    let rest = Chosen {
+        save_base: None,
+        ..stored
+    }
+    .or(Chosen {
+        save_base: None,
+        movie_path: config.movie_path.filter(|_| theirs),
+        tags: config.tags,
+    });
+    Ok(Planned {
+        save_base,
+        from,
+        movie_path: rest.movie_path,
+        tags: rest.tags,
+    })
+}
+
+/// Saves the folder new shows go under; `None` or an empty one goes back to the default.
+/// The rest of the blob stays as it is.
+pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), CoreError> {
+    let folder = folder.map(str::trim).filter(|f| !f.is_empty());
+    if let Some(f) = folder
+        && !Path::new(f).is_absolute()
+    {
+        return Err(CoreError::invalid(
+            "folder",
+            crate::i18n::tr(
+                "core-downloads-save-folder-not-absolute",
+                &[("folder", f.into())],
+            ),
+        ));
+    }
+    let folder = folder.map(str::to_string);
+    services.store.write(move |c| {
+        let mut blob: Chosen = kv::get(c, KEY)?.unwrap_or_default();
+        blob.save_base = folder;
+        kv::set(c, KEY, &blob)
+    })
+}
+
+/// The three settings as they stand: `planned`, then qBittorrent's default folder, asked
+/// only when nothing else names one.
+pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
+    let s = settings::read(services)?;
+    let chosen = planned(services, &s)?;
     let save_base = match chosen.save_base {
         Some(base) => base,
         None => {
