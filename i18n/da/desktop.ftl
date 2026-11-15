@@ -274,7 +274,6 @@ frame-downloads-not-read = Ikke læst.
 ## HomePage
 
 home-title = Hjem
-home-scan-started = Scanning startet
 home-ago-minutes = { $count } min. siden
 home-ago-hours = { $count } t siden
 home-ago-days = { $count } d siden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } at se
 home-day-nothing = Intet
 home-now = Nu { $time }
-home-card-aired = { $episode } udkom { $ago }
 home-continue = Se videre
 home-continue-fact = { $count } serier at se videre i
 home-on-hold = På pause
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } fil stadig på disken
    *[other] { $count } filer stadig på disken
 }
-home-out-now = Udkommet nu
-home-out-now-fact = Nye afsnit denne uge, fra AniList
-home-popular = Populært denne sæson
-home-add-folder-title = Dine egne serier hører også til her
-home-add-folder-body = Tilføj mappen med din anime, så fyldes Hjem med det, du ser.
-home-add-folder-button = Tilføj en mappe
-home-empty-scanned-title = Intet fundet i dine mapper endnu
-home-empty-title = Ingen serier endnu
-home-empty-scanned-body = Anibeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-home-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv.
-home-scan-all = Scan alle
-home-library-settings = Biblioteksindstillinger
 home-failed-title = Hjem kunne ikke indlæses
 home-failed-body = Anibeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
 
@@ -702,7 +688,28 @@ library-group-season = Sæson
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Status
-library-scan-started = Scanning startet
+library-empty-none = Dit bibliotek er tomt
+library-empty-scanning = { $count ->
+    [1] Leder efter videoer i din mappe
+   *[other] Leder efter videoer i dine mapper
+}
+library-empty-nothing = { $count ->
+    [1] Ingen videoer i denne mappe endnu
+   *[other] Ingen videoer i disse mapper endnu
+}
+library-empty-missing = { $count ->
+    [1] Denne mappe findes ikke
+   *[other] Disse mapper findes ikke
+}
+library-empty-more-folders = { $count ->
+    [one] og { $count } mappe mere
+   *[other] og { $count } mapper mere
+}
+library-empty-add-folder = Tilføj en mappe
+library-empty-get = Find noget at se
+library-empty-scan-again = Scan igen
+library-empty-settings = Biblioteksindstillinger
+library-empty-pick-folder = Vælg en mappe til dit bibliotek
 library-tab-all = Alle
 library-tab-series = Serier
 library-tab-movies = Film
@@ -765,18 +772,6 @@ library-rescan = Genscan
 library-find-match = Find et match
 library-find-match-tip = Søg efter hver valgt serie uden et match
 library-all-matched = Alle valgte har et match
-library-empty-scanned-title = Intet fundet i dine mapper endnu
-library-empty-title = Dit bibliotek er tomt
-library-empty-scanned-body = Anibeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-library-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv, eller importer en Anibeam-eksport.
-library-scan-all = Scan alle
-library-add-folder = Tilføj en mappe
-library-settings = Biblioteksindstillinger
-library-import = Importer
-library-import-title = Importer en Anibeam-eksport
-library-import-filter-export = Anibeam-eksport (*.json)
-library-import-filter-all = Alle filer (*)
-library-import-started = Import startet
 
 ## MetadataPage.qml
 
@@ -2555,7 +2550,7 @@ settings-downloads-torrent-answered = { $client } { $version } svarede.
 settings-downloads-torrent-failed = { $client } blev ikke forbundet. Tjek adressen og adgangskoden ovenfor, og test igen.
 settings-downloads-torrent-untried = Ikke prøvet endnu.
 settings-downloads-mode-existing = En qBittorrent, du selv kører, med Web UI slået til.
-settings-downloads-mode-managed = Anibeam kører sin egen qBittorrent, der henter til ~/Downloads/Anime. Den kører videre, når Anibeam lukker, så abonnementer bliver ved med at downloade.
+settings-downloads-mode-managed = Anibeam kører sin egen qBittorrent. Den kører videre, når Anibeam lukker, så abonnementer bliver ved med at downloade.
 settings-downloads-mode-auto = Bruger qBittorrent på adressen nedenfor, ellers sin egen.
 settings-downloads-password-saved = Der er gemt en adgangskode her til dette program.
 settings-downloads-password-anirss = Bruger den adgangskode, søgehjælperen gemte; gem en her for ikke at være afhængig af den.
@@ -2579,6 +2574,11 @@ settings-downloads-username = Brugernavn
 settings-downloads-password = Adgangskode
 settings-downloads-secret-saved = Gemt
 settings-downloads-secret-unset = Ikke sat
+settings-downloads-save-to = Gem i
+settings-downloads-save-to-client = qBittorrents egen mappe
+settings-downloads-save-to-choose = Vælg mappe
+settings-downloads-save-to-reset = Nulstil
+settings-downloads-save-to-pick = Gem downloads i
 settings-downloads-connection = Forbindelse
 settings-downloads-open-config = Åbn dens konfiguration
 settings-downloads-details = Detaljer
@@ -2840,10 +2840,17 @@ settings-playback-subtitle-languages = Undertekstsprog
 settings-playback-audio-languages = Lydsprog
 settings-playback-discord = Vis, hvad du ser, på Discord
 settings-playback-discord-check-failed = Anibeam kunne ikke tjekke Discord lige nu. Prøv igen om lidt.
-settings-playback-discord-helper = Serien, afsnittet og plakaten vises på din Discord-profil, mens du afspiller. Intet sendes, mens dette er slået fra, eller Discord er lukket.
 settings-playback-discord-unavailable = Denne version har ingen Discord-applikation.
 settings-playback-discord-connected = Forbundet med Discord
 settings-playback-discord-not-connected = Ikke forbundet. Anibeam forbinder, mens et afsnit afspilles, og Discord er åben
+discord-ask-wants = { $name } vil gerne være med
+discord-ask-start-room = Start rum
+discord-ask-let-in = Lad komme ind
+discord-ask-no = Nej
+settings-playback-discord-blocked = Sagt nej til på Discord
+room-panel-discord = På Discord
+room-panel-discord-open = Åbent
+room-panel-discord-invite = Kun inviterede
 settings-playback-advanced = Avanceret
 settings-playback-my-mpv = Brug mine mpv-indstillinger
 settings-playback-my-mpv-helper = Læser din mpv.conf. Indstillinger, der kun virker ved opstart, springes over, og scripts indlæses aldrig.
@@ -3733,6 +3740,7 @@ room-error-not-in-room = Du er ikke længere i det rum. Start eller gå ind i et
 room-error-bad-code = En rumkode er 6 bogstaver og tal, fx K7QM2X.
 room-error-bad-relay = Rumserveren i Indstillinger, Afspilning er ikke en webadresse. Ret den der, og prøv igen.
 room-error-cannot-fetch = Værten kan ikke dele dette afsnit lige nu. Prøv igen, når de er tilbage i rummet.
+room-error-needs-episode = Den rumserver skal have et afsnit for at starte et rum. Start det fra afspilleren i stedet.
 room-panel-title = Se sammen
 room-panel-close = Luk
 room-panel-connected = Forbundet
@@ -3775,6 +3783,14 @@ room-panel-searching = Søger
 room-panel-failed = Kunne ikke hente
 room-panel-percent = { $percent } %
 room-panel-left = { $time } tilbage
+room-panel-nothing-picked = Intet valgt endnu
+room-panel-this-episode = Dette afsnit
+room-panel-whole-show = Hele serien
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } af { $total } klar · { $percent }%
+room-gate-start = Start alligevel
+room-gate-wait = Vent på alle
+room-gate-waiting = Venter på alle
 player-room-speed = Hastigheden følger rummet
 settings-find-room-name =
     .words = se sammen rum navn venner

@@ -82,6 +82,14 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             // Qt's own: qmlprofiler and Qt Creator start the app with it, and
             // QGuiApplication reads it from argv after this parse
             other if other.starts_with("-qmljsdebugger") => {}
+            // Discord opening the app to hand over a join (#966): the link carries nothing,
+            // the join itself comes over Discord's socket
+            link if is_discord_link(link) => {
+                if a.link.is_some() {
+                    return Err("one link at a time".into());
+                }
+                a.link = Some(link.to_string());
+            }
             // The scheme handler's %u: one link, and only a kind this build opens
             link if link.starts_with(SCHEME) => {
                 if room_code(link).is_none() {
@@ -127,6 +135,16 @@ pub fn room_code(link: &str) -> Option<String> {
         && code.len() <= 16
         && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     ok.then(|| code.to_string())
+}
+
+/// A `discord-<application id>://` link, which a Discord client opens to launch the app
+/// that a Join or an accepted invite is for.
+pub fn is_discord_link(link: &str) -> bool {
+    link.strip_prefix("discord-")
+        .and_then(|rest| rest.split_once("://"))
+        .is_some_and(|(id, _)| {
+            !id.is_empty() && id.len() <= 24 && id.bytes().all(|b| b.is_ascii_digit())
+        })
 }
 
 /// Where a drive script's `shot` steps land: `--out`, else `$ANIBEAM_CAPTURES`, else the
@@ -223,6 +241,10 @@ mod tests {
         assert!(parse(&argv("serve anibeam://room/K7QM2X")).is_err());
         // The scheme handler with no link passes nothing at all
         assert_eq!(parse(&argv("")).unwrap().link, None);
+        // Discord launching the app for a join
+        let a = parse(&argv("discord-1234567890://")).unwrap();
+        assert_eq!(a.link.as_deref(), Some("discord-1234567890://"));
+        assert!(parse(&argv("discord-abc://")).is_err());
     }
 
     #[test]

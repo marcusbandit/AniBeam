@@ -233,7 +233,6 @@ frame-downloads-not-read = 읽지 않음.
 ## HomePage
 
 home-title = 홈
-home-scan-started = 스캔 시작됨
 home-ago-minutes = { $count }분 전
 home-ago-hours = { $count }시간 전
 home-ago-days = { $count }일 전
@@ -284,7 +283,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = 볼 에피소드 { $count }개
 home-day-nothing = 없음
 home-now = 지금 { $time }
-home-card-aired = { $episode } { $ago } 공개
 home-continue = 이어 보기
 home-continue-fact = 이어 볼 작품 { $count }개
 home-on-hold = 보류
@@ -325,18 +323,6 @@ home-dropped = 중단
 home-dropped-fact = { $count ->
    *[other] 디스크에 남은 파일 { $count }개
 }
-home-out-now = 지금 공개
-home-out-now-fact = AniList 기준 이번 주 새 에피소드
-home-popular = 이번 시즌 인기작
-home-add-folder-title = 내 작품도 여기에 표시돼요
-home-add-folder-body = 애니가 있는 폴더를 추가하면 홈에 보고 있는 작품이 채워져요.
-home-add-folder-button = 폴더 추가
-home-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-home-empty-title = 아직 작품이 없어요
-home-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-home-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요.
-home-scan-all = 모두 스캔
-home-library-settings = 라이브러리 설정
 home-failed-title = 홈을 불러오지 못했어요
 home-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
 
@@ -634,7 +620,24 @@ library-group-season = 시즌
 library-group-type = 유형
 library-group-genre = 장르
 library-group-watch-state = 시청 상태
-library-scan-started = 스캔 시작됨
+library-empty-none = 라이브러리가 비어 있어요
+library-empty-scanning = { $count ->
+   *[other] 폴더에서 동영상을 찾고 있어요
+}
+library-empty-nothing = { $count ->
+   *[other] 폴더에 아직 동영상이 없어요
+}
+library-empty-missing = { $count ->
+   *[other] 폴더를 찾을 수 없어요
+}
+library-empty-more-folders = { $count ->
+   *[other] 외 폴더 { $count }개
+}
+library-empty-add-folder = 폴더 추가
+library-empty-get = 볼 거리 찾기
+library-empty-scan-again = 다시 스캔
+library-empty-settings = 라이브러리 설정
+library-empty-pick-folder = 라이브러리 폴더 선택
 library-tab-all = 전체
 library-tab-series = 시리즈
 library-tab-movies = 영화
@@ -695,18 +698,6 @@ library-rescan = 다시 스캔
 library-find-match = 매칭 찾기
 library-find-match-tip = 선택한 작품 중 매칭이 없는 것을 하나씩 검색해요
 library-all-matched = 선택한 작품이 모두 매칭돼 있어요
-library-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-library-empty-title = 라이브러리가 비어 있어요
-library-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-library-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요. Anibeam 내보내기 파일을 가져와도 돼요.
-library-scan-all = 모두 스캔
-library-add-folder = 폴더 추가
-library-settings = 라이브러리 설정
-library-import = 가져오기
-library-import-title = Anibeam 내보내기 파일 가져오기
-library-import-filter-export = Anibeam 내보내기 (*.json)
-library-import-filter-all = 모든 파일 (*)
-library-import-started = 가져오기 시작됨
 
 ## MetadataPage.qml
 
@@ -2346,7 +2337,7 @@ settings-downloads-torrent-answered = { $client } { $version } 응답함.
 settings-downloads-torrent-failed = { $client }에 연결되지 않았어요. 위의 주소와 비밀번호를 확인하고 다시 테스트하세요.
 settings-downloads-torrent-untried = 아직 시도하지 않았어요.
 settings-downloads-mode-existing = 직접 실행하는 qBittorrent, Web UI가 켜져 있어야 해요.
-settings-downloads-mode-managed = Anibeam이 자체 qBittorrent를 실행해 ~/Downloads/Anime에 저장해요. Anibeam을 종료해도 계속 실행되어 구독한 작품을 계속 받아요.
+settings-downloads-mode-managed = Anibeam이 자체 qBittorrent를 실행해요. Anibeam을 종료해도 계속 실행되어 구독한 작품을 계속 받아요.
 settings-downloads-mode-auto = 아래 주소에서 응답하는 qBittorrent를 쓰고, 없으면 자체 qBittorrent를 실행해요.
 settings-downloads-password-saved = 이 클라이언트의 비밀번호가 여기에 저장돼 있어요.
 settings-downloads-password-anirss = 검색 도우미가 저장한 비밀번호를 쓰고 있어요. 여기에 저장하면 더 이상 의존하지 않아요.
@@ -2370,6 +2361,11 @@ settings-downloads-username = 사용자 이름
 settings-downloads-password = 비밀번호
 settings-downloads-secret-saved = 저장됨
 settings-downloads-secret-unset = 설정 안 됨
+settings-downloads-save-to = 저장 위치
+settings-downloads-save-to-client = qBittorrent 자체 폴더
+settings-downloads-save-to-choose = 폴더 선택
+settings-downloads-save-to-reset = 초기화
+settings-downloads-save-to-pick = 다운로드 저장 위치
 settings-downloads-connection = 연결
 settings-downloads-open-config = 설정 파일 열기
 settings-downloads-details = 세부 정보
@@ -2631,10 +2627,17 @@ settings-playback-subtitle-languages = 자막 언어
 settings-playback-audio-languages = 오디오 언어
 settings-playback-discord = 보는 작품을 Discord에 표시
 settings-playback-discord-check-failed = 지금은 Anibeam이 Discord를 확인하지 못했어요. 잠시 후 다시 시도하세요.
-settings-playback-discord-helper = 재생하는 동안 작품, 에피소드, 포스터가 Discord 프로필에 보여요. 꺼져 있거나 Discord가 닫혀 있으면 아무것도 보내지 않아요.
 settings-playback-discord-unavailable = 이 빌드에는 Discord 애플리케이션이 없어요.
 settings-playback-discord-connected = Discord에 연결됨
 settings-playback-discord-not-connected = 연결 안 됨. 에피소드를 재생하고 Discord가 열려 있으면 Anibeam이 연결해요
+discord-ask-wants = { $name } 님이 함께하고 싶어 해요
+discord-ask-start-room = 방 만들기
+discord-ask-let-in = 들여보내기
+discord-ask-no = 아니요
+settings-playback-discord-blocked = Discord에서 거절한 사람
+room-panel-discord = Discord에서
+room-panel-discord-open = 공개
+room-panel-discord-invite = 초대 전용
 settings-playback-advanced = 고급
 settings-playback-my-mpv = 내 mpv 설정 사용
 settings-playback-my-mpv-helper = mpv.conf를 읽어요. 시작할 때만 동작하는 옵션은 건너뛰고, 스크립트는 불러오지 않아요.
@@ -3479,6 +3482,7 @@ room-error-not-in-room = 더 이상 그 방에 있지 않아요. 방을 다시 �
 room-error-bad-code = 방 코드는 K7QM2X처럼 영문자와 숫자 6자예요.
 room-error-bad-relay = 설정, 재생의 방 서버가 웹 주소가 아니에요. 거기서 고친 뒤 다시 시도하세요.
 room-error-cannot-fetch = 호스트가 지금은 이 에피소드를 공유할 수 없어요. 호스트가 방에 돌아오면 다시 시도하세요.
+room-error-needs-episode = 그 방 서버는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들어 주세요.
 room-panel-title = 함께 보기
 room-panel-close = 닫기
 room-panel-connected = 연결됨
@@ -3520,6 +3524,14 @@ room-panel-searching = 찾는 중
 room-panel-failed = 받지 못했어요
 room-panel-percent = { $percent }%
 room-panel-left = { $time } 남음
+room-panel-nothing-picked = 아직 고른 것이 없어요
+room-panel-this-episode = 이 에피소드
+room-panel-whole-show = 시리즈 전체
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $total }명 중 { $ready }명 준비됨 · { $percent }%
+room-gate-start = 그래도 시작
+room-gate-wait = 모두 기다리기
+room-gate-waiting = 모두 기다리는 중
 player-room-speed = 속도는 방에 맞춰져요
 settings-find-room-name =
     .words = 함께 보기 방 이름 친구

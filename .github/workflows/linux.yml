@@ -5,24 +5,10 @@ name: Linux
 # containers, so a library the bundle forgot shows up as a failure on a distro that lacks it.
 # The image carries anirss on its own Python and a static qbittorrent-nox; the smoke run
 # checks both start. nightly.yml, release.yml and pr-build.yml call it and put the AppImage
-# on their release. A pull request that touches the core, the Qt shell or the workspace runs it
-# too. Run it from the Actions tab (Run workflow) for a build without a release.
+# on their release. A pull request runs it through full-ci.yml, under the `full ci` label, once
+# it works locally (#986). Run it from the Actions tab (Run workflow) for a build without a
+# release.
 on:
-  pull_request:
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'clippy.toml'
-      - '.cargo/**'
-      - 'rust-toolchain*'
-      - '.github/workflows/linux.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
@@ -36,8 +22,10 @@ on:
         default: ''
 
 # A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
-# one build per PR instead of queueing behind the runners. Nightly and release runs have no
-# PR number, so each gets its own group and none cancels another (#529).
+# one build per PR instead of queueing behind the runners. The group starts with the calling
+# workflow's name, so a full run and a test build of one PR never cancel each other. Nightly
+# and release runs have no PR number, so each gets its own group and none cancels another
+# (#529).
 concurrency:
   group: ${{ github.workflow }}-linux-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -145,6 +133,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Build
@@ -169,7 +160,7 @@ jobs:
         # ffmpeg needs Ubuntu's libavcodec with its encoders. Only the shell links the lean
         # FFmpeg in DEPS_PREFIX, so only the shell's tests get it on the library path.
         run: |
-          cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-core
+          cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-core
           LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam
 
       - name: AppImage

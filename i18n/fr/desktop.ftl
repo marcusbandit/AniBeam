@@ -274,7 +274,6 @@ frame-downloads-not-read = Non lu.
 ## HomePage
 
 home-title = Accueil
-home-scan-started = Analyse lancée
 home-ago-minutes = il y a { $count } min
 home-ago-hours = il y a { $count } h
 home-ago-days = il y a { $count } j
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } à voir
 home-day-nothing = Rien
 home-now = Maintenant { $time }
-home-card-aired = { $episode } sorti { $ago }
 home-continue = Continuer
 home-continue-fact = { $count } séries à poursuivre
 home-on-hold = En attente
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } fichier encore sur le disque
    *[other] { $count } fichiers encore sur le disque
 }
-home-out-now = Sortis
-home-out-now-fact = Nouveaux épisodes cette semaine, d'après AniList
-home-popular = Populaires cette saison
-home-add-folder-title = Vos propres séries vont ici aussi
-home-add-folder-body = Ajoutez le dossier où vivent vos animes et l'accueil se remplit avec ce que vous regardez.
-home-add-folder-button = Ajouter un dossier
-home-empty-scanned-title = Rien trouvé dans vos dossiers pour l'instant
-home-empty-title = Pas encore de série
-home-empty-scanned-body = Anibeam n'a trouvé ni série ni film dans les dossiers qu'il surveille. Analysez-les de nouveau, ou vérifiez les dossiers dans les réglages.
-home-empty-body = Ajoutez le dossier où vivent vos animes et la bibliothèque se remplit toute seule.
-home-scan-all = Tout analyser
-home-library-settings = Réglages de la bibliothèque
 home-failed-title = L'accueil n'a pas chargé
 home-failed-body = Anibeam n'a pas pu lire la bibliothèque. Réessayez dans un instant.
 
@@ -702,7 +688,28 @@ library-group-season = Saison
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = État de visionnage
-library-scan-started = Analyse lancée
+library-empty-none = Votre bibliothèque est vide
+library-empty-scanning = { $count ->
+    [1] Recherche de vidéos dans votre dossier
+   *[other] Recherche de vidéos dans vos dossiers
+}
+library-empty-nothing = { $count ->
+    [1] Aucune vidéo dans ce dossier pour l'instant
+   *[other] Aucune vidéo dans ces dossiers pour l'instant
+}
+library-empty-missing = { $count ->
+    [1] Ce dossier est introuvable
+   *[other] Ces dossiers sont introuvables
+}
+library-empty-more-folders = { $count ->
+    [one] et { $count } autre dossier
+   *[other] et { $count } autres dossiers
+}
+library-empty-add-folder = Ajouter un dossier
+library-empty-get = Trouver quelque chose à regarder
+library-empty-scan-again = Analyser de nouveau
+library-empty-settings = Réglages de la bibliothèque
+library-empty-pick-folder = Choisir un dossier pour votre bibliothèque
 library-tab-all = Tout
 library-tab-series = Séries
 library-tab-movies = Films
@@ -765,18 +772,6 @@ library-rescan = Réanalyser
 library-find-match = Associer
 library-find-match-tip = Chercher chaque choix sans association
 library-all-matched = Chaque choix a une association
-library-empty-scanned-title = Rien trouvé dans vos dossiers pour l'instant
-library-empty-title = Votre bibliothèque est vide
-library-empty-scanned-body = Anibeam n'a trouvé ni série ni film dans les dossiers qu'il surveille. Analysez-les de nouveau, ou vérifiez les dossiers dans les réglages.
-library-empty-body = Ajoutez le dossier où vivent vos animes et la bibliothèque se remplit toute seule, ou importez un export Anibeam.
-library-scan-all = Tout analyser
-library-add-folder = Ajouter un dossier
-library-settings = Réglages de la bibliothèque
-library-import = Importer
-library-import-title = Importer un export Anibeam
-library-import-filter-export = Export Anibeam (*.json)
-library-import-filter-all = Tous les fichiers (*)
-library-import-started = Import lancé
 
 ## MetadataPage.qml
 
@@ -2555,7 +2550,7 @@ settings-downloads-torrent-answered = { $client } { $version } a répondu.
 settings-downloads-torrent-failed = { $client } injoignable. Vérifiez l'adresse et le mot de passe, puis réessayez.
 settings-downloads-torrent-untried = Pas encore essayé.
 settings-downloads-mode-existing = Un qBittorrent que vous faites tourner, avec son interface Web activée.
-settings-downloads-mode-managed = Anibeam fait tourner son propre qBittorrent dans ~/Downloads/Anime. Il continue après la fermeture d'Anibeam, donc les abonnements continuent de télécharger.
+settings-downloads-mode-managed = Anibeam fait tourner son propre qBittorrent. Il continue après la fermeture d'Anibeam, donc les abonnements continuent de télécharger.
 settings-downloads-mode-auto = Utilise un qBittorrent qui répond à l'adresse ci-dessous, sinon en lance un à lui.
 settings-downloads-password-saved = Un mot de passe est enregistré ici pour ce client.
 settings-downloads-password-anirss = Utilise le mot de passe enregistré par l'assistant de recherche ; enregistrez-en un ici pour ne plus en dépendre.
@@ -2579,6 +2574,11 @@ settings-downloads-username = Utilisateur
 settings-downloads-password = Mot de passe
 settings-downloads-secret-saved = Enregistré
 settings-downloads-secret-unset = Non défini
+settings-downloads-save-to = Enregistrer dans
+settings-downloads-save-to-client = Le dossier de qBittorrent
+settings-downloads-save-to-choose = Choisir un dossier
+settings-downloads-save-to-reset = Réinitialiser
+settings-downloads-save-to-pick = Enregistrer les téléchargements dans
 settings-downloads-connection = Connexion
 settings-downloads-open-config = Ouvrir sa config
 settings-downloads-details = Détails
@@ -2840,10 +2840,17 @@ settings-playback-subtitle-languages = Langues des sous-titres
 settings-playback-audio-languages = Langues audio
 settings-playback-discord = Afficher ce que vous regardez sur Discord
 settings-playback-discord-check-failed = Anibeam n'a pas pu vérifier Discord. Réessayez dans un instant.
-settings-playback-discord-helper = La série, l'épisode et l'affiche apparaissent sur votre profil Discord pendant la lecture. Rien n'est envoyé quand c'est désactivé ou que Discord est fermé.
 settings-playback-discord-unavailable = Cette version n'a pas d'application Discord.
 settings-playback-discord-connected = Connecté à Discord
 settings-playback-discord-not-connected = Non connecté. Anibeam se connecte pendant la lecture d'un épisode, Discord ouvert
+discord-ask-wants = { $name } veut vous rejoindre
+discord-ask-start-room = Ouvrir un salon
+discord-ask-let-in = Faire entrer
+discord-ask-no = Non
+settings-playback-discord-blocked = Refusés sur Discord
+room-panel-discord = Sur Discord
+room-panel-discord-open = Ouvert
+room-panel-discord-invite = Sur invitation
 settings-playback-advanced = Avancé
 settings-playback-my-mpv = Utiliser mes réglages mpv
 settings-playback-my-mpv-helper = Lit votre mpv.conf. Les options qui ne marchent qu'au démarrage sont ignorées, et les scripts ne se chargent jamais.
@@ -3739,6 +3746,7 @@ room-error-not-in-room = Vous n'êtes plus dans ce salon. Ouvrez-en ou rejoignez
 room-error-bad-code = Un code de salon fait 6 lettres et chiffres, comme K7QM2X.
 room-error-bad-relay = Le serveur des salons dans Réglages, Lecture n'est pas une adresse web. Corrigez-le là, puis réessayez.
 room-error-cannot-fetch = L'hôte ne peut pas partager cet épisode pour le moment. Réessayez quand il sera de retour dans le salon.
+room-error-needs-episode = Ce serveur de salons a besoin d'un épisode pour ouvrir un salon. Ouvrez-le depuis le lecteur.
 room-panel-title = Regarder ensemble
 room-panel-close = Fermer
 room-panel-connected = Connecté
@@ -3781,6 +3789,14 @@ room-panel-searching = Recherche
 room-panel-failed = Impossible à obtenir
 room-panel-percent = { $percent } %
 room-panel-left = { $time } restantes
+room-panel-nothing-picked = Rien de choisi pour l'instant
+room-panel-this-episode = Cet épisode
+room-panel-whole-show = Toute la série
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } sur { $total } prêts · { $percent } %
+room-gate-start = Lancer quand même
+room-gate-wait = Attendre tout le monde
+room-gate-waiting = En attente de tout le monde
 player-room-speed = La vitesse suit le salon
 settings-find-room-name =
     .words = regarder ensemble salon nom amis

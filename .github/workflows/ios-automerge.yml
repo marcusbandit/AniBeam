@@ -12,7 +12,7 @@ name: iOS automerge
 # on main; the nightly builds it as usual.
 on:
   workflow_run:
-    workflows: [Android, Arch, CI, Linux, macOS, Windows, Site, Strings, "No sites", "PR build", "PR issue"]
+    workflows: [Android, Arch, CI, iOS, Linux, macOS, Windows, Site, Strings, "No sites", "PR build", "PR issue"]
     types: [completed]
   pull_request_target:
     types: [ready_for_review, edited]

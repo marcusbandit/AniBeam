@@ -59,6 +59,10 @@ pub struct EpisodeRef {
     /// with their own file's to suggest an offset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opening_start: Option<f64>,
+    /// The host's show is a film, not a series of episodes. A client from before
+    /// leaves it out, which reads as a series.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub film: bool,
 }
 
 /// The room's play state. While `playing`, the canonical position now is
@@ -132,7 +136,10 @@ pub struct RoomView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<MemberId>,
     pub members: Vec<Member>,
-    pub episode: EpisodeRef,
+    /// What the room watches. None until the host picks something: a room can
+    /// start before that (#922).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<EpisodeRef>,
     pub state: PlayState,
     pub max: u32,
 }
@@ -187,6 +194,11 @@ pub enum ClientMsg {
         /// A relay from before keys ignores it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         key: Option<String>,
+        /// This client can be in a room that has no episode yet. A relay turns
+        /// a client without it away from such a room with `proto`, since the
+        /// welcome would carry no episode for it to read.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        unpicked: bool,
     },
     /// A clock probe; `c` is the client's clock in milliseconds.
     Ping { c: u64 },
@@ -284,10 +296,14 @@ impl ServerMsg {
     }
 }
 
-/// The body of `POST /rooms`.
+/// The body of `POST /rooms`. `{}` makes a room that has not picked an
+/// episode yet (#922). Any other field is refused, so a malformed body or a
+/// misspelt `episode` never makes an empty room.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRoom {
-    pub episode: EpisodeRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<EpisodeRef>,
 }
 
 /// The `201` answer to `POST /rooms`. Whoever hellos with `host_key` is the host.
@@ -313,6 +329,7 @@ mod tests {
             episode_title: None,
             duration: Some(1440.0),
             opening_start: Some(30.5),
+            film: false,
         }
     }
 
@@ -331,6 +348,7 @@ mod tests {
                 host_key: Some("ab".into()),
                 rejoin_key: None,
                 key: None,
+                unpicked: false,
             }
         );
     }
@@ -345,6 +363,7 @@ mod tests {
                 host_key: None,
                 rejoin_key: Some("k".into()),
                 key: Some("a2V5".into()),
+                unpicked: true,
             },
             ClientMsg::Ping { c: 12 },
             ClientMsg::Cmd {
@@ -434,11 +453,52 @@ mod tests {
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         };
         let v: serde_json::Value = serde_json::to_value(&e).unwrap();
         assert_eq!(v, json!({"episode_key": "k", "series_title": "S"}));
         let back: EpisodeRef = serde_json::from_value(v).unwrap();
         assert_eq!(back, e);
+    }
+
+    #[test]
+    fn a_room_without_an_episode_leaves_it_out() {
+        let view = RoomView {
+            code: "K7QM2X".into(),
+            host: None,
+            members: Vec::new(),
+            episode: None,
+            state: PlayState {
+                playing: false,
+                position: 0.0,
+                rate: 1.0,
+                at_ms: 0,
+                rev: 0,
+            },
+            max: MAX_MEMBERS,
+        };
+        let v = serde_json::to_value(&view).unwrap();
+        assert!(v.get("episode").is_none());
+        assert_eq!(serde_json::from_value::<RoomView>(v).unwrap(), view);
+        // A hello from before #922 reads as one that cannot take such a room
+        let Ok(ClientMsg::Hello { unpicked, .. }) =
+            ClientMsg::parse(r#"{"t":"hello","name":"Ann","proto":1,"client":"anibeam/2.5.0"}"#)
+        else {
+            panic!("hello did not read")
+        };
+        assert!(!unpicked);
+        let film = serde_json::to_value(EpisodeRef {
+            film: true,
+            ..episode()
+        })
+        .unwrap();
+        assert_eq!(film["film"], json!(true));
+        assert!(
+            serde_json::to_value(episode())
+                .unwrap()
+                .get("film")
+                .is_none()
+        );
     }
 
     #[test]
@@ -467,7 +527,7 @@ mod tests {
                     code: "K7QM2X".into(),
                     host: Some(MemberId(1)),
                     members: vec![member.clone()],
-                    episode: episode(),
+                    episode: Some(episode()),
                     state,
                     max: MAX_MEMBERS,
                 },
@@ -605,7 +665,17 @@ mod tests {
             "episode": {"episode_key": "k", "series_title": "S", "anilist_id": 5}
         }))
         .unwrap();
-        assert_eq!(body.episode.anilist_id, Some(5));
+        assert_eq!(body.episode.unwrap().anilist_id, Some(5));
+        let empty: CreateRoom = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(empty.episode, None);
+        assert_eq!(serde_json::to_value(&empty).unwrap(), json!({}));
+        // Anything but an episode is refused, a misspelt one included
+        for bad in [
+            json!({"nope": 1}),
+            json!({"epsiode": {"episode_key": "k", "series_title": "S"}}),
+        ] {
+            assert!(serde_json::from_value::<CreateRoom>(bad).is_err());
+        }
         let created = CreatedRoom {
             code: "K7QM2X".into(),
             host_key: "00".into(),

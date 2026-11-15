@@ -555,7 +555,8 @@ fn confined(
     saving: &SavePaths,
     here: bool,
 ) -> Result<(), CoreError> {
-    let roots = [saving.save_base.as_str(), saving.movie_path.as_str()];
+    let roots = paths::remove_roots(services, saving)?;
+    let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
     let outside: Vec<&str> = plans
         .iter()
         .filter(|p| !paths::inside(&p.save_path, &roots))
@@ -574,7 +575,13 @@ fn confined(
         return Ok(());
     }
     for p in plans {
-        super::not_a_library_show(services, &p.save_path)?;
+        // A folder the library reads as a show is trashed only when every episode in it
+        // came from this subscription's torrents: a new show downloads into the library
+        // folder (#1005) and becomes a series there, and removing it with its files must
+        // still work, while a show the person had before keeps its own episodes.
+        if !only_its_own(p) {
+            super::not_a_library_show(services, &p.save_path)?;
+        }
     }
     let sources: Vec<String> = services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM sources")?;
@@ -650,6 +657,44 @@ async fn execute(
 /// Whether the client in use saves on this machine (`settings::files_here`).
 fn files_here(services: &Services) -> Result<bool, CoreError> {
     Ok(settings::files_here(&settings::read(services)?))
+}
+
+/// Whether every video file under the plan's folder is one of its torrents' own: the
+/// torrent's file, or a file inside its folder. A torrent whose content is the save folder
+/// itself (no folder of its own) vouches for nothing, and an empty plan for nothing.
+fn only_its_own(p: &Plan) -> bool {
+    let folder = paths::real(&p.save_path);
+    let own: Vec<PathBuf> = p
+        .torrents
+        .iter()
+        .filter(|t| !t.content_path.trim().is_empty())
+        .map(|t| paths::real(&t.content_path))
+        .filter(|c| *c != folder && c.starts_with(&folder))
+        .collect();
+    if own.is_empty() {
+        return false;
+    }
+    fn videos(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = path.symlink_metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                videos(&path, out);
+            } else if crate::foundation::names::is_video(&path.to_string_lossy()) {
+                out.push(path);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    videos(&folder, &mut found);
+    found
+        .iter()
+        .all(|f| own.iter().any(|o| f == o || f.starts_with(o)))
 }
 
 /// The files under `dir` and their bytes, links not followed; nothing for
@@ -759,5 +804,37 @@ mod tests {
         std::fs::write(d.path().join("S1/b.mkv"), b"de").unwrap();
         assert_eq!(walk(d.path()), (2, 5));
         assert_eq!(walk(&d.path().join("gone")), (0, 0));
+    }
+    #[test]
+    fn a_library_show_counts_as_its_own_only_when_its_torrents_hold_every_episode() {
+        let d = tempfile::tempdir().unwrap();
+        let show = d.path().join("Show");
+        std::fs::create_dir_all(show.join("Batch")).unwrap();
+        std::fs::write(show.join("ep01.mkv"), b"a").unwrap();
+        std::fs::write(show.join("Batch/ep02.mkv"), b"b").unwrap();
+        std::fs::write(show.join("cover.jpg"), b"c").unwrap();
+        let held = |content: &Path| {
+            let mut t = super::super::qbt::tests_torrent();
+            t.content_path = content.to_string_lossy().into_owned();
+            t
+        };
+        let plan = |torrents: Vec<Torrent>| Plan {
+            name: "Show".to_string(),
+            feed_url: String::new(),
+            feed_path: None,
+            save_path: show.to_string_lossy().into_owned(),
+            torrents,
+            size_bytes: 0,
+        };
+        // Both episodes came from the subscription's torrents; the cover is no episode
+        assert!(only_its_own(&plan(vec![
+            held(&show.join("ep01.mkv")),
+            held(&show.join("Batch")),
+        ])));
+        // ep01 was in the folder before the subscription
+        assert!(!only_its_own(&plan(vec![held(&show.join("Batch"))])));
+        // A torrent with no folder of its own vouches for nothing, nor does no torrent
+        assert!(!only_its_own(&plan(vec![held(&show)])));
+        assert!(!only_its_own(&plan(Vec::new())));
     }
 }

@@ -316,7 +316,6 @@ frame-downloads-not-read = Nie odczytano.
 ## HomePage
 
 home-title = Start
-home-scan-started = Skanowanie ruszyło
 home-ago-minutes = { $count } min temu
 home-ago-hours = { $count } godz. temu
 home-ago-days = { $count } d temu
@@ -379,7 +378,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } do obejrzenia
 home-day-nothing = Nic
 home-now = Teraz { $time }
-home-card-aired = { $episode } wyszedł { $ago }
 home-continue = Kontynuuj
 home-continue-fact = Seriale do kontynuowania: { $count }
 home-on-hold = Wstrzymane
@@ -428,18 +426,6 @@ home-dropped-fact = { $count ->
     [many] { $count } plików wciąż na dysku
    *[other] { $count } pliku wciąż na dysku
 }
-home-out-now = Już wyszło
-home-out-now-fact = Nowe odcinki w tym tygodniu, z AniList
-home-popular = Popularne w tym sezonie
-home-add-folder-title = Twoje seriale też tu trafią
-home-add-folder-body = Dodaj folder z anime, a Start wypełni się tym, co oglądasz.
-home-add-folder-button = Dodaj folder
-home-empty-scanned-title = W folderach jeszcze nic nie znaleziono
-home-empty-title = Jeszcze brak seriali
-home-empty-scanned-body = Anibeam nie znalazł seriali ani filmów w obserwowanych folderach. Przeskanuj je ponownie albo sprawdź foldery w Ustawieniach.
-home-empty-body = Dodaj folder z anime, a biblioteka wypełni się sama.
-home-scan-all = Skanuj wszystko
-home-library-settings = Ustawienia biblioteki
 home-failed-title = Start się nie wczytał
 home-failed-body = Anibeam nie mógł teraz odczytać biblioteki. Spróbuj za chwilę.
 
@@ -802,7 +788,30 @@ library-group-season = Sezon
 library-group-type = Typ
 library-group-genre = Gatunek
 library-group-watch-state = Stan oglądania
-library-scan-started = Skanowanie ruszyło
+library-empty-none = Biblioteka jest pusta
+library-empty-scanning = { $count ->
+    [1] Szukam filmów w folderze
+   *[other] Szukam filmów w folderach
+}
+library-empty-nothing = { $count ->
+    [1] W tym folderze nie ma jeszcze filmów
+   *[other] W tych folderach nie ma jeszcze filmów
+}
+library-empty-missing = { $count ->
+    [1] Tego folderu nie ma
+   *[other] Tych folderów nie ma
+}
+library-empty-more-folders = { $count ->
+    [one] i jeszcze { $count } folder
+    [few] i jeszcze { $count } foldery
+    [many] i jeszcze { $count } folderów
+   *[other] i jeszcze { $count } folderu
+}
+library-empty-add-folder = Dodaj folder
+library-empty-get = Znajdź coś do obejrzenia
+library-empty-scan-again = Skanuj ponownie
+library-empty-settings = Ustawienia biblioteki
+library-empty-pick-folder = Wybierz folder dla biblioteki
 library-tab-all = Wszystko
 library-tab-series = Seriale
 library-tab-movies = Filmy
@@ -870,18 +879,6 @@ library-rescan = Przeskanuj
 library-find-match = Znajdź dopasowanie
 library-find-match-tip = Szukaj każdego wybranego bez dopasowania
 library-all-matched = Każdy wybrany ma dopasowanie
-library-empty-scanned-title = W folderach jeszcze nic nie znaleziono
-library-empty-title = Biblioteka jest pusta
-library-empty-scanned-body = Anibeam nie znalazł seriali ani filmów w obserwowanych folderach. Przeskanuj je ponownie albo sprawdź foldery w Ustawieniach.
-library-empty-body = Dodaj folder z anime, a biblioteka wypełni się sama, albo zaimportuj eksport Anibeam.
-library-scan-all = Skanuj wszystko
-library-add-folder = Dodaj folder
-library-settings = Ustawienia biblioteki
-library-import = Importuj
-library-import-title = Importuj eksport Anibeam
-library-import-filter-export = Eksport Anibeam (*.json)
-library-import-filter-all = Wszystkie pliki (*)
-library-import-started = Import ruszył
 
 ## MetadataPage.qml
 
@@ -2880,7 +2877,7 @@ settings-downloads-torrent-answered = { $client } { $version } odpowiedział.
 settings-downloads-torrent-failed = { $client } nie odpowiada. Sprawdź adres i hasło powyżej i przetestuj znowu.
 settings-downloads-torrent-untried = Jeszcze nie sprawdzono.
 settings-downloads-mode-existing = qBittorrent uruchamiany przez Ciebie, z włączonym Web UI.
-settings-downloads-mode-managed = Anibeam uruchamia własny qBittorrent, który pobiera do ~/Downloads/Anime. Działa dalej po zamknięciu Anibeam, więc subskrypcje dalej się pobierają.
+settings-downloads-mode-managed = Anibeam uruchamia własny qBittorrent. Działa dalej po zamknięciu Anibeam, więc subskrypcje dalej się pobierają.
 settings-downloads-mode-auto = qBittorrent spod adresu niżej lub własny.
 settings-downloads-password-saved = Hasło dla tego klienta jest tu zapisane.
 settings-downloads-password-anirss = Używa hasła zapisanego przez pomocnika wyszukiwania; zapisz tu własne, aby od niego nie zależeć.
@@ -2904,6 +2901,11 @@ settings-downloads-username = Nazwa użytkownika
 settings-downloads-password = Hasło
 settings-downloads-secret-saved = Zapisane
 settings-downloads-secret-unset = Nie ustawiono
+settings-downloads-save-to = Zapisuj w
+settings-downloads-save-to-client = Własny folder qBittorrenta
+settings-downloads-save-to-choose = Wybierz folder
+settings-downloads-save-to-reset = Przywróć
+settings-downloads-save-to-pick = Zapisuj pobrane w
 settings-downloads-connection = Połączenie
 settings-downloads-open-config = Otwórz jego konfigurację
 settings-downloads-details = Szczegóły
@@ -3167,10 +3169,17 @@ settings-playback-subtitle-languages = Języki napisów
 settings-playback-audio-languages = Języki dźwięku
 settings-playback-discord = Pokazuj na Discordzie, co oglądasz
 settings-playback-discord-check-failed = Anibeam nie mógł teraz sprawdzić Discorda. Spróbuj za chwilę.
-settings-playback-discord-helper = Serial, odcinek i plakat pojawiają się na Twoim profilu Discord podczas odtwarzania. Nic nie jest wysyłane, gdy to jest wyłączone lub Discord jest zamknięty.
 settings-playback-discord-unavailable = Ta wersja nie ma aplikacji Discord.
 settings-playback-discord-connected = Połączono z Discordem
 settings-playback-discord-not-connected = Nie połączono. Anibeam łączy się, gdy odcinek gra, a Discord jest otwarty
+discord-ask-wants = { $name } chce dołączyć
+discord-ask-start-room = Utwórz pokój
+discord-ask-let-in = Wpuść
+discord-ask-no = Nie
+settings-playback-discord-blocked = Odrzuceni na Discordzie
+room-panel-discord = Na Discordzie
+room-panel-discord-open = Otwarty
+room-panel-discord-invite = Tylko z zaproszeniem
 settings-playback-advanced = Zaawansowane
 settings-playback-my-mpv = Użyj moich ustawień mpv
 settings-playback-my-mpv-helper = Czyta Twój mpv.conf. Opcje działające tylko przy starcie są pomijane, a skrypty nigdy się nie wczytują.
@@ -4144,6 +4153,7 @@ room-error-not-in-room = Nie jesteś już w tym pokoju. Utwórz pokój lub doł�
 room-error-bad-code = Kod pokoju to 6 liter i cyfr, na przykład K7QM2X.
 room-error-bad-relay = Serwer pokojów w Ustawieniach, Odtwarzanie nie jest adresem internetowym. Popraw go tam i spróbuj ponownie.
 room-error-cannot-fetch = Gospodarz nie może teraz udostępnić tego odcinka. Spróbuj ponownie, gdy wróci do pokoju.
+room-error-needs-episode = Ten serwer pokojów potrzebuje odcinka, by utworzyć pokój. Utwórz go z odtwarzacza.
 room-panel-title = Wspólne oglądanie
 room-panel-close = Zamknij
 room-panel-connected = Połączono
@@ -4188,6 +4198,14 @@ room-panel-searching = Szukanie
 room-panel-failed = Nie udało się
 room-panel-percent = { $percent }%
 room-panel-left = zostało { $time }
+room-panel-nothing-picked = Nic jeszcze nie wybrano
+room-panel-this-episode = Ten odcinek
+room-panel-whole-show = Cały serial
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = Gotowi: { $ready } z { $total } · { $percent }%
+room-gate-start = Zacznij mimo to
+room-gate-wait = Poczekaj na wszystkich
+room-gate-waiting = Czekamy na wszystkich
 player-room-speed = Prędkość ustala pokój
 settings-find-room-name =
     .words = wspólne oglądanie razem pokój nazwa znajomi

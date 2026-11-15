@@ -274,7 +274,6 @@ frame-downloads-not-read = Niet gelezen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestart
 home-ago-minutes = { $count } min geleden
 home-ago-hours = { $count } u geleden
 home-ago-days = { $count } d geleden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } te kijken
 home-day-nothing = Niets
 home-now = Nu { $time }
-home-card-aired = { $episode } uit { $ago }
 home-continue = Verder kijken
 home-continue-fact = { $count } series om mee verder te gaan
 home-on-hold = In de wacht
@@ -374,18 +372,6 @@ home-dropped-fact = { $count ->
     [one] { $count } bestand nog op schijf
    *[other] { $count } bestanden nog op schijf
 }
-home-out-now = Nu uit
-home-out-now-fact = Nieuwe afleveringen deze week, van AniList
-home-popular = Populair dit seizoen
-home-add-folder-title = Je eigen series komen hier ook
-home-add-folder-body = Voeg de map toe waar je anime staat en Start vult zich met wat je kijkt.
-home-add-folder-button = Map toevoegen
-home-empty-scanned-title = Nog niets gevonden in je mappen
-home-empty-title = Nog geen series
-home-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-home-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf.
-home-scan-all = Alles scannen
-home-library-settings = Bibliotheekinstellingen
 home-failed-title = Start is niet geladen
 home-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
 
@@ -702,7 +688,28 @@ library-group-season = Seizoen
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Kijkstatus
-library-scan-started = Scan gestart
+library-empty-none = Je bibliotheek is leeg
+library-empty-scanning = { $count ->
+    [1] Zoeken naar video's in je map
+   *[other] Zoeken naar video's in je mappen
+}
+library-empty-nothing = { $count ->
+    [1] Nog geen video's in deze map
+   *[other] Nog geen video's in deze mappen
+}
+library-empty-missing = { $count ->
+    [1] Deze map is er niet
+   *[other] Deze mappen zijn er niet
+}
+library-empty-more-folders = { $count ->
+    [one] en nog { $count } map
+   *[other] en nog { $count } mappen
+}
+library-empty-add-folder = Map toevoegen
+library-empty-get = Iets zoeken om te kijken
+library-empty-scan-again = Opnieuw scannen
+library-empty-settings = Bibliotheekinstellingen
+library-empty-pick-folder = Kies een map voor je bibliotheek
 library-tab-all = Alles
 library-tab-series = Series
 library-tab-movies = Films
@@ -765,18 +772,6 @@ library-rescan = Opnieuw scannen
 library-find-match = Koppeling zoeken
 library-find-match-tip = Zoek voor elke keuze zonder koppeling
 library-all-matched = Elke keuze is gekoppeld
-library-empty-scanned-title = Nog niets gevonden in je mappen
-library-empty-title = Je bibliotheek is leeg
-library-empty-scanned-body = Anibeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-library-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf, of importeer een Anibeam-export.
-library-scan-all = Alles scannen
-library-add-folder = Map toevoegen
-library-settings = Bibliotheekinstellingen
-library-import = Importeren
-library-import-title = Een Anibeam-export importeren
-library-import-filter-export = Anibeam-export (*.json)
-library-import-filter-all = Alle bestanden (*)
-library-import-started = Import gestart
 
 ## MetadataPage.qml
 
@@ -2554,7 +2549,7 @@ settings-downloads-torrent-answered = { $client } { $version } antwoordde.
 settings-downloads-torrent-failed = { $client } kon niet verbinden. Controleer adres en wachtwoord en test opnieuw.
 settings-downloads-torrent-untried = Nog niet geprobeerd.
 settings-downloads-mode-existing = Een qBittorrent die je zelf draait, met de Web UI aan.
-settings-downloads-mode-managed = Anibeam draait een eigen qBittorrent naar ~/Downloads/Anime. Die blijft draaien nadat Anibeam sluit, zodat abonnementen blijven downloaden.
+settings-downloads-mode-managed = Anibeam draait een eigen qBittorrent. Die blijft draaien nadat Anibeam sluit, zodat abonnementen blijven downloaden.
 settings-downloads-mode-auto = Gebruikt qBittorrent op het adres hieronder, anders een eigen.
 settings-downloads-password-saved = Er is hier een wachtwoord voor deze client opgeslagen.
 settings-downloads-password-anirss = Het wachtwoord dat de zoekhulp opsloeg wordt gebruikt; sla er hier een op om daar niet meer van af te hangen.
@@ -2578,6 +2573,11 @@ settings-downloads-username = Gebruikersnaam
 settings-downloads-password = Wachtwoord
 settings-downloads-secret-saved = Opgeslagen
 settings-downloads-secret-unset = Niet ingesteld
+settings-downloads-save-to = Opslaan in
+settings-downloads-save-to-client = De eigen map van qBittorrent
+settings-downloads-save-to-choose = Map kiezen
+settings-downloads-save-to-reset = Herstellen
+settings-downloads-save-to-pick = Downloads opslaan in
 settings-downloads-connection = Verbinding
 settings-downloads-open-config = Config openen
 settings-downloads-details = Details
@@ -2839,10 +2839,17 @@ settings-playback-subtitle-languages = Ondertiteltalen
 settings-playback-audio-languages = Audiotalen
 settings-playback-discord = Toon op Discord wat je kijkt
 settings-playback-discord-check-failed = Anibeam kon Discord nu niet controleren. Probeer het zo opnieuw.
-settings-playback-discord-helper = De serie, aflevering en poster verschijnen op je Discord-profiel terwijl je afspeelt. Er wordt niets verstuurd als dit uit staat of Discord dicht is.
 settings-playback-discord-unavailable = Deze build heeft geen Discord-applicatie.
 settings-playback-discord-connected = Verbonden met Discord
 settings-playback-discord-not-connected = Niet verbonden. Anibeam verbindt terwijl een aflevering speelt en Discord open is
+discord-ask-wants = { $name } wil meekijken
+discord-ask-start-room = Kamer starten
+discord-ask-let-in = Binnenlaten
+discord-ask-no = Nee
+settings-playback-discord-blocked = Geweigerd op Discord
+room-panel-discord = Op Discord
+room-panel-discord-open = Open
+room-panel-discord-invite = Alleen op uitnodiging
 settings-playback-advanced = Geavanceerd
 settings-playback-my-mpv = Mijn mpv-instellingen gebruiken
 settings-playback-my-mpv-helper = Leest je mpv.conf. Opties die alleen bij het starten werken worden overgeslagen, en scripts laden nooit.
@@ -3730,6 +3737,7 @@ room-error-not-in-room = Je zit niet meer in die kamer. Start er een of doe opni
 room-error-bad-code = Een kamercode is 6 letters en cijfers, zoals K7QM2X.
 room-error-bad-relay = De kamerserver in Instellingen, Afspelen is geen webadres. Pas het daar aan en probeer het opnieuw.
 room-error-cannot-fetch = De host kan deze aflevering nu niet delen. Probeer het opnieuw als die weer in de kamer is.
+room-error-needs-episode = Die kamerserver heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler.
 room-panel-title = Samen kijken
 room-panel-close = Sluiten
 room-panel-connected = Verbonden
@@ -3772,6 +3780,14 @@ room-panel-searching = Zoeken
 room-panel-failed = Niet gelukt
 room-panel-percent = { $percent }%
 room-panel-left = nog { $time }
+room-panel-nothing-picked = Nog niets gekozen
+room-panel-this-episode = Deze aflevering
+room-panel-whole-show = Hele serie
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } van { $total } klaar · { $percent }%
+room-gate-start = Toch starten
+room-gate-wait = Op iedereen wachten
+room-gate-waiting = Wacht op iedereen
 player-room-speed = De snelheid volgt de kamer
 settings-find-room-name =
     .words = samen kijken kamer naam vrienden

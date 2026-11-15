@@ -21,7 +21,8 @@ SELF_WORKFLOW="iOS automerge"
 SELF_JOB="ios-automerge"
 
 # Paths that only the iPhone or the Mac build reads. Everything else can change another
-# platform: Cargo.toml and Cargo.lock, and every workflow, this one included.
+# platform: Cargo.toml and Cargo.lock, and every workflow, this one included. android.yml's
+# pull_request paths exclude the same iPhone paths as globs (#950): change both together.
 ONLY='^(apps/android/ios/'
 ONLY+='|apps/android/src/(.+/)?(ios|metal)(\.rs$|/)'
 ONLY+='|apps/android/scripts/[^/]*ios[^/]*$'

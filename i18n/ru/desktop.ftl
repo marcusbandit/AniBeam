@@ -304,7 +304,6 @@ frame-downloads-not-read = Не прочитано.
 ## HomePage
 
 home-title = Главная
-home-scan-started = Сканирование запущено
 home-ago-minutes = { $count } мин назад
 home-ago-hours = { $count } ч назад
 home-ago-days = { $count } дн. назад
@@ -367,7 +366,6 @@ home-tile-season-span = С{ $season } { $span }
 home-tile-to-watch = { $count } к просмотру
 home-day-nothing = Пусто
 home-now = Сейчас { $time }
-home-card-aired = { $episode } вышла { $ago }
 home-continue = Продолжить
 home-continue-fact = Можно продолжить: { $count }
 home-on-hold = Отложено
@@ -416,18 +414,6 @@ home-dropped-fact = { $count ->
     [many] { $count } файлов ещё на диске
    *[other] { $count } файла ещё на диске
 }
-home-out-now = Уже вышло
-home-out-now-fact = Новые серии этой недели, по данным AniList
-home-popular = Популярное в этом сезоне
-home-add-folder-title = Сюда попадут и ваши сериалы
-home-add-folder-body = Добавьте папку с аниме, и на главной появится то, что вы смотрите.
-home-add-folder-button = Добавить папку
-home-empty-scanned-title = В папках пока ничего не найдено
-home-empty-title = Сериалов пока нет
-home-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-home-empty-body = Добавьте папку с аниме, и библиотека заполнится сама.
-home-scan-all = Сканировать всё
-home-library-settings = Настройки библиотеки
 home-failed-title = Главная не загрузилась
 home-failed-body = Anibeam не смог прочитать библиотеку. Попробуйте ещё раз через минуту.
 
@@ -776,7 +762,30 @@ library-group-season = Сезон
 library-group-type = Тип
 library-group-genre = Жанр
 library-group-watch-state = Статус просмотра
-library-scan-started = Сканирование запущено
+library-empty-none = Библиотека пуста
+library-empty-scanning = { $count ->
+    [1] Ищем видео в папке
+   *[other] Ищем видео в папках
+}
+library-empty-nothing = { $count ->
+    [1] В этой папке пока нет видео
+   *[other] В этих папках пока нет видео
+}
+library-empty-missing = { $count ->
+    [1] Этой папки нет
+   *[other] Этих папок нет
+}
+library-empty-more-folders = { $count ->
+    [one] и ещё { $count } папка
+    [few] и ещё { $count } папки
+    [many] и ещё { $count } папок
+   *[other] и ещё { $count } папки
+}
+library-empty-add-folder = Добавить папку
+library-empty-get = Найти, что посмотреть
+library-empty-scan-again = Сканировать снова
+library-empty-settings = Настройки библиотеки
+library-empty-pick-folder = Выберите папку для библиотеки
 library-tab-all = Все
 library-tab-series = Сериалы
 library-tab-movies = Фильмы
@@ -844,18 +853,6 @@ library-rescan = Пересканировать
 library-find-match = Найти совпадение
 library-find-match-tip = Искать каждый выбранный сериал без привязки
 library-all-matched = У всех выбранных есть привязка
-library-empty-scanned-title = В папках пока ничего не найдено
-library-empty-title = Библиотека пуста
-library-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-library-empty-body = Добавьте папку с аниме, и библиотека заполнится сама, или импортируйте экспорт Anibeam.
-library-scan-all = Сканировать всё
-library-add-folder = Добавить папку
-library-settings = Настройки библиотеки
-library-import = Импорт
-library-import-title = Импорт экспорта Anibeam
-library-import-filter-export = Экспорт Anibeam (*.json)
-library-import-filter-all = Все файлы (*)
-library-import-started = Импорт запущен
 
 ## MetadataPage.qml
 
@@ -2814,7 +2811,7 @@ settings-downloads-torrent-answered = { $client } { $version } ответил.
 settings-downloads-torrent-failed = { $client } не подключился. Проверьте адрес и пароль выше и повторите.
 settings-downloads-torrent-untried = Ещё не проверялось.
 settings-downloads-mode-existing = Ваш собственный qBittorrent с включённым веб-интерфейсом.
-settings-downloads-mode-managed = Anibeam запускает свой qBittorrent, который качает в ~/Downloads/Anime. Он продолжает работать после выхода из Anibeam, поэтому подписки продолжают качать.
+settings-downloads-mode-managed = Anibeam запускает свой qBittorrent. Он продолжает работать после выхода из Anibeam, поэтому подписки продолжают качать.
 settings-downloads-mode-auto = Использует qBittorrent по адресу ниже или свой.
 settings-downloads-password-saved = Пароль для этого клиента сохранён здесь.
 settings-downloads-password-anirss = Используется пароль, сохранённый помощником поиска; сохраните пароль здесь, чтобы не зависеть от него.
@@ -2838,6 +2835,11 @@ settings-downloads-username = Имя пользователя
 settings-downloads-password = Пароль
 settings-downloads-secret-saved = Сохранён
 settings-downloads-secret-unset = Не задан
+settings-downloads-save-to = Сохранять в
+settings-downloads-save-to-client = Собственная папка qBittorrent
+settings-downloads-save-to-choose = Выбрать папку
+settings-downloads-save-to-reset = Сбросить
+settings-downloads-save-to-pick = Сохранять загрузки в
 settings-downloads-connection = Подключение
 settings-downloads-open-config = Открыть его конфиг
 settings-downloads-details = Подробности
@@ -3101,10 +3103,17 @@ settings-playback-subtitle-languages = Языки субтитров
 settings-playback-audio-languages = Языки аудио
 settings-playback-discord = Показывать в Discord, что вы смотрите
 settings-playback-discord-check-failed = Anibeam не смог проверить Discord. Попробуйте ещё раз через минуту.
-settings-playback-discord-helper = Сериал, серия и постер видны в вашем профиле Discord, пока идёт просмотр. Ничего не отправляется, когда это выключено или Discord закрыт.
 settings-playback-discord-unavailable = В этой сборке нет приложения Discord.
 settings-playback-discord-connected = Подключено к Discord
 settings-playback-discord-not-connected = Не подключено. Anibeam подключается, когда идёт серия и Discord открыт
+discord-ask-wants = { $name } хочет присоединиться
+discord-ask-start-room = Создать комнату
+discord-ask-let-in = Впустить
+discord-ask-no = Нет
+settings-playback-discord-blocked = Отказано в Discord
+room-panel-discord = В Discord
+room-panel-discord-open = Открыта
+room-panel-discord-invite = Только по приглашению
 settings-playback-advanced = Дополнительно
 settings-playback-my-mpv = Мои настройки mpv
 settings-playback-my-mpv-helper = Читает ваш mpv.conf. Параметры, работающие только при запуске, пропускаются, скрипты не загружаются никогда.
@@ -4068,6 +4077,7 @@ room-error-not-in-room = Вы больше не в этой комнате. Со
 room-error-bad-code = Код комнаты состоит из 6 букв и цифр, например K7QM2X.
 room-error-bad-relay = Сервер комнат в «Настройки, Воспроизведение» не является веб-адресом. Исправьте его там и попробуйте снова.
 room-error-cannot-fetch = Ведущий сейчас не может поделиться этой серией. Попробуйте снова, когда он вернётся в комнату.
+room-error-needs-episode = Этому серверу комнат нужна серия, чтобы создать комнату. Создайте её из плеера.
 room-panel-title = Совместный просмотр
 room-panel-close = Закрыть
 room-panel-connected = Подключено
@@ -4112,6 +4122,14 @@ room-panel-searching = Поиск
 room-panel-failed = Не удалось
 room-panel-percent = { $percent } %
 room-panel-left = осталось { $time }
+room-panel-nothing-picked = Пока ничего не выбрано
+room-panel-this-episode = Эта серия
+room-panel-whole-show = Весь сериал
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = Готовы { $ready } из { $total } · { $percent } %
+room-gate-start = Начать всё равно
+room-gate-wait = Подождать всех
+room-gate-waiting = Ждём всех
 player-room-speed = Скорость задаёт комната
 settings-find-room-name =
     .words = совместный просмотр вместе комната имя друзья

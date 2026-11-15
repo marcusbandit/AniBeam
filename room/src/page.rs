@@ -148,8 +148,16 @@ pub fn code_from_query(query: Option<&str>) -> Result<Option<String>, String> {
 pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
     let code = escape(code);
     let (title, og_title, og_description, heading, episode) = match room {
+        // A room whose host has not picked anything yet (#922)
+        Some(room) if room.episode.is_none() => (
+            "Anibeam room".to_owned(),
+            "Watch together in Anibeam".to_owned(),
+            format!("Room {code}"),
+            "Nothing picked yet".to_owned(),
+            String::new(),
+        ),
         Some(room) => {
-            let series = escape(&room.episode.series_title);
+            let series = escape(room.episode.as_ref().map_or("", |e| &e.series_title));
             let episode = escape(&episode_line(room));
             let og_description = if episode.is_empty() {
                 format!("Room {code}")
@@ -247,7 +255,9 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
 
 /// "Episode 5: Title", "Episode 5", "Title", or nothing, unescaped.
 fn episode_line(room: &RoomView) -> String {
-    let e = &room.episode;
+    let Some(e) = &room.episode else {
+        return String::new();
+    };
     let title = e
         .episode_title
         .as_deref()
@@ -295,7 +305,7 @@ mod tests {
             code: "K7QM2X".into(),
             host: None,
             members: Vec::new(),
-            episode: EpisodeRef {
+            episode: Some(EpisodeRef {
                 anilist_id: None,
                 mal_id: None,
                 tvmaze_id: None,
@@ -305,7 +315,8 @@ mod tests {
                 episode_title: title.map(Into::into),
                 duration: None,
                 opening_start: None,
-            },
+                film: false,
+            }),
             state: PlayState {
                 playing: false,
                 position: 0.0,
@@ -403,6 +414,17 @@ mod tests {
         let html = join_html("K7QM2X", Some(&view("S", None, None)));
         assert!(!html.contains(r#"class="episode""#));
         assert!(html.contains(r#"content="Room K7QM2X""#));
+    }
+
+    #[test]
+    fn a_room_with_nothing_picked_yet_says_so_and_still_opens() {
+        let mut room = view("S", None, None);
+        room.episode = None;
+        let html = join_html("K7QM2X", Some(&room));
+        assert!(html.contains("<h1>Nothing picked yet</h1>"));
+        assert!(html.contains(r#"content="Watch together in Anibeam""#));
+        assert!(html.contains(r#"href="anibeam://room/K7QM2X""#));
+        assert!(!html.contains(r#"class="episode""#));
     }
 
     #[test]
