@@ -1,16 +1,13 @@
 //! Anibeam's core: every rule, used by every shell through the contract in
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
 //! plumbing every team shares is the `anibeam-foundation` crate, the network
-//! team is `anibeam-net`, the library team `anibeam-library` and the releases
-//! team `anibeam-releases`, each handed on here under the name it had in the
-//! core.
+//! team is `anibeam-net`, the library team `anibeam-library`, and the releases,
+//! metadata and trackers teams `anibeam-releases`, `anibeam-metadata` and
+//! `anibeam-trackers`, each handed on here under the name it had in the core.
 
 pub(crate) mod act;
 pub mod agent;
-pub mod aired;
-pub mod airing_now;
 pub(crate) mod app;
-pub mod calendar;
 pub mod cast;
 pub mod changelog;
 pub mod contract;
@@ -19,19 +16,15 @@ pub mod downloads;
 pub mod events;
 pub mod first_run;
 pub mod foundation;
-pub mod franchise;
 pub mod host;
 pub mod launch;
-pub mod metadata;
 pub mod paths;
 pub mod phone;
 pub mod playback;
 pub mod presence;
 pub(crate) mod process;
-pub mod recommended;
 pub mod room;
 pub mod stats;
-pub mod trackers;
 pub mod transfer;
 pub mod update;
 
@@ -54,6 +47,16 @@ pub use anibeam_library as library;
 /// endpoint repos and the Feed page's reads.
 pub use anibeam_releases as releases;
 pub use anibeam_releases::{feed, repos};
+
+/// The metadata team, in its own crate above library: matching, the
+/// franchise graph, Recommended, Airing now, the aired episodes and the
+/// calendar feed.
+pub use anibeam_metadata as metadata;
+pub use anibeam_metadata::{aired, airing_now, calendar, franchise, recommended};
+
+/// The trackers team, in its own crate above metadata: AniList and MAL, the
+/// list cache and the writes, Watching, On hold and Plan to watch.
+pub use anibeam_trackers as trackers;
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

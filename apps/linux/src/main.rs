@@ -74,6 +74,15 @@ fn main() {
         println!("anibeam {}", anibeam_core::VERSION);
         return;
     }
+    if player_config::is_silent_run(
+        args.drive.is_some() || args.shoot.is_some(),
+        std::env::var_os("ANIBEAM_SILENT").as_deref(),
+    ) {
+        for (name, value) in player_config::SILENT_ENV {
+            // SAFETY: called from main before the core's runtime or Qt starts a thread.
+            unsafe { std::env::set_var(name, value) };
+        }
+    }
     // A drive script that is not one fails here, before a window or the core exists, with
     // the same marker every later drive failure prints.
     if let Some(script) = args.drive.as_deref() {

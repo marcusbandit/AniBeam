@@ -302,7 +302,7 @@ core-jobs-start-endpoint = Starter en downloadkilde
 core-jobs-schedule-agent = Spørger din kodeagent om en sendeplan
     .stopped = Spørgsmålet til din kodeagent om en sendeplan stoppede med et problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Sendes nu
 core-airing-now-winter = Vinter { $year }
@@ -322,7 +322,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Kunne ikke føje { $title } til din Planlagt-liste. Prøv igen senere.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Afsnit { $number } af { $title } er udkommet.
 
@@ -438,18 +438,18 @@ core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde
 core-prefs-outside = { $value } er uden for { $low } til { $high }
 core-prefs-empty = tom
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Rangerer serier til dig
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Finder folk med din smag
 core-recommended-reading-lists = Læser deres lister
 core-recommended-reading-yours = Læser dine serier
 core-recommended-reading-suggestions = Læser serier at foreslå
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } har ingen anime { $id }
 
@@ -504,7 +504,7 @@ core-update-cannot-read-dmg = Kunne ikke læse dmg-filen: { $error }
 core-update-no-app = dmg-filen indeholder ingen app
 core-update-cannot-copy = Kunne ikke kopiere den nye app ved siden af denne: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Sæson { $season } Afsnit { $number }
 core-calendar-episode = { $title } - Afsnit { $number }
@@ -524,7 +524,7 @@ core-presence-room = Ser sammen
 core-presence-in-room = I et rum
 core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Intet klient-id sat for { $tracker }.
 core-trackers-mal-reconnect = Forbind MyAnimeList igen i Indstillinger.
@@ -532,15 +532,15 @@ core-trackers-mal-wants-secret = MyAnimeList vil have denne apps klienthemmeligh
 core-trackers-token-reply-unreadable = svaret med token kunne ikke læses: { $error }
 core-trackers-token-reply-no-token = svaret indeholdt ingen adgangstoken
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = ingen adgangstoken gemt, forbind igen i Indstillinger
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = kontoen har intet bruger-id
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = ingen serier valgt at flytte
 core-trackers-moved-up =
@@ -558,7 +558,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } tog ikke imod { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Godkendelsen fik timeout, prøv igen.
 core-trackers-oauth-state-mismatch = state passer ikke, mulig CSRF, afbrudt.
@@ -583,7 +583,7 @@ core-trackers-page-cancelled-title = { $app }, login annulleret
 core-trackers-page-cancelled = Dette login blev annulleret
 core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis det var meningen.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Flytter til På pause på { $tracker }
 core-trackers-on-hold-moved =
@@ -622,7 +622,7 @@ core-trackers-back-on-watching = { $name } er tilbage på Ser nu på { $site }.
 core-trackers-back-on-watching-two = { $name } er tilbage på Ser nu på { $site } og { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } kunne ikke komme tilbage på Ser nu. Prøv igen senere.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } begrænser forespørgsler, prøv igen om et minut.
 core-trackers-auth-expired = { $tracker }-login er udløbet, forbind igen i Indstillinger.
@@ -715,7 +715,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } serier gemmes på denne computer uden en tracker at sende til.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = Matchede { $show } med { $title }.
 core-metadata-auto-matched =
@@ -797,7 +797,7 @@ core-metadata-find-busy =
        *[other] { $busy } serier er allerede ved at blive matchet.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Kunne ikke læse det link. Indsæt en sideadresse fra AniList, MyAnimeList, TVmaze eller IMDb.
 core-metadata-no-mal-entry = AniList har ingen post for det MyAnimeList-id.
@@ -827,17 +827,17 @@ core-metadata-updated-some =
        *[other] Opdaterede info om { $count } serier; { $failed } kunne ikke opdateres.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze har ingen serie { $id }
 core-metadata-no-such-media = AniList har intet medie { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidatas IMDb-links
 core-metadata-progress-imdb-ratings = IMDb-bedømmelser
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Fælles figurer
 

@@ -324,7 +324,7 @@ core-jobs-start-endpoint = Starting a download source
 core-jobs-schedule-agent = Asking your coding agent for a schedule
     .stopped = Asking your coding agent for a schedule stopped with a problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Airing now
 core-airing-now-winter = Winter { $year }
@@ -345,7 +345,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Could not add { $title } to your Planning list. Try again later.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Episode { $number } of { $title } is out.
 
@@ -479,18 +479,18 @@ core-prefs-empty = empty
 core-prefs-room-name = a name is 1 to { $max } characters, with no control characters
 core-prefs-room-relay = the relay address must start with https:// or http://
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ranking shows for you
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Finding people with your taste
 core-recommended-reading-lists = Reading their lists
 core-recommended-reading-yours = Reading your shows
 core-recommended-reading-suggestions = Reading shows to suggest
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } has no anime { $id }
 
@@ -549,7 +549,7 @@ core-update-cannot-read-dmg = Could not read the dmg: { $error }
 core-update-no-app = The dmg holds no app
 core-update-cannot-copy = Could not copy the new app beside this one: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - Season { $season } Episode { $number }
@@ -614,7 +614,7 @@ core-presence-no-room = That Discord invite has no room yet. Ask them to start o
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = No client ID set for { $tracker }.
@@ -624,15 +624,15 @@ core-trackers-mal-wants-secret = MyAnimeList wants this app's client secret. Add
 core-trackers-token-reply-unreadable = unreadable token reply: { $error }
 core-trackers-token-reply-no-token = the token reply carried no access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = no access token stored, reconnect in Settings
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = the account carries no user id
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = no series picked to move
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -652,7 +652,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } did not take { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Authorization timed out, try again.
 core-trackers-oauth-state-mismatch = state mismatch, possible CSRF, aborted.
@@ -683,7 +683,7 @@ core-trackers-page-cancelled-title = { $app }, sign-in cancelled
 core-trackers-page-cancelled = This sign-in was cancelled
 core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } if you meant to.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Moving to On hold on { $tracker }
@@ -726,7 +726,7 @@ core-trackers-back-on-watching = { $name } is back on Watching on { $site }.
 core-trackers-back-on-watching-two = { $name } is back on Watching on { $site } and { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } could not go back on Watching. Try again later.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } rate limited, try again in a minute.
@@ -832,7 +832,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } shows are kept on this computer, with no tracker to send to.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = Matched { $show } to { $title }.
@@ -919,7 +919,7 @@ core-metadata-find-busy =
        *[other] { $busy } shows are being matched already.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.
 core-metadata-no-mal-entry = AniList has no entry for that MyAnimeList id.
@@ -953,19 +953,19 @@ core-metadata-updated-some =
        *[other] Updated the info for { $count } shows; { $failed } could not be updated.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmaze has no show { $id }
 core-metadata-no-such-media = AniList has no media { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = Wikidata's IMDb links
 core-metadata-progress-imdb-ratings = IMDb ratings
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Shared characters

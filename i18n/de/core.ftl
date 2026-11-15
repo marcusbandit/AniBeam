@@ -302,7 +302,7 @@ core-jobs-start-endpoint = Starte eine Downloadquelle
 core-jobs-schedule-agent = Frage deinen Coding-Agent nach einem Zeitplan
     .stopped = Frage an deinen Coding-Agent nach einem Zeitplan wegen eines Problems gestoppt.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Läuft jetzt
 core-airing-now-winter = Winter { $year }
@@ -322,7 +322,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = { $title } konnte nicht auf deine Liste Geplant gesetzt werden. Versuch es später nochmal.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Folge { $number } von { $title } ist da.
 
@@ -438,18 +438,18 @@ core-prefs-provider-count = { $provider } steht { $count }-mal drin; jeder Anbie
 core-prefs-outside = { $value } liegt außerhalb von { $low } bis { $high }
 core-prefs-empty = leer
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Sortiere Serien für dich
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Suche Leute mit deinem Geschmack
 core-recommended-reading-lists = Lese ihre Listen
 core-recommended-reading-yours = Lese deine Serien
 core-recommended-reading-suggestions = Lese Serien für Vorschläge
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } hat keinen Anime { $id }
 
@@ -504,7 +504,7 @@ core-update-cannot-read-dmg = Die dmg konnte nicht gelesen werden: { $error }
 core-update-no-app = Die dmg enthält keine App
 core-update-cannot-copy = Die neue App konnte nicht neben diese kopiert werden: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Staffel { $season } Folge { $number }
 core-calendar-episode = { $title } - Folge { $number }
@@ -524,7 +524,7 @@ core-presence-room = Gemeinsam schauen
 core-presence-in-room = In einem Raum
 core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Keine Client-ID für { $tracker } gesetzt.
 core-trackers-mal-reconnect = Verbinde MyAnimeList in den Einstellungen neu.
@@ -532,15 +532,15 @@ core-trackers-mal-wants-secret = MyAnimeList verlangt das Client-Secret dieser A
 core-trackers-token-reply-unreadable = unlesbare Token-Antwort: { $error }
 core-trackers-token-reply-no-token = die Token-Antwort enthielt kein Access-Token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = kein Access-Token gespeichert, verbinde in den Einstellungen neu
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = das Konto hat keine Nutzer-ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = keine Serie zum Verschieben gewählt
 core-trackers-moved-up =
@@ -558,7 +558,7 @@ core-trackers-moved-up-some-refused =
     } nicht übernommen.
 core-trackers-move-refused = { $site } hat { $show } nicht übernommen: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Anmeldung abgelaufen, versuch es nochmal.
 core-trackers-oauth-state-mismatch = State passt nicht, mögliches CSRF, abgebrochen.
@@ -583,7 +583,7 @@ core-trackers-page-cancelled-title = { $app }, Anmeldung abgebrochen
 core-trackers-page-cancelled = Diese Anmeldung wurde abgebrochen
 core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du das wolltest.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Setze auf Pausiert bei { $tracker }
 core-trackers-on-hold-moved =
@@ -622,7 +622,7 @@ core-trackers-back-on-watching = { $name } steht bei { $site } wieder auf Schaue
 core-trackers-back-on-watching-two = { $name } steht bei { $site } und { $secondSite } wieder auf Schaue ich.
 core-trackers-back-on-watching-failed = { $name } konnte nicht zurück auf Schaue ich. Versuch es später nochmal.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } drosselt die Anfragen, versuch es in einer Minute nochmal.
 core-trackers-auth-expired = Anmeldung bei { $tracker } abgelaufen, verbinde in den Einstellungen neu.
@@ -715,7 +715,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } Serien bleiben auf diesem Computer, ohne Tracker zum Senden.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } zugeordnet zu { $title }.
 core-metadata-auto-matched =
@@ -797,7 +797,7 @@ core-metadata-find-busy =
        *[other] { $busy } Serien werden schon zugeordnet.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Dieser Link war nicht lesbar. Füge die URL einer Seite von AniList, MyAnimeList, TVmaze oder IMDb ein.
 core-metadata-no-mal-entry = AniList hat keinen Eintrag zu dieser MyAnimeList-ID.
@@ -827,17 +827,17 @@ core-metadata-updated-some =
        *[other] Infos zu { $count } Serien aktualisiert; { $failed } konnten nicht aktualisiert werden.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze hat keine Serie { $id }
 core-metadata-no-such-media = AniList hat kein Medium { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = IMDb-Links von Wikidata
 core-metadata-progress-imdb-ratings = IMDb-Bewertungen
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Gemeinsame Charaktere
 

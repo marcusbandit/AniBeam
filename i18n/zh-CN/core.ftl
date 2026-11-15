@@ -292,7 +292,7 @@ core-jobs-start-endpoint = 正在启动下载来源
 core-jobs-schedule-agent = 正在向编程助手询问播出时间
     .stopped = 向编程助手询问播出时间时出现问题，已停止。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 正在播出
 core-airing-now-winter = { $year } 年冬季
@@ -312,7 +312,7 @@ core-airing-now-already-on =
     }”。
 core-airing-now-plan-failed = 无法把《{ $title }》加入“想看”列表，请稍后再试。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = 《{ $title }》第 { $number } 集已播出。
 
@@ -424,18 +424,18 @@ core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服�
 core-prefs-outside = { $value } 不在 { $low } 到 { $high } 之间
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 正在为你排列番剧
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 正在寻找口味相近的人
 core-recommended-reading-lists = 正在读取他们的列表
 core-recommended-reading-yours = 正在读取你的番剧
 core-recommended-reading-suggestions = 正在读取推荐番剧
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } 上没有动画 { $id }
 
@@ -490,7 +490,7 @@ core-update-cannot-read-dmg = 无法读取 dmg：{ $error }
 core-update-no-app = dmg 中没有应用
 core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
@@ -510,7 +510,7 @@ core-presence-room = 一起观看
 core-presence-in-room = 在房间中
 core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = 没有为 { $tracker } 设置客户端 ID。
 core-trackers-mal-reconnect = 请在设置中重新连接 MyAnimeList。
@@ -518,22 +518,22 @@ core-trackers-mal-wants-secret = MyAnimeList 需要此应用的客户端密钥�
 core-trackers-token-reply-unreadable = 无法读取令牌响应：{ $error }
 core-trackers-token-reply-no-token = 令牌响应中没有访问令牌
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 没有保存访问令牌，请在设置中重新连接
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 账号中没有用户 ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 没有选择要移动的番剧
 core-trackers-moved-up = 已把 { $count } 部番剧从这台电脑移到 { $site }。
 core-trackers-moved-up-some-refused = 已把 { $moved } 部番剧移到 { $site }；{ $site } 没有接受 { $failed } 部。
 core-trackers-move-refused = { $site } 没有接受《{ $show }》：{ $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 授权超时，请重试。
 core-trackers-oauth-state-mismatch = state 不匹配，可能是 CSRF 攻击，已中止。
@@ -558,7 +558,7 @@ core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 此次登录已取消
 core-trackers-page-cancelled-body = 你可以关闭此标签页。如有需要，请从 { $app } 重新开始。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = 正在 { $tracker } 上移到“搁置”
 core-trackers-on-hold-moved = 已在 { $site } 上把 { $count } 部番剧移到“搁置”。
@@ -571,7 +571,7 @@ core-trackers-back-on-watching = 《{ $name }》已在 { $site } 上回到“在
 core-trackers-back-on-watching-two = 《{ $name }》已在 { $site } 和 { $secondSite } 上回到“在看”。
 core-trackers-back-on-watching-failed = 《{ $name }》无法回到“在看”，请稍后再试。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 限制了请求频率，请一分钟后重试。
 core-trackers-auth-expired = { $tracker } 授权已过期，请在设置中重新连接。
@@ -651,7 +651,7 @@ core-trackers-left-out =
        *[other] 有 { $kept } 部番剧保存在这台电脑上，没有可发送的追踪服务。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = 已把《{ $show }》匹配为《{ $title }》。
 core-metadata-auto-matched = 已匹配 { $count } 部番剧。
@@ -700,7 +700,7 @@ core-metadata-find-failed = 有 { $failed } 部番剧无法搜索，请稍后再
 core-metadata-find-had = 有 { $had } 部番剧已有匹配。
 core-metadata-find-busy = 有 { $busy } 部番剧正在匹配中。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 无法读取该链接。请粘贴 AniList、MyAnimeList、TVmaze 或 IMDb 页面的网址。
 core-metadata-no-mal-entry = AniList 上没有与该 MyAnimeList ID 对应的条目。
@@ -718,17 +718,17 @@ core-metadata-updated-many = 已更新 { $count } 部番剧的信息。
 core-metadata-update-failed-many = 无法更新 { $count } 部番剧的信息，请稍后再试。
 core-metadata-updated-some = 已更新 { $count } 部番剧的信息；{ $failed } 部无法更新。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze 上没有剧集 { $id }
 core-metadata-no-such-media = AniList 上没有作品 { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata 的 IMDb 链接
 core-metadata-progress-imdb-ratings = IMDb 评分
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 共同角色
 

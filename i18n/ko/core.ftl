@@ -298,7 +298,7 @@ core-jobs-start-endpoint = 다운로드 소스 시작 중
 core-jobs-schedule-agent = 코딩 에이전트에게 방영 일정 요청 중
     .stopped = 코딩 에이전트에게 방영 일정을 요청하다가 문제가 생겨 멈췄어요.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 지금 방영 중
 core-airing-now-winter = { $year }년 겨울
@@ -318,7 +318,7 @@ core-airing-now-already-on =
     }(으)로 있어요.
 core-airing-now-plan-failed = { $title }을(를) 시청 예정 목록에 추가하지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title } { $number }화가 공개됐어요.
 
@@ -433,18 +433,18 @@ core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제�
 core-prefs-outside = { $value }은(는) { $low }~{ $high } 범위를 벗어나요
 core-prefs-empty = 비어 있음
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 추천 작품 순위 정하는 중
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 취향이 비슷한 사람 찾는 중
 core-recommended-reading-lists = 그 사람들의 목록 읽는 중
 core-recommended-reading-yours = 내 작품 읽는 중
 core-recommended-reading-suggestions = 추천할 작품 읽는 중
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }에 애니 { $id }이(가) 없어요
 
@@ -499,7 +499,7 @@ core-update-cannot-read-dmg = dmg를 읽지 못했어요: { $error }
 core-update-no-app = dmg에 앱이 없어요
 core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
@@ -519,7 +519,7 @@ core-presence-room = 함께 보는 중
 core-presence-in-room = 방에 있음
 core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = { $tracker } 클라이언트 ID가 설정되지 않았어요.
 core-trackers-mal-reconnect = 설정에서 MyAnimeList를 다시 연결하세요.
@@ -527,15 +527,15 @@ core-trackers-mal-wants-secret = MyAnimeList가 이 앱의 클라이언트 시�
 core-trackers-token-reply-unreadable = 토큰 응답을 읽을 수 없어요: { $error }
 core-trackers-token-reply-no-token = 토큰 응답에 액세스 토큰이 없어요
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 저장된 액세스 토큰이 없어요. 설정에서 다시 연결하세요
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 계정에 사용자 ID가 없어요
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 옮길 작품을 선택하지 않았어요
 core-trackers-moved-up =
@@ -550,7 +550,7 @@ core-trackers-moved-up-some-refused =
     }는 받지 않았어요.
 core-trackers-move-refused = { $site }이(가) { $show }을(를) 받지 않았어요: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 인증 시간이 초과됐어요. 다시 시도하세요.
 core-trackers-oauth-state-mismatch = state가 일치하지 않아요. CSRF일 수 있어 중단했어요.
@@ -575,7 +575,7 @@ core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = { $tracker }에서 보류로 옮기는 중
 core-trackers-on-hold-moved =
@@ -607,7 +607,7 @@ core-trackers-back-on-watching = { $name }이(가) { $site }에서 다시 시청
 core-trackers-back-on-watching-two = { $name }이(가) { $site }와(과) { $secondSite }에서 다시 시청 중으로 돌아왔어요.
 core-trackers-back-on-watching-failed = { $name }을(를) 시청 중으로 되돌리지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 요청 한도 초과. 1분 뒤 다시 시도하세요.
 core-trackers-auth-expired = { $tracker } 인증이 만료됐어요. 설정에서 다시 연결하세요.
@@ -687,7 +687,7 @@ core-trackers-left-out =
        *[other] {" "}작품 { $kept }개는 보낼 트래커가 없어 이 컴퓨터에 보관돼요.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show }을(를) { $title }에 매칭했어요.
 core-metadata-auto-matched =
@@ -742,7 +742,7 @@ core-metadata-find-failed = 작품 { $failed }개를 검색하지 못했어요. 
 core-metadata-find-had = 작품 { $had }개는 이미 매칭돼 있었어요.
 core-metadata-find-busy = 작품 { $busy }개는 이미 매칭 중이에요.
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 그 링크를 읽지 못했어요. AniList, MyAnimeList, TVmaze 또는 IMDb 페이지 주소를 붙여넣으세요.
 core-metadata-no-mal-entry = AniList에 그 MyAnimeList ID의 항목이 없어요.
@@ -769,17 +769,17 @@ core-metadata-updated-some =
        *[other] 작품 { $count }개의 정보를 업데이트했어요. { $failed }개는 업데이트하지 못했어요.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze에 작품 { $id }이(가) 없어요
 core-metadata-no-such-media = AniList에 미디어 { $id }이(가) 없어요
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata의 IMDb 링크
 core-metadata-progress-imdb-ratings = IMDb 평점
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 같은 캐릭터
 

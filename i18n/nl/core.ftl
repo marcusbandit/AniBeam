@@ -303,7 +303,7 @@ core-jobs-start-endpoint = Een downloadbron starten
 core-jobs-schedule-agent = Je codeeragent om een schema vragen
     .stopped = Je codeeragent om een schema vragen stopte door een probleem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Nu uitgezonden
 core-airing-now-winter = Winter { $year }
@@ -323,7 +323,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Kon { $title } niet op je Gepland-lijst zetten. Probeer het later opnieuw.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Aflevering { $number } van { $title } is uit.
 
@@ -439,18 +439,18 @@ core-prefs-provider-count = { $provider } staat er { $count } keer in; elke bron
 core-prefs-outside = { $value } ligt buiten { $low } tot { $high }
 core-prefs-empty = leeg
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Series voor je rangschikken
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Mensen met jouw smaak zoeken
 core-recommended-reading-lists = Hun lijsten lezen
 core-recommended-reading-yours = Jouw series lezen
 core-recommended-reading-suggestions = Series om aan te raden lezen
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } heeft geen anime { $id }
 
@@ -505,7 +505,7 @@ core-update-cannot-read-dmg = Kon de dmg niet lezen: { $error }
 core-update-no-app = De dmg bevat geen app
 core-update-cannot-copy = Kon de nieuwe app niet naast deze kopiëren: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Seizoen { $season } Aflevering { $number }
 core-calendar-episode = { $title } - Aflevering { $number }
@@ -525,7 +525,7 @@ core-presence-room = Samen kijken
 core-presence-in-room = In een kamer
 core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Geen client-ID ingesteld voor { $tracker }.
 core-trackers-mal-reconnect = Koppel MyAnimeList opnieuw in Instellingen.
@@ -533,15 +533,15 @@ core-trackers-mal-wants-secret = MyAnimeList wil het client secret van deze app.
 core-trackers-token-reply-unreadable = onleesbaar tokenantwoord: { $error }
 core-trackers-token-reply-no-token = het tokenantwoord bevatte geen access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = geen access token bewaard, koppel opnieuw in Instellingen
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = het account heeft geen gebruikers-ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = geen series gekozen om te verhuizen
 core-trackers-moved-up =
@@ -559,7 +559,7 @@ core-trackers-moved-up-some-refused =
     } niet aan.
 core-trackers-move-refused = { $site } nam { $show } niet aan: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Autorisatie verlopen, probeer het opnieuw.
 core-trackers-oauth-state-mismatch = state komt niet overeen, mogelijk CSRF, afgebroken.
@@ -584,7 +584,7 @@ core-trackers-page-cancelled-title = { $app }, inloggen geannuleerd
 core-trackers-page-cancelled = Dit inloggen is geannuleerd
 core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } als je dat wilde.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Naar In de wacht zetten op { $tracker }
 core-trackers-on-hold-moved =
@@ -623,7 +623,7 @@ core-trackers-back-on-watching = { $name } staat weer op Kijken op { $site }.
 core-trackers-back-on-watching-two = { $name } staat weer op Kijken op { $site } en { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } kon niet terug naar Kijken. Probeer het later opnieuw.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } remt verzoeken af, probeer het over een minuut opnieuw.
 core-trackers-auth-expired = { $tracker }-login verlopen, koppel opnieuw in Instellingen.
@@ -716,7 +716,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } series worden op deze computer bewaard, zonder tracker om naar te sturen.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } gekoppeld aan { $title }.
 core-metadata-auto-matched =
@@ -798,7 +798,7 @@ core-metadata-find-busy =
        *[other] { $busy } series worden al gekoppeld.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Kon die link niet lezen. Plak de URL van een pagina op AniList, MyAnimeList, TVmaze of IMDb.
 core-metadata-no-mal-entry = AniList heeft geen item voor dat MyAnimeList-id.
@@ -828,17 +828,17 @@ core-metadata-updated-some =
        *[other] De info van { $count } series bijgewerkt; { $failed } konden niet worden bijgewerkt.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze heeft geen serie { $id }
 core-metadata-no-such-media = AniList heeft geen media { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = IMDb-links van Wikidata
 core-metadata-progress-imdb-ratings = IMDb-beoordelingen
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Gedeelde personages
 

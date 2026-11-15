@@ -63,7 +63,7 @@ if [ $cargo -eq 1 ]; then
   step clippy cargo clippy --locked --workspace --all-targets -- -D warnings
   # The leaf crates on their own: one cargo call with the core merges their features and
   # would hide a use the crate does not turn on itself (ci.yml says more).
-  for crate in anibeam-contract anibeam-foundation anibeam-net anibeam-library anibeam-releases; do
+  for crate in anibeam-contract anibeam-foundation anibeam-net anibeam-library anibeam-releases anibeam-metadata anibeam-trackers; do
     step "clippy $crate alone" cargo clippy --locked -p "$crate" --all-targets -- -D warnings
   done
   step "clippy phone features" cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings

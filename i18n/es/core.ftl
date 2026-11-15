@@ -300,7 +300,7 @@ core-jobs-start-endpoint = Iniciando una fuente de descarga
 core-jobs-schedule-agent = Pidiendo un horario a tu agente de código
     .stopped = La petición de un horario a tu agente de código se detuvo por un problema.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = En emisión
 core-airing-now-winter = Invierno { $year }
@@ -320,7 +320,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = No se pudo añadir { $title } a tu lista Planeado. Inténtalo más tarde.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Ya está disponible el episodio { $number } de { $title }.
 
@@ -436,18 +436,18 @@ core-prefs-provider-count = { $provider } aparece { $count } veces; cada proveed
 core-prefs-outside = { $value } está fuera del rango de { $low } a { $high }
 core-prefs-empty = vacío
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ordenando series para ti
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Buscando gente con tus gustos
 core-recommended-reading-lists = Leyendo sus listas
 core-recommended-reading-yours = Leyendo tus series
 core-recommended-reading-suggestions = Leyendo series que sugerir
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } no tiene el anime { $id }
 
@@ -502,7 +502,7 @@ core-update-cannot-read-dmg = No se pudo leer el dmg: { $error }
 core-update-no-app = El dmg no contiene ninguna app
 core-update-cannot-copy = No se pudo copiar la nueva app junto a esta: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Temporada { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
@@ -522,7 +522,7 @@ core-presence-room = Viendo juntos
 core-presence-in-room = En una sala
 core-presence-no-room = Esa invitación de Discord aún no tiene sala. Pídele que abra una.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = No hay ID de cliente para { $tracker }.
 core-trackers-mal-reconnect = Vuelve a conectar MyAnimeList en Ajustes.
@@ -530,15 +530,15 @@ core-trackers-mal-wants-secret = MyAnimeList pide el secreto de cliente de esta 
 core-trackers-token-reply-unreadable = respuesta de token ilegible: { $error }
 core-trackers-token-reply-no-token = la respuesta de token no traía token de acceso
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = no hay token de acceso guardado, vuelve a conectar en Ajustes
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = la cuenta no trae id de usuario
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = no se eligió ninguna serie para pasar
 core-trackers-moved-up =
@@ -556,7 +556,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } no aceptó { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Se agotó el tiempo de autorización, inténtalo de nuevo.
 core-trackers-oauth-state-mismatch = el estado no coincide, posible CSRF, cancelado.
@@ -581,7 +581,7 @@ core-trackers-page-cancelled-title = { $app }, inicio de sesión cancelado
 core-trackers-page-cancelled = Se canceló este inicio de sesión
 core-trackers-page-cancelled-body = Puedes cerrar esta pestaña. Empieza de nuevo desde { $app } si querías hacerlo.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Pasando a En espera en { $tracker }
 core-trackers-on-hold-moved =
@@ -620,7 +620,7 @@ core-trackers-back-on-watching = { $name } vuelve a estar en Viendo en { $site }
 core-trackers-back-on-watching-two = { $name } vuelve a estar en Viendo en { $site } y { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } no pudo volver a Viendo. Inténtalo más tarde.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } limitó las peticiones, inténtalo dentro de un minuto.
 core-trackers-auth-expired = La sesión de { $tracker } caducó, vuelve a conectar en Ajustes.
@@ -719,7 +719,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } series se guardan en este ordenador, sin tracker al que enviarlas.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } reconocida como { $title }.
 core-metadata-auto-matched =
@@ -798,7 +798,7 @@ core-metadata-find-busy =
        *[other] { $busy } series ya se están reconociendo.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = No se pudo leer ese enlace. Pega la URL de una página de AniList, MyAnimeList, TVmaze o IMDb.
 core-metadata-no-mal-entry = AniList no tiene ninguna entrada para ese id de MyAnimeList.
@@ -828,17 +828,17 @@ core-metadata-updated-some =
        *[other] Se actualizó la información de { $count } series; { $failed } no se pudieron actualizar.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze no tiene la serie { $id }
 core-metadata-no-such-media = AniList no tiene el medio { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = enlaces de IMDb de Wikidata
 core-metadata-progress-imdb-ratings = valoraciones de IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Personajes en común
 

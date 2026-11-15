@@ -63,10 +63,7 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
         prefs::save_preferences(c, &p)?;
         Ok((before, p))
     })?;
-    core.host.set_streaming(preferences.stream_over_tailscale);
-    core.host
-        .set_switched_off(preferences.tailnet_switched_off.clone());
-    core.host.follow(preferences.share_over_tailscale);
+    crate::host::apply_preferences(&core.host, &preferences);
     crate::presence::set_enabled(&core.playback, preferences.discord_presence);
     if before.calendar_feed != preferences.calendar_feed {
         crate::calendar::set_enabled(&core.metadata, preferences.calendar_feed);

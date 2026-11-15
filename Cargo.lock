@@ -125,11 +125,12 @@ dependencies = [
  "anibeam-foundation",
  "anibeam-host-api",
  "anibeam-library",
+ "anibeam-metadata",
  "anibeam-net",
- "anibeam-recs",
  "anibeam-relay",
  "anibeam-releases",
  "anibeam-room",
+ "anibeam-trackers",
  "anyhow",
  "axum",
  "base64 0.23.1",
@@ -222,6 +223,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-metadata"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-net",
+ "anibeam-recs",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "anibeam-net"
 version = "2.5.0"
 dependencies = [
@@ -296,6 +315,24 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-trackers"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "base64 0.23.1",
+ "rand 0.10.2",
+ "rusqlite",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
