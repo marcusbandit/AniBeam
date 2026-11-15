@@ -56,7 +56,8 @@ body.rd { --wide: 1320px; }
     radial-gradient(24% 30% at 92% 12%, rgba(255, 226, 120, 0.07), transparent 70%);
 }
 .bhero-copy { position: relative; z-index: 3; width: min(100%, var(--wide)); margin: 0 auto; pointer-events: none; }
-.bhero-copy > * { pointer-events: auto; }
+/* Only the buttons take the pointer, so the posters behind the heading still pause on hover. */
+.bhero-copy .hero-actions > * { pointer-events: auto; }
 .bhero h1 {
   max-width: none;
   font-size: clamp(64px, 10.5vw, 176px);
@@ -149,7 +150,7 @@ body.rd { --wide: 1320px; }
 }
 @keyframes lane { from { transform: translateX(-50%); } to { transform: translateX(0); } }
 .lanes.marquee:hover .marquee-track { animation-play-state: var(--motion, running); }
-.lanes .marquee-track:has(.poster:hover), .lanes.holding .marquee-track { animation-play-state: paused; }
+.lanes .marquee-track:has(.poster:hover) { animation-play-state: paused; }
 .lanes .poster { width: var(--s); }
 .lanes .poster img {
   rotate: 30deg;
@@ -158,8 +159,7 @@ body.rd { --wide: 1320px; }
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 50px -20px #000, 0 0 40px -10px rgba(253, 201, 1, 0.25);
   transition: filter 0.3s ease, box-shadow 0.3s ease, scale 0.3s var(--ease);
 }
-.lanes .poster:hover img, .lanes .poster.is-open img { filter: none; scale: 1.06; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 24px 50px -20px #000, 0 0 60px -6px rgba(253, 201, 1, 0.5); }
-.lanes.holding .poster:not(.is-open) img { filter: saturate(0.6) brightness(0.5); }
+.lanes .poster:hover img { filter: none; scale: 1.06; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 24px 50px -20px #000, 0 0 60px -6px rgba(253, 201, 1, 0.5); }
 @media (prefers-reduced-motion: no-preference) {
   .lane { animation: lane-in 1.4s var(--ease) calc(0.15s + var(--i) * 0.12s) both; }
   .lane::after { animation: glint calc(5s + var(--i) * 1.3s) linear calc(1.6s + var(--i) * 0.7s) infinite; animation-play-state: var(--motion, running); }
@@ -288,40 +288,19 @@ body.rd { --wide: 1320px; }
   .js .row-vis::before, .js .row-vis::after { transition: transform 1.3s var(--ease) 0.15s, opacity 0.9s ease 0.15s; }
   .js .feat.row:not(.in) .row-vis::before, .js .feat.row:not(.in) .row-vis::after { opacity: 0; transform: rotate(-30deg) scaleX(0.1); }
 }
-.rows .sync, .rows .pickup, .rows .room { box-shadow: inset 0 1px var(--hi), 0 30px 60px -24px #000; }
+.rows .pickup { box-shadow: inset 0 1px var(--hi), 0 30px 60px -24px #000; }
 .rows .player { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 30px 70px -24px #000; }
 .feat-cast .row-vis { aspect-ratio: auto; }
-.rows .cast-scene { width: 86%; }
 .room-open { height: 42px; }
 
 /* Watch together: a room with three people on one playhead. */
-.room { display: grid; gap: 22px; padding: 28px; }
-.room-head { display: flex; align-items: center; justify-content: space-between; }
 .room-code { color: var(--fg); font: 500 20px/1 var(--mono); letter-spacing: 0.08em; }
 .room-live { display: inline-flex; align-items: center; gap: 8px; color: var(--done); font-size: 14px; font-weight: 600; }
 .room-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 4px color-mix(in srgb, var(--done) 25%, transparent); }
-.room-show { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 18px; align-items: center; }
-.room-show img { width: 64px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 9px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.room-show div { display: flex; flex-direction: column; gap: 4px; }
-.room-show b { color: var(--fg); font-size: 22px; font-weight: 640; letter-spacing: -0.02em; }
-.room-show span { color: var(--fg-2); font-size: 15px; }
-.room-seek { position: relative; height: 4px; margin: 14px 0 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); --at: 42%; }
-.rs-fill { position: absolute; inset: 0 auto 0 0; width: var(--at); border-radius: inherit; background: var(--done); }
-.rs-who { position: absolute; left: var(--at); top: 50%; display: grid; place-items: center; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--c); color: #0b0d11; font-size: 12px; font-weight: 760; box-shadow: 0 0 0 3px var(--card-a); }
-.rs-who:nth-of-type(2) { translate: -30px -24px; }
-.rs-who:nth-of-type(3) { translate: 0 -24px; z-index: 1; }
-.rs-who:nth-of-type(4) { translate: 30px -24px; }
-.room-seek::after { content: ""; position: absolute; left: var(--at); top: -12px; width: 2px; height: 16px; margin-left: -1px; background: rgba(255, 255, 255, 0.5); }
 @media (prefers-reduced-motion: no-preference) {
-  .js .feat-room .rs-who { transition: translate 0.7s var(--ease) calc(0.3s + var(--n, 0) * 0.15s); }
-  .js .feat-room:not(.in) .rs-who:nth-of-type(2) { translate: -150px -24px; }
-  .js .feat-room:not(.in) .rs-who:nth-of-type(4) { translate: 120px -24px; }
   .js .feat-room .room-live { transition: opacity 0.4s ease 1.2s; }
   .js .feat-room:not(.in) .room-live { opacity: 0; }
 }
-.room-people { display: flex; gap: 18px; }
-.room-people span { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-2); font-size: 14px; font-weight: 600; }
-.room-people span::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 
 /* Promises: five big lines, each with the "but" beside it. Light crosses a line on hover. */
 .promises { max-width: calc(var(--wide) + 2 * var(--gutter)); margin: 0 auto; padding: var(--space) var(--gutter) 0; }
@@ -386,6 +365,8 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .endcard h2 { margin-top: 36px; font-size: clamp(44px, 6vw, 88px); letter-spacing: -0.05em; font-variation-settings: "wdth" 116; }
 .endcard .get-actions { margin-top: 36px; }
 .endcard .get-term { width: min(100%, 560px); margin-top: 28px; }
+/* The curl line installs on Linux and Mac only. */
+html[data-os="windows"] .endcard .get-term { display: none; }
 
 /* Footer: the end credits. Roles on the left of a centre line, names on the right. */
 .credits { margin: 0; padding: 96px var(--gutter) 64px; border-top: 1px solid var(--hair); }
@@ -425,7 +406,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .bh-tag { font-size: 0.42em; }
   .row-vis, .feat-cast .row-vis, .stack .row-vis { aspect-ratio: auto; padding: 0; overflow: visible; border-radius: 0; background: none; box-shadow: none; }
   .row-vis::before, .row-vis::after { display: none; }
-  .rows .cast-scene { width: 100%; }
   .tw-rail { display: none; }
   .tour-window { grid-template-columns: 1fr; }
   .promises li { padding: 18px 0; }
@@ -474,8 +454,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .mk-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair); }
 .mk-row > b { color: var(--fg); font-size: 15px; font-weight: 600; }
 .mk-al { width: 22px; height: 22px; fill: var(--anilist); }
-.mk-mal { width: 28px; height: 14px; fill: #fff; }
-.mk-row.mal > svg { padding: 3px 2px; border-radius: 5px; background: #2e51a2; width: 28px; height: 18px; }
 .mark .al-num .n { font-size: 26px; }
 .mark .al-num { font-size: 14px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -484,21 +462,15 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .js .feat-sync .mk-watched { transition: opacity 0.35s ease 1.1s, transform 0.35s var(--ease) 1.1s; }
   .js .feat-sync:not(.in) .mk-watched { opacity: 0; transform: scale(0.9); }
   .js .feat-sync .al-num .old, .js .feat-sync .al-num .new { transition-delay: 1.5s; }
-  .js .feat-sync .mk-row.mal .al-num .old, .js .feat-sync .mk-row.mal .al-num .new { transition-delay: 1.75s; }
 }
 
 /* The Home card says what the app's own does. */
 .pickup-kicker { color: var(--brand); font-size: 13px; font-weight: 640; }
 
-/* Sequels: how many of the franchise are here, and each one named as the sequel it is. */
-.rel-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.rel-count { color: var(--fg-2); font-size: 14px; font-weight: 600; }
-.stone em { color: var(--brand); font-size: 11.5px; font-style: normal; font-weight: 640; }
-.stone:not(.owned) em { color: var(--fg-3); }
-
-/* Casting: the TV plays the episode; the computer shows the app's own "Playing on" tile. */
-/* The TV stands on its own two feet, a thin bezel round the picture and a shadow on the floor. */
-.feat-cast .tv { top: 0; width: 80%; }
+/* Casting: the TV on its own two feet, and under it a phone, a laptop and a tablet side by side,
+   each showing the app's own "Playing on" tile, with a line of light running up to the screen. */
+.feat-cast .cast-scene { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; aspect-ratio: auto; }
+.feat-cast .tv { position: relative; top: auto; right: auto; width: 70%; }
 .feat-cast .tv-screen { border-width: 5px; border-radius: 10px; background: #000; }
 .feat-cast .tv-stand { position: relative; display: block; width: 100%; height: 34px; margin: 0; border-radius: 0; background: none; }
 .feat-cast .tv-stand i { position: absolute; top: 0; width: 6%; height: 30px; background: linear-gradient(#4a4d55, #1c1d21); box-shadow: inset 0 1px rgba(255, 255, 255, 0.2); clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%); }
@@ -506,18 +478,23 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .feat-cast .tv-stand i:last-child { right: 9%; transform: skewX(-14deg); }
 .feat-cast .tv-stand::after { content: ""; position: absolute; left: 4%; right: 4%; top: 24px; height: 16px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.75), transparent); z-index: -1; }
 
-/* What casts: a laptop, a phone and a tablet take turns, each showing the app's own
-   "Playing on" tile. */
-.senders { position: absolute; z-index: 3; left: 0; bottom: 0; width: 46%; aspect-ratio: 1 / 0.78; }
-.dev { position: absolute; bottom: 0; container-type: inline-size; }
+.cast-lines { display: block; width: 100%; height: clamp(40px, 7vw, 76px); margin: -4px 0 0; overflow: visible; }
+.cast-lines path { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 2 9; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px rgba(253, 201, 1, 0.6)); }
+@media (prefers-reduced-motion: no-preference) {
+  .cast-lines path { animation: cast-up 0.9s linear infinite; animation-play-state: var(--motion, running); }
+}
+@keyframes cast-up { to { stroke-dashoffset: -11; } }
+.feat-cast .senders { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
+.dev { position: relative; container-type: inline-size; }
 .dev .lp-screen { position: relative; overflow: hidden; background: radial-gradient(80% 80% at 50% 40%, #1a1c22, #0b0c0f); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 30px 60px -20px #000; }
-.dev-laptop { left: 0; width: 100%; }
+.dev-laptop { width: 46%; }
 .dev-laptop .lp-screen { aspect-ratio: 16 / 10; border: 7px solid #141518; border-radius: 12px 12px 4px 4px; }
-.dev-phone { left: 26%; width: 34%; }
-.dev-phone .lp-screen { aspect-ratio: 9 / 18.5; border: 6px solid #141518; border-radius: 26px; }
-.dev-phone .lp-screen::before { content: ""; position: absolute; left: 50%; top: 7px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
-.dev-tablet { left: 4%; width: 84%; }
-.dev-tablet .lp-screen { aspect-ratio: 4 / 3; border: 10px solid #141518; border-radius: 22px; }
+.dev-phone { width: 14%; }
+.dev-phone .lp-screen { aspect-ratio: 9 / 18.5; border: 4px solid #141518; border-radius: 16px; }
+.dev-phone .lp-screen::before { content: ""; position: absolute; left: 50%; top: 4px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.dev-tablet { width: 30%; }
+.dev-tablet .lp-screen { aspect-ratio: 4 / 3; border: 7px solid #141518; border-radius: 16px; }
+.dev-phone .lp-tile b, .dev-phone .lp-tile span, .dev-tablet .lp-tile span { display: none; }
 .lp-tile { position: absolute; left: 50%; top: 44%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 90%; text-align: center; }
 .lp-tile svg { width: clamp(18px, 11cqi, 30px); height: auto; fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .lp-tile b { color: var(--fg); font-size: clamp(10px, 5cqi, 15px); font-weight: 640; line-height: 1.25; }
@@ -526,7 +503,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .lp-bar i { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--done); }
 .dev-phone .lp-bar { bottom: 7%; }
 .lp-base { display: block; width: 116%; height: 9px; margin-left: -8%; border-radius: 0 0 10px 10px; background: linear-gradient(#26282d, #141518); }
-
 
 /* Watch together: the app's room panel, with the last friend's copy opening and then ready. */
 .room2 { display: grid; gap: 16px; padding: 22px 24px; }
@@ -581,8 +557,10 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .endcard .get-term { width: 100%; }
   .endcard .term-big { font-size: 12.5px; padding-left: 12px; }
   .endcard .term code { white-space: nowrap; overflow-x: auto; }
-  .feat-cast .cast-scene { aspect-ratio: auto; display: flex; flex-direction: column; align-items: center; gap: 20px; }
-  .feat-cast .tv { position: relative; top: 0; right: auto; width: 100%; }
+  .feat-cast .cast-scene { gap: 20px; }
+  .feat-cast .tv { width: 86%; }
+  .feat-cast .dev-tablet .lp-tile b { font-size: 9px; }
+  .feat-cast .dev-laptop .lp-tile span { display: none; }
   .credits { padding: 72px var(--gutter) 48px; }
 }
 
@@ -602,7 +580,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .bl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .bl-head b { color: var(--fg); font-size: 20px; font-weight: 660; letter-spacing: -0.015em; }
 .bl-head span { color: var(--fg-2); font-size: 14px; font-weight: 600; }
-.bl-head em { color: var(--done); font-style: normal; }
 .bl { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 18px; padding-bottom: 48px; }
 .bl::after { content: ""; position: absolute; left: -6%; right: -6%; bottom: 24px; height: 2px; border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.8) 12%, rgba(255, 238, 170, 1) 60%, rgba(253, 201, 1, 0.8) 88%, transparent); box-shadow: 0 0 16px 2px rgba(253, 201, 1, 0.45); }
 .bl-glint { position: absolute; bottom: 19px; left: 0; z-index: 2; width: 120px; height: 12px; border-radius: 999px; background: radial-gradient(closest-side, rgba(255, 250, 225, 1), transparent); filter: blur(2px); opacity: 0; }
@@ -634,7 +611,6 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .bl-stop::after { position: static; translate: none; margin-top: 3px; font-size: 11px; text-align: left; }
 }
 @keyframes bl-run-phone { 0% { transform: translateX(-100%); opacity: 1; } 90% { opacity: 1; } 100% { transform: translateX(420%); opacity: 0; } }
-
 
 /* ---- Solid surfaces. Nothing on the page is see-through any more: every panel and card is a
    solid dark fill, one step darker than the one it sits on. The beams pass behind them. ---- */
@@ -669,28 +645,3 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
   .rd .row-vis { background: none; }
 }
 
-/* Casting: the TV, and under it every kind of thing that casts to it, side by side, each with
-   its own line of light running up to the screen. */
-.feat-cast .cast-scene { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; aspect-ratio: auto; }
-.feat-cast .tv { position: relative; top: auto; right: auto; width: 70%; }
-.cast-lines { display: block; width: 100%; height: clamp(40px, 7vw, 76px); margin: -4px 0 0; overflow: visible; }
-.cast-lines path { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 2 9; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px rgba(253, 201, 1, 0.6)); }
-@media (prefers-reduced-motion: no-preference) {
-  .cast-lines path { animation: cast-up 0.9s linear infinite; animation-play-state: var(--motion, running); }
-}
-@keyframes cast-up { to { stroke-dashoffset: -11; } }
-.feat-cast .senders { position: relative; left: auto; bottom: auto; display: flex; justify-content: space-between; align-items: flex-end; width: 100%; aspect-ratio: auto; }
-.feat-cast .dev { position: relative; left: auto; bottom: auto; opacity: 1; animation: none; }
-.feat-cast .dev-phone { width: 14%; }
-.feat-cast .dev-laptop { width: 46%; }
-.feat-cast .dev-tablet { width: 30%; }
-.feat-cast .dev-phone .lp-tile b, .feat-cast .dev-phone .lp-tile span { display: none; }
-.feat-cast .dev-phone .lp-screen { border-width: 4px; border-radius: 16px; }
-.feat-cast .dev-phone .lp-screen::before { top: 4px; width: 6px; height: 6px; margin-left: -3px; }
-.feat-cast .dev-tablet .lp-screen { border-width: 7px; border-radius: 16px; }
-.feat-cast .dev-tablet .lp-tile span { display: none; }
-@media (max-width: 760px) {
-  .feat-cast .tv { width: 86%; }
-  .feat-cast .dev-tablet .lp-tile b { font-size: 9px; }
-  .feat-cast .dev-laptop .lp-tile span { display: none; }
-}

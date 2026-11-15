@@ -11,7 +11,7 @@
 
   // The beams lean toward the pointer, the near ones more than the far ones.
   const hero = document.querySelector(".bhero");
-  const lanes = document.getElementById("marquee");
+  const lanes = document.getElementById("lanes");
   if (hero && lanes && !reduced && matchMedia("(pointer: fine)").matches) {
     let frame = 0;
     hero.addEventListener("pointermove", (e) => {
@@ -41,7 +41,8 @@
   };
   const wide = matchMedia("(min-width: 900px)").matches;
   const src = (k) => `${AB.ROOT}img/tour/${k}${wide ? "" : "-1134"}.webp`;
-  if (wide) setTimeout(() => Object.keys(alts).forEach((k) => { new Image().src = src(k); }), 1500);
+  const warm = () => Object.keys(alts).forEach((k) => { new Image().src = src(k); });
+  if (wide) { if ("requestIdleCallback" in window) requestIdleCallback(warm, { timeout: 3000 }); else setTimeout(warm, 1500); }
 
   function aim() {
     const active = tabs.find((t) => t.getAttribute("aria-selected") === "true");
@@ -54,6 +55,7 @@
     const x1 = w.left + 30 - box.left;
     cone.style.clipPath = `polygon(${x0}px ${y0 - 3}px, ${x1}px ${w.top - box.top}px, ${x1}px ${w.bottom - box.top}px, ${x0}px ${y0 + 3}px)`;
   }
+  let pending = null;
   function show(key, focus) {
     tabs.forEach((b) => {
       const on = b.dataset.screen === key;
@@ -64,9 +66,14 @@
     railIcons.forEach((i) => i.classList.toggle("on", i.dataset.for === (key === "series" ? "library" : key)));
     aim();
     img.classList.add("swap");
+    // A screen that loads after a later tab was picked is dropped, so the last pick always wins.
     const next = new Image();
-    next.onload = () => { img.removeAttribute("srcset"); img.src = next.src; img.alt = AB.t(alts[key]); img.classList.remove("swap"); };
-    next.onerror = () => img.classList.remove("swap");
+    pending = next;
+    next.onload = () => {
+      if (pending !== next) return;
+      img.removeAttribute("srcset"); img.src = next.src; img.alt = AB.t(alts[key]); img.classList.remove("swap");
+    };
+    next.onerror = () => { if (pending === next) img.classList.remove("swap"); };
     next.src = src(key);
   }
   tabs.forEach((b, i) => {
