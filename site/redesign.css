@@ -609,3 +609,42 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .pr-pill svg { width: 15px; height: 15px; }
   .pr-word { font-size: clamp(36px, 11vw, 48px); }
 }
+
+/* Sequels: the franchise by year on one of the hero's beams. Light runs along it once and wakes
+   every season that is not in the library yet. */
+.bl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.bl-head b { color: var(--fg); font-size: 20px; font-weight: 660; letter-spacing: -0.015em; }
+.bl-head span { color: var(--fg-2); font-size: 14px; font-weight: 600; }
+.bl-head em { color: var(--done); font-style: normal; }
+.bl { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 18px; padding-bottom: 48px; }
+.bl::after { content: ""; position: absolute; left: -6%; right: -6%; bottom: 24px; height: 2px; border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.8) 12%, rgba(255, 238, 170, 1) 60%, rgba(253, 201, 1, 0.8) 88%, transparent); box-shadow: 0 0 16px 2px rgba(253, 201, 1, 0.45); }
+.bl-glint { position: absolute; bottom: 19px; left: 0; z-index: 2; width: 120px; height: 12px; border-radius: 999px; background: radial-gradient(closest-side, rgba(255, 250, 225, 1), transparent); filter: blur(2px); opacity: 0; }
+.bl-stop { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.bl-stop img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.bl-stop span { margin-top: 8px; color: var(--fg); font-size: 13px; font-weight: 600; line-height: 1.25; }
+.bl-stop::before { content: ""; position: absolute; left: 50%; bottom: -29px; z-index: 1; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px #0c0d10; }
+.bl-stop::after { content: attr(data-year); position: absolute; left: 50%; bottom: -44px; translate: -50% 0; color: var(--fg-3); font: 500 12px/1 var(--mono); }
+.bl-stop.missing::before { background: #fff3c4; box-shadow: 0 0 0 3px #0c0d10, 0 0 14px 3px rgba(253, 201, 1, 0.8); }
+.bl-stop.missing span { color: var(--fg-2); }
+.bl-stop.missing img { opacity: 0.55; filter: saturate(0.5); box-shadow: 0 0 0 1px rgba(253, 201, 1, 0.5), 0 0 24px -4px rgba(253, 201, 1, 0.45); }
+@media (prefers-reduced-motion: no-preference) {
+  .js .feat-chain .bl-stop.missing img { transition: opacity 0.5s ease, filter 0.5s ease, box-shadow 0.5s ease; transition-delay: calc(0.6s + var(--n) * 0.3s); }
+  .js .feat-chain:not(.in) .bl-stop.missing img { opacity: 0.25; filter: saturate(0.2); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
+  .js .feat-chain.in .bl-glint { animation: bl-run 2.6s var(--ease) 0.3s both; }
+}
+@keyframes bl-run { 0% { left: -10%; opacity: 1; } 90% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+/* Phones: the beam stands upright down the left, each season a row with its dot on the beam,
+   and the light runs down it. */
+@media (max-width: 760px) {
+  .bl { display: flex; flex-direction: column; gap: 12px; padding: 0 0 0 34px; }
+  .bl::after { left: 11px; right: auto; top: -8px; bottom: -8px; width: 2px; height: auto; background: linear-gradient(transparent, rgba(253, 201, 1, 0.8) 8%, rgba(255, 238, 170, 1) 60%, rgba(253, 201, 1, 0.8) 92%, transparent); }
+  .bl-glint { left: 6px; bottom: auto; top: 0; width: 12px; height: 90px; background: radial-gradient(closest-side, rgba(255, 250, 225, 1), transparent); }
+  .js .feat-chain.in .bl-glint { animation-name: bl-down; }
+  .bl-stop { display: grid; grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: 1fr auto auto 1fr; column-gap: 14px; align-items: center; }
+  .bl-stop img { grid-row: 1 / -1; width: 48px; border-radius: 7px; }
+  .bl-stop span { grid-column: 2; grid-row: 2; margin: 0; font-size: 15px; }
+  .bl-stop::after { position: static; grid-column: 2; grid-row: 3; translate: none; margin-top: 3px; text-align: left; }
+  .bl-stop::before { left: -27px; top: 50%; bottom: auto; margin: -4.5px 0 0; }
+}
+@keyframes bl-down { 0% { top: -10%; opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
