@@ -9,7 +9,7 @@
 // Discord application, its state under the switch), Watch together, and Advanced (whether
 // their own mpv settings file is read, the room server).
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

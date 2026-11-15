@@ -16,7 +16,7 @@ use crate::net::{Http, HttpRequest};
 
 pub mod install;
 
-const RELEASES: &str = "https://api.github.com/repos/marcusbandit/AniBeam/releases?per_page=100";
+const RELEASES: &str = "https://api.github.com/repos/marcusbandit/Anibeam/releases?per_page=100";
 
 /// Which builds a person wants to hear about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -385,7 +385,7 @@ mod tests {
     fn the_update_carries_its_release_files() {
         let list = serde_json::json!([{
             "tag_name": "v2.5.0", "html_url": "u250",
-            "assets": [{ "name": "AniBeam-2.5.0-x86_64.AppImage", "size": 9,
+            "assets": [{ "name": "Anibeam-2.5.0-x86_64.AppImage", "size": 9,
                          "browser_download_url": "https://dl/a", "digest": "sha256:ab" }]
         }])
         .to_string();

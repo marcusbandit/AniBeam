@@ -1,5 +1,5 @@
 ; Anibeam's Windows installer, compiled by bundle.sh with Inno Setup 6. A per-user install:
-; no administrator prompt, the app under %LOCALAPPDATA%\Programs\AniBeam, a Start menu entry
+; no administrator prompt, the app under %LOCALAPPDATA%\Programs\Anibeam, a Start menu entry
 ; and an uninstaller. The library, settings and downloads live in the user's own AppData and
 ; are left alone on uninstall.
 ; bundle.sh passes AppVersion, FullVersion, SourceDir, OutputDir and OutputName.
@@ -12,8 +12,8 @@ AppVerName=Anibeam {#AppVersion}
 VersionInfoVersion={#AppVersion}
 VersionInfoProductTextVersion={#FullVersion}
 AppPublisher=Marcus Rosado
-AppPublisherURL=https://github.com/marcusbandit/AniBeam
-DefaultDirName={autopf}\AniBeam
+AppPublisherURL=https://github.com/marcusbandit/Anibeam
+DefaultDirName={autopf}\Anibeam
 DefaultGroupName=Anibeam
 DisableProgramGroupPage=yes
 DisableDirPage=yes
@@ -45,9 +45,9 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Type: filesandordirs; Name: "{app}\qml"
 Type: filesandordirs; Name: "{app}\anirss"
 ; Shortcuts from before the name was spelled Anibeam. NTFS ignores case, so an update would
-; overwrite AniBeam.lnk in place and keep the old name; deleting them first lets [Icons] make new ones.
-Type: files; Name: "{autoprograms}\AniBeam.lnk"
-Type: files; Name: "{autodesktop}\AniBeam.lnk"
+; overwrite Anibeam.lnk in place and keep the old name; deleting them first lets [Icons] make new ones.
+Type: files; Name: "{autoprograms}\Anibeam.lnk"
+Type: files; Name: "{autodesktop}\Anibeam.lnk"
 
 [Icons]
 Name: "{autoprograms}\Anibeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"

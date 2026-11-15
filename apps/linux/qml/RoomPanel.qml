@@ -12,7 +12,7 @@
 //
 // The room itself is the frame's (Room.qml); this only shows it and calls into it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

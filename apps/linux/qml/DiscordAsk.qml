@@ -4,7 +4,7 @@
 // never brings that person here again. The x only puts the island away: unanswered is not
 // a no, and Discord lets the ask go after 30 s anyway, which takes the island with it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Frost {
     id: root

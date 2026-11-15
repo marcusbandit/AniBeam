@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 description = "Anibeam's downloads team: the anirss sidecar and the torrent client, search, rules, rolling downloads, the watch for new episodes, and the phone's own torrent engine"
 
+# Files outside this folder the tests read, so a change to one checks this crate and what
+# builds on it (.github/affected-crates.py): the anirss pins in the packaging (anirss.rs).
+[package.metadata.ci]
+reads = ["../apps/linux/packaging"]
+
 [lib]
 name = "anibeam_downloads"
 crate-type = ["lib"]

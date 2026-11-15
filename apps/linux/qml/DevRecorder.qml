@@ -13,7 +13,7 @@
 // so the two can be set side by side.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: rec

@@ -7,7 +7,7 @@
 // buttons drop under the path instead of overlapping it, the same rule `SettingRow` uses
 // for its own label-versus-control width.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

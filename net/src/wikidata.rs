@@ -76,7 +76,7 @@ pub async fn imdb_links(http: &dyn Http) -> Result<Vec<ImdbLink>, Fault> {
                 .header(
                     "User-Agent",
                     format!(
-                        "AniBeam/{} (https://github.com/marcusbandit/AniBeam)",
+                        "Anibeam/{} (https://github.com/marcusbandit/Anibeam)",
                         crate::VERSION
                     ),
                 )
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(
             header("User-Agent"),
             Some(format!(
-                "AniBeam/{} (https://github.com/marcusbandit/AniBeam)",
+                "Anibeam/{} (https://github.com/marcusbandit/Anibeam)",
                 crate::VERSION
             ))
         );

@@ -4,7 +4,7 @@
 // far a download has come, and the row's one action at the right (Unsubscribe, Remove),
 // which opens the removal sheet. A click elsewhere opens the show.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

@@ -1,6 +1,6 @@
 # Third-party notices (iPhone app)
 
-AniBeam is free software under the GNU General Public License, version 3 or
+Anibeam is free software under the GNU General Public License, version 3 or
 later (see `LICENSE` at the root of the repository). The iPhone app plays video
 with libmpv, which is statically linked together with FFmpeg and the libraries
 below. They come from the LGPL build of MPVKit 1.1.0-n9.0.2
@@ -11,14 +11,14 @@ That build is not GPL: mpv is configured with `-Dgpl=false` and FFmpeg with
 `--enable-version3` but without `--enable-gpl`, so libmpv and FFmpeg are
 distributed under the LGPL (FFmpeg as LGPL-3.0-or-later because of
 `--enable-version3`). The source code of every library is public at the URLs
-below. AniBeam's own source is public too (https://github.com/marcusbandit/AniBeam),
+below. Anibeam's own source is public too (https://github.com/marcusbandit/Anibeam),
 and the build scripts in this repository relink it against these libraries, which
 meets the relinking terms of the LGPL. The full texts of the licenses that the
 libraries require are in the `licenses` folder next to this file (inside the
 app, in the `licenses` folder of the app bundle).
 
 Versions are the upstream tags that MPVKit's build scripts check out for this
-release. Where a library is dual or multi licensed, the license AniBeam relies
+release. Where a library is dual or multi licensed, the license Anibeam relies
 on is listed first.
 
 | Library | Version | License (SPDX) | Source |
@@ -31,7 +31,7 @@ on is listed first.
 | GMP | 6.2.1 | LGPL-3.0-or-later OR GPL-2.0-or-later | https://github.com/alisw/GMP/tree/v6.2.1 |
 | libass | 0.17.5 | ISC | https://github.com/libass/libass/tree/0.17.5 |
 | libunibreak | 6.1 (libunibreak_6_1) | Zlib | https://github.com/adah1972/libunibreak/tree/libunibreak_6_1 |
-| FreeType | 2.14.3 (VER-2-14-3) | FTL (dual licensed with GPL-2.0-only; AniBeam uses it under the FTL) | https://github.com/freetype/freetype/tree/VER-2-14-3 |
+| FreeType | 2.14.3 (VER-2-14-3) | FTL (dual licensed with GPL-2.0-only; Anibeam uses it under the FTL) | https://github.com/freetype/freetype/tree/VER-2-14-3 |
 | FriBidi | 1.0.16 | LGPL-2.1-or-later | https://github.com/fribidi/fribidi/tree/v1.0.16 |
 | HarfBuzz | 14.2.0 | MIT ("Old MIT") | https://github.com/harfbuzz/harfbuzz/tree/14.2.0 |
 | libbluray | 1.4.0 | LGPL-2.1-or-later | https://code.videolan.org/videolan/libbluray/-/tree/1.4.0 |
@@ -43,7 +43,7 @@ on is listed first.
 | libplacebo | 7.360.1 (v7.360.1) | LGPL-2.1-or-later | https://github.com/haasn/libplacebo/tree/v7.360.1 |
 | SPIRV-Cross (built into libplacebo) | vulkan-sdk-1.4.309.0 | Apache-2.0 | https://github.com/KhronosGroup/SPIRV-Cross/tree/vulkan-sdk-1.4.309.0 |
 | dav1d | 1.5.3 | BSD-2-Clause | https://github.com/videolan/dav1d/tree/1.5.3 |
-| uchardet | 0.0.8 (v0.0.8) | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (AniBeam uses it under the LGPL) | https://gitlab.freedesktop.org/uchardet/uchardet/-/tree/v0.0.8 |
+| uchardet | 0.0.8 (v0.0.8) | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (Anibeam uses it under the LGPL) | https://gitlab.freedesktop.org/uchardet/uchardet/-/tree/v0.0.8 |
 
 The MPVKit packaging itself (https://github.com/mpvkit/MPVKit, tag
 1.1.0-n9.0.2) is LGPL-3.0. Its build scripts (Sources/BuildScripts) and the

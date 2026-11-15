@@ -3,9 +3,9 @@
 
 use super::FocusAsk;
 
-/// Writes `line` to stderr, under AniBeamCore.
+/// Writes `line` to stderr, under AnibeamCore.
 pub fn log(line: &str) {
-    eprintln!("AniBeamCore: {line}");
+    eprintln!("AnibeamCore: {line}");
 }
 
 /// No browser to open: the link is logged.

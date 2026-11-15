@@ -6,7 +6,7 @@
 // button style and two text sizes throughout. A raised tile over a Blocker the owning page
 // puts under it, on the frame's escape stack like the match panel.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

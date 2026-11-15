@@ -7,7 +7,7 @@
 // inline confirm. The flow's state is the frame's, so the row only reads it. A MAL app
 // that turned out to want its client secret gets a field for it right here.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

@@ -14,13 +14,13 @@
 
 <br>
 
-[![stable](https://img.shields.io/github/v/release/marcusbandit/AniBeam?filter=v*&style=for-the-badge&label=stable&labelColor=0D0E11&color=FDC901)](https://github.com/marcusbandit/AniBeam/releases/latest)
-[![nightly](https://img.shields.io/github/v/release/marcusbandit/AniBeam?include_prereleases&filter=*nightly*&style=for-the-badge&label=nightly&labelColor=0D0E11&color=46E0C4)](https://github.com/marcusbandit/AniBeam/releases)
-[![android](https://img.shields.io/github/v/release/marcusbandit/AniBeam?include_prereleases&filter=android-v*&style=for-the-badge&label=android&logo=android&logoColor=8ADFB5&labelColor=0D0E11&color=8ADFB5)](https://github.com/marcusbandit/AniBeam/releases?q=android&expanded=true)
+[![stable](https://img.shields.io/github/v/release/marcusbandit/Anibeam?filter=v*&style=for-the-badge&label=stable&labelColor=0D0E11&color=FDC901)](https://github.com/marcusbandit/Anibeam/releases/latest)
+[![nightly](https://img.shields.io/github/v/release/marcusbandit/Anibeam?include_prereleases&filter=*nightly*&style=for-the-badge&label=nightly&labelColor=0D0E11&color=46E0C4)](https://github.com/marcusbandit/Anibeam/releases)
+[![android](https://img.shields.io/github/v/release/marcusbandit/Anibeam?include_prereleases&filter=android-v*&style=for-the-badge&label=android&logo=android&logoColor=8ADFB5&labelColor=0D0E11&color=8ADFB5)](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true)
 <br>
 [![platforms](https://img.shields.io/badge/linux_·_windows_·_macos-7CBCF5?style=for-the-badge&label=runs_on&labelColor=0D0E11)](#install)
-[![downloads](https://img.shields.io/github/downloads/marcusbandit/AniBeam/total?style=for-the-badge&labelColor=0D0E11&color=C0ABF0)](https://github.com/marcusbandit/AniBeam/releases)
-[![license](https://img.shields.io/github/license/marcusbandit/AniBeam?style=for-the-badge&labelColor=0D0E11&color=A3AEC5)](LICENSE)
+[![downloads](https://img.shields.io/github/downloads/marcusbandit/Anibeam/total?style=for-the-badge&labelColor=0D0E11&color=C0ABF0)](https://github.com/marcusbandit/Anibeam/releases)
+[![license](https://img.shields.io/github/license/marcusbandit/Anibeam?style=for-the-badge&labelColor=0D0E11&color=A3AEC5)](LICENSE)
 [![ko-fi](https://img.shields.io/badge/ko--fi-buy_me_a_coffee-F0A772?style=for-the-badge&logo=kofi&logoColor=F0A772&labelColor=0D0E11)](https://ko-fi.com/marcusbandit)
 
 </div>
@@ -69,7 +69,7 @@ install brings everything it needs: the player, the feed search and a torrent cl
 
 ## Install
 
-Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBeam/releases/latest)**.
+Grab the newest version from **[Releases](https://github.com/marcusbandit/Anibeam/releases/latest)**.
 
 | Platform | Get it | Notes |
 | --- | --- | --- |
@@ -77,10 +77,10 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 | Arch Linux | `yay -S anibeam-bin` | The release build, installed in seconds. `yay -S anibeam` compiles it instead. Either pulls in anirss and qbittorrent-nox. |
 | Ubuntu, Debian | `sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources`<br>`sudo apt update && sudo apt install anibeam` | Ubuntu 24.04, Debian 13 and later. Updates come with `apt upgrade`. |
 | Fedora | `sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo`<br>`sudo dnf install anibeam` | Fedora 41 and later. Updates come with `dnf upgrade`. |
-| Any Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
-| Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
+| Any Linux | `Anibeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
+| Windows 10 and 11 | `Anibeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
-| Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
+| Android | `Anibeam-<version>.apk` | From the newest `android` release. Sideload it. |
 | iPhone | Add the Anibeam source to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
 
 **iPhone** (unsigned, for sideloading). Pick the app you sideload with and add the Anibeam source: Anibeam and Anibeam Nightly then sit in its library, can be installed side by side, and the app offers each new build as an update. Nightly is the newest build from main.
@@ -95,13 +95,13 @@ To install one build without a source, once, in [AltStore](https://anibeam.app/i
 <br>
 
 ```bash
-brew tap marcusbandit/anibeam https://github.com/marcusbandit/AniBeam
+brew tap marcusbandit/anibeam https://github.com/marcusbandit/Anibeam
 brew install --cask marcusbandit/anibeam/anibeam
 ```
 
 The build is not notarized, so macOS stops the first launch. Go to System Settings >
 Privacy & Security, scroll to the Anibeam line and click Open Anyway. From a terminal,
-`xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+`xattr -dr com.apple.quarantine /Applications/Anibeam.app` does the same.
 
 </details>
 
@@ -120,8 +120,8 @@ If Windows says it protected your PC, click More info, then Run anyway.
 <br>
 
 ```bash
-chmod +x AniBeam-*-x86_64.AppImage
-./AniBeam-*-x86_64.AppImage
+chmod +x ./*-x86_64.AppImage
+./*-x86_64.AppImage
 ```
 
 If it mentions FUSE, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04), or run it with
@@ -207,7 +207,7 @@ page again.
 
 </details>
 
-Anything else, [open an issue](https://github.com/marcusbandit/AniBeam/issues/new/choose).
+Anything else, [open an issue](https://github.com/marcusbandit/Anibeam/issues/new/choose).
 A screenshot and the version from Settings > About help a lot.
 
 ## Build from source

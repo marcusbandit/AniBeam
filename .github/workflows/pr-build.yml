@@ -134,7 +134,7 @@ jobs:
 
       - name: Name the IPA for this build
         if: needs.ios.result == 'success'
-        run: mv ipa/AniBeam.ipa "dist/AniBeam-$PHONE_VERSION.ipa"
+        run: mv ipa/Anibeam.ipa "dist/Anibeam-$PHONE_VERSION.ipa"
 
       - name: Replace this PR's files on pr-builds
         run: |
@@ -142,7 +142,7 @@ jobs:
           if ! gh release view pr-builds > /dev/null 2>&1; then
             gh release create pr-builds --target "${{ github.event.repository.default_branch }}" \
               --prerelease --latest=false --title "Anibeam pull request builds" \
-              --notes "Test builds of open pull requests, one set of files per PR, named AniBeam-<version>-pr.<PR>.<run>. Each PR's comment links its own. Never offered as an update."
+              --notes "Test builds of open pull requests, one set of files per PR, named Anibeam-<version>-pr.<PR>.<run>. Each PR's comment links its own. Never offered as an update."
           fi
           gh release upload pr-builds dist/* --clobber
           gh release view pr-builds --json assets --jq '.assets[].name' |
@@ -161,7 +161,7 @@ jobs:
               echo "- [$name]($base/$name)"
             done
             if [ "$IOS_RESULT" = success ]; then
-              enc="$(printf '%s' "$base/AniBeam-$PHONE_VERSION.ipa" | jq -sRr @uri)"
+              enc="$(printf '%s' "$base/Anibeam-$PHONE_VERSION.ipa" | jq -sRr @uri)"
               echo "- iPhone: [Add to AltStore](https://anibeam.app/install/?to=altstore&url=$enc), [SideStore](https://anibeam.app/install/?to=sidestore&url=$enc), [LiveContainer](https://anibeam.app/install/?to=livecontainer&url=$enc)"
             fi
             if [ "$IOS_RESULT" != success ]; then

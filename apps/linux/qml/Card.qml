@@ -39,7 +39,7 @@
 // pixmap cache, off the Qt thread), the hover, the click, the keys, and the hero's Play.
 
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

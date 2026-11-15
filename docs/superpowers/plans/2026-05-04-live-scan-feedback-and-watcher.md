@@ -1182,7 +1182,7 @@ Expected: no errors.
 
 - [ ] **Step 5.5: Manual smoke**
 
-Run: `bun run dev`. Trigger a scan on a folder. After it completes, inspect the metadata file at the path printed by `app.getPath('userData') + '/metadata.json'` (typically `~/.config/AniBeam/metadata.json` on Linux). Open it and verify every entry inside `fileEpisodes` has `"status": "ready"`.
+Run: `bun run dev`. Trigger a scan on a folder. After it completes, inspect the metadata file at the path printed by `app.getPath('userData') + '/metadata.json'` (typically `~/.config/Anibeam/metadata.json` on Linux). Open it and verify every entry inside `fileEpisodes` has `"status": "ready"`.
 
 - [ ] **Step 5.6: Commit**
 
@@ -1719,7 +1719,7 @@ If `onMetadataFileStatusChanged` is not present (the optional channel may have b
 Run: `bun run typecheck`
 Expected: no errors.
 
-Run: `bun run dev`. Manually edit `~/.config/AniBeam/metadata.json`: pick one file episode and change its `"status"` from `"ready"` to `"verifying"`. Restart the app. The corresponding episode card should be dimmed with a `VERIFYING` badge. Change it to `"stalled"` and restart — the badge should read `STALLED · RETRY`. Click it — confirm a `probe | Verifying` event appears in the activity drawer (the retry handler will run, and since the file likely passes ffprobe, you'll see a `Ready` event shortly after; the metadata file should flip back to `"ready"`).
+Run: `bun run dev`. Manually edit `~/.config/Anibeam/metadata.json`: pick one file episode and change its `"status"` from `"ready"` to `"verifying"`. Restart the app. The corresponding episode card should be dimmed with a `VERIFYING` badge. Change it to `"stalled"` and restart — the badge should read `STALLED · RETRY`. Click it — confirm a `probe | Verifying` event appears in the activity drawer (the retry handler will run, and since the file likely passes ffprobe, you'll see a `Ready` event shortly after; the metadata file should flip back to `"ready"`).
 
 - [ ] **Step 7.7: Commit**
 

@@ -963,7 +963,7 @@ FocusScope {
                         Flow {
                             width: parent.width
                             spacing: theme.space(1)
-                            Button { text: "github.com/marcusbandit/AniBeam"; icon: "git-branch"; flat: true }
+                            Button { text: "github.com/marcusbandit/Anibeam"; icon: "git-branch"; flat: true }
                             Button { text: "marcusrosado.com"; icon: "globe"; flat: true }
                             Button { text: "AniList marcusbandit"; icon: "heart"; flat: true }
                         }

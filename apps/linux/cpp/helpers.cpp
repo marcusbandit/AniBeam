@@ -227,7 +227,7 @@ bool open_url(const QString &url)
 }
 
 namespace {
-// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml; the
+// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/Anibeam/qml/<name>.qml; the
 // same name under the dev directory replaces one that exists there.
 class QmlDirInterceptor : public QQmlAbstractUrlInterceptor
 {
@@ -235,7 +235,7 @@ public:
     explicit QmlDirInterceptor(QString dir) : m_dir(std::move(dir)) {}
     QUrl intercept(const QUrl &url, DataType type) override
     {
-        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/AniBeam/qml/");
+        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/Anibeam/qml/");
         if (type != QmlFile || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
             return url;
         const QString name = url.path().mid(prefix.size());
