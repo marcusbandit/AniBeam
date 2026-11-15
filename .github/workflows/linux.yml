@@ -171,8 +171,8 @@ jobs:
       - name: Packages for apt and dnf
         id: packages
         run: |
-          image="$(ls dist/AniBeam-*-x86_64.AppImage)"
-          version="$(basename "$image" | sed -E 's/^AniBeam-(.*)-x86_64\.AppImage$/\1/')"
+          image="$(ls dist/Anibeam-*-x86_64.AppImage)"
+          version="$(basename "$image" | sed -E 's/^Anibeam-(.*)-x86_64\.AppImage$/\1/')"
           apps/linux/packaging/linux/packages.sh "$image" "$version" dist
           ls -la dist/*.deb dist/*.rpm
 
@@ -190,7 +190,7 @@ jobs:
       # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
       # cannot hide behind the Qt that install-qt-action put on the runner.
       - name: Smoke test on the runner
-        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage smoke/ubuntu
+        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage smoke/ubuntu
 
       - name: Smoke test on Debian 13
         if: always()
@@ -205,7 +205,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -222,7 +222,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -238,7 +238,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'

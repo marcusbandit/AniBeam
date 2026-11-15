@@ -6,7 +6,7 @@
 // elsewhere opens the show. Without a poster the pane keeps its full size and centres its
 // glyph, so a grid stays even. `compact` is a short text tile with the glyph, for lists.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

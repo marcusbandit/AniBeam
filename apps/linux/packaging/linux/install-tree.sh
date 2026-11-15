@@ -11,14 +11,14 @@ bin="${3:?usage: install-tree.sh <checkout> <destdir> <binary>}"
 shell="$src/apps/linux"
 
 install -Dm755 "$bin" "$dest/usr/bin/anibeam"
-install -Dm644 "$shell/com.marcusrosado.AniBeam.desktop" \
-  "$dest/usr/share/applications/com.marcusrosado.AniBeam.desktop"
+install -Dm644 "$shell/com.marcusrosado.Anibeam.desktop" \
+  "$dest/usr/share/applications/com.marcusrosado.Anibeam.desktop"
 for size in 16 24 32 48 64 128 256 512; do
   install -Dm644 "$shell/assets/hicolor/default/$size.png" \
-    "$dest/usr/share/icons/hicolor/${size}x${size}/apps/com.marcusrosado.AniBeam.png"
+    "$dest/usr/share/icons/hicolor/${size}x${size}/apps/com.marcusrosado.Anibeam.png"
 done
 install -Dm644 "$shell/assets/icon.svg" \
-  "$dest/usr/share/icons/hicolor/scalable/apps/com.marcusrosado.AniBeam.svg"
+  "$dest/usr/share/icons/hicolor/scalable/apps/com.marcusrosado.Anibeam.svg"
 install -Dm644 "$shell/mpv.conf" "$dest/usr/share/anibeam/mpv.conf"
 install -Dm644 "$shell/packaging/linux/anibeam-host.service" \
   "$dest/usr/lib/systemd/user/anibeam-host.service"

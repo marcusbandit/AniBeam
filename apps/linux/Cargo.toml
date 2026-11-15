@@ -21,6 +21,7 @@ anibeam-core = { workspace = true, features = ["cast"] }
 cxx = "1"
 cxx-qt = "=0.10.0"
 cxx-qt-lib = { version = "=0.10.0", features = ["qt_gui", "qt_qml"] }
+directories = "6"
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }

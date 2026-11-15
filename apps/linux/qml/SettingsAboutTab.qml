@@ -9,7 +9,7 @@
 // wherever its data is used.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -153,7 +153,7 @@ SettingsTab {
         SettingRow {
             label: words.t("settings-help-more")
             Button { objectName: "help-report"; msg: "settings-help-report"; icon: "external-link"; flat: true
-                     onClicked: frame.openLink("https://github.com/marcusbandit/AniBeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
+                     onClicked: frame.openLink("https://github.com/marcusbandit/Anibeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
         }
     }
     Panel {

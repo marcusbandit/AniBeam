@@ -12,7 +12,7 @@
 // carried them, else from the core's own read of the same feed (`extras`, by link), which
 // is also where the dates come from; until that read lands the Released column waits.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

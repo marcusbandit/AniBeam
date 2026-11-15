@@ -779,7 +779,7 @@ Expected: all print OK / exit 0.
 - [ ] **Step 4: Package**
 
 Run: `bun run package`
-Expected: builds to `out/AniBeam-linux-x64/anibeam` so the `.desktop` launcher picks up the change.
+Expected: builds to `out/Anibeam-linux-x64/anibeam` so the `.desktop` launcher picks up the change.
 
 - [ ] **Step 5: Final state**
 

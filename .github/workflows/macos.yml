@@ -1,6 +1,6 @@
 name: macOS
 
-# Builds AniBeam.app for Apple silicon on a macos-15 runner, with qbittorrent-nox and anirss
+# Builds Anibeam.app for Apple silicon on a macos-15 runner, with qbittorrent-nox and anirss
 # (and a Python to run it) inside, runs the core and shell tests there, smoke-tests the
 # bundle and both helpers with Homebrew moved out of reach, including the Downloads page
 # starting them on a fresh install. nightly.yml, release.yml and pr-build.yml call it and
@@ -138,13 +138,13 @@ jobs:
       - name: Smoke test with Homebrew out of reach
         run: |
           smoke=apps/linux/packaging/macos/smoke.sh
-          SMOKE_SEED_ONLY=1 "$smoke" dist/AniBeam.app target/release/anibeam-cli smoke
+          SMOKE_SEED_ONLY=1 "$smoke" dist/Anibeam.app target/release/anibeam-cli smoke
           otool -L target/release/anibeam-cli
           sudo mv /opt/homebrew /opt/homebrew-hidden
           mv "$DEPS_PREFIX" "$DEPS_PREFIX-hidden"
           status=0
-          /usr/bin/python3 apps/linux/packaging/macos/fix-dylibs.py dist/AniBeam.app --check || status=1
-          "$smoke" dist/AniBeam.app target/release/anibeam-cli smoke || status=1
+          /usr/bin/python3 apps/linux/packaging/macos/fix-dylibs.py dist/Anibeam.app --check || status=1
+          "$smoke" dist/Anibeam.app target/release/anibeam-cli smoke || status=1
           mv "$DEPS_PREFIX-hidden" "$DEPS_PREFIX"
           sudo mv /opt/homebrew-hidden /opt/homebrew
           exit "$status"

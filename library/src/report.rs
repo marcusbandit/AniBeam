@@ -28,7 +28,7 @@ use anibeam_foundation::percent;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::store::sql::placeholders;
 
-const NEW_ISSUE: &str = "https://github.com/marcusbandit/AniBeam/issues/new";
+const NEW_ISSUE: &str = "https://github.com/marcusbandit/Anibeam/issues/new";
 /// What the triage process looks for in a quick fix's issue.
 pub const MARKER: &str = "<!-- anibeam:quick-fix v1 -->";
 /// GitHub answers a long enough URL with 414 and documents no number; reports
@@ -471,7 +471,7 @@ fn cap(text: &str, max: usize) -> String {
 
 fn prompt(f: &Facts) -> String {
     let mut lines = vec![
-        "You are triaging a bug report for Anibeam, an open source anime library app (https://github.com/marcusbandit/AniBeam). Anibeam reads each video file's name to decide whether it is an episode, and which number, or an extra: an opening, ending, preview, special or other. A user found files it read wrong and corrected them by hand with the app's quick fix. Find why the name reader got these wrong, and propose the smallest change to its rules that reads them right without breaking what its tests cover.".to_string(),
+        "You are triaging a bug report for Anibeam, an open source anime library app (https://github.com/marcusbandit/Anibeam). Anibeam reads each video file's name to decide whether it is an episode, and which number, or an extra: an opening, ending, preview, special or other. A user found files it read wrong and corrected them by hand with the app's quick fix. Find why the name reader got these wrong, and propose the smallest change to its rules that reads them right without breaking what its tests cover.".to_string(),
         String::new(),
         format!("Series: {}. {}", f.title, record_line(f)),
         format!("Folder: {}", f.folder),
@@ -793,7 +793,7 @@ mod tests {
         );
         assert!(
             link.starts_with(
-                "https://github.com/marcusbandit/AniBeam/issues/new?title=Quick%20fix"
+                "https://github.com/marcusbandit/Anibeam/issues/new?title=Quick%20fix"
             )
         );
         // Labels would 404 the page for anyone without triage rights.

@@ -1,6 +1,6 @@
 # Build Anibeam from source
 
-Most people want an installer from [Releases](https://github.com/marcusbandit/AniBeam/releases).
+Most people want an installer from [Releases](https://github.com/marcusbandit/Anibeam/releases).
 This page is for building the app yourself or working on it.
 
 ## What you need
@@ -47,7 +47,7 @@ for a client ID the first time you connect. To bundle your own, copy `.env.examp
 `.env.local` and fill it in before building; it explains where to register.
 
 On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh` turns
-the binary into `AniBeam.app` and a dmg. On Windows, `apps/linux/packaging/windows/deps.sh`
+the binary into `Anibeam.app` and a dmg. On Windows, `apps/linux/packaging/windows/deps.sh`
 and `bundle.sh` do the same for the installer and the zip. `.github/workflows/macos.yml` and
 `windows.yml` run them.
 

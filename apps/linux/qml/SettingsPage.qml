@@ -9,7 +9,7 @@
 // One page sits under a section without an entry of its own: `hidden`, the shows hidden from
 // Airing now, which Library opens and which keeps Library lit; Escape goes back to Library.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page

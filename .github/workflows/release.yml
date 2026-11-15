@@ -252,7 +252,7 @@ jobs:
         if: needs.ios.result == 'success'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
-        run: mv ipa/AniBeam.ipa "dist/AniBeam-$VERSION.ipa"
+        run: mv ipa/Anibeam.ipa "dist/Anibeam-$VERSION.ipa"
 
       - name: Publish the phone's release
         env:

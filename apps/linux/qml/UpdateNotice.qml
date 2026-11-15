@@ -16,7 +16,7 @@
 // the rail's Settings icon and the About row badge it, and About keeps the way to take it.
 import QtQuick
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Frost {
     id: root

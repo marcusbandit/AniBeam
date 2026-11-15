@@ -13,7 +13,7 @@
 // closed, so the page can open the next one or stop.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

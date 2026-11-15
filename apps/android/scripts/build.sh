@@ -2,13 +2,13 @@
 # Build the Anibeam APK inside a hard memory cap; a Rust + Skia + NDK build can take the
 # desktop into swap otherwise.
 #
-#   scripts/build.sh                  APK for the emulator (x86_64), build/AniBeam-debug.apk
+#   scripts/build.sh                  APK for the emulator (x86_64), build/Anibeam-debug.apk
 #   scripts/build.sh --abi all        APK for phones and the emulator (arm64-v8a + x86_64)
-#   scripts/build.sh --dist           --abi all, then copy to dist/AniBeam-<versionName>.apk
+#   scripts/build.sh --dist           --abi all, then copy to dist/Anibeam-<versionName>.apk
 #   scripts/build.sh --bundle         App Bundle for Google Play instead of an APK, the Play
-#                                     flavor (ANIBEAM_FLAVOR=play), build/AniBeam-release.aab;
+#                                     flavor (ANIBEAM_FLAVOR=play), build/Anibeam-release.aab;
 #                                     --abi all unless --abi follows, --dist copies it to
-#                                     dist/AniBeam-<versionName>.aab
+#                                     dist/Anibeam-<versionName>.aab
 #   scripts/build.sh cargo <args>     any cargo command, capped (cargo test -p anibeam-companion)
 #
 # The version is Cargo.toml's, 2.4.3, unless CI says what it ships the build as in
@@ -184,7 +184,7 @@ JSON
   "$JAVA_HOME/bin/java" -jar "$bundletool" build-bundle --modules="$stage/base.zip" \
     --config="$stage/BundleConfig.json" --output="$stage/unsigned.aab"
   # Play takes a bundle signed with jarsigner by the upload key, the same key as the APK's.
-  aab=build/AniBeam-release.aab
+  aab=build/Anibeam-release.aab
   rm -f "$aab"
   ANIBEAM_SIGN_PASS="$pass" "$JAVA_HOME/bin/jarsigner" -keystore "$keystore" \
     -storepass:env ANIBEAM_SIGN_PASS -keypass:env ANIBEAM_SIGN_PASS \
@@ -197,8 +197,8 @@ JSON
       exit 1
     fi
     mkdir -p dist
-    cp "$aab" "dist/AniBeam-$version_name.aab"
-    echo "build.sh: dist/AniBeam-$version_name.aab"
+    cp "$aab" "dist/Anibeam-$version_name.aab"
+    echo "build.sh: dist/Anibeam-$version_name.aab"
   fi
   exit 0
 fi
@@ -211,7 +211,7 @@ fi
 (cd "$stage" && zip -q -0 -r base.apk lib)
 "$BT/zipalign" -P 16 -f 4 "$stage/base.apk" "$stage/aligned.apk"
 
-apk=build/AniBeam-debug.apk
+apk=build/Anibeam-debug.apk
 "$BT/apksigner" sign --ks "$keystore" --ks-pass "pass:$pass" --key-pass "pass:$pass" \
   --ks-key-alias "$key_alias" --out "$apk" "$stage/aligned.apk"
 rm -f "$apk.idsig"
@@ -225,6 +225,6 @@ if (( dist )); then
     exit 1
   fi
   mkdir -p dist
-  cp "$apk" "dist/AniBeam-$version_name.apk"
-  echo "build.sh: dist/AniBeam-$version_name.apk"
+  cp "$apk" "dist/Anibeam-$version_name.apk"
+  echo "build.sh: dist/Anibeam-$version_name.apk"
 fi
