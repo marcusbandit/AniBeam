@@ -92,6 +92,18 @@ pub fn preview_options() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+/// The bundled file, then the user's own while the toggle is on, then AniBeam's own.
+/// A layer that is not on disk is not a layer: mpv's `include` of a missing file is an
+/// error the player would have nothing useful to say about.
+pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {
+    let mut out = vec![paths.bundled_mpv_conf()];
+    if use_my_conf {
+        out.push(paths.user_mpv_conf());
+    }
+    out.push(paths.anibeam_mpv_conf());
+    out.into_iter().filter(|p| p.is_file()).collect()
+}
+
 /// A drive or a shot plays into nothing, and so does a run with ANIBEAM_SILENT=1 (bench.sh):
 /// a capture must never make a sound on the speakers of whoever sits at the machine (#564).
 /// These go out with the owned options, after every config layer, so no mpv.conf line can
@@ -107,18 +119,6 @@ pub fn silent_options(silent: bool) -> Vec<(&'static str, &'static str)> {
 /// Whether this run is one `silent_options` covers.
 pub fn is_silent_run(capturing: bool, silent_env: Option<&std::ffi::OsStr>) -> bool {
     capturing || silent_env.is_some_and(|v| v == "1")
-}
-
-/// The bundled file, then the user's own while the toggle is on, then AniBeam's own.
-/// A layer that is not on disk is not a layer: mpv's `include` of a missing file is an
-/// error the player would have nothing useful to say about.
-pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {
-    let mut out = vec![paths.bundled_mpv_conf()];
-    if use_my_conf {
-        out.push(paths.user_mpv_conf());
-    }
-    out.push(paths.anibeam_mpv_conf());
-    out.into_iter().filter(|p| p.is_file()).collect()
 }
 
 /// The subtitle preview's fallback source: a black lavfi picture with one sample line,
