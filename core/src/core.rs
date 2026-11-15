@@ -80,10 +80,6 @@ pub struct Core {
 /// through the limiter's own per-attempt timeout.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long `shutdown` waits for the runtime's tasks to observe the
-/// cancellation before it stops waiting and closes the store anyway.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
-
 /// The line every start logs, around the version: "AniBeam core 2.1.0
 /// ready". `earlier_starts` reads the version back out of it.
 const READY_BEFORE: &str = "AniBeam core ";
@@ -1049,15 +1045,7 @@ impl Core {
         // keeps the guard alive for the whole `if let` body, which would
         // hold this lock for as long as the wait below.
         let runtime = self.runtime.lock().unwrap().take();
-        if let Some(runtime) = runtime {
-            // Two seconds is the whole budget for the tasks to observe the
-            // cancellation above. A shell is on its way out by now, and an
-            // ffprobe or a keyring call that will not stop must not be the
-            // reason the window hangs around.
-            runtime.shutdown_timeout(SHUTDOWN_GRACE);
-        }
-        self.services.store.checkpoint();
-        self.services.store.close();
+        self.services.close(runtime);
     }
 }
 

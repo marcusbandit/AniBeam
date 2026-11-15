@@ -1066,8 +1066,9 @@ mod imp {
 
         use anibeam_foundation::testing::Running;
 
-        /// The playback team over the teams below it, as `Core::open` builds
-        /// it, and the services they run on. Nothing above playback.
+        /// The playback team over the teams below it, each built as
+        /// `Core::open` builds it, and the services they run on. None of
+        /// `Core::open`'s links: casting reads none of them.
         struct Teams {
             playback: Arc<Playback>,
             _running: Running,

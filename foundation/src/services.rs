@@ -5,6 +5,7 @@
 //! of the whole core. A team's tests open it the same way (`testing`).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::events::EventBus;
 use crate::http::Http;
@@ -16,6 +17,10 @@ use anibeam_contract::{CoreError, EventBody, Stage};
 
 /// The runtime's worker threads.
 const WORKERS: usize = 4;
+
+/// How long `close` waits for the runtime's tasks to see the jobs cancelled
+/// before it stops waiting and closes the store anyway.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
 pub struct Services {
     pub paths: CorePaths,
@@ -73,6 +78,21 @@ impl Services {
             secrets,
         });
         Ok((services, runtime))
+    }
+
+    /// Closes what `open` opened, once the caller has cancelled the jobs: the
+    /// runtime, if it is still there, gets [`SHUTDOWN_GRACE`] for its tasks
+    /// to see that, then the store is checkpointed and closed.
+    pub fn close(&self, runtime: Option<tokio::runtime::Runtime>) {
+        if let Some(runtime) = runtime {
+            // Two seconds is the whole budget for the tasks to observe the
+            // cancellation. A shell is on its way out by now, and an ffprobe
+            // or a keyring call that will not stop must not be the reason the
+            // window hangs around.
+            runtime.shutdown_timeout(SHUTDOWN_GRACE);
+        }
+        self.store.checkpoint();
+        self.store.close();
     }
 
     /// The secrets facade, with the store choice settled. `start` warms

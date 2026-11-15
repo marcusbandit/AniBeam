@@ -357,6 +357,15 @@ impl Host {
     }
 }
 
+/// What a preferences save hands the host (`SetPreferences`): whether it
+/// streams the episodes, which devices are switched off, and whether it
+/// shares at all.
+pub(crate) fn apply_preferences(host: &Arc<Host>, p: &Preferences) {
+    host.set_streaming(p.stream_over_tailscale);
+    host.set_switched_off(p.tailnet_switched_off.clone());
+    host.follow(p.share_over_tailscale);
+}
+
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(host: &Arc<Host>) {
@@ -816,8 +825,9 @@ mod tests {
     use super::*;
     use anibeam_foundation::testing::Running;
 
-    /// The host over the teams below it, as `Core::open` builds it, and the
-    /// services they run on. Nothing above the host.
+    /// The host over the teams below it, each built as `Core::open` builds
+    /// it, and the services they run on. None of `Core::open`'s links: these
+    /// tests read the preferences and the switched-off list, nothing more.
     struct Teams {
         host: Arc<Host>,
         _running: Running,
@@ -846,19 +856,6 @@ mod tests {
                 _running: running,
             }
         }
-    }
-
-    /// What `SetPreferences` does for the host (`app::set_preferences`): the
-    /// preferences saved, then handed to it.
-    fn set_preferences(host: &Arc<Host>, p: Preferences) {
-        let saved = p.clone();
-        host.services
-            .store
-            .write(move |c| prefs::save_preferences(c, &saved))
-            .unwrap();
-        host.set_streaming(p.stream_over_tailscale);
-        host.set_switched_off(p.tailnet_switched_off.clone());
-        host.follow(p.share_over_tailscale);
     }
 
     /// The owner has this machine, a phone and a tagged server's worth of trust; Sam has
@@ -960,7 +957,13 @@ mod tests {
         let host = &teams.host;
         let mut p = host.services.store.read(prefs::load_preferences).unwrap();
         p.stream_over_tailscale = false;
-        set_preferences(host, p);
+        // As `SetPreferences` does: saved, then handed to the host.
+        let saved = p.clone();
+        host.services
+            .store
+            .write(move |c| prefs::save_preferences(c, &saved))
+            .unwrap();
+        apply_preferences(host, &p);
         assert!(!host.streaming());
         host.services
             .store

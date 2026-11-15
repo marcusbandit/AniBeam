@@ -1,6 +1,7 @@
 //! The downloads team over the teams below it, for the team's own tests
-//! (#854): what `Core::open` builds and links for it, and nothing above it, so
-//! the tests can go with the team when it leaves the core.
+//! (#854): each built as `Core::open` builds it, with the two links of
+//! `Core::open`'s that these tests lean on, and nothing above the downloads,
+//! so the tests can go with the team when it leaves the core.
 
 use std::path::Path;
 use std::sync::{Arc, Weak};
