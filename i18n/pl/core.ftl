@@ -125,7 +125,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = wklej adres repozytorium
 core-repos-must-be-https = adres musi zaczynać się od https
@@ -164,7 +164,7 @@ core-repos-note-theirs = Ten anirss uruchamiasz sam, a komputer nigdy nie zmieni
 core-repos-note-sandbox = To uruchomienie nigdy nie zapisuje do konfiguracji anirss, więc komputer nie przeszukuje tu { $id }
 core-repos-note-old = anirss { $version } nie przyjmuje endpointów z { -app-name }; zaktualizuj go do { $min } lub nowszego, aby komputer to przeszukiwał
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = klucz indeksu nie jest kluczem ed25519
 core-repos-key-not-base64 = klucz indeksu to nie 32 bajty w base64
@@ -317,7 +317,7 @@ core-jobs-start-endpoint = Uruchamianie źródła pobierania
 core-jobs-schedule-agent = Pytanie agenta kodującego o harmonogram
     .stopped = Pytanie agenta kodującego o harmonogram: wystąpił problem.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Teraz w emisji
 core-airing-now-winter = Zima { $year }
@@ -338,7 +338,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Nie udało się dodać { $title } do listy Planuję. Spróbuj później.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Wyszedł odcinek { $number } serialu { $title }.
 
@@ -471,18 +471,18 @@ core-prefs-provider-count = { $provider } występuje { $count } razy; każdy dos
 core-prefs-outside = { $value } jest poza zakresem od { $low } do { $high }
 core-prefs-empty = puste
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Układanie seriali dla Ciebie
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Szukanie osób o podobnym guście
 core-recommended-reading-lists = Czytanie ich list
 core-recommended-reading-yours = Czytanie Twoich seriali
 core-recommended-reading-suggestions = Czytanie seriali do polecenia
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } nie ma anime { $id }
 
@@ -541,7 +541,7 @@ core-update-cannot-read-dmg = Nie udało się odczytać dmg: { $error }
 core-update-no-app = W dmg nie ma aplikacji
 core-update-cannot-copy = Nie udało się skopiować nowej aplikacji obok tej: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - Sezon { $season } Odcinek { $number }
@@ -818,7 +818,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } seriali zostaje na tym komputerze, bez serwisu, do którego można wysłać.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = Dopasowano { $show } do { $title }.
@@ -923,7 +923,7 @@ core-metadata-find-busy =
        *[other] { $busy } seriali jest już dopasowywanych.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Nie udało się odczytać tego linku. Wklej adres strony z AniList, MyAnimeList, TVmaze lub IMDb.
 core-metadata-no-mal-entry = AniList nie ma wpisu dla tego id z MyAnimeList.
@@ -963,19 +963,19 @@ core-metadata-updated-some =
        *[other] Zaktualizowano informacje o { $count } serialach; nie udało się: { $failed }.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmaze nie ma serialu { $id }
 core-metadata-no-such-media = AniList nie ma pozycji { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = linki IMDb z Wikidata
 core-metadata-progress-imdb-ratings = oceny IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Wspólne postacie
@@ -1448,7 +1448,7 @@ core-downloads-rolled = { $title }: teraz odcinki od { $from } do { $to } z { $t
 core-downloads-roll-ahead = trzymaj co najmniej jeden odcinek do przodu
 core-downloads-roll-nothing = nic do pobrania
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = źródło wyszukiwania JSON pochodzi z repozytorium endpointów, którego definicja mapuje jego pola
 core-releases-endpoint-no-name = brak `name`
@@ -1464,7 +1464,7 @@ core-releases-endpoint-not-http = { $name }: adres musi zaczynać się od http:/
 core-releases-endpoint-needs-query = { $name }: url { $kind } musi zawierać symbol {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: url { $kind } sam dodaje wyszukiwanie, więc nie przyjmuje {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = indekser odpowiedział błędem { $code }
@@ -1472,11 +1472,11 @@ core-releases-bad-feed = zły kanał: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = kanał odpowiedział { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = to nie JSON kanału: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = to nie JSON: { $error }
 # $message is what the search said about itself
@@ -1487,7 +1487,7 @@ core-releases-no-results-field = odpowiedź nie ma wyników pod { $path }
 core-releases-results-not-list = wyniki w odpowiedzi nie są listą
 core-releases-search-answered = wyszukiwanie odpowiedziało { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = brak endpointów: dodaj repozytorium albo endpoint ręcznie w Więcej, Endpointy
 core-releases-no-source-named = brak źródła o nazwie { $name }
@@ -1495,7 +1495,7 @@ core-releases-empty-query = wpisz, czego szukasz
 core-releases-cannot-follow = { $name } nie da się obserwować: odpowiada na wyszukiwania, ale nie ma kanału do sprawdzania nowych odcinków
 core-releases-endpoint-gone = { $name } nie jest już dostępny: usunięty, wyłączony albo bez klucza
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1509,12 +1509,12 @@ core-releases-quirks-url-https = url show_feed musi być https
 core-releases-quirks-url-host = url show_feed musi być na hoście endpointu
 core-releases-quirks-url-slug = url show_feed przyjmuje {"{"}slug{"}"} raz i żadnego innego symbolu
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = op 'tokens' wymaga niepustej listy `tokens`
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = paczka { $group }

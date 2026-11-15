@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "foundation", "net", "library", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
+members = ["contract", "foundation", "net", "library", "releases", "metadata", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
 
 [workspace.package]
 version = "2.5.0"
@@ -15,8 +15,10 @@ anibeam-core = { path = "core" }
 anibeam-foundation = { path = "foundation" }
 anibeam-host-api = { path = "host-api" }
 anibeam-library = { path = "library" }
+anibeam-metadata = { path = "metadata" }
 anibeam-net = { path = "net" }
 anibeam-recs = { path = "recs" }
+anibeam-releases = { path = "releases" }
 anibeam-room = { path = "room" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

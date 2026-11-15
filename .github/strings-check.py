@@ -44,6 +44,8 @@ CODE = UI + [
     "foundation/src/**/*.rs",
     "net/src/**/*.rs",
     "library/src/**/*.rs",
+    "releases/src/**/*.rs",
+    "metadata/src/**/*.rs",
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",

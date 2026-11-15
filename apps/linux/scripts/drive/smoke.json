@@ -19,8 +19,8 @@
   {"eval": "frame.item.escapeStack.entries.length", "expect": 0},
   {"shot": "smoke-03-menu-closed"},
 
-  {"log": "the rail goes to the feed"},
-  {"click": "rail-feed"},
+  {"log": "the feed opens from Home's week, not the rail"},
+  {"eval": "frame.item.go('feed'); 'ok'", "as": "feed"},
   {"until": "driver.item.pageReady('feed')"},
   {"eval": "frame.item.nav.current.page", "expect": "feed"},
   {"shot": "smoke-04-feed"},

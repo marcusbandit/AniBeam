@@ -3,9 +3,9 @@
 
 The English pages are the source. For each language file site/i18n/<code>.json this writes the
 same pages under <site>/<code>/ (the home page and /download/), with every visible string and
-alt or aria text swapped for its translation, asset paths pointing one level up, the What's new
-links pointing at the English notes (the changelog is written in English), and the strings the
-scripts write themselves (window.I18N). Every page, English included, gets a working language
+alt or aria text swapped for its translation, asset paths pointing one level up, the links to
+What's new, the wiki, privacy and terms pointing at the English pages (ENGLISH_ONLY), and the
+strings the scripts write themselves (window.I18N). Every page, English included, gets a working language
 menu and hreflang links to its translations.
 
   i18n.py extract <site-dir>   print the English strings the pages hold, as JSON
@@ -33,7 +33,7 @@ JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "Wha
 TAG = {"zh": "zh-Hans"}
 SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
         "$", "|", "English", "AppImage", "anibeam-bin", ".dmg", "brew", "Android", "APK", "IPA", "install.sh",
-        "Arch", "Debian, Ubuntu", "Fedora", "AniList", "AltStore", "SideStore", "LiveContainer", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
+        "Arch", "Debian, Ubuntu", "Fedora", "AniList", "Wiki", "AltStore", "SideStore", "LiveContainer", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
         "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan", "Season 2",
         "Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}
@@ -118,13 +118,17 @@ ASSET = re.compile(r'\b(href|src)="(?!https?:|#|/|mailto:|data:)([^"]+)"')
 SRCSET = re.compile(r'\bsrcset="([^"]+)"')
 
 
+# Pages that exist in English only: a translated page links the English one.
+ENGLISH_ONLY = ("whats-new/", "wiki/", "privacy/", "terms/")
+
+
 def deeper(page):
-    """Paths for a copy one folder down: assets and What's new go up a level; links to the
-    home page and the download page stay inside the language."""
+    """Paths for a copy one folder down: assets and the English-only pages go up a level;
+    links to the home page and the download page stay inside the language."""
     def fix(m):
         attr, url = m.groups()
         is_page = url.endswith("/") or url in (".", "./")
-        if is_page and "whats-new" not in url:
+        if is_page and not any(p in url for p in ENGLISH_ONLY):
             return m.group(0)
         return f'{attr}="../{url}"'
     page = SRCSET.sub(lambda m: 'srcset="' + ", ".join(

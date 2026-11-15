@@ -354,6 +354,27 @@ impl EventBus {
     }
 }
 
+/// A listener on the bus for as long as this is held: dropping it unsubscribes, once.
+/// A team keeps one for a listener of its own; the core's `Subscription`, the handle a
+/// shell gets, holds one behind uniffi.
+pub struct Listening {
+    bus: Arc<EventBus>,
+    id: u64,
+}
+
+impl Listening {
+    pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Listening {
+        let id = bus.subscribe(listener);
+        Listening { bus, id }
+    }
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        self.bus.unsubscribe(self.id);
+    }
+}
+
 /// The plain line for a warning or an error whose site has no wording of its
 /// own: which part of the app it touched, and where the details are.
 pub fn stage_problem(stage: Stage) -> Words {
@@ -466,6 +487,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
         (dir, EventBus::new(store).unwrap())
+    }
+
+    #[test]
+    fn dropping_a_listening_unsubscribes() {
+        let (_dir, bus) = bus();
+        let c = Arc::new(Collector::default());
+        {
+            let _listening = Listening::new(bus.clone(), c.clone());
+            bus.debug(Stage::System, "a", EventBody::Notice);
+        }
+        bus.debug(Stage::System, "b", EventBody::Notice);
+        assert_eq!(c.events().len(), 1);
     }
 
     /// Every column of every stored row, as the database holds it.

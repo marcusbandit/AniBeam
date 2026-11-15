@@ -115,7 +115,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = リポジトリのアドレスを貼り付けてください
 core-repos-must-be-https = アドレスはhttpsにしてください
@@ -154,7 +154,7 @@ core-repos-note-theirs = このanirssはご自身で動かしているもので�
 core-repos-note-sandbox = この実行ではanirssの設定に書き込まないため、デスクトップはここで{ $id }を検索しません
 core-repos-note-old = anirss { $version }は{ -app-name }からエンドポイントを受け取れません。デスクトップで検索するには{ $min }以降に更新してください
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = インデックスの鍵がed25519鍵ではありません
 core-repos-key-not-base64 = インデックスの鍵が32バイトのbase64ではありません
@@ -307,7 +307,7 @@ core-jobs-start-endpoint = ダウンロードソースを起動中
 core-jobs-schedule-agent = コーディングエージェントにスケジュールを問い合わせ中
     .stopped = コーディングエージェントへのスケジュールの問い合わせが問題で停止しました。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 放送中
 core-airing-now-winter = { $year }年冬
@@ -328,7 +328,7 @@ core-airing-now-already-on =
     }」で入っています。
 core-airing-now-plan-failed = { $title }を視聴予定リストに追加できませんでした。あとでもう一度お試しください。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title }の第{ $number }話が公開されました。
 
@@ -455,18 +455,18 @@ core-prefs-provider-count = { $provider }が{ $count }回出てきます。各�
 core-prefs-outside = { $value }は{ $low }〜{ $high }の範囲外です
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = おすすめを順位付け中
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 好みの近い人を探しています
 core-recommended-reading-lists = その人たちのリストを読み込み中
 core-recommended-reading-yours = あなたの作品を読み込み中
 core-recommended-reading-suggestions = おすすめ候補を読み込み中
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }にアニメ{ $id }はありません
 
@@ -525,7 +525,7 @@ core-update-cannot-read-dmg = dmgを読み込めませんでした: { $error }
 core-update-no-app = dmgにアプリが入っていません
 core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピーできませんでした: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - シーズン{ $season } 第{ $number }話
@@ -718,7 +718,7 @@ core-trackers-left-out =
        *[other] { $kept }作品は送信先のトラッカーがなく、このパソコンに保存されています。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = { $show }を{ $title }に照合しました。
@@ -760,7 +760,7 @@ core-metadata-find-failed = { $failed }作品を検索できませんでした�
 core-metadata-find-had = { $had }作品はすでに照合済みでした。
 core-metadata-find-busy = { $busy }作品はすでに照合中です。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = そのリンクを読めませんでした。AniList、MyAnimeList、TVmaze、IMDbのページURLを貼り付けてください。
 core-metadata-no-mal-entry = そのMyAnimeList IDに対応するエントリーはAniListにありません。
@@ -782,19 +782,19 @@ core-metadata-updated-many = { $count }作品の情報を更新しました。
 core-metadata-update-failed-many = { $count }作品の情報を更新できませんでした。あとでもう一度お試しください。
 core-metadata-updated-some = { $count }作品の情報を更新しました。{ $failed }作品は更新できませんでした。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmazeに作品{ $id }はありません
 core-metadata-no-such-media = AniListにメディア{ $id }はありません
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = WikidataのIMDbリンク
 core-metadata-progress-imdb-ratings = IMDbの評価
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = 共通キャラクター
@@ -1159,7 +1159,7 @@ core-downloads-rolled = { $title }: 全{ $total }話中、第{ $from }〜{ $to }
 core-downloads-roll-ahead = 少なくとも1話は先まで保持してください
 core-downloads-roll-nothing = 取得するものはありません
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON検索のソースは、項目の対応を定義したエンドポイントリポジトリから追加してください
 core-releases-endpoint-no-name = `name`がありません
@@ -1175,7 +1175,7 @@ core-releases-endpoint-not-http = { $name }: アドレスはhttp://かhttps://�
 core-releases-endpoint-needs-query = { $name }: { $kind }のurlには{"{"}query{"}"}プレースホルダーが必要です
 core-releases-endpoint-no-query = { $name }: { $kind }のurlは検索語を自動で付けるため、{"{"}query{"}"}は使いません
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = インデクサーがエラー{ $code }を返しました
@@ -1183,11 +1183,11 @@ core-releases-bad-feed = 不正なフィード: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = フィードが{ $status }を返しました
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = フィードのJSONではありません: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = JSONではありません: { $error }
 # $message is what the search said about itself
@@ -1198,7 +1198,7 @@ core-releases-no-results-field = 応答の{ $path }に結果がありません
 core-releases-results-not-list = 応答の結果がリストではありません
 core-releases-search-answered = 検索が{ $status }を返しました
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = エンドポイントがまだありません: 「その他」の「エンドポイント」で、リポジトリか手動のエンドポイントを追加してください
 core-releases-no-source-named = { $name }という名前のソースはありません
@@ -1206,7 +1206,7 @@ core-releases-empty-query = 検索語を入力してください
 core-releases-cannot-follow = { $name }はフォローできません: 検索には応答しますが、新エピソードを確認するフィードがありません
 core-releases-endpoint-gone = { $name }はもう利用できません: 削除されたか、オフになっているか、鍵がありません
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1220,12 +1220,12 @@ core-releases-quirks-url-https = show_feedのurlはhttpsにしてください
 core-releases-quirks-url-host = show_feedのurlはエンドポイントと同じホストにしてください
 core-releases-quirks-url-slug = show_feedのurlには{"{"}slug{"}"}を1回だけ使い、ほかのプレースホルダーは使えません
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = 操作'tokens'には空でない`tokens`リストが必要です
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = { $group }のバッチ

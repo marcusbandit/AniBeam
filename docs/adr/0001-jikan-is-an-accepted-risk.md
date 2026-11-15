@@ -10,8 +10,8 @@ streaming entries give titles for some shows. For the rest, the core asks
 [Jikan](https://jikan.moe), a community-run API that reads MyAnimeList, for
 each episode's number, title and air date:
 
-- `core/src/metadata/fetch.rs` at match time and on a full refresh;
-- `core/src/metadata/airing.rs` when the airing schedule refreshes.
+- `metadata/src/fetch.rs` at match time and on a full refresh;
+- `metadata/src/airing.rs` when the airing schedule refreshes.
 
 Jikan is not run or backed by MyAnimeList or AniList. It can go stale, change
 its response shape, rate limit harder or shut down without notice.
@@ -27,7 +27,7 @@ What the core does when Jikan fails:
 
 - A Jikan error reads as an empty episode list. The match or refresh it is
   part of still succeeds.
-- `merge_episodes` (`core/src/metadata/record.rs`) builds rows from AniList's
+- `merge_episodes` (`metadata/src/record.rs`) builds rows from AniList's
   schedule first, then Jikan, then AniList's streaming titles, so AniList
   alone still yields the scheduled episodes.
 - A stored title survives a fetch that brings none: both episode upserts in

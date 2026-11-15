@@ -116,7 +116,7 @@ core-error-version = Esta exportação é de um Anibeam mais novo (formato { $fo
 core-error-internal = O Anibeam teve um erro interno: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = cole o endereço de um repo
 core-repos-must-be-https = o endereço precisa ser https
@@ -153,7 +153,7 @@ core-repos-note-theirs = Este anirss é um que você roda, e o desktop nunca mud
 core-repos-note-sandbox = Esta execução nunca grava na config do anirss, então o desktop não busca em { $id } aqui
 core-repos-note-old = o anirss { $version } não aceita endpoints do { -app-name }; atualize para { $min } ou mais novo para o desktop buscar aqui
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = a chave do índice não é uma chave ed25519
 core-repos-key-not-base64 = a chave do índice não tem 32 bytes em base64
@@ -300,7 +300,7 @@ core-jobs-start-endpoint = Iniciando uma fonte de download
 core-jobs-schedule-agent = Pedindo a programação ao seu agente de código
     .stopped = Pedir a programação ao agente parou com um problema.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = No ar agora
 core-airing-now-winter = Inverno { $year }
@@ -320,7 +320,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Não foi possível incluir { $title } na sua lista Planejando. Tente de novo mais tarde.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Saiu o episódio { $number } de { $title }.
 
@@ -436,18 +436,18 @@ core-prefs-provider-count = { $provider } aparece { $count } vezes; cada provedo
 core-prefs-outside = { $value } está fora de { $low } a { $high }
 core-prefs-empty = vazio
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ordenando séries para você
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Encontrando pessoas com o seu gosto
 core-recommended-reading-lists = Lendo as listas delas
 core-recommended-reading-yours = Lendo as suas séries
 core-recommended-reading-suggestions = Lendo séries para sugerir
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = O { -anilist } não tem o anime { $id }
 
@@ -502,7 +502,7 @@ core-update-cannot-read-dmg = Não foi possível ler o dmg: { $error }
 core-update-no-app = O dmg não contém nenhum app
 core-update-cannot-copy = Não foi possível copiar o novo app ao lado deste: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Temporada { $season } Episódio { $number }
 core-calendar-episode = { $title } - Episódio { $number }
@@ -715,7 +715,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } séries ficam neste computador, sem tracker para onde enviar.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } vinculada a { $title }.
 core-metadata-auto-matched =
@@ -797,7 +797,7 @@ core-metadata-find-busy =
        *[other] { $busy } séries já estão sendo vinculadas.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Não foi possível ler esse link. Cole o endereço de uma página do AniList, MyAnimeList, TVmaze ou IMDb.
 core-metadata-no-mal-entry = O AniList não tem entrada para esse id do MyAnimeList.
@@ -827,17 +827,17 @@ core-metadata-updated-some =
        *[other] Informações de { $count } séries atualizadas; { $failed } não puderam ser atualizadas.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = O TVmaze não tem a série { $id }
 core-metadata-no-such-media = O AniList não tem a mídia { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = links do IMDb no Wikidata
 core-metadata-progress-imdb-ratings = notas do IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Personagens em comum
 
@@ -1221,7 +1221,7 @@ core-downloads-rolled = { $title }: agora nos episódios { $from } a { $to } de 
 core-downloads-roll-ahead = mantenha pelo menos um episódio à frente
 core-downloads-roll-nothing = nada para baixar
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = uma fonte de busca JSON vem de um repo de endpoints cuja definição mapeia os campos
 core-releases-endpoint-no-name = falta `name`
@@ -1233,17 +1233,17 @@ core-releases-endpoint-not-http = { $name }: o endereço precisa começar com ht
 core-releases-endpoint-needs-query = { $name }: a url de { $kind } precisa conter o marcador {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: uma url de { $kind } inclui a busca sozinha, então não leva {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = o indexador respondeu o erro { $code }
 core-releases-bad-feed = feed inválido: { $error }
 core-releases-feed-answered = o feed respondeu { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = não é o JSON do feed: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = não é JSON: { $error }
 core-releases-search-error-said = a busca respondeu com um erro: { $message }
@@ -1252,7 +1252,7 @@ core-releases-no-results-field = a resposta não tem resultados em { $path }
 core-releases-results-not-list = os resultados da resposta não são uma lista
 core-releases-search-answered = a busca respondeu { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = nenhum endpoint ainda: inclua um repo, ou um à mão, em Endpoints em Mais
 core-releases-no-source-named = nenhuma fonte chamada { $name }
@@ -1260,7 +1260,7 @@ core-releases-empty-query = digite algo para buscar
 core-releases-cannot-follow = { $name } não pode ser seguida: responde a buscas, mas não tem feed para checar novos episódios
 core-releases-endpoint-gone = { $name } não está mais disponível: removida, desativada ou sem a chave
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } precisa ser uma palavra curta
 core-releases-quirks-pattern-count = show_feed aceita de 1 a { $most } padrões de página
@@ -1271,11 +1271,11 @@ core-releases-quirks-url-https = a url de show_feed precisa ser https
 core-releases-quirks-url-host = a url de show_feed precisa estar no host do próprio endpoint
 core-releases-quirks-url-slug = a url de show_feed leva {"{"}slug{"}"} uma vez e nenhum outro marcador
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = a op 'tokens' precisa de uma lista `tokens` não vazia
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = lote de { $group }
 core-releases-episodes-phrase =

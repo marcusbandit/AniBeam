@@ -1,0 +1,67 @@
+<section>
+  <h2 id="add">Add a folder</h2>
+  <ol class="steps">
+    <li>Open <span class="where"><b>Settings</b><b>Library</b></span>.</li>
+    <li>Press <b class="ui">Add folder</b>.</li>
+    <li>Pick the folder that holds your shows, such as <code>~/Videos/Anime</code>. Add the folder above the shows, not each show on its own.</li>
+  </ol>
+  <p>The scan starts at once. Library and Home fill in as it finds shows. An empty Library or Home page has an <b class="ui">Add a folder</b> button that does the same.</p>
+  <p>You can add more than one folder, on more than one drive. Each folder inside them becomes a series.</p>
+</section>
+
+<section>
+  <h2 id="naming">Name folders and files</h2>
+  <ul>
+    <li>One folder per show, named the way AniList writes the title.</li>
+    <li>Each file carries its episode number, the way releases do: <code>Frieren - 01.mkv</code> or <code>Frieren S01E01.mkv</code>.</li>
+    <li>A later season is a folder of its own with the season after the title, or a <code>Season 2</code> folder inside the show.</li>
+    <li>Films go in a folder named <code>Movies</code>, one file each.</li>
+  </ul>
+  <pre class="tree">Anime/
+  Frieren/
+    Frieren - 01.mkv
+    Frieren - 02.mkv
+    Season 2/
+      Frieren S02E01.mkv
+  Movies/
+    Suzume.mkv</pre>
+  <p>Subtitle files next to an episode, with the same name, are picked up with it. Openings, endings and specials land under their own heading on the show's page.</p>
+</section>
+
+<section>
+  <h2 id="scan">What a scan does</h2>
+  <ol class="steps">
+    <li>Reads every folder and finds the video files in it.</li>
+    <li>Looks each show up by its folder name: on AniList first, then on TVmaze for shows that are not anime. The order is under <span class="where"><b>Settings</b><b>Library</b></span>.</li>
+    <li>Fetches posters, episode titles and related seasons.</li>
+    <li>Reads your AniList or MyAnimeList progress, when one is connected.</li>
+  </ol>
+  <p>Anibeam only reads your folders. It never moves, renames or deletes a file on its own.</p>
+  <p>After the first scan it watches the folders, so a new episode shows up by itself. To read a folder again by hand, press <b class="ui">Rescan</b> on its row in <span class="where"><b>Settings</b><b>Library</b></span>, or <b class="ui">Scan all</b>.</p>
+</section>
+
+<section>
+  <h2 id="match">A show is not recognised, or is the wrong show</h2>
+  <ol class="steps">
+    <li>Open the show and press <b class="ui">Fixes</b>, then <b class="ui">Find a match</b>. A show that already has a match says <b class="ui">Match</b> there.</li>
+    <li>Search for the title, or paste its AniList or MyAnimeList link.</li>
+    <li>Pick the right show.</li>
+  </ol>
+  <p>A match you pick by hand is never replaced.</p>
+</section>
+
+<section>
+  <h2 id="files">Episodes are read wrong</h2>
+  <ol class="steps">
+    <li>Open the show and press <b class="ui">Fixes</b>, then <b class="ui">Files</b>.</li>
+    <li>For each file, say what it really is under <b class="ui">Should be</b>: an episode and its number, or an opening, ending, preview or special.</li>
+    <li>Press <b class="ui">Apply</b>. The button counts your fixes, as in <b class="ui">Apply 2 fixes</b>.</li>
+  </ol>
+  <p>Every later scan keeps the fix. Renaming the files the way <a href="#naming">Name folders and files</a> shows works too.</p>
+</section>
+
+<section>
+  <h2 id="remove">Remove or move a folder</h2>
+  <p>In <span class="where"><b>Settings</b><b>Library</b></span>, each folder has its own row. Removing one takes its shows and their history out of Anibeam and leaves the files alone.</p>
+  <p>A folder on a drive that is not plugged in shows <b class="ui">Unavailable</b>. Plug the drive in and press <b class="ui">Rescan</b>. If the folder moved, remove it and add the new place.</p>
+</section>

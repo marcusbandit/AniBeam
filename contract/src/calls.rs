@@ -271,6 +271,11 @@ pub enum Call {
         not_interested: bool,
     },
     ListNotInterested,
+    /// Drops the marks of shows that no season read the Airing page still
+    /// holds carries any more, checked against the cached reads only, then
+    /// lists what is left the way `ListNotInterested` does. Nothing goes to
+    /// AniList. With no cached read of what is on air it drops nothing (#1012).
+    PruneNotInterested,
     /// Puts a show on Airing now on Planning, on every connected tracker
     /// that does not list it yet. `Started` with the job.
     PlanToWatch {
