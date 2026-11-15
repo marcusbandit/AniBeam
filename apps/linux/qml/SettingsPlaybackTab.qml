@@ -98,7 +98,18 @@ SettingsTab {
     }
     onContentYChanged: checkPreview()
     onHeightChanged: checkPreview()
-    Component.onCompleted: { readPresence(); Qt.callLater(checkPreview) }
+    // The people told no when they asked on Discord to join (#966)
+    property var discordBlocked: []
+    function readBlocked() {
+        var r = Door.call("DiscordBlocked", {})
+        if (!r.error) discordBlocked = r.reply.people || []
+    }
+    function clearBlocked() {
+        var r = Door.call("DiscordUnblock", { user_id: null })
+        if (r.error) { frame.fail(r.error); return }
+        discordBlocked = r.reply.people || []
+    }
+    Component.onCompleted: { readPresence(); readBlocked(); Qt.callLater(checkPreview) }
     Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
@@ -183,6 +194,12 @@ SettingsTab {
             Row { spacing: theme.space(2)
                 Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
                 Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
+        SettingRow { label: words.t("settings-playback-discord-blocked")
+            visible: tab.discordAvailable
+            status: tab.discordBlocked.map(function(p) { return p.name }).join(", ")
+            Button { objectName: "settings-discord-unblock"; msg: "action-clear"; flat: true; small: true
+                enabled: tab.discordBlocked.length > 0; opacity: enabled ? 1 : theme.disabledOpacity
+                onClicked: tab.clearBlocked() } }
     }
     // Watch together (#846): the name others in a room see. Kept per machine, like the relay.
     Panel {

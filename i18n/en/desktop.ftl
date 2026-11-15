@@ -2154,6 +2154,7 @@ room-error-not-in-room = You are no longer in that room. Start or join one again
 room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
 room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
 room-error-cannot-fetch = The host can't share this episode right now. Try again once they are back in the room.
+room-error-needs-episode = That room server needs an episode to start a room. Start it from the player instead.
 
 ## RoomPanel.qml
 
@@ -2199,6 +2200,14 @@ room-panel-searching = Searching
 room-panel-failed = Couldn't get it
 room-panel-percent = { $percent }%
 room-panel-left = { $time } left
+room-panel-nothing-picked = Nothing picked yet
+room-panel-this-episode = This episode
+room-panel-whole-show = Whole show
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } of { $total } ready · { $percent }%
+room-gate-start = Start anyway
+room-gate-wait = Wait for everyone
+room-gate-waiting = Waiting for everyone
 
 ## PlayerPage.qml
 
@@ -2838,6 +2847,14 @@ settings-playback-discord-check-failed = Anibeam could not check Discord just no
 settings-playback-discord-unavailable = This build has no Discord application.
 settings-playback-discord-connected = Connected to Discord
 settings-playback-discord-not-connected = Not connected. Anibeam connects while an episode plays and Discord is open
+discord-ask-wants = { $name } wants to join you
+discord-ask-start-room = Start room
+discord-ask-let-in = Let in
+discord-ask-no = No
+settings-playback-discord-blocked = Told no on Discord
+room-panel-discord = On Discord
+room-panel-discord-open = Open
+room-panel-discord-invite = Invite only
 settings-playback-advanced = Advanced
 settings-playback-together = Watch together
 settings-playback-room-name = Your name in watch together rooms

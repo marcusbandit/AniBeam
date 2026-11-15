@@ -8,6 +8,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     changes();
+    let icon = format!("assets/{}", app_icon());
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -55,6 +56,7 @@ fn main() {
             .qml_file("qml/ScanSummary.qml")
             .qml_file("qml/Onboarding.qml")
             .qml_file("qml/UpdateNotice.qml")
+            .qml_file("qml/DiscordAsk.qml")
             .qml_file("qml/EmptyState.qml")
             .qml_file("qml/ErrorLine.qml")
             .qml_file("qml/PagePlaceholder.qml")
@@ -101,6 +103,7 @@ fn main() {
             .qml_file("qml/PlayerDelays.qml")
             .qml_file("qml/Room.qml")
             .qml_file("qml/RoomPanel.qml")
+            .qml_file("qml/RoomGate.qml")
             .qml_file("qml/Notice.qml")
             .qml_file("qml/KeyHelp.qml")
             .qml_file("qml/PlayerChrome.qml")
@@ -175,7 +178,8 @@ fn main() {
     .qrc_resources([
         "shaders/poster.vert.qsb",
         "shaders/poster.frag.qsb",
-        "assets/icon.png",
+        // The Default icon this kind of build shows, and Dark.
+        icon.as_str(),
         "assets/icon-dark.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
@@ -363,4 +367,32 @@ fn changes() {
         .collect();
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("changes.rs");
     std::fs::write(out, format!("&[{list}]")).unwrap();
+}
+
+/// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
+/// under assets/ and the only one of the three in the qrc: the release mark, the nightly's graph paper, or the dev blueprint, so a
+/// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
+/// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
+/// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
+/// AUR's source package does.
+fn app_icon() -> String {
+    println!("cargo:rerun-if-env-changed=ANIBEAM_ICON");
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let version = std::env::var("ANIBEAM_RELEASE_VERSION").unwrap_or_default();
+    let version = version.trim();
+    let icon = match std::env::var("ANIBEAM_ICON").unwrap_or_default().trim() {
+        "" if version.is_empty() || version.contains("-pr.") => "dev",
+        "" if version.contains("-nightly") => "nightly",
+        "" => "release",
+        pick @ ("release" | "nightly" | "dev") => pick,
+        other => panic!("ANIBEAM_ICON is {other:?}; it takes release, nightly or dev"),
+    }
+    .to_string();
+    let file = match icon.as_str() {
+        "release" => "icon.png".to_string(),
+        kind => format!("icon-{kind}.png"),
+    };
+    println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    file
 }

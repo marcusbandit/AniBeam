@@ -559,6 +559,9 @@ core-first-run-not-absolute = folder z filmami musi być ścieżką bezwzględn�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Dodatek
+core-presence-room = Oglądamy razem
+core-presence-in-room = W pokoju
+core-presence-no-room = To zaproszenie z Discorda nie ma jeszcze pokoju. Poproś o założenie go.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -1004,7 +1007,7 @@ core-transfer-wrong-format = to nie jest dokument { $format }
 
 core-transfer-imported = Wczytano bibliotekę z pliku.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = brak pliku { $id } w bibliotece
@@ -1044,7 +1047,7 @@ core-library-watched-removed =
        *[trash] przeniesiono do kosza
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1076,7 +1079,7 @@ core-library-runs-span = { $first } do { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } i { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = numer odcinka mieści się w zakresie od 0 do 10000
 core-library-fix-season-range = sezon może mieć numer najwyżej 200
@@ -1098,7 +1101,7 @@ core-library-fixed =
        *[other] { $title }: poprawiono odczyt { $count } plików.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = Ukryto { $title }.
@@ -1108,12 +1111,12 @@ core-library-back-many = Przywrócono seriale: { $count }.
 core-library-episode-count-set = { $title } ma teraz odcinków: { $count }.
 core-library-episode-count-cleared = Wyczyszczono liczbę odcinków { $title }.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Wyczyszczono notatki harmonogramu { $title }.
 core-library-schedule-saved = Zapisano notatki harmonogramu dla { $title }: { $count }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = ścieżka źródła musi być bezwzględna
 core-library-source-exists = to już jest źródło
@@ -1165,7 +1168,7 @@ core-library-scan-done =
         }brakuje: { $removed }
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1383,7 +1386,7 @@ core-downloads-name-not-folder = { $name } to nie nazwa folderu
 core-downloads-pruned = Anulowano subskrypcję { $title }, emisja się zakończyła.
 core-downloads-prune-failed = Nie udało się anulować subskrypcji { $title }. Sprawdź Pobieranie w Ustawieniach.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } nie jest zwykłą ścieżką bezwzględną, więc niczego nie usunięto
 core-downloads-refuse-root = { $path } to katalog główny systemu plików, więc niczego nie usunięto
@@ -1536,6 +1539,7 @@ core-room-service = Wspólne oglądanie
 core-room-not-found = Nie ma pokoju o tym kodzie. Mógł zostać zamknięty.
 core-room-full = Ten pokój jest pełny.
 core-room-proto = Ten przekaźnik używa innej wersji pokojów. Zaktualizuj { -app-name }, aby dołączyć.
+core-room-needs-episode = Ten przekaźnik potrzebuje odcinka, by utworzyć pokój. Utwórz go z odtwarzacza albo zaktualizuj przekaźnik.
 core-room-unreachable = Nie udało się połączyć z przekaźnikiem: { $message }
 core-room-refused = Przekaźnik odmówił: { $message }
 core-room-not-in = Nie jesteś w żadnym pokoju.
@@ -1565,3 +1569,4 @@ core-room-media-lost = Klient torrent zgubił pobieranie odcinka.
 core-room-media-stalled = Pobieranie nie posunęło się od dziesięciu minut. Spróbuj ponownie później.
 core-room-media-not-in-library = Odcinek został pobrany, ale nie ma go w Twojej bibliotece. Sprawdź, czy pobrane pliki trafiają do folderu biblioteki.
 core-room-media-here = Odcinek jest już w Twojej bibliotece.
+core-room-media-rest-missing = Nie udało się pobrać reszty serii. Pobiera się tylko ten odcinek.

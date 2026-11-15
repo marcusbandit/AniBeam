@@ -60,7 +60,7 @@ Item {
         Image {
             x: (root.itemWidth - width) / 2
             width: root.itemWidth - theme.space(2); height: width
-            source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : "icon.png")
+            source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
             sourceSize: Qt.size(96, 96)
             // Decoded off the Qt thread, not inside the frame's first build
             asynchronous: true
