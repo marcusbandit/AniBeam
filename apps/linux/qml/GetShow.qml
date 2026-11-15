@@ -68,6 +68,15 @@ Item {
     // ---- The library's row and the episode count the grid runs to
     readonly property var libCodes: show && show.cubes ? String(show.cubes).split("") : []
     readonly property var current: active !== "" && results[active] ? ofShow(results[active]) : null
+    // The source to ask first while none has been asked (#1004): the first that is on, which
+    // for one that starts on demand means running (`sourceOn`). Its button is the primary one.
+    readonly property string suggested: {
+        if (active !== "") return ""
+        for (var i = 0; i < endpoints.length; i++) if (sourceOn(endpoints[i].name)) return endpoints[i].name
+        return ""
+    }
+    readonly property bool askFirst: suggested !== ""
+    readonly property bool searchingNow: !!current && current.state === "searching"
     // ---- Only the releases that name this show. A search matches a release group as well
     // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
     // least half of the show's words outside its leading [group]
@@ -491,9 +500,10 @@ Item {
         return e.running === true ? words.t("get-show-running") : words.t("get-show-not-running")
     }
     function resultWords(e) {
-        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? words.t("get-show-not-running-start") : words.t("get-show-switched-off")
+        // A source that is not running says so in its state column; the row adds no hint
+        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? "" : words.t("get-show-switched-off")
         var r = ofShow(results[e.name])
-        if (!r || r.state === "idle") return words.t("get-show-click-to-see")
+        if (!r || r.state === "idle") return ""
         if (r.state === "searching") return words.t("get-show-searching-elapsed", { label: r.label || words.t("get-show-searching"), seconds: Math.floor(r.elapsed || 0) })
         if (r.state === "error") return r.error
         // Each release marks what it holds; a batch by its range, its counted files, or the show
@@ -624,6 +634,7 @@ Item {
                     visible: root.library.length > 0
                     codes: root.library
                     fills: root.libraryFills
+                    numbered: true
                     cubeSize: theme.space(7.75)
                     minSize: theme.space(2.5)
                     maxRows: 2
@@ -749,11 +760,13 @@ Item {
                                     spacing: theme.space(1)
                                     opacity: prow.on ? 1 : 0.6
                                     Row {
+                                        width: parent.width
                                         spacing: theme.space(3)
-                                        Label { id: pname; text: prow.modelData.name; role: "title"; font.pointSize: theme.typeLarge }
-                                        Label { anchors.baseline: pname.baseline; text: root.kindWords(prow.modelData); role: "ui"; color: theme.textDim }
+                                        Label { id: pname; width: Math.min(implicitWidth, parent.width); text: prow.modelData.name; role: "title"; font.pointSize: theme.typeLarge; elide: Text.ElideRight }
+                                        Label { anchors.baseline: pname.baseline; width: Math.max(0, Math.min(implicitWidth, parent.width - pname.width - parent.spacing)); text: root.kindWords(prow.modelData); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
                                     }
                                     Label {
+                                        visible: text !== ""
                                         width: parent.width
                                         text: root.resultWords(prow.modelData)
                                         role: "ui"
@@ -775,7 +788,23 @@ Item {
                                         checked: prow.on
                                         onToggled: function(on) { root.sourceToggled(prow.modelData.name, on) }
                                     }
-                                    Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "chevron-right"; size: theme.space(5); color: prow.on ? theme.textDim : "transparent" }
+                                    // What a click on the row does, as a button: it asks this source for
+                                    // the show's releases. Kept in place once they are up, so the
+                                    // switches stay in one column.
+                                    Button {
+                                        readonly property bool shown: prow.on && !(prow.isActive && !!prow.res && prow.res.state === "done")
+                                        readonly property bool failed: !!prow.res && prow.res.state === "error"
+                                        objectName: "provider-fetch-" + prow.modelData.name
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: theme.space(46)
+                                        opacity: shown ? 1 : 0
+                                        enabled: shown && !busy
+                                        primary: root.suggested === prow.modelData.name
+                                        busy: !!prow.res && prow.res.state === "searching"
+                                        text: busy ? words.t("get-show-searching") : failed ? words.t("get-show-try-again") : words.t("get-show-show-releases")
+                                        icon: failed ? "refresh-cw" : "search"
+                                        onClicked: root.fetch(prow.modelData.name)
+                                    }
                                 }
                                 Rectangle { visible: prow.index < root.endpoints.length - 1; anchors.bottom: parent.bottom; x: theme.space(4); width: parent.width - theme.space(8); height: 1; color: theme.line }
                             }
@@ -819,7 +848,10 @@ Item {
                             line: {
                                 var d = modelData, parts = []
                                 if (d.resolution) parts.push(d.resolution)
-                                parts.push(!d.batch ? words.t("count-episodes", { count: d.count })
+                                // Which episodes it carries, not only how many (#1004)
+                                // A row whose episodes all lie past the count still says how many
+                                var named = !d.batch ? root.episodesPhrase(root.covered(d).map(function(n) { return { n: n } })) : ""
+                                parts.push(!d.batch ? (named || words.t("count-episodes", { count: d.count }))
                                     : d.state === "counting" ? words.t("get-show-batch-counting")
                                     : d.state === "unknown" ? words.t("get-show-batch-unlisted")
                                     : words.t("get-show-batch-episodes", { count: d.count }))
@@ -976,16 +1008,19 @@ Item {
                         Button { objectName: "get-confirm"; width: parent.width; msg: "get-show-confirm-go"; icon: "trash-2"; primary: true; onClicked: root.go() }
                         Button { objectName: "get-confirm-back"; width: parent.width; msg: "action-back"; flat: true; onClicked: root.confirming = false }
                     }
+                    // Before any source is asked, the button asks the first one; while one
+                    // searches, it says so
                     Button {
                         objectName: "get-go"
                         visible: !root.confirming
                         width: parent.width
-                        text: root.goText
-                        icon: root.follow && root.followRow ? "rss" : "download"
+                        text: root.askFirst ? words.t("get-show-show-releases-on", { name: root.suggested })
+                            : root.searchingNow ? words.t("get-show-searching-source", { name: root.active }) : root.goText
+                        icon: root.askFirst ? "search" : root.follow && root.followRow ? "rss" : "download"
                         primary: true
-                        enabled: !root.acting && (root.planList.length > 0 || (root.follow && !!root.followRow))
-                        busy: root.acting
-                        onClicked: root.go()
+                        enabled: root.askFirst || (!root.acting && !root.searchingNow && (root.planList.length > 0 || (root.follow && !!root.followRow)))
+                        busy: root.acting || root.searchingNow
+                        onClicked: root.askFirst ? root.fetch(root.suggested) : root.go()
                     }
                     // What the last Get or Subscribe did, until the next pick
                     Label { objectName: "get-action-line"; visible: root.actionLine !== "" && root.actionError === "" && root.planList.length === 0
@@ -1215,6 +1250,8 @@ Item {
                 height: implicitHeight
                 codes: card.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
                 fills: card.eps.map(function(e) { return e.p })
+                numbered: true
+                numbers: card.eps.map(function(e) { return e.n })
                 cubeSize: theme.space(12.25)
                 minSize: theme.space(4)
                 maxRows: 3
@@ -1315,6 +1352,7 @@ Item {
             height: implicitHeight
             codes: gr.codes
             fills: gr.fills
+            numbered: true
             // A long show trades cube size for rows before it folds episodes together: a
             // season keeps big cubes, a few hundred episodes stay one cube each
             cubeSize: root.total <= 60 ? theme.space(6) : root.total <= 160 ? theme.space(4) : theme.space(3)
