@@ -60,7 +60,7 @@ pub fn of(conn: &Connection, paths: &[&str]) -> Result<HashMap<String, Origin>, 
 /// Whether a search's release is the torrent a file came from: its magnet
 /// names the same info hash, or, for a `.torrent` link, which names none,
 /// the release reads as the torrent the way it would read as the file
-/// (`facts::same_release`, with the torrent's name in the file's place).
+/// (`releases::facts::same_release`, with the torrent's name in the file's place).
 pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts) -> bool {
     match crate::foundation::magnet::hash(link) {
         Some(hash) => hash.eq_ignore_ascii_case(&origin.hash),
@@ -267,8 +267,8 @@ fn slashes(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Core;
     use crate::net::FakeHttp;
+    use anibeam_foundation::testing::Running;
 
     fn origin(hash: &str, name: &str) -> Origin {
         Origin {
@@ -310,22 +310,16 @@ mod tests {
         ));
     }
 
-    fn core_with(http: Arc<FakeHttp>) -> (tempfile::TempDir, Arc<Core>) {
+    fn running_with(http: Arc<FakeHttp>) -> (tempfile::TempDir, Running) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http,
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        (dir, core)
+        let running = Running::open(dir.path(), http);
+        (dir, running)
     }
 
     /// One show with episode 1 on its own and episode 2 inside a batch
     /// folder, the way two torrents would leave them.
-    fn library(core: &Core) -> u64 {
-        core.services.store
+    fn library(running: &Running) -> u64 {
+        running.services.store
             .write(|c| {
                 c.execute(
                     "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
@@ -367,8 +361,8 @@ mod tests {
     #[test]
     fn the_client_says_which_torrent_holds_each_file() {
         let http = FakeHttp::new();
-        let (_dir, core) = core_with(http.clone());
-        library(&core);
+        let (_dir, running) = running_with(http.clone());
+        library(&running);
         http.push_for(
             "torrents/files",
             200,
@@ -384,13 +378,13 @@ mod tests {
             torrent("R1BBB", "Batch", "/lib/Show/Batch"),
             torrent("R1CCC", "Elsewhere", "/downloads/Elsewhere"),
         ];
-        let n = core
+        let n = running
             .services
             .handle
-            .block_on(record_from(&core.services, Some(&client), &torrents))
+            .block_on(record_from(&running.services, Some(&client), &torrents))
             .unwrap();
         assert_eq!(n, 2);
-        let known = core
+        let known = running
             .services
             .store
             .read(|c| {
@@ -413,10 +407,10 @@ mod tests {
         );
 
         let asked = http.requests().len();
-        let again = core
+        let again = running
             .services
             .handle
-            .block_on(record_from(&core.services, Some(&client), &torrents))
+            .block_on(record_from(&running.services, Some(&client), &torrents))
             .unwrap();
         assert_eq!(again, 0);
         assert_eq!(http.requests().len(), asked);
@@ -424,7 +418,8 @@ mod tests {
         // Downloaded over by another torrent: the file is newer than its
         // record, so the new torrent is the origin. A file the library no
         // longer holds loses its origin.
-        core.services
+        running
+            .services
             .store
             .write(|c| {
                 c.execute(
@@ -442,11 +437,12 @@ mod tests {
             "[Grp] Show - 01 [1080p].mkv",
             "/lib/Show/[Grp] Show - 01 [1080p].mkv",
         )];
-        core.services
+        running
+            .services
             .handle
-            .block_on(record_from(&core.services, Some(&client), &over))
+            .block_on(record_from(&running.services, Some(&client), &over))
             .unwrap();
-        let known = core
+        let known = running
             .services
             .store
             .read(|c| {
@@ -461,7 +457,7 @@ mod tests {
             .unwrap();
         assert_eq!(known.len(), 1, "{known:?}");
         assert_eq!(known["/lib/Show/[Grp] Show - 01 [1080p].mkv"].hash, "r1ddd");
-        core.shutdown();
+        running.shutdown();
     }
 
     /// The phone's engine lists each torrent's files with it and has no
@@ -470,8 +466,8 @@ mod tests {
     #[test]
     fn a_torrent_that_lists_its_files_is_read_from_them() {
         let http = FakeHttp::new();
-        let (_dir, core) = core_with(http.clone());
-        library(&core);
+        let (_dir, running) = running_with(http.clone());
+        library(&running);
         let file = |name: &str| TorrentFile {
             name: name.into(),
             size: 1,
@@ -493,14 +489,18 @@ mod tests {
         // Without a list of its own and no client, a batch records nothing, even one
         // whose folder holds a file with no origin.
         let unlisted = torrent("GGG", "Batch", "/lib/Show/Batch");
-        let n = core
+        let n = running
             .services
             .handle
-            .block_on(record_from(&core.services, None, &[batch, one, unlisted]))
+            .block_on(record_from(
+                &running.services,
+                None,
+                &[batch, one, unlisted],
+            ))
             .unwrap();
         assert_eq!(n, 2);
         assert!(http.requests().is_empty());
-        let known = core
+        let known = running
             .services
             .store
             .read(|c| {
@@ -521,7 +521,7 @@ mod tests {
             known["/lib/Show/[Grp] Show - 01 [1080p].mkv"],
             origin("fff", "[Grp] Show - 01 [1080p].mkv")
         );
-        core.shutdown();
+        running.shutdown();
     }
 
     fn release(title: &str, link: &str) -> Release {
@@ -534,9 +534,9 @@ mod tests {
     #[test]
     fn on_disk_goes_by_the_torrent_where_one_is_known() {
         let http = FakeHttp::new();
-        let (_dir, core) = core_with(http.clone());
-        library(&core);
-        core.services.store
+        let (_dir, running) = running_with(http.clone());
+        library(&running);
+        running.services.store
             .write(|c| {
                 c.execute(
                     "INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at)
@@ -558,11 +558,11 @@ mod tests {
             // No origin for episode 2: the name still decides
             release("Show - 02", "https://example.invalid/2.torrent"),
         ];
-        let (facts, show) = crate::downloads::annotate(&core.services, "Show", &items);
+        let (facts, show) = crate::downloads::annotate(&running.services, "Show", &items);
         assert!(show.is_some());
         assert_eq!((facts[0].on_disk, facts[0].other_on_disk), (false, true));
         assert_eq!((facts[1].on_disk, facts[1].other_on_disk), (true, false));
         assert!(facts[2].on_disk, "{:?}", facts[2]);
-        core.shutdown();
+        running.shutdown();
     }
 }

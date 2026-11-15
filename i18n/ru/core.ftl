@@ -127,7 +127,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = вставьте адрес репозитория
 core-repos-must-be-https = адрес должен начинаться с https
@@ -166,7 +166,7 @@ core-repos-note-theirs = Этот anirss запущен вами, и компь�
 core-repos-note-sandbox = Этот запуск не пишет в конфиг anirss, поэтому здесь компьютер не ищет по { $id }
 core-repos-note-old = anirss { $version } не принимает источники от { -app-name }; обновите его до { $min } или новее, чтобы компьютер искал по нему
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = ключ индекса не является ключом ed25519
 core-repos-key-not-base64 = ключ индекса не является 32 байтами в base64
@@ -319,7 +319,7 @@ core-jobs-start-endpoint = Запуск источника загрузки
 core-jobs-schedule-agent = Запрос расписания у ИИ-агента
     .stopped = Запрос расписания у ИИ-агента остановился из-за проблемы.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Сейчас в эфире
 core-airing-now-winter = Зима { $year }
@@ -340,7 +340,7 @@ core-airing-now-already-on =
     }».
 core-airing-now-plan-failed = Не удалось добавить «{ $title }» в «В планах». Попробуйте позже.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Вышла серия { $number } сериала «{ $title }».
 
@@ -473,18 +473,18 @@ core-prefs-provider-count = { $provider } указан несколько раз
 core-prefs-outside = { $value } вне диапазона от { $low } до { $high }
 core-prefs-empty = пусто
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Подбор сериалов для вас
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Поиск людей с похожим вкусом
 core-recommended-reading-lists = Чтение их списков
 core-recommended-reading-yours = Чтение ваших сериалов
 core-recommended-reading-suggestions = Чтение сериалов для рекомендаций
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = На { -anilist } нет аниме { $id }
 
@@ -543,7 +543,7 @@ core-update-cannot-read-dmg = Не удалось прочитать dmg: { $err
 core-update-no-app = В dmg нет приложения
 core-update-cannot-copy = Не удалось скопировать новое приложение рядом с этим: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
@@ -568,7 +568,7 @@ core-presence-no-room = У этого приглашения из Discord ещё
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = Для { $tracker } не задан Client ID.
@@ -578,15 +578,15 @@ core-trackers-mal-wants-secret = MyAnimeList требует Client Secret это
 core-trackers-token-reply-unreadable = ответ с токеном не читается: { $error }
 core-trackers-token-reply-no-token = в ответе нет токена доступа
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = токен доступа не сохранён, переподключитесь в настройках
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = у аккаунта нет id пользователя
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = не выбраны сериалы для переноса
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -612,7 +612,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } не принял «{ $show }»: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Время авторизации истекло, попробуйте снова.
 core-trackers-oauth-state-mismatch = не совпал state, возможна CSRF-атака, вход прерван.
@@ -643,7 +643,7 @@ core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Перенос в «Отложено» на { $tracker }
@@ -700,7 +700,7 @@ core-trackers-back-on-watching = «{ $name }» снова в «Смотрю» н
 core-trackers-back-on-watching-two = «{ $name }» снова в «Смотрю» на { $site } и { $secondSite }.
 core-trackers-back-on-watching-failed = Не удалось вернуть «{ $name }» в «Смотрю». Попробуйте позже.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } ограничил частоту запросов, попробуйте через минуту.
@@ -820,7 +820,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } сериала хранятся на этом компьютере, трекера для отправки нет.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = «{ $show }» привязан к «{ $title }».
@@ -923,7 +923,7 @@ core-metadata-find-busy =
        *[other] { $busy } сериала уже привязываются.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Не удалось прочитать ссылку. Вставьте адрес страницы AniList, MyAnimeList, TVmaze или IMDb.
 core-metadata-no-mal-entry = На AniList нет записи для этого id MyAnimeList.
@@ -963,19 +963,19 @@ core-metadata-updated-some =
        *[other] Обновлены данные о { $count } сериалах; не удалось обновить: { $failed }.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = На TVmaze нет сериала { $id }
 core-metadata-no-such-media = На AniList нет записи { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = ссылки IMDb из Wikidata
 core-metadata-progress-imdb-ratings = рейтинги IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи
@@ -1449,7 +1449,7 @@ core-downloads-rolled = «{ $title }»: теперь серии с { $from } п�
 core-downloads-roll-ahead = держите хотя бы одну серию впрок
 core-downloads-roll-nothing = скачивать нечего
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = источник поиска JSON берётся из репозитория источников, где описано, как читать его поля
 core-releases-endpoint-no-name = не указано `name`
@@ -1465,7 +1465,7 @@ core-releases-endpoint-not-http = { $name }: адрес должен начин�
 core-releases-endpoint-needs-query = { $name }: url типа { $kind } должен содержать подстановку {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: url типа { $kind } сам добавляет запрос, поэтому {"{"}query{"}"} в нём не нужен
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = индексатор ответил ошибкой { $code }
@@ -1473,11 +1473,11 @@ core-releases-bad-feed = некорректная лента: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = лента ответила { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = это не JSON ленты: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = это не JSON: { $error }
 # $message is what the search said about itself
@@ -1488,7 +1488,7 @@ core-releases-no-results-field = в ответе нет результатов �
 core-releases-results-not-list = результаты в ответе не являются списком
 core-releases-search-answered = поиск ответил { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = источников пока нет: добавьте репозиторий или источник вручную в разделе «Источники» в меню «Ещё»
 core-releases-no-source-named = нет источника { $name }
@@ -1496,7 +1496,7 @@ core-releases-empty-query = введите, что искать
 core-releases-cannot-follow = на { $name } нельзя подписаться: он отвечает на поиск, но у него нет ленты для проверки новых серий
 core-releases-endpoint-gone = { $name } больше недоступен: удалён, выключен или потерял ключ
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1510,12 +1510,12 @@ core-releases-quirks-url-https = url в show_feed должен быть https
 core-releases-quirks-url-host = url в show_feed должен быть на хосте самого источника
 core-releases-quirks-url-slug = url в show_feed содержит {"{"}slug{"}"} ровно один раз и никаких других подстановок
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = операции 'tokens' нужен непустой список `tokens`
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = пакет { $group }
