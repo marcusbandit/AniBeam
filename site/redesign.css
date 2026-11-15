@@ -680,4 +680,5 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
   .rd .rows .feat.row { position: relative; gap: 20px; padding: 48px 0; }
   .rd .rows .feat.row + .feat.row::before { content: ""; position: absolute; left: -10%; right: -10%; top: 0; height: 2px; border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.75) 30%, rgba(255, 238, 170, 0.95) 60%, transparent); box-shadow: 0 0 14px 2px rgba(253, 201, 1, 0.35); transform: rotate(-4deg); }
   .rd .rows .feat.row h3 { font-size: 32px; }
+  .rd .row-vis { background: none; }
 }
