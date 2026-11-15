@@ -4,6 +4,7 @@ import { Tr } from "tr.slint";
 import { Ask, HostField } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoPanes } from "repos.slint";
+import { Scroll } from "panes.slint";
 import { NotifyPreview, NotifyRow } from "notify.slint";
 import { LangList } from "lang.slint";
 
@@ -42,125 +43,118 @@ export component Onboarding inherits Rectangle {
         }
     }
 
-    scroller := Flickable {
+    // A page's own Scroll, so a step never scrolls sideways and its rows fit the width
+    // they are given (#874).
+    Scroll {
         y: Theme.pad + 3px;
         height: foot.y - self.y;
-        // Only ever as wide as the screen, as a page's Scroll is: a step never scrolls
-        // sideways, and its rows fit the width they are given (#874).
-        content-width: self.width;
-        VerticalLayout {
-            width: scroller.width;
-            alignment: start;
-            padding-left: Theme.pad;
-            padding-right: Theme.pad;
-            padding-top: Theme.pad * 2;
-            padding-bottom: Theme.pad;
+        pad-x: Theme.pad;
+        pad-top: Theme.pad * 2;
+        pad-bottom: Theme.pad;
+
+        if AppData.step == 0: Image {
+            height: 20 * Theme.unit;
+            width: self.height;
+            source: @image-url("icons/app.png");
+        }
+        Text {
+            text: root.pages[AppData.step].title;
+            color: Theme.text;
+            font-size: AppData.step == 0 ? 72px : Theme.page + 6px;
+            font-family: Theme.display-face;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.pages[AppData.step].note;
+            color: Theme.dim;
+            font-size: Theme.normal + 1px;
+            wrap: word-wrap;
+        }
+        Rectangle { height: Theme.unit * 2; }
+
+        if AppData.step == 1: LangList { }
+
+        if AppData.step == 2: ListGroup {
+            ListRow {
+                label: Tr.t("tracker-anilist");
+                helper: AppData.anilist-state;
+                tappable: true;
+                chevron: true;
+                clicked => { AppData.connect-tracker(0); }
+            }
+            ListRow {
+                label: Tr.t("tracker-mal");
+                helper: AppData.mal-state;
+                tappable: true;
+                chevron: true;
+                last: true;
+                clicked => { AppData.connect-tracker(1); }
+            }
+        }
+
+        if AppData.step == 3: ListGroup {
+            ListRow {
+                label: Tr.t("onb-wifi-only");
+                helper: AppData.wifi-only ? Tr.t("onb-wifi-on") : Tr.t("onb-wifi-off");
+                last: true;
+                switch: true;
+                on: AppData.wifi-only;
+                toggled => {
+                    if (AppData.wifi-only) {
+                        Ask.mobile = true;
+                    } else {
+                        AppData.set-wifi-only(true);
+                    }
+                }
+            }
+        }
+
+        if AppData.step == 4: VerticalLayout {
             spacing: Theme.unit * 4;
-
-            if AppData.step == 0: Image {
-                height: 20 * Theme.unit;
-                width: self.height;
-                source: @image-url("icons/app.png");
+            Figure {
+                value: AppData.limit-label;
+                caption: Tr.t("onb-storage-caption");
             }
-            Text {
-                text: root.pages[AppData.step].title;
-                color: Theme.text;
-                font-size: AppData.step == 0 ? 72px : Theme.page + 6px;
-                font-family: Theme.display-face;
-                wrap: word-wrap;
+            Slider {
+                minimum: 1;
+                maximum: AppData.disk-gb;
+                value: AppData.limit-gb;
+                moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
             }
-            Text {
-                text: root.pages[AppData.step].note;
+            if AppData.free-line != "": Text {
+                text: AppData.free-line;
                 color: Theme.dim;
-                font-size: Theme.normal + 1px;
+                font-size: Theme.small;
                 wrap: word-wrap;
             }
-            Rectangle { height: Theme.unit * 2; }
-
-            if AppData.step == 1: LangList { }
-
-            if AppData.step == 2: ListGroup {
+            ListGroup {
                 ListRow {
-                    label: Tr.t("tracker-anilist");
-                    helper: AppData.anilist-state;
-                    tappable: true;
-                    chevron: true;
-                    clicked => { AppData.connect-tracker(0); }
-                }
-                ListRow {
-                    label: Tr.t("tracker-mal");
-                    helper: AppData.mal-state;
-                    tappable: true;
-                    chevron: true;
-                    last: true;
-                    clicked => { AppData.connect-tracker(1); }
-                }
-            }
-
-            if AppData.step == 3: ListGroup {
-                ListRow {
-                    label: Tr.t("onb-wifi-only");
-                    helper: AppData.wifi-only ? Tr.t("onb-wifi-on") : Tr.t("onb-wifi-off");
+                    label: Tr.t("onb-use-cap");
+                    helper: AppData.limit-on
+                        ? Tr.s("onb-cap-on", "cap", AppData.limit-label)
+                        : Tr.t("onb-cap-off");
                     last: true;
                     switch: true;
-                    on: AppData.wifi-only;
-                    toggled => {
-                        if (AppData.wifi-only) {
-                            Ask.mobile = true;
-                        } else {
-                            AppData.set-wifi-only(true);
-                        }
-                    }
+                    on: AppData.limit-on;
+                    toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
                 }
             }
-
-            if AppData.step == 4: VerticalLayout {
-                spacing: Theme.unit * 4;
-                Figure {
-                    value: AppData.limit-label;
-                    caption: Tr.t("onb-storage-caption");
-                }
-                Slider {
-                    minimum: 1;
-                    maximum: AppData.disk-gb;
-                    value: AppData.limit-gb;
-                    moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
-                }
-                if AppData.free-line != "": Text {
-                    text: AppData.free-line;
-                    color: Theme.dim;
-                    font-size: Theme.small;
-                    wrap: word-wrap;
-                }
-                ListGroup {
-                    ListRow {
-                        label: Tr.t("onb-use-cap");
-                        helper: AppData.limit-on
-                            ? Tr.s("onb-cap-on", "cap", AppData.limit-label)
-                            : Tr.t("onb-cap-off");
-                        last: true;
-                        switch: true;
-                        on: AppData.limit-on;
-                        toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
-                    }
-                }
-            }
-
-            if AppData.step == 5: VerticalLayout {
-                spacing: Theme.unit * 4;
-                NotifyPreview { }
-                ListGroup {
-                    NotifyRow { last: true; }
-                }
-            }
-
-            if AppData.step == 6: VerticalLayout {
-                spacing: Theme.unit * 4;
-                RepoPanes { }
-            }
-
-            if AppData.step == 7: HostField { }
         }
+
+        if AppData.step == 5: VerticalLayout {
+            spacing: Theme.unit * 4;
+            NotifyPreview { }
+            ListGroup {
+                NotifyRow { last: true; }
+            }
+        }
+
+        if AppData.step == 6: VerticalLayout {
+            spacing: Theme.unit * 4;
+            RepoPanes { }
+        }
+
+        if AppData.step == 7: HostField { }
     }
 
     foot := VerticalLayout {

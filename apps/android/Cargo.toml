@@ -53,7 +53,7 @@ block2 = "0.6"
 
 # Lays the Slint pages out headless in tests, to measure them at a narrow width.
 [dev-dependencies]
-i-slint-backend-testing = "=1.18.1"
+i-slint-backend-testing = "1.18"
 
 [build-dependencies]
 slint-build = "1.18"
