@@ -442,9 +442,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } fonte pronta per la ricerca.
    *[other] { $count } fonti pronte per la ricerca.
 }
-onboarding-search-none = Anibeam non include fonti proprie. Le aggiungi da un repo di fonti: un link che qualcuno condivide con te, da incollare in Impostazioni, Download.
-onboarding-sources-after = Si apre dopo la configurazione
-onboarding-sources-add = Aggiungi un repo dopo la configurazione
 onboarding-fetch-title = Chi scarica
 onboarding-fetch-auto = Ci pensa Anibeam
 onboarding-fetch-recommended = Consigliato
@@ -469,7 +466,7 @@ onboarding-ready-lists = La tua lista
 onboarding-ready-lists-as = { $tracker }, come { $user }
 onboarding-ready-lists-none = Non ancora collegata. La trovi in Impostazioni, Account quando vuoi.
 onboarding-ready-downloads = Download
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Ancora nessuna fonte
     [one] { $sources } fonte
    *[other] { $sources } fonti
@@ -479,9 +476,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Tutto pronto.
     [opens] Poi si apre Impostazioni, Download.
-   *[both] Entrambi sono in Impostazioni, Download.
+   *[sources] Aggiungi un elenco di fonti per cercare.
 }
-onboarding-ready-open-downloads = Apri Impostazioni, Download
 onboarding-ready-set-up = Configura ora
 
 ## Rail.qml
@@ -1675,6 +1671,7 @@ downloads-error-unknown = Qualcosa è andato storto. Riprova.
 downloads-search-all-off = Tutte le fonti sono spente. Accendine una per cercare.
 downloads-turn-on = Accendi { $name }
 downloads-search-no-sources = Non ci sono ancora fonti in cui cercare. Aggiungi un elenco di fonti nelle Impostazioni, in Download.
+downloads-no-sources = Ancora nessuna fonte in cui cercare
 downloads-search-none-started = Nessuna fonte è riuscita ad avviare la ricerca. Riprova tra un attimo.
 downloads-auto-resolution = Ristretto a { $resolution }, la più nitida disponibile
 downloads-search-one-failed = La ricerca su { $name } non ha funzionato. Riprova, o cerca su un'altra fonte.
@@ -2156,7 +2153,6 @@ player-not-now = Non ora
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Elenchi di fonti
-endpoint-repos-panel-helper = Un elenco di fonti è un insieme firmato di posti in cui cercare, aggiunto dal suo indirizzo. Anibeam controlla la firma e ti mostra la chiave prima di salvare qualsiasi cosa, poi installi le fonti che vuoi. Quelle installate si aggiungono a Fonti di ricerca qui sopra.
 endpoint-repos-panel-could-not-start = Anibeam non è riuscito ad avviarlo. Riprova tra un attimo.
 endpoint-repos-panel-needs-value = { $name } richiede un valore
 endpoint-repos-panel-values-of = Valori di { $name }
@@ -2169,19 +2165,9 @@ endpoint-repos-panel-needs-fields = Richiede { $fields } prima di cercare.
 endpoint-repos-panel-no-longer-offered = Non più offerta dal suo elenco di fonti.
 endpoint-repos-panel-update-requests-to = L'aggiornamento invia richieste a { $host }.
 endpoint-repos-panel-unreadable = Impossibile leggere questo elenco. Aggiorna elenchi riprova.
-endpoint-repos-panel-add-list = Aggiungi un elenco di fonti
-endpoint-repos-panel-add-list-helper = L'indirizzo del suo file indice, o il percorso di uno su questa macchina.
 endpoint-repos-panel-checking = Controllo
 endpoint-repos-panel-add = Aggiungi
-endpoint-repos-panel-trust-question = Ti fidi di { $name }?
 endpoint-repos-panel-fingerprint = Impronta della chiave  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } fonti, firmate. Le sue fonti decidono dove vanno le tue ricerche; fidati di un elenco solo se viene da qualcuno di cui ti fidi.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } fonti, firmate, già fidate. Le sue fonti decidono dove vanno le tue ricerche; fidati di un elenco solo se viene da qualcuno di cui ti fidi.
-endpoint-repos-panel-trust = Fidati
 endpoint-repos-panel-saving = Salvataggio
 endpoint-repos-panel-install = Installa
 endpoint-repos-panel-update = Aggiorna
@@ -2196,6 +2182,22 @@ endpoint-repos-panel-by-hand-helper = Per siti senza elenco: qualsiasi feed con 
 endpoint-repos-panel-name = Nome
 endpoint-repos-panel-refreshing = Aggiornamento
 endpoint-repos-panel-refresh = Aggiorna elenchi
+
+## SourceAttach.qml
+
+source-attach-placeholder = Incolla l'indirizzo di un elenco di fonti
+source-attach-what = Cos'è un elenco di fonti?
+source-attach-recent = Usati prima
+source-attach-added = { $count ->
+    [one] Aggiunto { $name }: { $count } fonte attiva.
+   *[other] Aggiunto { $name }: { $count } fonti attive.
+}
+source-attach-added-none = Aggiunto { $name }. Nessuna nuova fonte da attivare.
+source-attach-waiting = { $count ->
+    [one] { $names } chiede prima un valore.
+   *[other] { $names } chiedono prima un valore.
+}
+source-attach-fill-in = Compila
 
 ## ScheduleSheet.qml
 
@@ -2376,6 +2378,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Ogni tasto a cui Anibeam risponde
 settings-status-downloads-unread = Non ancora letto
+settings-status-downloads-no-sources = Ancora nessuna fonte
 settings-status-downloads-answered = qBittorrent ha risposto
 settings-status-downloads-missing = Helper di ricerca non installato
 settings-status-downloads-unconnected = Non ancora collegato
@@ -2629,7 +2632,6 @@ settings-downloads-sources-title = Fonti di ricerca
 settings-downloads-sources-helper = Dove va una ricerca, in ordine di tentativo. Se una fonte non trova nulla, tocca alla successiva.
 settings-downloads-sources-empty = Ancora nessuna fonte configurata
 settings-downloads-sources-connect = Collega l'helper di ricerca per elencarle
-settings-downloads-sources-empty-helper = Aggiungi un elenco di fonti qui sotto e le sue fonti compaiono qui.
 settings-downloads-config-file = File di impostazioni dell'helper di ricerca
 settings-downloads-config-native-helper = Contiene le cartelle di salvataggio, i tag e le regole della migliore corrispondenza, che Anibeam segue quando avvia l'helper. Le sue fonti sono solo dell'helper.
 settings-downloads-config-helper = Contiene le fonti, le cartelle di salvataggio, i tag e le regole della migliore corrispondenza.

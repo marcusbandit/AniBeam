@@ -134,6 +134,7 @@ fn main() {
             .qml_file("qml/SettingsHelpTab.qml")
             .qml_file("qml/SettingsDownloadsTab.qml")
             .qml_file("qml/EndpointReposPanel.qml")
+            .qml_file("qml/SourceAttach.qml")
             .qml_file("qml/DownloadsPage.qml")
             .qml_file("qml/ReleaseTable.qml")
             .qml_file("qml/SearchProgress.qml")

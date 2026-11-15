@@ -498,9 +498,6 @@ onboarding-search-ready = { $count ->
     [many] { $count } źródeł gotowych do wyszukiwania.
    *[other] { $count } źródła gotowego do wyszukiwania.
 }
-onboarding-search-none = Anibeam nie ma własnych źródeł. Dodajesz je z repozytorium źródeł: linku, który ktoś Ci udostępni, a Ty wklejasz go w Ustawieniach, Pobieranie.
-onboarding-sources-after = Otworzy się po konfiguracji
-onboarding-sources-add = Dodaj repozytorium po konfiguracji
 onboarding-fetch-title = Kto pobiera
 onboarding-fetch-auto = Niech zajmie się tym Anibeam
 onboarding-fetch-recommended = Zalecane
@@ -531,7 +528,7 @@ onboarding-ready-lists = Twoja lista
 onboarding-ready-lists-as = { $tracker }, jako { $user }
 onboarding-ready-lists-none = Jeszcze nie połączono. Znajdziesz to w Ustawieniach, Konta, kiedy zechcesz.
 onboarding-ready-downloads = Pobieranie
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Jeszcze bez źródeł
     [one] { $sources } źródło
     [few] { $sources } źródła
@@ -543,9 +540,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Wszystko gotowe.
     [opens] Następnie otworzą się Ustawienia, Pobieranie.
-   *[both] Oba są w Ustawieniach, Pobieranie.
+   *[sources] Dodaj listę źródeł, żeby szukać.
 }
-onboarding-ready-open-downloads = Otwórz Ustawienia, Pobieranie
 onboarding-ready-set-up = Skonfiguruj teraz
 
 ## Rail.qml
@@ -1929,6 +1925,7 @@ downloads-error-unknown = Coś poszło nie tak. Spróbuj ponownie.
 downloads-search-all-off = Każde źródło jest wyłączone. Włącz jedno, aby szukać.
 downloads-turn-on = Włącz { $name }
 downloads-search-no-sources = Nie ma jeszcze źródeł do przeszukania. Dodaj listę źródeł w Ustawieniach, w sekcji Pobieranie.
+downloads-no-sources = Nie ma jeszcze źródeł do przeszukania
 downloads-search-none-started = Żadne źródło nie mogło rozpocząć wyszukiwania. Spróbuj za chwilę.
 downloads-auto-resolution = Zawężono do { $resolution }, najostrzejszej dostępnej
 downloads-search-one-failed = Wyszukiwanie w { $name } nie zadziałało. Spróbuj ponownie albo przeszukaj inne źródło.
@@ -2456,7 +2453,6 @@ player-not-now = Nie teraz
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Listy źródeł
-endpoint-repos-panel-helper = Lista źródeł to podpisany zestaw miejsc do przeszukiwania, dodawany po adresie. Anibeam sprawdza podpis i pokazuje Ci klucz, zanim cokolwiek zapisze, a potem instalujesz wybrane źródła. Zainstalowane dołączają do Źródeł wyszukiwania powyżej.
 endpoint-repos-panel-could-not-start = Anibeam nie mógł tego uruchomić. Spróbuj za chwilę.
 endpoint-repos-panel-needs-value = { $name } potrzebuje wartości
 endpoint-repos-panel-values-of = Wartości { $name }
@@ -2470,19 +2466,9 @@ endpoint-repos-panel-needs-fields = Przed wyszukiwaniem potrzebuje pól: { $fiel
 endpoint-repos-panel-no-longer-offered = Jego lista źródeł już go nie oferuje.
 endpoint-repos-panel-update-requests-to = Aktualizacja wysyła zapytania do { $host }.
 endpoint-repos-panel-unreadable = Nie udało się odczytać tej listy. Odśwież listy spróbuje ponownie.
-endpoint-repos-panel-add-list = Dodaj listę źródeł
-endpoint-repos-panel-add-list-helper = Adres jej pliku indeksu albo ścieżka do niego na tym komputerze.
 endpoint-repos-panel-checking = Sprawdzanie
 endpoint-repos-panel-add = Dodaj
-endpoint-repos-panel-trust-question = Zaufać { $name }?
 endpoint-repos-panel-fingerprint = Odcisk klucza  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    Źródła: { $count }, podpisane. Jej źródła decydują, dokąd trafiają Twoje wyszukiwania; ufaj liście tylko od kogoś, komu ufasz.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    Źródła: { $count }, podpisane, już zaufane. Jej źródła decydują, dokąd trafiają Twoje wyszukiwania; ufaj liście tylko od kogoś, komu ufasz.
-endpoint-repos-panel-trust = Zaufaj
 endpoint-repos-panel-saving = Zapisywanie
 endpoint-repos-panel-install = Zainstaluj
 endpoint-repos-panel-update = Aktualizuj
@@ -2497,6 +2483,22 @@ endpoint-repos-panel-by-hand-helper = Dla witryn bez listy: dowolny kanał z {"{
 endpoint-repos-panel-name = Nazwa
 endpoint-repos-panel-refreshing = Odświeżanie
 endpoint-repos-panel-refresh = Odśwież listy
+
+## SourceAttach.qml
+
+source-attach-placeholder = Wklej adres listy źródeł
+source-attach-what = Czym jest lista źródeł?
+source-attach-recent = Używane wcześniej
+source-attach-added = { $count ->
+    [one] Dodano { $name }: włączone źródła: { $count }.
+   *[other] Dodano { $name }: włączone źródła: { $count }.
+}
+source-attach-added-none = Dodano { $name }. Brak nowych źródeł do włączenia.
+source-attach-waiting = { $count ->
+    [one] { $names } najpierw potrzebuje wartości.
+   *[other] { $names } najpierw potrzebują wartości.
+}
+source-attach-fill-in = Uzupełnij
 
 ## ScheduleSheet.qml
 
@@ -2699,6 +2701,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Skróty klawiszowe Anibeam
 settings-status-downloads-unread = Jeszcze nie odczytano
+settings-status-downloads-no-sources = Brak źródeł
 settings-status-downloads-answered = qBittorrent odpowiedział
 settings-status-downloads-missing = Pomocnik wyszukiwania nie jest zainstalowany
 settings-status-downloads-unconnected = Jeszcze nie połączono
@@ -2957,7 +2960,6 @@ settings-downloads-sources-title = Źródła wyszukiwania
 settings-downloads-sources-helper = Dokąd trafia wyszukiwanie, po kolei. Puste źródło przekazuje je dalej.
 settings-downloads-sources-empty = Jeszcze nie ustawiono źródeł
 settings-downloads-sources-connect = Połącz pomocnika wyszukiwania, aby je wyświetlić
-settings-downloads-sources-empty-helper = Dodaj listę źródeł poniżej, a jej źródła pojawią się tutaj.
 settings-downloads-config-file = Plik ustawień pomocnika wyszukiwania
 settings-downloads-config-native-helper = Zawiera foldery zapisu, tagi i reguły najlepszego dopasowania, których Anibeam przestrzega, gdy uruchamia pomocnika. Jego własne źródła należą tylko do pomocnika.
 settings-downloads-config-helper = Zawiera źródła, foldery zapisu, tagi i reguły najlepszego dopasowania.

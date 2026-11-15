@@ -442,9 +442,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } fuente lista para buscar.
    *[other] { $count } fuentes listas para buscar.
 }
-onboarding-search-none = Anibeam no trae fuentes propias. Las añades desde un repo de fuentes: un enlace que alguien te comparte y que pegas en Ajustes, Descargas.
-onboarding-sources-after = Se abre tras la configuración
-onboarding-sources-add = Añadir un repo después
 onboarding-fetch-title = Quién descarga
 onboarding-fetch-auto = Que se encargue Anibeam
 onboarding-fetch-recommended = Recomendado
@@ -469,7 +466,7 @@ onboarding-ready-lists = Tu lista
 onboarding-ready-lists-as = { $tracker }, como { $user }
 onboarding-ready-lists-none = Aún sin conectar. Está en Ajustes, Cuentas cuando lo quieras.
 onboarding-ready-downloads = Descargas
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Aún sin fuentes
     [one] { $sources } fuente
    *[other] { $sources } fuentes
@@ -479,9 +476,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Todo listo.
     [opens] A continuación se abre Ajustes, Descargas.
-   *[both] Las dos cosas están en Ajustes, Descargas.
+   *[sources] Añade una lista de fuentes para buscar.
 }
-onboarding-ready-open-downloads = Abrir Ajustes, Descargas
 onboarding-ready-set-up = Configurar ahora
 
 ## Rail.qml
@@ -1675,6 +1671,7 @@ downloads-error-unknown = Algo falló. Inténtalo de nuevo.
 downloads-search-all-off = Todas las fuentes están desactivadas. Activa una para buscar.
 downloads-turn-on = Activar { $name }
 downloads-search-no-sources = Aún no hay fuentes donde buscar. Añade una lista de fuentes en Ajustes, en Descargas.
+downloads-no-sources = Aún no hay fuentes donde buscar
 downloads-search-none-started = Ninguna fuente pudo iniciar la búsqueda. Inténtalo de nuevo en un momento.
 downloads-auto-resolution = Acotado a { $resolution }, la mejor disponible
 downloads-search-one-failed = La búsqueda en { $name } no funcionó. Inténtalo de nuevo, o busca en otra fuente.
@@ -2156,7 +2153,6 @@ player-not-now = Ahora no
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Listas de fuentes
-endpoint-repos-panel-helper = Una lista de fuentes es un conjunto firmado de sitios de búsqueda, añadido por su dirección. Anibeam verifica la firma y muestra la clave antes de guardar nada; luego instalas las que quieras, que se suman a Fuentes de búsqueda.
 endpoint-repos-panel-could-not-start = Anibeam no pudo iniciar eso. Inténtalo de nuevo en un momento.
 endpoint-repos-panel-needs-value = { $name } necesita un valor
 endpoint-repos-panel-values-of = Valores de { $name }
@@ -2169,19 +2165,9 @@ endpoint-repos-panel-needs-fields = Necesita { $fields } antes de buscar.
 endpoint-repos-panel-no-longer-offered = Su lista de fuentes ya no la ofrece.
 endpoint-repos-panel-update-requests-to = La actualización envía peticiones a { $host }.
 endpoint-repos-panel-unreadable = No se pudo leer esta lista. Actualizar listas lo vuelve a intentar.
-endpoint-repos-panel-add-list = Añadir una lista de fuentes
-endpoint-repos-panel-add-list-helper = La dirección de su archivo de índice, o la ruta a uno en este equipo.
 endpoint-repos-panel-checking = Comprobando
 endpoint-repos-panel-add = Añadir
-endpoint-repos-panel-trust-question = ¿Confiar en { $name }?
 endpoint-repos-panel-fingerprint = Huella de la clave  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } fuentes, firmadas. Sus fuentes deciden adónde van tus búsquedas; confía en una lista solo si viene de alguien de confianza.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } fuentes, firmadas, ya de confianza. Sus fuentes deciden adónde van tus búsquedas; confía en una lista solo si viene de alguien de confianza.
-endpoint-repos-panel-trust = Confiar
 endpoint-repos-panel-saving = Guardando
 endpoint-repos-panel-install = Instalar
 endpoint-repos-panel-update = Actualizar
@@ -2196,6 +2182,22 @@ endpoint-repos-panel-by-hand-helper = Para sitios sin lista: cualquier feed con 
 endpoint-repos-panel-name = Nombre
 endpoint-repos-panel-refreshing = Actualizando
 endpoint-repos-panel-refresh = Actualizar listas
+
+## SourceAttach.qml
+
+source-attach-placeholder = Pega la dirección de una lista de fuentes
+source-attach-what = ¿Qué es una lista de fuentes?
+source-attach-recent = Usadas antes
+source-attach-added = { $count ->
+    [one] Se añadió { $name }: { $count } fuente activada.
+   *[other] Se añadió { $name }: { $count } fuentes activadas.
+}
+source-attach-added-none = Se añadió { $name }. No hay ninguna fuente nueva que activar.
+source-attach-waiting = { $count ->
+    [one] { $names } necesita un valor primero.
+   *[other] { $names } necesitan un valor primero.
+}
+source-attach-fill-in = Completar
 
 ## ScheduleSheet.qml
 
@@ -2376,6 +2378,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Todas las teclas de Anibeam
 settings-status-downloads-unread = Aún sin leer
+settings-status-downloads-no-sources = Aún sin fuentes
 settings-status-downloads-answered = qBittorrent respondió
 settings-status-downloads-missing = Ayudante de búsqueda sin instalar
 settings-status-downloads-unconnected = Aún sin conectar
@@ -2629,7 +2632,6 @@ settings-downloads-sources-title = Fuentes de búsqueda
 settings-downloads-sources-helper = Adónde va una búsqueda, en el orden de prueba. Si una no encuentra nada, pasa a la siguiente.
 settings-downloads-sources-empty = Aún no hay fuentes configuradas
 settings-downloads-sources-connect = Conecta el ayudante de búsqueda para verlas
-settings-downloads-sources-empty-helper = Añade abajo una lista de fuentes para verlas aquí.
 settings-downloads-config-file = Archivo de ajustes del ayudante de búsqueda
 settings-downloads-config-native-helper = Guarda las carpetas de destino, las etiquetas y las reglas de mejor coincidencia, que el propio Anibeam sigue cuando ejecuta el ayudante. Sus fuentes son solo del ayudante.
 settings-downloads-config-helper = Guarda las fuentes, las carpetas de destino, las etiquetas y las reglas de mejor coincidencia.

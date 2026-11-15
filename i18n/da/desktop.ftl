@@ -442,9 +442,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } kilde klar til søgning.
    *[other] { $count } kilder klar til søgning.
 }
-onboarding-search-none = Anibeam kommer uden egne kilder. Du tilføjer dem fra et kilderepo: et link, som nogen deler med dig, og som du indsætter i Indstillinger, Downloads.
-onboarding-sources-after = Åbner efter opsætningen
-onboarding-sources-add = Tilføj et repo efter opsætningen
 onboarding-fetch-title = Hvem henter
 onboarding-fetch-auto = Lad Anibeam klare det
 onboarding-fetch-recommended = Anbefalet
@@ -469,7 +466,7 @@ onboarding-ready-lists = Din liste
 onboarding-ready-lists-as = { $tracker }, som { $user }
 onboarding-ready-lists-none = Ikke forbundet endnu. Det findes i Indstillinger, Konti, når du vil.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Ingen kilder endnu
     [one] { $sources } kilde
    *[other] { $sources } kilder
@@ -479,9 +476,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alt er klar.
     [opens] Indstillinger, Downloads åbner bagefter.
-   *[both] Begge findes i Indstillinger, Downloads.
+   *[sources] Tilføj en kildeliste for at søge.
 }
-onboarding-ready-open-downloads = Åbn Indstillinger, Downloads
 onboarding-ready-set-up = Opsæt nu
 
 ## Rail.qml
@@ -1675,6 +1671,7 @@ downloads-error-unknown = Noget gik galt. Prøv igen.
 downloads-search-all-off = Alle kilder er slået fra. Slå en til for at søge.
 downloads-turn-on = Slå { $name } til
 downloads-search-no-sources = Der er ingen kilder at søge i endnu. Tilføj en kildeliste i Indstillinger under Downloads.
+downloads-no-sources = Ingen kilder at søge i endnu
 downloads-search-none-started = Ingen kilde kunne starte søgningen. Prøv igen om lidt.
 downloads-auto-resolution = Indsnævret til { $resolution }, den skarpeste, der er
 downloads-search-one-failed = Søgningen på { $name } virkede ikke. Prøv igen, eller søg i en anden kilde.
@@ -2156,7 +2153,6 @@ player-not-now = Ikke nu
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Kildelister
-endpoint-repos-panel-helper = En kildeliste er et signeret sæt steder at søge, tilføjet via sin adresse. Anibeam tjekker signaturen og viser dig nøglen, før noget gemmes, og så installerer du de kilder, du vil have. Installerede kilder kommer med under Søgekilder ovenfor.
 endpoint-repos-panel-could-not-start = Anibeam kunne ikke starte det. Prøv igen om lidt.
 endpoint-repos-panel-needs-value = { $name } skal have en værdi
 endpoint-repos-panel-values-of = Værdier for { $name }
@@ -2169,19 +2165,9 @@ endpoint-repos-panel-needs-fields = Skal have sin { $fields }, før den søger.
 endpoint-repos-panel-no-longer-offered = Tilbydes ikke længere af sin kildeliste.
 endpoint-repos-panel-update-requests-to = Opdateringen sender forespørgsler til { $host }.
 endpoint-repos-panel-unreadable = Denne liste kunne ikke læses. Opdater lister prøver igen.
-endpoint-repos-panel-add-list = Tilføj en kildeliste
-endpoint-repos-panel-add-list-helper = Adressen på dens indeksfil eller en sti til en på denne maskine.
 endpoint-repos-panel-checking = Tjekker
 endpoint-repos-panel-add = Tilføj
-endpoint-repos-panel-trust-question = Stol på { $name }?
 endpoint-repos-panel-fingerprint = Nøglens fingeraftryk  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } kilder, signeret. Dens kilder afgør, hvor dine søgninger går hen; stol kun på en liste fra nogen, du stoler på.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } kilder, signeret, allerede betroet. Dens kilder afgør, hvor dine søgninger går hen; stol kun på en liste fra nogen, du stoler på.
-endpoint-repos-panel-trust = Stol på
 endpoint-repos-panel-saving = Gemmer
 endpoint-repos-panel-install = Installer
 endpoint-repos-panel-update = Opdater
@@ -2196,6 +2182,22 @@ endpoint-repos-panel-by-hand-helper = Til en side, ingen liste har: ethvert feed
 endpoint-repos-panel-name = Navn
 endpoint-repos-panel-refreshing = Opdaterer
 endpoint-repos-panel-refresh = Opdater lister
+
+## SourceAttach.qml
+
+source-attach-placeholder = Indsæt adressen på en kildeliste
+source-attach-what = Hvad er en kildeliste?
+source-attach-recent = Brugt før
+source-attach-added = { $count ->
+    [one] Tilføjede { $name }: { $count } kilde er slået til.
+   *[other] Tilføjede { $name }: { $count } kilder er slået til.
+}
+source-attach-added-none = Tilføjede { $name }. Ingen ny kilde at slå til.
+source-attach-waiting = { $count ->
+    [one] { $names } skal have en værdi først.
+   *[other] { $names } skal have en værdi først.
+}
+source-attach-fill-in = Udfyld
 
 ## ScheduleSheet.qml
 
@@ -2376,6 +2378,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Alle taster, Anibeam reagerer på
 settings-status-downloads-unread = Ikke læst endnu
+settings-status-downloads-no-sources = Ingen kilder endnu
 settings-status-downloads-answered = qBittorrent svarede
 settings-status-downloads-missing = Søgehjælper ikke installeret
 settings-status-downloads-unconnected = Ikke forbundet endnu
@@ -2629,7 +2632,6 @@ settings-downloads-sources-title = Søgekilder
 settings-downloads-sources-helper = Hvor en søgning går hen, i den rækkefølge de prøves. Finder én intet, prøves den næste.
 settings-downloads-sources-empty = Ingen kilder sat op endnu
 settings-downloads-sources-connect = Forbind søgehjælperen for at vise dem
-settings-downloads-sources-empty-helper = Tilføj en kildeliste nedenfor, så vises dens kilder her.
 settings-downloads-config-file = Søgehjælperens indstillingsfil
 settings-downloads-config-native-helper = Indeholder gemmemapperne, tags og reglerne for bedste match, som Anibeam selv følger, når den kører hjælperen. Dens egne kilder tilhører kun hjælperen.
 settings-downloads-config-helper = Indeholder kilderne, gemmemapperne, tags og reglerne for bedste match.

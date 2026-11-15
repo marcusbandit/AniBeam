@@ -121,6 +121,7 @@ FocusScope {
         if (id === "keys") return words.t("settings-status-keys")
         if (id === "downloads") {
             if (!downloads) return words.t("settings-status-downloads-unread")
+            if (noSources()) return words.t("settings-status-downloads-no-sources")
             var t = downloads.torrent || {}
             if (t.connected) return words.t("settings-status-downloads-answered")
             var a = downloads.anirss || {}
@@ -135,9 +136,17 @@ FocusScope {
         if (id === "developer") return frame.devRecorder.last ? words.t("settings-status-developer-last", { page: frame.devRecorder.last.label, ms: Math.round(frame.devRecorder.last.built) }) : words.t("settings-status-developer")
         return ""
     }
+    // Searches can run and there is nothing to search: no source list added yet (#1003)
+    function noSources() {
+        if (!downloads) return false
+        var native = !!downloads.settings && downloads.settings.engine === "Native"
+        var ready = native || (!!downloads.anirss && downloads.anirss.state === "Ready")
+        return ready && (downloads.endpoints || []).length === 0
+    }
     // An entry that wants attention: a folder gone, downloads not set up
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
+        if (id === "downloads") return noSources()
         if (id === "about") return frame.updatePanel.pending
         return false
     }

@@ -486,9 +486,6 @@ onboarding-search-ready = { $count ->
     [many] { $count } источников готовы к поиску.
    *[other] { $count } источника готовы к поиску.
 }
-onboarding-search-none = В Anibeam нет своих источников. Их добавляют из репозитория источников: это ссылка, которой с вами поделились, её нужно вставить в «Настройки, Загрузки».
-onboarding-sources-after = Откроется после настройки
-onboarding-sources-add = Добавить репозиторий после настройки
 onboarding-fetch-title = Кто скачивает
 onboarding-fetch-auto = Пусть Anibeam всё сделает
 onboarding-fetch-recommended = Рекомендуется
@@ -519,7 +516,7 @@ onboarding-ready-lists = Ваш список
 onboarding-ready-lists-as = { $tracker }, как { $user }
 onboarding-ready-lists-none = Пока не подключено. Это можно сделать в «Настройки, Аккаунты».
 onboarding-ready-downloads = Загрузки
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Источников пока нет
     [one] { $sources } источник
     [few] { $sources } источника
@@ -531,9 +528,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Всё готово.
     [opens] Дальше откроется «Настройки, Загрузки».
-   *[both] Оба находятся в «Настройки, Загрузки».
+   *[sources] Добавьте список источников, чтобы искать.
 }
-onboarding-ready-open-downloads = Открыть «Настройки, Загрузки»
 onboarding-ready-set-up = Настроить сейчас
 
 ## Rail.qml
@@ -1875,6 +1871,7 @@ downloads-error-unknown = Что-то пошло не так. Попробуйт
 downloads-search-all-off = Все источники выключены. Включите один, чтобы искать.
 downloads-turn-on = Включить { $name }
 downloads-search-no-sources = Пока нет источников для поиска. Добавьте список источников в настройках, раздел «Загрузки».
+downloads-no-sources = Пока нет источников для поиска
 downloads-search-none-started = Ни один источник не смог начать поиск. Попробуйте ещё раз через минуту.
 downloads-auto-resolution = Сужено до { $resolution }, лучшего из доступного
 downloads-search-one-failed = Поиск в { $name } не сработал. Попробуйте снова или ищите в другом источнике.
@@ -2396,7 +2393,6 @@ player-not-now = Не сейчас
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Списки источников
-endpoint-repos-panel-helper = Список источников: подписанный набор мест для поиска, по адресу. Anibeam проверяет подпись и показывает ключ до сохранения, затем вы ставите нужное. Оно попадёт в «Источники поиска» выше.
 endpoint-repos-panel-could-not-start = Anibeam не смог это запустить. Попробуйте ещё раз через минуту.
 endpoint-repos-panel-needs-value = Для { $name } нужно значение
 endpoint-repos-panel-values-of = Значения { $name }
@@ -2410,19 +2406,9 @@ endpoint-repos-panel-needs-fields = Перед поиском нужно ука�
 endpoint-repos-panel-no-longer-offered = Больше не предлагается списком источников.
 endpoint-repos-panel-update-requests-to = Обновление отправляет запросы на { $host }.
 endpoint-repos-panel-unreadable = Этот список не читается. «Обновить списки» попробует снова.
-endpoint-repos-panel-add-list = Добавить список источников
-endpoint-repos-panel-add-list-helper = Адрес его индексного файла или путь к нему на этом компьютере.
 endpoint-repos-panel-checking = Проверка
 endpoint-repos-panel-add = Добавить
-endpoint-repos-panel-trust-question = Доверять { $name }?
 endpoint-repos-panel-fingerprint = Отпечаток ключа  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    Источников: { $count }, подписано. Его источники решают, куда уходят ваши поиски; доверяйте списку, только если доверяете его автору.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    Источников: { $count }, подписано, уже доверенный. Его источники решают, куда уходят ваши поиски; доверяйте списку, только если доверяете его автору.
-endpoint-repos-panel-trust = Доверять
 endpoint-repos-panel-saving = Сохранение
 endpoint-repos-panel-install = Установить
 endpoint-repos-panel-update = Обновить
@@ -2437,6 +2423,22 @@ endpoint-repos-panel-by-hand-helper = Сайт не из списков: лен�
 endpoint-repos-panel-name = Имя
 endpoint-repos-panel-refreshing = Обновление
 endpoint-repos-panel-refresh = Обновить списки
+
+## SourceAttach.qml
+
+source-attach-placeholder = Вставьте адрес списка источников
+source-attach-what = Что такое список источников?
+source-attach-recent = Использовались раньше
+source-attach-added = { $count ->
+    [one] { $name } добавлен: включено источников: { $count }.
+   *[other] { $name } добавлен: включено источников: { $count }.
+}
+source-attach-added-none = { $name } добавлен. Новых источников для включения нет.
+source-attach-waiting = { $count ->
+    [one] { $names } сначала нужно значение.
+   *[other] { $names } сначала нужны значения.
+}
+source-attach-fill-in = Заполнить
 
 ## ScheduleSheet.qml
 
@@ -2633,6 +2635,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Все клавиши Anibeam
 settings-status-downloads-unread = Ещё не прочитано
+settings-status-downloads-no-sources = Источников пока нет
 settings-status-downloads-answered = qBittorrent ответил
 settings-status-downloads-missing = Помощник поиска не установлен
 settings-status-downloads-unconnected = Ещё не подключено
@@ -2891,7 +2894,6 @@ settings-downloads-sources-title = Источники поиска
 settings-downloads-sources-helper = Куда идёт поиск, по порядку. Пустой источник передаёт поиск следующему.
 settings-downloads-sources-empty = Источники пока не настроены
 settings-downloads-sources-connect = Подключите помощника поиска, чтобы увидеть их
-settings-downloads-sources-empty-helper = Добавьте список ниже, источники появятся тут.
 settings-downloads-config-file = Файл настроек помощника поиска
 settings-downloads-config-native-helper = Папки сохранения, теги и правила выбора лучшего: Anibeam сам следует им при запуске помощника. Источники тут только для него.
 settings-downloads-config-helper = Содержит источники, папки сохранения, теги и правила выбора лучшего.

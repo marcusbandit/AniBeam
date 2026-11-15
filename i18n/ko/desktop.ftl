@@ -392,9 +392,6 @@ onboarding-search-title = 검색할 곳
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-search-none = Anibeam에는 자체 소스가 없어요. 소스 저장소에서 추가해요: 누군가 공유해 준 링크를 설정, 다운로드에 붙여넣으면 돼요.
-onboarding-sources-after = 설정 후에 열려요
-onboarding-sources-add = 설정 후 저장소 추가
 onboarding-fetch-title = 받아 오는 곳
 onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천
@@ -416,7 +413,7 @@ onboarding-ready-lists = 내 목록
 onboarding-ready-lists-as = { $tracker }, { $user }
 onboarding-ready-lists-none = 아직 연결 안 됨. 원할 때 설정, 계정에서 연결하세요.
 onboarding-ready-downloads = 다운로드
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 아직 소스 없음
    *[other] 소스 { $sources }개
 }, { $client ->
@@ -425,9 +422,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] 모두 준비됐어요.
     [opens] 다음으로 설정, 다운로드가 열려요.
-   *[both] 둘 다 설정, 다운로드에 있어요.
+   *[sources] 검색하려면 소스 목록을 추가하세요.
 }
-onboarding-ready-open-downloads = 설정, 다운로드 열기
 onboarding-ready-set-up = 지금 설정
 
 ## Rail.qml
@@ -1503,6 +1499,7 @@ downloads-error-unknown = 문제가 생겼어요. 다시 시도하세요.
 downloads-search-all-off = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
 downloads-turn-on = { $name } 켜기
 downloads-search-no-sources = 아직 검색할 소스가 없어요. 설정의 다운로드에서 소스 목록을 추가하세요.
+downloads-no-sources = 아직 검색할 소스가 없습니다
 downloads-search-none-started = 검색을 시작할 수 있는 소스가 없어요. 잠시 후 다시 시도하세요.
 downloads-auto-resolution = 제공되는 가장 선명한 { $resolution }(으)로 좁혔어요
 downloads-search-one-failed = { $name } 검색이 실패했어요. 다시 시도하거나 다른 소스를 검색하세요.
@@ -1963,7 +1960,6 @@ player-not-now = 나중에
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = 소스 목록
-endpoint-repos-panel-helper = 소스 목록은 주소로 추가하는, 서명된 검색 장소 모음이에요. 저장하기 전에 Anibeam이 서명을 확인하고 키를 보여 주며, 그다음 원하는 소스를 설치하면 돼요. 설치한 소스는 위의 검색 소스에 추가돼요.
 endpoint-repos-panel-could-not-start = Anibeam이 시작하지 못했어요. 잠시 후 다시 시도하세요.
 endpoint-repos-panel-needs-value = { $name }에 값이 필요해요
 endpoint-repos-panel-values-of = { $name }의 값
@@ -1976,19 +1972,9 @@ endpoint-repos-panel-needs-fields = 검색하려면 { $fields }이(가) 필요�
 endpoint-repos-panel-no-longer-offered = 소스 목록에서 더 이상 제공하지 않아요.
 endpoint-repos-panel-update-requests-to = 업데이트하면 { $host }에 요청을 보내요.
 endpoint-repos-panel-unreadable = 이 목록을 읽지 못했어요. 목록 새로고침으로 다시 시도해요.
-endpoint-repos-panel-add-list = 소스 목록 추가
-endpoint-repos-panel-add-list-helper = 인덱스 파일의 주소나 이 기기에 있는 파일 경로.
 endpoint-repos-panel-checking = 확인 중
 endpoint-repos-panel-add = 추가
-endpoint-repos-panel-trust-question = { $name }을(를) 신뢰할까요?
 endpoint-repos-panel-fingerprint = 키 지문  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    소스 { $count }개, 서명됨. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    소스 { $count }개, 서명됨, 이미 신뢰함. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-trust = 신뢰
 endpoint-repos-panel-saving = 저장 중
 endpoint-repos-panel-install = 설치
 endpoint-repos-panel-update = 업데이트
@@ -2003,6 +1989,22 @@ endpoint-repos-panel-by-hand-helper = 어떤 목록에도 없는 사이트용이
 endpoint-repos-panel-name = 이름
 endpoint-repos-panel-refreshing = 새로고침 중
 endpoint-repos-panel-refresh = 목록 새로고침
+
+## SourceAttach.qml
+
+source-attach-placeholder = 소스 목록 주소 붙여 넣기
+source-attach-what = 소스 목록이란?
+source-attach-recent = 이전에 사용함
+source-attach-added = { $count ->
+    [one] { $name } 추가됨: 소스 { $count }개 켜짐.
+   *[other] { $name } 추가됨: 소스 { $count }개 켜짐.
+}
+source-attach-added-none = { $name } 추가됨. 새로 켤 소스가 없습니다.
+source-attach-waiting = { $count ->
+    [one] { $names }에는 먼저 값이 필요합니다.
+   *[other] { $names }에는 먼저 값이 필요합니다.
+}
+source-attach-fill-in = 입력
 
 ## ScheduleSheet.qml
 
@@ -2164,6 +2166,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Anibeam이 반응하는 모든 키
 settings-status-downloads-unread = 아직 읽지 않음
+settings-status-downloads-no-sources = 아직 소스 없음
 settings-status-downloads-answered = qBittorrent 응답함
 settings-status-downloads-missing = 검색 도우미 미설치
 settings-status-downloads-unconnected = 아직 연결 안 됨
@@ -2416,7 +2419,6 @@ settings-downloads-sources-title = 검색 소스
 settings-downloads-sources-helper = 검색이 가는 곳, 시도하는 순서대로. 찾은 게 없으면 다음 소스로 넘어가요.
 settings-downloads-sources-empty = 아직 설정된 소스가 없어요
 settings-downloads-sources-connect = 목록을 보려면 검색 도우미를 연결하세요
-settings-downloads-sources-empty-helper = 아래에서 소스 목록을 추가하면 그 소스가 여기에 표시돼요.
 settings-downloads-config-file = 검색 도우미 설정 파일
 settings-downloads-config-native-helper = 저장 폴더, 태그, 최적 일치 규칙이 들어 있고, Anibeam이 도우미를 실행할 때 이를 따라요. 도우미 자체 소스는 도우미만 써요.
 settings-downloads-config-helper = 소스, 저장 폴더, 태그, 최적 일치 규칙이 들어 있어요.
