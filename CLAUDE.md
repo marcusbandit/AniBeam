@@ -24,7 +24,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-**Build only the crate you changed.** The core is splitting into one crate per team (#854), and each of `contract/`, `foundation/`, `net/` and `library/` builds and tests on its own. Iterate with `cargo test -p anibeam-library` (or `check`/`clippy -p`), not `--workspace` and not the shell; run the whole workspace once before the PR.
+**Build only the crate you changed.** The core is splitting into one crate per team (#854), and each of `contract/`, `foundation/`, `net/`, `library/`, `releases/` and `metadata/` builds and tests on its own. Iterate with `cargo test -p anibeam-library` (or `check`/`clippy -p`), not `--workspace` and not the shell; run the whole workspace once before the PR.
 
 The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld.
 
