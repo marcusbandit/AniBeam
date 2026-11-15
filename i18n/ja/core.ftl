@@ -1271,3 +1271,4 @@ core-room-media-lost = トレントクライアントがエピソードのダウ
 core-room-media-stalled = ダウンロードが10分間進んでいません。後でもう一度お試しください。
 core-room-media-not-in-library = エピソードはダウンロードされましたが、ライブラリにありません。ダウンロードの保存先がライブラリのフォルダか確認してください。
 core-room-media-here = エピソードがライブラリに入りました。
+core-room-media-rest-missing = シリーズの残りを取得できませんでした。このエピソードだけをダウンロードしています。

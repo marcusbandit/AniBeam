@@ -1305,3 +1305,4 @@ core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
 core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
 core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
 core-room-media-here = De aflevering staat nu in je bibliotheek.
+core-room-media-rest-missing = De rest van de serie kon niet worden opgehaald. Alleen deze aflevering wordt gedownload.

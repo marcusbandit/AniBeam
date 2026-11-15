@@ -157,11 +157,14 @@ struct Active {
     keys: Arc<seal::Keys>,
     /// Where Get media is, the download's progress the status carries, and the
     /// fetch running now: its number, and the token that stops it. `whole_show`
-    /// when the member asked for the rest of the show with it (#922).
+    /// when the member asked for the rest of the show with it (#922), and `rest`
+    /// once the search for that rest has started for the room's episode: it runs
+    /// once an episode, and stops with the room or when the host moves on.
     fetch: RoomFetch,
     progress: Option<proto::Progress>,
     fetching: Option<(u64, CancellationToken)>,
     whole_show: bool,
+    rest: Option<CancellationToken>,
     /// The host's ready gate (#922), and the position on the room's timeline the
     /// host pressed play at. `started` once the episode has played: the gate asks
     /// only before that, so a pause later never brings it back.
@@ -217,6 +220,9 @@ impl Active {
     fn fresh_episode(&mut self) {
         self.gate = RoomGate::Off;
         self.started = false;
+        if let Some(rest) = self.rest.take() {
+            rest.cancel();
+        }
     }
 
     /// The host starts the room at the position play was pressed at, for
@@ -663,6 +669,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         progress: None,
         fetching: None,
         whole_show: false,
+        rest: None,
         gate: RoomGate::Off,
         gate_at: 0.0,
         started: false,
@@ -1566,6 +1573,7 @@ mod tests {
             progress: None,
             fetching: None,
             whole_show: false,
+            rest: None,
             gate: RoomGate::Off,
             gate_at: 0.0,
             started: false,

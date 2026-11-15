@@ -1304,3 +1304,4 @@ core-room-media-lost = Torrentklienten mistede afsnittets hentning.
 core-room-media-stalled = Hentningen har ikke rykket sig i ti minutter. Prøv igen senere.
 core-room-media-not-in-library = Afsnittet er hentet, men det er ikke i dit bibliotek. Tjek at hentninger gemmes i en biblioteksmappe.
 core-room-media-here = Afsnittet er i dit bibliotek nu.
+core-room-media-rest-missing = Kunne ikke hente resten af serien. Kun dette afsnit hentes.

@@ -1316,3 +1316,4 @@ core-room-media-lost = Le client torrent a perdu le téléchargement de l'épiso
 core-room-media-stalled = Le téléchargement n'a pas avancé depuis dix minutes. Réessayez plus tard.
 core-room-media-not-in-library = L'épisode est téléchargé, mais il n'est pas dans votre bibliothèque. Vérifiez que les téléchargements vont dans un dossier de la bibliothèque.
 core-room-media-here = L'épisode est maintenant dans votre bibliothèque.
+core-room-media-rest-missing = Impossible d'obtenir le reste de la série. Seul cet épisode se télécharge.

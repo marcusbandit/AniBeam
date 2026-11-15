@@ -1304,3 +1304,4 @@ core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.
 core-room-media-stalled = Der Download ist seit zehn Minuten nicht weitergekommen. Versuch es später noch einmal.
 core-room-media-not-in-library = Die Folge ist heruntergeladen, aber nicht in deiner Bibliothek. Prüfe, ob Downloads in einem Bibliotheksordner landen.
 core-room-media-here = Die Folge ist jetzt in deiner Bibliothek.
+core-room-media-rest-missing = Der Rest der Serie war nicht zu bekommen. Nur diese Folge wird geladen.

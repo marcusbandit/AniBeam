@@ -153,7 +153,7 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
 
 /// The season a history key names: 3 for `S03E06`, None for a bare number,
 /// which is the first season or a file that names none.
-fn season_of(key: &str) -> Option<i64> {
+pub(super) fn season_of(key: &str) -> Option<i64> {
     let rest = key.strip_prefix(['S', 's'])?;
     let (season, _) = rest.split_once(['E', 'e'])?;
     season.parse().ok()

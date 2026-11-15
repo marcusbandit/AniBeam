@@ -1566,3 +1566,4 @@ core-room-media-lost = Klient torrent zgubił pobieranie odcinka.
 core-room-media-stalled = Pobieranie nie posunęło się od dziesięciu minut. Spróbuj ponownie później.
 core-room-media-not-in-library = Odcinek został pobrany, ale nie ma go w Twojej bibliotece. Sprawdź, czy pobrane pliki trafiają do folderu biblioteki.
 core-room-media-here = Odcinek jest już w Twojej bibliotece.
+core-room-media-rest-missing = Nie udało się pobrać reszty serii. Pobiera się tylko ten odcinek.
