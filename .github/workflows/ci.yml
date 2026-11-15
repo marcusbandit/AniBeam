@@ -3,7 +3,8 @@ name: CI
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the core and the terminal shell. The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
-# tests and clippy run in linux.yml, which sets those up for the AppImage. Runs on main
+# tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
+# (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
@@ -81,6 +82,10 @@ jobs:
           rustup component add rustc cargo rust-std
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
         run: cargo clippy --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
