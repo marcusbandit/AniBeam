@@ -21,12 +21,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
 use super::{mine::Mine, parse, queries};
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::jobs::JobCtx;
-use crate::metadata::Metadata;
-use crate::metadata::apply::{is_rate_limited, provider_unreachable};
-use crate::time;
+use crate::Metadata;
+use crate::apply::{is_rate_limited, provider_unreachable};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::JobCtx;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
 
 const DAY: i64 = 86_400;
 /// How long a show's details are good for: staff and tags hardly move.
@@ -329,7 +329,7 @@ async fn fetch_raters(net: &mut Net, favourites: &[u64]) -> Result<(), Halt> {
         net.label(
             i as u64,
             total,
-            &crate::i18n::tr("core-recommended-finding-people", &[]),
+            &anibeam_contract::i18n::tr("core-recommended-finding-people", &[]),
         );
         let v = aliased(net, chunk, queries::raters).await?;
         let chunk = chunk.to_vec();
@@ -376,7 +376,7 @@ async fn fetch_users(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
         net.label(
             i as u64,
             total,
-            &crate::i18n::tr("core-recommended-reading-lists", &[]),
+            &anibeam_contract::i18n::tr("core-recommended-reading-lists", &[]),
         );
         fetch_user_chunk(net, chunk).await?;
     }
@@ -534,7 +534,7 @@ pub async fn read(
     shows(
         net,
         &theirs,
-        &crate::i18n::tr("core-recommended-reading-yours", &[]),
+        &anibeam_contract::i18n::tr("core-recommended-reading-yours", &[]),
     )
     .await?;
 
@@ -562,7 +562,7 @@ pub async fn read(
     shows(
         net,
         &wanted,
-        &crate::i18n::tr("core-recommended-reading-suggestions", &[]),
+        &anibeam_contract::i18n::tr("core-recommended-reading-suggestions", &[]),
     )
     .await?;
     Ok(Found {

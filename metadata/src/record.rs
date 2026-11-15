@@ -20,13 +20,13 @@ use rusqlite::types::Value;
 use rusqlite::{Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
-use crate::contract::CoreError;
-use crate::net::anilist::{
+use anibeam_contract::CoreError;
+use anibeam_foundation::store::sql::{as_i64, placeholders};
+use anibeam_net::anilist::{
     CharacterEdge, Enrichment, FuzzyDate, Media, RelatedNode, Schedule, StreamingEpisode,
     StudioEdge, TagNode,
 };
-use crate::net::jikan::JikanEpisode;
-use crate::store::sql::{as_i64, placeholders};
+use anibeam_net::jikan::JikanEpisode;
 
 /// AniList answers with twelve characters and twelve recommendations; the
 /// series page shows these many, so these many are what the row keeps.
@@ -766,8 +766,8 @@ pub fn write_episodes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::anilist::*;
-    use crate::net::jikan::JikanEpisode;
+    use anibeam_net::anilist::*;
+    use anibeam_net::jikan::JikanEpisode;
 
     #[test]
     fn dates_pad_missing_parts() {

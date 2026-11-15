@@ -13,11 +13,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{as_i64, as_u64};
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// The relations the walk follows, which the library's franchise boxes walk
 /// too, so the list sits below both (#854).
-pub use crate::foundation::relations::TRAVERSABLE;
+pub use anibeam_foundation::relations::TRAVERSABLE;
 
 /// How many nodes one closure will discover. Electron's number.
 pub const CAP: usize = 150;
@@ -188,7 +188,7 @@ fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::franchise::testing::*;
+    use anibeam_foundation::store::testing::*;
 
     /// The nodes a closure drew, smallest id first.
     fn ids(closure: &Closure) -> Vec<u64> {

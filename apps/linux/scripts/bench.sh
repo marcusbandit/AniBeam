@@ -9,7 +9,7 @@ out="$here/captures"; mkdir -p "$out"
 nap() { python3 -c "import time; time.sleep($1)"; }
 pkill -x anibeam 2>/dev/null; nap 0.4
 hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null; nap 0.3
-QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
+ANIBEAM_SILENT=1 QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
   setsid nohup "$here/../../target/release/anibeam" "$@" > "$out/$name.log" 2>&1 &
 for i in $(seq 1 60); do
   hyprctl clients -j | jq -e '.[] | select(.class=="com.marcusrosado.AniBeam" and .mapped==true)' >/dev/null 2>&1 && break

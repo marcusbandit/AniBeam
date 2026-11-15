@@ -300,7 +300,7 @@ core-jobs-start-endpoint = Avvio di una fonte di download
 core-jobs-schedule-agent = Richiesta del calendario al tuo agente di coding
     .stopped = La richiesta del calendario al tuo agente di coding si è fermata per un problema.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = In onda ora
 core-airing-now-winter = Inverno { $year }
@@ -320,7 +320,7 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Impossibile aggiungere { $title } alla tua lista Da vedere. Riprova più tardi.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = È uscito l'episodio { $number } di { $title }.
 
@@ -436,18 +436,18 @@ core-prefs-provider-count = { $provider } compare { $count } volte; ogni provide
 core-prefs-outside = { $value } è fuori da { $low } a { $high }
 core-prefs-empty = vuoto
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Ordino le serie per te
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Cerco persone con i tuoi gusti
 core-recommended-reading-lists = Leggo le loro liste
 core-recommended-reading-yours = Leggo le tue serie
 core-recommended-reading-suggestions = Leggo le serie da consigliare
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } non ha l'anime { $id }
 
@@ -502,7 +502,7 @@ core-update-cannot-read-dmg = Impossibile leggere il dmg: { $error }
 core-update-no-app = Il dmg non contiene nessuna app
 core-update-cannot-copy = Impossibile copiare la nuova app accanto a questa: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Stagione { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
@@ -713,7 +713,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } serie restano su questo computer, senza un tracker a cui inviarle.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } abbinata a { $title }.
 core-metadata-auto-matched =
@@ -795,7 +795,7 @@ core-metadata-find-busy =
        *[other] { $busy } serie sono già in fase di abbinamento.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Impossibile leggere quel link. Incolla l'URL di una pagina AniList, MyAnimeList, TVmaze o IMDb.
 core-metadata-no-mal-entry = AniList non ha una voce per quell'id di MyAnimeList.
@@ -825,17 +825,17 @@ core-metadata-updated-some =
        *[other] Info aggiornate per { $count } serie; { $failed } non si sono potute aggiornare.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze non ha la serie { $id }
 core-metadata-no-such-media = AniList non ha il media { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = link IMDb di Wikidata
 core-metadata-progress-imdb-ratings = voti IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Personaggi in comune
 

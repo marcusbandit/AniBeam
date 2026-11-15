@@ -13,11 +13,11 @@ use serde_json::{Value, json};
 
 use super::mine::Mine;
 use super::{Display, because, fit, parse, poster, queries, sync, text};
-use crate::contract::*;
-use crate::jobs::Finished;
-use crate::metadata::Metadata;
-use crate::prefs;
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::prefs;
+use anibeam_foundation::time;
 
 /// How long the page's own read is good for.
 pub const PAGE_TTL: i64 = 7 * 86_400;
@@ -376,7 +376,7 @@ async fn read_page(metadata: Arc<Metadata>, id: u64) -> Result<Finished, CoreErr
     if media.is_null() {
         return Err(CoreError::invalid(
             "anilist_id",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-recommended-no-anime",
                 &[("id", id.to_string().into())],
             ),

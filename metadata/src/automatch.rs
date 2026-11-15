@@ -35,23 +35,23 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::images;
-use crate::jobs::Finished;
-use crate::library::cards;
-use crate::library::scan::LibraryState;
-use crate::metadata::Metadata;
-use crate::metadata::apply::provider_stopped;
-use crate::metadata::fetch::{self, message_of};
-use crate::metadata::similarity::best_title_score;
-use crate::net::anilist::Media;
-use crate::net::tvmaze::Show;
-use crate::prefs;
-use crate::store::settings;
-use crate::store::sql::placeholders;
-use crate::sync::recover;
-use crate::time;
+use crate::Metadata;
+use crate::apply::provider_stopped;
+use crate::fetch::{self, message_of};
+use crate::similarity::best_title_score;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_library::cards;
+use anibeam_library::scan::LibraryState;
+use anibeam_net::anilist::Media;
+use anibeam_net::images;
+use anibeam_net::tvmaze::Show;
 
 /// Accept at this score or better. Electron's bar, and it is a "pretty
 /// close" one: anything further off is left for the manual picker.
@@ -449,7 +449,7 @@ pub fn start(metadata: &Arc<Metadata>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.say(Level::Info, crate::words!("core-metadata-matched-to", show = &folder, title = &title), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.say(Level::Info, anibeam_contract::words!("core-metadata-matched-to", show = &folder, title = &title), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.services.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -493,9 +493,9 @@ pub fn start(metadata: &Arc<Metadata>) -> u64 {
 
         let said = match (matched, unmatched) {
             (0, 0) => None,
-            (m, 0) => Some(crate::words!("core-metadata-auto-matched", count = m)),
-            (0, u) => Some(crate::words!("core-metadata-auto-unmatched", count = u)),
-            (m, u) => Some(crate::words!("core-metadata-auto-matched-some", matched = m, unmatched = u)),
+            (m, 0) => Some(anibeam_contract::words!("core-metadata-auto-matched", count = m)),
+            (0, u) => Some(anibeam_contract::words!("core-metadata-auto-unmatched", count = u)),
+            (m, u) => Some(anibeam_contract::words!("core-metadata-auto-matched-some", matched = m, unmatched = u)),
         };
         Ok(Finished {
             plain: said,
@@ -652,7 +652,7 @@ fn find_line(
         (1, Some(name)) => ("yes", name),
         _ => ("no", String::new()),
     };
-    crate::words!(
+    anibeam_contract::words!(
         "core-metadata-find",
         first = first,
         matched = matched,
@@ -703,14 +703,14 @@ pub fn clear_match(metadata: &Metadata, series: u64) -> Result<Reply, CoreError>
         EventBody::SeriesChanged { series: cards },
     );
     // No record, no record rule: specials it read as episodes read as specials again.
-    crate::library::readings::reread_if_record_matters(&metadata.library, series);
+    anibeam_library::readings::reread_if_record_matters(&metadata.library, series);
     Ok(Reply::Ok)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::anilist::{CoverImage, Title};
+    use anibeam_net::anilist::{CoverImage, Title};
 
     fn media(id: u64, romaji: &str, cover: bool) -> Media {
         Media {

@@ -596,7 +596,7 @@ fn label_of(relation: &str) -> String {
         "OTHER" => "anilist-relation-other",
         other => return other.replace('_', " ").to_lowercase(),
     };
-    crate::i18n::tr(id, &[])
+    anibeam_contract::i18n::tr(id, &[])
 }
 
 /// The same relation seen from the other end.

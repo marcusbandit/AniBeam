@@ -21,15 +21,15 @@ use std::time::Duration;
 
 use rusqlite::{Connection, params};
 
-use crate::contract::*;
-use crate::events::Subscription;
-use crate::foundation::services::Services;
-use crate::foundation::titles;
-use crate::metadata::Metadata;
-use crate::prefs;
-use crate::store::settings;
-use crate::sync::recover;
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+use anibeam_foundation::events::Listening;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
 
 pub const CATCH_UP_SECS: i64 = 24 * 3600;
 pub const LONGEST_SLEEP: Duration = Duration::from_secs(30 * 60);
@@ -101,7 +101,7 @@ pub(crate) fn due(conn: &Connection, from: i64, to: i64) -> Result<Vec<EpisodeOu
 /// alarm, and a re-arm waiting out `SETTLE`.
 #[derive(Default)]
 pub(crate) struct Aired {
-    listener: Mutex<Option<Arc<Subscription>>>,
+    listener: Mutex<Option<Listening>>,
     alarm: Mutex<Option<tokio::task::JoinHandle<()>>>,
     queued: AtomicBool,
     /// One announce at a time, so an alarm and a re-arm never say one episode twice.
@@ -139,7 +139,7 @@ fn announce(services: &Services) -> Result<Option<i64>, CoreError> {
         Ok((out, next_at(tx, now)?))
     })?;
     for ep in out {
-        let plain = crate::words!(
+        let plain = anibeam_contract::words!(
             "core-aired-episode-out",
             number = ep.episode.to_string(),
             title = &ep.title,
@@ -198,17 +198,17 @@ fn may_change(event: &Event) -> bool {
 
 /// Subscribes the re-arming listener and sets the first alarm. Called once
 /// the core has started, so the launch says what aired while it was closed.
-pub(crate) fn listen(metadata: &Arc<Metadata>) {
+pub fn listen(metadata: &Arc<Metadata>) {
     let listener = Arc::new(AfterChange {
         metadata: Arc::downgrade(metadata),
     });
     *recover(&metadata.aired.listener) =
-        Some(Subscription::new(metadata.services.bus.clone(), listener));
+        Some(Listening::new(metadata.services.bus.clone(), listener));
     let owner = metadata.clone();
     metadata.services.handle.spawn_blocking(move || arm(&owner));
 }
 
-pub(crate) fn stop(metadata: &Metadata) {
+pub fn stop(metadata: &Metadata) {
     let sub = recover(&metadata.aired.listener).take();
     drop(sub);
     if let Some(alarm) = recover(&metadata.aired.alarm).take() {
