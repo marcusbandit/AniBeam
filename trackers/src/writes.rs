@@ -222,13 +222,14 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     let episode = episode.floor() as u32;
     let main = guard(&trackers.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
-    // the list may already cover.
-    let again = trackers
+    // the list may already cover. A second mark of the same finish finds
+    // the slot taken and is judged as a plain mark.
+    let finished = trackers
         .services
         .store
-        .read(|c| finished_again(c, &target, main, episode))?
-        && rewatching().insert(series);
-    let slot = again.then_some(RewatchSlot(series));
+        .read(|c| finished_again(c, &target, main, episode))?;
+    let slot = finished.then(|| trackers.rewatching.hold(series)).flatten();
+    let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
     // refused without a request. The job checks again against the tracker
@@ -303,24 +304,34 @@ fn finished_again(
     Ok(watched == 1)
 }
 
-/// The series whose rewatch is being written right now. Two marks of one
-/// finish (the rule at the end and the player's button, say) both read the
-/// list before either has written, so the second waits its turn out here
-/// rather than counting the same rewatch twice.
-static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u64>>> =
-    std::sync::LazyLock::new(Default::default);
+/// The series whose rewatch is being written right now, one set per trackers
+/// team, so two cores in one process never share a slot (#776). Two marks of
+/// one finish (the rule at the end and the player's button, say) both read the
+/// list before either has written, so the second finds the series held here
+/// and is not counted as a rewatch at all.
+#[derive(Clone, Default)]
+pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
 
-fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
-    recover(&REWATCHING)
+impl Rewatching {
+    /// The series' slot, or None while another mark holds it.
+    fn hold(&self, series: u64) -> Option<RewatchSlot> {
+        recover(&self.0).insert(series).then(|| RewatchSlot {
+            set: self.clone(),
+            series,
+        })
+    }
 }
 
-/// A series' place in `REWATCHING`, given up when the job that holds it ends
-/// however it ends.
-struct RewatchSlot(u64);
+/// A series' place in its team's [`Rewatching`], given up when the job that
+/// holds it ends however it ends.
+struct RewatchSlot {
+    set: Rewatching,
+    series: u64,
+}
 
 impl Drop for RewatchSlot {
     fn drop(&mut self) {
-        rewatching().remove(&self.0);
+        recover(&self.set.0).remove(&self.series);
     }
 }
 
@@ -2152,6 +2163,20 @@ fn mal_status(status: ListStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rewatch_slot_is_held_once_and_freed_when_dropped() {
+        let set = Rewatching::default();
+        let slot = set.hold(7).expect("a free series gives its slot");
+        assert!(set.hold(7).is_none(), "a held series refuses a second hold");
+        assert!(set.hold(8).is_some(), "another series is free");
+        assert!(
+            Rewatching::default().hold(7).is_some(),
+            "another team's set never shares the slot"
+        );
+        drop(slot);
+        assert!(set.hold(7).is_some(), "a dropped slot frees the series");
+    }
 
     /// The status is read first, whatever the provider said, because a 429
     /// or a 401 is something the user can act on and "Too Many Requests."
