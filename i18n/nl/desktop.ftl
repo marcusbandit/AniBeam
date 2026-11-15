@@ -1618,6 +1618,7 @@ release-table-season-batch = Batch seizoen { $season }
 release-table-batch = Batch
 release-table-via = via { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d MMMM yyyy, HH:mm
 release-table-download = Download
 release-table-more = en nog { $count }. Verfijn of sorteer de lijst om andere eerst te zien.
@@ -1663,7 +1664,6 @@ downloads-remove-group-torrents =
         [one] De torrent weghalen
        *[other] De { $count } torrents weghalen
     }
-downloads-show-in-folder = Tonen in map
 downloads-run-span = { $from } t/m { $to }
 downloads-run-pair = { $first } en { $second }
 downloads-gap-missing =

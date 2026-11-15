@@ -1618,6 +1618,7 @@ release-table-season-batch = Batch Staffel { $season }
 release-table-batch = Batch
 release-table-via = über { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d. MMMM yyyy, HH:mm
 release-table-download = Laden
 release-table-more = und { $count } weitere. Grenze die Liste ein oder sortiere sie, um andere zuerst zu sehen.
@@ -1663,7 +1664,6 @@ downloads-remove-group-torrents =
         [one] Torrent entfernen
        *[other] Seine { $count } Torrents entfernen
     }
-downloads-show-in-folder = Im Ordner anzeigen
 downloads-run-span = { $from } bis { $to }
 downloads-run-pair = { $first } und { $second }
 downloads-gap-missing =

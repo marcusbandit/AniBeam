@@ -68,20 +68,14 @@ Item {
     // ---- The library's row and the episode count the grid runs to
     readonly property var libCodes: show && show.cubes ? String(show.cubes).split("") : []
     readonly property var current: active !== "" && results[active] ? ofShow(results[active]) : null
-    // The source to ask first while none has been asked (#1004): the first that is on, one
-    // that answers now before one that has to start. Its button is the page's primary one.
+    // The source to ask first while none has been asked (#1004): the first that is on, which
+    // for one that starts on demand means running (`sourceOn`). Its button is the primary one.
     readonly property string suggested: {
         if (active !== "") return ""
-        var later = ""
-        for (var i = 0; i < endpoints.length; i++) {
-            var e = endpoints[i]
-            if (!sourceOn(e.name)) continue
-            if (!e.on_demand || e.running === true) return e.name
-            if (later === "") later = e.name
-        }
-        return later
+        for (var i = 0; i < endpoints.length; i++) if (sourceOn(endpoints[i].name)) return endpoints[i].name
+        return ""
     }
-    readonly property bool askFirst: suggested !== "" && (!current || current.state === "idle")
+    readonly property bool askFirst: suggested !== ""
     readonly property bool searchingNow: !!current && current.state === "searching"
     // ---- Only the releases that name this show. A search matches a release group as well
     // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
@@ -767,7 +761,7 @@ Item {
                                     Row {
                                         width: parent.width
                                         spacing: theme.space(3)
-                                        Label { id: pname; text: prow.modelData.name; role: "title"; font.pointSize: theme.typeLarge }
+                                        Label { id: pname; width: Math.min(implicitWidth, parent.width); text: prow.modelData.name; role: "title"; font.pointSize: theme.typeLarge; elide: Text.ElideRight }
                                         Label { anchors.baseline: pname.baseline; width: Math.max(0, Math.min(implicitWidth, parent.width - pname.width - parent.spacing)); text: root.kindWords(prow.modelData); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
                                     }
                                     Label {
@@ -854,7 +848,9 @@ Item {
                                 var d = modelData, parts = []
                                 if (d.resolution) parts.push(d.resolution)
                                 // Which episodes it carries, not only how many (#1004)
-                                parts.push(!d.batch ? root.episodesPhrase(root.covered(d).map(function(n) { return { n: n } }))
+                                // A row whose episodes all lie past the count still says how many
+                                var named = !d.batch ? root.episodesPhrase(root.covered(d).map(function(n) { return { n: n } })) : ""
+                                parts.push(!d.batch ? (named || words.t("count-episodes", { count: d.count }))
                                     : d.state === "counting" ? words.t("get-show-batch-counting")
                                     : d.state === "unknown" ? words.t("get-show-batch-unlisted")
                                     : words.t("get-show-batch-episodes", { count: d.count }))

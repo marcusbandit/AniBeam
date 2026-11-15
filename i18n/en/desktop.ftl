@@ -1714,7 +1714,6 @@ downloads-remove-group-torrents =
         [one] Remove the torrent
        *[other] Remove its { $count } torrents
     }
-downloads-show-in-folder = Show in folder
 downloads-run-span = { $from } to { $to }
 downloads-run-pair = { $first } and { $second }
 downloads-gap-missing =

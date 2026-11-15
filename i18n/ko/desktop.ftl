@@ -1457,6 +1457,7 @@ release-table-season-batch = 시즌 { $season } 일괄
 release-table-batch = 일괄
 release-table-via = { $source }에서
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = yyyy년 M월 d일 HH:mm
 release-table-download = 다운로드
 release-table-more = 외 { $count }개. 다른 항목을 먼저 보려면 목록을 좁히거나 정렬하세요.
@@ -1497,7 +1498,6 @@ downloads-remove-group-torrents =
     { $count ->
        *[other] 토렌트 { $count }개 제거
     }
-downloads-show-in-folder = 폴더에서 보기
 downloads-run-span = { $from }~{ $to }
 downloads-run-pair = { $first }, { $second }
 downloads-gap-missing =

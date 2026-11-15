@@ -87,7 +87,9 @@ Item {
     // ---- The numbers. A cube holds its number from 16 px for two digits, 22 px for three
     readonly property int digits: String(Math.max(1, numberAt(count - 1))).length
     readonly property real numberFits: digits <= 2 ? theme.space(4) : digits === 3 ? theme.space(5.5) : theme.space(7.5)
-    readonly property bool numbersInside: numbered && count > 0 && fold === 1 && size >= numberFits
+    // The figure's size inside a cube; under 9 px it cannot be read, and the scale takes over
+    readonly property int numberPx: Math.round(size * (digits <= 2 ? 0.42 : digits === 3 ? 0.36 : 0.3))
+    readonly property bool numbersInside: numbered && count > 0 && fold === 1 && size >= numberFits && numberPx >= 9
     readonly property bool numberScale: numbered && count > 0 && !numbersInside
     readonly property real scaleText: Math.max(9, theme.space(2.5))
     readonly property real scaleRoom: numberScale ? Math.round(scaleText * 1.5) : 0
@@ -206,8 +208,11 @@ Item {
     readonly property real gridY: tabHeight + pad
     function cellAt(x, y) {
         var step = size + gap
-        var c = Math.floor((x + gap / 2) / step), r = Math.floor((y - gridY + gap / 2) / rowStep)
+        var down = y - gridY + gap / 2
+        var c = Math.floor((x + gap / 2) / step), r = Math.floor(down / rowStep)
         if (c < 0 || c >= perRow || r < 0) return -1
+        // The scale under a row is no cube's
+        if (down - r * rowStep >= step) return -1
         var i = r * perRow + c
         return i < cells.length ? i : -1
     }
@@ -225,6 +230,7 @@ Item {
         columnSpacing: root.gap
         rowSpacing: root.gap + root.scaleRoom
         Repeater {
+            id: cubeRep
             model: root.cells.length
             Rectangle {
                 id: cube
@@ -315,10 +321,11 @@ Item {
             verticalAlignment: Text.AlignVCenter
             text: String(root.numberAt(index))
             font.family: theme.fontFigure
-            font.pixelSize: Math.round(root.size * (root.digits <= 2 ? 0.42 : root.digits === 3 ? 0.36 : 0.3))
+            font.pixelSize: root.numberPx
             color: root.numberColor(code, part)
-            scale: root.scaleOf(index)
-            Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+            // The cube's own animated scale, so a number costs one object, not three (#287)
+            readonly property Item under: cubeRep.count > index ? cubeRep.itemAt(index) : null
+            scale: under ? under.scale : 1
         }
     }
     // The scale under each row, for cubes too small to hold a number
@@ -337,7 +344,7 @@ Item {
     }
     MouseArea {
         Accessible.role: Accessible.StaticText
-        Accessible.name: root.list.length === 1 ? words.t("episode-cubes-one") : words.t("episode-cubes-range", { count: root.list.length, first: root.first, last: root.first + root.list.length - 1 })
+        Accessible.name: root.list.length === 1 ? words.t("episode-cubes-one") : words.t("episode-cubes-range", { count: root.list.length, first: root.numberAt(0), last: root.numberAt(root.list.length - 1) })
         y: root.gridY
         width: parent.width
         height: Math.max(0, parent.height - root.gridY)
@@ -359,7 +366,7 @@ Item {
     // handler below, not by a binding, so a warm handover never shows the cube before's
     function tipTextOf(i) {
         if (i < 0 || count > tipLimit || fold !== 1) return ""
-        return tipFor ? tipFor(i, cells[i] || "g") : words.t("episode-cubes-tip", { number: first + i, state: words.t(theme.cubeState(cells[i] || "g").id + ".inline") })
+        return tipFor ? tipFor(i, cells[i] || "g") : words.t("episode-cubes-tip", { number: numberAt(i), state: words.t(theme.cubeState(cells[i] || "g").id + ".inline") })
     }
     Item {
         id: probe

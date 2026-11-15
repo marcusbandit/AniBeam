@@ -31,7 +31,7 @@ Item {
         else if (hoverTorrentItem === item) { hoverTorrentItem = null; hoverTorrent = null }
     }
     // The folder a line's torrent saves into: its own, or for a show's group its first one's
-    function folderOf(t) {
+    function saveFolderOf(t) {
         if (!t) return ""
         var m = t.grouped ? t.members[0] : t
         if (m.save_path) return m.save_path

@@ -1806,6 +1806,7 @@ release-table-season-batch = Пакет сезона { $season }
 release-table-batch = Пакет
 release-table-via = через { $source }
 release-table-season-episode = С{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d MMMM yyyy, HH:mm
 release-table-download = Скачать
 release-table-more = и ещё { $count }. Сузьте список или отсортируйте его, чтобы увидеть другие.
@@ -1861,7 +1862,6 @@ downloads-remove-group-torrents =
         [many] Удалить его { $count } торрентов
        *[other] Удалить его { $count } торрента
     }
-downloads-show-in-folder = Показать в папке
 downloads-run-span = с { $from } по { $to }
 downloads-run-pair = { $first } и { $second }
 downloads-gap-missing =

@@ -234,10 +234,12 @@ Item {
     }
     function contextItems() {
         // A line of the activity column (#1004): its torrent's folder
+        // Only for a client that keeps its files on this machine: another's paths are its own
         var line = activity.visible ? activity.hoverTorrent : null
         if (line) {
-            var folder = activity.folderOf(line)
-            return folder === "" ? [] : [{ text: words.t("downloads-show-in-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(folder)) } }]
+            var here = !!page.status && !!page.status.save_folder && page.status.save_folder.here
+            var folder = here ? activity.saveFolderOf(line) : ""
+            return folder === "" ? [] : [{ text: words.t("frame-open-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(folder)) } }]
         }
         var g = page.hoverGroup, anchor = page.hoverGroupItem
         if (!g || !anchor || !page.home || page.lens !== "downloaded") return []

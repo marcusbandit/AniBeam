@@ -1,5 +1,5 @@
 ### New
-- Right-click a download in Downloading now to show it in its folder
+- Right-click a download in Downloading now to open its folder
 
 ### Changed
 - A show on Downloads has a Show releases button on each source to ask it

@@ -1279,6 +1279,7 @@ release-table-season-batch = シーズン{ $season }のバッチ
 release-table-batch = バッチ
 release-table-via = { $source }経由
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }〜{ $last }
 release-table-date-format = yyyy年M月d日 HH:mm
 release-table-download = ダウンロード
 release-table-more = ほか{ $count }件。絞り込むか並べ替えると、ほかのものが先に表示されます。
@@ -1308,7 +1309,6 @@ downloads-remove-group-torrents =
         [1] トレントを削除
        *[other] トレント{ $count }件を削除
     }
-downloads-show-in-folder = フォルダで表示
 downloads-run-span = { $from }〜{ $to }
 downloads-run-pair = { $first }、{ $second }
 downloads-gap-missing = 第{ $runs }話が欠けています

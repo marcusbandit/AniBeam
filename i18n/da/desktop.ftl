@@ -1618,6 +1618,7 @@ release-table-season-batch = Pakke, sæson { $season }
 release-table-batch = Pakke
 release-table-via = via { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d. MMMM yyyy, HH:mm
 release-table-download = Download
 release-table-more = og { $count } mere. Indsnævr listen, eller sortér den for at se andre først.
@@ -1663,7 +1664,6 @@ downloads-remove-group-torrents =
         [one] Fjern torrenten
        *[other] Fjern dens { $count } torrents
     }
-downloads-show-in-folder = Vis i mappe
 downloads-run-span = { $from } til { $to }
 downloads-run-pair = { $first } og { $second }
 downloads-gap-missing =
