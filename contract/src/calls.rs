@@ -271,6 +271,11 @@ pub enum Call {
         not_interested: bool,
     },
     ListNotInterested,
+    /// Drops the marks of shows that no season read the Airing page still
+    /// holds carries any more, checked against the cached reads only, then
+    /// lists what is left the way `ListNotInterested` does. Nothing goes to
+    /// AniList. With no cached read of what is on air it drops nothing (#1012).
+    PruneNotInterested,
     /// Puts a show on Airing now on Planning, on every connected tracker
     /// that does not list it yet. `Started` with the job.
     PlanToWatch {
@@ -616,6 +621,13 @@ pub enum Call {
         anirss_token: Option<String>,
         torrent_password: Option<String>,
     },
+    /// Where a show that is not in the library yet downloads to on the core's own engine:
+    /// a folder of its own under `folder`, which must be absolute. `None` or an empty folder
+    /// goes back to the default, the first library folder for Anibeam's own qBittorrent.
+    /// The search helper keeps its own folders. Emits `DownloadsStatusChanged`.
+    SetSaveFolder {
+        folder: Option<String>,
+    },
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
@@ -722,6 +734,13 @@ pub enum Call {
     /// Fetches and checks a repo's index and replies with it, unsaved, for the person to
     /// compare its fingerprint. `url` is an https address, or a local path to the file.
     AddEndpointRepo {
+        url: String,
+    },
+    /// Adds a repo in one step (#1003): fetches and checks its index, pins its key, and
+    /// installs every endpoint it offers that asks for no value and is not NSFW in a repo
+    /// that is not. A repo already saved under another key is refused, as on a refresh.
+    /// Replies with the catalog; the endpoints that ask for a value stay offered.
+    AttachEndpointRepo {
         url: String,
     },
     /// Saves a repo, pinning `key`, the one the preview showed.

@@ -116,7 +116,7 @@ core-error-version = Esta exportación es de un Anibeam más nuevo (formato { $f
 core-error-internal = Anibeam tuvo un error interno: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = pega la dirección de un repo
 core-repos-must-be-https = la dirección debe ser https
@@ -153,7 +153,7 @@ core-repos-note-theirs = Este anirss lo ejecutas tú y el escritorio nunca cambi
 core-repos-note-sandbox = Esta ejecución nunca escribe en la configuración de anirss, así que aquí el escritorio no busca en { $id }
 core-repos-note-old = anirss { $version } no acepta endpoints de { -app-name }; actualízalo a { $min } o posterior para que el escritorio busque en este
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = la clave del índice no es una clave ed25519
 core-repos-key-not-base64 = la clave del índice no son 32 bytes en base64
@@ -1166,6 +1166,10 @@ core-downloads-refuse-library-folder = { $path } es una carpeta de la biblioteca
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent no indica ninguna carpeta de descarga predeterminada; pon una en qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } no es una ruta completa a una carpeta
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } no puede guardar descargas: elige una carpeta que exista y que no sea tu carpeta personal
 core-downloads-name-empty = el nombre no puede estar vacío
 core-downloads-name-slash = el nombre no puede contener / ni \
 core-downloads-name-not-folder = { $name } no es un nombre de carpeta
@@ -1221,7 +1225,7 @@ core-downloads-rolled = { $title }: ahora en los episodios { $from } a { $to } d
 core-downloads-roll-ahead = mantén al menos un episodio por delante
 core-downloads-roll-nothing = nada que obtener
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = una fuente de búsqueda JSON viene de un repo de endpoints cuya definición asigna sus campos
 core-releases-endpoint-no-name = falta `name`
@@ -1233,17 +1237,17 @@ core-releases-endpoint-not-http = { $name }: la dirección debe empezar por http
 core-releases-endpoint-needs-query = { $name }: la url { $kind } debe contener el marcador {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: una url { $kind } añade la búsqueda por sí misma, así que no lleva {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = el indexador respondió con el error { $code }
 core-releases-bad-feed = feed incorrecto: { $error }
 core-releases-feed-answered = el feed respondió { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = no es el JSON del feed: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = no es JSON: { $error }
 core-releases-search-error-said = la búsqueda respondió con un error: { $message }
@@ -1252,7 +1256,7 @@ core-releases-no-results-field = la respuesta no tiene resultados en { $path }
 core-releases-results-not-list = los resultados de la respuesta no son una lista
 core-releases-search-answered = la búsqueda respondió { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = aún no hay endpoints: añade un repo, o uno a mano, en Endpoints, en Más
 core-releases-no-source-named = no hay ninguna fuente llamada { $name }
@@ -1260,7 +1264,7 @@ core-releases-empty-query = escribe algo que buscar
 core-releases-cannot-follow = { $name } no se puede seguir: responde a búsquedas, pero no tiene feed donde buscar episodios nuevos
 core-releases-endpoint-gone = { $name } ya no está disponible: se quitó, se desactivó o le falta su clave
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } debe ser una sola palabra corta
 core-releases-quirks-pattern-count = show_feed admite de 1 a { $most } patrones de página
@@ -1271,11 +1275,11 @@ core-releases-quirks-url-https = la url de show_feed debe ser https
 core-releases-quirks-url-host = la url de show_feed debe estar en el propio host del endpoint
 core-releases-quirks-url-slug = la url de show_feed lleva {"{"}slug{"}"} una vez y ningún otro marcador
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = op 'tokens' necesita una lista `tokens` no vacía
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = Lote de { $group }
 core-releases-episodes-phrase =
