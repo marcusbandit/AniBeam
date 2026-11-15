@@ -616,6 +616,13 @@ pub enum Call {
         anirss_token: Option<String>,
         torrent_password: Option<String>,
     },
+    /// Where a show that is not in the library yet downloads to on the core's own engine:
+    /// a folder of its own under `folder`, which must be absolute. `None` or an empty folder
+    /// goes back to the default, the first library folder for Anibeam's own qBittorrent.
+    /// The search helper keeps its own folders. Emits `DownloadsStatusChanged`.
+    SetSaveFolder {
+        folder: Option<String>,
+    },
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
@@ -722,6 +729,13 @@ pub enum Call {
     /// Fetches and checks a repo's index and replies with it, unsaved, for the person to
     /// compare its fingerprint. `url` is an https address, or a local path to the file.
     AddEndpointRepo {
+        url: String,
+    },
+    /// Adds a repo in one step (#1003): fetches and checks its index, pins its key, and
+    /// installs every endpoint it offers that asks for no value and is not NSFW in a repo
+    /// that is not. A repo already saved under another key is refused, as on a refresh.
+    /// Replies with the catalog; the endpoints that ask for a value stay offered.
+    AttachEndpointRepo {
         url: String,
     },
     /// Saves a repo, pinning `key`, the one the preview showed.
