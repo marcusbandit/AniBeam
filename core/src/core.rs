@@ -55,6 +55,9 @@ pub struct Core {
     pub(crate) releases: Arc<Releases>,
     pub(crate) downloads: Arc<Downloads>,
     pub(crate) playback: Arc<Playback>,
+    /// The watch together room this core is in, if any (`Room*` calls),
+    /// above the playback team whose session it drives.
+    pub(crate) rooms: Arc<room::Rooms>,
     /// The tailnet host: the read-only API the phone app reads, served on
     /// this machine's Tailscale addresses while the preference is on.
     pub(crate) host: Arc<Host>,
@@ -161,6 +164,11 @@ impl Core {
             net.clone(),
             trackers.clone(),
             downloads.clone(),
+        ));
+        let rooms = Arc::new(room::Rooms::new(
+            services.clone(),
+            playback.clone(),
+            downloads.clone(),
             library.clone(),
             metadata.clone(),
         ));
@@ -179,6 +187,13 @@ impl Core {
         releases
             .searcher
             .set(Arc::downgrade(&downloads) as Weak<dyn crate::releases::Searcher>);
+        playback
+            .follower
+            .set(Arc::downgrade(&rooms) as Weak<dyn crate::playback::Follower>);
+        playback
+            .presence
+            .rooms
+            .set(Arc::downgrade(&rooms) as Weak<dyn crate::presence::JoinRooms>);
         metadata.listen();
         crate::downloads::watch::listen(&downloads);
         // Every SeriesChanged, from whichever job or scan, carries what is
@@ -200,6 +215,7 @@ impl Core {
             releases,
             downloads,
             playback,
+            rooms,
             host,
             launch: Arc::new(launch::Slot::default()),
             runtime: Mutex::new(Some(runtime)),
@@ -312,14 +328,14 @@ impl Core {
     /// second. Not part of the contract.
     #[doc(hidden)]
     pub fn set_room_correction_gap(&self, gap: std::time::Duration) {
-        self.playback.rooms.set_correction_gap(gap);
+        self.rooms.set_correction_gap(gap);
     }
 
     /// Drops the room's connection without a goodbye, as a lost network would.
     /// Not part of the contract.
     #[doc(hidden)]
     pub fn room_drop_connection(&self) {
-        self.playback.rooms.drop_connection();
+        self.rooms.drop_connection();
     }
 
     /// Returns once every Discord presence send asked for so far has been
@@ -1021,7 +1037,7 @@ impl Core {
             | Call::RoomLeave
             | Call::RoomStatus
             | Call::RoomGetMedia { .. }
-            | Call::RoomStart { .. }) => room::call(&self.playback, c),
+            | Call::RoomStart { .. }) => room::call(&self.rooms, c),
         }
     }
 
@@ -1065,7 +1081,7 @@ impl Core {
         // clears it first and ends the worker.
         crate::presence::shutdown(&self.playback);
         // A room says goodbye, so the others see this member leave at once.
-        crate::room::shutdown(&self.playback);
+        crate::room::shutdown(&self.rooms);
         self.services.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the

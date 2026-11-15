@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 
 use crate::contract::*;
 use crate::events::EventBus;
+use crate::foundation::above::Above;
 use crate::playback::Playback;
 use crate::prefs;
 use crate::sync::recover;
@@ -478,6 +479,16 @@ pub struct Presence {
     check_ms: Arc<AtomicU64>,
     inner: Mutex<Inner>,
     bus: Arc<EventBus>,
+    /// The watch together room Discord's join opens and reads, linked by
+    /// `Core::open`.
+    pub(crate) rooms: Above<dyn JoinRooms>,
+}
+
+/// What Discord's join asks of the watch together room, which sits above
+/// presence (#854): its status, and a room opened for a friend let in.
+pub trait JoinRooms: Send + Sync {
+    /// One `Room*` call, answered as a shell's would be.
+    fn call(self: Arc<Self>, call: Call) -> Result<Reply, CoreError>;
 }
 
 #[derive(Default)]
@@ -594,6 +605,7 @@ impl Presence {
                 ..Inner::default()
             }),
             bus,
+            rooms: Above::default(),
         }
     }
 

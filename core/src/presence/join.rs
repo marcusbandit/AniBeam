@@ -138,7 +138,7 @@ pub(super) fn follow_rooms(playback: &Arc<Playback>) {
         .services
         .bus
         .subscribe(Arc::new(Follow(Arc::downgrade(playback))));
-    if let Ok(Reply::Room { room }) = crate::room::call(playback, Call::RoomStatus) {
+    if let Ok(Reply::Room { room }) = room_call(playback, Call::RoomStatus) {
         set_room(playback, room.as_ref().map(show_of));
     }
 }
@@ -282,14 +282,14 @@ pub(crate) fn answer_call(
         let name = ask.map(|a| a.name).unwrap_or_else(|| user_id.clone());
         block(playback, &user_id, &name)?;
         post_answer(playback, user_id, false);
-        return crate::room::call(playback, Call::RoomStatus);
+        return room_call(playback, Call::RoomStatus);
     }
-    let open = crate::room::call(playback, Call::RoomStatus)?;
+    let open = room_call(playback, Call::RoomStatus)?;
     let reply = match open {
         Reply::Room { room: Some(_) } => open,
         _ => {
             let session = playback.sessions.playing().map(|s| s.id);
-            crate::room::call(playback, Call::RoomCreate { session })?
+            room_call(playback, Call::RoomCreate { session })?
         }
     };
     recover(&playback.presence.inner)
@@ -306,10 +306,7 @@ pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Repl
     {
         let mut inner = recover(&playback.presence.inner);
         if inner.room.is_none() {
-            return Err(crate::room::error(
-                "not_in_room",
-                crate::words!("core-room-not-in"),
-            ));
+            return Err(not_in_room());
         }
         inner.room_open = open;
         if playback.presence.enabled.load(Ordering::Relaxed) {
@@ -317,6 +314,25 @@ pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Repl
         }
     }
     super::status_call(playback)
+}
+
+/// A `Room*` call to the room team above, which `Core::open` links; once
+/// it has gone there is no room to read or open.
+fn room_call(playback: &Playback, call: Call) -> Result<Reply, CoreError> {
+    match playback.presence.rooms.get() {
+        Some(rooms) => rooms.call(call),
+        None => Err(not_in_room()),
+    }
+}
+
+/// The room's own error for a call that needs a room (`room::error`), the
+/// same code and words.
+fn not_in_room() -> CoreError {
+    CoreError::service(
+        crate::i18n::tr("core-room-service", &[]),
+        "not_in_room".to_string(),
+        crate::words!("core-room-not-in").render(),
+    )
 }
 
 /// How long a join Discord handed over waits for a window to take it.
