@@ -43,7 +43,7 @@ use tokio_util::sync::CancellationToken;
 use super::{Active, Rooms, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
 use crate::downloads::{self, backend::DownloadsBackend, origins, replace};
-use crate::events::Subscription;
+use crate::events::Listening;
 use crate::library::scan::ScanScope;
 use crate::releases::{facts, titles};
 
@@ -708,7 +708,7 @@ async fn settle_in(
     content: &str,
 ) -> Result<(), Why> {
     let woken = Arc::new(Notify::new());
-    let _listening = Subscription::new(
+    let _listening = Listening::new(
         rooms.services.bus.clone(),
         Arc::new(Arrivals(woken.clone())),
     );

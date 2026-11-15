@@ -358,16 +358,14 @@ pub(crate) fn run_to_end(
         }
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let sub = crate::events::Subscription::new(services.bus.clone(), Arc::new(Relay(tx)));
+    // Removed from the bus when this function returns, on every path.
+    let _listening = crate::events::Listening::new(services.bus.clone(), Arc::new(Relay(tx)));
     let job = match front.answer(profile, call) {
         Ok(Reply::Started { job }) => job,
-        other => {
-            sub.unsubscribe();
-            return other;
-        }
+        other => return other,
     };
     let until = std::time::Instant::now() + wait;
-    let answer = loop {
+    loop {
         let left = until.saturating_duration_since(std::time::Instant::now());
         let Ok(event) = rx.recv_timeout(left) else {
             break Ok(Reply::Started { job });
@@ -383,9 +381,7 @@ pub(crate) fn run_to_end(
             _ if r.phase == JobPhase::Finished => break Ok(Reply::Ok),
             _ => {}
         }
-    };
-    sub.unsubscribe();
-    answer
+    }
 }
 
 /// One player call, run on this core as if its own player had made it.
