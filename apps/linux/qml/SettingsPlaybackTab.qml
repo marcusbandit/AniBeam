@@ -7,8 +7,8 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Playback"
-    lead: "What the player does on its own, so you only reach for it when you want to."
+    title: words.t("settings-playback-title")
+    lead: words.t("settings-playback-lead")
     readonly property var defaults: frame.subtitleDefaults
     function edit(f) { frame.editSubtitleDefaults(f) }
     // An edit still waiting on the debounce is written as the tab closes
@@ -21,45 +21,88 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.discord_presence = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error, function() { tab.setDiscord(on) })
+    }
+    function setSkip(intro, outro) {
+        var r = Door.setAutoSkip(intro, outro)
+        if (r && r.error) frame.fail(r.error, function() { tab.setSkip(intro, outro) })
+    }
+    // A presence check that failed is not a build without Discord: it says so, with Try again
+    property bool presenceFailed: false
+    function readPresence() {
+        var presence = Door.call("GetPresence", {})
+        presenceFailed = !!presence.error
+        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected }
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
-    Component.onCompleted: { var presence = Door.call("GetPresence", {}); if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected } }
+    // The people told no when they asked on Discord to join (#966)
+    property var discordBlocked: []
+    function readBlocked() {
+        var r = Door.call("DiscordBlocked", {})
+        if (!r.error) discordBlocked = r.reply.people || []
+    }
+    function clearBlocked() {
+        var r = Door.call("DiscordUnblock", { user_id: null })
+        if (r.error) { frame.fail(r.error); return }
+        discordBlocked = r.reply.people || []
+    }
+    Component.onCompleted: { readPresence(); readBlocked() }
     Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
-        title: "Skipping"
-        helper: "Uses the file's chapters, else AniSkip. Undo in the player turns skipping off until AniBeam closes."
-        SettingRow { label: "Skip intros"
-            Switch { checked: !!tab.skip.intro; onToggled: function(on) { Door.setAutoSkip(on, !!tab.skip.outro) } } }
-        SettingRow { label: "Skip outros"; helper: "Reaching the outro also marks the episode watched."
-            Switch { checked: !!tab.skip.outro; onToggled: function(on) { Door.setAutoSkip(!!tab.skip.intro, on) } } }
+        title: words.t("settings-playback-skipping")
+        helper: words.t("settings-playback-skipping-helper")
+        SettingRow { label: words.t("settings-playback-skip-intros")
+            Switch { checked: !!tab.skip.intro; onToggled: function(on) { tab.setSkip(on, !!tab.skip.outro) } } }
+        SettingRow { label: words.t("settings-playback-skip-outros"); helper: words.t("settings-playback-skip-outros-helper")
+            Switch { checked: !!tab.skip.outro; onToggled: function(on) { tab.setSkip(!!tab.skip.intro, on) } } }
     }
     Panel {
-        title: "Next episode"
-        SettingRow { label: "Name the next episode"; helper: "The Next button at the end of an episode shows the next one's title. Off, it shows only its number."
+        title: words.t("settings-playback-next-episode")
+        SettingRow { label: words.t("settings-playback-name-next"); helper: words.t("settings-playback-name-next-helper")
             Switch { checked: frame.prefs.nextNamesEpisode; onToggled: function(on) { frame.prefs.nextNamesEpisode = on } } }
     }
     Panel {
-        title: "Languages"
-        helper: "Language codes, most wanted first. The first one a file has wins. A track you pick in the player is remembered for that series."
-        SettingRow { label: "Subtitle languages"
-            Field { text: (tab.defaults.subtitle_languages || []).join(", "); placeholder: "en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.subtitle_languages = tab.codes(t) }) } } }
-        SettingRow { label: "Audio languages"
-            Field { text: (tab.defaults.audio_languages || []).join(", "); placeholder: "ja, en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.audio_languages = tab.codes(t) }) } } }
+        title: words.t("settings-playback-languages")
+        helper: words.t("settings-playback-languages-helper")
+        SettingRow { label: words.t("settings-playback-subtitle-languages")
+            Field { text: (tab.defaults.subtitle_languages || []).join(", "); placeholder: "en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.subtitle_languages = tab.codes(t) }) } } } // i18n: none
+        SettingRow { label: words.t("settings-playback-audio-languages")
+            Field { text: (tab.defaults.audio_languages || []).join(", "); placeholder: "ja, en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.audio_languages = tab.codes(t) }) } } } // i18n: none
     }
     Panel {
         title: "Discord"
-        SettingRow { label: "Show what you watch on Discord"
-            helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
-            status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? "Connected to Discord" : "Not connected. AniBeam connects while an episode plays and Discord is open"
-            Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
+        SettingRow { label: words.t("settings-playback-discord")
+            helper: tab.presenceFailed ? words.t("settings-playback-discord-check-failed")
+                : tab.discordAvailable ? "" : words.t("settings-playback-discord-unavailable")
+            status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? words.t("settings-playback-discord-connected") : words.t("settings-playback-discord-not-connected")
+            Row { spacing: theme.space(2)
+                Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
+                Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
+        SettingRow { label: words.t("settings-playback-discord-blocked")
+            visible: tab.discordAvailable
+            status: tab.discordBlocked.map(function(p) { return p.name }).join(", ")
+            Button { objectName: "settings-discord-unblock"; msg: "action-clear"; flat: true; small: true
+                enabled: tab.discordBlocked.length > 0; opacity: enabled ? 1 : theme.disabledOpacity
+                onClicked: tab.clearBlocked() } }
+    }
+    // Watch together (#846): the name others in a room see. Kept per machine, like the relay.
+    Panel {
+        title: words.t("settings-playback-together")
+        SettingRow { label: words.t("settings-playback-room-name")
+            Field { objectName: "settings-room-name"; text: Door.preferences.room_name || ""; placeholder: frame.room.suggestedName || words.t("settings-playback-room-name-placeholder"); width: theme.space(48)
+                accessibleName: words.t("settings-playback-room-name")
+                onEdited: function(t) { if (t.trim() !== "" && t.trim() !== (Door.preferences.room_name || "") && !frame.room.setName(t)) frame.toast(frame.room.error) } } }
     }
     Panel {
-        title: "mpv"
-        SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv.conf. Options that only work at startup are skipped, and scripts never load."
-            status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
+        title: words.t("settings-playback-advanced")
+        SettingRow { label: words.t("settings-playback-my-mpv"); helper: words.t("settings-playback-my-mpv-helper")
+            status: Player.configLayers.length ? Player.configLayers.join("\n") : words.t("settings-playback-no-mpv-conf")
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
+        SettingRow { label: words.t("settings-playback-room-relay"); helper: words.t("settings-playback-room-relay-helper")
+            Field { objectName: "settings-room-relay"; text: Door.preferences.room_relay || ""; mono: true; width: theme.space(64)
+                accessibleName: words.t("settings-playback-room-relay")
+                onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } } }
     }
 }

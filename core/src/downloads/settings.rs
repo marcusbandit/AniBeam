@@ -12,7 +12,10 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 use serde::Deserialize;
 
+use super::home::AnirssHome;
 use crate::contract::*;
+use crate::foundation::services::Services;
+use crate::releases::BestfitConfig;
 use crate::store::settings;
 use crate::trackers::Secrets;
 
@@ -36,7 +39,7 @@ pub fn password_key(id: &str) -> String {
     }
 }
 
-/// The key of the password the client in use logs in with. AniBeam's own
+/// The key of the password the client in use logs in with. Anibeam's own
 /// needs none, so it has none.
 pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
     (s.torrent_mode != TorrentMode::Managed).then(|| password_key(&s.active_client))
@@ -44,13 +47,19 @@ pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
 
 /// The stored blob, or the defaults; the two `has_*` flags are false here
 /// and set by `load`, which asks the secret store.
-pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
+pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSettings, CoreError> {
     let mut s: DownloadSettings = match settings::get(conn, KEY) {
         Ok(Some(s)) => s,
-        Ok(None) => defaults(),
+        Ok(None) => fresh(home),
         Err(e) if e.is_decode_failure() => {
             tracing::warn!("reading the downloads settings as the defaults: {e}");
-            defaults()
+            // A stored anirss outlives a blob this build cannot read: the defaults
+            // would move the person onto the native engine without a word (#552).
+            let mut d = fresh(home);
+            if stored_engine_value(conn) == Some(DownloadsEngine::Anirss) {
+                d.engine = DownloadsEngine::Anirss;
+            }
+            d
         }
         Err(e) => return Err(e),
     };
@@ -63,8 +72,18 @@ pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
     Ok(s)
 }
 
-pub fn load(conn: &Connection, secrets: &Secrets) -> Result<DownloadSettings, CoreError> {
-    let mut s = load_stored(conn)?;
+/// `load_stored` for `core`, off the home its paths give anirss.
+pub fn read(services: &Services) -> Result<DownloadSettings, CoreError> {
+    let home = AnirssHome::of(&services.paths);
+    services.store.read(move |c| load_stored(c, &home))
+}
+
+pub fn load(
+    conn: &Connection,
+    secrets: &Secrets,
+    home: &AnirssHome,
+) -> Result<DownloadSettings, CoreError> {
+    let mut s = load_stored(conn, home)?;
     fill_secret_flags(&mut s, |key| secrets.has(key));
     Ok(s)
 }
@@ -94,10 +113,10 @@ fn adopt_client(s: &mut DownloadSettings) {
 }
 
 /// Writes the settings over what is stored, so a key a newer build added survives a save
-/// here. An engine this build does not know reads as anirss (a newer build wrote it), so a
-/// save that still says anirss keeps the stored value rather than undo the newer build's
-/// choice; picking the native engine replaces it. This build cannot tell an anirss read that
-/// way from one picked on purpose, and in this build both mean anirss.
+/// here. An engine this build does not know reads as the native engine, the default (a newer
+/// build wrote it), so a save that still says native keeps the stored value rather than undo
+/// the newer build's choice; picking anirss replaces it. This build cannot tell a native
+/// engine read that way from one picked on purpose, and in this build both mean native.
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
     let serde_json::Value::Object(fields) = serde_json::to_value(s)? else {
         return Err(CoreError::internal(
@@ -137,21 +156,21 @@ pub fn validate(s: &mut DownloadSettings, retired: &[SavedTorrentClient]) -> Res
     if s.anirss_mode == AnirssMode::Sidecar && s.anirss_command.is_empty() {
         return Err(CoreError::invalid(
             "anirss_command",
-            "the anirss command cannot be empty",
+            crate::i18n::tr("core-downloads-settings-command-empty", &[]),
         ));
     }
     if s.anirss_mode == AnirssMode::Remote && !is_http(&s.anirss_url) {
         return Err(CoreError::invalid(
             "anirss_url",
-            "the anirss address must start with http:// or https://",
+            crate::i18n::tr("core-downloads-settings-anirss-address", &[]),
         ));
     }
     if !is_http(&s.torrent_url) {
         return Err(CoreError::invalid(
             "torrent_url",
-            format!(
-                "the {} address must start with http:// or https://",
-                s.torrent_client.as_str()
+            crate::i18n::tr(
+                "core-downloads-settings-client-address",
+                &[("client", s.torrent_client.as_str().into())],
             ),
         ));
     }
@@ -219,24 +238,27 @@ pub fn settle_clients(
         {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "{:?} is not a client id: use letters, digits, - and _",
-                    c.id
+                crate::i18n::tr(
+                    "core-downloads-settings-bad-id",
+                    &[("id", format!("{:?}", c.id).into())],
                 ),
             ));
         }
         if ids.contains(&c.id) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!("two clients have the id {}", c.id),
+                crate::i18n::tr(
+                    "core-downloads-settings-same-id",
+                    &[("id", c.id.as_str().into())],
+                ),
             ));
         }
         if !is_http(&c.url) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "the address of {} must start with http:// or https://",
-                    c.name
+                crate::i18n::tr(
+                    "core-downloads-settings-saved-address",
+                    &[("name", c.name.as_str().into())],
                 ),
             ));
         }
@@ -247,9 +269,9 @@ pub fn settle_clients(
         if names.contains(&name) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "two clients are called {}; give each a name of its own",
-                    c.name
+                crate::i18n::tr(
+                    "core-downloads-settings-same-name",
+                    &[("name", c.name.as_str().into())],
                 ),
             ));
         }
@@ -297,7 +319,7 @@ fn address_key(url: &str) -> String {
 }
 
 /// Whether the client in use keeps its downloads on this machine's disk, so
-/// the core may move them to the trash itself. AniBeam's own always does; a
+/// the core may move them to the trash itself. Anibeam's own always does; a
 /// client of the user's does when its address is this machine: loopback,
 /// one of the machine's own addresses, or its name. A seedbox's paths are
 /// its own, and the same path here is somebody else's folder.
@@ -310,8 +332,8 @@ pub fn files_here(s: &DownloadSettings) -> bool {
 fn is_this_machine(host: &str) -> bool {
     names_this_machine(
         host,
-        &crate::host::server::hostname(),
-        crate::host::addr::local_addresses,
+        &crate::foundation::machine::hostname(),
+        crate::foundation::machine::local_addresses,
         |name| remembered(&LOOKUPS, name, Instant::now(), bounded_lookup),
     )
 }
@@ -377,7 +399,7 @@ fn bounded_lookup(name: &str) -> Option<Vec<IpAddr>> {
 /// Whether `host` is this machine, named `hostname` and holding `locals`. An address
 /// counts when it is loopback, unspecified or one of `locals`, and a name when it is the
 /// bare hostname. A longer name that only starts with it, a tailnet's
-/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`, counts only when it
+/// `desk.example-tailnet.ts.net` or a lookalike `desk.example.net`, counts only when it
 /// resolves here, since the core trashes files at the paths that client reports (#446).
 /// Only such a name is looked up, and `locals` is listed only when an address needs it.
 fn names_this_machine(
@@ -431,7 +453,7 @@ fn host_of(url: &str) -> String {
     parsed(url).map_or(String::new(), |u| bare_host(&u))
 }
 
-/// Whether AniBeam's own may listen at the address in use: it has to be on
+/// Whether Anibeam's own may listen at the address in use: it has to be on
 /// this machine, and not where one of the user's saved clients is, or it
 /// would be started at the user's own qBittorrent's port.
 pub fn fits_managed(s: &DownloadSettings) -> bool {
@@ -464,12 +486,43 @@ fn is_http(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
-/// Fresh settings: a sidecar off `anirss` on PATH, and qBittorrent where
-/// anirss's config says it is, else qBittorrent's own stock address.
+/// The engine the stored blob names, read on its own, so a blob the rest of
+/// which this build cannot decode still says which engine it picked.
+fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
+    let blob = settings::get::<serde_json::Value>(conn, KEY).ok()??;
+    serde_json::from_value(blob.get("engine")?.clone()).ok()
+}
+
+/// How many endpoints anirss's own `config.toml` names, nought when there is
+/// no file or none it can read. Anibeam itself does not read them (#552).
+pub fn anirss_config_endpoints(path: &Path) -> usize {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return 0;
+    };
+    let Ok(doc) = toml::from_str::<toml::Table>(&text) else {
+        return 0;
+    };
+    doc.get("endpoint")
+        .and_then(|e| e.as_array())
+        .map_or(0, |a| a.len())
+}
+
+/// Fresh settings: [`defaults`], with qBittorrent where the config of the
+/// anirss in `home` says it is.
+pub fn fresh(home: &AnirssHome) -> DownloadSettings {
+    let mut s = defaults();
+    if let Some((url, username)) = home.config_path().and_then(|p| anirss_config_qbt(&p)) {
+        s.torrent_url = url;
+        s.torrent_username = username;
+    }
+    s
+}
+
+/// The stock settings: the native engine (#552), with the search helper's own
+/// sidecar off `anirss` on PATH ready for whoever picks it, and qBittorrent at
+/// its own stock address.
 pub fn defaults() -> DownloadSettings {
-    let (url, username) = anirss_config_path()
-        .and_then(|p| anirss_config_qbt(&p))
-        .unwrap_or_else(|| ("http://localhost:8080".to_string(), "admin".to_string()));
+    let (url, username) = ("http://localhost:8080".to_string(), "admin".to_string());
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: "anirss".to_string(),
@@ -486,7 +539,7 @@ pub fn defaults() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: RollingSettings::default(),
-        engine: DownloadsEngine::Anirss,
+        engine: DownloadsEngine::Native,
     }
 }
 
@@ -508,24 +561,17 @@ pub fn anirss_config_qbt(path: &Path) -> Option<(String, String)> {
     Some((url.to_string(), username.to_string()))
 }
 
-/// `~/.config/anirss/config.toml`, honouring `XDG_CONFIG_HOME`.
-pub fn anirss_config_path() -> Option<PathBuf> {
-    let base = match std::env::var("XDG_CONFIG_HOME") {
-        Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => std::env::home_dir()?.join(".config"),
-    };
-    Some(base.join("anirss").join("config.toml"))
+/// The config of the anirss `core` runs: in the person's own home, or in a
+/// sandboxed run's own (`AnirssHome`).
+pub fn anirss_config_path(services: &Services) -> Option<PathBuf> {
+    AnirssHome::of(&services.paths).config_path()
 }
 
 /// The qBittorrent password anirss's CLI saved (`qbt.pass` in its state
 /// dir, mode 600), so a machine that already logs in through anirss works
 /// before a password is saved here. `None` when there is none.
-pub fn anirss_saved_password() -> Option<String> {
-    let base = match std::env::var("XDG_STATE_HOME") {
-        Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => std::env::home_dir()?.join(".local").join("state"),
-    };
-    let text = std::fs::read_to_string(base.join("anirss").join("qbt.pass")).ok()?;
+pub fn anirss_saved_password(home: &AnirssHome) -> Option<String> {
+    let text = std::fs::read_to_string(home.state_dir()?.join("qbt.pass")).ok()?;
     let pw = text.trim_end_matches(['\n', '\r']).to_string();
     (!pw.is_empty()).then_some(pw)
 }
@@ -535,6 +581,11 @@ mod tests {
     use super::*;
 
     use crate::franchise::testing::conn as store;
+
+    /// A home with nothing in it, so no test reads the machine's own anirss.
+    fn nowhere() -> AnirssHome {
+        AnirssHome::Sandbox(PathBuf::from("/nonexistent/anibeam-test-home"))
+    }
 
     fn stored_engine(c: &Connection) -> serde_json::Value {
         settings::get::<serde_json::Value>(c, KEY).unwrap().unwrap()["engine"].clone()
@@ -546,17 +597,17 @@ mod tests {
         let mut blob = serde_json::to_value(defaults()).unwrap();
         blob["engine"] = serde_json::json!("Telepathy");
         settings::set(&c, KEY, &blob).unwrap();
-        // Read as anirss here, and saved back with something else changed.
-        let mut s = load_stored(&c).unwrap();
-        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        // Read as the default, native, here, and saved back with something else changed.
+        let mut s = load_stored(&c, &nowhere()).unwrap();
+        assert_eq!(s.engine, DownloadsEngine::Native);
         s.prune_finished_feeds = false;
         save(&c, &s).unwrap();
         assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
-        assert!(!load_stored(&c).unwrap().prune_finished_feeds);
-        // Picking an engine this build knows replaces it.
-        s.engine = DownloadsEngine::Native;
+        assert!(!load_stored(&c, &nowhere()).unwrap().prune_finished_feeds);
+        // Picking another engine this build knows replaces it.
+        s.engine = DownloadsEngine::Anirss;
         save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Native"));
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
     }
 
     #[test]
@@ -565,7 +616,7 @@ mod tests {
         let mut blob = serde_json::to_value(defaults()).unwrap();
         blob["from_the_future"] = serde_json::json!({"on": true});
         settings::set(&c, KEY, &blob).unwrap();
-        save(&c, &load_stored(&c).unwrap()).unwrap();
+        save(&c, &load_stored(&c, &nowhere()).unwrap()).unwrap();
         let stored = settings::get::<serde_json::Value>(&c, KEY)
             .unwrap()
             .unwrap();
@@ -588,25 +639,47 @@ mod tests {
                 }
             }
             settings::set(&c, KEY, &blob).unwrap();
-            save(&c, &load_stored(&c).unwrap()).unwrap();
+            save(&c, &load_stored(&c, &nowhere()).unwrap()).unwrap();
             let kept = stored_engine(&c);
             match engine {
                 // A shape this build cannot read is unknown too, and kept.
                 Some(e) if e.is_object() => assert_eq!(kept, e),
-                _ => assert_eq!(kept, serde_json::json!("Anirss")),
+                _ => assert_eq!(kept, serde_json::json!("Native")),
             }
         }
     }
 
+    /// A blob this build cannot decode still keeps a stored anirss (#552).
     #[test]
-    fn a_save_over_a_known_engine_writes_the_one_given() {
+    fn an_unreadable_blob_keeps_its_stored_anirss() {
         let c = store();
-        let mut s = defaults();
-        s.engine = DownloadsEngine::Native;
-        save(&c, &s).unwrap();
-        s.engine = DownloadsEngine::Anirss;
-        save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob["engine"] = serde_json::json!("Anirss");
+        blob["torrent_mode"] = serde_json::json!("Telepathic");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Anirss
+        );
+        blob["engine"] = serde_json::json!("Native");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Native
+        );
+    }
+
+    #[test]
+    fn anirss_endpoints_are_counted_off_its_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        assert_eq!(anirss_config_endpoints(&p), 0);
+        std::fs::write(
+            &p,
+            "[[endpoint]]\nname = \"a\"\n\n[[endpoint]]\nname = \"b\"\n",
+        )
+        .unwrap();
+        assert_eq!(anirss_config_endpoints(&p), 2);
     }
 
     #[test]
@@ -615,7 +688,7 @@ mod tests {
         let p = dir.path().join("config.toml");
         std::fs::write(
             &p,
-            "[qbittorrent]\nurl = \"http://localhost:9090/\"\nusername = \"bandit\"\n\n[[endpoint]]\nname = \"nyaa\"\n",
+            "[qbittorrent]\nurl = \"http://localhost:9090/\"\nusername = \"bandit\"\n\n[[endpoint]]\nname = \"tracker\"\n",
         )
         .unwrap();
         assert_eq!(
@@ -630,62 +703,52 @@ mod tests {
         let locals = || -> Vec<IpAddr> {
             vec![
                 "192.168.1.20".parse().unwrap(),
-                "100.65.105.9".parse().unwrap(),
+                "100.64.0.1".parse().unwrap(),
             ]
         };
         let asked = std::cell::RefCell::new(Vec::new());
         let dns = |name: &str| -> Option<Vec<IpAddr>> {
             asked.borrow_mut().push(name.to_string());
             match name {
-                "banditbox.tail1234.ts.net" => Some(vec!["100.65.105.9".parse().unwrap()]),
-                "banditbox.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
+                "desk.example-tailnet.ts.net" => Some(vec!["100.64.0.1".parse().unwrap()]),
+                "desk.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
                 _ => None,
             }
         };
-        let here = |host: &str| names_this_machine(host, "banditbox", locals, dns);
-        assert!(here("banditbox"));
-        assert!(here("BanditBox."));
-        assert!(here("banditbox.tail1234.ts.net"));
-        assert!(here("BANDITBOX.TAIL1234.TS.NET."));
+        let here = |host: &str| names_this_machine(host, "desk", locals, dns);
+        assert!(here("desk"));
+        assert!(here("Desk."));
+        assert!(here("desk.example-tailnet.ts.net"));
+        assert!(here("DESK.EXAMPLE-TAILNET.TS.NET."));
         assert!(here("192.168.1.20"));
         assert!(here("127.0.0.1") && here("::1") && here("::ffff:127.0.0.1") && here("0.0.0.0"));
         // A lookalike whose first label is this machine's name is somebody
         // else's box, and so is a name that resolves nowhere (#446).
-        assert!(!here("banditbox.example.net"));
-        assert!(!here("banditbox.nowhere.invalid"));
+        assert!(!here("desk.example.net"));
+        assert!(!here("desk.nowhere.invalid"));
         assert!(!here("seedbox.example.net"));
         assert!(!here("203.0.113.7"));
         // Only a name that starts like this machine's is looked up.
         assert!(
-            asked.borrow().iter().all(|n| n.starts_with("banditbox.")),
+            asked.borrow().iter().all(|n| n.starts_with("desk.")),
             "{:?}",
             asked.borrow()
         );
         // No hostname, no match; a dotted hostname still knows its bare name.
-        assert!(!names_this_machine("banditbox", "", locals, dns));
-        assert!(names_this_machine(
-            "banditbox",
-            "banditbox.local",
-            locals,
-            dns
-        ));
-        assert!(names_this_machine(
-            "banditbox.local",
-            "banditbox.local",
-            locals,
-            dns
-        ));
+        assert!(!names_this_machine("desk", "", locals, dns));
+        assert!(names_this_machine("desk", "desk.local", locals, dns));
+        assert!(names_this_machine("desk.local", "desk.local", locals, dns));
     }
 
     #[test]
     fn a_failed_lookup_keeps_the_last_answer() {
         let cache = Lookups::default();
         let at = Instant::now();
-        let tailnet = vec!["100.65.105.9".parse::<IpAddr>().unwrap()];
-        let found = |_: &str| Some(vec!["100.65.105.9".parse().unwrap()]);
+        let tailnet = vec!["100.64.0.1".parse::<IpAddr>().unwrap()];
+        let found = |_: &str| Some(vec!["100.64.0.1".parse().unwrap()]);
         let fails = |_: &str| None;
         let never = |_: &str| -> Option<Vec<IpAddr>> { panic!("looked up within LOOKUP_FOR") };
-        let name = "banditbox.tail1234.ts.net";
+        let name = "desk.example-tailnet.ts.net";
         assert_eq!(remembered(&cache, "other.example", at, fails), None);
         assert_eq!(remembered(&cache, name, at, found), Some(tailnet.clone()));
         assert_eq!(
@@ -955,6 +1018,220 @@ pub fn anirss_ondemand(path: &Path, name: &str) -> Option<OnDemand> {
     })
 }
 
+/// anirss's `[bestfit]` over anirss's own defaults, merged the way anirss merges its config:
+/// what the person saved there (the groups they trust, the source order, the resolution and
+/// the codec-normalised size target) ranks the native engine's best fit as it ranks anirss's
+/// (#545). `None` when there is no file. One that does not read is anirss's defaults, as
+/// anirss warns about it and ranks with them. A key of the wrong shape keeps the default.
+pub fn anirss_bestfit(path: &Path) -> Option<BestfitConfig> {
+    if !path.exists() {
+        return None;
+    }
+    let mut cfg = BestfitConfig::default();
+    let doc = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Table>(&text).ok());
+    let Some(saved) = doc
+        .as_ref()
+        .and_then(|d| d.get("bestfit"))
+        .and_then(|b| b.as_table())
+    else {
+        return Some(cfg);
+    };
+    // A list with anything but words in it is the wrong shape as a whole
+    let words = |key: &str| -> Option<Vec<String>> {
+        saved
+            .get(key)?
+            .as_array()?
+            .iter()
+            .map(|v| v.as_str().map(str::to_string))
+            .collect()
+    };
+    let number = |key: &str| -> Option<f64> {
+        let v = saved.get(key)?;
+        v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
+    };
+    if let Some(groups) = words("preferred_groups") {
+        cfg.preferred_groups = groups;
+    }
+    if let Some(order) = words("source_order") {
+        cfg.source_order = order;
+    }
+    // anirss reads the target through str(), so 1080 written as a number is "1080"
+    match saved.get("preferred_resolution") {
+        Some(toml::Value::String(s)) => cfg.preferred_resolution = s.clone(),
+        Some(toml::Value::Integer(i)) => cfg.preferred_resolution = i.to_string(),
+        Some(toml::Value::Float(f)) => cfg.preferred_resolution = format!("{f:?}"),
+        _ => {}
+    }
+    if let Some(mib) = number("target_mib_per_episode") {
+        cfg.target_mib_per_episode = mib;
+    }
+    if let Some(ratio) = number("max_size_ratio") {
+        cfg.max_size_ratio = ratio;
+    }
+    if let Some(source) = saved.get("assumed_source").and_then(|v| v.as_str()) {
+        cfg.assumed_source = source.to_string();
+    }
+    Some(cfg)
+}
+
+#[cfg(test)]
+mod bestfit_tests {
+    use super::*;
+    use crate::releases::bestfit::best_item;
+
+    fn read(text: &str) -> Option<BestfitConfig> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, text).unwrap();
+        anirss_bestfit(&path)
+    }
+
+    fn items(titles: &[&str]) -> Vec<Release> {
+        titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| Release {
+                title: t.to_string(),
+                link: format!("link-{i}"),
+                seeders: None,
+                leechers: None,
+                downloads: None,
+                size: String::new(),
+                category: String::new(),
+                page: String::new(),
+                source: String::new(),
+                resolution: String::new(),
+                infomkv: String::new(),
+                linktype: String::new(),
+            })
+            .collect()
+    }
+
+    /// anirss's own test config, `_BESTFIT_CFG` in test_anirss.py.
+    const ANIRSS_TEST_CFG: &str = r#"
+[bestfit]
+preferred_groups = ["Kumo-Subs", "Lumen", "ASW"]
+source_order = ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
+preferred_resolution = "highest"
+target_mib_per_episode = 1000
+max_size_ratio = 3.0
+assumed_source = "WEB"
+"#;
+
+    #[test]
+    fn no_config_is_nothing_and_one_that_does_not_read_is_anirss_s_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(anirss_bestfit(&dir.path().join("missing.toml")), None);
+        // anirss warns about a bad config and ranks with its defaults
+        assert_eq!(
+            read("[bestfit\npreferred_groups = ["),
+            Some(BestfitConfig::default())
+        );
+    }
+
+    #[test]
+    fn a_config_without_bestfit_ranks_as_anirss_does_out_of_the_box() {
+        // test_config.py: the default config trusts no group
+        let cfg = read("[downloads]\nsave_base = \"~/TV\"\n").unwrap();
+        assert_eq!(cfg, BestfitConfig::default());
+        assert!(cfg.preferred_groups.is_empty());
+    }
+
+    #[test]
+    fn every_saved_key_is_read() {
+        let cfg = read(ANIRSS_TEST_CFG).unwrap();
+        assert_eq!(
+            cfg,
+            BestfitConfig {
+                preferred_groups: vec!["Kumo-Subs".into(), "Lumen".into(), "ASW".into()],
+                source_order: ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
+                    .map(String::from)
+                    .to_vec(),
+                preferred_resolution: "highest".into(),
+                target_mib_per_episode: 1000.0,
+                max_size_ratio: 3.0,
+                assumed_source: "WEB".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_partial_section_keeps_the_rest_of_anirss_s_defaults() {
+        let cfg = read("[bestfit]\npreferred_resolution = 1080\nmax_size_ratio = 2\n").unwrap();
+        assert_eq!(
+            cfg.preferred_resolution, "1080",
+            "a number reads as anirss's str() of it"
+        );
+        assert_eq!(cfg.max_size_ratio, 2.0);
+        assert_eq!(cfg.source_order, BestfitConfig::default().source_order);
+        assert_eq!(cfg.target_mib_per_episode, 1000.0);
+        // A key of the wrong shape keeps the default rather than failing the whole section.
+        let cfg = read("[bestfit]\npreferred_groups = \"Beta\"\nassumed_source = 3\n").unwrap();
+        assert!(cfg.preferred_groups.is_empty());
+        assert_eq!(cfg.assumed_source, "WEB");
+        let cfg = read("[bestfit]\npreferred_groups = [\"Beta\", 1]\n").unwrap();
+        assert!(
+            cfg.preferred_groups.is_empty(),
+            "{:?}",
+            cfg.preferred_groups
+        );
+    }
+
+    #[test]
+    fn a_saved_resolution_target_avoids_4k() {
+        // test_anirss.py: test_preferred_resolution_target_avoids_4k
+        let text = ANIRSS_TEST_CFG.replace("\"highest\"", "\"1080\"");
+        let cfg = read(&text).unwrap();
+        let found = items(&[
+            "[Kumo-Subs] Show 2160p WEB-DL",
+            "[Kumo-Subs] Show 1080p WEB-DL",
+        ]);
+        assert_eq!(
+            best_item(&found, &cfg).unwrap().title,
+            "[Kumo-Subs] Show 1080p WEB-DL"
+        );
+        // anirss's stock "highest" takes the sharper one.
+        let stock = read(ANIRSS_TEST_CFG).unwrap();
+        assert_eq!(
+            best_item(&found, &stock).unwrap().title,
+            "[Kumo-Subs] Show 2160p WEB-DL"
+        );
+    }
+
+    #[test]
+    fn the_saved_group_order_decides_between_equal_releases() {
+        let found = items(&["[Alpha] Show - 01 [1080p]", "[Beta] Show - 01 [1080p]"]);
+        let pick = |groups: &str| {
+            let cfg = read(&format!("[bestfit]\npreferred_groups = {groups}\n")).unwrap();
+            best_item(&found, &cfg).unwrap().title.clone()
+        };
+        assert_eq!(pick(r#"["Beta", "Alpha"]"#), "[Beta] Show - 01 [1080p]");
+        assert_eq!(pick(r#"["Alpha", "Beta"]"#), "[Alpha] Show - 01 [1080p]");
+    }
+
+    #[test]
+    fn a_saved_size_target_reads_a_codec_s_efficiency_as_anirss_does() {
+        // One episode of 600 MiB: starved against anirss's 1000 MiB x264 target, adequate
+        // once the person lowers it. HEVC is credited for its efficiency either way.
+        let found = |title: &str| Release {
+            size: "600 MiB".into(),
+            ..items(&[title])[0].clone()
+        };
+        let x264 = found("[A] Show - 01 [1080p x264]");
+        let hevc = found("[B] Show - 01 [1080p HEVC]");
+        let stock = read("[bestfit]\n").unwrap();
+        let lowered = read("[bestfit]\ntarget_mib_per_episode = 500\n").unwrap();
+        let both = [x264.clone(), hevc.clone()];
+        assert_eq!(best_item(&both, &stock).unwrap().title, hevc.title);
+        assert!(
+            crate::releases::bestfit::size_ratio(&x264, &lowered, None).unwrap()
+                > crate::releases::bestfit::size_ratio(&x264, &stock, None).unwrap()
+        );
+    }
+}
+
 #[cfg(test)]
 mod ondemand_tests {
     use super::*;
@@ -967,12 +1244,12 @@ mod ondemand_tests {
             &path,
             r#"
 [[endpoint]]
-name = "nyaa"
-kind = "nyaa"
-url = "https://nyaa.si/"
+name = "tracker"
+kind = "rss"
+url = "https://tracker.example/?q={query}"
 
 [[endpoint]]
-name = "1337x"
+name = "proxied"
 kind = "rss"
 url = "http://127.0.0.1:9117/x?q={query}"
 start = "podman pod start x"
@@ -981,14 +1258,14 @@ timeout = 45
 "#,
         )
         .unwrap();
-        assert_eq!(anirss_ondemand(&path, "nyaa"), None);
+        assert_eq!(anirss_ondemand(&path, "tracker"), None);
         assert_eq!(
-            anirss_ondemand(&path, "1337x"),
+            anirss_ondemand(&path, "proxied"),
             Some(OnDemand {
                 ready: "http://127.0.0.1:9117/caps".to_string(),
                 timeout: 45
             })
         );
-        assert_eq!(anirss_ondemand(&path, "erai"), None);
+        assert_eq!(anirss_ondemand(&path, "keyed"), None);
     }
 }

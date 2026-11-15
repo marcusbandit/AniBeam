@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- versionCode and versionName are the app's version. Bump both for every build that
-     leaves the machine; build.sh refuses to build when versionName and Cargo.toml disagree. -->
+<!-- No versionCode or versionName here: build.sh writes both into the APK from the version
+     in Cargo.toml, or the one CI ships it as (CONTRIBUTING.md, Releases). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.marcusrosado.anibeam"
-    android:versionCode="44"
-    android:versionName="2.4.3">
+    package="com.marcusrosado.anibeam">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,7 +22,7 @@
          turns into "go to Next up"; with targetSdk 36 the system would finish the
          activity instead. -->
     <application
-        android:label="AniBeam"
+        android:label="Anibeam"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AniBeam"
         android:hasCode="true"
@@ -37,7 +35,7 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="false"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|locale|layoutDirection">
             <meta-data android:name="android.app.lib_name" android:value="anibeam" />
         </activity>
         <!-- The launcher icons, one alias each over the activity. More's App icon turns one
@@ -85,5 +83,14 @@
             android:name="com.marcusrosado.anibeam.TorrentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Android's file picker for More's backup and restore (PickActivity.java). -->
+        <activity
+            android:name="com.marcusrosado.anibeam.PickActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <!-- Where the fold's crease runs, as the phone reports it (Crease.java). Optional:
+             a phone without the library installs and runs, and the layout guesses. -->
+        <uses-library android:name="androidx.window.extensions" android:required="false" />
     </application>
 </manifest>

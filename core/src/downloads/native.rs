@@ -10,38 +10,36 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
+use crate::foundation::services::Services;
 use crate::releases::native::Native;
 use crate::releases::stats;
 
 use super::anirss::url_safe;
 use super::paths::{self, SavePaths};
 use super::qbt::{self, QbtClient};
-use super::{settings, trash};
+use super::settings;
+use crate::library::trash;
 
 /// How `CoreError::Service` names a refusal that is the engine's own,
 /// not the torrent client's.
-const SERVICE: &str = "AniBeam";
+const SERVICE: &str = "Anibeam";
 
 /// The folder a download with no name and no show to name it after goes
 /// into (anirss's fallback name).
 const FALLBACK_NAME: &str = "anirss";
 
-/// How long fetching the .torrent files before an add may take in all.
+/// How long fetching the .torrent files before an add may take in all. anirss 0.7.1
+/// `api.py` `FETCH_DEADLINE_S`.
 const FETCH_DEADLINE: Duration = Duration::from_secs(20);
 
 fn not_found(message: String) -> CoreError {
-    CoreError::Service {
-        service: SERVICE.to_string(),
-        code: "not_found".to_string(),
-        message,
-    }
+    CoreError::service(SERVICE, "not_found", message)
 }
 
 // Subscribing ------------------------------------------------------------------
@@ -51,7 +49,7 @@ fn not_found(message: String) -> CoreError {
 /// show already in the library. The name defaults to the show's, from the
 /// first release; the same show from another endpoint gains ` @endpoint`.
 pub(super) async fn subscribe(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     native: &Native,
     query: &str,
     endpoint: &str,
@@ -61,17 +59,23 @@ pub(super) async fn subscribe(
 ) -> Result<Subscribed, CoreError> {
     let query = query.trim();
     if query.is_empty() {
-        return Err(CoreError::invalid("query", "empty query"));
+        return Err(CoreError::invalid(
+            "query",
+            crate::i18n::tr("core-downloads-native-empty-query", &[]),
+        ));
     }
     if items.is_empty() {
-        return Err(not_found(format!("no results for {query:?}")));
+        return Err(not_found(crate::i18n::tr(
+            "core-downloads-native-no-results",
+            &[("query", format!("{query:?}").into())],
+        )));
     }
     let name = paths::name_for(name, items, query)?;
     let spec = native.preview(query, endpoint, items).await?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
     // Naming is check-then-act: one subscription at a time
-    let _one = core.downloads.rules.lock().await;
+    let _one = downloads.rules.lock().await;
     let name = unique_name(&qbt, &name, &spec).await?;
     let save_path = save_path
         .map(str::to_string)
@@ -87,7 +91,10 @@ pub(super) async fn subscribe(
         // A feed already sits at that path with another address
         return Err(CoreError::invalid(
             "name",
-            format!("a feed named {name:?} already reads another address"),
+            crate::i18n::tr(
+                "core-downloads-native-feed-taken",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     qbt.set_rule(&name, &rule_def(&spec, &save_path, &tags))
@@ -167,32 +174,42 @@ pub(super) fn rule_def(spec: &SubscriptionSpec, save_path: &str, tags: &[String]
 /// given: the folder of a show already in the library (anirss
 /// `download_items`).
 pub(super) async fn download(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     items: &[Release],
     name: Option<&str>,
     save_path: Option<&str>,
 ) -> Result<AddedTorrents, CoreError> {
     if items.is_empty() {
-        return Err(CoreError::invalid("items", "no items given"));
+        return Err(CoreError::invalid(
+            "items",
+            crate::i18n::tr("core-downloads-native-no-items", &[]),
+        ));
     }
     let name = paths::name_for(name, items, FALLBACK_NAME)?;
     let links = checked_links(items.iter().map(|i| i.link.as_str()))?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
     let save_path = match save_path {
         Some(p) => p.to_string(),
         None => paths::join(&saving.save_base, &name),
     };
-    add_links(core, &qbt, &links, &save_path, &saving).await
+    add_links(&downloads.services, &qbt, &links, &save_path, &saving).await
 }
 
 /// One torrent straight into the films' folder, with no folder of its own
 /// (anirss `movie`).
-pub(super) async fn movie(core: &Arc<Core>, link: &str) -> Result<AddedTorrents, CoreError> {
+pub(super) async fn movie(downloads: &Downloads, link: &str) -> Result<AddedTorrents, CoreError> {
     let links = checked_links([link])?;
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
-    add_links(core, &qbt, &links, &saving.movie_path, &saving).await
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
+    add_links(
+        &downloads.services,
+        &qbt,
+        &links,
+        &saving.movie_path,
+        &saving,
+    )
+    .await
 }
 
 /// The upload's file name: the link's last path segment, decoded.
@@ -231,13 +248,19 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
         if !fits || safe.chars().any(char::is_whitespace) {
             return Err(CoreError::invalid(
                 "links",
-                format!("links must be magnet: or http(s) URLs, got {link:?}"),
+                crate::i18n::tr(
+                    "core-downloads-native-bad-link",
+                    &[("link", format!("{link:?}").into())],
+                ),
             ));
         }
         out.push(safe);
     }
     if out.is_empty() {
-        return Err(CoreError::invalid("links", "no links given"));
+        return Err(CoreError::invalid(
+            "links",
+            crate::i18n::tr("core-downloads-native-no-links", &[]),
+        ));
     }
     Ok(out)
 }
@@ -249,7 +272,7 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
 /// a URL. One qBittorrent already has is not uploaded again. The hashes
 /// are the ones known up front: an uploaded file's and a magnet's.
 async fn add_links(
-    core: &Core,
+    services: &Services,
     qbt: &QbtClient,
     links: &[String],
     save_path: &str,
@@ -263,7 +286,7 @@ async fn add_links(
     let mut fetched = if web.is_empty() {
         HashMap::new()
     } else {
-        stats::fetch_torrents(core.http.as_ref(), &web, FETCH_DEADLINE).await
+        stats::fetch_torrents(services.http.as_ref(), &web, FETCH_DEADLINE).await
     };
     let file_hashes: HashMap<String, String> = fetched
         .iter()
@@ -301,7 +324,7 @@ async fn add_links(
             file_hashes
                 .get(l)
                 .cloned()
-                .or_else(|| super::replace::magnet_hash(l))
+                .or_else(|| crate::foundation::magnet::hash(l))
         })
         .collect();
     Ok(AddedTorrents {
@@ -318,8 +341,10 @@ async fn add_links(
 /// ignored, each with the torrents saving into its folder and the files in
 /// it (anirss `list_subscriptions`). Files are counted only when the client
 /// saves on this machine; a path on another is someone else's folder.
-pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRule>, CoreError> {
-    let qbt = super::qbt_client(core).await?;
+pub(super) async fn subscriptions(
+    downloads: &Downloads,
+) -> Result<Vec<SubscriptionRule>, CoreError> {
+    let qbt = super::qbt_client(downloads).await?;
     let rules = qbt.rules().await?;
     let rules: Vec<(String, Value)> = rules
         .as_object()
@@ -332,7 +357,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
     for t in qbt.torrents().await? {
         *counts.entry(paths::norm(&t.save_path)).or_default() += 1;
     }
-    let here = files_here(core)?;
+    let here = files_here(&downloads.services)?;
     let mut out: Vec<SubscriptionRule> = rules
         .iter()
         .map(|(name, rule)| {
@@ -340,13 +365,14 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
             let save_path = rule_save_path(rule).unwrap_or("").to_string();
             SubscriptionRule {
                 name: name.clone(),
-                query: crate::subscriptions::decode_nyaa_query(&feed_url).unwrap_or_default(),
+                query: crate::downloads::query::decode_search_query(&feed_url).unwrap_or_default(),
                 feed_url,
                 torrent_count: counts.get(&paths::norm(&save_path)).copied().unwrap_or(0),
                 file_count: 0,
                 rule_enabled: rule["enabled"].as_bool().unwrap_or(true),
                 save_path,
                 show: None,
+                followable: true,
             }
         })
         .collect();
@@ -400,7 +426,7 @@ struct Plan {
 /// function deciding both so they cannot disagree. Files are only taken
 /// from strictly inside the save folders.
 pub(super) async fn remove(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     names: &[String],
     torrents: bool,
     files: bool,
@@ -413,22 +439,24 @@ pub(super) async fn remove(
         }
     }
     if unique.is_empty() {
-        return Err(CoreError::invalid("names", "no subscription names given"));
+        return Err(CoreError::invalid(
+            "names",
+            crate::i18n::tr("core-downloads-native-no-names", &[]),
+        ));
     }
-    let here = files_here(core)?;
+    let here = files_here(&downloads.services)?;
     if files && !torrents && !here {
         return Err(CoreError::invalid(
             "files",
-            "the torrent client keeps its files on another machine, so they can only go with \
-             its torrents",
+            crate::i18n::tr("core-downloads-native-files-elsewhere", &[]),
         ));
     }
-    let qbt = super::qbt_client(core).await?;
-    let saving = paths::resolve(core, &qbt).await?;
-    let _one = core.downloads.rules.lock().await;
+    let qbt = super::qbt_client(downloads).await?;
+    let saving = paths::resolve(&downloads.services, &qbt).await?;
+    let _one = downloads.rules.lock().await;
     let plans = plan(&qbt, &unique, torrents, files, here, &saving.save_base).await?;
     if files {
-        confined(core, &plans, &saving, here)?;
+        confined(&downloads.services, &plans, &saving, here)?;
     }
     if !dry_run {
         execute(&qbt, &plans, torrents, files, here).await?;
@@ -461,9 +489,9 @@ async fn plan(
         .map(String::as_str)
         .collect();
     if !missing.is_empty() {
-        return Err(not_found(format!(
-            "unknown feed(s): {}",
-            missing.join(", ")
+        return Err(not_found(crate::i18n::tr(
+            "core-downloads-native-unknown-feeds",
+            &[("names", missing.join(", ").into())],
         )));
     }
     let mut plans = Vec::new();
@@ -521,7 +549,12 @@ async fn plan(
 /// Refuses files outside the save folders (anirss `check_confined`), and on
 /// this machine a folder that is the home folder, holds it, or holds a
 /// library folder, as the trash's own checks refuse them.
-fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Result<(), CoreError> {
+fn confined(
+    services: &Services,
+    plans: &[Plan],
+    saving: &SavePaths,
+    here: bool,
+) -> Result<(), CoreError> {
     let roots = [saving.save_base.as_str(), saving.movie_path.as_str()];
     let outside: Vec<&str> = plans
         .iter()
@@ -531,9 +564,9 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
     if !outside.is_empty() {
         return Err(CoreError::invalid(
             "files",
-            format!(
-                "refusing to remove files outside the download folders: {}",
-                outside.join(", ")
+            crate::i18n::tr(
+                "core-downloads-native-outside-folders",
+                &[("paths", outside.join(", ").into())],
             ),
         ));
     }
@@ -541,9 +574,9 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
         return Ok(());
     }
     for p in plans {
-        super::not_a_library_show(core, &p.save_path)?;
+        super::not_a_library_show(services, &p.save_path)?;
     }
-    let sources: Vec<String> = core.store.read(|c| {
+    let sources: Vec<String> = services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM sources")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         let mut all = Vec::new();
@@ -561,18 +594,18 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
         if home.as_deref().is_some_and(holds) {
             return Err(CoreError::invalid(
                 "files",
-                format!(
-                    "{} is the home folder or holds it, so nothing was removed",
-                    p.save_path
+                crate::i18n::tr(
+                    "core-downloads-refuse-home-folder",
+                    &[("path", p.save_path.as_str().into())],
                 ),
             ));
         }
         if sources.iter().any(|s| holds(s)) {
             return Err(CoreError::invalid(
                 "files",
-                format!(
-                    "{} is a library folder or holds one, so nothing was removed",
-                    p.save_path
+                crate::i18n::tr(
+                    "core-downloads-refuse-library-folder",
+                    &[("path", p.save_path.as_str().into())],
                 ),
             ));
         }
@@ -615,10 +648,8 @@ async fn execute(
 // Disk ------------------------------------------------------------------------
 
 /// Whether the client in use saves on this machine (`settings::files_here`).
-fn files_here(core: &Core) -> Result<bool, CoreError> {
-    Ok(settings::files_here(
-        &core.store.read(settings::load_stored)?,
-    ))
+fn files_here(services: &Services) -> Result<bool, CoreError> {
+    Ok(settings::files_here(&settings::read(services)?))
 }
 
 /// The files under `dir` and their bytes, links not followed; nothing for

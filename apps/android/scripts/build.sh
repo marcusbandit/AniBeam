@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# Build the AniBeam APK inside a hard memory cap; a Rust + Skia + NDK build can take the
+# Build the Anibeam APK inside a hard memory cap; a Rust + Skia + NDK build can take the
 # desktop into swap otherwise.
 #
 #   scripts/build.sh                  APK for the emulator (x86_64), build/AniBeam-debug.apk
 #   scripts/build.sh --abi all        APK for phones and the emulator (arm64-v8a + x86_64)
 #   scripts/build.sh --dist           --abi all, then copy to dist/AniBeam-<versionName>.apk
+#   scripts/build.sh --bundle         App Bundle for Google Play instead of an APK, the Play
+#                                     flavor (ANIBEAM_FLAVOR=play), build/AniBeam-release.aab;
+#                                     --abi all unless --abi follows, --dist copies it to
+#                                     dist/AniBeam-<versionName>.aab
 #   scripts/build.sh cargo <args>     any cargo command, capped (cargo test -p anibeam-companion)
+#
+# The version is Cargo.toml's, 2.4.3, unless CI says what it ships the build as in
+# ANIBEAM_RELEASE_VERSION: 2.4.3 for a stable release, 2.4.3-nightly.20261113.41 for a
+# nightly. ANIBEAM_KEYSTORE, ANIBEAM_KEYSTORE_PASS and ANIBEAM_KEY_ALIAS pick the signing key;
+# the default is the debug key in ~/.android/debug.keystore.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,6 +53,32 @@ for t in x86_64-linux-android aarch64-linux-android; do
   export "CC_${low}=$TC/${t}${MIN_API}-clang" "CXX_${low}=$TC/${t}${MIN_API}-clang++" "AR_${low}=$TC/llvm-ar"
 done
 
+crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
+version_name="${ANIBEAM_RELEASE_VERSION:-$crate_version}"
+base="${version_name%%-*}"
+if [ "$base" != "$crate_version" ]; then
+  echo "build.sh: ANIBEAM_RELEASE_VERSION $version_name is not a build of $crate_version (Cargo.toml)." >&2
+  exit 1
+fi
+# Android installs an update only over a lower versionCode, so the code follows the train:
+# every build of 2.4.3 sits below every build of 2.5.0, and within 2.4.3 a local build comes
+# first, then the nightlies by run number, then the stable release they led up to.
+#   2.4.3 local 204030000   2.4.3-nightly.<day>.41 204030041   2.4.3 stable 204039999
+IFS=. read -r major minor patch <<<"$base"
+case "$version_name" in
+  "$base") step=$([ -n "${ANIBEAM_RELEASE_VERSION:-}" ] && echo 9999 || echo 0) ;;
+  "$base"-nightly.*.*) step="${version_name##*.}"; [[ "$step" =~ ^[1-9][0-9]*$ ]] || step=bad ;;
+  *) echo "build.sh: $version_name is neither a stable version nor a nightly." >&2; exit 1 ;;
+esac
+if [ "$step" = bad ] || (( minor > 99 || patch > 99 || step > 9999 )); then
+  echo "build.sh: $version_name does not fit the versionCode scheme." >&2
+  exit 1
+fi
+version_code=$(( ((major * 100 + minor) * 100 + patch) * 10000 + step ))
+# build.rs puts both into the app, which shows them in More, About. Worked out before the
+# cargo passthrough too, so a cargo test between two APK builds does not change them and
+# rebuild the app crate each time.
+export ANIBEAM_PHONE_VERSION="$version_name" ANIBEAM_VERSION_CODE="$version_code"
 if [[ "${1:-}" == "cargo" ]]; then
   shift
   exec cargo "$@"
@@ -51,6 +86,7 @@ fi
 
 abis=(x86_64)
 dist=0
+bundle=0
 while (( $# )); do
   case "$1" in
     --abi) shift; case "${1:-}" in
@@ -59,35 +95,48 @@ while (( $# )); do
              *) echo "build.sh: --abi takes x86_64, arm64-v8a or all" >&2; exit 1 ;;
            esac ;;
     --dist) dist=1; abis=(arm64-v8a x86_64) ;;
+    --bundle) bundle=1; abis=(arm64-v8a x86_64) ;;
     *) echo "build.sh: unknown argument $1" >&2; exit 1 ;;
   esac
   shift
 done
-
-manifest=android/AndroidManifest.xml
-version_name=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$manifest")
-version_code=$(sed -n 's/.*android:versionCode="\([^"]*\)".*/\1/p' "$manifest")
-crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
-if [ "$version_name" != "$crate_version" ]; then
-  echo "build.sh: versionName $version_name (manifest) and version $crate_version (Cargo.toml) differ." >&2
-  exit 1
+# The app reads the flavor at compile time, and the bundle is the Play flavor. The sideload
+# APK never is, whatever the shell exported. Switching flavors rebuilds the app crate, not
+# its dependencies.
+if (( bundle )); then
+  export ANIBEAM_FLAVOR=play
+else
+  unset ANIBEAM_FLAVOR
 fi
+
 # What's new reads CHANGELOG.md into the APK: a build ships with its own version's notes.
 notes_version=$(sed -n 's/^## \([^ ]*\).*/\1/p' CHANGELOG.md | head -1)
-if [ "$notes_version" != "$version_name" ]; then
-  echo "build.sh: the newest heading in CHANGELOG.md is ${notes_version:-missing}, but versionName is $version_name. Add its notes first." >&2
+if [ "$notes_version" != "$base" ]; then
+  echo "build.sh: the newest heading in CHANGELOG.md is ${notes_version:-missing}, but the version is $base. Add its notes first." >&2
   exit 1
 fi
 
 triple() { case "$1" in x86_64) echo x86_64-linux-android ;; arm64-v8a) echo aarch64-linux-android ;; esac; }
 
 scripts/fetch-mpv.sh
+# Fetched before the long compile, so a failed download stops the build at once.
+(( bundle )) && bundletool=$(scripts/fetch-bundletool.sh)
+# rust-toolchain.toml pins the version for the whole repo, and that toolchain starts with only
+# the host's standard library, so add the targets this build needs to it. A no-op once they
+# are there; a desktop checkout never downloads Android's standard library.
+if command -v rustup > /dev/null; then
+  targets=()
+  for abi in "${abis[@]}"; do targets+=("$(triple "$abi")"); done
+  rustup target add "${targets[@]}"
+fi
+
 for abi in "${abis[@]}"; do
   echo "build.sh: cargo build --release for $abi"
   cargo build --release --lib --target "$(triple "$abi")"
 done
 
 stage=build/apk
+(( bundle )) && stage=build/aab
 rm -rf "$stage"
 mkdir -p "$stage"
 for abi in "${abis[@]}"; do
@@ -97,8 +146,8 @@ for abi in "${abis[@]}"; do
   cp vendor/mpv/"$abi"/*.so "$stage/lib/$abi/"
 done
 
+manifest=android/AndroidManifest.xml
 "$BT/aapt2" compile --dir android/res -o "$stage/res.zip"
-"$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" "$stage/res.zip"
 # The Java side, the download service's notification and the player's screen calls:
 # javac, then d8, into classes.dex at the APK root.
 rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
@@ -106,16 +155,65 @@ rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
   $(find android/java -name '*.java')
 "$BT/d8" --lib "$PLATFORM_JAR" --min-api "$MIN_API" --output "$stage/java/dex" \
   $(find "$stage/java/classes" -name '*.class')
+
+keystore="${ANIBEAM_KEYSTORE:-$HOME/.android/debug.keystore}"
+pass="${ANIBEAM_KEYSTORE_PASS:-android}"
+key_alias="${ANIBEAM_KEY_ALIAS:-androiddebugkey}"
+
+if (( bundle )); then
+  # The App Bundle: the same manifest, resources, dex and libraries as the APK, laid out as
+  # bundletool's base module. aapt2 writes the resources as protobuf for it.
+  "$BT/aapt2" link --proto-format -o "$stage/proto.zip" -I "$PLATFORM_JAR" --manifest "$manifest" \
+    --version-code "$version_code" --version-name "$version_name" "$stage/res.zip"
+  module="$stage/base"
+  mkdir -p "$module/manifest" "$module/dex"
+  unzip -q "$stage/proto.zip" -d "$module"
+  mv "$module/AndroidManifest.xml" "$module/manifest/"
+  cp "$stage/java/dex/classes.dex" "$module/dex/"
+  cp -r "$stage/lib" "$module/"
+  (cd "$module" && zip -q -r -D ../base.zip .)
+  # Play cuts the APKs a phone installs out of the bundle. This keeps their native libraries
+  # stored and on 16 KB page boundaries, the way the sideload APK has them.
+  cat > "$stage/BundleConfig.json" <<'JSON'
+{
+  "optimizations": {
+    "uncompressNativeLibraries": { "enabled": true, "alignment": "PAGE_ALIGNMENT_16K" }
+  }
+}
+JSON
+  "$JAVA_HOME/bin/java" -jar "$bundletool" build-bundle --modules="$stage/base.zip" \
+    --config="$stage/BundleConfig.json" --output="$stage/unsigned.aab"
+  # Play takes a bundle signed with jarsigner by the upload key, the same key as the APK's.
+  aab=build/AniBeam-release.aab
+  rm -f "$aab"
+  ANIBEAM_SIGN_PASS="$pass" "$JAVA_HOME/bin/jarsigner" -keystore "$keystore" \
+    -storepass:env ANIBEAM_SIGN_PASS -keypass:env ANIBEAM_SIGN_PASS \
+    -signedjar "$aab" "$stage/unsigned.aab" "$key_alias"
+  echo "build.sh: $aab (versionCode $version_code, versionName $version_name, ${abis[*]})"
+  [[ " ${abis[*]} " == *" arm64-v8a "* ]] || echo "build.sh: emulator only, a phone cannot run this bundle; Play needs arm64-v8a"
+  if (( dist )); then
+    if ! unzip -l "$aab" "base/lib/arm64-v8a/libanibeam.so" >/dev/null 2>&1; then
+      echo "build.sh: $aab has no arm64-v8a code; refusing to put it in dist/" >&2
+      exit 1
+    fi
+    mkdir -p dist
+    cp "$aab" "dist/AniBeam-$version_name.aab"
+    echo "build.sh: dist/AniBeam-$version_name.aab"
+  fi
+  exit 0
+fi
+
+"$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" \
+  --version-code "$version_code" --version-name "$version_name" "$stage/res.zip"
 (cd "$stage/java/dex" && zip -q ../../base.apk classes.dex)
 # Native libraries go in stored, not deflated, and zipalign puts them on 16 KB page
 # boundaries, so the loader maps them straight out of the APK (extractNativeLibs=false).
 (cd "$stage" && zip -q -0 -r base.apk lib)
 "$BT/zipalign" -P 16 -f 4 "$stage/base.apk" "$stage/aligned.apk"
 
-keystore="${ANIBEAM_KEYSTORE:-$HOME/.android/debug.keystore}"
 apk=build/AniBeam-debug.apk
-"$BT/apksigner" sign --ks "$keystore" --ks-pass pass:android --key-pass pass:android \
-  --ks-key-alias androiddebugkey --out "$apk" "$stage/aligned.apk"
+"$BT/apksigner" sign --ks "$keystore" --ks-pass "pass:$pass" --key-pass "pass:$pass" \
+  --ks-key-alias "$key_alias" --out "$apk" "$stage/aligned.apk"
 rm -f "$apk.idsig"
 echo "build.sh: $apk (versionCode $version_code, versionName $version_name, ${abis[*]})"
 [[ " ${abis[*]} " == *" arm64-v8a "* ]] || echo "build.sh: emulator only, a phone cannot run this APK; use --dist for one"

@@ -185,20 +185,14 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
-    fixtures::insert_file(&core, s, "/lib/A/01.mkv", 1.0, None, "episode", 1);
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("T1"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(&core, s, "/lib/A/01.mkv", 1.0, 1);
+    fixtures::media(1, "T1")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     fixtures::match_series(&core, s, Some(1), None);
 
-    let job = crawl::start_gap_crawl(&core);
+    let job = crawl::start_gap_crawl(core.metadata());
 
     // Nodes 1, 2 and 4 land, in that order, with node 3's deferral in
     // between. Once node 4 is in, the database's own hold on node 3 is
@@ -293,7 +287,7 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
     // Node 1 owes nothing now, so the gap crawl has no seed at all: node 3
     // owes its edges but no series is matched to it, so it is nobody's seed.
     let before = http.requests().len();
-    let job = crawl::start_gap_crawl(&core);
+    let job = crawl::start_gap_crawl(core.metadata());
     let finished = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -332,16 +326,10 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     http.push_for("img/8.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
 
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    fixtures::insert_media(
-        &core,
-        7,
-        Some("T7"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::media(7, "T7")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     core.store()
         .write(|conn| {
             conn.execute(
@@ -353,7 +341,7 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
         .unwrap();
 
     // Nothing owes anything, so the gap crawl has no seed and does no work.
-    let job = crawl::start_gap_crawl(&core);
+    let job = crawl::start_gap_crawl(core.metadata());
     let finished = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -368,7 +356,7 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     );
     assert!(asked(&http).is_empty());
 
-    let job = crawl::start(&core, vec![7], true);
+    let job = crawl::start(core.metadata(), vec![7], true);
     let finished = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -416,20 +404,14 @@ fn a_transport_failure_ends_the_crawl_and_stamps_no_node() {
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
-    fixtures::insert_file(&core, s, "/lib/A/01.mkv", 1.0, None, "episode", 1);
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("T1"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(&core, s, "/lib/A/01.mkv", 1.0, 1);
+    fixtures::media(1, "T1")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     fixtures::match_series(&core, s, Some(1), None);
 
-    let job = crawl::start_gap_crawl(&core);
+    let job = crawl::start_gap_crawl(core.metadata());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(

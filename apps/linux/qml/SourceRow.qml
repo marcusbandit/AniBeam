@@ -20,8 +20,11 @@ Item {
     signal removeAccepted()
 
     readonly property bool available: source.available !== false
-    readonly property string meta: Fmt.plural(source.series_count || 0, "series", "series")
-        + ((source.movie_folders || []).length ? ", " + Fmt.plural(source.movie_folders.length, "movie folder", "movie folders") : "")
+    // An unreachable folder says what to do in the row itself, not only in its tip
+    readonly property string meta: !available ? words.t("source-row-unavailable-fix")
+        : (source.movie_folders || []).length
+            ? words.t("source-row-counts-movies", { count: source.series_count || 0, movies: source.movie_folders.length })
+            : words.t("source-row-counts", { count: source.series_count || 0 })
     readonly property real gutter: theme.space(6)
     readonly property bool stacked: width < lead.width + controls.width + gutter
 
@@ -54,13 +57,13 @@ Item {
                 Chip {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !root.available
-                    text: "Unavailable"
+                    msg: "source-row-unavailable"
                     small: true
                     mono: false
                     color: theme.tileSunken
                     textColor: theme.textDim
                     // Why, and the fix, when the pointer asks
-                    Tooltip { text: "AniBeam cannot reach this folder. If it is on a drive that is not plugged in or not mounted, connect it and AniBeam picks it up again. If it moved, remove it here and add the new place." }
+                    Tooltip { msg: "source-row-unavailable.tip" }
                 }
             }
             Text {
@@ -79,13 +82,13 @@ Item {
         Row {
             visible: !root.confirming
             spacing: theme.space(1)
-            Button { text: "Open"; icon: "folder-open"; flat: true; onClicked: root.open() }
-            Button { text: "Rescan"; icon: "refresh-cw"; flat: true; onClicked: root.rescan() }
-            Button { text: "Remove"; icon: "trash-2"; flat: true; onClicked: root.remove() }
+            Button { msg: "action-open"; icon: "folder-open"; flat: true; onClicked: root.open() }
+            Button { msg: "source-row-rescan"; icon: "refresh-cw"; flat: true; onClicked: root.rescan() }
+            Button { msg: "action-remove"; icon: "trash-2"; flat: true; onClicked: root.remove() }
         }
         InlineConfirm {
             visible: root.confirming
-            question: "Remove " + Fmt.baseName(root.source.path || "") + ", " + Fmt.plural(root.source.series_count || 0, "series", "series") + " and their history?"
+            question: words.t("source-row-remove-question", { name: Fmt.baseName(root.source.path || ""), count: root.source.series_count || 0 })
             onAccepted: root.removeAccepted()
             onKept: root.confirming = false
         }

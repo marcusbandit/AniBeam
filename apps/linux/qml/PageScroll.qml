@@ -85,7 +85,104 @@ Flickable {
             if (root.lazyCount > 0 && root.lazyDirty) { root.lazyDirty = false; root.lazySweep() }
         }
     }
-    onContentYChanged: if (lazyCount > 0 && Math.abs(contentY - lazySweptAt) > height / 4) lazySweep()
+    onContentYChanged: {
+        if (lazyCount > 0 && Math.abs(contentY - lazySweptAt) > height / 4) lazySweep()
+        // Content that moves under a still brush (the edge scroll, a wheel turn) is painted too
+        if (brushing) brushHit(brushAt)
+    }
+
+    // ---- Painting picks (#695). A card whose press-and-hold began picking hands its pointer
+    // here (window coordinates). Each move picks (`brushAdd`) or unpicks every card along the
+    // path since the last move, so a fast stroke leaves no holes. Once the pointer has moved
+    // into the top or bottom band of the view, the page scrolls on at a speed that grows
+    // toward the edge, picking what slides under the pointer; a hold that never moves never
+    // scrolls. A point outside the view picks nothing. Cards answer to `brushable`,
+    // `selected` and `selectToggled`.
+    property bool brushing: false
+    property bool brushAdd: true
+    property bool brushMoved: false
+    property point brushStart: Qt.point(0, 0)
+    property point brushAt: Qt.point(0, 0)
+    readonly property real brushEdge: theme.space(18)
+    readonly property real brushMaxSpeed: 1400     // px a second, at the very edge or past it
+    // -1 near the top, 1 near the bottom, 0 elsewhere or before the pointer has moved
+    readonly property real brushDepth: {
+        if (!brushing || !brushMoved) return 0
+        var y = mapFromItem(null, brushAt.x, brushAt.y).y
+        if (y < brushEdge) return -Math.min(1, (brushEdge - y) / brushEdge)
+        if (y > height - brushEdge) return Math.min(1, (y - (height - brushEdge)) / brushEdge)
+        return 0
+    }
+    function brushBegin(winPoint, add) {
+        wheel.glide.stop()
+        root.cancelFlick()
+        brushAdd = add
+        brushAt = winPoint
+        brushStart = winPoint
+        brushMoved = false
+        brushTouched = []
+        brushing = true
+        brushHit(brushAt, true)
+    }
+    function brushMove(winPoint) {
+        if (!brushMoved && Math.abs(winPoint.x - brushStart.x) + Math.abs(winPoint.y - brushStart.y) < theme.space(2)) return
+        brushMoved = true
+        var from = brushAt
+        brushAt = winPoint
+        // Walk the segment in steps smaller than any card, so no card between two
+        // samples is skipped
+        var dx = winPoint.x - from.x, dy = winPoint.y - from.y
+        var steps = Math.max(1, Math.ceil(Math.sqrt(dx * dx + dy * dy) / theme.space(4)))
+        for (var i = 1; i <= steps; i++) brushHit(Qt.point(from.x + dx * i / steps, from.y + dy * i / steps))
+    }
+    function brushEnd() { brushing = false; brushTouched = [] }
+    function brushCard(x, y) {
+        var it = root.contentItem, p = root.mapToItem(it, x, y)
+        for (var depth = 0; depth < 12; depth++) {
+            var c = it.childAt(p.x, p.y)
+            if (!c) return null
+            if (c.brushable === true) return c
+            p = it.mapToItem(c, p.x, p.y)
+            it = c
+        }
+        return null
+    }
+    // Each card is touched once a stroke: the held card is marked, not toggled again, however
+    // late its `selected` catches up
+    property var brushTouched: []
+    function brushHit(winPoint, markOnly) {
+        var v = root.mapFromItem(null, winPoint.x, winPoint.y)
+        if (v.x < 0 || v.x >= root.width) return
+        if (v.y < 0 || v.y >= root.height) {
+            // Past the top or bottom only while the edge scroll runs: the brush keeps the
+            // column under the pointer, at the view's edge
+            if (brushDepth === 0) return
+            v.y = Math.max(0, Math.min(v.y, root.height - 1))
+        }
+        var c = brushCard(v.x, v.y)
+        if (!c || brushTouched.indexOf(c) >= 0) return
+        brushTouched.push(c)
+        if (!markOnly && c.selected !== brushAdd) c.selectToggled()
+    }
+    // Runs only while the pointer sits in an edge band; each tick steps by the real time since
+    // the last one, so a late tick does not slow the scroll
+    Timer {
+        id: brushEdgeTick
+        interval: 16
+        repeat: true
+        running: root.brushDepth !== 0
+        property real last: 0
+        onRunningChanged: last = Date.now()
+        onTriggered: {
+            var now = Date.now(), dt = Math.min(0.1, (now - last) / 1000)
+            last = now
+            var to = wheel.bound(root.contentY + root.brushDepth * root.brushMaxSpeed * dt)
+            if (to === root.contentY) return
+            wheel.glide.stop()
+            root.contentY = to
+        }
+    }
+
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }

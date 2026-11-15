@@ -1,24 +1,29 @@
 //! anirss's release logic, ported from Python into the core so every shell (the desktop
-//! and the phone) runs one implementation: endpoints and their search URLs, erai's
-//! specifics, reading a feed into releases, the seeders a feed leaves out, title parsing,
-//! best fit, and the refine steps. Each module names the anirss file it came from; the
-//! behaviour, and the tests, follow anirss's.
+//! and the phone) runs one implementation: endpoints and their search URLs, what a
+//! definition's quirks change, reading a feed into releases, the seeders a feed leaves out,
+//! title parsing, best fit, and the refine steps. Each module names the anirss file it came
+//! from; the behaviour, and the tests, follow anirss's.
 //!
 //! The core's contract types are anirss's wire types already: `Release` is anirss's
 //! `Item`, `ReleaseGroup` its `Group`, `BestFit` and `Refinement` its answers.
 
 pub mod bestfit;
 pub mod endpoints;
-pub mod erai;
 pub mod fetch;
 pub mod grid;
 pub mod json;
+pub mod json_feed;
+pub mod kinds;
 pub mod native;
+pub mod quirks;
 pub mod refinement;
 pub mod rules;
 pub mod stats;
+mod team;
 pub mod titles;
-pub mod tosho;
+
+pub use team::Releases;
+pub(crate) use team::{AnirssView, EndpointSync, Searcher};
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).
@@ -28,14 +33,17 @@ pub struct Endpoint {
     /// One of `endpoints::VALID_KINDS`.
     pub kind: String,
     pub url: String,
-    /// nyaa only.
+    /// filtered-rss only.
     pub category: String,
-    /// nyaa only.
+    /// filtered-rss only.
     pub filter: String,
     /// Seconds a fetch may take.
     pub timeout: f64,
     /// `json` only: where its replies keep each field, from the repo definition.
     pub json: Option<crate::repos::index::JsonMap>,
+    /// `rss` only: how the source's search and feed differ from a plain feed, from the repo
+    /// definition.
+    pub quirks: quirks::Quirks,
 }
 
 impl Endpoint {
@@ -48,6 +56,7 @@ impl Endpoint {
             filter: "0".to_string(),
             timeout: 10.0,
             json: None,
+            quirks: quirks::Quirks::default(),
         }
     }
 

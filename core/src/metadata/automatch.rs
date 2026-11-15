@@ -36,11 +36,12 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::library::scan::LibraryState;
+use crate::metadata::Metadata;
 use crate::metadata::apply::provider_stopped;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::similarity::best_title_score;
@@ -208,8 +209,11 @@ impl Drop for InFlight<'_> {
 /// The series with a settle timer still armed. Their folders are still
 /// being copied into, so a match now would be a match against a half
 /// arrived folder; the timer's own firing is what brings them here.
-fn armed(core: &Core) -> Vec<u64> {
-    recover(&core.library.settle).keys().copied().collect()
+fn armed(metadata: &Metadata) -> Vec<u64> {
+    recover(&metadata.library.state.settle)
+        .keys()
+        .copied()
+        .collect()
 }
 
 /// The next series worth a search: never matched, never attempted, its
@@ -245,8 +249,9 @@ fn next_candidate(
 
 /// Records that this series was looked at and found nothing, under the
 /// rules of this version of the matcher.
-async fn stamp_attempt(core: &Core, series: u64, now: i64) -> Result<(), CoreError> {
-    core.store
+async fn stamp_attempt(services: &Services, series: u64, now: i64) -> Result<(), CoreError> {
+    services
+        .store
         .write_async(move |c| {
             c.execute(
                 "UPDATE series SET attempted_at = ?2, attempt_version = ?3 WHERE id = ?1",
@@ -271,7 +276,7 @@ struct Hit {
 /// matched, so TVmaze never grabs an anime during a brief AniList outage.
 /// Only `Ok(None)` means every provider answered with a miss.
 async fn attempt(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     folder: &str,
     kind: SeriesKind,
@@ -279,8 +284,8 @@ async fn attempt(
 ) -> Result<Option<Hit>, (Provider, CoreError)> {
     for &provider in order {
         let outcome = match provider {
-            Provider::Tvmaze => attempt_tvmaze(core, series, folder).await,
-            _ => attempt_anilist(core, series, folder, kind).await,
+            Provider::Tvmaze => attempt_tvmaze(metadata, series, folder).await,
+            _ => attempt_anilist(metadata, series, folder, kind).await,
         };
         match outcome {
             Ok(Some(hit)) => return Ok(Some(hit)),
@@ -311,12 +316,12 @@ fn is_later_film(m: &Media) -> bool {
 
 /// AniList's turn: the search, the pick, and, on a hit, the whole record.
 async fn attempt_anilist(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     folder: &str,
     kind: SeriesKind,
 ) -> Result<Option<Hit>, CoreError> {
-    let mut results = core.anilist.search(folder, RESULTS).await?;
+    let mut results = metadata.net.anilist.search(folder, RESULTS).await?;
     let mut query = folder.to_string();
     // A first film searched with its number either finds nothing or a later film of
     // the same name, which scores high enough to win; either way the bare name goes next.
@@ -324,7 +329,7 @@ async fn attempt_anilist(
         && let Some(stripped) = without_first_film_number(folder)
         && pick(folder, kind, &results).is_none_or(|(m, _)| is_later_film(m))
     {
-        results = core.anilist.search(&stripped, RESULTS).await?;
+        results = metadata.net.anilist.search(&stripped, RESULTS).await?;
         query = stripped;
     }
     let Some((media, score)) = pick(&query, kind, &results) else {
@@ -336,7 +341,7 @@ async fn attempt_anilist(
     // An auto-match is never confirmed: the user has not seen it, and only
     // their own pick or an import earns that flag.
     fetch::fetch_and_write(
-        core,
+        metadata,
         series,
         anilist_id,
         Some(media),
@@ -353,13 +358,17 @@ async fn attempt_anilist(
 
 /// TVmaze's turn. The search hit carries no episodes or images, so a hit
 /// costs one more request for the show itself.
-async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
-    let results = core.tvmaze.search(folder).await?;
+async fn attempt_tvmaze(
+    metadata: &Metadata,
+    series: u64,
+    folder: &str,
+) -> Result<Option<Hit>, CoreError> {
+    let results = metadata.net.tvmaze.search(folder).await?;
     let Some((show, score)) = pick_show(folder, &results) else {
         return Ok(None);
     };
     let title = show.name.clone().unwrap_or_else(|| "?".to_string());
-    fetch::fetch_and_write_tvmaze(core, series, show.id, false, time::now_secs()).await?;
+    fetch::fetch_and_write_tvmaze(metadata, series, show.id, false, time::now_secs()).await?;
     Ok(Some(Hit {
         provider: Provider::Tvmaze,
         score,
@@ -371,15 +380,15 @@ async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option
 /// a second call while one is running is handed the running job's id: a
 /// series that settles mid-run is picked up by the run already going,
 /// because it is no longer armed by the time the loop asks again.
-pub fn start(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
+pub fn start(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata.services.jobs.clone().start(JobKind::AutoMatch, move |ctx| async move {
         // 1. The backfill. A series carrying an AniList id with no provider
         //    beside it is an import, or a row from a build that wrote the
         //    id alone; either way it is matched and the column should say
         //    so before anything decides it is a candidate.
         let backfilled = owner
-            .store
+            .services.store
             .write_async(|c| {
                 Ok(c.execute("UPDATE series SET provider = 'anilist' WHERE provider IS NULL AND anilist_id IS NOT NULL", [])? as u64)
             })
@@ -388,7 +397,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
         // 2. The version guard. New rules earn every failed attempt a
         //    second look; a match already made is left alone.
         let reset = owner
-            .store
+            .services.store
             .tx_async(|tx| {
                 let stored: u32 = settings::get(tx, settings::AUTO_MATCH_VERSION)?.unwrap_or(0);
                 if stored >= AUTO_MATCH_VERSION {
@@ -409,7 +418,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
         if reset > 0 {
             ctx.emit(Level::Info, format!("Auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
         }
-        let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
+        let order = owner.services.store.write_async(|c| prefs::load_provider_order(c)).await?;
 
         // 3. The loop, one series at a time. `seen` keeps a series this run
         //    has already had a turn at from coming back round: a miss is
@@ -417,19 +426,21 @@ pub fn start(core: &Arc<Core>) -> u64 {
         //    for the next run, and would otherwise be asked again at once.
         let (mut matched, mut unmatched) = (0u64, 0u64);
         let mut seen: HashSet<u64> = HashSet::new();
-        let images_dir = owner.paths.images_dir();
+        let images_dir = owner.services.paths.images_dir();
         loop {
             ctx.checkpoint()?;
             let mut skip = armed(&owner);
             skip.extend(seen.iter().copied());
+            // A series Find a match is searching right now is that job's (#208)
+            skip.extend(recover(&owner.library.state.match_in_flight).iter().copied());
             skip.sort_unstable();
             skip.dedup();
-            let Some((series, folder, kind)) = owner.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
+            let Some((series, folder, kind)) = owner.services.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
             seen.insert(series);
             ctx.progress(matched + unmatched, None, &folder);
 
             let outcome = {
-                let _in_flight = InFlight::begin(&owner.library, series);
+                let _in_flight = InFlight::begin(&owner.library.state, series);
                 attempt(&owner, series, &folder, kind, &order).await
             };
             match outcome {
@@ -438,16 +449,16 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.say(Level::Info, format!("Matched {folder} to {title}."), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.say(Level::Info, crate::words!("core-metadata-matched-to", show = &folder, title = &title), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
-                    let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
+                    let cards = owner.services.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
                         ctx.changed(card);
                     }
                 }
                 Ok(None) => {
                     unmatched += 1;
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
+                    stamp_attempt(&owner.services, series, time::now_secs()).await?;
                     ctx.emit(Level::Info, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                 }
                 // A rate limit the limiter could not ride out, or nothing
@@ -478,17 +489,13 @@ pub fn start(core: &Arc<Core>) -> u64 {
             }
         }
 
-        images::sweep_after(&owner, "auto-match").await;
+        images::sweep_after(&owner.net, "auto-match").await;
 
         let said = match (matched, unmatched) {
             (0, 0) => None,
-            (m, 0) => Some(format!("Matched {m} {}.", crate::words::pick(m, "show", "shows"))),
-            (0, u) => Some(format!("{u} {} a match.", crate::words::pick(u, "show still needs", "shows still need"))),
-            (m, u) => Some(format!(
-                "Matched {m} {}; {u} still {} a match.",
-                crate::words::pick(m, "show", "shows"),
-                crate::words::pick(u, "needs", "need")
-            )),
+            (m, 0) => Some(crate::words!("core-metadata-auto-matched", count = m)),
+            (0, u) => Some(crate::words!("core-metadata-auto-unmatched", count = u)),
+            (m, u) => Some(crate::words!("core-metadata-auto-matched-some", matched = m, unmatched = u)),
         };
         Ok(Finished {
             plain: said,
@@ -499,15 +506,177 @@ pub fn start(core: &Arc<Core>) -> u64 {
     })
 }
 
+/// A search for each of `series` that has no match (#208), in the order
+/// given, as one job with one line for the lot. Asking is asking: a match
+/// the user cleared, or a miss already stamped, is searched all the same,
+/// where the automatic run leaves both alone; a cleared one that still finds
+/// nothing stays cleared, so a later matcher version never picks it up. A
+/// series that has a match is counted and left as it is, one gone from disk
+/// is left out, and one the automatic run is searching right now is left
+/// to it.
+pub fn start_for(metadata: &Arc<Metadata>, series: Vec<u64>) -> u64 {
+    let owner = metadata.clone();
+    metadata.services.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
+        let picked = series.clone();
+        // (id, folder, kind, has a match, missing, cleared by the user)
+        type Row = (u64, String, SeriesKind, bool, bool, bool);
+        let rows: Vec<Row> = owner
+            .services.store
+            .write_async(move |c| {
+                let sql = format!(
+                    "SELECT id, folder_name, kind, provider IS NOT NULL, missing_since IS NOT NULL,
+                            attempted_at IS NOT NULL AND attempt_version IS NULL
+                     FROM series WHERE id IN ({})",
+                    placeholders(picked.len())
+                );
+                let mut stmt = c.prepare(&sql)?;
+                let rows = stmt
+                    .query_map(params_from_iter(picked.iter().map(|id| *id as i64)), |r| {
+                        let kind: String = r.get(2)?;
+                        Ok((
+                            r.get::<_, i64>(0)? as u64,
+                            r.get::<_, String>(1)?,
+                            SeriesKind::from_column(&kind).unwrap_or(SeriesKind::Show),
+                            r.get::<_, bool>(3)?,
+                            r.get::<_, bool>(4)?,
+                            r.get::<_, bool>(5)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await?;
+        let mut rows = rows;
+        rows.sort_by_key(|row| series.iter().position(|s| *s == row.0));
+        let had = rows.iter().filter(|r| r.3).count() as u64;
+        let busy: Vec<u64> = rows
+            .iter()
+            .filter(|r| !r.3 && !r.4 && owner.library.state.is_matching(r.0))
+            .map(|r| r.0)
+            .collect();
+        let todo: Vec<Row> = rows
+            .into_iter()
+            .filter(|r| !r.3 && !r.4 && !busy.contains(&r.0))
+            .collect();
+        let order = owner.services.store.write_async(|c| prefs::load_provider_order(c)).await?;
+        let images_dir = owner.services.paths.images_dir();
+        let total = todo.len() as u64;
+        let (mut matched, mut unmatched, mut failed) = (0u64, 0u64, 0u64);
+        let (mut hit_pair, mut miss_name) = (None, None);
+        for (series, folder, kind, _, _, cleared) in todo {
+            ctx.checkpoint()?;
+            ctx.progress(matched + unmatched + failed, Some(total), &folder);
+            let outcome = {
+                let _in_flight = InFlight::begin(&owner.library.state, series);
+                attempt(&owner, series, &folder, kind, &order).await
+            };
+            match outcome {
+                Ok(Some(hit)) => {
+                    matched += 1;
+                    let label = hit.provider.label();
+                    ctx.emit(Level::Debug, format!("Match ({label} {:.2}): {folder} -> {}", hit.score, hit.title), EventBody::Notice);
+                    hit_pair = Some((folder.clone(), hit.title.clone()));
+                    let dir = images_dir.clone();
+                    let cards = owner.services.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
+                    if let Some(card) = cards.into_iter().next() {
+                        ctx.changed(card);
+                    }
+                }
+                Ok(None) => {
+                    unmatched += 1;
+                    // A cleared match keeps its versionless stamp: a miss
+                    // stamped with the version would let the next version's
+                    // reset put the series back in the automatic run.
+                    if !cleared {
+                        stamp_attempt(&owner.services, series, time::now_secs()).await?;
+                    }
+                    ctx.emit(Level::Debug, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
+                    miss_name = Some(folder);
+                }
+                Err((_, e)) if provider_stopped(&e) => return Err(e),
+                // The provider answered with an error: not a miss, so it is
+                // counted apart and said as something to try again.
+                Err((provider, e))
+                    if matches!(&e, CoreError::Provider { status: Some(_), .. }) || e.is_decode_failure() =>
+                {
+                    failed += 1;
+                    ctx.emit(Level::Debug, format!("{} search failed for {folder}: {}", provider.label(), message_of(&e)), EventBody::Notice);
+                }
+                Err((_, e)) => return Err(e),
+            }
+        }
+        if matched > 0 {
+            images::sweep_after(&owner.net, "match").await;
+        }
+        Ok(Finished {
+            plain: Some(find_line(matched, unmatched, failed, had, busy.len() as u64, hit_pair, miss_name)),
+            level: if matched == 0 && unmatched == 0 && failed > 0 { Level::Warn } else { Level::Info },
+            message: format!(
+                "Find a match on {} series: {matched} matched, {unmatched} unmatched, {failed} failed, {had} had one, {} being matched",
+                series.len(),
+                busy.len()
+            ),
+            body: EventBody::Notice,
+        })
+    })
+}
+
+/// Find a match's one line: what matched, what did not, what could not be
+/// searched, and what was left alone.
+fn find_line(
+    matched: u64,
+    unmatched: u64,
+    failed: u64,
+    had: u64,
+    busy: u64,
+    hit: Option<(String, String)>,
+    miss_name: Option<String>,
+) -> Words {
+    // Each sentence after the first is set off by a space; `$first` names the one
+    // that leads, so it gets none.
+    let first = [
+        ("matched", matched),
+        ("unmatched", unmatched),
+        ("failed", failed),
+        ("had", had),
+        ("busy", busy),
+    ]
+    .into_iter()
+    .find(|(_, n)| *n > 0)
+    .map_or("none", |(name, _)| name);
+    let (hit_named, hit_folder, hit_title) = match (matched, hit) {
+        (1, Some((folder, title))) => ("yes", folder, title),
+        _ => ("no", String::new(), String::new()),
+    };
+    let (miss_named, miss_name) = match (unmatched, miss_name) {
+        (1, Some(name)) => ("yes", name),
+        _ => ("no", String::new()),
+    };
+    crate::words!(
+        "core-metadata-find",
+        first = first,
+        matched = matched,
+        hitNamed = hit_named,
+        hitFolder = hit_folder,
+        hitTitle = hit_title,
+        unmatched = unmatched,
+        missNamed = miss_named,
+        missName = miss_name,
+        failed = failed,
+        had = had,
+        busy = busy,
+    )
+}
+
 /// Takes a series' identity away again, and keeps the auto-match off it
 /// for good: the user cleared the match because it was wrong, and the same
 /// search would only find the same wrong answer, so the series stays out
 /// of the auto-match's way until the manual picker gives it one. That is
 /// an attempt with no version beside it, which the version guard never
 /// resets, unlike a miss, which always carries the version that made it.
-pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
+pub fn clear_match(metadata: &Metadata, series: u64) -> Result<Reply, CoreError> {
     let now = time::now_secs();
-    let changed = core.store.write(move |c| {
+    let changed = metadata.services.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                     tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
@@ -522,18 +691,19 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
             id: series,
         });
     }
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let images_dir = metadata.services.paths.images_dir();
+    let cards = metadata
+        .services
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
-    core.bus.debug(
+    metadata.services.bus.debug(
         Stage::Metadata,
         format!("match cleared: {title}"),
         EventBody::SeriesChanged { series: cards },
     );
     // No record, no record rule: specials it read as episodes read as specials again.
-    crate::library::readings::reread_if_record_matters(core, series);
+    crate::library::readings::reread_if_record_matters(&metadata.library, series);
     Ok(Reply::Ok)
 }
 

@@ -336,7 +336,12 @@ fn run(
     rx: &Receiver<Command>,
     on_status: &impl Fn(Status),
 ) -> Result<(), String> {
-    let tls = connect(addr).map_err(|e| format!("could not reach the Chromecast: {e}"))?;
+    let tls = connect(addr).map_err(|e| {
+        crate::i18n::tr(
+            "core-cast-chromecast-unreachable",
+            &[("error", e.to_string().into())],
+        )
+    })?;
     tls.sock
         .set_read_timeout(Some(Duration::from_millis(200)))
         .map_err(|e| e.to_string())?;
@@ -345,7 +350,12 @@ fn run(
         buf: Vec::new(),
         request: 0,
     };
-    let io = |e: io::Error| format!("the Chromecast connection broke: {e}");
+    let io = |e: io::Error| {
+        crate::i18n::tr(
+            "core-cast-chromecast-broke",
+            &[("error", e.to_string().into())],
+        )
+    };
     link.send("receiver-0", NS_CONNECTION, json!({"type": "CONNECT"}))
         .map_err(io)?;
     let id = link.next_id();
@@ -424,7 +434,7 @@ fn run(
             last_poll = Instant::now();
         }
         if transport.is_none() && launched_at.elapsed() > Duration::from_secs(20) {
-            return Err("the Chromecast did not start its media player".into());
+            return Err(crate::i18n::tr("core-cast-chromecast-no-player", &[]));
         }
 
         let Some(m) = link.read().map_err(io)? else {
@@ -476,15 +486,22 @@ fn run(
                 }
             }
             (NS_RECEIVER, "LAUNCH_ERROR") => {
-                return Err(format!(
-                    "the Chromecast would not start its media player ({})",
-                    p["reason"].as_str().unwrap_or("no reason")
+                let reason = match p["reason"].as_str() {
+                    Some(reason) => reason.to_string(),
+                    None => crate::i18n::tr("core-cast-no-reason", &[]),
+                };
+                return Err(crate::i18n::tr(
+                    "core-cast-chromecast-refused-player",
+                    &[("reason", reason.into())],
                 ));
             }
             (NS_MEDIA, "LOAD_FAILED")
             | (NS_MEDIA, "INVALID_REQUEST")
             | (NS_MEDIA, "LOAD_CANCELLED") => {
-                return Err(format!("the Chromecast could not play this ({kind})"));
+                return Err(crate::i18n::tr(
+                    "core-cast-chromecast-cannot-play",
+                    &[("kind", kind.into())],
+                ));
             }
             (NS_MEDIA, "MEDIA_STATUS") => {
                 let Some(s) = p["status"].as_array().and_then(|a| a.first()) else {
@@ -538,7 +555,7 @@ pub fn parse_status(s: &Value) -> Status {
         None
     };
     let error = (idle_reason.as_deref() == Some("ERROR"))
-        .then(|| "the Chromecast stopped with an error playing this".to_string());
+        .then(|| crate::i18n::tr("core-cast-chromecast-error", &[]));
     Status {
         position: s["currentTime"].as_f64().unwrap_or(0.0),
         duration: s["media"]["duration"].as_f64(),

@@ -7,6 +7,7 @@
 //! the moment the test runs, so the schedule reads the same any day.
 
 mod common;
+use common::started;
 mod fixtures;
 
 use std::sync::Arc;
@@ -16,9 +17,10 @@ use anibeam_core::*;
 use rusqlite::params;
 use serde_json::{Value, json};
 
-const SHOW: &str = include_str!("fixtures/tvmaze/show-83073.json");
-const SEARCH: &str = include_str!("fixtures/tvmaze/search-avatar-seven-havens.json");
-const SEARCH_AVATAR: &str = include_str!("fixtures/tvmaze/search-avatar.json");
+const SHOW: &str = include_str!("../../net/tests/fixtures/tvmaze/show-83073.json");
+const SEARCH: &str =
+    include_str!("../../net/tests/fixtures/tvmaze/search-avatar-seven-havens.json");
+const SEARCH_AVATAR: &str = include_str!("../../net/tests/fixtures/tvmaze/search-avatar.json");
 
 const POSTER: &str = "https://static.tvmaze.com/uploads/images/original_untouched/645/1613483.jpg";
 const BACKGROUND: &str =
@@ -60,13 +62,6 @@ fn push_show(http: &FakeHttp) {
 
 fn anilist_search(media: Value) -> String {
     json!({ "data": { "Page": { "media": media } } }).to_string()
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 fn card(core: &Core, series: u64) -> SeriesCard {
@@ -233,6 +228,19 @@ fn the_auto_match_falls_through_to_tvmaze_when_anilist_misses() {
         (Some("tvmaze".into()), Some(83073), None, 0)
     );
     assert_avatar_drawn(&core, series);
+    // A TVmaze summary was made plain when it was stored, and stays as it is: a
+    // decoded `<Title>` in it is text, not a tag for a second pass to drop (#450).
+    let plain = "A show called <Infinite Dendrogram> & more.";
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE tvmaze_shows SET summary = ?1 WHERE id = 83073",
+                params![plain],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(detail(&core, series).synopsis, plain);
 
     // The metadata table names the provider.
     match core
@@ -271,15 +279,7 @@ fn with_tvmaze_first_a_tvmaze_hit_never_asks_anilist_and_a_miss_still_does() {
         "/anime/Sousou no Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_file(
-        &core,
-        frieren,
-        "/anime/Sousou no Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, frieren, "/anime/Sousou no Frieren/01.mkv", 1.0, 1);
 
     // Avatar, the lower id, goes first: TVmaze hits.
     http.push_for("search/shows?q=Avatar%20Seven%20Havens", 200, SEARCH);
@@ -466,16 +466,10 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     let http = FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let (series, _) = avatar(&core);
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Avatar: The Last Airbender"),
-        None,
-        Some(61),
-        "FINISHED",
-        "TV",
-        Some(90),
-    );
+    fixtures::media(1, "Avatar: The Last Airbender")
+        .episodes(61)
+        .score(90)
+        .insert(&core);
     fixtures::match_series(&core, series, Some(1), Some(11));
 
     http.push_for("search/shows?q=avatar", 200, SEARCH_AVATAR);
@@ -609,8 +603,8 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     core.shutdown();
 }
 
-/// A TVmaze-only series has nothing to report to: a mark and a score are
-/// refused as unmatched, progress is kept on this device instead, and a
+/// A TVmaze-only series has nothing to report to: a mark is refused as
+/// unmatched, progress and a score are kept on this device instead, and a
 /// session's mark rule never fires, while the view and the episode title
 /// still work.
 #[test]
@@ -629,26 +623,27 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     );
     common::wait_job(&c, job);
 
-    for call in [
-        Call::MarkEpisode {
-            series,
-            episode: 1.0,
-        },
-        Call::SetScore {
+    let mark = Call::MarkEpisode {
+        series,
+        episode: 1.0,
+    };
+    assert!(
+        matches!(
+            core.call(mark),
+            Err(CoreError::Refused {
+                reason: Refusal::NoMatch
+            })
+        ),
+        "a mark is refused"
+    );
+    // A score stays on this device, with no job (#213)
+    assert!(matches!(
+        core.call(Call::SetScore {
             series,
             score: Some(8.0),
-        },
-    ] {
-        assert!(
-            matches!(
-                core.call(call.clone()),
-                Err(CoreError::Refused {
-                    reason: Refusal::NoMatch
-                })
-            ),
-            "{call:?}"
-        );
-    }
+        }),
+        Ok(Reply::Ok)
+    ));
 
     // Progress lands here at once: up to episode 1 watched, nothing after it
     let watched = |core: &Core| -> Vec<bool> {
@@ -908,7 +903,7 @@ fn a_tvmaze_match_round_trips_through_export_and_the_backfill_fills_it() {
     );
 
     push_show(&http2);
-    let job = anibeam_core::metadata::apply::backfill_stubs(&fresh);
+    let job = anibeam_core::metadata::apply::backfill_stubs(fresh.metadata());
     let done = common::wait_job(&c2, job);
     assert!(
         matches!(done.body, EventBody::RefreshFinished { refreshed: 1, .. }),
@@ -1348,7 +1343,7 @@ fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
 
     let src = fixtures::insert_source(&core, "/tv2");
     let missed = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv2/Zzz", "Zzz");
-    fixtures::insert_file(&core, missed, "/tv2/Zzz/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, missed, "/tv2/Zzz/01.mkv", 1.0, 1);
     core.store()
         .write(move |c| {
             c.execute(
@@ -1397,29 +1392,26 @@ fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
 /// ones, and text with a bare `<` in it is text, not a tag.
 #[test]
 fn a_summary_decodes_every_entity_and_strips_only_real_tags() {
-    use anibeam_core::net::tvmaze::plain_summary;
+    use anibeam_core::html::plain_text;
     assert_eq!(
-        plain_summary(
+        plain_text(
             "<p>Wait&hellip; it&rsquo;s &ldquo;back&rdquo; &mdash; 2&ndash;3 &lsquo;x&rsquo;</p>"
         ),
         "Wait\u{2026} it\u{2019}s \u{201c}back\u{201d} \u{2014} 2\u{2013}3 \u{2018}x\u{2019}"
     );
-    assert_eq!(
-        plain_summary("Caf&eacute; &#233; &#xE9; &#XE9;"),
-        "Café é é é"
-    );
-    assert_eq!(plain_summary("Tom&#8217;s"), "Tom\u{2019}s");
-    assert_eq!(plain_summary("a < b and c > d"), "a < b and c > d");
-    assert_eq!(plain_summary("1 <2 and 3> 0"), "1 <2 and 3> 0");
-    assert_eq!(plain_summary("<!-- note --><i>One</i></p>"), "One");
+    assert_eq!(plain_text("Caf&eacute; &#233; &#xE9; &#XE9;"), "Café é é é");
+    assert_eq!(plain_text("Tom&#8217;s"), "Tom\u{2019}s");
+    assert_eq!(plain_text("a < b and c > d"), "a < b and c > d");
+    assert_eq!(plain_text("1 <2 and 3> 0"), "1 <2 and 3> 0");
+    assert_eq!(plain_text("<!-- note --><i>One</i></p>"), "One");
     // An entity it cannot name, or a malformed one, stays as written.
     assert_eq!(
-        plain_summary("&bogus; & &#; &#xZZ; AT&T"),
+        plain_text("&bogus; & &#; &#xZZ; AT&T"),
         "&bogus; & &#; &#xZZ; AT&T"
     );
     // Decoding happens once: an escaped entity is not decoded twice.
-    assert_eq!(plain_summary("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
-    assert_eq!(plain_summary("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
+    assert_eq!(plain_text("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
+    assert_eq!(plain_text("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
 }
 
 fn set_count(core: &Core, series: u64, count: Option<u32>) {

@@ -1,25 +1,14 @@
 name: Linux
 
-# Builds the AniBeam AppImage on an ubuntu-24.04 runner, runs the core and shell tests there,
+# Builds the Anibeam AppImage on an ubuntu-24.04 runner, runs the core and shell tests there,
 # then smoke-tests the image on the runner and inside Debian 13, Fedora 41 and Arch
 # containers, so a library the bundle forgot shows up as a failure on a distro that lacks it.
 # The image carries anirss on its own Python and a static qbittorrent-nox; the smoke run
 # checks both start. nightly.yml, release.yml and pr-build.yml call it and put the AppImage
-# on their release. A pull request that touches the core, the Qt shell or the workspace runs it
-# too. Run it from the Actions tab (Run workflow) for a build without a release.
+# on their release. A pull request runs it through full-ci.yml, under the `full ci` label, once
+# it works locally (#986). Run it from the Actions tab (Run workflow) for a build without a
+# release.
 on:
-  pull_request:
-    paths:
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'clippy.toml'
-      - '.cargo/**'
-      - 'rust-toolchain*'
-      - '.github/workflows/linux.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
@@ -33,8 +22,10 @@ on:
         default: ''
 
 # A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
-# one build per PR instead of queueing behind the runners. Nightly and release runs have no
-# PR number, so each gets its own group and none cancels another (#529).
+# one build per PR instead of queueing behind the runners. The group starts with the calling
+# workflow's name, so a full run and a test build of one PR never cancel each other. Nightly
+# and release runs have no PR number, so each gets its own group and none cancels another
+# (#529).
 concurrency:
   group: ${{ github.workflow }}-linux-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -63,12 +54,15 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0 # git describe names the version
 
+      # FFmpeg is built by deps.sh, lean, from the libraries on the line after the tools; noble's
+      # own FFmpeg drags 125 MB of encoders and speech libraries into the image (#850). The
+      # ffmpeg program stays: smoke.sh encodes its test clip with it, and nothing links it.
       - name: apt packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config meson ninja-build cmake \
-            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
+            build-essential pkg-config meson ninja-build cmake nasm \
+            libdav1d-dev libgnutls28-dev libwebp-dev libbz2-dev zlib1g-dev \
             libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libffmpeg-nvenc-dev \
             libegl-dev libgl-dev libdrm-dev libdisplay-info-dev libgbm-dev \
             libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
@@ -103,42 +97,45 @@ jobs:
         id: depkey
         run: |
           key="$( { cat apps/linux/packaging/linux/deps.sh
-                    dpkg-query -W libavcodec-dev libavformat-dev libavfilter-dev libplacebo-dev libass-dev \
-                      liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
+                    dpkg-query -W nasm libdav1d-dev libgnutls28-dev libwebp-dev libbz2-dev zlib1g-dev libffmpeg-nvenc-dev \
+                      libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
                     "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
                   } | sha256sum | cut -c1-16)"
           echo "key=ubuntu-24.04-deps-$key" >> "$GITHUB_OUTPUT"
 
-      - name: Restore libmpv and MpvQt
+      - name: Restore FFmpeg, libmpv and MpvQt
         id: deps
         uses: actions/cache/restore@v4
         with:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
-      - name: Build libva, libmpv and MpvQt
+      - name: Build libva, FFmpeg, libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
         run: apps/linux/packaging/linux/deps.sh "$DEPS_PREFIX"
 
       # Saved here rather than at the end, so a run that fails later keeps them.
-      - name: Save libva, libmpv and MpvQt
+      - name: Save libva, FFmpeg, libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
-      # Pinned, as in ci.yml and android.yml, so a new Rust release cannot turn the shell's
-      # clippy red on code nobody touched, and the build, the tests and clippy share one
-      # toolchain and one cache. Bump it on purpose, in all three.
+      # rust-toolchain.toml names the version, so the build, the tests and clippy share one
+      # toolchain with every other workflow, and one cache.
       - name: Rust toolchain
         run: |
-          rustup toolchain install 1.98 --profile minimal --component clippy
-          rustup default 1.98
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustc --version
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Build
@@ -159,10 +156,36 @@ jobs:
           PY
 
       - name: Test the core and the shell
-        run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-core -p anibeam
+        # The core's tests run the runner's own ffmpeg to make sample episodes, and that
+        # ffmpeg needs Ubuntu's libavcodec with its encoders. Only the shell links the lean
+        # FFmpeg in DEPS_PREFIX, so only the shell's tests get it on the library path.
+        run: |
+          cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-core
+          LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam
 
       - name: AppImage
         run: apps/linux/packaging/linux/appimage.sh dist
+
+      # The same bundle as a .deb and an .rpm for the apt and dnf repos on anibeam.app (#788).
+      # The version is the AppImage's own, so a release, a nightly and a PR build all match.
+      - name: Packages for apt and dnf
+        id: packages
+        run: |
+          image="$(ls dist/AniBeam-*-x86_64.AppImage)"
+          version="$(basename "$image" | sed -E 's/^AniBeam-(.*)-x86_64\.AppImage$/\1/')"
+          apps/linux/packaging/linux/packages.sh "$image" "$version" dist
+          ls -la dist/*.deb dist/*.rpm
+
+      # The dnf repo points at the release's own .rpm, so a nightly or a release signs it before
+      # it is uploaded. A pull request's build, `test build` ones included (2.5.0-pr.280.3), stays
+      # unsigned: it never reaches the repo, and PR code never runs next to the key.
+      - name: Sign the .rpm
+        if: inputs.version != '' && !contains(inputs.version, '-pr.')
+        env:
+          ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
+        run: |
+          sudo apt-get install -y -qq rpm > /dev/null
+          apps/linux/packaging/linux/sign-rpm.sh dist/*.rpm
 
       # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
       # cannot hide behind the Qt that install-qt-action put on the runner.
@@ -220,12 +243,49 @@ jobs:
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
 
+      # The .deb and the .rpm installed the way apt and dnf install them, then the same smoke
+      # run against what they put in /opt/anibeam (#788).
+      - name: Smoke test the .deb on Debian 13
+        if: always() && steps.packages.outcome == 'success'
+        env:
+          IMAGE: debian:trixie
+          NAME: debian-deb
+          INSTALL: >-
+            apt-get update -qq && apt-get install -y -qq ./dist/anibeam_*_amd64.deb xvfb xauth
+            libgl1-mesa-dri fonts-dejavu-core
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the .deb"; exit 1; }
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
+      - name: Smoke test the .rpm on Fedora 41
+        if: always() && steps.packages.outcome == 'success'
+        env:
+          IMAGE: fedora:41
+          NAME: fedora-rpm
+          INSTALL: >-
+            dnf install -y -q --nogpgcheck ./dist/anibeam-*.x86_64.rpm xorg-x11-server-Xvfb xauth
+            dejavu-sans-fonts
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the .rpm"; exit 1; }
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
       - name: Upload the build
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: anibeam-linux-x86_64
-          path: dist/*.AppImage
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
           if-no-files-found: ignore
 
       - name: Upload the smoke captures

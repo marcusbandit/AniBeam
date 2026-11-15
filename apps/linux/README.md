@@ -1,4 +1,4 @@
-# AniBeam Linux shell
+# Anibeam Linux shell
 
 Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec: chapters 4 and 5 of
 `docs/superpowers/specs/2026-09-04-native-line-design.md`; plan: `docs/superpowers/plans/2026-09-05-shell-phase-2.md`.
@@ -43,7 +43,8 @@ windowed run; `bench.sh` sets it.
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
-debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds only. A
+debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds and in
+builds with the `dev-qml` feature only. A
 URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml`
 the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared
 components all come from disk. Edit, then run with the binary as it stands:
@@ -59,12 +60,29 @@ turn a relative dir into an absolute one against the directory they run from; a 
 reported in the `.log` and ignored, and a file missing from the dir is reported once and loaded from the
 compiled copy. Build before the last run of a task all the same: the binary the launcher starts has the QML compiled in.
 
+A build to try on another machine is a tester build: `cargo build --profile tester -p anibeam
+--features dev-qml` writes `target/tester/anibeam`, a release build without debug info, so the
+binary copies over quickly, and it reads `ANIBEAM_QML_DIR`. The other machine needs the same Qt,
+MpvQt and libmpv as the build box. Copy the binary, `apps/linux/qml/`, `apps/linux/themes/` and
+`apps/linux/mpv.conf` over, and start it with `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and
+`ANIBEAM_MPV_CONF` pointing at them. Quit any Anibeam already running there first: a second start
+hands off to the running one and exits. Without `--root <dir>` it opens that machine's real data,
+and a migration in the tester moves the database the installed build reads next. After a QML-only
+change, copy the folder again and restart. It is never shipped.
+
+A capture is a build from source, so its sidebar shows the dev icon. Set `ANIBEAM_ICON=release`
+for a shot of the release look, such as one for the website.
+
 `shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
 a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:
 cargo keys each workspace member by its path inside the workspace, so a worktree can take another
 checkout's build of `anibeam-core` or the shell as fresh and run without its own edits (#250). A fresh worktree pays one cold
 build (logged cold builds ran 99 s median, 518 s worst) and keeps a debug `target/` of several GB
-until the worktree goes. Right after each build the scripts copy the
+until the worktree goes. With sccache as cargo's `rustc-wrapper`, that cold build takes most
+third-party crates from another checkout's earlier build instead: the scripts pass the target dir
+as `--target-dir` and keep `CARGO_TARGET_DIR` out of cargo's environment, since sccache keys every
+compile on the `CARGO_*` variables and a per-checkout one would make every crate a miss (#263).
+`docs/build-from-source.md` has the setup. Right after each build the scripts copy the
 binary to `target/debug/anibeam-staged` and run that copy, so a capture runs this checkout's last
 build. `ANIBEAM_NO_BUILD=1` skips the build and reuses that staged copy. Release builds and
 `bench.sh` stay per checkout, so a worktree never replaces the binary the launcher starts.

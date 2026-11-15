@@ -8,6 +8,9 @@
 #               reaches the window.
 #   SMOKE_DOWNLOADS   set to 1 to open the Downloads page on a fresh install: no anirss on
 #               PATH, no qBittorrent running, so the image has to start its own of both.
+#   SMOKE_INSTALLED_DIR   where an installed .deb or .rpm put the bundle (/opt/anibeam). Set it
+#               and pass /usr/bin/anibeam as the first argument to smoke-test a package the way
+#               apt or dnf left it, instead of an AppImage (#788).
 # The host's Qt is scrubbed first, so a plugin the bundle forgot cannot hide behind it.
 set -uo pipefail
 
@@ -47,13 +50,17 @@ echo "== the helpers"
 # Straight out of the unpacked image: no AppRun, no environment, so each one has to stand
 # on what the bundle holds.
 helpers="$(mktemp -d)"
-( cd "$helpers" && "$img" --appimage-extract > /dev/null ) || { echo "could not unpack the image"; exit 1; }
-unpacked="$helpers/squashfs-root"
+if [ -n "${SMOKE_INSTALLED_DIR:-}" ]; then
+  unpacked="$SMOKE_INSTALLED_DIR"
+else
+  ( cd "$helpers" && "$img" --appimage-extract > /dev/null ) || { echo "could not unpack the image"; exit 1; }
+  unpacked="$helpers/squashfs-root"
+fi
 # A scratch HOME: anirss writes a default config on its first run, and qbittorrent-nox
 # will not even print its version without a directory to put its cache in.
 anirss="$(env -i HOME="$helpers" "$unpacked/usr/share/anibeam/anirss/bin/anirss" --version 2>/dev/null)"
 echo "anirss: $anirss"
-[ "$anirss" = "anirss 0.6.1" ] || { echo "anirss did not report 0.6.1"; status=1; }
+[ "$anirss" = "anirss 0.7.1" ] || { echo "anirss did not report 0.7.1"; status=1; }
 qbt="$(env -i HOME="$helpers" "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
 echo "qbittorrent-nox: $qbt"
 case "$qbt" in
@@ -111,14 +118,15 @@ if [ -n "${SMOKE_DOWNLOADS:-}" ]; then
   {"page": "downloads"},
   {"wait": 20000},
   {"shot": "downloads"},
-  {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.6.1"},
+  {"eval": "frame.item.pageItem.nativeEngine", "expect": true},
+  {"eval": "frame.item.pageItem.searchReady", "expect": true},
   {"eval": "frame.item.pageItem.torrentOn", "expect": true},
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]
 JSON
   # A fresh HOME and a PATH that holds no anirss and no qbittorrent-nox: whatever answers
-  # on the page came out of the image.
+  # on the page came out of the image. A fresh install searches on Anibeam's own engine
+  # (#552), so anirss stays off here; "the helpers" above already ran the bundled one.
   QT_FORCE_STDERR_LOGGING=1 xvfb-run -a -s "-screen 0 1920x1080x24" \
     env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$dhome" PATH=/usr/bin:/bin \
     "$img" --root "$droot" --drive "$out/downloads.json" --out "$out/downloads" --width 1600 --height 1000 \

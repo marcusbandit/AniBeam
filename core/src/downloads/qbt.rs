@@ -19,6 +19,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "qBittorrent";
@@ -83,6 +84,38 @@ impl QbtClient {
         Ok(v.as_array()
             .map(|a| a.iter().map(torrent).collect())
             .unwrap_or_default())
+    }
+
+    /// The magnet link of a torrent the client still holds, trackers included,
+    /// as qBittorrent writes it. None when the client no longer has it, and
+    /// for a private torrent: its trackers carry this person's passkey, and
+    /// it has no other way to find peers. qBittorrent 5 says `private` in the
+    /// list; an older one says `is_private` in the torrent's properties.
+    pub async fn magnet(&self, hash: &str) -> Result<Option<String>, CoreError> {
+        let r = self
+            .call(&format!("torrents/info?hashes={hash}"), None)
+            .await?;
+        let v: Value = r.json()?;
+        let Some(t) = v.as_array().and_then(|a| {
+            a.iter()
+                .find(|t| text(&t["hash"]).eq_ignore_ascii_case(hash))
+        }) else {
+            return Ok(None);
+        };
+        let private = match t["private"].as_bool() {
+            Some(p) => p,
+            None => self.is_private(hash).await.unwrap_or(false),
+        };
+        Ok(Some(text(&t["magnet_uri"])).filter(|m| !private && m.starts_with("magnet:")))
+    }
+
+    /// Whether qBittorrent's properties call the torrent private.
+    async fn is_private(&self, hash: &str) -> Result<bool, CoreError> {
+        let r = self
+            .call(&format!("torrents/properties?hash={hash}"), None)
+            .await?;
+        let v: Value = r.json()?;
+        Ok(v["is_private"].as_bool().unwrap_or(false))
     }
 
     /// The files inside one torrent, in qBittorrent's order.
@@ -207,6 +240,13 @@ impl QbtClient {
     pub async fn remove_item(&self, path: &str) -> Result<(), CoreError> {
         let form = vec![("path".to_string(), path.to_string())];
         self.call("rss/removeItem", Some(form)).await.map(|_| ())
+    }
+
+    /// Asks qBittorrent to read one feed now rather than at its next
+    /// interval; `path` is the feed's path in its RSS tree.
+    pub async fn refresh_feed(&self, path: &str) -> Result<(), CoreError> {
+        let form = vec![("itemPath".to_string(), path.to_string())];
+        self.call("rss/refreshItem", Some(form)).await.map(|_| ())
     }
 
     pub async fn remove_rule(&self, name: &str) -> Result<(), CoreError> {
@@ -362,7 +402,7 @@ impl QbtClient {
 
     async fn send(&self, path: &str, body: Option<Body>) -> Result<HttpResponse, CoreError> {
         let mut headers = vec![("Referer".to_string(), format!("{}/", self.base))];
-        if let Some(cookie) = self.sid.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        if let Some(cookie) = recover(&self.sid).clone() {
             headers.push(("Cookie".to_string(), cookie));
         }
         let method = if body.is_some() {
@@ -371,26 +411,33 @@ impl QbtClient {
             Method::Get
         };
         self.http
-            .send(HttpRequest {
-                method,
-                url: format!("{}/api/v2/{path}", self.base),
-                headers,
-                body,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(method, format!("{}/api/v2/{path}", self.base))
+                    .headers(headers)
+                    .body(body),
+            )
             .await
-            .map_err(|e| CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: format!("qBittorrent did not answer at {}: {}", self.base, e.message),
+            .map_err(|e| {
+                CoreError::service(
+                    SERVICE,
+                    "unreachable",
+                    crate::i18n::tr(
+                        "core-downloads-qbt-no-answer",
+                        &[
+                            ("address", self.base.as_str().into()),
+                            ("message", e.message.into()),
+                        ],
+                    ),
+                )
             })
     }
 
     async fn login(&self) -> Result<(), CoreError> {
-        if *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) {
-            return Err(unauthorized(
-                "qBittorrent rejected the password; fix it in Settings",
-            ));
+        if *recover(&self.rejected) {
+            return Err(unauthorized(crate::i18n::tr(
+                "core-downloads-qbt-password-rejected",
+                &[],
+            )));
         }
         let form = vec![
             ("username".to_string(), self.username.clone()),
@@ -398,45 +445,55 @@ impl QbtClient {
         ];
         let r = self
             .http
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}/api/v2/auth/login", self.base),
-                headers: vec![("Referer".to_string(), format!("{}/", self.base))],
-                body: Some(Body::Form(form)),
-                timeout: None,
-            })
+            .send(
+                HttpRequest::post(format!("{}/api/v2/auth/login", self.base))
+                    .header("Referer", format!("{}/", self.base))
+                    .body(Body::Form(form)),
+            )
             .await
-            .map_err(|e| CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: format!("qBittorrent did not answer at {}: {}", self.base, e.message),
+            .map_err(|e| {
+                CoreError::service(
+                    SERVICE,
+                    "unreachable",
+                    crate::i18n::tr(
+                        "core-downloads-qbt-no-answer",
+                        &[
+                            ("address", self.base.as_str().into()),
+                            ("message", e.message.into()),
+                        ],
+                    ),
+                )
             })?;
         if r.status == 403 {
-            return Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "banned".to_string(),
-                message: "qBittorrent has banned this address after failed logins; wait, or restart qBittorrent".to_string(),
-            });
+            return Err(CoreError::service(
+                SERVICE,
+                "banned",
+                crate::i18n::tr("core-downloads-qbt-banned", &[]),
+            ));
         }
         // 4.x answers a good login with `Ok.` and a bad one with `Fails.`, both 200;
         // 5.x answers a good one with 204 and nothing. Only a refusal is a rejection;
         // anything else, a proxy's 502 say, is worth another try on the next call.
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
         if r.status == 401 || (r.is_success() && text == "Fails.") {
-            *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = true;
-            return Err(unauthorized(
-                "qBittorrent rejected the username or password",
-            ));
+            *recover(&self.rejected) = true;
+            return Err(unauthorized(crate::i18n::tr(
+                "core-downloads-qbt-login-rejected",
+                &[],
+            )));
         }
         if r.status >= 500 {
-            return Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: format!(
-                    "qBittorrent's login at {} answered {}; trying again on the next call",
-                    self.base, r.status
+            return Err(CoreError::service(
+                SERVICE,
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-qbt-login-failed",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("status", r.status.to_string().into()),
+                    ],
                 ),
-            });
+            ));
         }
         if !r.is_success() {
             return judge(&self.base, r).map(|_| ());
@@ -454,7 +511,7 @@ impl QbtClient {
             });
         match sid {
             Some(sid) => {
-                *self.sid.lock().unwrap_or_else(|e| e.into_inner()) = Some(sid);
+                *recover(&self.sid) = Some(sid);
                 Ok(())
             }
             // Logged in without a cookie: an auth bypass answered the
@@ -462,15 +519,17 @@ impl QbtClient {
             None if text.is_empty() || text == "Ok." => Ok(()),
             // Anything else with no cookie, a proxy's or a portal's page say,
             // is some other program answering, not a login qBittorrent took
-            None => Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: format!("http_{}", r.status),
-                message: format!(
-                    "{} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
-                     and that the Web UI is turned on in qBittorrent",
-                    self.base, r.status
+            None => Err(CoreError::service(
+                SERVICE,
+                format!("http_{}", r.status),
+                crate::i18n::tr(
+                    "core-downloads-qbt-not-web-ui",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("status", r.status.to_string().into()),
+                    ],
                 ),
-            }),
+            )),
         }
     }
 }
@@ -504,33 +563,30 @@ fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
     if body == "Ok." {
         return Ok(());
     }
-    let failed = |message: String| {
-        Err(CoreError::Service {
-            service: SERVICE.to_string(),
-            code: "add_failed".to_string(),
-            message,
-        })
-    };
+    let failed = |message: String| Err(CoreError::service(SERVICE, "add_failed", message));
     let Ok(v) = serde_json::from_str::<Value>(body) else {
-        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+        return failed(crate::i18n::tr(
+            "core-downloads-qbt-not-added",
+            &[("said", format!("{body:?}").into())],
+        ));
     };
     if !v.is_object() {
-        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+        return failed(crate::i18n::tr(
+            "core-downloads-qbt-not-added",
+            &[("said", format!("{body:?}").into())],
+        ));
     }
     match num(&v["failure_count"]) {
         0 => Ok(()),
-        n => failed(format!(
-            "qBittorrent could not add {n} of the torrents: {body:?}"
+        n => failed(crate::i18n::tr(
+            "core-downloads-qbt-some-not-added",
+            &[("count", n.into()), ("said", format!("{body:?}").into())],
         )),
     }
 }
 
-fn unauthorized(message: &str) -> CoreError {
-    CoreError::Service {
-        service: SERVICE.to_string(),
-        code: "unauthorized".to_string(),
-        message: message.to_string(),
-    }
+fn unauthorized(message: String) -> CoreError {
+    CoreError::service(SERVICE, "unauthorized", message)
 }
 
 fn flatten_feeds(v: &Value, prefix: &str, out: &mut Vec<(String, String)>) {
@@ -562,10 +618,12 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
     let text = r.text();
     let text = text.trim();
     let message = if text.starts_with('<') {
-        format!(
-            "{base} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
-             and that the Web UI is turned on in qBittorrent",
-            r.status
+        crate::i18n::tr(
+            "core-downloads-qbt-not-web-ui",
+            &[
+                ("address", base.into()),
+                ("status", r.status.to_string().into()),
+            ],
         )
     } else {
         let line: String = text
@@ -575,13 +633,15 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
             .chars()
             .take(160)
             .collect();
-        format!("qBittorrent answered {}: {line}", r.status)
+        crate::i18n::tr(
+            "core-downloads-qbt-answered",
+            &[
+                ("status", r.status.to_string().into()),
+                ("line", line.into()),
+            ],
+        )
     };
-    Err(CoreError::Service {
-        service: SERVICE.to_string(),
-        code,
-        message,
-    })
+    Err(CoreError::service(SERVICE, code, message))
 }
 
 /// A count off qBittorrent's JSON: negative (its "unknown") and absent
@@ -638,13 +698,25 @@ fn torrent(v: &Value) -> Torrent {
 
 /// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
-    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
-    let host = rest.split(['/', '?']).next().unwrap_or("");
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    // The HTTP client ends an http(s) host at a backslash too, as at a slash, so
+    // `https://t.example\0123abcd\announce` is `t.example`, never its path and passkey
+    // (#493). The host is kept as written, so a udp or non-ASCII one stays readable, and
+    // lowercased, so one tracker shows under one name whatever its scheme.
+    let ends: &[char] =
+        if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") {
+            &['/', '\\', '?', '#']
+        } else {
+            &['/', '?', '#']
+        };
+    let host = rest.split(ends).next().unwrap_or("");
     let host = host.rsplit('@').next().unwrap_or(host);
-    match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or("").to_string(),
-        None => host.split(':').next().unwrap_or("").to_string(),
-    }
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    host.to_ascii_lowercase()
 }
 
 /// A blank torrent for other modules' tests.
@@ -869,6 +941,24 @@ mod tests {
         assert!(!torrent(&Value::Null).seq_dl);
     }
 
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so the tracker is
+    /// the host it would announce to, never its path and passkey (#493).
+    #[test]
+    fn a_tracker_written_with_backslashes_is_its_host() {
+        assert_eq!(
+            tracker_host("https://t.example\\0123abcd\\announce"),
+            "t.example"
+        );
+        assert_eq!(
+            tracker_host("http://user:pw@T.example:7777\\announce?passkey=x"),
+            "t.example"
+        );
+        // A udp tracker reads backslashes as written, and keeps a readable host; one
+        // tracker is one name whatever its scheme.
+        assert_eq!(tracker_host("udp://трекер.рф:80/announce"), "трекер.рф");
+        assert_eq!(tracker_host("udp://T.Example:80/announce"), "t.example");
+    }
+
     #[tokio::test]
     async fn sequential_presses_the_toggle_only_for_torrents_that_differ() {
         let http = Arc::new(FakeHttp::new());
@@ -953,7 +1043,7 @@ mod tests {
         let client = client(&http);
         http.push(
             200,
-            json!({"Frieren": {"uid": "a", "url": "https://nyaa.si/?q=f"},
+            json!({"Frieren": {"uid": "a", "url": "https://tracker.example/?q=f"},
                    "TV": {"Avatar": {"uid": "b", "url": "http://127.0.0.1:9117/x"}}})
             .to_string(),
         );
@@ -962,7 +1052,10 @@ mod tests {
         assert_eq!(
             feeds,
             vec![
-                ("Frieren".to_string(), "https://nyaa.si/?q=f".to_string()),
+                (
+                    "Frieren".to_string(),
+                    "https://tracker.example/?q=f".to_string()
+                ),
                 (
                     "TV\\Avatar".to_string(),
                     "http://127.0.0.1:9117/x".to_string()
@@ -972,12 +1065,17 @@ mod tests {
         http.push(409, "Conflict");
         assert!(
             !client
-                .add_feed("https://nyaa.si/?q=f", "Frieren")
+                .add_feed("https://tracker.example/?q=f", "Frieren")
                 .await
                 .unwrap()
         );
         http.push(200, "");
-        assert!(client.add_feed("https://nyaa.si/?q=g", "G").await.unwrap());
+        assert!(
+            client
+                .add_feed("https://tracker.example/?q=g", "G")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]

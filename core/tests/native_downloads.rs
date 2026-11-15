@@ -6,6 +6,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -47,13 +48,6 @@ fn isolate_xdg(dir: &Path) {
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", dir);
         std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
     }
 }
 
@@ -274,7 +268,7 @@ fn removing_a_subscription_with_files_leaves_a_library_show_folder() {
     queue_one_rule(&r.http, &home);
     let done = remove_call(&r, false, true, true);
     assert!(
-        matches!(failed(&done), CoreError::Invalid { field, message }
+        matches!(&done, Err(CoreError::Invalid { field, message })
             if field == "files" && message.contains("library folder")),
         "{done:?}"
     );
@@ -475,7 +469,7 @@ fn list_rules_lists_every_rule_with_counts() {
     std::fs::write(alpha.join("01.mkv"), b"x").unwrap();
     std::fs::write(alpha.join("S1").join("02.mkv"), b"x").unwrap();
     let alpha = alpha.to_string_lossy().into_owned();
-    // A rule anirss or a person wrote is listed as well as one of AniBeam's
+    // A rule anirss or a person wrote is listed as well as one of Anibeam's
     r.http.push_for(
         "rss/rules",
         200,
@@ -518,7 +512,110 @@ fn list_rules_lists_every_rule_with_counts() {
     assert_eq!(rules[1].torrent_count, 1);
     assert_eq!(rules[1].file_count, 0, "a folder not on this disk");
     assert_eq!(rules[1].query, "Beta Show");
+    // Both feeds answer RSS, or belong to no source the core has: either can follow.
+    assert!(rules[0].followable && rules[1].followable);
     no_anirss(&r.http);
+}
+
+/// Installs a source whose search answers JSON (the json-feed kind) from a repo this test signs,
+/// and gives back its install id.
+fn install_json_source(r: &Rig) -> String {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+    use ed25519_dalek::{Signer, SigningKey};
+    let k = SigningKey::from_bytes(&[7; 32]);
+    let key = format!("ed25519:{}", B64.encode(k.verifying_key().to_bytes()));
+    let index = json!({"name": "Signed here", "key": key, "serial": 1, "endpoints": [
+        {"id": "api", "name": "api", "version": 1, "kind": "json-feed",
+         "url": "https://search.example/feed/json?q={query}"}
+    ]});
+    let payload = serde_json::to_vec(&index).unwrap();
+    let path = r.dir.path().join("repo.json");
+    let file = json!({
+        "format": "anibeam-endpoint-repo",
+        "version": 1,
+        "payload": B64.encode(&payload),
+        "signature": B64.encode(k.sign(&payload).to_bytes()),
+    });
+    std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+    let url = path.to_string_lossy().into_owned();
+    let Reply::EndpointRepoPreview { preview } = r
+        .core
+        .call(Call::AddEndpointRepo { url: url.clone() })
+        .unwrap()
+    else {
+        panic!()
+    };
+    r.core
+        .call(Call::TrustEndpointRepo {
+            url: url.clone(),
+            key: preview.key,
+        })
+        .unwrap();
+    let Reply::EndpointCatalog { catalog } = r
+        .core
+        .call(Call::InstallEndpoint {
+            repo: url,
+            id: "api".into(),
+            credentials: vec![],
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    catalog
+        .installed
+        .iter()
+        .find(|i| i.id == "api")
+        .unwrap()
+        .install_id
+        .clone()
+}
+
+fn listed_rules(r: &Rig) -> Vec<SubscriptionRule> {
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({
+            "Kept": {"affectedFeeds": ["https://search.example/feed/json?q=Kept"], "savePath": "/srv/TV/Kept"},
+            "Fine": {"affectedFeeds": ["https://feed.example/rss?q=Fine"], "savePath": "/srv/TV/Fine"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("torrents/info", 200, "[]".to_string());
+    let seen = r.c.events().iter().map(|e| e.seq).max().unwrap_or(0);
+    assert_eq!(r.core.call(Call::ListSubscriptionRules).unwrap(), Reply::Ok);
+    let read = common::wait_for(
+        &r.c,
+        move |e| e.seq > seen && matches!(e.body, EventBody::SubscriptionsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::SubscriptionsRead { rules } = read.body else {
+        unreachable!()
+    };
+    rules
+}
+
+#[test]
+fn a_rule_on_a_source_that_answers_json_cannot_follow_even_with_the_source_off() {
+    let r = rig();
+    let install = install_json_source(&r);
+    let follows = |rules: &[SubscriptionRule]| -> Vec<(String, bool)> {
+        rules
+            .iter()
+            .map(|r| (r.name.clone(), r.followable))
+            .collect()
+    };
+    let want = vec![("Fine".to_string(), true), ("Kept".to_string(), false)];
+    assert_eq!(follows(&listed_rules(&r)), want);
+    // Switched off for search, its subscriptions are still read, and still cannot follow.
+    r.core
+        .call(Call::SetEndpointEnabled {
+            install,
+            enabled: false,
+        })
+        .unwrap();
+    assert_eq!(follows(&listed_rules(&r)), want);
 }
 
 // Removing --------------------------------------------------------------------------
@@ -561,22 +658,26 @@ fn writes(http: &FakeHttp) -> Vec<String> {
         .collect()
 }
 
-fn remove_call(r: &Rig, dry_run: bool, torrents: bool, files: bool) -> Event {
-    let call = if dry_run {
-        Call::PlanRemoveSubscription {
-            name: "Show".to_string(),
-            torrents,
-            files,
-        }
-    } else {
-        Call::RemoveSubscription {
-            name: "Show".to_string(),
-            torrents,
-            files,
-        }
-    };
-    let job = started(&r.core, call);
-    common::wait_job(&r.c, job)
+/// Removes the subscription `Show` through the downloads backend, the way
+/// `RemoveShow` and the prune reach it; with `dry_run` it only plans. No call
+/// passes `torrents`, `files` or `dry_run` any more; #858 takes them out.
+fn remove_call(
+    r: &Rig,
+    dry_run: bool,
+    torrents: bool,
+    files: bool,
+) -> Result<Vec<RemovePlan>, CoreError> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        let backend =
+            anibeam_core::downloads::backend::DownloadsBackend::open(r.core.downloads()).await?;
+        backend
+            .remove(&["Show".to_string()], torrents, files, dry_run)
+            .await
+    })
 }
 
 #[test]
@@ -584,9 +685,7 @@ fn remove_plan_matches_remove() {
     let r = rig();
     queue_one_rule(&r.http, "/srv/TV/Show");
     let planned = remove_call(&r, true, true, false);
-    let EventBody::RemovalPlanned { plans } = &planned.body else {
-        panic!("{:?}", planned.body)
-    };
+    let plans = &planned.unwrap();
     assert_eq!(
         plans,
         &vec![RemovePlan {
@@ -607,9 +706,8 @@ fn remove_plan_matches_remove() {
     r.http.push_for("rss/removeRule", 200, "");
     let done = remove_call(&r, false, true, false);
     assert!(
-        matches!(&done.body, EventBody::SubscriptionRemoved { name } if name == "Show"),
-        "{:?}",
-        done.body
+        matches!(&done, Ok(plans) if plans.first().is_some_and(|p| p.name == "Show")),
+        "{done:?}"
     );
     assert_eq!(
         writes(&r.http),
@@ -636,7 +734,7 @@ fn remove_unknown_name_changes_nothing() {
     r.http.push_for("rss/rules", 200, "{}");
     let done = remove_call(&r, false, true, true);
     assert!(
-        matches!(failed(&done), CoreError::Service { code, message, .. }
+        matches!(&done, Err(CoreError::Service { code, message, .. })
             if code == "not_found" && message.contains("Show")),
         "{done:?}"
     );
@@ -650,14 +748,14 @@ fn remove_with_files_refuses_outside_the_save_base() {
     queue_one_rule(&r.http, "/elsewhere/Show");
     let done = remove_call(&r, true, true, true);
     assert!(
-        matches!(failed(&done), CoreError::Invalid { field, .. } if field == "files"),
+        matches!(&done, Err(CoreError::Invalid { field, .. }) if field == "files"),
         "a dry run refuses too: {done:?}"
     );
     queue_one_rule(&r.http, "/elsewhere/Show");
     r.http.push_for("app/defaultSavePath", 200, SAVE_BASE);
     let done = remove_call(&r, false, true, true);
     assert!(
-        matches!(failed(&done), CoreError::Invalid { field, .. } if field == "files"),
+        matches!(&done, Err(CoreError::Invalid { field, .. }) if field == "files"),
         "{done:?}"
     );
     assert!(writes(&r.http).is_empty());
@@ -679,9 +777,7 @@ fn remove_with_files_trashes_and_never_deletes() {
 
     queue_one_rule(&r.http, &show_path);
     let planned = remove_call(&r, true, true, true);
-    let EventBody::RemovalPlanned { plans } = &planned.body else {
-        panic!("{:?}", planned.body)
-    };
+    let plans = &planned.unwrap();
     assert_eq!(plans[0].size_bytes, 4);
     assert!(show.exists(), "a plan takes nothing");
 
@@ -691,11 +787,7 @@ fn remove_with_files_trashes_and_never_deletes() {
     r.http.push_for("rss/removeItem", 200, "");
     r.http.push_for("rss/removeRule", 200, "");
     let done = remove_call(&r, false, true, true);
-    assert!(
-        matches!(&done.body, EventBody::SubscriptionRemoved { .. }),
-        "{:?}",
-        done.body
-    );
+    assert!(done.is_ok(), "{done:?}");
     let calls = qbt_calls(&r.http);
     assert_eq!(
         field(called(&calls, "torrents/delete"), "deleteFiles").as_deref(),
@@ -719,7 +811,7 @@ fn a_remote_client_deletes_the_files_with_its_torrents() {
     };
     let done = remove_call(&r, false, false, true);
     assert!(
-        matches!(failed(&done), CoreError::Invalid { field, .. } if field == "files"),
+        matches!(&done, Err(CoreError::Invalid { field, .. }) if field == "files"),
         "{done:?}"
     );
 
@@ -728,11 +820,7 @@ fn a_remote_client_deletes_the_files_with_its_torrents() {
     r.http.push_for("rss/removeItem", 200, "");
     r.http.push_for("rss/removeRule", 200, "");
     let done = remove_call(&r, false, true, true);
-    assert!(
-        matches!(&done.body, EventBody::SubscriptionRemoved { .. }),
-        "{:?}",
-        done.body
-    );
+    assert!(done.is_ok(), "{done:?}");
     let delete = on_remote(&r.http, "torrents/delete").expect("torrents deleted");
     assert_eq!(field(&delete, "deleteFiles").as_deref(), Some("true"));
     no_anirss(&r.http);

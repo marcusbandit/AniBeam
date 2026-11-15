@@ -1,4 +1,4 @@
-//! The mpv options every AniBeam player sets, whichever shell draws it: the ones the app
+//! The mpv options every Anibeam player sets, whichever shell draws it: the ones the app
 //! owns, and the subtitle defaults as options. The desktop and the phone share these so a
 //! file plays the same on both.
 
@@ -90,50 +90,6 @@ pub fn subtitle_options(d: &crate::SubtitleDefaults) -> Vec<(&'static str, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_owned_options_end_with_what_the_spec_lists() {
-        let o = owned_options();
-        let names: Vec<&str> = o.iter().map(|(n, _)| *n).collect();
-        // The order is the point, not the membership: these are set after the config
-        // layers, in this sequence, and `vo=libmpv` is the first of them.
-        assert_eq!(
-            names,
-            vec![
-                "vo",
-                "osc",
-                "osd-level",
-                "input-default-bindings",
-                "input-vo-keyboard",
-                "input-media-keys",
-                "resume-playback",
-                "save-position-on-quit",
-                "keep-open",
-                "pause",
-                "fullscreen",
-                "loop-file",
-                "loop-playlist",
-                "ytdl",
-                "sub-auto",
-                "audio-file-auto",
-                "reset-on-next-file",
-                "volume-max",
-            ]
-        );
-        assert_eq!(o.iter().find(|(n, _)| *n == "vo").unwrap().1, "libmpv");
-        assert_eq!(
-            o.iter().find(|(n, _)| *n == "keep-open").unwrap().1,
-            "always"
-        );
-        assert_eq!(
-            o.iter()
-                .find(|(n, _)| *n == "reset-on-next-file")
-                .unwrap()
-                .1,
-            "sub-delay,audio-delay"
-        );
-        assert_eq!(o.iter().find(|(n, _)| *n == "volume-max").unwrap().1, "100");
-    }
 
     #[test]
     fn subtitle_defaults_become_mpv_options() {

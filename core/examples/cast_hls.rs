@@ -1,7 +1,7 @@
 //! Writes an episode as the HLS a Chromecast would get, to look at with ffprobe and mpv.
 //! cargo run --example cast_hls --features cast -- <file.mkv> <out dir>
 
-use anibeam_core::cast::media::{Prepared, Receiver, Subs};
+use anibeam_core::cast::media::{Prepared, Subs};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -12,7 +12,7 @@ fn main() {
     let t = std::time::Instant::now();
     let probe = anibeam_core::cast::mkv::probe(&anibeam_core::cast::mkv::open(input).unwrap());
     let subs = probe.subs.first().map(|s| Subs::Track(s.number));
-    let p = Prepared::new(input, None, subs, Receiver::Cast).unwrap();
+    let p = Prepared::new(input, None, subs).unwrap();
     eprintln!(
         "prepared in {:?}: {} segments, reorder {} ms",
         t.elapsed(),

@@ -14,7 +14,7 @@ Item {
     signal picked(int id)
     // The row the keys are on: Up and Down move it, Return or Space picks it (PlayerKeys)
     property int cursor: 0
-    readonly property var rows: (offRow ? [{ id: -1, label: "Off" }] : []).concat(tracks)
+    readonly property var rows: (offRow ? [{ id: -1, label: words.t("track-picker-off") }] : []).concat(tracks)
     function move(d) { cursor = Math.max(0, Math.min(rows.length - 1, cursor + d)); revealRow(cursor) }
     function choose() { if (cursor >= 0 && cursor < rows.length) { picked(rows[cursor].id); close() } }
     anchors.fill: parent
@@ -99,7 +99,7 @@ Item {
             Column {
                 id: column
                 width: parent.width
-                Text { text: root.title; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.space(6); verticalAlignment: Text.AlignVCenter; leftPadding: theme.space(2) }
+                Text { text: root.title; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.textSpace(6); verticalAlignment: Text.AlignVCenter; leftPadding: theme.space(2) }
                 Repeater {
                     model: root.rows
                     Corner {
@@ -107,12 +107,14 @@ Item {
                         required property int index
                         width: column.width; height: theme.controlHeight
                         radius: theme.radiusSm
-                        // Pressed darkest, then picked, then the keys' row or the pointer's
-                        color: m.pressed ? theme.surfacePressed : modelData.id === root.selected ? theme.accentSoft
+                        // Pressed darkest, then picked (a step brighter under the pointer or the keys), then the keys' row or the pointer's
+                        color: m.pressed ? theme.surfacePressed : modelData.id === root.selected ? (m.containsMouse || index === root.cursor ? theme.accentSoftHover : theme.accentSoft)
                              : m.containsMouse || index === root.cursor ? theme.floatHover : "transparent"
                         borderColor: index === root.cursor ? theme.focusRing : "transparent"; borderWidth: index === root.cursor ? 1 : 0
                         Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
-                        MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() } }
+                        MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() }
+                            Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+                            Accessible.onPressAction: { root.picked(modelData.id); root.close() }
                     }
                 }
             }

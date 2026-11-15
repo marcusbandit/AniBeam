@@ -1,4 +1,4 @@
-// The confirm before AniBeam starts a service: a small sheet by the chip that asked, saying
+// The confirm before Anibeam starts a service: a small sheet by the chip that asked, saying
 // which service and what starting it does. Start runs the core's StartEndpoint call (the page
 // owns that), and the sheet stays up while it waits, since a pod can take a minute to answer;
 // a failure (not installed, did not start) shows here as a line and the button becomes Try
@@ -16,6 +16,8 @@ Item {
     property string name: ""
     property bool busy: false
     property string error: ""
+    // The core's own words behind `error`, under Details
+    property string detail: ""
     // What the service is called to a person; the endpoint's name is what the chip says
     readonly property string service: "Jackett"
     property Item prevFocus: null
@@ -25,6 +27,7 @@ Item {
     function openAt(anchor, endpoint) {
         root.name = endpoint
         root.error = ""
+        root.detail = ""
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         if (anchor) {
             var p = anchor.mapToItem(root, 0, 0)
@@ -77,27 +80,27 @@ Item {
             y: theme.space(5)
             width: parent.width - theme.space(10)
             spacing: theme.space(3)
-            Label { width: parent.width; text: "Start " + root.service + " for " + root.name + "?"; role: "title"; font.pointSize: theme.typeNormal * 1.08; wrapMode: Text.Wrap }
+            Label { width: parent.width; text: words.t("start-source-title", { service: root.service, name: root.name }); role: "title"; font.pointSize: theme.typeNormal * 1.08; wrapMode: Text.Wrap }
             Label {
                 width: parent.width
                 text: root.busy
-                      ? "Starting " + root.service + ". " + root.name + " switches on when it answers; this can take up to a minute."
-                      : root.service + " is the service that searches " + root.name + " for AniBeam. Starting it runs it in the background on this computer, and it keeps running after AniBeam closes."
+                      ? words.t("start-source-busy", { service: root.service, name: root.name })
+                      : words.t("start-source-body", { service: root.service, name: root.name })
                 role: "ui"
                 color: theme.textDim
                 wrapMode: Text.Wrap
             }
-            Label { width: parent.width; visible: root.error !== ""; text: root.error; role: "ui"; color: theme.red; wrapMode: Text.Wrap }
+            ErrorLine { width: parent.width; text: root.error; detail: root.detail }
             Item {
                 width: parent.width
                 height: theme.controlHeight
                 Row {
                     anchors.right: parent.right
                     spacing: theme.space(2)
-                    Button { objectName: "start-source-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
+                    Button { objectName: "start-source-cancel"; msg: "action-cancel"; flat: true; onClicked: root.close() }
                     Button {
                         objectName: "start-source-confirm"
-                        text: root.busy ? "Starting" : root.error !== "" ? "Try again" : "Start"
+                        text: root.busy ? words.t("start-source-starting") : root.error !== "" ? words.t("action-try-again") : words.t("action-start")
                         icon: "play"
                         primary: true
                         enabled: !root.busy

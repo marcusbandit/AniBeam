@@ -8,14 +8,14 @@
 //! being the same, and the tag `Anime`, as anirss's defaults tag.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::store::settings as kv;
 
+use super::home::AnirssHome;
 use super::qbt::QbtClient;
 use super::settings;
 
@@ -60,9 +60,10 @@ impl Chosen {
 }
 
 /// anirss's `[downloads] save_base`, `movie_path` and `[qbittorrent] tags`,
-/// with `~` expanded as anirss expands them. Nothing when the file is
-/// missing or does not read.
-pub fn from_anirss_config(path: &Path) -> Chosen {
+/// with `~` expanded against `home`, as the anirss Anibeam runs expands them.
+/// Nothing when the file is missing or does not read.
+pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
+    let home = home.dir();
     let Ok(text) = std::fs::read_to_string(path) else {
         return Chosen::default();
     };
@@ -74,7 +75,7 @@ pub fn from_anirss_config(path: &Path) -> Chosen {
         downloads
             .and_then(|d| d.get(key))
             .and_then(|v| v.as_str())
-            .map(expand_home)
+            .map(|p| expand_under(p, home.as_deref()))
     };
     let tags = doc
         .get("qbittorrent")
@@ -94,15 +95,21 @@ pub fn from_anirss_config(path: &Path) -> Chosen {
 
 /// The three settings as they stand: the blob, anirss's config, then
 /// qBittorrent's default folder, asked only when nothing else names one.
-pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
-    let stored: Chosen = core.store.read(|c| kv::get(c, KEY))?.unwrap_or_default();
+pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
+    let stored: Chosen = services
+        .store
+        .read(|c| kv::get(c, KEY))?
+        .unwrap_or_default();
+    // A sandbox's `~` is its own home, the one the anirss it runs sees (#637)
+    let home = AnirssHome::of(&services.paths);
+    let dir = home.dir();
     let stored = Chosen {
-        save_base: stored.save_base.map(|p| expand_home(&p)),
-        movie_path: stored.movie_path.map(|p| expand_home(&p)),
+        save_base: stored.save_base.map(|p| expand_under(&p, dir.as_deref())),
+        movie_path: stored.movie_path.map(|p| expand_under(&p, dir.as_deref())),
         tags: stored.tags,
     };
-    let config = settings::anirss_config_path()
-        .map(|p| from_anirss_config(&p))
+    let config = settings::anirss_config_path(services)
+        .map(|p| from_anirss_config(&p, &home))
         .unwrap_or_default();
     let chosen = stored.or(config);
     let save_base = match chosen.save_base {
@@ -112,7 +119,7 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
             if base.is_empty() {
                 return Err(CoreError::invalid(
                     "save_path",
-                    "qBittorrent names no default save folder; set one in qBittorrent",
+                    crate::i18n::tr("core-downloads-no-default-folder", &[]),
                 ));
             }
             base
@@ -130,18 +137,24 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
 pub(crate) fn validate_name(name: &str) -> Result<String, CoreError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(CoreError::invalid("name", "the name cannot be empty"));
+        return Err(CoreError::invalid(
+            "name",
+            crate::i18n::tr("core-downloads-name-empty", &[]),
+        ));
     }
     if name.contains(['/', '\\']) {
         return Err(CoreError::invalid(
             "name",
-            "the name must not contain / or \\",
+            crate::i18n::tr("core-downloads-name-slash", &[]),
         ));
     }
     if name == "." || name == ".." || name.chars().any(|c| (c as u32) < 32 || c as u32 == 127) {
         return Err(CoreError::invalid(
             "name",
-            format!("{name:?} is not a folder name"),
+            crate::i18n::tr(
+                "core-downloads-name-not-folder",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     Ok(name.to_string())
@@ -208,14 +221,20 @@ pub fn norm(path: &str) -> String {
     out.trim_end_matches('/').to_string()
 }
 
-/// `~` and `~/...` under the home folder; anything else as it is.
+/// `~` and `~/...` under the home folder; anything else as it is. For the
+/// paths the torrent client gives back, which are absolute already.
 fn expand_home(path: &str) -> String {
+    expand_under(path, std::env::home_dir().as_deref())
+}
+
+/// `~` and `~/...` under `home`; anything else, or anything with no home, as it is.
+fn expand_under(path: &str, home: Option<&Path>) -> String {
     let path = path.trim();
     let rest = match path.strip_prefix('~') {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => rest,
         _ => return path.to_string(),
     };
-    match std::env::home_dir() {
+    match home {
         Some(home) => format!("{}{rest}", home.to_string_lossy()),
         None => path.to_string(),
     }
@@ -291,19 +310,21 @@ mod tests {
         std::fs::write(
             &p,
             "[qbittorrent]\nurl = \"http://localhost:9090\"\ntags = [\"TV\", \"New\"]\n\n\
-             [downloads]\nsave_base = \"/srv/TV\"\nmovie_path = \"/srv/Films\"\n",
+             [downloads]\nsave_base = \"/srv/TV\"\nmovie_path = \"~/Films\"\n",
         )
         .unwrap();
+        // A sandbox's `~` is the sandbox's home, never the person's own
+        let home = AnirssHome::Sandbox(dir.path().join("home"));
         assert_eq!(
-            from_anirss_config(&p),
+            from_anirss_config(&p, &home),
             Chosen {
                 save_base: Some("/srv/TV".into()),
-                movie_path: Some("/srv/Films".into()),
+                movie_path: Some(dir.path().join("home/Films").to_string_lossy().into_owned()),
                 tags: Some(vec!["TV".into(), "New".into()]),
             }
         );
         assert_eq!(
-            from_anirss_config(&dir.path().join("missing.toml")),
+            from_anirss_config(&dir.path().join("missing.toml"), &home),
             Chosen::default()
         );
     }

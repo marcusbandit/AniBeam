@@ -13,8 +13,8 @@ set -euo pipefail
 PBS_RELEASE=20261021
 PBS_PYTHON=3.13.17
 PBS_SHA256=56cde3b1a1dcc36576753cb408ee0c3568d211baafa0eee40423adc147c480f2
-ANIRSS_VERSION=0.6.1
-ANIRSS_SHA256=ee700625e89e8002c6a39b89c3faabee1ac3004d7e9313232ff2913701b7d22a
+ANIRSS_VERSION=0.7.1
+ANIRSS_SHA256=ffa15a2292fa70e134387bd55fadb1188cbcc1baa406d1a8920a6faf6899f6a8
 
 # D:/a/... rather than Git Bash's /d/a/..., since python.exe is handed these paths.
 dest="$(cygpath -m "$(cd "$1" && pwd)")/anirss"

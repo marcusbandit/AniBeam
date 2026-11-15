@@ -3,8 +3,8 @@
 // is on disk (or how far a download has come), and a state tag top left: dark glass, a
 // coloured dot, light writing, so it reads on any poster. Hovering puts the pane's one
 // action (Unsubscribe, Remove) across its foot; it opens the removal sheet. A click
-// elsewhere opens the show. `compact` is a pane with no poster to show: a short text tile
-// with the glyph, for the shows the library has not found.
+// elsewhere opens the show. Without a poster the pane keeps its full size and centres its
+// glyph, so a grid stays even. `compact` is a short text tile with the glyph, for lists.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -22,12 +22,15 @@ Item {
     property string cubes: ""
     property string progressCode: "d"
     property color progressColor: hasPoster ? theme.accentOnPoster : theme.accent
-    property string actionText: "Remove"
+    property string actionText: words.t("action-remove")
     property string actionIcon: "x"
     property string glyph: "rss"
     property bool compact: false
     property bool busy: false
     signal opened()
+    Accessible.role: Accessible.Button
+    Accessible.name: title
+    Accessible.onPressAction: opened()
     signal action(Item anchor)
 
     readonly property bool hasPoster: poster !== "" && !compact
@@ -72,7 +75,11 @@ Item {
                 visible: false
                 anchors.fill: parent
                 source: Fmt.fileUrl(root.poster)
-                sourceSize: theme.posterDecodeSize
+                // The shared decode (a cache hit) while the card is about a grid poster's
+                // size; a card well past it, like the four-across lens, decodes at twice it
+                sourceSize: root.width > theme.posterDecodeSize.width / theme.devicePixelRatio
+                            ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
+                            : theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 asynchronous: true

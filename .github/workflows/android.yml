@@ -13,18 +13,30 @@ on:
     branches: [main]
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
       - 'core/**'
       - 'host-api/**'
+      - 'recs/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - '.github/workflows/android.yml'
   pull_request:
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
       - 'core/**'
       - 'host-api/**'
+      - 'recs/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -54,7 +66,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
 
       - run: cargo fmt --check -p anibeam-android -p anibeam-companion
 
@@ -73,12 +88,16 @@ jobs:
 
       - name: Rust toolchain
         run: |
-          rustup toolchain install 1.98 --profile minimal --component clippy
-          rustup default 1.98
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustup target add x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/android
 
       - name: Test

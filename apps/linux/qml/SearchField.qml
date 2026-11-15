@@ -6,8 +6,8 @@ import QtQuick
 Corner {
     id: root
     property alias text: input.text
-    property string placeholder: "Search titles or folders"
-    property string hint: "/ or Ctrl+K"
+    property string placeholder: words.t("search-field-placeholder")
+    property string hint: words.t("search-field-hint")
     signal cleared()
     // Return or Enter in the field: a page that searches on demand rather than as you type
     signal accepted()
@@ -39,6 +39,10 @@ Corner {
     }
     TextInput {
         id: input
+        // Not being edited, a long query shows its start, as a Field does
+        autoScroll: activeFocus
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.placeholder
         anchors.fill: parent
         anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter
@@ -85,7 +89,8 @@ Corner {
         width: theme.space(7); height: width; radius: width / 2
         color: clearArea.pressed ? theme.surfacePressed : clearArea.containsMouse ? theme.tileHover : "transparent"
         Icon { anchors.centerIn: parent; glyph: "x"; size: theme.space(4); color: clearArea.containsMouse ? theme.text : theme.textDim }
-        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() } }
-        Tooltip { text: "Clear the search" }
+        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() }
+            Accessible.role: Accessible.Button; Accessible.name: words.t("search-field-clear"); Accessible.onPressAction: clearArea.clicked(null) }
+        Tooltip { msg: "search-field-clear" }
     }
 }

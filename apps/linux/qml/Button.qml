@@ -9,7 +9,10 @@ import QtQuick
 
 Corner {
     id: root
-    property string text: ""
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    property string text: msg ? words.t(msg, msgArgs) : ""
     property string icon: ""
     property bool danger: false
     property bool flat: false
@@ -26,10 +29,16 @@ Corner {
     // A primary button in a colour of the page's own (the home hero's poster tone) rather
     // than the theme's accent
     property color tint: theme.accent
+    // What a screen reader says; empty takes the label, then the tip, then the glyph
+    property string accessibleName: ""
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: theme.spokenName(accessibleName, text, root, icon)
+    Accessible.focusable: takesFocus
+    Accessible.onPressAction: if (!busy && enabled) clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
-    implicitHeight: small ? theme.space(6) : theme.controlHeight
+    implicitHeight: small ? theme.textSpace(6) : theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
     activeFocusOnTab: takesFocus

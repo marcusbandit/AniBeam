@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::changelog::digits;
 use crate::contract::CoreError;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 pub mod install;
 
@@ -50,7 +50,7 @@ impl Track {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Update {
     pub version: String,
-    /// The release's title, `Quality of life` out of `AniBeam 2.5.0 · Quality of life`;
+    /// The release's title, `Quality of life` out of `Anibeam 2.5.0 · Quality of life`;
     /// empty for a release known by its number.
     pub title: String,
     pub url: String,
@@ -126,8 +126,8 @@ struct Release {
     assets: Vec<Asset>,
 }
 
-/// A release's title out of its name: the Release workflow names one `AniBeam 2.5.0 ·
-/// Quality of life` when its CHANGELOG heading has a title, and `AniBeam 2.5.0` when not.
+/// A release's title out of its name: the Release workflow names one `Anibeam 2.5.0 ·
+/// Quality of life` when its CHANGELOG heading has a title, and `Anibeam 2.5.0` when not.
 fn title_of(name: &str) -> String {
     name.split_once(" · ")
         .map(|(_, title)| title.trim().to_string())
@@ -177,13 +177,7 @@ pub async fn check(
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: RELEASES.to_string(),
-            headers: vec![("Accept".into(), "application/vnd.github+json".into())],
-            body: None,
-            timeout: None,
-        })
+        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
         .await
         .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
     if !res.is_success() {
@@ -227,6 +221,37 @@ pub fn aur_newer(info: &[u8], current: &str) -> Result<Option<String>, CoreError
     Ok(newer.then(|| version.to_string()))
 }
 
+/// What the apt and dnf repos on anibeam.app carry, written by each site deploy
+/// (publish-repos.sh): `{"version": "2.4.0", "tag": "v2.4.0"}`.
+const REPOS: &str = "https://anibeam.app/repos.json";
+
+/// The version the apt and dnf repos carry, when it is newer than `current`. An install from
+/// them is offered only what they already have, so the command it is given finds it.
+pub async fn check_repos(http: &dyn Http, current: &str) -> Result<Option<String>, CoreError> {
+    let res = http
+        .send(HttpRequest::get(REPOS))
+        .await
+        .map_err(|e| CoreError::internal(format!("repos: {}", e.message)))?;
+    if !res.is_success() {
+        return Err(CoreError::internal(format!("repos: HTTP {}", res.status)));
+    }
+    repos_newer(&res.body, current)
+}
+
+fn repos_newer(body: &[u8], current: &str) -> Result<Option<String>, CoreError> {
+    #[derive(serde::Deserialize)]
+    struct Repos {
+        version: String,
+    }
+    let repos: Repos =
+        serde_json::from_slice(body).map_err(|e| CoreError::internal(format!("repos: {e}")))?;
+    let Some(theirs) = Version::parse(&repos.version) else {
+        return Ok(None);
+    };
+    let newer = Version::parse(current).is_none_or(|run| theirs > run);
+    Ok(newer.then_some(repos.version))
+}
+
 /// Asks the AUR what version `package` is at. A failure is the caller's to drop.
 pub async fn check_aur(
     http: &dyn Http,
@@ -234,14 +259,11 @@ pub async fn check_aur(
     current: &str,
 ) -> Result<Option<String>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            // Names are [a-z0-9@._+-]; a raw + would read as a space
-            url: format!("{AUR_INFO}{}", package.replace('+', "%2B")),
-            headers: Vec::new(),
-            body: None,
-            timeout: None,
-        })
+        // Names are [a-z0-9@._+-]; a raw + would read as a space
+        .send(HttpRequest::get(format!(
+            "{AUR_INFO}{}",
+            package.replace('+', "%2B")
+        )))
         .await
         .map_err(|e| CoreError::internal(format!("aur: {}", e.message)))?;
     if !res.is_success() {
@@ -275,6 +297,18 @@ mod tests {
     }
 
     #[test]
+    fn the_repos_offer_only_a_newer_version_they_carry() {
+        let body = br#"{"version": "2.5.0", "tag": "v2.5.0"}"#;
+        assert_eq!(
+            repos_newer(body, "2.4.0").unwrap().as_deref(),
+            Some("2.5.0")
+        );
+        assert_eq!(repos_newer(body, "2.5.0").unwrap(), None);
+        assert_eq!(repos_newer(body, "2.6.0").unwrap(), None);
+        assert!(repos_newer(b"not json", "2.4.0").is_err());
+    }
+
+    #[test]
     fn stable_is_offered_the_newest_stable_release_only() {
         assert_eq!(offered("2.2.0", Track::Stable).as_deref(), Some("u240"));
         assert_eq!(offered("2.4.0", Track::Stable), None);
@@ -284,8 +318,8 @@ mod tests {
     #[test]
     fn a_titled_release_carries_its_title() {
         let list = serde_json::json!([
-            { "tag_name": "v2.5.0", "name": "AniBeam 2.5.0 · Quality of life", "html_url": "u250" },
-            { "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }
+            { "tag_name": "v2.5.0", "name": "Anibeam 2.5.0 · Quality of life", "html_url": "u250" },
+            { "tag_name": "v2.4.0", "name": "Anibeam 2.4.0", "html_url": "u240" }
         ])
         .to_string();
         let titled = newest(list.as_bytes(), "2.4.0", Track::Stable)
@@ -294,7 +328,7 @@ mod tests {
         assert_eq!(titled.title, "Quality of life");
         let plain = newest(list.as_bytes(), "2.3.0", Track::Stable).unwrap();
         assert_eq!(plain.unwrap().title, "Quality of life");
-        let older = r#"[{ "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }]"#;
+        let older = r#"[{ "tag_name": "v2.4.0", "name": "Anibeam 2.4.0", "html_url": "u240" }]"#;
         let untitled = newest(older.as_bytes(), "2.3.0", Track::Stable)
             .unwrap()
             .unwrap();

@@ -7,6 +7,8 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    changes();
+    let icon = format!("assets/{}", app_icon());
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -24,6 +26,7 @@ fn main() {
             .qml_file("qml/Main.qml")
             .qml_file("qml/Driver.qml")
             .qml_file("qml/Tokens.qml")
+            .qml_file("qml/Words.qml")
             .qml_file("qml/TokensPage.qml")
             .qml_file("qml/Corner.qml")
             .qml_file("qml/Frost.qml")
@@ -37,21 +40,24 @@ fn main() {
             .qml_file("qml/Switch.qml")
             .qml_file("qml/Button.qml")
             .qml_file("qml/Field.qml")
+            .qml_file("qml/CodeInput.qml")
             .qml_file("qml/Dropdown.qml")
             .qml_file("qml/Swatches.qml")
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
             .qml_file("qml/Panel.qml")
-            .qml_file("qml/FillRows.qml")
             .qml_file("qml/Frame.qml")
             .qml_file("qml/Nav.qml")
             .qml_file("qml/Menu.qml")
             .qml_file("qml/Tooltip.qml")
             .qml_file("qml/InlineConfirm.qml")
             .qml_file("qml/WhatsNew.qml")
+            .qml_file("qml/ScanSummary.qml")
+            .qml_file("qml/Onboarding.qml")
             .qml_file("qml/UpdateNotice.qml")
+            .qml_file("qml/DiscordAsk.qml")
             .qml_file("qml/EmptyState.qml")
-            .qml_file("qml/SectionHeader.qml")
+            .qml_file("qml/ErrorLine.qml")
             .qml_file("qml/PagePlaceholder.qml")
             .qml_file("qml/ThinScrollBar.qml")
             .qml_file("qml/GridKeys.qml")
@@ -59,19 +65,18 @@ fn main() {
             .qml_file("qml/Rail.qml")
             .qml_file("qml/StatusStrip.qml")
             .qml_file("qml/SearchField.qml")
-            .qml_file("qml/Pager.qml")
             .qml_file("qml/Card.qml")
-            .qml_file("qml/LibraryRow.qml")
             .qml_file("qml/LibraryPage.qml")
             .qml_file("qml/HomePage.qml")
             .qml_file("qml/PosterTone.qml")
-            .qml_file("qml/StoneFact.qml")
             .qml_file("qml/FeedPage.qml")
             .qml_file("qml/WatchingPage.qml")
+            .qml_file("qml/StatsPage.qml")
             .qml_file("qml/AiringPage.qml")
             .qml_file("qml/MetadataPage.qml")
             .qml_file("qml/MatchPanel.qml")
             .qml_file("qml/ScheduleSheet.qml")
+            .qml_file("qml/NotesSheet.qml")
             .qml_file("qml/FixSheet.qml")
             .qml_file("qml/EpisodesPane.qml")
             .qml_file("qml/ConnectSheet.qml")
@@ -86,11 +91,18 @@ fn main() {
             .qml_file("qml/EpisodeRow.qml")
             .qml_file("qml/PersonCard.qml")
             .qml_file("qml/RecommendationCard.qml")
+            .qml_file("qml/RecommendedCard.qml")
+            .qml_file("qml/RecommendedHover.qml")
+            .qml_file("qml/RecommendedPage.qml")
+            .qml_file("qml/ShowPage.qml")
             .qml_file("qml/SeriesPage.qml")
             .qml_file("qml/PlayerButton.qml")
             .qml_file("qml/SeekBar.qml")
             .qml_file("qml/TrackPicker.qml")
             .qml_file("qml/PlayerDelays.qml")
+            .qml_file("qml/Room.qml")
+            .qml_file("qml/RoomPanel.qml")
+            .qml_file("qml/RoomGate.qml")
             .qml_file("qml/Notice.qml")
             .qml_file("qml/KeyHelp.qml")
             .qml_file("qml/PlayerChrome.qml")
@@ -118,6 +130,7 @@ fn main() {
             .qml_file("qml/SettingsKeysTab.qml")
             .qml_file("qml/SettingsPhoneTab.qml")
             .qml_file("qml/SettingsAboutTab.qml")
+            .qml_file("qml/SettingsHelpTab.qml")
             .qml_file("qml/SettingsDownloadsTab.qml")
             .qml_file("qml/EndpointReposPanel.qml")
             .qml_file("qml/DownloadsPage.qml")
@@ -127,6 +140,7 @@ fn main() {
             .qml_file("qml/ShowRow.qml")
             .qml_file("qml/ShowDetail.qml")
             .qml_file("qml/RemoveSheet.qml")
+            .qml_file("qml/MoveListsSheet.qml")
             .qml_file("qml/StartSourceSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/RollControls.qml")
@@ -142,10 +156,10 @@ fn main() {
         "src/bridge/door.rs",
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
-        "src/bridge/model.rs",
         "src/bridge/player.rs",
         "src/bridge/shell.rs",
         "src/bridge/theme.rs",
+        "src/bridge/tr.rs",
     ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
@@ -166,7 +180,8 @@ fn main() {
     .qrc_resources([
         "shaders/poster.vert.qsb",
         "shaders/poster.frag.qsb",
-        "assets/icon.png",
+        // The Default icon this kind of build shows, and Dark.
+        icon.as_str(),
         "assets/icon-dark.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
@@ -191,6 +206,7 @@ fn main() {
         "assets/icons/bug.svg",
         "assets/icons/calendar-clock.svg",
         "assets/icons/captions.svg",
+        "assets/icons/cast.svg",
         "assets/icons/case-sensitive.svg",
         "assets/icons/chart-pie.svg",
         "assets/icons/check-check.svg",
@@ -208,8 +224,10 @@ fn main() {
         "assets/icons/clapperboard.svg",
         "assets/icons/clock.svg",
         "assets/icons/copy.svg",
+        "assets/icons/crown.svg",
         "assets/icons/database.svg",
         "assets/icons/download.svg",
+        "assets/icons/ellipsis.svg",
         "assets/icons/external-link.svg",
         "assets/icons/eye-off.svg",
         "assets/icons/eye.svg",
@@ -335,4 +353,48 @@ fn main() {
 
     println!("cargo:rustc-link-lib=MpvQt");
     println!("cargo:rustc-link-lib=mpv");
+}
+
+include!("../../core/src/changelog_files.rs");
+
+/// The patch notes waiting in changes/ for the next version, built in beside CHANGELOG.md:
+/// What's new shows them under the newest heading until the release folds them into the
+/// file (#504). A slice of `include_str!`s in name order, in OUT_DIR/changes.rs.
+fn changes() {
+    println!("cargo:rerun-if-changed=changes");
+    let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("changes");
+    let list: String = change_files(&dir)
+        .iter()
+        .map(|p| format!("include_str!({:?}),", p.display().to_string()))
+        .collect();
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("changes.rs");
+    std::fs::write(out, format!("&[{list}]")).unwrap();
+}
+
+/// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
+/// under assets/ and the only one of the three in the qrc: the release mark, the nightly's graph paper, or the dev blueprint, so a
+/// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
+/// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
+/// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
+/// AUR's source package does.
+fn app_icon() -> String {
+    println!("cargo:rerun-if-env-changed=ANIBEAM_ICON");
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let version = std::env::var("ANIBEAM_RELEASE_VERSION").unwrap_or_default();
+    let version = version.trim();
+    let icon = match std::env::var("ANIBEAM_ICON").unwrap_or_default().trim() {
+        "" if version.is_empty() || version.contains("-pr.") => "dev",
+        "" if version.contains("-nightly") => "nightly",
+        "" => "release",
+        pick @ ("release" | "nightly" | "dev") => pick,
+        other => panic!("ANIBEAM_ICON is {other:?}; it takes release, nightly or dev"),
+    }
+    .to_string();
+    let file = match icon.as_str() {
+        "release" => "icon.png".to_string(),
+        kind => format!("icon-{kind}.png"),
+    };
+    println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    file
 }

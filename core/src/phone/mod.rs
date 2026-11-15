@@ -5,13 +5,18 @@
 pub mod check;
 #[cfg(feature = "phone")]
 pub mod engine;
+#[cfg(feature = "phone")]
+pub mod storage;
 
+#[cfg(feature = "phone")]
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 #[cfg(feature = "phone")]
 use crate::downloads::paths::name_for;
+use crate::foundation::services::Services;
 
 /// The library folder the phone downloads into, beside the core's own folders. The app
 /// registers the same folder as its one library source.
@@ -32,23 +37,69 @@ pub struct Phone {
     stopped: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-fn sources_path(core: &Core) -> PathBuf {
-    PathBuf::from(&core.paths.config_dir).join("phone-sources.json")
+fn sources_path(services: &Services) -> PathBuf {
+    PathBuf::from(&services.paths.config_dir).join("phone-sources.json")
+}
+
+/// `PhoneSources`: the sources saved here, as the call's reply.
+pub(crate) fn sources_call(services: &Services) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneSources {
+        sources: sources(services),
+    })
+}
+
+/// `PhoneSearchSources`: [`search_sources`] as the call's reply.
+pub(crate) fn search_sources_call(services: &Services) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneSources {
+        sources: search_sources(services),
+    })
 }
 
 /// The phone ships with no source of its own (#152): endpoints come from a repo the person
 /// adds, or by hand. This list is only what someone saved here before repos existed.
-pub fn sources(core: &Core) -> Vec<PhoneSource> {
-    std::fs::read(sources_path(core))
+/// Each kind is read under its shape name, should the file still hold one from before #602.
+pub fn sources(services: &Services) -> Vec<PhoneSource> {
+    let mut sources = saved_sources(services);
+    for s in &mut sources {
+        s.kind = crate::releases::kinds::shape_of(s.kind.trim()).to_string();
+    }
+    sources
+}
+
+fn saved_sources(services: &Services) -> Vec<PhoneSource> {
+    std::fs::read(sources_path(services))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
 }
 
-pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
+/// The saved sources whose kind has a name from before #602 get its shape name, in place and
+/// once, beside `repos::rename_old_kinds` in `Core::open`. Returns how many.
+pub(crate) fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
+    let mut saved = saved_sources(services);
+    let mut renamed = 0;
+    for s in &mut saved {
+        let now = crate::releases::kinds::shape_of(s.kind.trim());
+        if now != s.kind.trim() {
+            s.kind = now.to_string();
+            renamed += 1;
+        }
+    }
+    if renamed == 0 {
+        return Ok(0);
+    }
+    let path = sources_path(services);
+    let bytes =
+        serde_json::to_vec_pretty(&saved).map_err(|e| CoreError::internal(e.to_string()))?;
+    crate::atomic_file::write(&path, bytes)
+        .map_err(|e| CoreError::internal(e.source.to_string()))?;
+    Ok(renamed)
+}
+
+pub fn set_sources(services: &Services, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
     // A row saved before a rule covered it (#248, #260) stays as it is, so the phone can
     // still remove the other sources around it; search leaves it out (`searched`).
-    let saved = self::sources(core);
+    let saved = self::sources(services);
     let mut checked: Vec<(PhoneSource, bool)> = Vec::with_capacity(sources.len());
     for s in sources {
         // Switching a saved row on or off is not a change to what it searches.
@@ -74,29 +125,30 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
         {
             return Err(CoreError::invalid(
                 "endpoint name",
-                format!("{:?}: another source has that name", s.name),
+                crate::i18n::tr(
+                    "core-phone-name-taken",
+                    &[("name", format!("{:?}", s.name).into())],
+                ),
             ));
         }
     }
     let sources: Vec<PhoneSource> = checked.into_iter().map(|(s, _)| s).collect();
-    let path = sources_path(core);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
-    }
+    let path = sources_path(services);
     let bytes =
         serde_json::to_vec_pretty(&sources).map_err(|e| CoreError::internal(e.to_string()))?;
-    std::fs::write(&path, bytes).map_err(|e| CoreError::internal(e.to_string()))?;
+    crate::atomic_file::write(&path, bytes)
+        .map_err(|e| CoreError::internal(e.source.to_string()))?;
     Ok(Reply::PhoneSources { sources })
 }
 
 /// What a search tries, in order: the enabled feeds saved before repos, then the installed
 /// endpoints. An installed endpoint whose id is a saved feed's name takes that feed's place,
-/// so installing nyaa from a repo replaces an old saved one rather than searching it twice.
-fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
-    let mut installed = crate::repos::runnable(core);
+/// so installing an endpoint from a repo replaces an old saved one rather than searching it twice.
+fn searched(services: &Services) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
+    let mut installed = crate::repos::runnable(services);
     let mut out: Vec<(PhoneSource, crate::releases::Endpoint)> = Vec::new();
     // Trimmed, so the name the search page shows is the endpoint's name.
-    for s in sources(core).iter().filter(|s| s.enabled).map(trimmed) {
+    for s in sources(services).iter().filter(|s| s.enabled).map(trimmed) {
         if out.iter().any(|(o, _)| o.name == s.name) {
             continue;
         }
@@ -112,6 +164,25 @@ fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     }
     for r in installed {
         out.push((installed_source(&r), r.endpoint));
+    }
+    out
+}
+
+/// Every source a rule may have been made on, switched off for search or not: the installed
+/// ones (`repos::fillers`, which the feed poller reads rules through too), then the feeds
+/// saved before repos that no installed one replaced (#536).
+#[cfg(feature = "phone")]
+fn followed_sources(services: &Services) -> Vec<crate::releases::Endpoint> {
+    let mut out: Vec<crate::releases::Endpoint> = crate::repos::fillers(services)
+        .into_iter()
+        .map(|r| r.endpoint)
+        .collect();
+    for s in sources(services).iter().map(trimmed) {
+        if !out.iter().any(|e| e.name == s.name)
+            && crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok()
+        {
+            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+        }
     }
     out
 }
@@ -136,15 +207,15 @@ fn installed_source(r: &crate::repos::Runnable) -> PhoneSource {
 }
 
 /// `searched`'s sources, as the search page lists them.
-pub fn search_sources(core: &Core) -> Vec<PhoneSource> {
-    searched(core).into_iter().map(|(s, _)| s).collect()
+pub fn search_sources(services: &Services) -> Vec<PhoneSource> {
+    searched(services).into_iter().map(|(s, _)| s).collect()
 }
 
 /// The sources as the ported anirss endpoints, enabled ones in order, each host held to the
 /// pace its repo definition asks for.
-fn native(core: &Core) -> crate::releases::native::Native {
-    let sources = searched(core).into_iter().map(|(_, e)| e).collect();
-    crate::releases::native::Native::for_core(core, sources)
+fn native(services: &Services) -> crate::releases::native::Native {
+    let sources = searched(services).into_iter().map(|(_, e)| e).collect();
+    crate::releases::native::Native::for_core(services, sources, None)
 }
 
 /// How long the show search waits for covers before answering without them.
@@ -152,7 +223,7 @@ const COVER_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// The show search: AniList's hits for `query` with the covers that came in time, so the phone
 /// can list shows before anyone looks at a release.
-pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreError> {
+pub fn find_shows(downloads: &Downloads, query: String, limit: u32) -> Result<Reply, CoreError> {
     let query = query.trim().to_string();
     if query.chars().count() < 2 {
         return Ok(Reply::PhoneShows {
@@ -160,9 +231,10 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
             posters: Vec::new(),
         });
     }
-    let media = core
+    let media = downloads
+        .services
         .handle
-        .block_on(core.anilist.search(&query, limit.clamp(1, 20)))?;
+        .block_on(downloads.net.anilist.search(&query, limit.clamp(1, 20)))?;
     let shows: Vec<SearchResult> = media
         .iter()
         .map(crate::metadata::apply::to_result)
@@ -175,12 +247,14 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
     let fetching: Vec<_> = urls
         .into_iter()
         .map(|url| {
-            let images = core.images.clone();
-            core.handle
+            let images = downloads.net.images.clone();
+            downloads
+                .services
+                .handle
                 .spawn(async move { images.ensure(&[url]).await })
         })
         .collect();
-    let fetched = core.handle.block_on(async move {
+    let fetched = downloads.services.handle.block_on(async move {
         let deadline = tokio::time::Instant::now() + COVER_WAIT;
         let mut fetched = Vec::new();
         for task in fetching {
@@ -207,18 +281,18 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
 /// anirss): fallback across the sources, seeders filled in where a feed has none,
 /// auto-resolution, the refine groups and best fit, and each release's facts.
 pub fn search(
-    core: &Core,
+    services: &Services,
     query: String,
     endpoint: Option<String>,
     fallback: bool,
 ) -> Result<Reply, CoreError> {
-    let native = native(core);
-    let found = core
+    let native = native(services);
+    let found = services
         .handle
         .block_on(native.search(&query, endpoint.as_deref(), fallback))?;
     let fell_back = found.fell_back();
     let items = if found.items.iter().any(|i| i.seeders.is_none()) {
-        core.handle.block_on(native.enrich(found.items.clone()))
+        services.handle.block_on(native.enrich(found.items.clone()))
     } else {
         found.items.clone()
     };
@@ -244,7 +318,7 @@ pub fn search(
         }
     } else {
         let a = native.analyze(&found.query, &found.endpoint, &items, true)?;
-        let (facts, show) = crate::downloads::annotate(core, &a.query, &a.items);
+        let (facts, show) = crate::downloads::annotate(services, &a.query, &a.items);
         ReleaseSearch {
             query: a.query,
             endpoint: found.endpoint,
@@ -265,47 +339,47 @@ pub fn search(
 
 /// One refine step (`RefineReleases`).
 pub fn refine(
-    core: &Core,
+    services: &Services,
     query: String,
     endpoint: String,
     items: Vec<Release>,
     op: RefineOp,
 ) -> Result<Reply, CoreError> {
-    let native = native(core);
-    let mut refinement = core
+    let native = native(services);
+    let mut refinement = services
         .handle
         .block_on(native.apply(&query, &endpoint, &items, &op))?;
-    let (facts, show) = crate::downloads::annotate(core, &refinement.query, &refinement.items);
+    let (facts, show) = crate::downloads::annotate(services, &refinement.query, &refinement.items);
     refinement.facts = facts;
     refinement.show = show;
     Ok(Reply::PhoneRefined { refinement })
 }
 
 #[cfg(feature = "phone")]
-fn rules_store(core: &Core) -> crate::releases::rules::RuleStore {
+fn rules_store(services: &Services) -> crate::releases::rules::RuleStore {
     crate::releases::rules::RuleStore::new(
-        PathBuf::from(&core.paths.config_dir).join("phone-rules.json"),
+        PathBuf::from(&services.paths.config_dir).join("phone-rules.json"),
     )
 }
 
 /// Takes the secrets out of the subscriptions kept before #149, once, at launch (#463).
 /// `lifted` says the launch's lift of hand-added sources' secrets went through.
 #[cfg(feature = "phone")]
-pub fn rekeep_rules(core: &Core, lifted: bool) {
-    match crate::repos::rekeep_old_rules(core, &rules_store(core), lifted) {
+pub fn rekeep_rules(services: &Services, lifted: bool) {
+    match crate::repos::rekeep_old_rules(services, &rules_store(services), lifted) {
         Ok(0) => {}
         Ok(n) => {
             tracing::info!(
                 "{n} subscriptions kept before #149 now keep their key as a placeholder"
             );
-            core.bus.info(
+            services.bus.info(
                 Stage::Downloads,
                 "Shows followed earlier no longer keep their source's key in the app's files",
                 EventBody::Notice,
             );
         }
         Err(e) => {
-            core.bus.warn(
+            services.bus.warn(
                 Stage::Downloads,
                 format!("could not take the source keys out of the shows followed earlier: {e}"),
                 EventBody::Notice,
@@ -317,8 +391,8 @@ pub fn rekeep_rules(core: &Core, lifted: bool) {
 #[cfg(feature = "phone")]
 /// The library folder, from the core's paths: the app keeps the core under `files/core`
 /// and the library at `files/Anime`.
-fn library_dir(core: &Core) -> PathBuf {
-    let data = PathBuf::from(&core.paths.data_dir);
+fn library_dir(services: &Services) -> PathBuf {
+    let data = PathBuf::from(&services.paths.data_dir);
     // `files/core/data` up to `files`.
     data.ancestors()
         .nth(2)
@@ -327,22 +401,22 @@ fn library_dir(core: &Core) -> PathBuf {
 }
 
 #[cfg(feature = "phone")]
-async fn engine(core: &Core) -> Result<&engine::Engine, CoreError> {
-    let root = library_dir(core);
-    let state = PathBuf::from(&core.paths.state_dir).join("torrents");
-    let engine = core
+async fn engine(downloads: &std::sync::Arc<Downloads>) -> Result<&engine::Engine, CoreError> {
+    let root = library_dir(&downloads.services);
+    let state = PathBuf::from(&downloads.services.paths.state_dir).join("torrents");
+    let engine = downloads
         .phone
         .engine
         .get_or_try_init(|| engine::Engine::open(&root, &state))
         .await?;
     // The subscriptions start being read with the engine that downloads for them, once.
-    if !core
+    if !downloads
         .phone
         .polling
         .swap(true, std::sync::atomic::Ordering::AcqRel)
-        && let Ok(owner) = core.owner()
     {
-        core.handle.spawn(async move {
+        let owner = downloads.clone();
+        downloads.services.handle.spawn(async move {
             loop {
                 if let Some(engine) = owner.phone.engine.get() {
                     poll_with(&owner, engine).await;
@@ -370,99 +444,303 @@ fn used_bytes(dir: &std::path::Path) -> u64 {
 /// else (the engine then tries the link itself). Err when the site did not answer: the
 /// engine would only ask it again, so the caller stops there (#135).
 #[cfg(feature = "phone")]
-async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreError> {
+async fn torrent_file(services: &Services, link: &str) -> Result<Option<Vec<u8>>, CoreError> {
     if !(link.starts_with("http://") || link.starts_with("https://")) {
         return Ok(None);
     }
-    let http = crate::repos::endpoint_http(core);
+    let http = crate::repos::endpoint_http(services);
     let reply = crate::net::Http::send(
         &http,
-        crate::net::HttpRequest {
-            method: crate::net::Method::Get,
-            url: link.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: Some(std::time::Duration::from_secs(30)),
-        },
+        crate::net::HttpRequest::get(link).timeout(std::time::Duration::from_secs(30)),
     )
     .await
-    .map_err(|e| CoreError::Service {
-        service: crate::net::host_shown(link),
-        code: "unreachable".to_string(),
-        message: e.message,
-    })?;
+    .map_err(|e| CoreError::service(crate::net::host_shown(link), "unreachable", e.message))?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
 #[cfg(feature = "phone")]
 pub fn download(
-    core: &Core,
+    downloads: &std::sync::Arc<Downloads>,
     items: Vec<Release>,
     name: Option<String>,
     limit_bytes: Option<u64>,
+    rolling: Option<bool>,
 ) -> Result<Reply, CoreError> {
+    use crate::downloads::rolling;
     if items.is_empty() {
-        return Err(CoreError::invalid("items", "nothing to download"));
+        return Err(CoreError::invalid(
+            "items",
+            crate::i18n::tr("core-phone-nothing-to-download", &[]),
+        ));
     }
     let folder = name_for(name.as_deref(), &items, "Downloads")?;
-    if let Some(limit) = limit_bytes {
-        // On disk, plus what the engine still has to write, plus these; a release whose
-        // size the feed did not give counts as a typical episode.
-        let used = used_bytes(&library_dir(core));
-        let pending: u64 = core.handle.block_on(async {
-            match engine(core).await {
-                Ok(e) => e
-                    .list()
-                    .await
-                    .iter()
-                    .map(|t| t.size.saturating_sub((t.progress * t.size as f64) as u64))
-                    .sum(),
-                Err(_) => 0,
-            }
-        });
-        let size: u64 = items
-            .iter()
-            .map(|i| crate::downloads::facts::size_bytes(&i.size).unwrap_or(1_500_000_000))
-            .sum();
-        if used + pending + size > limit {
-            return Err(CoreError::invalid(
-                "limit",
-                format!(
-                    "this would take AniBeam past its storage cap ({:.1} of {:.1} GB used or on the way); delete episodes or raise the cap",
-                    (used + pending) as f64 / 1e9,
-                    limit as f64 / 1e9
-                ),
-            ));
-        }
-    }
-    core.handle.block_on(async {
-        let engine = engine(core).await?;
-        for item in &items {
-            let file = torrent_file(core, &item.link).await?;
-            engine.add(item, &folder, file).await?;
-        }
-        Ok::<(), CoreError>(())
-    })?;
-    let what = if items.len() == 1 {
-        items[0].title.clone()
-    } else {
-        format!("{} releases of {folder}", items.len())
+    // A long show is held to a window of episodes, as on the desktop: a pick of single
+    // episodes adds only the first window, and a batch is added with only its first window
+    // fetched, picked from its file list before a byte of the rest is written.
+    let settings = crate::downloads::settings::read(&downloads.services)?.rolling;
+    let options = DownloadOptions {
+        rolling,
+        ..Default::default()
     };
-    core.bus.say(
+    let mut plan = rolling::plan(
+        &items,
+        &options,
+        &settings,
+        Some(&folder),
+        crate::time::now_secs(),
+    );
+    let owner = downloads.clone();
+    let (added, failed) = downloads.services.handle.block_on(async {
+        let engine = engine(downloads).await?;
+        // Each rolling batch's file list first, so its first window is known before
+        // anything is added and only that counts against the storage cap.
+        let mut peeks: HashMap<String, (engine::Peeked, Option<Vec<i64>>)> = HashMap::new();
+        for r in &plan.rolls {
+            let [p] = r.parts.as_slice() else { continue };
+            if p.single {
+                continue;
+            }
+            let file = torrent_file(&downloads.services, &p.release.link).await?;
+            let peeked = engine.peek(&p.release, file).await?;
+            let first = rolling::first_window(r, 0, &peeked.files);
+            peeks.insert(p.release.link.clone(), (peeked, first));
+        }
+        if let Some(limit) = limit_bytes {
+            // On disk, plus what the engine still has to write, plus these; a release whose
+            // size the feed did not give counts as a typical episode.
+            let used = used_bytes(&library_dir(&downloads.services));
+            let pending: u64 = engine
+                .list()
+                .await
+                .iter()
+                .map(|t| t.size.saturating_sub((t.progress * t.size as f64) as u64))
+                .sum();
+            let size: u64 = plan
+                .now
+                .iter()
+                .map(|i| match peeks.get(&i.link) {
+                    Some((peeked, first)) => peeked
+                        .files
+                        .iter()
+                        .enumerate()
+                        .filter(|(n, _)| {
+                            first
+                                .as_ref()
+                                .is_none_or(|w| w.get(*n) != Some(&rolling::SKIP))
+                        })
+                        .map(|(_, f)| f.size)
+                        .sum(),
+                    None => crate::foundation::size::size_bytes(&i.size).unwrap_or(1_500_000_000),
+                })
+                .sum();
+            if used + pending + size > limit {
+                return Err(CoreError::invalid(
+                    "limit",
+                    crate::i18n::tr(
+                        "core-phone-over-cap",
+                        &[
+                            (
+                                "used",
+                                format!("{:.1}", (used + pending) as f64 / 1e9).into(),
+                            ),
+                            ("cap", format!("{:.1}", limit as f64 / 1e9).into()),
+                        ],
+                    ),
+                ));
+            }
+        }
+        let mut added: HashMap<String, String> = HashMap::new();
+        let mut failed = None;
+        for item in &plan.now {
+            let got = match peeks.remove(&item.link) {
+                Some((peeked, first)) => {
+                    // Not long enough to roll: the whole batch comes, as any other.
+                    if first.is_none()
+                        && let Some(r) = plan
+                            .rolls
+                            .iter_mut()
+                            .find(|r| r.parts.iter().any(|p| p.release.link == item.link))
+                    {
+                        r.parts.clear();
+                    }
+                    engine
+                        .add_peeked(item, &folder, peeked, first.unwrap_or_default())
+                        .await
+                }
+                None => match torrent_file(&downloads.services, &item.link).await {
+                    Ok(file) => engine.add(item, &folder, file).await,
+                    Err(e) => Err(e),
+                },
+            };
+            match got {
+                Ok(hash) => {
+                    added.insert(item.link.clone(), hash);
+                }
+                // The ones after it are left: the engine would likely refuse them too.
+                Err(e) => {
+                    failed = Some(e);
+                    break;
+                }
+            }
+        }
+        // Each roll's added parts get their torrents; a single that did not go in waits in
+        // its roll for the window, and a batch that did not go in has nothing to roll.
+        for r in plan.rolls.iter_mut() {
+            for p in r.parts.iter_mut().filter(|p| p.added) {
+                match added.get(&p.release.link) {
+                    Some(hash) => p.hash = hash.clone(),
+                    None if p.single => p.added = false,
+                    None => p.gone = true,
+                }
+            }
+        }
+        // A torrent a stored roll already holds (the same release picked again) keeps that
+        // roll: two would fight over its files.
+        let held: std::collections::HashSet<String> = rolling::load(&downloads.services)?
+            .iter()
+            .flat_map(|r| &r.parts)
+            .filter(|p| !p.hash.is_empty())
+            .map(|p| p.hash.clone())
+            .collect();
+        plan.rolls.retain(|r| {
+            !r.parts.is_empty()
+                && r.parts.iter().any(|p| p.added && !p.gone)
+                && !r.parts.iter().any(|p| held.contains(&p.hash))
+        });
+        if !plan.rolls.is_empty() {
+            let rolls = std::mem::take(&mut plan.rolls);
+            rolling::add_rolls(&owner.services, rolls).await?;
+            let torrents = engine.list().await;
+            rolling::tick(&owner, &PhoneRolls { downloads, engine }, &torrents).await;
+        }
+        Ok::<_, CoreError>((added, failed))
+    })?;
+    if added.is_empty()
+        && let Some(e) = failed
+    {
+        return Err(e);
+    }
+    let count = added.len();
+    let what = if count == 1 {
+        plan.now
+            .iter()
+            .find(|i| added.contains_key(&i.link))
+            .map(|i| i.title.clone())
+            .unwrap_or_default()
+    } else {
+        format!("{count} releases of {folder}")
+    };
+    let held = items.len().saturating_sub(plan.now.len());
+    downloads.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!(
-            "Started downloading {} of {folder}.",
-            if items.len() == 1 {
-                "an episode".to_string()
-            } else {
-                format!("{} episodes", items.len())
-            }
+        crate::words!(
+            "core-phone-download-started",
+            count = count,
+            folder = &folder,
         ),
-        format!("Downloading {what}"),
+        if held > 0 {
+            format!("Downloading {what}, {held} more waiting to roll in")
+        } else {
+            format!("Downloading {what}")
+        },
         EventBody::Notice,
     );
+    // Some went in: the download stands, and what did not is said in the log rather than
+    // as a failure, so a second Get does not add the same releases again.
+    if let Some(e) = failed {
+        downloads.services.bus.say(
+            Level::Warn,
+            Stage::Downloads,
+            crate::words!(
+                "core-phone-download-partial",
+                folder = &folder,
+                error = e.to_string(),
+            ),
+            format!("Download of {folder} stopped part way: {e}"),
+            EventBody::Notice,
+        );
+    }
     Ok(Reply::Ok)
+}
+
+/// The phone's engine as the rolling downloads' client.
+#[cfg(feature = "phone")]
+struct PhoneRolls<'a> {
+    downloads: &'a Downloads,
+    engine: &'a engine::Engine,
+}
+
+#[cfg(feature = "phone")]
+impl crate::downloads::rolling::RollClient for PhoneRolls<'_> {
+    async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
+        self.engine.files(hash)
+    }
+
+    async fn set_file_priority(
+        &self,
+        hash: &str,
+        ids: &[usize],
+        priority: i64,
+    ) -> Result<(), CoreError> {
+        self.engine.set_priority(hash, ids, priority).await
+    }
+
+    /// librqbit always fetches a torrent's files in name order, which is episode order.
+    async fn set_sequential(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn delete(&self, hashes: &[String], files: bool) -> Result<(), CoreError> {
+        let action = if files {
+            PhoneAction::Remove
+        } else {
+            PhoneAction::Forget
+        };
+        self.engine.control(hashes, action).await
+    }
+
+    async fn recheck(&self, hashes: &[String]) -> Result<(), CoreError> {
+        for h in hashes {
+            self.engine.close_files(h);
+        }
+        Ok(())
+    }
+
+    fn files_here(&self, _: &Services) -> bool {
+        true
+    }
+
+    async fn add(
+        &self,
+        _: &std::sync::Arc<Downloads>,
+        items: &[Release],
+        roll: &crate::downloads::rolling::Roll,
+    ) -> Result<Vec<String>, CoreError> {
+        let folder = name_for(roll.name.as_deref(), items, "Downloads")?;
+        let mut hashes = Vec::new();
+        for item in items {
+            let file = torrent_file(&self.downloads.services, &item.link).await?;
+            hashes.push(self.engine.add(item, &folder, file).await?);
+        }
+        Ok(hashes)
+    }
+}
+
+/// A pass over the rolling downloads against the engine now: after an episode was watched
+/// to the end, or a roll was changed.
+#[cfg(feature = "phone")]
+pub async fn roll_pass(downloads: &std::sync::Arc<Downloads>) {
+    let engine = match engine(downloads).await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::debug!("rolling pass skipped: {e}");
+            return;
+        }
+    };
+    let torrents = engine.list().await;
+    let client = PhoneRolls { downloads, engine };
+    crate::downloads::rolling::tick(downloads, &client, &torrents).await;
 }
 
 /// Subscribes to a search (`Subscribe`): the core keeps the feed and its rule, takes what
@@ -470,7 +748,7 @@ pub fn download(
 /// and checks the feed again on its own after that.
 #[cfg(feature = "phone")]
 pub fn subscribe(
-    core: &Core,
+    downloads: &std::sync::Arc<Downloads>,
     query: String,
     endpoint: String,
     items: Vec<Release>,
@@ -478,23 +756,27 @@ pub fn subscribe(
 ) -> Result<Reply, CoreError> {
     let query = query.trim().to_string();
     if query.is_empty() {
-        return Err(CoreError::invalid("query", "the search is empty"));
+        return Err(CoreError::invalid(
+            "query",
+            crate::i18n::tr("core-phone-empty-search", &[]),
+        ));
     }
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
-            format!("no results for {query}"),
+            crate::i18n::tr("core-phone-no-results", &[("query", query.as_str().into())]),
         ));
     }
-    let native = native(core);
-    let spec = core
+    let native = native(&downloads.services);
+    let spec = downloads
+        .services
         .handle
         .block_on(native.preview(&query, &endpoint, &items))?;
     let name = name_for(name.as_deref(), &items, &query)?;
-    let store = rules_store(core);
+    let store = rules_store(&downloads.services);
     // The rules file keeps the endpoint's secrets as placeholders, never the values (#149).
-    let kept = crate::repos::kept_spec(core, &spec, &query);
-    let fillers = crate::repos::fillers(core);
+    let kept = crate::repos::kept_spec(&downloads.services, &spec, &query);
+    let fillers = crate::repos::fillers(&downloads.services);
     let fill = |feed: &str, endpoint: &str| crate::repos::filled_feed(&fillers, endpoint, feed);
     let filled = fill(&kept.feed_url, &kept.endpoint_name).unwrap_or_else(|| spec.feed_url.clone());
     let (_, subscribed) = store.subscribe(
@@ -502,12 +784,19 @@ pub fn subscribe(
         &kept,
         &filled,
         |r| fill(&r.feed_url, &r.endpoint),
-        &library_dir(core),
+        &library_dir(&downloads.services),
     )?;
     // What the feed holds now for episodes the library already has is taken, so the first
     // round does not download them again (qBittorrent's previously matched episodes).
-    if let Ok(now) = core.handle.block_on(feed(core, &filled, &subscribed.name)) {
-        let (facts, _) = crate::downloads::annotate(core, &query, &now);
+    let from = feed_sources(&downloads.services, &fillers);
+    if let Ok(now) = downloads.services.handle.block_on(feed(
+        &downloads.services,
+        &filled,
+        &subscribed.name,
+        &kept.endpoint_name,
+        &from,
+    )) {
+        let (facts, _) = crate::downloads::annotate(&downloads.services, &query, &now);
         let had: Vec<String> = now
             .iter()
             .zip(&facts)
@@ -518,26 +807,27 @@ pub fn subscribe(
             store.mark_taken(&subscribed.name, &had)?;
         }
     }
-    core.bus.say(
+    downloads.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!("Subscribed to {}.", subscribed.name),
+        crate::words!("core-phone-subscribed", name = &subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
-    core.handle.block_on(poll(core));
+    downloads.services.handle.block_on(poll(downloads));
     Ok(Reply::PhoneSubscribed { subscribed })
 }
 
 #[cfg(feature = "phone")]
-pub fn rules(core: &Core) -> Result<Reply, CoreError> {
-    let torrents = core.handle.block_on(async {
-        match engine(core).await {
+pub fn rules(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
+    let torrents = downloads.services.handle.block_on(async {
+        match engine(downloads).await {
             Ok(e) => e.list().await,
             Err(_) => Vec::new(),
         }
     });
-    let rules = rules_store(core)
+    let sources = followed_sources(&downloads.services);
+    let rules = rules_store(&downloads.services)
         .load()
         .iter()
         .map(|r| {
@@ -550,18 +840,25 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
                 .flatten()
                 .filter(|e| e.file_type().is_file())
                 .count() as u64;
-            crate::releases::rules::info(r, in_engine, files)
+            let mut info = crate::releases::rules::info(r, in_engine, files);
+            info.followable =
+                crate::releases::endpoints::follows(&sources, &r.feed_url, Some(&r.endpoint));
+            info
         })
         .collect();
     Ok(Reply::PhoneRules { rules })
 }
 
 #[cfg(feature = "phone")]
-pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply, CoreError> {
-    let gone = rules_store(core).remove(&names)?;
+pub fn unsubscribe(
+    downloads: &std::sync::Arc<Downloads>,
+    names: Vec<String>,
+    files: bool,
+) -> Result<Reply, CoreError> {
+    let gone = rules_store(&downloads.services).remove(&names)?;
     if files {
-        core.handle.block_on(async {
-            let engine = engine(core).await?;
+        downloads.services.handle.block_on(async {
+            let engine = engine(downloads).await?;
             for rule in &gone {
                 let hashes: Vec<String> = engine
                     .list()
@@ -581,16 +878,48 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
     Ok(Reply::Ok)
 }
 
-/// A subscription's feed: AnimeTosho's JSON search, or RSS.
+/// A subscription's feed, read the way its source's kind answers: a json-feed source's
+/// JSON, else RSS. The source is `endpoint` when the rule names one still installed, else
+/// the one whose address the feed is.
 #[cfg(feature = "phone")]
-async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
+async fn feed(
+    services: &Services,
+    url: &str,
+    name: &str,
+    endpoint: &str,
+    sources: &[crate::releases::Endpoint],
+) -> Result<Vec<Release>, CoreError> {
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
-    let http = crate::repos::endpoint_http(core);
-    if url.contains("animetosho.org/feed/json") {
-        crate::releases::tosho::fetch(&http, url, name, timeout).await
+    let http = crate::repos::endpoint_http(services);
+    if is_json_feed(sources, url, endpoint) {
+        crate::releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
         crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
+}
+
+/// The sources a subscription's feed can come from: every installed endpoint, then the
+/// sources saved here before repos, which a rule made on one still names.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn feed_sources(
+    services: &Services,
+    installed: &[crate::repos::Runnable],
+) -> Vec<crate::releases::Endpoint> {
+    let mut out: Vec<crate::releases::Endpoint> =
+        installed.iter().map(|r| r.endpoint.clone()).collect();
+    for s in sources(services).iter().map(trimmed) {
+        if !out.iter().any(|e| e.name == s.name) {
+            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+        }
+    }
+    out
+}
+
+/// Whether the feed `url` of a rule on `endpoint` comes from a json-feed source.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn is_json_feed(sources: &[crate::releases::Endpoint], url: &str, endpoint: &str) -> bool {
+    crate::releases::endpoints::source_of(sources, url, Some(endpoint))
+        .is_some_and(|e| e.kind == crate::releases::kinds::JSON_FEED)
 }
 
 /// How often the core reads the subscriptions' feeds: qBittorrent's default.
@@ -601,37 +930,44 @@ const POLL_EVERY: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 /// taken before (qBittorrent's RSS auto-downloader). A feed that does not answer is left
 /// for the next round.
 #[cfg(feature = "phone")]
-pub async fn poll(core: &Core) {
-    if let Ok(engine) = engine(core).await {
-        poll_with(core, engine).await;
+pub async fn poll(downloads: &std::sync::Arc<Downloads>) {
+    if let Ok(engine) = engine(downloads).await {
+        poll_with(downloads, engine).await;
     }
 }
 
 #[cfg(feature = "phone")]
-async fn poll_with(core: &Core, engine: &engine::Engine) {
+async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
     // One round at a time: a subscribe's round and the timer's would add the same releases.
-    let _one = core.phone.poll_lock.lock().await;
-    let store = rules_store(core);
-    let fillers = crate::repos::fillers(core);
+    let _one = downloads.phone.poll_lock.lock().await;
+    let store = rules_store(&downloads.services);
+    let fillers = crate::repos::fillers(&downloads.services);
+    let from = feed_sources(&downloads.services, &fillers);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
         let Some(url) = crate::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url) else {
             // Its endpoint was removed, or its credentials were: said once, not every round.
-            if core.phone.stopped.lock().unwrap().insert(rule.name.clone()) {
-                core.bus.say(
+            if downloads
+                .phone
+                .stopped
+                .lock()
+                .unwrap()
+                .insert(rule.name.clone())
+            {
+                downloads.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
+                    crate::words!("core-phone-rule-stopped", name = &rule.name),
                     format!(
-                        "{} is not checked for new episodes: its source is gone or needs its key again.",
-                        rule.name
+                        "Subscription {} stopped: no credentials for {}",
+                        rule.name, rule.endpoint
                     ),
-                    format!("Subscription {} stopped: no credentials for {}", rule.name, rule.endpoint),
                     EventBody::Notice,
                 );
             }
             continue;
         };
-        core.phone.stopped.lock().unwrap().remove(&rule.name);
-        let items = match feed(core, &url, &rule.name).await {
+        downloads.phone.stopped.lock().unwrap().remove(&rule.name);
+        let items = match feed(&downloads.services, &url, &rule.name, &rule.endpoint, &from).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);
@@ -644,7 +980,7 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             .unwrap_or_else(|| rule.name.clone());
         let mut taken = Vec::new();
         for item in crate::releases::rules::due(&rule, &items) {
-            let file = match torrent_file(core, &item.link).await {
+            let file = match torrent_file(&downloads.services, &item.link).await {
                 Ok(file) => file,
                 // The rest are left for the next round, like a feed that does not answer.
                 Err(e) => {
@@ -654,10 +990,10 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
-                    core.bus.say(
+                    downloads.services.bus.say(
                         Level::Info,
                         Stage::Downloads,
-                        format!("A new episode of {} is downloading.", rule.name),
+                        crate::words!("core-phone-new-episode", name = &rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );
@@ -674,51 +1010,107 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
     }
 }
 
+/// The engine's torrents, each rolling one with its roll. The read is also when the
+/// rolling downloads move on, as the desktop's torrent read is.
 #[cfg(feature = "phone")]
-pub fn torrents(core: &Core) -> Result<Reply, CoreError> {
-    core.handle.block_on(async {
-        let engine = engine(core).await?;
+pub fn torrents(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
+    downloads.services.handle.block_on(async {
+        let engine = engine(downloads).await?;
+        let mut torrents = engine.list().await;
+        if downloads.unattended_allowed()
+            && crate::downloads::rolling::tick(
+                downloads,
+                &PhoneRolls { downloads, engine },
+                &torrents,
+            )
+            .await
+        {
+            torrents = engine.list().await;
+        }
+        crate::downloads::rolling::annotate(&downloads.services, &mut torrents);
+        // Which torrent each library file came from, as the desktop records it from
+        // qBittorrent (#620), off this call's path so the list never waits on the store.
+        record_origins(&downloads.services, torrents.clone(), "on a list read");
         Ok(Reply::PhoneTorrents {
-            torrents: engine.list().await,
+            torrents,
             held: engine.held(),
         })
     })
 }
 
+/// After a scan brought files in: the origins of the new files, from the engine's list,
+/// only when the engine is already open, so a scan never starts it (#620).
 #[cfg(feature = "phone")]
-pub fn control(core: &Core, hashes: Vec<String>, action: PhoneAction) -> Result<Reply, CoreError> {
-    core.handle
-        .block_on(async { engine(core).await?.control(&hashes, action).await })?;
+pub(crate) fn after_scan(downloads: &std::sync::Arc<Downloads>) {
+    if downloads.phone.engine.get().is_none() {
+        return;
+    }
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        let Some(engine) = owner.phone.engine.get() else {
+            return;
+        };
+        let torrents = engine.list().await;
+        let recorded =
+            crate::downloads::origins::record_from(&owner.services, None, &torrents).await;
+        crate::downloads::origins::logged(recorded, "after a scan");
+    });
+}
+
+/// Records the origins of `torrents` in a task of its own; a failure is a debug line and
+/// the files stay unrecorded until the next read.
+#[cfg(feature = "phone")]
+fn record_origins(services: &std::sync::Arc<Services>, torrents: Vec<Torrent>, when: &'static str) {
+    let owner = services.clone();
+    services.handle.spawn(async move {
+        let recorded = crate::downloads::origins::record_from(&owner, None, &torrents).await;
+        crate::downloads::origins::logged(recorded, when);
+    });
+}
+
+#[cfg(feature = "phone")]
+pub fn control(
+    downloads: &std::sync::Arc<Downloads>,
+    hashes: Vec<String>,
+    action: PhoneAction,
+) -> Result<Reply, CoreError> {
+    downloads
+        .services
+        .handle
+        .block_on(async { engine(downloads).await?.control(&hashes, action).await })?;
     Ok(Reply::Ok)
 }
 
 #[cfg(feature = "phone")]
-pub fn set_held(core: &Core, held: bool) -> Result<Reply, CoreError> {
-    core.handle
-        .block_on(async { engine(core).await?.set_held(held).await })?;
+pub fn set_held(downloads: &std::sync::Arc<Downloads>, held: bool) -> Result<Reply, CoreError> {
+    downloads
+        .services
+        .handle
+        .block_on(async { engine(downloads).await?.set_held(held).await })?;
     Ok(Reply::Ok)
 }
 
 #[cfg(not(feature = "phone"))]
 fn unsupported() -> CoreError {
     CoreError::Unsupported {
-        what: "a torrent engine of its own".to_string(),
+        what: crate::i18n::tr("core-phone-own-engine", &[]),
     }
 }
 
 #[cfg(not(feature = "phone"))]
 pub fn download(
-    _: &Core,
+    _: &Downloads,
     _: Vec<Release>,
     _: Option<String>,
     _: Option<u64>,
+    _: Option<bool>,
 ) -> Result<Reply, CoreError> {
     Err(unsupported())
 }
 
 #[cfg(not(feature = "phone"))]
 pub fn subscribe(
-    _: &Core,
+    _: &Downloads,
     _: String,
     _: String,
     _: Vec<Release>,
@@ -728,26 +1120,103 @@ pub fn subscribe(
 }
 
 #[cfg(not(feature = "phone"))]
-pub fn rules(_: &Core) -> Result<Reply, CoreError> {
+pub fn rules(_: &Downloads) -> Result<Reply, CoreError> {
     Err(unsupported())
 }
 
 #[cfg(not(feature = "phone"))]
-pub fn unsubscribe(_: &Core, _: Vec<String>, _: bool) -> Result<Reply, CoreError> {
+pub fn unsubscribe(_: &Downloads, _: Vec<String>, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
 }
 
 #[cfg(not(feature = "phone"))]
-pub fn torrents(_: &Core) -> Result<Reply, CoreError> {
+pub fn torrents(_: &Downloads) -> Result<Reply, CoreError> {
     Err(unsupported())
 }
 
 #[cfg(not(feature = "phone"))]
-pub fn control(_: &Core, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreError> {
+pub fn control(_: &Downloads, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreError> {
     Err(unsupported())
 }
 
 #[cfg(not(feature = "phone"))]
-pub fn set_held(_: &Core, _: bool) -> Result<Reply, CoreError> {
+pub fn set_held(_: &Downloads, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
+}
+
+#[cfg(all(test, feature = "phone"))]
+mod origin_tests {
+    use crate::core::Core;
+
+    /// A scan reads origins only through an engine already open (#620): it never opens one.
+    #[test]
+    fn a_scan_does_not_open_the_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            crate::net::FakeHttp::new(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        crate::downloads::origins::after_scan(&core.downloads);
+        assert!(core.downloads.phone.engine.get().is_none());
+        core.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod feed_tests {
+    use super::*;
+    use crate::core::Core;
+    use crate::releases::Endpoint;
+
+    #[test]
+    fn a_feed_is_read_the_way_its_sources_kind_answers() {
+        let sources = [
+            Endpoint::new("feed", "json-feed", "https://feed.example/json?q={query}"),
+            Endpoint::new("rss", "rss", "https://rss.example/?q={query}"),
+        ];
+        // By the rule's source, and by the address for a rule that names none.
+        assert!(is_json_feed(&sources, "https://anywhere.example/x", "feed"));
+        assert!(is_json_feed(
+            &sources,
+            "https://feed.example/json?q=Show",
+            ""
+        ));
+        assert!(!is_json_feed(
+            &sources,
+            "https://rss.example/?q=Show",
+            "rss"
+        ));
+        // A source no longer installed reads as RSS.
+        assert!(!is_json_feed(
+            &sources,
+            "https://gone.example/json?q=Show",
+            "gone"
+        ));
+    }
+
+    #[test]
+    fn a_source_saved_before_repos_still_says_how_its_feed_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            crate::net::FakeHttp::new(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let saved = serde_json::json!([{"name": "old", "kind": "json-feed",
+            "url": "https://feed.example/json?q={query}", "enabled": true}]);
+        std::fs::create_dir_all(&core.services.paths.config_dir).unwrap();
+        std::fs::write(sources_path(&core.services), saved.to_string()).unwrap();
+        let from = feed_sources(&core.services, &[]);
+        assert!(is_json_feed(
+            &from,
+            "https://feed.example/json?q=Show",
+            "old"
+        ));
+        assert!(is_json_feed(&from, "https://feed.example/json?q=Show", ""));
+    }
 }

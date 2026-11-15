@@ -10,6 +10,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::*;
+use crate::sync::recover;
 
 /// One subscription: a feed, its filter, and where its episodes go.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,7 +44,7 @@ fn yes() -> bool {
 static EDITING: Mutex<()> = Mutex::new(());
 
 fn editing() -> MutexGuard<'static, ()> {
-    EDITING.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&EDITING)
 }
 
 /// The rules on disk, in one JSON file.
@@ -64,14 +65,10 @@ impl RuleStore {
     }
 
     pub fn save(&self, rules: &[Rule]) -> Result<(), CoreError> {
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
-        }
         let bytes =
             serde_json::to_vec_pretty(rules).map_err(|e| CoreError::internal(e.to_string()))?;
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, bytes).map_err(|e| CoreError::internal(e.to_string()))?;
-        std::fs::rename(tmp, &self.path).map_err(|e| CoreError::internal(e.to_string()))
+        crate::atomic_file::write(&self.path, bytes)
+            .map_err(|e| CoreError::internal(e.source.to_string()))
     }
 
     /// Adds or replaces a rule. The same show from another endpoint gets ` @endpoint`
@@ -237,6 +234,7 @@ pub fn info(rule: &Rule, torrent_count: u64, file_count: u64) -> SubscriptionRul
         file_count,
         query: query_of(&rule.feed_url),
         show: None,
+        followable: true,
     }
 }
 
@@ -260,7 +258,7 @@ mod tests {
     fn rule(must: &str, not: &str) -> Rule {
         Rule {
             name: "Frieren".into(),
-            feed_url: "https://nyaa.si/?page=rss&q=Frieren+1080p".into(),
+            feed_url: "https://tracker.example/?page=rss&q=Frieren+1080p".into(),
             endpoint: String::new(),
             must_contain: must.into(),
             must_not_contain: not.into(),
@@ -273,12 +271,12 @@ mod tests {
     #[test]
     fn qbittorrent_wildcard_rules_take_what_they_should() {
         let r = rule("Frieren 1080p", "HEVC|480p");
-        assert!(matches(&r, "[SubsPlease] Sousou no Frieren - 01 (1080p)"));
+        assert!(matches(&r, "[Lumen] Sousou no Frieren - 01 (1080p)"));
         assert!(!matches(
             &r,
-            "[Erai-raws] Sousou no Frieren - 01 [1080p HEVC]"
+            "[Kumo-Subs] Sousou no Frieren - 01 [1080p HEVC]"
         ));
-        assert!(!matches(&r, "[SubsPlease] Sousou no Frieren - 01 (720p)"));
+        assert!(!matches(&r, "[Lumen] Sousou no Frieren - 01 (720p)"));
         assert!(matches(&rule("", ""), "anything"));
         assert!(matches(&rule("Fri*ren 108?p", ""), "Frieren 1080p"));
         assert!(matches(
@@ -329,7 +327,7 @@ mod tests {
         store
             .subscribe(
                 "Frieren",
-                &spec("https://nyaa.si/?q=f", "nyaa"),
+                &spec("https://tracker.example/?q=f", "tracker"),
                 "",
                 as_is,
                 &dir,
@@ -338,16 +336,16 @@ mod tests {
         let (_, second) = store
             .subscribe(
                 "Frieren",
-                &spec("https://erai/?s=f", "erai"),
+                &spec("https://keyed.example/?s=f", "keyed"),
                 "",
                 as_is,
                 &dir,
             )
             .unwrap();
-        assert_eq!(second.name, "Frieren @erai");
+        assert_eq!(second.name, "Frieren @keyed");
         assert_eq!(store.load().len(), 2);
         assert_eq!(
-            query_of("https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_0"),
+            query_of("https://tracker.example/?page=rss&q=Frieren+1080p&c=1_0"),
             "Frieren 1080p"
         );
         let _ = std::fs::remove_dir_all(dir);

@@ -8,25 +8,27 @@
 //! caches among them.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::atomic_file;
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
+use crate::foundation::titles;
 use crate::jobs::Finished;
-use crate::library::{classifier, titles};
+use crate::library::classifier;
 use crate::paths::under;
 use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
-    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, MatchEntry,
-    PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName,
-    TvmazeName, View,
+    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, ListEntry,
+    MatchEntry, PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName,
+    TrackerName, TvmazeName, View,
 };
 
 /// One series as the tables hold it, before it becomes a document entry.
@@ -47,13 +49,15 @@ struct Row {
     episodes_set_season: Option<u32>,
     romaji: Option<String>,
     english: Option<String>,
+    list_status: Option<ListStatus>,
+    list_score: Option<f64>,
 }
 
 /// The whole document, built off the reader connection and the secrets
 /// store. Synchronous, and it reads the keyring when `private` is set, so
 /// the job runs it through `spawn_blocking` rather than on a tokio worker.
-pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, CoreError> {
-    let (sources, rows, preferences, fixes) = core.store.read(|c| {
+pub fn build(services: &Services, private: bool, now: SystemTime) -> Result<Document, CoreError> {
+    let (sources, rows, preferences, fixes) = services.store.read(|c| {
         Ok((
             source_paths(c)?,
             series_rows(c)?,
@@ -96,7 +100,7 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
         return Ok(doc);
     }
 
-    let (main, anilist, mal, history, settings) = core.store.read(|c| {
+    let (main, anilist, mal, history, settings) = services.store.read(|c| {
         Ok((
             prefs::load_main_tracker(c)?,
             accounts::load_row(c, Tracker::Anilist)?,
@@ -107,8 +111,8 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     })?;
     doc.accounts = Some(Accounts {
         main: main.as_str().to_string(),
-        anilist: account(core, Tracker::Anilist, anilist)?,
-        mal: account(core, Tracker::Mal, mal)?,
+        anilist: account(services, Tracker::Anilist, anilist)?,
+        mal: account(services, Tracker::Mal, mal)?,
         extra: HashMap::new(),
     });
     // There is no TMDB key in the native line, and no other key either, so
@@ -131,12 +135,22 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     Ok(doc)
 }
 
+/// The history section alone, for another Anibeam computer to merge
+/// (`host::history`). No accounts, so no keyring read.
+pub(crate) fn history_section(services: &Services) -> Result<History, CoreError> {
+    services.store.read(|c| {
+        let rows = series_rows(c)?;
+        history(c, &rows)
+    })
+}
+
 /// Starts the Export job. The document is built on a blocking thread for
 /// the keyring's sake, then written through a `.tmp` sibling and a rename,
 /// so a reader either sees the whole file or the one that was there.
-pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start(services: &Arc<Services>, path: String, private: bool) -> u64 {
+    let owner = services.clone();
+    services
+        .jobs
         .clone()
         .start(JobKind::Export, move |_ctx| async move {
             let builder = owner.clone();
@@ -147,44 +161,18 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
                 .map_err(|e| CoreError::internal(format!("export task: {e}")))??;
             let count = doc.series.len() as u64;
             let text = serde_json::to_string_pretty(&doc)?;
-            write_atomically(&path, text.into_bytes()).await?;
+            atomic_file::write_async(Path::new(&path), text).await?;
             Ok(Finished {
-                plain: Some(format!(
-                    "Saved {count} {} to {}.",
-                    crate::words::pick(count, "show", "shows"),
-                    crate::library::scan::folder_of(&path)
+                plain: Some(crate::words!(
+                    "core-transfer-exported",
+                    count = count,
+                    folder = crate::library::scan::folder_of(&path)
                 )),
                 level: Level::Info,
                 message: format!("Exported {count} series to {path}"),
                 body: EventBody::ExportFinished { path },
             })
         })
-}
-
-async fn write_atomically(path: &str, bytes: Vec<u8>) -> Result<(), CoreError> {
-    let target = PathBuf::from(path);
-    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
-    }
-    let tmp = tmp_sibling(&target);
-    tokio::fs::write(&tmp, bytes)
-        .await
-        .map_err(|e| CoreError::io_at(tmp.to_string_lossy(), e))?;
-    tokio::fs::rename(&tmp, &target)
-        .await
-        .map_err(|e| CoreError::io_at(target.to_string_lossy(), e))?;
-    Ok(())
-}
-
-fn tmp_sibling(target: &Path) -> PathBuf {
-    let mut name = target
-        .file_name()
-        .map(std::ffi::OsString::from)
-        .unwrap_or_else(|| std::ffi::OsString::from("anibeam-export.json"));
-    name.push(".tmp");
-    target.with_file_name(name)
 }
 
 // What the tables hold ------------------------------------------------------
@@ -203,9 +191,10 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.kind, s.path, s.folder_name, s.hidden, s.provider, s.anilist_id, s.mal_id, s.tmdb_id, s.tmdb_kind,
                 s.track_choice, COALESCE(t.name, m.title_romaji), m.title_english, s.tvmaze_id,
-                s.episodes_set, s.episodes_set_season
+                s.episodes_set, s.episodes_set_season, l.status, l.score
          FROM series s
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         LEFT JOIN local_entries l ON l.series_id = s.id
          LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
          ORDER BY s.id",
     )?;
@@ -231,6 +220,10 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
                 tvmaze_id: r.get::<_, Option<i64>>(13)?.map(|v| v as u64),
                 episodes_set: r.get::<_, Option<i64>>(14)?.map(|v| v as u32),
                 episodes_set_season: r.get::<_, Option<i64>>(15)?.map(|v| v as u32),
+                list_status: r
+                    .get::<_, Option<String>>(16)?
+                    .and_then(|s| ListStatus::from_column(&s)),
+                list_score: r.get(17)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -336,6 +329,11 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
         episodes_set: row.episodes_set,
         episodes_set_season: row.episodes_set_season,
         fixes: Vec::new(),
+        list: (row.list_status.is_some() || row.list_score.is_some()).then(|| ListEntry {
+            status: row.list_status.map(|s| s.as_str().to_string()),
+            score: row.list_score,
+            extra: HashMap::new(),
+        }),
         extra: HashMap::new(),
     }
 }
@@ -372,7 +370,7 @@ fn match_entry(row: &Row) -> Option<MatchEntry> {
 /// A connected tracker with its tokens, or nothing at all: a disconnected
 /// one is null rather than a partial record.
 fn account(
-    core: &Core,
+    services: &Services,
     t: Tracker,
     row: Option<accounts::Row>,
 ) -> Result<Option<Account>, CoreError> {
@@ -380,7 +378,7 @@ fn account(
         return Ok(None);
     };
     let hint = row.secret_store;
-    let secrets = core.secrets();
+    let secrets = services.secrets();
     let read = |key: String| -> Result<Option<String>, CoreError> {
         Ok(secrets.get(&key, hint)?.map(|(value, _)| value))
     };
@@ -408,8 +406,9 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
 
     let mut views = Vec::new();
     {
-        let mut stmt =
-            conn.prepare("SELECT series_id, episode_key, at FROM views ORDER BY series_id")?;
+        let mut stmt = conn.prepare(
+            "SELECT series_id, episode_key, at FROM views WHERE profile_id = 1 ORDER BY series_id",
+        )?;
         let read = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)? as u64,
@@ -437,7 +436,7 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     let mut completed = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT series_id, episode_key, at FROM completed ORDER BY series_id, episode_key",
+            "SELECT series_id, episode_key, at FROM completed WHERE profile_id = 1 ORDER BY series_id, episode_key",
         )?;
         let read = stmt.query_map([], |r| {
             Ok((
@@ -465,7 +464,7 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
 
     let mut resume_points = Vec::new();
     {
-        let mut stmt = conn.prepare("SELECT series_id, episode_key, position, duration, at FROM resume_points ORDER BY series_id, episode_key")?;
+        let mut stmt = conn.prepare("SELECT series_id, episode_key, position, duration, at FROM resume_points WHERE profile_id = 1 ORDER BY series_id, episode_key")?;
         let read = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)? as u64,
@@ -562,6 +561,8 @@ mod tests {
             episodes_set_season: None,
             romaji: None,
             english: None,
+            list_status: None,
+            list_score: None,
         }
     }
 
@@ -652,13 +653,5 @@ mod tests {
         assert_eq!(paths(1), vec!["Show - 02.mkv"]);
         assert_eq!(paths(2), vec![""]);
         assert_eq!(series[0].fixes[0].was, Some(ep(1.0)));
-    }
-
-    #[test]
-    fn the_tmp_file_is_a_sibling_of_the_target() {
-        assert_eq!(
-            tmp_sibling(Path::new("/home/bandit/export.json")),
-            PathBuf::from("/home/bandit/export.json.tmp")
-        );
     }
 }

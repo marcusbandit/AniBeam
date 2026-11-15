@@ -1,4 +1,4 @@
-//! Starting the service behind an on-demand endpoint: Jackett for 1337x.
+//! Starting the service behind an on-demand endpoint: Jackett for a site behind a search proxy.
 //!
 //! anirss boots such a service on its own whenever a search reaches it, and
 //! the search guard in `mod.rs` keeps that from happening behind the user's
@@ -18,7 +18,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// How long a command with no ready URL to wait for is given to fail
 /// before it counts as started.
@@ -77,29 +77,33 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
     match failure {
         StartFailure::Missing(program) => (
             "missing",
-            format!(
-                "Jackett is not installed: {program} was not found. Install it, or change the command in Settings."
+            crate::i18n::tr(
+                "core-downloads-jackett-missing",
+                &[("program", program.as_str().into())],
             ),
         ),
-        StartFailure::Failed(why) => ("failed", format!("{name} could not start: {why}")),
+        StartFailure::Failed(why) => (
+            "failed",
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-failed",
+                &[("name", name.into()), ("why", why.as_str().into())],
+            ),
+        ),
         StartFailure::Timeout(secs) => (
             "timeout",
-            format!("{name} started but did not answer within {secs} seconds."),
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-timeout",
+                &[("name", name.into()), ("seconds", (*secs).into())],
+            ),
         ),
     }
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(PROBE_TIMEOUT),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url).timeout(PROBE_TIMEOUT))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// The last line of the log that says anything.
@@ -163,7 +167,8 @@ fn on_path(line: &str) -> bool {
 /// Runs `command` and waits until `ready` answers. A service that already
 /// answers is left alone and the command never runs. Output goes to `log`.
 /// With an empty `ready` there is nothing to wait for: the command counts
-/// as started once it exits cleanly, or has stayed up for a moment.
+/// as started once it exits cleanly, or has stayed up for a moment. A sandboxed `home`
+/// becomes the command's home, as it does for the anirss the core starts (#637).
 pub async fn start(
     http: &dyn Http,
     command: &str,
@@ -171,6 +176,7 @@ pub async fn start(
     timeout: Duration,
     poll: Duration,
     log: &Path,
+    home: &super::home::AnirssHome,
 ) -> Result<(), StartFailure> {
     if !ready.is_empty() && answers(http, ready).await {
         return Ok(());
@@ -198,6 +204,7 @@ pub async fn start(
     if let Some(path) = super::anirss::child_path() {
         cmd.env("PATH", path);
     }
+    home.apply(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| StartFailure::Failed(e.to_string()))?;
@@ -210,8 +217,12 @@ pub async fn start(
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {
-                let why =
-                    last_line(log).unwrap_or_else(|| format!("the command exited with {status}"));
+                let why = last_line(log).unwrap_or_else(|| {
+                    crate::i18n::tr(
+                        "core-downloads-command-exited",
+                        &[("status", status.to_string().into())],
+                    )
+                });
                 return Err(StartFailure::Failed(why));
             }
             exited_clean = true;
@@ -254,6 +265,7 @@ mod tests {
             Duration::from_secs(3),
             Duration::from_millis(20),
             &log(dir),
+            &crate::downloads::home::AnirssHome::Shared,
         )
         .await
     }
@@ -264,29 +276,29 @@ mod tests {
         let cfg = dir.path().join("config.toml");
         std::fs::write(
             &cfg,
-            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nstart = \" podman pod start x \"\nready = \"http://127.0.0.1:9117/caps\"\n",
+            "[[endpoint]]\nname = \"tracker\"\nkind = \"rss\"\n\n[[endpoint]]\nname = \"proxied\"\nkind = \"rss\"\nstart = \" podman pod start x \"\nready = \"http://127.0.0.1:9117/caps\"\n",
         )
         .unwrap();
         assert_eq!(
             anirss_start(&cfg, None),
             Some("podman pod start x".to_string())
         );
-        assert_eq!(anirss_start(&cfg, Some("nyaa")), None);
+        assert_eq!(anirss_start(&cfg, Some("tracker")), None);
         assert_eq!(
-            resolve_command(" my-start ", Some(&cfg), "1337x"),
+            resolve_command(" my-start ", Some(&cfg), "proxied"),
             "podman pod start x",
             "the endpoint's own start wins over the setting"
         );
         assert_eq!(
-            resolve_command(" my-start ", Some(&cfg), "nyaa"),
+            resolve_command(" my-start ", Some(&cfg), "tracker"),
             "my-start"
         );
         assert_eq!(
-            resolve_command("", Some(&cfg), "1337x"),
+            resolve_command("", Some(&cfg), "proxied"),
             "podman pod start x"
         );
-        assert_eq!(resolve_command("", Some(&cfg), "nyaa"), "jackett");
-        assert_eq!(resolve_command("", None, "1337x"), "jackett");
+        assert_eq!(resolve_command("", Some(&cfg), "tracker"), "jackett");
+        assert_eq!(resolve_command("", None, "proxied"), "jackett");
     }
 
     #[test]
@@ -345,7 +357,7 @@ mod tests {
             r,
             Err(StartFailure::Missing("anibeam-no-such-jackett".to_string()))
         );
-        let (code, message) = explain("1337x", &r.unwrap_err());
+        let (code, message) = explain("proxied", &r.unwrap_err());
         assert_eq!(code, "missing");
         assert!(message.starts_with("Jackett is not installed"));
     }
@@ -359,7 +371,7 @@ mod tests {
         http.fail_next("refused");
         let r = run(
             &http,
-            "echo 'no pod with name anirss-1337x found' >&2; exit 125",
+            "echo 'no pod with name anirss-proxied found' >&2; exit 125",
             READY,
             &dir,
         )
@@ -367,7 +379,7 @@ mod tests {
         assert_eq!(
             r,
             Err(StartFailure::Failed(
-                "no pod with name anirss-1337x found".to_string()
+                "no pod with name anirss-proxied found".to_string()
             ))
         );
     }
@@ -383,12 +395,13 @@ mod tests {
             Duration::from_millis(200),
             Duration::from_millis(20),
             &log(&dir),
+            &crate::downloads::home::AnirssHome::Shared,
         )
         .await;
         assert_eq!(r, Err(StartFailure::Timeout(0)));
         assert_eq!(
-            explain("1337x", &StartFailure::Timeout(60)).1,
-            "1337x started but did not answer within 60 seconds."
+            explain("proxied", &StartFailure::Timeout(60)).1,
+            "proxied started but did not answer within 60 seconds."
         );
     }
 

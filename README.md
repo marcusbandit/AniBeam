@@ -2,13 +2,15 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/wordmark-dark.svg">
-  <img src="docs/readme/wordmark-light.svg" alt="AniBeam" width="560">
+  <img src="docs/readme/wordmark-light.svg" alt="Anibeam" width="560">
 </picture>
 
 <br>
 <br>
 
 **Your anime folder, as a library you can watch and track.**
+
+**[anibeam.app](https://anibeam.app)**
 
 <br>
 
@@ -26,12 +28,12 @@
 <br>
 
 <div align="center">
-<img src="docs/readme/home.webp" alt="AniBeam's Home page with recent and unstarted shows as poster cards" width="100%">
+<img src="docs/readme/home.webp" alt="Anibeam's Home page with recent and unstarted shows as poster cards" width="100%">
 </div>
 
 <br>
 
-Point AniBeam at the folder your anime lives in. It finds every show, matches it on
+Point Anibeam at the folder your anime lives in. It finds every show, matches it on
 AniList, fetches the posters and airing dates, and plays the episodes right in the window.
 Watch most of an episode and it lands on your AniList or MyAnimeList. New episodes can
 download by themselves as they come out.
@@ -71,11 +73,21 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 
 | Platform | Get it | Notes |
 | --- | --- | --- |
-| Arch Linux | `yay -S anibeam` | Pulls in anirss and qbittorrent-nox too. |
-| Any other Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
+| Any Linux, one line | `curl -fsSL https://anibeam.app/install.sh \| sh` | Picks the right way for your system below: the AUR on Arch, the apt or dnf repo on Ubuntu, Debian and Fedora, the AppImage anywhere else. |
+| Arch Linux | `yay -S anibeam-bin` | The release build, installed in seconds. `yay -S anibeam` compiles it instead. Either pulls in anirss and qbittorrent-nox. |
+| Ubuntu, Debian | `sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources`<br>`sudo apt update && sudo apt install anibeam` | Ubuntu 24.04, Debian 13 and later. Updates come with `apt upgrade`. |
+| Fedora | `sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo`<br>`sudo dnf install anibeam` | Fedora 41 and later. Updates come with `dnf upgrade`. |
+| Any Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
 | Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
 | Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
+| iPhone | Add the Anibeam source to AltStore, SideStore or LiveContainer, below | An unsigned IPA for sideloading: the app you add it to signs it. |
+
+**iPhone** (unsigned, for sideloading). Pick the app you sideload with and add the Anibeam source: Anibeam and Anibeam Nightly then sit in its library, can be installed side by side, and the app offers each new build as an update. Nightly is the newest build from main.
+
+[Add the Anibeam source to AltStore](https://anibeam.app/install/?to=altstore&source=1) · [SideStore](https://anibeam.app/install/?to=sidestore&source=1) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&source=1)
+
+To install one build without a source, once, in [AltStore](https://anibeam.app/install/?to=altstore&channel=stable), [SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) or [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable) (nightly: [AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)). A channel with no IPA yet says so on that page.
 
 <details>
 <summary><b>Mac</b>: Homebrew needs the tap first, and macOS asks once</summary>
@@ -88,7 +100,7 @@ brew install --cask marcusbandit/anibeam/anibeam
 ```
 
 The build is not notarized, so macOS stops the first launch. Go to System Settings >
-Privacy & Security, scroll to the AniBeam line and click Open Anyway. From a terminal,
+Privacy & Security, scroll to the Anibeam line and click Open Anyway. From a terminal,
 `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
 
 </details>
@@ -124,13 +136,13 @@ After that, the app updates itself. Settings > About picks Stable or Nightly.
 1. **Add your library.** Click Add a folder on Home and pick your anime folder. One folder
    per show works best: `Anime/Sousou no Frieren/Frieren - 01.mkv`.
 2. **Connect a tracker** (optional). Settings > Library > Trackers > Connect, then approve
-   AniBeam in the browser.
+   Anibeam in the browser.
 3. **Watch.** Click a show, then an episode. Space plays and pauses.
-4. **Download new episodes** (optional). AniBeam ships with no sources. Add an endpoint
+4. **Download new episodes** (optional). Anibeam ships with no sources. Add an endpoint
    repo in Settings > Downloads > Endpoint repos, install the sources you want, then
    search a show in Downloads and click Subscribe.
 
-A show AniBeam could not match says "Needs a match". Open it, click Find a match and pick
+A show Anibeam could not match says "Needs a match". Open it, click Find a match and pick
 the right one.
 
 <details>
@@ -138,8 +150,8 @@ the right one.
 
 <br>
 
-AniBeam starts its own anirss, the tool that searches the release feeds. If a qBittorrent of
-yours already runs with its Web UI on, AniBeam uses it. If not, it sets up its own the first
+Anibeam starts its own anirss, the tool that searches the release feeds. If a qBittorrent of
+yours already runs with its Web UI on, Anibeam uses it. If not, it sets up its own the first
 time you open Downloads, and that one keeps running after you close the app so
 subscriptions keep downloading.
 
@@ -168,7 +180,7 @@ it. [apps/android](apps/android/README.md) has the details.
 <br>
 
 Open Settings > Downloads > Torrent client and press Test; the State line says what went
-wrong. Choosing Pick for me and saving makes AniBeam look again on the next connect.
+wrong. Choosing Pick for me and saving makes Anibeam look again on the next connect.
 
 </details>
 
@@ -177,13 +189,13 @@ wrong. Choosing Pick for me and saving makes AniBeam look again on the next conn
 
 <br>
 
-Approve AniBeam in the browser tab it opened. If that tab is gone, click Open the sign-in
+Approve Anibeam in the browser tab it opened. If that tab is gone, click Open the sign-in
 page again.
 
 </details>
 
 <details>
-<summary><b>Where AniBeam keeps its data</b></summary>
+<summary><b>Where Anibeam keeps its data</b></summary>
 
 <br>
 
@@ -200,13 +212,14 @@ A screenshot and the version from Settings > About help a lot.
 
 ## Build from source
 
-[docs/build-from-source.md](docs/build-from-source.md) covers building, running from a
-checkout and the CLI. [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests and how
+`./build.sh` builds the app from a checkout.
+[docs/build-from-source.md](docs/build-from-source.md) covers what it needs, running from a
+checkout and the CLI. The logos are in [assets/logo/](assets/logo/). [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests and how
 releases ship.
 
 ## Support
 
-AniBeam is free and stays free. If it made your anime nights a little nicer and you feel
+Anibeam is free and stays free. If it made your anime nights a little nicer and you feel
 like buying me a coffee, there is a [Ko-fi](https://ko-fi.com/marcusbandit). It is entirely
 optional, and a star or a good bug report helps just as much.
 

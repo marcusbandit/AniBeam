@@ -12,21 +12,34 @@ Item {
     Keys.onReturnPressed: opened()
     Keys.onEnterPressed: opened()
     Keys.onSpacePressed: opened()
-    Rectangle { anchors.fill: parent; anchors.margins: -2; visible: root.activeFocus; color: "transparent"; border.width: 2; border.color: theme.focusRing; z: 10 }
+    Rectangle { anchors.fill: parent; anchors.margins: -2; visible: root.activeFocus; radius: theme.radiusTile + 2; antialiasing: true; color: "transparent"; border.width: 2; border.color: theme.focusRing; z: 10 }
     width: theme.space(32)
     height: Math.round(width * 1.5)
     implicitWidth: width
     implicitHeight: height
     scale: theme.reducedMotion ? 1 : (m.pressed ? 0.98 : 1)
 
-    Rectangle { anchors.fill: parent; color: theme.tile; border.color: theme.line; border.width: 1 }
-    Image {
+    // Rounded like Card: the pane shows only until the poster decodes, then the poster is the
+    // Corner's fill, so its corners are cut by the same shape
+    Corner {
         anchors.fill: parent
-        source: rec.poster ? Fmt.fileUrl(rec.poster) : ""
-        fillMode: Image.PreserveAspectCrop; asynchronous: true; smooth: true
-        sourceSize: theme.posterDecodeSize
+        radius: theme.radiusTile; smoothing: 0
+        color: theme.tile
+        borderColor: art.status === Image.Ready ? "transparent" : theme.line
+        borderWidth: art.status === Image.Ready ? 0 : 1
+        fillItem: art.status === Image.Ready ? art : null
+        Image {
+            id: art
+            visible: false
+            width: parent.width; height: parent.height
+            source: rec.poster ? Fmt.fileUrl(rec.poster) : ""
+            fillMode: Image.PreserveAspectCrop; asynchronous: true; smooth: true
+            // the shared poster decode, so a resize never decodes again; Corner scales it
+            sourceSize: theme.posterDecodeSize
+        }
     }
     Rectangle {
+        radius: theme.radiusTile; antialiasing: true
         anchors.bottom: parent.bottom
         width: parent.width
         height: Math.max(parent.height * theme.scrimReach, title.height + theme.space(10))
@@ -39,9 +52,10 @@ Item {
     Rectangle {
         x: theme.space(1.5); y: theme.space(1.5)
         width: tag.implicitWidth + theme.space(4); height: tag.implicitHeight + theme.space(1.5)
+        radius: theme.radiusSm; antialiasing: true
         color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
         border.color: Qt.rgba(1, 1, 1, 0.14); border.width: 1
-        Label { id: tag; anchors.centerIn: parent; role: "ledger"; text: rec.owned ? "Available" : "AniList"; color: rec.owned ? theme.accentOnPoster : theme.onPosterDim }
+        Label { id: tag; anchors.centerIn: parent; role: "ledger"; text: rec.owned ? words.t("recommendation-card-available") : "AniList"; color: rec.owned ? theme.accentOnPoster : theme.onPosterDim }
     }
     Label {
         id: title
@@ -58,9 +72,11 @@ Item {
     Rectangle {
         anchors.fill: parent
         visible: m.containsMouse
+        radius: theme.radiusTile; antialiasing: true
         color: "transparent"
         border.color: theme.accent; border.width: 1
     }
-    MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.opened() }
-    Tooltip { text: rec.owned ? "Open " + rec.title + " in your library" : "Open " + rec.title + " on AniList" }
+    MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.opened(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+        Accessible.onPressAction: root.opened() }
+    Tooltip { text: words.t(rec.owned ? "recommendation-card-open-library" : "recommendation-card-open-anilist", { title: rec.title }) }
 }

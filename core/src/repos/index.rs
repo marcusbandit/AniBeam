@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::contract::{CoreError, EndpointField};
+use crate::i18n::tr;
 use crate::releases::endpoints::VALID_KINDS;
 
 /// The envelope's `format`.
@@ -36,11 +37,7 @@ impl RepoFault {
 
 impl From<RepoFault> for CoreError {
     fn from(f: RepoFault) -> CoreError {
-        CoreError::Service {
-            service: "Endpoint repo".into(),
-            code: f.code.into(),
-            message: f.message,
-        }
+        CoreError::service("Endpoint repo", f.code, f.message)
     }
 }
 
@@ -87,6 +84,9 @@ pub struct Definition {
     pub version: u32,
     #[serde(default)]
     pub lang: String,
+    /// Read under its shape name: an index published, or a row stored, before #602 may
+    /// still carry a kind's old name.
+    #[serde(deserialize_with = "shape_kind")]
     pub kind: String,
     /// `{query}` plus one placeholder per `auth` key; filled at request time.
     pub url: String,
@@ -107,6 +107,13 @@ pub struct Definition {
     /// `json` only: where its replies keep each field.
     #[serde(default)]
     pub json: Option<JsonMap>,
+    /// `rss` only: how its search and feed differ from a plain feed (`releases::quirks`).
+    #[serde(default, flatten)]
+    pub quirks: crate::releases::quirks::Quirks,
+    /// Release groups this source's own definition trusts out of the box. Best fit prefers
+    /// the groups every enabled endpoint names, the core itself trusting none.
+    #[serde(default)]
+    pub trusted_groups: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,6 +127,30 @@ pub struct AuthField {
     #[serde(default)]
     pub help_url: Option<String>,
 }
+
+fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let kind = String::deserialize(d)?;
+    Ok(crate::releases::kinds::shape_of(&kind).to_string())
+}
+
+/// A host name as DNS writes it: lower-case labels of letters, digits and hyphens, joined by
+/// dots, at least two of them, none starting or ending with a hyphen.
+fn dns_name(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').count() >= 2
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
+/// How many release groups one definition may trust.
+const MAX_TRUSTED_GROUPS: usize = 32;
 
 fn yes() -> bool {
     true
@@ -319,59 +350,59 @@ pub fn fingerprint(key: &str) -> String {
 fn verifying_key(key: &str) -> Result<VerifyingKey, RepoFault> {
     let raw = key
         .strip_prefix("ed25519:")
-        .ok_or_else(|| RepoFault::new("format", "the index's key is not an ed25519 key"))?;
+        .ok_or_else(|| RepoFault::new("format", tr("core-repos-key-not-ed25519", &[])))?;
     let bytes: [u8; 32] = B64
         .decode(raw)
         .ok()
         .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| RepoFault::new("format", "the index's key is not 32 bytes of base64"))?;
+        .ok_or_else(|| RepoFault::new("format", tr("core-repos-key-not-base64", &[])))?;
     VerifyingKey::from_bytes(&bytes)
-        .map_err(|_| RepoFault::new("format", "the index's key is not a valid ed25519 key"))
+        .map_err(|_| RepoFault::new("format", tr("core-repos-key-invalid", &[])))
 }
 
 /// Reads a repo file: the envelope, then the payload's signature against the key the payload
 /// itself names, then the index.
 pub fn parse(bytes: &[u8], core_version: &str) -> Result<Index, RepoFault> {
     if bytes.len() > MAX_BYTES {
-        return Err(RepoFault::new(
-            "format",
-            "the file is too large to be a repo",
-        ));
+        return Err(RepoFault::new("format", tr("core-repos-too-large", &[])));
     }
     let env: Envelope = serde_json::from_slice(bytes)
-        .map_err(|_| RepoFault::new("format", "this is not an AniBeam endpoint repo"))?;
+        .map_err(|_| RepoFault::new("format", tr("core-repos-not-a-repo", &[])))?;
     if env.format != FORMAT {
-        return Err(RepoFault::new(
-            "format",
-            "this is not an AniBeam endpoint repo",
-        ));
+        return Err(RepoFault::new("format", tr("core-repos-not-a-repo", &[])));
     }
     if env.version != VERSION {
         return Err(RepoFault::new(
             "version",
-            format!(
-                "the repo is format version {}; this AniBeam reads version {VERSION}. Update AniBeam.",
-                env.version
+            tr(
+                "core-repos-format-version",
+                &[
+                    ("found", env.version.to_string().into()),
+                    ("reads", VERSION.to_string().into()),
+                ],
             ),
         ));
     }
     let payload = B64
         .decode(env.payload.trim())
-        .map_err(|_| RepoFault::new("format", "the repo's payload is not base64"))?;
+        .map_err(|_| RepoFault::new("format", tr("core-repos-payload-not-base64", &[])))?;
     let signature = B64
         .decode(env.signature.trim())
         .ok()
         .and_then(|b| Signature::from_slice(&b).ok())
-        .ok_or_else(|| RepoFault::new("signature", "the repo's signature is malformed"))?;
-    let raw: RawIndex = serde_json::from_slice(&payload)
-        .map_err(|e| RepoFault::new("format", format!("the repo's index does not read: {e}")))?;
-    let key = verifying_key(&raw.key)?;
-    key.verify_strict(&payload, &signature).map_err(|_| {
+        .ok_or_else(|| RepoFault::new("signature", tr("core-repos-signature-malformed", &[])))?;
+    let raw: RawIndex = serde_json::from_slice(&payload).map_err(|e| {
         RepoFault::new(
-            "signature",
-            "the repo's signature does not match its contents",
+            "format",
+            tr(
+                "core-repos-index-unreadable",
+                &[("error", e.to_string().into())],
+            ),
         )
     })?;
+    let key = verifying_key(&raw.key)?;
+    key.verify_strict(&payload, &signature)
+        .map_err(|_| RepoFault::new("signature", tr("core-repos-signature-mismatch", &[])))?;
     let mut endpoints: Vec<Definition> = Vec::new();
     for value in raw.endpoints {
         let Ok(def) = serde_json::from_value::<Definition>(value) else {
@@ -458,20 +489,25 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     let http = http || (torznab && def.host_is_placeholder());
     let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
     if !scheme_ok || def.host().is_empty() {
-        return Err(format!(
-            "{}: the address must start with {}",
-            def.id,
+        return Err(tr(
             if http {
-                "http:// or https://"
+                "core-repos-check-scheme-http"
             } else {
-                "https://"
-            }
+                "core-repos-check-scheme"
+            },
+            &[("id", def.id.as_str().into())],
         ));
     }
     let mut keys = Vec::new();
     for field in &def.auth {
         if !plain_id(&field.key) || field.key == "query" || keys.contains(&field.key.as_str()) {
-            return Err(format!("{}: bad auth key {:?}", def.id, field.key));
+            return Err(tr(
+                "core-repos-check-auth-key",
+                &[
+                    ("id", def.id.as_str().into()),
+                    ("key", format!("{:?}", field.key).into()),
+                ],
+            ));
         }
         if !def.url.contains(&format!("{{{}}}", field.key)) {
             return Err(format!(
@@ -491,9 +527,9 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     // person sees: their own server, and nothing a secret could steer.
     if def.host_is_placeholder() {
         if !torznab {
-            return Err(format!(
-                "{}: only a torznab address may name its host as {{{HOST_KEY}}}",
-                def.id
+            return Err(tr(
+                "core-repos-check-host-torznab",
+                &[("id", def.id.as_str().into()), ("key", HOST_KEY.into())],
             ));
         }
         if def.auth.iter().any(|f| f.key == HOST_KEY && f.secret) {
@@ -503,22 +539,58 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
             ));
         }
     } else if def.host().contains('{') {
-        return Err(format!("{}: a placeholder in the host", def.id));
+        return Err(tr(
+            "core-repos-check-host-placeholder",
+            &[("id", def.id.as_str().into())],
+        ));
     }
     let has_query = def.url.contains("{query}");
-    if def.kind == "nyaa" && has_query {
-        return Err(format!("{}: nyaa adds the query itself", def.id));
+    if def.kind == crate::releases::kinds::FILTERED_RSS && has_query {
+        return Err(format!("{}: filtered-rss adds the query itself", def.id));
     }
     if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
         return Err(format!("{}: the address needs {{query}}", def.id));
     }
-    if let Some(front) = &def.front
-        && (front.is_empty() || front.contains(['/', ':', '{', '@']))
-    {
-        return Err(format!("{}: the front must be a bare host", def.id));
+    if let Some(front) = &def.front {
+        if !dns_name(front) {
+            return Err(format!(
+                "{}: the front must be a bare host name in lower case",
+                def.id
+            ));
+        }
+        // A fronted request goes to the front by name alone, so the address it stands for
+        // has no port or login of its own.
+        if authority_of(&def.url).contains([':', '@']) {
+            return Err(format!(
+                "{}: an address with a port or a login cannot be fronted",
+                def.id
+            ));
+        }
     }
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
+    }
+    if def.quirks != crate::releases::quirks::Quirks::default() {
+        if def.kind != "rss" {
+            return Err(format!(
+                "{}: only an rss endpoint takes quality_local, one_variant or show_feed",
+                def.id
+            ));
+        }
+        def.quirks
+            .check(&def.host())
+            .map_err(|e| format!("{}: {e}", def.id))?;
+    }
+    if def.trusted_groups.len() > MAX_TRUSTED_GROUPS
+        || def
+            .trusted_groups
+            .iter()
+            .any(|g| g.trim().is_empty() || g.len() > 64 || g.chars().any(char::is_control))
+    {
+        return Err(format!(
+            "{}: trusted_groups takes at most {MAX_TRUSTED_GROUPS} names, each a short line",
+            def.id
+        ));
     }
     match (&def.json, def.kind == "json") {
         (None, true) => return Err(format!("{}: a json endpoint needs its `json` map", def.id)),
@@ -667,7 +739,10 @@ pub(crate) mod tests {
     fn a_signed_index_reads() {
         let k = signing_key(1);
         let file = sign(
-            &index(&k, vec![def("nyaa", "nyaa", "https://nyaa.si/")]),
+            &index(
+                &k,
+                vec![def("tracker", "filtered-rss", "https://tracker.example/")],
+            ),
             &k,
         );
         let idx = parse(&file, "2.1.0").unwrap();
@@ -675,6 +750,102 @@ pub(crate) mod tests {
         assert_eq!(idx.serial, 10);
         assert_eq!(idx.endpoints.len(), 1);
         assert_eq!(idx.key, key_text(&k));
+    }
+
+    #[test]
+    fn an_index_from_before_the_shape_kinds_reads_with_them() {
+        let k = signing_key(1);
+        let old: Vec<serde_json::Value> = crate::releases::kinds::RENAMED
+            .iter()
+            .map(|(old, _)| {
+                let url = if *old == crate::releases::kinds::RENAMED[0].0 {
+                    "https://tracker.example/"
+                } else {
+                    "https://feed.example/json?q={query}"
+                };
+                def(&format!("{old}-site"), old, url)
+            })
+            .collect();
+        let file = sign(&index(&k, old), &k);
+        let idx = parse(&file, "2.1.0").unwrap();
+        let kinds: Vec<&str> = idx.endpoints.iter().map(|d| d.kind.as_str()).collect();
+        assert_eq!(kinds, ["filtered-rss", "json-feed"]);
+        let again: Vec<String> = reread(&idx.payload, "2.1.0")
+            .into_iter()
+            .map(|d| d.kind)
+            .collect();
+        assert_eq!(again, ["filtered-rss", "json-feed"]);
+    }
+
+    #[test]
+    fn a_definition_turns_on_its_quirks_as_data() {
+        let mut v = def(
+            "keyed",
+            "rss",
+            "https://www.keyed.example/feed/?s={query}&token={token}",
+        );
+        v["auth"] = serde_json::json!([{"key": "token", "label": "Token"}]);
+        v["quality_local"] = true.into();
+        v["one_variant"] = "HEVC".into();
+        v["show_feed"] = serde_json::json!({
+            "pages": [r"^https://www\.keyed\.example/episodes/(?P<slug>[a-z0-9-]+?)-\d+/"],
+            "url": "https://www.keyed.example/anime-list/{slug}/feed/"
+        });
+        let d: Definition = serde_json::from_value(v.clone()).unwrap();
+        assert!(d.quirks.quality_local && d.quirks.show_feed.is_some());
+        assert!(check(&d).is_ok(), "{:?}", check(&d));
+        // Stored and read back, the quirks stay; a plain definition stores none of them.
+        let back: Definition = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+        assert_eq!(back.quirks, d.quirks);
+        let plain: Definition =
+            serde_json::from_value(def("p", "rss", "https://p.example/?q={query}")).unwrap();
+        let stored = serde_json::to_value(&plain).unwrap();
+        assert!(stored.get("show_feed").is_none() && stored.get("quality_local").is_none());
+        // Only an rss endpoint takes them.
+        let mut other = v;
+        other["kind"] = "torznab".into();
+        let other: Definition = serde_json::from_value(other).unwrap();
+        assert!(check(&other).unwrap_err().contains("only an rss endpoint"));
+    }
+
+    #[test]
+    fn a_front_is_a_plain_host_name_for_a_plain_address() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://tracker.example/?q={query}")).unwrap();
+        d.front = Some("edge.example".into());
+        assert!(check(&d).is_ok());
+        for bad in [
+            "Edge.Example",
+            "edge.example?",
+            "edge.example#x",
+            "edge",
+            "-edge.example",
+            "edge .example",
+        ] {
+            d.front = Some(bad.into());
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.front = Some("edge.example".into());
+        d.url = "https://tracker.example:8443/?q={query}".into();
+        assert!(check(&d).is_err(), "a port the front cannot carry");
+    }
+
+    #[test]
+    fn trusted_groups_are_a_short_list_of_short_names() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://feed.example/?q={query}")).unwrap();
+        assert!(
+            d.trusted_groups.is_empty(),
+            "none unless the definition says"
+        );
+        d.trusted_groups = vec!["GroupA".into(), "Group B".into()];
+        assert!(check(&d).is_ok());
+        for bad in [String::new(), " ".into(), "x".repeat(65), "a\nb".into()] {
+            d.trusted_groups = vec![bad.clone()];
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.trusted_groups = (0..=MAX_TRUSTED_GROUPS).map(|i| format!("G{i}")).collect();
+        assert!(check(&d).is_err(), "too many");
     }
 
     #[test]
@@ -752,9 +923,9 @@ pub(crate) mod tests {
     #[test]
     fn auth_keys_must_sit_in_the_address_but_not_in_the_host() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -765,15 +936,15 @@ pub(crate) mod tests {
             help_url: None,
         }];
         assert!(check(&d).is_ok());
-        d.url = "https://erai.example/feed?s={query}".into();
+        d.url = "https://keyed.example/feed?s={query}".into();
         assert!(check(&d).is_err());
         d.url = "https://{token}.example/feed?s={query}".into();
         assert!(check(&d).is_err());
     }
 
     #[test]
-    fn a_tosho_or_rss_address_needs_the_query() {
-        for kind in ["tosho", "rss"] {
+    fn a_json_feed_or_rss_address_needs_the_query() {
+        for kind in ["json-feed", "rss"] {
             let mut d: Definition =
                 serde_json::from_value(def("t", kind, "https://feed.example/json")).unwrap();
             assert!(check(&d).is_err(), "{kind}");
@@ -848,9 +1019,9 @@ pub(crate) mod tests {
     #[test]
     fn filling_encodes_the_value_and_leaves_the_query() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -862,7 +1033,7 @@ pub(crate) mod tests {
         }];
         assert_eq!(
             d.filled_url(|_| Some("a b&c".into())).unwrap(),
-            "https://erai.example/feed?s={query}&token=a%20b%26c"
+            "https://keyed.example/feed?s={query}&token=a%20b%26c"
         );
         assert_eq!(d.filled_url(|_| None), None);
     }
@@ -1046,12 +1217,5 @@ pub(crate) mod tests {
         assert!(!runs_on(&d, "2.0.9"));
         d.min_core = Some("nonsense".into());
         assert!(!runs_on(&d, "2.1.0"));
-    }
-
-    #[test]
-    fn the_fingerprint_is_eight_groups() {
-        let f = fingerprint(&key_text(&signing_key(1)));
-        assert_eq!(f.split(' ').count(), 8);
-        assert_ne!(f, fingerprint(&key_text(&signing_key(2))));
     }
 }

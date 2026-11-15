@@ -39,19 +39,19 @@ Item {
     // is the legend's order. The hues are the theme's own, so every theme keeps a palette
     // that holds together: green and cyan sit side by side because both mean watched.
     readonly property var cubeStates: ({
-        w: { label: "Watched, tracked online", fill: green, edge: "transparent", order: 0 },
-        l: { label: "Watched here, not tracked yet", fill: cyan, edge: "transparent", order: 1 },
-        d: { label: "On disk", fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
-        t: { label: "Downloading", fill: purple, edge: "transparent", order: 3 },
-        m: { label: "Missing", fill: yellow, edge: "transparent", order: 4 },
-        e: { label: "Error", fill: red, edge: "transparent", order: 5 },
-        g: { label: "Not downloaded", fill: glassOf(dark ? 0.16 : 0.18), edge: "transparent", order: 6 },
-        f: { label: "Not aired yet", fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
+        w: { id: "tokens-cube-watched-tracked", label: words.t("tokens-cube-watched-tracked"), fill: green, edge: "transparent", order: 0 },
+        l: { id: "tokens-cube-watched-here", label: words.t("tokens-cube-watched-here"), fill: cyan, edge: "transparent", order: 1 },
+        d: { id: "tokens-cube-on-disk", label: words.t("tokens-cube-on-disk"), fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
+        t: { id: "tokens-cube-downloading", label: words.t("tokens-cube-downloading"), fill: purple, edge: "transparent", order: 3 },
+        m: { id: "tokens-cube-missing", label: words.t("tokens-cube-missing"), fill: yellow, edge: "transparent", order: 4 },
+        e: { id: "tokens-cube-error", label: words.t("tokens-cube-error"), fill: red, edge: "transparent", order: 5 },
+        g: { id: "tokens-cube-not-downloaded", label: words.t("tokens-cube-not-downloaded"), fill: glassOf(dark ? 0.16 : 0.18), edge: "transparent", order: 6 },
+        f: { id: "tokens-cube-not-aired", label: words.t("tokens-cube-not-aired"), fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
         // Downloads-only marks on a provider's row: a release there, and one picked
-        a: { label: "Available", fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
-        p: { label: "Picked to get", fill: blue, edge: "transparent", order: 9 },
-        o: { label: "Already on disk", fill: glassOf(dark ? 0.05 : 0.07), edge: "transparent", order: 10 },
-        n: { label: "No release", fill: "transparent", edge: "transparent", order: 11 }
+        a: { id: "tokens-cube-available", label: words.t("tokens-cube-available"), fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
+        p: { id: "tokens-cube-picked", label: words.t("tokens-cube-picked"), fill: blue, edge: "transparent", order: 9 },
+        o: { id: "tokens-cube-already-on-disk", label: words.t("tokens-cube-already-on-disk"), fill: glassOf(dark ? 0.05 : 0.07), edge: "transparent", order: 10 },
+        n: { id: "tokens-cube-no-release", label: words.t("tokens-cube-no-release"), fill: "transparent", edge: "transparent", order: 11 }
     })
     function cubeState(code) { return cubeStates[code] || cubeStates.g }
     // A fraction as a row of step cubes, for progress that is not episodes (bytes, a job):
@@ -78,6 +78,9 @@ Item {
     readonly property color accentText: token("accent_text")
     // The soft fills are glass tinted by the hue, translucent like every other pane
     readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.14)
+    // The soft accent under the pointer: a step more of the hue, so a selected row that is
+    // hovered reads brighter than at rest, as a plain hovered row does against its pane
+    readonly property color accentSoftHover: Qt.rgba(accent.r, accent.g, accent.b, accentSoft.a + 0.1)
     // The edge of a pane filled with the soft accent (the rail's active page, a switch's
     // thumb, a list's current row)
     readonly property color accentEdge: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
@@ -190,6 +193,49 @@ Item {
     // The radius of a shape nested `padding` inside a tile, so the two curves stay
     // concentric; never below the small step so a nested row still reads as rounded.
     function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }
+    // ---- What a screen reader says for a control with no words of its own
+    // The label of the settings row the control sits in
+    function rowLabelOf(item) {
+        for (var p = item ? item.parent : null; p; p = p.parent) {
+            if (p.settingTarget !== true) continue
+            var words = String(p.label || p.title || "")
+            if (words !== "") return words
+        }
+        return ""
+    }
+    // The text of a Tooltip the item carries, which says what an icon-only control does
+    function tipOf(item) {
+        var d = item ? item.data : null
+        if (!d) return ""
+        for (var i = 0; i < d.length; i++) if (d[i] && d[i].isTooltip === true && d[i].text) return String(d[i].text)
+        return ""
+    }
+    // A Lucide glyph's name as words, the last resort: "trash-2" reads "trash"
+    function glyphWords(icon) { return String(icon || "").replace(/-\d+$/, "").replace(/-/g, " ") }
+    // The first words shown inside an item, depth first, for a click area over a tile that
+    // has no name of its own: the title it carries is what a person would call it
+    function textIn(item, depth) {
+        if (!item || depth > 6) return ""
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i]
+            if (!k || k.visible === false || k.isTooltip === true) continue
+            if (typeof k.text === "string" && k.text.trim() !== "") return k.text.trim()
+            var r = textIn(k, depth + 1)
+            if (r !== "") return r
+        }
+        return ""
+    }
+    // A click area's spoken name: the words the item it covers shows (its own text, if it is
+    // a label), else the tip that says what it does
+    function nameNear(item) {
+        var own = item && typeof item.text === "string" ? item.text.trim() : ""
+        return own || textIn(item, 0) || tipOf(item)
+    }
+    // A control's spoken name: its own, its words, its tip, its row, its glyph, in that order
+    function spokenName(own, words, item, icon) {
+        return own || words || tipOf(item) || rowLabelOf(item) || glyphWords(icon)
+    }
     readonly property int posterWidth: Theme.posterWidth
     // The one size posters decode at, in device pixels: a grid card is laid out between the
     // poster width and about a quarter wider (the columns stretch to fill the row), so the
@@ -197,21 +243,30 @@ Item {
     // and the pixmap cache keys on it, so a warmed poster is a hit, never a second decode.
     readonly property real devicePixelRatio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
     readonly property size posterDecodeSize: Qt.size(Math.ceil(posterWidth * 1.25 * devicePixelRatio), Math.ceil(posterWidth * 1.25 * 1.5 * devicePixelRatio))
-    readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
+    // The system's size, but never under 11pt on any platform. A desktop whose font comes
+    // through a platform theme the build does not carry (qt6ct under the AppImage) hands Qt
+    // its 9pt fallback, and Windows reports 9pt too; at that size every page read a quarter
+    // smaller (#830). Text size in Appearance still scales it, Smaller included. A font set
+    // in pixels reports -1, which the floor covers as well.
+    readonly property real systemPointSize: Math.max(11, Qt.application.font.pointSize)
+    // Text size (Appearance): every type size below is the system's times this, so the
+    // whole window's type follows one setting
+    readonly property real textScale: Theme.textScale
+    readonly property real basePointSize: systemPointSize * textScale
     readonly property string fontSans: fontFamily
     // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.
     // There is no monospace anywhere; tabular figures come from the ledger role.
     readonly property string fontUi: fontFamily
     readonly property string fontSerif: fontFamily
     // Four sizes only; widths and weights do the rest
-    readonly property real typeDisplay: systemPointSize * 2.8
-    readonly property real typeNormal: systemPointSize
-    readonly property real typeSmall: systemPointSize * 0.85
-    readonly property real typeLarge: systemPointSize * 1.5
+    readonly property real typeDisplay: basePointSize * 2.8
+    readonly property real typeNormal: basePointSize
+    readonly property real typeSmall: basePointSize * 0.85
+    readonly property real typeLarge: basePointSize * 1.5
     // A page's own title (Library, Feed, Downloads) and a section's heading: bigger than the
     // display cut's default, the first thing read on a page
-    readonly property real typePage: systemPointSize * 4
-    readonly property real typeHeading: systemPointSize * 2.2
+    readonly property real typePage: basePointSize * 4
+    readonly property real typeHeading: basePointSize * 2.2
     // The four cuts of the face, by role (DESIGN.md, Type). Label.qml applies one with
     // `role: "title"`; a plain Text can take the same through these functions:
     //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
@@ -244,7 +299,11 @@ Item {
     readonly property int motionFast: reducedMotion ? 0 : 120
     readonly property int motionNormal: reducedMotion ? 0 : 200
     readonly property int motionSlow: 320
-    readonly property real controlHeight: space(8)
+    // A length that holds text: space(n), grown with text bigger than Normal, so a label never
+    // outgrows its button, row or column. Smaller text keeps the normal size, so a control
+    // stays as easy to hit.
+    function textSpace(n) { return Math.round(space(n) * Math.max(1, textScale)) }
+    readonly property real controlHeight: textSpace(8)
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours

@@ -8,7 +8,7 @@ use toml_edit::{DocumentMut, value};
 
 use crate::paths::ShellPaths;
 
-// The options every AniBeam player sets, shared with the phone.
+// The options every Anibeam player sets, shared with the phone.
 pub use anibeam_core::playback::options::{owned_options, subtitle_options};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,9 +54,6 @@ pub fn load(path: &Path) -> PlayerSettings {
 }
 
 pub fn save(path: &Path, s: &PlayerSettings) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     // The file the user already has is edited, not replaced: toml_edit keeps their
     // comments and any key a later task adds beside these three.
     let mut doc = std::fs::read_to_string(path)
@@ -66,9 +63,7 @@ pub fn save(path: &Path, s: &PlayerSettings) -> std::io::Result<()> {
     doc["volume"] = value(s.volume);
     doc["mute"] = value(s.mute);
     doc["use_my_mpv_conf"] = value(s.use_my_mpv_conf);
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, doc.to_string())?;
-    std::fs::rename(tmp, path)
+    Ok(anibeam_core::atomic_file::write(path, doc.to_string())?)
 }
 
 /// Haruna's MpvPreview recipe: its own core, nothing audible, nothing drawn but the frame.
@@ -92,7 +87,7 @@ pub fn preview_options() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// The bundled file, then the user's own while the toggle is on, then AniBeam's own.
+/// The bundled file, then the user's own while the toggle is on, then Anibeam's own.
 /// A layer that is not on disk is not a layer: mpv's `include` of a missing file is an
 /// error the player would have nothing useful to say about.
 pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {

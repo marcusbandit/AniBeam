@@ -1,7 +1,12 @@
 import { Theme } from "theme.slint";
 import { AppData, EpisodeLine, Nav } from "data.slint";
 import { FindData } from "find.slint";
-import { Button, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
+import { Button, Chip, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
+import { Ask } from "more.slint";
+import { ShowActions, ShowData } from "show.slint";
+import { ShowSections } from "show-sections.slint";
+import { UndoBar } from "airing.slint";
+import { Tr } from "tr.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -17,10 +22,12 @@ component EpisodeItem inherits Rectangle {
     in property <length> code-width: Theme.unit * 10;
     // Episodes still to air are quieter.
     property <bool> later: root.data.cube == 5;
-    property <bool> next: root.data.note == "Next up";
+    property <bool> next: root.data.note-kind == 1;
+    // Kept in more than one release: the row plays one, and its chip offers the rest.
+    property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
-    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
+    background: touch.pressed && (root.data.file != 0 || root.holdable) ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
     if !AppData.deleting || root.data.file == 0: Rectangle {
@@ -55,7 +62,7 @@ component EpisodeItem inherits Rectangle {
     }
     texts := VerticalLayout {
         x: code.x + code.width;
-        width: parent.width - self.x - date.width - Theme.unit * 6;
+        width: parent.width - self.x - date.width - Theme.unit * 6 - (root.versioned ? chip.width + Theme.unit * 2 : 0);
         alignment: center;
         spacing: 2px;
         Text {
@@ -66,7 +73,7 @@ component EpisodeItem inherits Rectangle {
         }
         if root.data.note != "": Text {
             text: root.data.note;
-            color: root.next ? Theme.accent : root.data.note == "Missing" ? Theme.yellow : Theme.purple;
+            color: root.next ? Theme.accent : root.data.note-kind == 2 ? Theme.yellow : Theme.purple;
             font-size: Theme.small - 0.5px;
         }
     }
@@ -84,13 +91,47 @@ component EpisodeItem inherits Rectangle {
     // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
     // carry no note, and the other device's show is got on that device.
     property <bool> gettable: root.data.file == 0 && root.data.note != "" && !AppData.series-remote;
+    // Held, an episode offers its mark, as the desktop's cube does at a click.
+    property <bool> holdable: root.data.markable && !AppData.deleting;
+    property <bool> was-held;
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.was-held = true;
+            Ask.mark-title = root.data.code + "  " + root.data.title;
+            Ask.mark-number = root.data.number;
+            Ask.mark-season = root.data.season;
+            Ask.mark-watched = root.data.watched;
+            Ask.mark-open = true;
+        }
+    }
     touch := TouchArea {
-        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting);
+        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting) || root.holdable;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.was-held = false;
+                hold.running = root.holdable;
+            } else if (e.kind != PointerEventKind.move) {
+                hold.running = false;
+            }
+        }
+        // A finger that moves is a scroll, not a hold.
+        moved => {
+            if (Math.abs(self.mouse-x - self.pressed-x) > 3 * Theme.unit || Math.abs(self.mouse-y - self.pressed-y) > 3 * Theme.unit) {
+                hold.running = false;
+            }
+        }
         clicked => {
-            if (root.data.file == 0) {
-                FindData.find-series(AppData.series.id);
-                AppData.close-series();
-                Nav.page = 2;
+            if (root.was-held) {
+                // The hold opened the mark; the lift is not a tap.
+            } else if (root.data.file == 0) {
+                if (root.gettable && !AppData.deleting) {
+                    FindData.find-series(AppData.series.id);
+                    AppData.close-series();
+                    Nav.page = 2;
+                }
             } else if (root.data.remote) {
                 AppData.play-remote(root.data.file);
             } else if (AppData.deleting) {
@@ -98,6 +139,22 @@ component EpisodeItem inherits Rectangle {
             } else {
                 AppData.play(root.data.file);
             }
+        }
+    }
+    chip := Chip {
+        visible: root.versioned;
+        x: date.x - self.width - Theme.unit * 2;
+        y: (parent.height - self.height) / 2;
+        small: true;
+        tappable: root.versioned;
+        ink: Theme.dim;
+        text: Tr.n("series-versions", "count", root.data.versions.length);
+        clicked => {
+            Ask.versions = root.data.versions;
+            Ask.versions-title = root.data.code + "  " + root.data.title;
+            Ask.versions-remote = root.data.remote;
+            Ask.versions-current = root.data.file;
+            Ask.versions-open = true;
         }
     }
 }
@@ -116,13 +173,13 @@ component DeleteBar inherits Rectangle {
         height: self.preferred-height;
         spacing: Theme.unit * 3;
         Text {
-            text: AppData.delete-count == 0 ? "Tap the episodes to delete."
-                : AppData.delete-count == 1 ? "1 episode picked." : AppData.delete-count + " episodes picked.";
+            text: AppData.delete-count == 0 ? Tr.t("series-delete-tap")
+                : Tr.n("phone-series-delete-picked", "count", AppData.delete-count);
             color: Theme.text;
             font-family: Theme.strong-face;
         }
         Text {
-            text: "Their files are deleted from this phone. What you watched stays tracked.";
+            text: Tr.t("series-delete-note");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -137,14 +194,14 @@ component DeleteBar inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             Button {
-                text: AppData.delete-count == 1 ? "Delete 1 episode" : "Delete " + AppData.delete-count + " episodes";
+                text: Tr.n("series-delete-button", "count", AppData.delete-count);
                 small: true;
                 danger: true;
                 enabled: AppData.delete-count > 0 && !AppData.delete-busy;
                 clicked => { AppData.confirm-delete(); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 small: true;
                 clicked => { AppData.cancel-delete(); }
             }
@@ -182,6 +239,14 @@ component SeriesHeadView inherits VerticalLayout {
             }
             Text {
                 text: AppData.series.facts;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            // The desktop's quiet row: the average score, IMDb's, the rewatches. It wraps,
+            // so a folded phone keeps all of it.
+            if AppData.series.scores != "": Text {
+                text: AppData.series.scores;
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;
@@ -228,10 +293,11 @@ export component SeriesPage inherits Rectangle {
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
             padding-top: Theme.unit * 4;
-            padding-bottom: Theme.pad * 2;
+            // Room under the last rows while the mark's line covers the foot of the page.
+            padding-bottom: Theme.pad * 2 + (AppData.mark-line != "" ? 20 * Theme.unit : 0);
             spacing: Theme.unit * 4;
             PageTitle {
-                back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : Nav.page == 4 ? "Calendar" : "Back";
+                back: Nav.page == 0 ? Tr.t("series-back-home") : Nav.page == 1 ? Tr.t("series-back-library") : Nav.page == 2 ? Tr.t("series-back-downloads") : Nav.page == 4 ? Tr.t("series-back-calendar") : Tr.t("common-back");
                 title: "";
                 go-back => { AppData.close-series(); }
             }
@@ -259,7 +325,7 @@ export component SeriesPage inherits Rectangle {
                     clicked => { AppData.play(AppData.series.play-file); }
                 }
                 Button {
-                    text: "Get episodes";
+                    text: Tr.t("phone-series-get-episodes");
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
                     primary: AppData.series.play-file == 0;
@@ -270,6 +336,8 @@ export component SeriesPage inherits Rectangle {
                     }
                 }
             }
+            // This phone's own show: its score and the list it is on.
+            if ShowData.series-id >= 0: ShowActions { }
             if AppData.series.synopsis != "": ClampedText {
                 text: AppData.series.synopsis;
                 font-size: Theme.small + 1px;
@@ -278,14 +346,14 @@ export component SeriesPage inherits Rectangle {
                 leading: 1.4;
             }
             SectionHead {
-                title: "Episodes";
+                title: Tr.t("phone-series-episodes");
                 note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
             // Deleting: off, a button to start; on, what it will do and the two ways out.
             if !AppData.series-remote && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
                 alignment: start;
                 Button {
-                    text: "Delete episodes";
+                    text: Tr.t("series-delete-episodes");
                     small: true;
                     danger: true;
                     clicked => { AppData.start-delete(); }
@@ -300,10 +368,21 @@ export component SeriesPage inherits Rectangle {
                 }
             }
             if AppData.episodes.length == 0: Text {
-                text: "No episodes on this phone and none scheduled.";
+                text: Tr.t("series-no-episodes");
                 color: Theme.dim;
                 font-size: Theme.small;
             }
+            // The characters, related entries and recommendations of a show of this phone's.
+            if ShowData.series-id >= 0: ShowSections { }
         }
+    }
+    // What the last mark did, with Undo when it moved more than one episode.
+    if AppData.mark-line != "": UndoBar {
+        text: AppData.mark-line;
+        can-undo: AppData.mark-undo;
+        undo => { AppData.mark-take-back(); }
+        x: Theme.grout + Theme.unit;
+        width: parent.width - 2 * self.x;
+        y: parent.height - self.height - Theme.grout - Theme.unit;
     }
 }

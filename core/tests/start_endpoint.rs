@@ -2,8 +2,7 @@
 //! start command (anirss's own, or the setting that overrides it), waits for
 //! the ready URL and reports the status. A command the shell cannot find says
 //! Jackett is not installed, and an endpoint that is not on demand is refused
-//! up front. One test in its own binary because it points `XDG_CONFIG_HOME`
-//! at an anirss config of its own, which is process-wide.
+//! up front. The anirss config is the one in the core's own sandboxed home.
 
 mod common;
 
@@ -18,7 +17,8 @@ fn remote(jackett_command: &str) -> DownloadSettings {
         anirss_command: "anirss".to_string(),
         prune_finished_feeds: false,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
         jackett_command: jackett_command.to_string(),
         anirss_url: "http://anirss.test".to_string(),
         has_anirss_token: false,
@@ -55,26 +55,22 @@ fn start(core: &Core, name: &str) -> u64 {
     }
 }
 
-/// An anirss config with a plain nyaa endpoint and a 1337x one that has a
-/// `start`, and the XDG config home pointed at it.
+/// An anirss config with a plain tracker endpoint and a proxied one that has a
+/// `start`, in the home the core under `dir` gives anirss.
 fn on_demand_config(dir: &Path, start: Option<&str>) {
     // A literal string: a Windows path's backslashes are not TOML escapes there
     let start = start
         .map(|s| format!("start = '{s}'\n"))
         .unwrap_or_default();
-    let anirss = dir.join("anirss");
+    let anirss = dir.join("state/home/.config/anirss");
     std::fs::create_dir_all(&anirss).unwrap();
     std::fs::write(
         anirss.join("config.toml"),
         format!(
-            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\nurl = \"https://nyaa.si/\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\n{start}ready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
+            "[[endpoint]]\nname = \"tracker\"\nkind = \"rss\"\nurl = \"https://tracker.example/?q={{query}}\"\n\n[[endpoint]]\nname = \"proxied\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\n{start}ready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
         ),
     )
     .unwrap();
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
 }
 
 /// What the start command wrote, once it has: the job can finish the moment the
@@ -103,7 +99,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     save(&core, remote(""));
 
     let refused = core.call(Call::StartEndpoint {
-        name: "nyaa".to_string(),
+        name: "tracker".to_string(),
     });
     assert!(
         matches!(refused, Err(CoreError::Invalid { ref field, .. }) if field == "name"),
@@ -113,7 +109,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     // Down at the first look, answering on the next
     http.fail_next("refused");
     http.push(200, "ok");
-    let event = common::wait_job(&c, start(&core, "1337x"));
+    let event = common::wait_job(&c, start(&core, "proxied"));
     assert!(
         matches!(event.body, EventBody::DownloadsStatusChanged { .. }),
         "{:?}",
@@ -130,7 +126,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     std::fs::remove_file(&marker).unwrap();
     http.fail_next("refused");
     http.push(200, "ok");
-    common::wait_job(&c, start(&core, "1337x"));
+    common::wait_job(&c, start(&core, "proxied"));
     assert_eq!(written(&marker), "anirss");
     assert!(!ignored.exists(), "the setting never ran");
 
@@ -138,7 +134,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     on_demand_config(dir.path(), Some("anibeam-no-such-jackett"));
     save(&core, remote(""));
     http.fail_next("refused");
-    let event = common::wait_job(&c, start(&core, "1337x"));
+    let event = common::wait_job(&c, start(&core, "proxied"));
     let EventBody::JobFailed {
         error: CoreError::Service { code, message, .. },
     } = &event.body

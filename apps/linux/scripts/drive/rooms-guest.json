@@ -1,0 +1,143 @@
+[
+  {
+    "log": "Watch together, the guest side (#846). Run against a second root with the same library and room_relay, no room_name set and nothing open, with --props {\"code\": \"<the host's room code>\"} (see rooms-host.json)."
+  },
+  {
+    "eval": "frame.item.openRoom(); true"
+  },
+  {
+    "until": "frame.item.roomSheetPanel.open === true"
+  },
+  {
+    "wait": 400
+  },
+  {
+    "shot": "room-b-1-join-outside"
+  },
+  {
+    "click": "room-panel-code"
+  },
+  {
+    "eval": "driver.item.findItem('room-panel-code').text = JSON.parse(Shell.props).code.toLowerCase(); true"
+  },
+  {
+    "click": "room-panel-join"
+  },
+  {
+    "until": "driver.item.findItem('room-panel-name-field') !== null"
+  },
+  {
+    "wait": 300
+  },
+  {
+    "shot": "room-b-2-name"
+  },
+  {
+    "click": "room-panel-name-field"
+  },
+  {
+    "type": "Grace"
+  },
+  {
+    "click": "room-panel-name-save"
+  },
+  {
+    "until": "driver.item.pageReady('player') && frame.item.pageItem.loaded === true",
+    "timeout": 30000
+  },
+  {
+    "until": "frame.item.pageItem.roomed === true",
+    "timeout": 10000
+  },
+  {
+    "eval": "frame.item.pageItem.timePos.toFixed(1) + ' paused ' + frame.item.pageItem.paused"
+  },
+  {
+    "wait": 1500
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "shot": "room-b-3-joined"
+  },
+  {
+    "click": "player-room"
+  },
+  {
+    "until": "frame.item.pageItem.openMenus > 0"
+  },
+  {
+    "wait": 600
+  },
+  {
+    "shot": "room-b-4-panel"
+  },
+  {
+    "key": "Escape"
+  },
+  {
+    "until": "frame.item.pageItem.openMenus === 0"
+  },
+  {
+    "log": "the host pauses at 60 s"
+  },
+  {
+    "until": "frame.item.pageItem.paused === true && Math.abs(frame.item.pageItem.timePos - 60) < 1",
+    "timeout": 40000
+  },
+  {
+    "until": "Math.abs(frame.item.pageItem.timePos - 60) < 0.25",
+    "timeout": 4000
+  },
+  {
+    "eval": "frame.item.pageItem.timePos.toFixed(2)"
+  },
+  {
+    "wait": 800
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "shot": "room-b-5-paused-at-60"
+  },
+  {
+    "until": "frame.item.pageItem.paused === false",
+    "timeout": 30000
+  },
+  {
+    "wait": 6000
+  },
+  {
+    "eval": "'AT ' + Date.now() + ' ' + frame.item.pageItem.timePos.toFixed(2)"
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "shot": "room-b-6-playing"
+  },
+  {
+    "log": "the host moved on: this player follows to the next episode"
+  },
+  {
+    "until": "driver.item.pageReady('player') && frame.item.room.info !== null && frame.item.room.info.episode.episode_key !== '1' && frame.item.pageItem.roomed === true && frame.item.pageItem.loaded === true",
+    "timeout": 30000
+  },
+  {
+    "eval": "frame.item.pageItem.episodeLine + ' at ' + frame.item.pageItem.timePos.toFixed(1)"
+  },
+  {
+    "wait": 1500
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "wait": 500
+  },
+  {
+    "shot": "room-b-7-next-episode"
+  }
+]

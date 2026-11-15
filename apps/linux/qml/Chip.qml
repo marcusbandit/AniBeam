@@ -9,7 +9,10 @@ import QtQuick
 
 Corner {
     id: root
-    property string text: ""
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    property string text: msg ? words.t(msg, msgArgs) : ""
     property string icon: ""
     property color textColor: theme.text
     property bool small: false
@@ -20,6 +23,11 @@ Corner {
     property string hint: ""
     property real maxLabelWidth: -1
     signal clicked()
+    property string accessibleName: ""
+    Accessible.role: clickable ? Accessible.Button : Accessible.StaticText
+    Accessible.name: theme.spokenName(accessibleName, text, root, icon)
+    Accessible.description: hint
+    Accessible.onPressAction: if (clickable) clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 2 : 2.5) * 2
     implicitHeight: label.implicitHeight + theme.space(small ? 0.75 : 1.25) * 2

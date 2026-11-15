@@ -35,8 +35,8 @@ Item {
     readonly property bool wordy: line !== "" || helper !== "" || status !== ""
     readonly property bool stacked: wordy && width - slot.width - gutter < theme.space(60)
     width: parent ? parent.width : theme.space(100)
-    implicitHeight: stacked ? words.implicitHeight + pad + slot.height + pad * 2
-                            : Math.max(theme.space(12), words.implicitHeight + pad * 2, slot.height + pad * 2)
+    implicitHeight: stacked ? textColumn.implicitHeight + pad + slot.height + pad * 2
+                            : Math.max(theme.space(12), textColumn.implicitHeight + pad * 2, slot.height + pad * 2)
     Layout.fillWidth: true
 
     // The search highlight: a soft accent wash under the row, reaching past its sides into
@@ -50,7 +50,7 @@ Item {
         opacity: root.flash
     }
     Column {
-        id: words
+        id: textColumn
         x: 0
         y: root.stacked ? root.pad : Math.round((root.height - height) / 2)
         width: root.stacked ? root.width : Math.max(0, root.width - slot.width - root.gutter)

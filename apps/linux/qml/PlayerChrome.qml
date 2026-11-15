@@ -17,6 +17,7 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
+    objectName: "player-chrome"
     anchors.fill: parent
     // Where the controls tile starts, for the page's subtitle lift. Its geometry holds while
     // it is hidden, so this is the same number whether or not the chrome is up.
@@ -61,6 +62,35 @@ Item {
         }
     }
 
+    // ---- Watch together (#846): the header's mirror at the top right. Its button opens the
+    // room panel, and once in a room it names the room and how many are in it.
+    readonly property Item roomAnchor: roomTile
+    Tile {
+        id: roomTile
+        objectName: "player-room-tile"
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(1.5)
+        anchors.right: parent.right; anchors.top: parent.top
+        anchors.rightMargin: theme.grout; anchors.topMargin: theme.grout
+        width: roomButton.implicitWidth + padding * 2; height: roomButton.implicitHeight + padding * 2
+        opacity: page.chromeVisible ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -roomTile.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
+        Button {
+            id: roomButton
+            objectName: "player-room"
+            anchors.centerIn: parent
+            flat: !frame.room.inRoom
+            icon: "users"
+            text: frame.room.inRoom ? words.t("player-chrome-room", { code: frame.room.info.code, count: frame.room.info.members.length })
+                                    : words.t("player-chrome-watch-together")
+            takesFocus: false
+            onClicked: page.openRoomPanel()
+        }
+    }
+
     // ---- The seek preview: a second mpv core, nothing audible, moved by time-pos. It is
     // its own core rather than a thumbnail file, so it costs nothing on disk and answers
     // any position; it is declared above the video and below the island so it can never
@@ -98,6 +128,86 @@ Item {
         Label { id: stamp; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; height: theme.space(6); verticalAlignment: Text.AlignVCenter; role: "ledger" }
     }
 
+    // Whether the volume shows in the controls; a narrow window hides it (PlayerPage's
+    // setVolume then flashes the level).
+    readonly property bool volumeShown: volumeRow.visible
+
+    // ---- The overflow (#518). Below about 440 px the right-hand group no longer fits beside
+    // play, the skips and the mute button, and slid over them. Then the group folds into one
+    // More button that opens the frame's menu with the same actions; play, the skips and the
+    // mute button stay, and the volume gets back the room the group gave up.
+    //
+    // The group, one entry a button: its name, glyph and tip, whether it applies, whether it
+    // is lit, what it does from a given anchor, and its words in the menu when they differ
+    // from the tip. The buttons, the width the fold is decided on and the menu's rows all read
+    // this one list. Each field is a function, so a binding that calls one follows what it
+    // reads, and the list itself never changes, so the buttons are made once.
+    readonly property bool fullscreen: frame.hostWindow.visibility === Window.FullScreen
+    readonly property var group: [
+        // Shown with no tracks to choose as well: one audio track can still be out of sync.
+        { name: "player-delays", glyph: () => "clock", tip: () => words.t("player-chrome-delays"), shown: () => true,
+          active: () => page.subDelay !== 0 || page.audioDelay !== 0, run: anchor => page.openDelays(anchor) },
+        { name: "player-audio", glyph: () => "audio-lines", tip: () => words.t("player-chrome-audio"), shown: () => page.audioTracks.length > 1,
+          active: () => false, run: anchor => page.openAudioPicker(anchor) },
+        { name: "player-subs", glyph: () => "captions", tip: () => page.sid >= 0 ? words.t("player-chrome-subtitles") : words.t("player-chrome-subtitles-off"), shown: () => page.subTracks.length > 0,
+          active: () => page.sid >= 0, run: anchor => page.openSubPicker(anchor) },
+        { name: "player-cast", glyph: () => "cast", tip: () => page.casting ? words.t("player-chrome-casting-to", { device: page.castDevice.name }) : words.t("player-chrome-cast"), label: () => page.casting ? words.t("player-chrome-casting-to", { device: page.castDevice.name }) : words.t("player-chrome-cast"),
+          shown: () => true, active: () => page.casting, run: anchor => page.openCastPicker(anchor) },
+        { name: "player-mark", glyph: () => "check-check", tip: () => words.t("player-chrome-mark-watched"), shown: () => page.canMark,
+          active: () => false, run: () => page.markWatched() },
+        { name: "player-help", glyph: () => "keyboard", tip: () => words.t("player-chrome-shortcuts"), shown: () => true,
+          active: () => false, run: () => page.showHelp() },
+        { name: "player-fullscreen", glyph: () => root.fullscreen ? "minimize" : "maximize", tip: () => words.t("player-chrome-fullscreen"),
+          label: () => root.fullscreen ? words.t("player-chrome-exit-fullscreen") : words.t("player-chrome-fullscreen"), shown: () => true,
+          active: () => false, run: () => page.toggleFullscreen() }
+    ]
+    readonly property var shownGroup: group.filter(e => e.shown())
+    // What the row has between the mute button and a right-hand group `groupWidth` wide, with
+    // a gap on each side. Measured from the mute button, since a Row leaves a hidden child's x
+    // where it was. The volume takes its room from this, and the fold is decided on it.
+    function roomFor(groupWidth) { return bottomRow.width - (muteBtn.x + muteBtn.width) - groupWidth - 3 * bottomRow.spacing }
+    // The whole group's width when it shows: from which buttons apply, never read off the
+    // row, which is one button wide once folded, so reading it would be a binding loop.
+    readonly property real groupWidth: shownGroup.length * moreBtn.width + (shownGroup.length - 1) * rightGroup.spacing
+    // Folded once the whole group would leave the volume less than its readout, the point
+    // where the volume would otherwise go.
+    readonly property bool folded: roomFor(groupWidth) < volumeRow.readoutWidth
+    readonly property var menuRows: shownGroup.map(e => ({ text: e.label ? e.label() : e.tip(), icon: e.glyph(), action: () => e.run(moreBtn) }))
+    // While the menu is up the chrome stays, as it does for the pickers, and its rows follow
+    // the tracks, which can arrive after it opened.
+    property bool moreOpen: false
+    onMenuRowsChanged: if (moreOpen) frame.menuPanel.items = menuRows
+    function openMore() {
+        if (!moreOpen) page.openMenus++
+        moreOpen = true
+        var p = moreBtn.mapToItem(frame, moreBtn.width, -theme.space(1))
+        frame.openMenu(p.x, p.y, menuRows, true)
+    }
+    Connections {
+        target: frame.menuPanel
+        function onOpenChanged() {
+            if (frame.menuPanel.open || !root.moreOpen) return
+            root.moreOpen = false
+            page.openMenus--
+            page.showChrome()
+        }
+    }
+    // A fold or an unfold hides the button the menu, a picker or the delays were opened from,
+    // and they would point at where it was.
+    onFoldedChanged: {
+        if (moreOpen) frame.closeMenu()
+        page.closePopovers()
+    }
+    // A navigation (auto-next, Back) takes the page and this with it while the frame's menu
+    // stays, and its rows would call into a page that is gone. Focus is not handed back to
+    // the page going away.
+    Component.onDestruction: {
+        if (!moreOpen) return
+        moreOpen = false
+        frame.menuPanel.prevFocus = null
+        frame.closeMenu()
+    }
+
     // ---- Controls island: the time as a ledger line, the seek groove, then the buttons.
     Tile {
         id: controls
@@ -121,7 +231,7 @@ Item {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             height: elapsed.implicitHeight
             Label { id: elapsed; objectName: "player-elapsed"; anchors.left: parent.left; role: "ledger"; text: Fmt.clock(page.timePos) }
-            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1; text: page.speedLine(page.speed) }
+            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1 && !page.roomed; text: page.speedLine(page.speed) }
             Label { id: total; anchors.right: parent.right; role: "ledger"; color: theme.textDim; text: Fmt.clock(page.duration) }
         }
         // The bar is above the island's own hover MouseArea, so the hover that keeps the
@@ -141,24 +251,35 @@ Item {
             PlayerButton { objectName: "player-play"; glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
             PlayerButton { objectName: "player-next"; glyph: "skip-forward"; interactive: page.hasNext; tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNext() }
             Item { width: theme.space(2); height: 1 }
-            PlayerButton { objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
+            PlayerButton { id: muteBtn; objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             // Never on the keyboard: a click on it must leave the arrows to seek and the
             // Up and Down keys to step the volume by 5.
-            SliderRow { objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
+            // On a narrow window the track gives up width first, so the right-hand group
+            // never runs into it, and goes when a usable track no longer fits. The readout
+            // stays while it fits; when it goes, the page flashes the level a key sets.
+            SliderRow { id: volumeRow; objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1
+                // What is left between the mute button and the right-hand group, and what of
+                // that the track gets after the readout.
+                readonly property real free: root.roomFor(rightGroup.width)
+                readonly property real room: free - readoutWidth - spacing
+                trackWidth: Math.min(theme.space(24), Math.max(0, room))
+                trackShown: room >= theme.space(10)
+                visible: free >= readoutWidth
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
-            // The slot takes its height from what it holds, not from the row: the row
-            // takes its own height from its children, and parent.height here would be a loop.
-            Item { id: rightSlot; width: parent.width - x; height: rightGroup.height
-                anchors.verticalCenter: parent.verticalCenter
-                Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
-                    // Shown with no tracks to choose as well: one audio track can still be out of sync.
-                    PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
-                    PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: page.openAudioPicker(audioBtn) }
-                    PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: page.openSubPicker(subBtn) }
-                    PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
-                    PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; onClicked: page.showHelp() }
-                    PlayerButton { objectName: "player-fullscreen"; glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
+        // The right-hand group sits on the row's right edge rather than in the row: a slot
+        // sized to what the row has left reached zero width on a narrow window, a Row stops
+        // placing a child with no width, and the slot then stayed where it was.
+        Row { id: rightGroup; anchors.right: bottomRow.right; anchors.verticalCenter: bottomRow.verticalCenter; spacing: theme.space(1)
+            Repeater {
+                model: root.group
+                PlayerButton { id: groupBtn; required property var modelData; objectName: modelData.name
+                    glyph: modelData.glyph(); tip: modelData.tip(); active: modelData.active()
+                    visible: !root.folded && modelData.shown(); onClicked: modelData.run(groupBtn) }
+            }
+            // The whole group in one button on a window too narrow for it. Lit like
+            // the clock when a delay is set, since the clock it holds would be.
+            PlayerButton { id: moreBtn; objectName: "player-more"; glyph: "ellipsis"; tip: "More"; visible: root.folded; active: root.moreOpen || page.subDelay !== 0 || page.audioDelay !== 0; onClicked: root.openMore() } }
     }
 
     // ---- Auto-next. Not chrome: it stays on screen once the outro starts even after the
@@ -178,7 +299,7 @@ Item {
         Row {
             id: nextRow
             spacing: theme.space(1.5)
-            Button { anchors.verticalCenter: parent.verticalCenter; text: "Stay"; flat: true; takesFocus: false; onClicked: page.stay() }
+            Button { anchors.verticalCenter: parent.verticalCenter; msg: "player-chrome-stay"; flat: true; takesFocus: false; onClicked: page.stay() }
             Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 width: nextLabel.implicitWidth + theme.space(8); height: theme.controlHeight
@@ -190,7 +311,8 @@ Item {
                         onRunningChanged: if (!running) countFill.width = 0 } }
                 Label { id: nextLabel; anchors.centerIn: parent; width: Math.min(implicitWidth, theme.space(90)); elide: Text.ElideRight
                     text: page.nextLine; role: "title"; font.pointSize: theme.typeNormal }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext() }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                    Accessible.onPressAction: page.openNext() }
             }
         }
     }
@@ -212,10 +334,32 @@ Item {
         width: skipButton.implicitWidth + padding * 2; height: skipButton.implicitHeight + padding * 2
         MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -skipTile.padding }
         Button { id: skipButton; objectName: root.skipping && root.skipping.kind === "Outro" ? "player-skip-outro" : "player-skip-intro"; anchors.centerIn: parent
-            text: root.skipping && root.skipping.kind === "Outro" ? "Skip outro" : "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
+            text: root.skipping && root.skipping.kind === "Outro" ? words.t("player-chrome-skip-outro") : words.t("player-chrome-skip-intro"); icon: "chevrons-right"; primary: true; takesFocus: false
             onClicked: page.skipAndHide(root.skipping, page.mapFromItem(null, skipHover.point.scenePosition))
             // Where the pointer is for the click, so the page knows the spot it then rests on.
             HoverHandler { id: skipHover } }
+    }
+
+    // ---- Casting (#756): the picture is on the TV, so the middle says where it went
+    Tile {
+        id: castTile
+        objectName: "player-cast-tile"
+        visible: page.casting
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(5)
+        anchors.centerIn: parent
+        width: castCol.implicitWidth + padding * 2; height: castCol.implicitHeight + padding * 2
+        MouseArea { anchors.fill: parent; anchors.margins: -castTile.padding }
+        Column {
+            id: castCol
+            anchors.centerIn: parent
+            spacing: theme.space(2)
+            Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "cast"; size: theme.space(10) }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-device"; role: "title"; font.pointSize: theme.typeNormal
+                text: page.casting ? words.t("player-chrome-playing-on", { device: page.castDevice.name }) : "" }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-line"; role: "ui"; color: theme.textDim; text: page.castLine }
+        }
     }
 
     // ---- Replay: the last frame is still on screen because keep-open holds it, so this sits
@@ -224,7 +368,7 @@ Item {
         objectName: "player-replay"
         visible: page.replayVisible
         anchors.centerIn: parent
-        primary: true; icon: "rotate-ccw"; text: "Replay"; takesFocus: false
+        primary: true; icon: "rotate-ccw"; msg: "player-chrome-replay"; takesFocus: false
         onClicked: frame.nav.replace("player", { file: page.props.file }, page.title)
     }
 }

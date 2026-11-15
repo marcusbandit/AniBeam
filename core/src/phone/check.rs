@@ -8,8 +8,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use crate::contract::*;
-use crate::core::Core;
-use crate::net::{HttpRequest, Method};
+use crate::downloads::Downloads;
+use crate::foundation::services::Services;
+use crate::i18n::tr;
+use crate::net::HttpRequest;
 
 const STEP: Duration = Duration::from_secs(6);
 
@@ -25,10 +27,10 @@ const ALWAYS: [(&str, &str); 2] = [
 
 /// The hosts a search on this phone goes to, one each, with the site's front page to fetch
 /// and the port its searches connect to.
-fn searched_hosts(core: &Core) -> Vec<(String, String, u16)> {
+fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
     let mut out: Vec<(String, String, u16)> = Vec::new();
     // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
-    for (_, e) in super::searched(core) {
+    for (_, e) in super::searched(services) {
         let host = crate::repos::index::host_of(&e.url);
         let port = port_of(&e.url);
         // By host and port: a Prowlarr and a Jackett on one machine are two servers.
@@ -81,14 +83,21 @@ async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
     )
     .await
     {
-        Ok(Ok(_)) => (true, "connected".into(), ms(start)),
-        Ok(Err(e)) => (false, format!("refused: {e}"), ms(start)),
-        Err(_) => (false, "no answer (dropped)".into(), ms(start)),
+        Ok(Ok(_)) => (true, tr("core-phone-check-connected", &[]), ms(start)),
+        Ok(Err(e)) => (
+            false,
+            tr(
+                "core-phone-check-refused",
+                &[("error", e.to_string().into())],
+            ),
+            ms(start),
+        ),
+        Err(_) => (false, tr("core-phone-check-dropped", &[]), ms(start)),
     }
 }
 
 async fn host(
-    core: &Core,
+    services: &Services,
     doh: &crate::net::doh::Doh,
     name: &str,
     url: &str,
@@ -117,7 +126,10 @@ async fn host(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{label}: finding its address"),
+                tr(
+                    "core-phone-check-finding",
+                    &[("label", label.as_str().into())],
+                ),
                 !found.is_empty(),
                 shown,
                 ms(start),
@@ -125,24 +137,46 @@ async fn host(
             ips.extend(found);
         }
         Ok(Err(e)) => out.push(line(
-            format!("{label}: finding its address"),
+            tr(
+                "core-phone-check-finding",
+                &[("label", label.as_str().into())],
+            ),
             false,
-            format!("failed: {e}"),
+            tr(
+                "core-phone-check-failed",
+                &[("error", e.to_string().into())],
+            ),
             ms(start),
         )),
         Err(_) => out.push(line(
-            format!("{label}: finding its address"),
+            tr(
+                "core-phone-check-finding",
+                &[("label", label.as_str().into())],
+            ),
             false,
-            "no answer".into(),
+            tr("core-phone-check-no-answer", &[]),
             ms(start),
         )),
     }
 
-    let doh_line = format!("{label}: finding it privately");
+    let doh_line = tr(
+        "core-phone-check-private",
+        &[("label", label.as_str().into())],
+    );
     if name.parse::<IpAddr>().is_ok() {
-        out.push(line(doh_line, true, "skipped, an address".into(), 0));
+        out.push(line(
+            doh_line,
+            true,
+            tr("core-phone-check-skipped-address", &[]),
+            0,
+        ));
     } else if crate::net::doh::is_home_name(name) {
-        out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
+        out.push(line(
+            doh_line,
+            true,
+            tr("core-phone-check-skipped-home", &[]),
+            0,
+        ));
     } else {
         let start = Instant::now();
         match doh.find(name).await {
@@ -164,13 +198,13 @@ async fn host(
             crate::net::doh::Found::NoRecord => out.push(line(
                 doh_line,
                 true,
-                "no public address, left to this network's DNS".into(),
+                tr("core-phone-check-no-record", &[]),
                 ms(start),
             )),
             crate::net::doh::Found::NoAnswer => out.push(line(
                 doh_line,
                 false,
-                "no resolver answered".into(),
+                tr("core-phone-check-no-resolver", &[]),
                 ms(start),
             )),
         }
@@ -178,40 +212,45 @@ async fn host(
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
         let (ok, detail, t) = tcp(*ip, port).await;
-        out.push(line(format!("{label}: reaching {ip}"), ok, detail, t));
+        let step = tr(
+            "core-phone-check-reaching",
+            &[
+                ("label", label.as_str().into()),
+                ("ip", ip.to_string().into()),
+            ],
+        );
+        out.push(line(step, ok, detail, t));
     }
 
     let start = Instant::now();
-    let answer = core
+    let answer = services
         .http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".into(),
-                    crate::releases::fetch::USER_AGENT.into(),
-                ),
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", crate::releases::fetch::USER_AGENT)
                 // Cloudflare's resolver refuses anything but exactly its own type.
-                (
-                    "Accept".into(),
+                .header(
+                    "Accept",
                     if url.contains("dns-query") {
                         "application/dns-json"
                     } else {
                         "*/*"
-                    }
-                    .into(),
-                ),
-            ],
-            body: None,
-            timeout: Some(STEP * 2),
-        })
+                    },
+                )
+                .timeout(STEP * 2),
+        )
         .await;
     match answer {
         Ok(r) => out.push(line(
             format!("{label}: {fetch}"),
             r.is_success(),
-            format!("HTTP {}, {} bytes", r.status, r.body.len()),
+            tr(
+                "core-phone-check-http",
+                &[
+                    ("status", r.status.to_string().into()),
+                    ("bytes", r.body.len().into()),
+                ],
+            ),
             ms(start),
         )),
         Err(e) => out.push(line(
@@ -224,17 +263,29 @@ async fn host(
     out
 }
 
+/// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
+pub(crate) fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
+    Ok(Reply::PhoneNetCheck {
+        checks: downloads.services.handle.block_on(run(downloads)),
+    })
+}
+
 /// Every check, hosts side by side so the whole run takes about as long as the slowest.
-pub async fn run(core: &Core) -> Vec<NetCheck> {
+pub async fn run(downloads: &std::sync::Arc<Downloads>) -> Vec<NetCheck> {
     let client = match crate::net::resolver_client() {
         Ok(c) => c,
-        Err(e) => return vec![line("setup".into(), false, e.to_string(), 0)],
+        Err(e) => {
+            return vec![line(
+                tr("core-phone-check-setup", &[]),
+                false,
+                e.to_string(),
+                0,
+            )];
+        }
     };
     let doh = crate::net::doh::Doh::new(client);
-    let Ok(owner) = core.owner() else {
-        return Vec::new();
-    };
-    let mut hosts = searched_hosts(core);
+    let owner = downloads.clone();
+    let mut hosts = searched_hosts(&downloads.services);
     hosts.extend(
         ALWAYS
             .iter()
@@ -245,8 +296,10 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         .into_iter()
         .map(|(name, url, port)| {
             let (owner, doh) = (owner.clone(), doh.clone());
-            core.handle
-                .spawn(async move { host(&owner, &doh, &name, &url, port).await })
+            downloads
+                .services
+                .handle
+                .spawn(async move { host(&owner.services, &doh, &name, &url, port).await })
         })
         .collect();
     let mut out = Vec::new();

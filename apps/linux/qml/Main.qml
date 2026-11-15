@@ -54,6 +54,8 @@ Window {
     // Until the engine's first push every token is absent, so the ground is the neutral one
     // until Theme.ready rather than Tokens' missing-token magenta.
     Tokens { id: theme }
+    // The words every component below shows, by message ID (#792)
+    Words { id: words }
     // The tokens the native poster cards draw with (CardFace, #289), handed over at start and
     // again whenever the theme moves
     QtObject {
@@ -127,7 +129,7 @@ Window {
 
     property bool firstFrame: false
     property bool settled: false
-    onAfterAnimating: if (!firstFrame) { firstFrame = true; Dev.mark("first frame (empty window)"); settle.start() }
+    onAfterAnimating: if (!firstFrame) { firstFrame = true; Dev.mark("first frame (empty window)"); settle.start() } // i18n: none
     onWidthChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
     onHeightChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
     // The compositor's size arrives as a resize right after the window maps, and the line
@@ -151,7 +153,7 @@ Window {
         active: Theme.ready && Door.ready
         sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
-            Dev.mark("frame built")
+            Dev.mark("frame built") // i18n: none
             // Home is the default page, so its props ride only when a launch actually
             // handed some over; every other page always replaces.
             var homeWithProps = window.pageName === "home" && Shell.props !== ""
@@ -170,12 +172,14 @@ Window {
             // drawer's rise has the whole shoot delay to settle at its open height.
             if (window.pageAction === "drawer" && item.toggleDrawer) item.toggleDrawer()
             if (window.pageAction === "connect" && item.openConnect) item.openConnect("Anilist")
+            // "onboarding" or "onboarding<N>" opens the first run at step N (0 to 4)
+            if (window.pageAction.indexOf("onboarding") === 0 && item.openOnboarding) item.openOnboarding(parseInt(window.pageAction.slice(10)) || 0)
             window.maybeShoot()
         }
     }
     Component { id: frameComponent; Frame { hostWindow: window } }
     Component { id: tokensPage; TokensPage {} }
-    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "AniBeam"
+    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "Anibeam"
 
     // --shoot <png>: one capture of the frame after settle, then quit. grabToImage renders
     // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are
@@ -187,7 +191,7 @@ Window {
         if (window.settled && Theme.ready && frame.item && (Shell.shoot !== "" || Shell.driveOut !== ""))
             shootTimer.start()
     }
-    onSettledChanged: { if (window.settled) Dev.mark("window settled"); window.maybeShoot() }
+    onSettledChanged: { if (window.settled) Dev.mark("window settled"); window.maybeShoot() } // i18n: none
     Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }
     Timer {
         id: shootTimer

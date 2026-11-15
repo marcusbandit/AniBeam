@@ -1,7 +1,7 @@
-//! The qBittorrent AniBeam runs itself, for someone who has none of their
-//! own: `qbittorrent-nox` with a profile under AniBeam's data, its Web UI on
+//! The qBittorrent Anibeam runs itself, for someone who has none of their
+//! own: `qbittorrent-nox` with a profile under Anibeam's data, its Web UI on
 //! loopback only and open to loopback without a login. It keeps running when
-//! AniBeam quits, because the subscriptions download through its RSS rules;
+//! Anibeam quits, because the subscriptions download through its RSS rules;
 //! the next start finds it up and uses it as it is.
 
 use std::path::{Path, PathBuf};
@@ -53,12 +53,6 @@ pub fn profile_dir(data_dir: &str) -> PathBuf {
     Path::new(data_dir).join("qbittorrent")
 }
 
-/// Where finished downloads go unless anirss names a folder: the same
-/// `~/Downloads/Anime` anirss itself defaults to.
-pub fn save_dir() -> Option<PathBuf> {
-    Some(std::env::home_dir()?.join("Downloads").join("Anime"))
-}
-
 /// The Web UI port an earlier setup wrote into the profile, if there was one.
 pub fn configured_port(profile: &Path) -> Option<u16> {
     let text = std::fs::read_to_string(config_file(profile)).ok()?;
@@ -83,7 +77,7 @@ fn log_file(profile: &Path) -> PathBuf {
     profile.join("qbittorrent-nox.log")
 }
 
-/// Writes the keys AniBeam relies on into the profile's config and leaves
+/// Writes the keys Anibeam relies on into the profile's config and leaves
 /// every other key as qBittorrent last saved it. The save folder is only
 /// filled in when the config has none, so a folder picked later sticks.
 pub fn write_config(profile: &Path, port: u16, save: Option<&Path>) -> std::io::Result<()> {
@@ -161,9 +155,9 @@ fn set_ini(text: &str, section: &str, key: &str, value: &str, overwrite: bool) -
     lines.join("\n") + "\n"
 }
 
-/// Starts it on its own, outside AniBeam's process group, so it outlives
+/// Starts it on its own, outside Anibeam's process group, so it outlives
 /// the app. Its output goes to a log in the profile. A task reaps it if it
-/// exits while AniBeam still runs.
+/// exits while Anibeam still runs.
 pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
     std::fs::create_dir_all(profile)?;
     let log = std::fs::OpenOptions::new()
@@ -191,7 +185,7 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
 }
 
 /// The last lines of the profile's log, for a failure message.
-pub fn log_tail(profile: &Path) -> String {
+pub fn log_tail(profile: &Path) -> Option<String> {
     let text = std::fs::read_to_string(log_file(profile)).unwrap_or_default();
     let lines: Vec<&str> = text
         .lines()
@@ -199,12 +193,9 @@ pub fn log_tail(profile: &Path) -> String {
         .filter(|l| !l.is_empty())
         .collect();
     if lines.is_empty() {
-        return String::new();
+        return None;
     }
-    format!(
-        ": {}",
-        lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / ")
-    )
+    Some(lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / "))
 }
 
 #[cfg(test)]

@@ -18,8 +18,13 @@
 //
 // A page that picks several cards at once sets `selectable`: pressing and holding a card, or
 // Ctrl+click, asks for it to be picked (`selectToggled`), and while the page is `selecting`
-// a plain click, Return or Space picks too instead of opening. A picked card wears a filled
-// accent check top left and an accent edge; while selecting, the others show an empty ring.
+// a plain click, Return or Space picks too instead of opening. Ctrl+Space picks the focused
+// card from the keyboard. A page that also sets `ranges` takes Shift+click and Shift+Space
+// as a pick of every card from the last one picked to this one (`selectRange`). Holding the
+// press paints: the page stays put and each card the pointer crosses is picked too, the edges
+// of the view scrolling it on (PageScroll.brushBegin). A picked card
+// wears a filled accent check top left and an accent edge; while selecting, the others show
+// an empty ring.
 //
 // An airing countdown is one treatment everywhere: "Episode 2" in the dim ledger, then a
 // small clock and the time ("4d 18h") in accent text.
@@ -39,6 +44,10 @@ import com.marcusrosado.AniBeam
 Item {
     id: root
     property var item: ({})
+    Accessible.role: Accessible.Button
+    Accessible.name: item.title || (item.titles ? item.titles.folder || "" : "")
+    Accessible.focusable: true
+    Accessible.onPressAction: root.selecting ? root.selectToggled() : root.opened()
     property real posterWidth: theme.posterWidth
     property real nowMs: Date.now()
     // Overrides for the pages that own the card's story: the feed says what
@@ -68,16 +77,22 @@ Item {
     property bool selectable: false
     property bool selecting: false
     property bool selected: false
+    property bool ranges: false
     signal opened()
     signal played()
     signal dismissed()
     signal selectToggled()
+    signal selectRange()
     // A stop for the page's arrow keys (GridKeys), and a Tab stop after the page's controls
     readonly property bool gridStop: true
     activeFocusOnTab: true
     Keys.onReturnPressed: root.selecting ? root.selectToggled() : root.opened()
     Keys.onEnterPressed: root.selecting ? root.selectToggled() : root.opened()
-    Keys.onSpacePressed: root.selecting ? root.selectToggled() : root.played()
+    Keys.onSpacePressed: function(event) {
+        if (root.selectable && root.ranges && (event.modifiers & Qt.ShiftModifier)) root.selectRange()
+        else if (root.selectable && (root.selecting || (event.modifiers & Qt.ControlModifier))) root.selectToggled()
+        else root.played()
+    }
     Keys.onDeletePressed: if (root.dismissible) root.dismissed()
 
     readonly property real radius: theme.radiusTile
@@ -125,12 +140,48 @@ Item {
         onPressed: root.forceActiveFocus()
         onClicked: function(mouse) {
             tipIntent.stop(); frame.hideTip()
-            if (root.selectable && (root.selecting || (mouse.modifiers & Qt.ControlModifier))) root.selectToggled()
+            if (root.selectable && root.ranges && (mouse.modifiers & Qt.ShiftModifier)) root.selectRange()
+            else if (root.selectable && (root.selecting || (mouse.modifiers & Qt.ControlModifier))) root.selectToggled()
             else root.opened()
         }
-        // A held press picks the card and starts picking; Qt sends no click after it
-        onPressAndHold: if (root.selectable) { tipIntent.stop(); frame.hideTip(); root.selectToggled() }
+        // A held press picks the card and starts picking; Qt sends no click after it. From
+        // then the press is a brush (#695): it keeps the pointer, so the page no longer
+        // drags with it, and every card it passes over is picked too (or unpicked, when
+        // the held card was). The page's PageScroll finds the cards and scrolls at its edges.
+        onPressAndHold: function(mouse) {
+            if (!root.selectable) return
+            tipIntent.stop(); frame.hideTip()
+            press.paint = !root.selected
+            root.selectToggled()
+            press.host = root.brushHost()
+            press.painting = true
+            if (press.host) press.host.brushBegin(press.mapToItem(null, mouse.x, mouse.y), press.paint)
+        }
+        onPositionChanged: function(mouse) {
+            if (press.painting && press.host) press.host.brushMove(press.mapToItem(null, mouse.x, mouse.y))
+        }
+        onReleased: press.endBrush()
+        onCanceled: press.endBrush()
+        preventStealing: painting
+        property bool painting: false
+        property bool paint: true
+        property var host: null
+        function endBrush() {
+            if (!press.painting) return
+            press.painting = false
+            // On a page teardown the scroller can go first
+            try { if (press.host) press.host.brushEnd() } catch (e) {}
+            press.host = null
+        }
+        Component.onDestruction: press.endBrush()
     }
+    // The scroller above this card that paints picks: a PageScroll
+    function brushHost() {
+        for (var p = root.parent; p; p = p.parent) if (p.brushBegin !== undefined) return p
+        return null
+    }
+    // Read by the scroller's hit test
+    readonly property bool brushable: selectable
 
     // ---- The pane under the poster: only while there is no poster to show. Under a decoded
     // poster its light edge showed through the poster's antialiased corners as a pale rim.
@@ -176,7 +227,8 @@ Item {
         nowMs: root.nowMs
         lift: root.lift
         focused: root.activeFocus
-        hideCode: root.selecting || root.selected
+        // The pick check takes the corner; the tag (list status, in library) sits right of it
+        leftInset: root.selecting || root.selected ? Math.round(theme.space(6)) + theme.space(1) : 0
         rightInset: dismissLoader.item && dismissLoader.item.visible ? dismissLoader.item.width + theme.space(1) : 0
     }
 
@@ -196,13 +248,13 @@ Item {
                 objectName: root.objectName === "hero-tile" ? "hero-play" : ""
                 primary: true
                 icon: "play"
-                text: "Play"
+                msg: "action-play"
                 onClicked: root.played()
             }
         }
     }
 
-    // ---- Picked: an accent edge, and the check top left where the episode code was; while
+    // ---- Picked: an accent edge, and the check top left, the episode code tag beside it; while
     // picking, an empty ring on the cards not picked yet. Built only while picking.
     Loader {
         anchors.fill: parent
@@ -224,8 +276,9 @@ Item {
                 radius: width / 2
                 antialiasing: true
                 color: root.selected ? theme.accent : Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.55)
-                border.color: root.selected ? theme.accent : Qt.rgba(1, 1, 1, 0.7)
-                border.width: root.selected ? 0 : 1.5
+                // A dark rim on the filled check, so it still reads on a pale poster
+                border.color: root.selected ? Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.6) : Qt.rgba(1, 1, 1, 0.7)
+                border.width: 1.5
                 Icon { visible: root.selected; anchors.centerIn: parent; glyph: "check"; size: Math.round(parent.width * 0.66); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
             }
         }
@@ -256,7 +309,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.dismissed()
             }
-            Tooltip { text: "Not interested" }
+            Tooltip { msg: "card-not-interested" }
         }
     }
 }

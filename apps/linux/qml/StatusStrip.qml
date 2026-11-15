@@ -15,7 +15,7 @@ Item {
     property int unseenErrors: 0
     signal clicked()
 
-    height: theme.space(7) + theme.grout
+    height: theme.textSpace(7) + theme.grout
 
     Corner {
         id: tileBox
@@ -76,7 +76,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.unseenErrors > 0
             width: visible ? implicitWidth : 0
-            text: root.unseenErrors + (root.unseenErrors === 1 ? " error" : " errors")
+            msg: "status-strip-errors"
+            msgArgs: ({ count: root.unseenErrors })
             icon: "circle-alert"
             small: true
             color: theme.redSoft
@@ -84,6 +85,9 @@ Item {
         }
     }
     MouseArea {
+        Accessible.role: Accessible.Button
+        Accessible.onPressAction: root.clicked()
+        Accessible.name: theme.nameNear(parent)
         id: mouse
         anchors.fill: tileBox
         hoverEnabled: true

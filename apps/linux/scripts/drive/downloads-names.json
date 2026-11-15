@@ -14,9 +14,9 @@
  { "eval": "var p = frame.item.pageItem; var rows = p.suggestRows; rows.length ? JSON.stringify(rows.slice(0, 3).map(function(r) { return r.lib ? ['lib', p.nameOfCard(r.lib, p.query)] : ['ani', p.nameOfHit(r.ani, p.query), r.ani.romaji, r.ani.english] })) : 'none'", "as": "names" },
  { "eval": "var p = frame.item.pageItem; var row = p.suggestRows.filter(function(r) { return r.ani })[0] || p.suggestRows[0]; p.pickSuggestion(row); JSON.stringify([p.getShow.title, p.getShow.queries])", "as": "show" },
  { "wait": 1000 },
- { "click": "provider-erai" },
+ { "click": "provider-keyed" },
  { "wait": 15000 },
- { "eval": "var p = frame.item.pageItem; var r = p.getResults['erai'] || {}; r.state + ':' + (r.items || []).length", "as": "erai" },
+ { "eval": "var p = frame.item.pageItem; var r = p.getResults['keyed'] || {}; r.state + ':' + (r.items || []).length", "as": "keyed" },
  { "eval": "var p = frame.item.pageItem; var t = p.torrents.filter(function(x) { return (x.progress || 0) < 1 })[0]; if (t) { var q = {}; q[t.hash] = { action: 'Start', at: Date.now() }; p.pending = q } t ? t.name.slice(0, 30) : 'none'", "as": "busy" },
  { "wait": 300 },
  { "shot": "names-02-show-busy" }

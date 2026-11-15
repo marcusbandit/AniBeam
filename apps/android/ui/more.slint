@@ -5,11 +5,20 @@
 // over one pane of rows closed by hairlines.
 
 import { Theme } from "theme.slint";
-import { AppData } from "data.slint";
+import { AppData, EpisodeVersionLine } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
 import { Leaf } from "panes.slint";
+import { NotifyRow } from "notify.slint";
+import { SubtitleRows } from "subtitles.slint";
+import { StatsBody, StatsData } from "stats.slint";
+import { BackupData, DataBody } from "backup.slint";
+import { ActivityBody } from "activity.slint";
+import { MoveData, MoveWaiting } from "listmove.slint";
+import { LookBody, LookData } from "look.slint";
+import { LangData, LangList } from "lang.slint";
+import { Tr } from "tr.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -18,6 +27,20 @@ export global Ask {
     // A poster of this phone's held down: its series and its title. -1 is none.
     in-out property <int> menu-id: -1;
     in-out property <string> menu-title;
+    // An episode kept in more than one release: its versions chip lists them to pick from.
+    in-out property <bool> versions-open;
+    in-out property <string> versions-title;
+    in-out property <[EpisodeVersionLine]> versions;
+    // The versions are the other device's, so a pick streams from there.
+    in-out property <bool> versions-remote;
+    // The file the row plays now, marked in the list.
+    in-out property <int> versions-current;
+    // An episode row held down: its code and title, and what marking it needs.
+    in-out property <bool> mark-open;
+    in-out property <string> mark-title;
+    in-out property <float> mark-number;
+    in-out property <int> mark-season;
+    in-out property <bool> mark-watched;
 }
 
 // A setting the search found: the section it lives in, its label, and the section's name.
@@ -30,7 +53,8 @@ export struct SettingHit {
 // Where More is: the index or one section, and the search over every setting.
 export global Settings {
     // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
-    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon.
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity, 11 Appearance,
+    // 12 Subtitles, 13 Language.
     in-out property <int> section: -1;
     in-out property <string> query;
     in property <[SettingHit]> hits;
@@ -46,43 +70,49 @@ export global Settings {
 
 // How each section stands right now, for its row in the index and its page's head.
 global Status {
-    out property <string> accounts: AppData.trackers-line == "" ? "Reading..." : AppData.trackers-line == "Not signed in" ? "No tracker connected" : "Syncing to " + AppData.trackers-line;
+    out property <string> accounts: AppData.trackers-line == "" ? Tr.t("common-reading") : AppData.trackers-line;
     out property <bool> accounts-warn: AppData.sign-in-failed;
-    out property <string> downloads: (AppData.wifi-only ? "Wi-Fi only" : "Wi-Fi and mobile data") + ", " + (AppData.limit-on ? "capped at " + AppData.limit-label : "no cap");
-    out property <string> streaming: AppData.stream-quality == 0 ? "Auto, 720p on mobile data" : AppData.stream-quality == 1 ? "The original file, every time" : "Converted to " + AppData.stream-qualities[AppData.stream-quality];
-    out property <string> sites: RepoData.repos.length == 0 && RepoData.on-count == 0 ? "No repo yet" : (RepoData.on-count == 1 ? "1 site on" : RepoData.on-count + " sites on") + (RepoData.repos.length == 1 ? ", from 1 repo" : RepoData.repos.length > 1 ? ", from " + RepoData.repos.length + " repos" : "");
+    out property <string> downloads: AppData.wifi-only
+        ? (AppData.limit-on ? Tr.s("more-dl-status-wifi-cap", "cap", AppData.limit-label) : Tr.t("more-dl-status-wifi"))
+        : (AppData.limit-on ? Tr.s("more-dl-status-mobile-cap", "cap", AppData.limit-label) : Tr.t("more-dl-status-mobile"));
+    out property <string> streaming: AppData.stream-quality == 0 ? Tr.t("more-stream-status-auto") : AppData.stream-quality == 1 ? Tr.t("more-stream-status-original") : Tr.s("more-stream-status-converted", "quality", AppData.stream-qualities[AppData.stream-quality]);
+    out property <string> sites: RepoData.repos.length == 0 && RepoData.on-count == 0 ? Tr.t("more-sites-status-none") : RepoData.repos.length == 0 ? Tr.n("more-sites-status-on", "sites", RepoData.on-count) : Tr.n2("more-sites-status-on-from", "sites", RepoData.on-count, "repos", RepoData.repos.length);
     out property <bool> sites-warn: RepoData.repos.length > 0 && RepoData.on-count == 0;
-    out property <string> connection: AppData.checking ? "Checking..." : AppData.checks.length == 0 ? "Not checked yet" : AppData.check-failed == 0 ? "Every step went through" : AppData.check-failed + " of " + AppData.checks.length + " steps failed";
+    out property <string> connection: AppData.checking ? Tr.t("common-checking") : AppData.checks.length == 0 ? Tr.t("more-conn-status-unchecked") : AppData.check-failed == 0 ? Tr.t("more-conn-status-ok") : Tr.n2("more-conn-status-failed", "failed", AppData.check-failed, "total", AppData.checks.length);
     out property <bool> connection-warn: !AppData.checking && AppData.check-failed > 0;
-    out property <string> computer: AppData.host-result != "" ? AppData.host-result : "Not connected yet";
+    out property <string> computer: AppData.host-result != "" ? AppData.host-result : Tr.t("more-computer-status-none");
     out property <bool> computer-warn: AppData.host-tone == 1;
     out property <string> about: AppData.version;
-    out property <string> icon: ["Default", "Dark", "Line art"][AppData.app-icon];
+    out property <string> icon: [Tr.t("more-icon-default"), Tr.t("more-icon-dark"), Tr.t("more-icon-line")][AppData.app-icon];
+    out property <string> subtitles: Tr.t("more-subs-status");
+    out property <string> data: BackupData.busy ? Tr.t("common-working") : Tr.t("more-data-status");
+    out property <string> activity: Tr.t("more-activity-status");
+    out property <string> language: LangData.pick < 0 ? Tr.s("more-language-phone", "lang", LangData.phone) : LangData.langs[LangData.pick].name;
+    out property <string> look: [Tr.t("look-dark"), Tr.t("look-light"), Tr.t("more-look-status-phone")][LookData.mode];
+    out property <string> stats: StatsData.loaded && !StatsData.empty ? Tr.ns2("more-stats-status", "count", StatsData.hours.to-float(), "hours", StatsData.hours, "year", StatsData.years[StatsData.year-index]) : Tr.t("more-stats-status-empty");
 }
 
-// The other device's address, editable in place, with its last test underneath.
-component HostRow inherits Rectangle {
-    height: column.preferred-height;
-    column := VerticalLayout {
-        padding: Theme.pad;
-        spacing: Theme.unit * 3;
-        Text {
-            text: "Your computer's AniBeam";
-            color: Theme.text;
-            font-family: Theme.strong-face;
-        }
-        Text {
-            text: "Its library shows in Library, and its episodes play here. A name like banditbox or an address like 100.94.40.21.";
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        Field {
-            text <=> AppData.host-address;
-            figure: true;
-            placeholder: "banditbox:8790";
-        }
-        if AppData.host-result != "": HorizontalLayout {
+// The computer's address, editable in place, with its last test underneath. More shows it under
+// its heading; onboarding asks for it on a step of its own (#736).
+export component HostField inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    Field {
+        text <=> AppData.host-address;
+        figure: true;
+        placeholder: Tr.t("more-computer-placeholder");
+    }
+    if AppData.host-person != "": Text {
+        text: AppData.host-person;
+        color: Theme.text;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    // Its height is its own row's at the width set outright, so a long result that wraps
+    // onto several lines pushes the buttons down rather than under the card's edge (#935).
+    if AppData.host-result != "": Rectangle {
+        height: result.preferred-height;
+        result := HorizontalLayout {
+            width: parent.width;
             spacing: Theme.unit * 2;
             Rectangle {
                 y: (parent.height - self.height) / 2;
@@ -99,21 +129,41 @@ component HostRow inherits Rectangle {
                 wrap: word-wrap;
             }
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            Button {
-                text: "Test";
-                small: true;
-                clicked => { AppData.test-host(AppData.host-address); }
-            }
-            Button {
-                text: "Save";
-                small: true;
-                primary: true;
-                clicked => { AppData.save-host(AppData.host-address); }
-            }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: Tr.t("common-test");
+            small: true;
+            clicked => { AppData.test-host(AppData.host-address); }
         }
+        Button {
+            text: Tr.t("common-save");
+            small: true;
+            primary: true;
+            clicked => { AppData.save-host(AppData.host-address); }
+        }
+    }
+}
+
+component HostRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 3;
+        Text {
+            text: Tr.t("more-set-computer");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("more-computer-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HostField { }
     }
 }
 
@@ -148,7 +198,7 @@ component SourceItem inherits Rectangle {
         x: parent.width - self.width - Theme.pad;
         y: (parent.height - self.height) / 2;
         width: self.min-width;
-        text: "Remove";
+        text: Tr.t("common-remove");
         small: true;
         danger: true;
         clicked => { root.remove(); }
@@ -286,6 +336,47 @@ component IconChoice inherits Rectangle {
 
 // One section as its own page: the pill back to the index, the section's name with how it
 // stands, then its settings. `reveal` scrolls a setting the search landed on into view.
+// A number set with a slider: the row says what it is and where it stands, the slider sits
+// under it, and each whole step is passed on.
+component NumberRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> helper;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <int> at;
+    in property <bool> last;
+    callback moved(int);
+    ListRow {
+        label: root.label;
+        value: root.value;
+        helper: root.helper;
+        last: true;
+    }
+    Rectangle {
+        height: slider-column.preferred-height;
+        slider-column := VerticalLayout {
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-bottom: Theme.unit * 3;
+            Slider {
+                minimum: root.minimum;
+                maximum: root.maximum;
+                value: root.at;
+                moved(v) => {
+                    if (Math.round(v) != root.at) {
+                        root.moved(Math.round(v));
+                    }
+                }
+            }
+        }
+    }
+    if !root.last: Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
 component SectionPage inherits Rectangle {
     in property <string> title;
     in property <string> note;
@@ -294,7 +385,11 @@ component SectionPage inherits Rectangle {
         flick.content-y = Math.max(Math.min(0px, flick.height - flick.content-height), Math.min(0px, -(y - root.absolute-position.y - flick.content-y - 6 * Theme.unit)));
     }
     flick := Flickable {
+        // Only ever as wide as the pane, as a page's Scroll is: a section never scrolls
+        // sideways, and its cards fit the width they are given.
+        content-width: self.width;
         VerticalLayout {
+            width: flick.width;
             alignment: start;
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
@@ -302,7 +397,7 @@ component SectionPage inherits Rectangle {
             padding-bottom: Theme.pad * 2;
             spacing: Theme.unit * 4;
             PageTitle {
-                back: Fold.split ? "" : "More";
+                back: Fold.split ? "" : Tr.t("nav-more");
                 title: root.title;
                 note: root.note;
                 go-back => { Settings.section = -1; }
@@ -323,11 +418,11 @@ component IndexPage inherits Rectangle {
             padding-bottom: Theme.pad * 2;
             spacing: Theme.unit * 4;
             PageTitle {
-                title: "More";
-                note: "Settings";
+                title: Tr.t("nav-more");
+                note: Tr.t("more-settings");
             }
             SearchField {
-                placeholder: "Search settings";
+                placeholder: Tr.t("more-search");
                 text <=> Settings.query;
                 edited(text) => { Settings.find(text); }
                 accepted => {
@@ -340,7 +435,7 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 0;
                     icon: @image-url("icons/user.svg");
-                    name: "Accounts";
+                    name: Tr.t("more-accounts");
                     status: Status.accounts;
                     warn: Status.accounts-warn;
                     clicked => { Settings.open(0, ""); }
@@ -348,21 +443,28 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 1;
                     icon: @image-url("icons/download.svg");
-                    name: "Downloads";
+                    name: Tr.t("phone-nav-downloads");
                     status: Status.downloads;
                     clicked => { Settings.open(1, ""); }
                 }
                 IndexRow {
                     section: 2;
                     icon: @image-url("icons/play.svg");
-                    name: "Streaming";
+                    name: Tr.t("more-streaming");
                     status: Status.streaming;
                     clicked => { Settings.open(2, ""); }
                 }
                 IndexRow {
+                    section: 12;
+                    icon: @image-url("icons/captions.svg");
+                    name: Tr.t("more-subtitles");
+                    status: Status.subtitles;
+                    clicked => { Settings.open(12, ""); }
+                }
+                IndexRow {
                     section: 3;
                     icon: @image-url("icons/globe.svg");
-                    name: "Search sites";
+                    name: Tr.t("onb-sites-title");
                     status: Status.sites;
                     warn: Status.sites-warn;
                     clicked => { Settings.open(3, ""); }
@@ -370,7 +472,7 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 4;
                     icon: @image-url("icons/wifi.svg");
-                    name: "Connection";
+                    name: Tr.t("more-connection");
                     status: Status.connection;
                     warn: Status.connection-warn;
                     clicked => { Settings.open(4, ""); }
@@ -378,7 +480,7 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 5;
                     icon: @image-url("icons/monitor.svg");
-                    name: "Your computer";
+                    name: Tr.t("more-computer");
                     status: Status.computer;
                     warn: Status.computer-warn;
                     clicked => { Settings.open(5, ""); }
@@ -386,25 +488,60 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 7;
                     icon: @image-url("icons/palette.svg");
-                    name: "App icon";
+                    name: Tr.t("more-icon");
                     status: Status.icon;
                     clicked => { Settings.open(7, ""); }
                 }
                 IndexRow {
+                    section: 8;
+                    icon: @image-url("icons/chart-pie.svg");
+                    name: Tr.t("more-stats");
+                    status: Status.stats;
+                    clicked => { Settings.open(8, ""); }
+                }
+                IndexRow {
+                    section: 9;
+                    icon: @image-url("icons/archive.svg");
+                    name: Tr.t("more-data");
+                    status: Status.data;
+                    clicked => { Settings.open(9, ""); }
+                }
+                IndexRow {
+                    section: 11;
+                    icon: @image-url("icons/sliders.svg");
+                    name: Tr.t("more-appearance");
+                    status: Status.look;
+                    clicked => { Settings.open(11, ""); }
+                }
+                IndexRow {
+                    section: 13;
+                    icon: @image-url("icons/languages.svg");
+                    name: Tr.t("more-language");
+                    status: Status.language;
+                    clicked => { Settings.open(13, ""); }
+                }
+                IndexRow {
+                    section: 10;
+                    icon: @image-url("icons/scroll-text.svg");
+                    name: Tr.t("more-activity");
+                    status: Status.activity;
+                    clicked => { Settings.open(10, ""); }
+                }
+                IndexRow {
                     section: 6;
                     icon: @image-url("icons/info.svg");
-                    name: "About";
+                    name: Tr.t("more-about");
                     status: Status.about;
                     last: true;
                     clicked => { Settings.open(6, ""); }
                 }
             }
             if Settings.query != "": SectionHead {
-                title: Settings.hits.length == 0 ? "Nothing matches" : Settings.hits.length == 1 ? "1 setting" : Settings.hits.length + " settings";
-                note: Settings.hits.length == 0 ? "" : "Tap one to go there";
+                title: Settings.hits.length == 0 ? Tr.t("more-search-none") : Tr.n("more-search-hits", "count", Settings.hits.length);
+                note: Settings.hits.length == 0 ? "" : Tr.t("more-search-tap");
             }
             if Settings.query != "" && Settings.hits.length == 0: Text {
-                text: "Try a plainer word: storage, Wi-Fi, tracker, site, computer.";
+                text: Tr.t("more-search-hint");
                 color: Theme.dim;
                 wrap: word-wrap;
             }
@@ -435,14 +572,15 @@ export component MorePage inherits Rectangle {
         area: Fold.split ? Fold.show(0.42) : { x: 0, y: 0, width: root.width, height: root.height };
 
     if root.shown == 0: accounts := SectionPage {
-        title: "Accounts";
+        init => { MoveData.read(); }
+        title: Tr.t("more-accounts");
         note: Status.accounts;
         ListGroup {
             Lit {
-                on: Settings.lit == "AniList";
+                on: Settings.lit == Tr.t("tracker-anilist");
                 reveal(y) => { accounts.reveal(y); }
                 ListRow {
-                    label: "AniList";
+                    label: Tr.t("tracker-anilist");
                     helper: AppData.anilist-state;
                     tappable: true;
                     chevron: true;
@@ -450,10 +588,10 @@ export component MorePage inherits Rectangle {
                 }
             }
             Lit {
-                on: Settings.lit == "MyAnimeList";
+                on: Settings.lit == Tr.t("tracker-mal");
                 reveal(y) => { accounts.reveal(y); }
                 ListRow {
-                    label: "MyAnimeList";
+                    label: Tr.t("tracker-mal");
                     helper: AppData.mal-state;
                     tappable: true;
                     chevron: true;
@@ -463,44 +601,45 @@ export component MorePage inherits Rectangle {
             }
         }
         Text {
-            text: "What you watch here marks your lists, and progress from them shows on your shows.";
+            text: Tr.t("more-accounts-note");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
         }
+        MoveWaiting { }
     }
 
     if root.shown == 1: downloads := SectionPage {
-        title: "Downloads";
+        title: Tr.t("phone-nav-downloads");
         note: Status.downloads;
         SectionHead {
-            title: "Storage";
-            note: AppData.limit-on ? "Capped at " + AppData.limit-label : "No cap";
+            title: Tr.t("more-storage");
+            note: AppData.limit-on ? Tr.s("more-storage-capped", "cap", AppData.limit-label) : Tr.t("more-storage-no-cap");
         }
         HorizontalLayout {
             spacing: Theme.unit * 8;
             alignment: start;
             Figure {
                 value: AppData.used-figure;
-                caption: "used by episodes";
+                caption: Tr.t("more-storage-used");
             }
             Figure {
-                value: AppData.limit-on ? AppData.limit-label : "None";
-                caption: "cap";
+                value: AppData.limit-on ? AppData.limit-label : Tr.t("common-none");
+                caption: Tr.t("more-storage-cap-caption");
             }
             if AppData.free-figure != "": Figure {
                 value: AppData.free-figure;
-                caption: "free on the phone";
+                caption: Tr.t("more-storage-free");
             }
         }
         Lit {
-            on: Settings.lit == "Storage cap";
+            on: Settings.lit == Tr.t("more-set-storage-cap");
             reveal(y) => { downloads.reveal(y); }
             corner: Theme.radius;
             ListGroup {
                 ListRow {
-                    label: "Storage cap";
-                    helper: AppData.limit-on ? "At " + AppData.limit-label + ", nothing more downloads until you delete episodes." : "Off: AniBeam downloads until the phone is full.";
+                    label: Tr.t("more-set-storage-cap");
+                    helper: AppData.limit-on ? Tr.s("more-storage-cap-on", "cap", AppData.limit-label) : Tr.t("more-storage-cap-off");
                     switch: true;
                     on: AppData.limit-on;
                     toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
@@ -522,16 +661,16 @@ export component MorePage inherits Rectangle {
             }
         }
         SectionHead {
-            title: "Network";
-            note: AppData.wifi-only ? "Wi-Fi only" : "Wi-Fi and mobile data";
+            title: Tr.t("more-network");
+            note: AppData.wifi-only ? Tr.t("more-network-wifi") : Tr.t("more-network-mobile");
         }
         ListGroup {
             Lit {
-                on: Settings.lit == "Only on Wi-Fi";
+                on: Settings.lit == Tr.t("onb-wifi-only");
                 reveal(y) => { downloads.reveal(y); }
                 ListRow {
-                    label: "Only on Wi-Fi";
-                    helper: AppData.wifi-only ? "On. Downloads wait for Wi-Fi; mobile data asks first." : "Off. Downloads use mobile data too.";
+                    label: Tr.t("onb-wifi-only");
+                    helper: AppData.wifi-only ? Tr.t("more-wifi-on") : Tr.t("onb-wifi-off");
                     switch: true;
                     on: AppData.wifi-only;
                     last: true;
@@ -545,13 +684,99 @@ export component MorePage inherits Rectangle {
                 }
             }
         }
+        SectionHead {
+            title: Tr.t("more-set-rolling");
+            note: AppData.roll-big ? Tr.n("more-roll-note-over", "count", AppData.roll-over) : Tr.t("more-roll-note-asked");
+        }
+        Lit {
+            on: Settings.lit == Tr.t("more-set-rolling");
+            reveal(y) => { downloads.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: Tr.t("more-roll-big");
+                    helper: Tr.n("more-roll-big-help", "count", AppData.roll-over);
+                    switch: true;
+                    on: AppData.roll-big;
+                    toggled => { AppData.set-roll(!AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-ahead");
+                    value: Tr.n("common-episodes", "count", AppData.roll-ahead);
+                    helper: Tr.t("more-roll-ahead-help");
+                    minimum: 1;
+                    maximum: 52;
+                    at: AppData.roll-ahead;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, n, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-over");
+                    value: Tr.n("common-episodes", "count", AppData.roll-over);
+                    helper: Tr.t("more-roll-over-help");
+                    minimum: 12;
+                    maximum: 200;
+                    at: AppData.roll-over;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, n, AppData.roll-delete, AppData.roll-keep); }
+                }
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    padding-left: Theme.pad;
+                    padding-right: Theme.pad;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: Tr.t("more-roll-watched");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Segmented {
+                        options: [Tr.t("more-roll-delete"), Tr.t("more-roll-keep-all")];
+                        picked: AppData.roll-delete ? 0 : 1;
+                        pick(i) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, i == 0, AppData.roll-keep); }
+                    }
+                    Text {
+                        text: AppData.roll-delete ? Tr.t("more-roll-delete-help") : Tr.t("more-roll-keep-all-help");
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                if AppData.roll-delete: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                if AppData.roll-delete: NumberRow {
+                    label: Tr.t("more-roll-behind");
+                    value: Tr.n("common-episodes", "count", AppData.roll-keep);
+                    helper: Tr.n2("more-roll-behind-help", "count", AppData.roll-keep, "episode", AppData.roll-keep + 2);
+                    minimum: 0;
+                    maximum: 12;
+                    at: AppData.roll-keep;
+                    last: true;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, n); }
+                }
+            }
+        }
+        SectionHead {
+            title: Tr.t("onb-notify-title");
+            note: AppData.notify == 0 ? Tr.t("common-on") : Tr.t("common-off");
+        }
+        ListGroup {
+            Lit {
+                on: Settings.lit == Tr.t("onb-notify-title");
+                reveal(y) => { downloads.reveal(y); }
+                NotifyRow {
+                    last: true;
+                    in-more: true;
+                }
+            }
+        }
     }
 
     if root.shown == 2: streaming := SectionPage {
-        title: "Streaming";
+        title: Tr.t("more-streaming");
         note: Status.streaming;
         Lit {
-            on: Settings.lit == "Stream quality";
+            on: Settings.lit == Tr.t("more-set-stream-quality");
             reveal(y) => { streaming.reveal(y); }
             corner: Theme.radius;
             ListGroup {
@@ -559,7 +784,7 @@ export component MorePage inherits Rectangle {
                     padding: Theme.unit * 3;
                     spacing: Theme.unit * 2;
                     Text {
-                        text: "How an episode from your computer plays here.";
+                        text: Tr.t("more-stream-question");
                         color: Theme.text;
                         font-family: Theme.strong-face;
                         wrap: word-wrap;
@@ -571,10 +796,10 @@ export component MorePage inherits Rectangle {
                     }
                     Text {
                         text: AppData.stream-quality == 0
-                            ? "Auto plays the file as it is on Wi-Fi, and converted to 720p on mobile data."
+                            ? Tr.t("more-stream-auto-note")
                             : AppData.stream-quality == 1
-                                ? "The file as it is, every time. Big files need a fast link."
-                                : "Converted on your computer to " + AppData.stream-qualities[AppData.stream-quality] + ". Uses less data; seeking takes a moment.";
+                                ? Tr.t("more-stream-original-note")
+                                : Tr.s("more-stream-converted-note", "quality", AppData.stream-qualities[AppData.stream-quality]);
                         color: Theme.dim;
                         font-size: Theme.small;
                         wrap: word-wrap;
@@ -585,7 +810,7 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 3: sites := SectionPage {
-        title: "Search sites";
+        title: Tr.t("onb-sites-title");
         note: Status.sites;
         RepoPanes {
             lit: Settings.lit;
@@ -593,11 +818,11 @@ export component MorePage inherits Rectangle {
         }
         // Feeds saved on this phone before repos existed; a new phone has none.
         if AppData.sources.length > 0: SectionHead {
-            title: "Your own feeds";
-            note: "Searched before the sites";
+            title: Tr.t("more-set-feeds");
+            note: Tr.t("more-feeds-note");
         }
         if AppData.sources.length > 0: Lit {
-            on: Settings.lit == "Your own feeds";
+            on: Settings.lit == Tr.t("more-set-feeds");
             reveal(y) => { sites.reveal(y); }
             corner: Theme.radius;
             ListGroup {
@@ -612,16 +837,16 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 4: connection := SectionPage {
-        title: "Connection";
+        title: Tr.t("more-connection");
         note: Status.connection;
         Lit {
-            on: Settings.lit == "Check the connection";
+            on: Settings.lit == Tr.t("more-set-check");
             reveal(y) => { connection.reveal(y); }
             corner: Theme.radius;
             ListGroup {
                 ListRow {
-                    label: AppData.checking ? "Checking..." : "Check the connection";
-                    helper: AppData.check-summary != "" ? AppData.check-summary : "Tests each step between this phone and the search sites: finding them, reaching them, and a secure connection.";
+                    label: AppData.checking ? Tr.t("common-checking") : Tr.t("more-set-check");
+                    helper: AppData.check-summary != "" ? AppData.check-summary : Tr.t("more-check-note");
                     tappable: !AppData.checking;
                     chevron: !AppData.checking;
                     last: AppData.checks.length == 0;
@@ -673,7 +898,7 @@ export component MorePage inherits Rectangle {
                         y: 3 * Theme.unit;
                         alignment: start;
                         Button {
-                            text: "Copy the results";
+                            text: Tr.t("more-check-copy");
                             small: true;
                             clicked => { AppData.copy-check(); }
                         }
@@ -684,10 +909,12 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 5: computer := SectionPage {
-        title: "Your computer";
-        note: Status.computer;
+        title: Tr.t("more-computer");
+        // The card says how the last test went, with its dot; the head says it only before
+        // there is one (#935).
+        note: AppData.host-result != "" ? "" : Status.computer;
         Lit {
-            on: Settings.lit == "Your computer's AniBeam";
+            on: Settings.lit == Tr.t("more-set-computer");
             reveal(y) => { computer.reveal(y); }
             corner: Theme.radius;
             ListGroup {
@@ -696,12 +923,24 @@ export component MorePage inherits Rectangle {
         }
     }
 
+    if root.shown == 12: subtitles := SectionPage {
+        title: Tr.t("more-subtitles");
+        note: Status.subtitles;
+        SubtitleRows { }
+        Text {
+            text: Tr.t("more-subs-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+
     if root.shown == 7: icons := SectionPage {
         init => { AppData.read-app-icon(); }
-        title: "App icon";
+        title: Tr.t("more-icon");
         note: Status.icon;
         Lit {
-            on: Settings.lit == "App icon";
+            on: Settings.lit == Tr.t("more-icon");
             reveal(y) => { icons.reveal(y); }
             corner: Theme.radius;
             ListGroup {
@@ -709,7 +948,7 @@ export component MorePage inherits Rectangle {
                     padding: Theme.unit * 3;
                     spacing: Theme.unit * 3;
                     Text {
-                        text: "The icon on your home screen and in the app drawer.";
+                        text: Tr.t("more-icon-note");
                         color: Theme.text;
                         font-family: Theme.strong-face;
                         wrap: word-wrap;
@@ -718,19 +957,19 @@ export component MorePage inherits Rectangle {
                         spacing: Theme.unit * 2;
                         IconChoice {
                             source: @image-url("icons/app.png");
-                            name: "Default";
+                            name: Tr.t("more-icon-default");
                             picked: AppData.app-icon == 0;
                             clicked => { AppData.set-app-icon(0); }
                         }
                         IconChoice {
                             source: @image-url("icons/app-dark.png");
-                            name: "Dark";
+                            name: Tr.t("more-icon-dark");
                             picked: AppData.app-icon == 1;
                             clicked => { AppData.set-app-icon(1); }
                         }
                         IconChoice {
                             source: @image-url("icons/app-line.png");
-                            name: "Line art";
+                            name: Tr.t("more-icon-line");
                             line: true;
                             picked: AppData.app-icon == 2;
                             clicked => { AppData.set-app-icon(2); }
@@ -738,8 +977,8 @@ export component MorePage inherits Rectangle {
                     }
                     Text {
                         text: AppData.app-icon == 2
-                            ? "Line art takes your wallpaper's colours, like your other Material You icons."
-                            : "Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.";
+                            ? Tr.t("more-icon-line-note")
+                            : Tr.t("more-icon-moved-note");
                         color: Theme.dim;
                         font-size: Theme.small;
                         wrap: word-wrap;
@@ -749,37 +988,75 @@ export component MorePage inherits Rectangle {
         }
     }
 
+    if root.shown == 8: stats := SectionPage {
+        title: Tr.t("more-stats");
+        note: StatsData.loaded ? StatsData.year-line : Tr.t("more-stats-status-empty");
+        StatsBody { }
+    }
+
+    if root.shown == 9: data := SectionPage {
+        title: Tr.t("more-data");
+        note: Status.data;
+        DataBody { }
+    }
+
+    if root.shown == 10: activity := SectionPage {
+        title: Tr.t("more-activity");
+        note: Status.activity;
+        ActivityBody { }
+    }
+
+    if root.shown == 11: look := SectionPage {
+        title: Tr.t("more-appearance");
+        note: Status.look;
+        LookBody { }
+    }
+
+    if root.shown == 13: language := SectionPage {
+        title: Tr.t("more-language");
+        note: Status.language;
+        LangList { }
+    }
+
     if root.shown == 6: about := SectionPage {
-        title: "About";
+        title: Tr.t("more-about");
         note: Status.about;
         ListGroup {
             Lit {
-                on: Settings.lit == "What's new";
+                on: Settings.lit == Tr.t("more-set-whats-new");
                 reveal(y) => { about.reveal(y); }
                 ListRow {
-                    label: "What's new";
-                    helper: "What changed in each version, newest first.";
+                    label: Tr.t("more-set-whats-new");
+                    helper: Tr.t("more-whats-new-note");
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.open-notes(); }
                 }
             }
             Lit {
-                on: Settings.lit == "Set up again";
+                on: Settings.lit == Tr.t("more-set-onboarding");
                 reveal(y) => { about.reveal(y); }
                 ListRow {
-                    label: "Set up again";
-                    helper: "Walk through the first-run questions once more.";
+                    label: Tr.t("more-set-onboarding");
+                    helper: Tr.t("more-onboarding-note");
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.restart-onboarding(); }
                 }
             }
             Lit {
-                on: Settings.lit == "Version";
+                on: Settings.lit == AppData.ratings-label;
                 reveal(y) => { about.reveal(y); }
                 ListRow {
-                    label: "Version";
+                    label: AppData.ratings-label;
+                    helper: AppData.ratings-credit;
+                }
+            }
+            Lit {
+                on: Settings.lit == Tr.t("more-set-version");
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: Tr.t("more-set-version");
                     helper: AppData.version;
                     last: true;
                 }

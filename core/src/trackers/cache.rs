@@ -20,15 +20,17 @@ use std::time::{Duration, SystemTime};
 use rusqlite::{Connection, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::events::Signal;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::accounts;
 use crate::trackers::on_hold;
 use crate::trackers::writes;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count};
+use crate::trackers::{TRACKER_TIMEOUT, as_count, no_token};
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
@@ -52,6 +54,16 @@ pub struct Entry {
     pub score: Option<f64>,
     pub repeat: u32,
     pub updated_at: Option<i64>,
+    /// The entry's notes, AniList's notes or MAL's comments. None for an
+    /// entry with none, and a blank is none.
+    pub notes: Option<String>,
+}
+
+/// A note as the cache keeps it: trimmed, and nothing when nothing is left.
+pub(crate) fn note_of(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
 }
 
 /// Both trackers' list vocabularies in the one the core stores. MAL has no
@@ -89,11 +101,12 @@ pub fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> O
 /// number comparable whatever display format the user picked, and a score
 /// of 0 is AniList's unrated rather than a rating.
 pub async fn fetch_anilist(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     user_id: u64,
     token: &str,
 ) -> Result<Vec<Entry>, CoreError> {
-    let data = core
+    let data = trackers
+        .net
         .anilist
         .graphql_within(
             MEDIA_LIST_COLLECTION_QUERY,
@@ -122,6 +135,7 @@ pub async fn fetch_anilist(
                 // hold reads as the user's last touch. Nought is AniList
                 // having none, and `replace` then keeps the stored one.
                 updated_at: entry["updatedAt"].as_i64().filter(|at| *at > 0),
+                notes: note_of(entry["notes"].as_str()),
             });
         }
     }
@@ -131,21 +145,20 @@ pub async fn fetch_anilist(
 /// MAL's list, a page at a time, keyed by the MAL anime id a match
 /// carries. The walk ends when MAL stops sending a next cursor or hands
 /// back a page that was not full, whichever comes first.
-pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, CoreError> {
+pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, CoreError> {
     let mut entries = Vec::new();
     let mut offset = 0u64;
     for _page in 0..MAL_MAX_PAGES {
         let url = format!(
-            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at}}&limit={MAL_PAGE}&offset={offset}"
+            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at,comments}}&limit={MAL_PAGE}&offset={offset}"
         );
-        let response = core.mal.get(&url, token).await?;
+        let response = trackers.net.mal.get(&url, token).await?;
         if !response.is_success() {
-            return Err(CoreError::Provider {
-                provider: Provider::Mal,
-                status: Some(u32::from(response.status)),
-                message: response.text(),
-                retry_after: None,
-            });
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                response.text(),
+            ));
         }
         let body: serde_json::Value = response.json()?;
         let page_entries = body["data"].as_array().cloned().unwrap_or_default();
@@ -165,6 +178,7 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
                 updated_at: status["updated_at"].as_str().and_then(mal_instant),
+                notes: note_of(status["comments"].as_str()),
             });
         }
         if body["paging"]["next"].as_str().is_none() || (page_entries.len() as u64) < MAL_PAGE {
@@ -211,8 +225,8 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
         // media twice is the provider's business, and the last word wins
         // the way Electron's map did.
         let mut stmt = tx.prepare(
-            "INSERT OR REPLACE INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for entry in entries {
             stmt.execute(params![
@@ -226,6 +240,7 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
                     .updated_at
                     .or_else(|| kept.get(&entry.media_id).copied()),
                 now,
+                entry.notes,
             ])?;
         }
     }
@@ -255,7 +270,7 @@ pub fn patch_progress(
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
          VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5, ?6)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
              progress = excluded.progress,
              status = COALESCE(excluded.status, tracker_entries.status),
              updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
@@ -288,7 +303,7 @@ pub fn patch_score(
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
          VALUES (?1, ?2, ?3, 0, ?4, 0, ?5, ?6)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
              score = excluded.score,
              status = COALESCE(excluded.status, tracker_entries.status),
              updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
@@ -331,14 +346,57 @@ pub fn patch_status(
     Ok(())
 }
 
+/// One entry's notes, after a notes write: everything else is left as the
+/// cache has it, and an entry not cached yet is added with its notes alone.
+pub fn patch_notes(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+    notes: Option<&str>,
+    updated_at: Option<i64>,
+    now: i64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at, notes)
+         VALUES (?1, ?2, NULL, 0, NULL, 0, ?3, ?4, ?5)
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
+             notes = excluded.notes,
+             updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
+             fetched_at = excluded.fetched_at",
+        params![t.as_str(), media_id as i64, updated_at, now, notes],
+    )?;
+    Ok(())
+}
+
+/// One entry's rewatch count, after a write that finished it again. The
+/// entry's stamp moves to now at the least, even when the tracker's reply
+/// carried none, so the episodes watched for this rewatch are never
+/// evidence for the next one.
+pub fn patch_repeat(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+    repeat: u32,
+    now: i64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE tracker_entries SET repeat = ?3, updated_at = MAX(COALESCE(updated_at, 0), ?4)
+         WHERE tracker = ?1 AND media_id = ?2",
+        params![t.as_str(), media_id as i64, i64::from(repeat), now],
+    )?;
+    Ok(())
+}
+
 // The job --------------------------------------------------------------------
 
 /// Starts the RefreshProgress job: the tracker named, or every connected
 /// one. `force` waives the five minute window, which is what a fresh
 /// connection wants and what a page opening does not.
-pub fn start_refresh(core: &Arc<Core>, tracker: Option<Tracker>, force: bool) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start_refresh(trackers: &Arc<Trackers>, tracker: Option<Tracker>, force: bool) -> u64 {
+    let owner = trackers.clone();
+    trackers
+        .services
+        .jobs
         .clone()
         .start(JobKind::RefreshProgress, move |ctx| async move {
             run(owner, ctx, tracker, force).await
@@ -346,7 +404,7 @@ pub fn start_refresh(core: &Arc<Core>, tracker: Option<Tracker>, force: bool) ->
 }
 
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     tracker: Option<Tracker>,
     force: bool,
@@ -367,7 +425,8 @@ async fn run(
 
     for t in wanted {
         ctx.checkpoint()?;
-        let row = core
+        let row = trackers
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -386,7 +445,7 @@ async fn run(
             fresh = true;
             continue;
         }
-        match fetch_and_replace(&core, t, row.user_id).await {
+        match fetch_and_replace(&trackers, t, row.user_id).await {
             Ok(count) => {
                 if let Some((previous, n)) = pending.replace((t, count)) {
                     ctx.emit(
@@ -416,13 +475,18 @@ async fn run(
     }
 
     if !refreshed.is_empty() {
-        let cards = matched_cards(&core, &refreshed).await?;
+        let cards = matched_cards(&trackers.services, &refreshed).await?;
         ctx.changed_all(cards);
     }
     // A list just fetched, or one still inside the window, is the one On
     // hold decides on.
     if !refreshed.is_empty() || fresh {
-        on_hold::after_refresh(&core).await;
+        on_hold::after_refresh(&trackers).await;
+    }
+    // The list the recommender learns from just changed, so it fits again,
+    // off the UI thread, reading AniList only for what it is missing.
+    if !refreshed.is_empty() {
+        trackers.services.bus.signal(Signal::TrackersChanged);
     }
     match pending {
         Some((t, count)) => Ok(Finished {
@@ -457,26 +521,29 @@ async fn run(
 
 /// One tracker's list into the table, and how many entries it held.
 async fn fetch_and_replace(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     user_id: Option<u64>,
 ) -> Result<usize, CoreError> {
-    let token = accounts::access_token(core, t)
+    let token = accounts::access_token(trackers, t)
         .await?
-        .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
+        .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
     let entries = match t {
         Tracker::Anilist => {
             // AniList's collection is asked for by user id, so an account
             // whose profile never carried one cannot be read at all.
-            let user_id = user_id
-                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
-            fetch_anilist(core, user_id, &token).await?
+            let user_id = user_id.ok_or_else(|| {
+                accounts::tracker_error(t, crate::i18n::tr("core-trackers-no-user-id", &[]))
+            })?;
+            fetch_anilist(trackers, user_id, &token).await?
         }
-        Tracker::Mal => fetch_mal(core, &token).await?,
+        Tracker::Mal => fetch_mal(trackers, &token).await?,
     };
     let count = entries.len();
     let now = time::now_secs();
-    core.store
+    trackers
+        .services
+        .store
         .tx_async(move |tx| replace(tx, t, &entries, now))
         .await?;
     Ok(count)
@@ -486,12 +553,13 @@ async fn fetch_and_replace(
 /// cards: the numbers on all of them just changed, so they leave in one
 /// batch rather than one event each.
 async fn matched_cards(
-    core: &Arc<Core>,
+    services: &Services,
     refreshed: &[Tracker],
 ) -> Result<Vec<SeriesCard>, CoreError> {
-    let images_dir = core.paths.images_dir();
+    let images_dir = services.paths.images_dir();
     let refreshed = refreshed.to_vec();
-    core.store
+    services
+        .store
         .write_async(move |c| {
             let mut ids: BTreeSet<u64> = BTreeSet::new();
             for t in refreshed {
@@ -593,13 +661,5 @@ mod tests {
         assert!(!is_fresh(Some(now - Duration::from_secs(600)), now));
         // A clock that moved back is not a reason to fetch again.
         assert!(is_fresh(Some(now + Duration::from_secs(60)), now));
-    }
-
-    /// A provider count is unsigned and small; anything else is nought.
-    #[test]
-    fn a_count_survives_whatever_a_provider_sends() {
-        assert_eq!(as_count(None), 0);
-        assert_eq!(as_count(Some(12)), 12);
-        assert_eq!(as_count(Some(u64::MAX)), 0);
     }
 }

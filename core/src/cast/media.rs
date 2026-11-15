@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::fmp4;
-use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, SubCodec, VideoCodec};
+use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, VideoCodec};
 use super::vtt::{self, Cue};
+use crate::sync::recover;
 
 /// What kind of receiver the episode is going to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,27 +50,33 @@ pub fn plan(keyframes: &[u64], end_ms: u64) -> Vec<Segment> {
 /// Why a file cannot go to a receiver, in words for the page. HEVC is let through: which
 /// Chromecasts decode it cannot be told from what they announce, so the device decides, and
 /// a refusal names HEVC as the likely reason.
-pub fn verdict(
-    probe: &Probe,
-    audio: Option<&AudioTrack>,
-    _receiver: Receiver,
-) -> Result<(), String> {
-    let video = probe.video.as_ref().ok_or("This file has no video.")?;
+pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> {
+    let video = probe.video.as_ref().ok_or_else(no_video)?;
     match &video.codec {
         VideoCodec::H264 { profile, .. } if *profile >= 110 => {
-            return Err("This episode is 10-bit H.264 (Hi10P), which no TV or Chromecast decodes. Casting it needs a transcode, which is not built yet.".into());
+            return Err(crate::i18n::tr("core-cast-hi10p", &[]));
         }
         VideoCodec::Other(id) => {
-            return Err(format!("This episode's video ({id}) cannot be cast."));
+            return Err(crate::i18n::tr(
+                "core-cast-video-codec",
+                &[("codec", id.as_str().into())],
+            ));
         }
         _ => {}
     }
     if let Some(a) = audio
         && let AudioCodec::Other(id) = &a.codec
     {
-        return Err(format!("This episode's audio ({id}) cannot be cast."));
+        return Err(crate::i18n::tr(
+            "core-cast-audio-codec",
+            &[("codec", id.as_str().into())],
+        ));
     }
     Ok(())
+}
+
+fn no_video() -> String {
+    crate::i18n::tr("core-cast-no-video", &[])
 }
 
 /// A subtitle choice for the receiver: a track in the file, or a file beside it.
@@ -98,13 +105,12 @@ impl Prepared {
         path: &Path,
         audio_track: Option<u64>,
         subs: Option<Subs>,
-        receiver: Receiver,
     ) -> Result<Prepared, String> {
         let mut reader = mkv::open(path)?;
         let probe = mkv::probe(&reader);
         let audio = probe.audio_track(audio_track).cloned();
-        verdict(&probe, audio.as_ref(), receiver)?;
-        let video = probe.video.clone().ok_or("This file has no video.")?;
+        verdict(&probe, audio.as_ref())?;
+        let video = probe.video.clone().ok_or_else(no_video)?;
         let first = match &audio {
             Some(a) if matches!(a.codec, AudioCodec::Ac3 | AudioCodec::Eac3) => {
                 mkv::first_frame(&mut reader, &probe, a.number)
@@ -143,16 +149,11 @@ impl Prepared {
         self.segments.last().map(|s| s.end).unwrap_or(0)
     }
 
-    /// The decode-order shift every timestamp carries; positions read back subtract it.
-    pub fn offset_ms(&self) -> u64 {
-        self.scan.reorder_ms
-    }
-
     /// Segment `i` as a movie fragment.
     pub fn segment(&self, i: usize) -> Result<Vec<u8>, String> {
         let s = self.segments.get(i).ok_or("no such segment")?;
         let last = i + 1 == self.segments.len();
-        let mut reader = self.reader.lock().unwrap_or_else(|e| e.into_inner());
+        let mut reader = recover(&self.reader);
         let (v, a) = mkv::segment(
             &mut reader,
             &self.probe,
@@ -260,24 +261,6 @@ impl Prepared {
     /// The subtitles as SRT, which the DLNA TVs that show subtitles at all read.
     pub fn srt(&self) -> String {
         vtt::render_srt(self.cues.as_deref().unwrap_or_default())
-    }
-
-    /// Which text tracks the file has, for the page's picker.
-    pub fn text_tracks(probe: &Probe) -> Vec<(u64, String)> {
-        probe
-            .subs
-            .iter()
-            .filter(|s| !matches!(s.codec, SubCodec::Other(_)))
-            .map(|s| {
-                (
-                    s.number,
-                    s.name
-                        .clone()
-                        .or(s.language.clone())
-                        .unwrap_or_else(|| format!("Track {}", s.number)),
-                )
-            })
-            .collect()
     }
 }
 

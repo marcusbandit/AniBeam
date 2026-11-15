@@ -12,7 +12,9 @@
 //! - Windows setup: after exit the helper runs the new setup with no questions.
 //! - Windows portable zip: after exit the helper unpacks the new zip over the folder.
 //! - A copy under /usr or /opt belongs to the system's package manager, and a build from a
-//!   checkout to whoever builds it; neither is updated here.
+//!   checkout to whoever builds it; neither is updated here. The package manager that owns
+//!   the binary is named (pacman for the AUR, dpkg for the apt repo on anibeam.app, rpm for
+//!   the dnf one), so the notice can give its command.
 //!
 //! Errors are sentences for the person, since the update notice shows them as they are.
 
@@ -25,6 +27,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
 use super::{Asset, Update};
+use crate::i18n::tr;
 
 /// How the running copy was installed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,11 +44,23 @@ pub enum Install {
     WindowsPortable {
         exe: PathBuf,
     },
-    /// Under /usr or /opt. `package` is pacman's name for it, when pacman owns the file.
+    /// Under /usr or /opt. `owner` is the package manager that owns the file and its name for
+    /// the package, when one does and its updates come from a source Anibeam knows.
     Package {
-        package: Option<String>,
+        owner: Option<(Manager, String)>,
     },
     Source,
+}
+
+/// The package manager a system install belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Manager {
+    /// pacman, with the package from the AUR.
+    Pacman,
+    /// dpkg, with the package from the apt repo on anibeam.app.
+    Apt,
+    /// rpm, with the package from the dnf repo on anibeam.app.
+    Dnf,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,9 +92,7 @@ impl Install {
             .map(PathBuf::from)
             .zip(std::env::var_os("APPDIR").map(PathBuf::from));
         match Install::classify(&exe, appimage, Os::current()) {
-            Install::Package { .. } => Install::Package {
-                package: pacman_owner(&exe),
-            },
+            Install::Package { .. } => Install::Package { owner: owner(&exe) },
             other => other,
         }
     }
@@ -98,7 +111,7 @@ impl Install {
                     return Install::AppImage { path };
                 }
                 if exe.starts_with("/usr") || exe.starts_with("/opt") {
-                    return Install::Package { package: None };
+                    return Install::Package { owner: None };
                 }
                 Install::Source
             }
@@ -137,11 +150,6 @@ impl Install {
         }
     }
 
-    /// Whether `fetch` can update this copy.
-    pub fn updates_itself(&self) -> bool {
-        self.suffix(std::env::consts::ARCH).is_some()
-    }
-
     /// The end of the release file's name for this install on `arch` (Rust's name for it).
     fn suffix(&self, arch: &str) -> Option<String> {
         Some(match self {
@@ -176,15 +184,53 @@ fn win_arch(arch: &str) -> &str {
 }
 
 /// pacman's name for the package that owns `exe`, when pacman is there and owns it.
-fn pacman_owner(exe: &Path) -> Option<String> {
-    let out = std::process::Command::new("pacman")
-        .arg("-Qqo")
+/// Where the apt and dnf repos on anibeam.app are set up; a package installed from a file
+/// without them has no source that brings updates.
+const APT_SOURCE: &str = "/etc/apt/sources.list.d/anibeam.sources";
+const DNF_REPO: &str = "/etc/yum.repos.d/anibeam.repo";
+
+/// The package manager that owns `exe`, and its name for the package. A system has one of
+/// the three as its own; the others are usually missing, which reads as "not this one". A
+/// dpkg or rpm owner counts only with the anibeam.app repo set up, since that is where its
+/// updates come from.
+fn owner(exe: &Path) -> Option<(Manager, String)> {
+    if let Some(name) = query("pacman", &["-Qqo"], exe) {
+        return Some((Manager::Pacman, name));
+    }
+    // dpkg-query -S prints `anibeam: /opt/anibeam/usr/bin/anibeam`.
+    if let Some(line) = query("dpkg-query", &["-S"], exe) {
+        let name = line.split(':').next().unwrap_or_default().trim();
+        return (!name.is_empty() && Path::new(APT_SOURCE).is_file())
+            .then(|| (Manager::Apt, name.to_string()));
+    }
+    query("rpm", &["-qf", "--queryformat", "%{NAME}"], exe)
+        .filter(|_| Path::new(DNF_REPO).is_file())
+        .map(|name| (Manager::Dnf, name))
+}
+
+/// Runs `program args exe` and returns its trimmed output, if it succeeded with some.
+fn query(program: &str, args: &[&str], exe: &Path) -> Option<String> {
+    let out = std::process::Command::new(program)
+        .args(args)
         .arg(exe)
         .stderr(std::process::Stdio::null())
         .output()
         .ok()?;
-    let name = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    (out.status.success() && !name.is_empty()).then_some(name)
+    let text = String::from_utf8(out.stdout).ok()?;
+    let line = text.lines().next().unwrap_or_default().trim().to_string();
+    (out.status.success() && !line.is_empty()).then_some(line)
+}
+
+/// The command that upgrades `package` from the apt or dnf repo on anibeam.app; the AUR's
+/// is `aur_command`.
+pub fn repo_command(manager: Manager, package: &str) -> Option<String> {
+    match manager {
+        Manager::Apt => Some(format!(
+            "sudo apt update && sudo apt install --only-upgrade {package}"
+        )),
+        Manager::Dnf => Some(format!("sudo dnf upgrade --refresh {package}")),
+        Manager::Pacman => None,
+    }
 }
 
 /// The command that updates `package` from the AUR, with the first AUR helper on PATH.
@@ -238,15 +284,21 @@ pub async fn fetch(
     progress: impl FnMut(u64, u64) + Send,
 ) -> Result<Prepared, String> {
     let asset = install.asset(&update.assets).ok_or_else(|| {
-        format!(
-            "AniBeam {} has no download for this computer",
-            update.version
+        tr(
+            "core-update-no-download",
+            &[("version", update.version.as_str().into())],
         )
     })?;
     let _ = tokio::fs::remove_dir_all(work).await;
-    tokio::fs::create_dir_all(work)
-        .await
-        .map_err(|e| format!("Could not make {}: {e}", work.display()))?;
+    tokio::fs::create_dir_all(work).await.map_err(|e| {
+        tr(
+            "core-update-cannot-make",
+            &[
+                ("path", work.display().to_string().into()),
+                ("error", e.to_string().into()),
+            ],
+        )
+    })?;
     match install {
         Install::AppImage { path } => {
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -258,13 +310,24 @@ pub async fn fetch(
                 use std::os::unix::fs::PermissionsExt;
                 tokio::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755))
                     .await
-                    .map_err(|e| format!("Could not mark the new AppImage runnable: {e}"))?;
+                    .map_err(|e| {
+                        tr(
+                            "core-update-cannot-mark",
+                            &[("error", e.to_string().into())],
+                        )
+                    })?;
             }
             // The running copy is mounted from the old file's inode, which the rename
             // leaves alone until the app ends.
-            tokio::fs::rename(&next, path)
-                .await
-                .map_err(|e| format!("Could not replace {}: {e}", path.display()))?;
+            tokio::fs::rename(&next, path).await.map_err(|e| {
+                tr(
+                    "core-update-cannot-replace",
+                    &[
+                        ("path", path.display().to_string().into()),
+                        ("error", e.to_string().into()),
+                    ],
+                )
+            })?;
             Ok(Prepared::AppImage { path: path.clone() })
         }
         Install::MacApp { bundle } => {
@@ -295,7 +358,7 @@ pub async fn fetch(
                 work: work.to_path_buf(),
             })
         }
-        Install::Package { .. } | Install::Source => Err("This copy is not updated here".into()),
+        Install::Package { .. } | Install::Source => Err(tr("core-update-not-here", &[])),
     }
 }
 
@@ -312,20 +375,30 @@ async fn download(
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(60))
         .build()
-        .map_err(|e| format!("Could not start the download: {e}"))?;
+        .map_err(|e| {
+            tr(
+                "core-update-cannot-start",
+                &[("error", e.to_string().into())],
+            )
+        })?;
     let mut res = client
         .get(&asset.url)
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("The download did not start: {e}"))?;
+        .map_err(|e| {
+            tr(
+                "core-update-did-not-start",
+                &[("error", e.to_string().into())],
+            )
+        })?;
     let total = res.content_length().unwrap_or(asset.size);
     let mut part = to.as_os_str().to_owned();
     part.push(".part");
     let part = PathBuf::from(part);
     let mut file = tokio::fs::File::create(&part)
         .await
-        .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+        .map_err(|e| cannot_write(&part, e))?;
     let mut hash = Sha256::new();
     let mut got = 0u64;
     let mut told = u64::MAX;
@@ -333,14 +406,14 @@ async fn download(
         while let Some(chunk) = res
             .chunk()
             .await
-            .map_err(|e| format!("The download stopped: {e}"))?
+            .map_err(|e| tr("core-update-stopped", &[("error", e.to_string().into())]))?
         {
             if cancel.load(Ordering::SeqCst) {
-                return Err("Cancelled".into());
+                return Err(tr("core-update-cancelled", &[]));
             }
             file.write_all(&chunk)
                 .await
-                .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+                .map_err(|e| cannot_write(&part, e))?;
             hash.update(&chunk);
             got += chunk.len() as u64;
             // Once a percent, not once a chunk
@@ -350,13 +423,14 @@ async fn download(
                 progress(got, total);
             }
         }
-        file.flush()
-            .await
-            .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+        file.flush().await.map_err(|e| cannot_write(&part, e))?;
         if got != asset.size {
-            return Err(format!(
-                "The download ended early ({got} of {} bytes)",
-                asset.size
+            return Err(tr(
+                "core-update-ended-early",
+                &[
+                    ("got", got.to_string().into()),
+                    ("size", asset.size.to_string().into()),
+                ],
             ));
         }
         if let Some(want) = asset
@@ -366,7 +440,7 @@ async fn download(
         {
             let have = hex(&hash.finalize());
             if !have.eq_ignore_ascii_case(want) {
-                return Err("The download does not match GitHub's checksum".into());
+                return Err(tr("core-update-checksum", &[]));
             }
         }
         Ok(())
@@ -377,9 +451,22 @@ async fn download(
         let _ = tokio::fs::remove_file(&part).await;
         return Err(e);
     }
-    tokio::fs::rename(&part, to)
-        .await
-        .map_err(|e| format!("Could not move the download into place: {e}"))
+    tokio::fs::rename(&part, to).await.map_err(|e| {
+        tr(
+            "core-update-cannot-move",
+            &[("error", e.to_string().into())],
+        )
+    })
+}
+
+fn cannot_write(part: &Path, e: std::io::Error) -> String {
+    tr(
+        "core-update-cannot-write",
+        &[
+            ("path", part.display().to_string().into()),
+            ("error", e.to_string().into()),
+        ],
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -407,11 +494,14 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
         .arg(mount)
         .arg(dmg))
     .await
-    .map_err(|e| format!("Could not open the dmg: {e}"))?;
+    .map_err(|e| tr("core-update-cannot-open-dmg", &[("error", e.into())]))?;
     let copied = async {
-        let mut entries = tokio::fs::read_dir(mount)
-            .await
-            .map_err(|e| format!("Could not read the dmg: {e}"))?;
+        let mut entries = tokio::fs::read_dir(mount).await.map_err(|e| {
+            tr(
+                "core-update-cannot-read-dmg",
+                &[("error", e.to_string().into())],
+            )
+        })?;
         let mut app = None;
         while let Ok(Some(entry)) = entries.next_entry().await {
             if entry.path().extension() == Some("app".as_ref()) {
@@ -419,11 +509,11 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
                 break;
             }
         }
-        let app = app.ok_or("The dmg holds no app")?;
+        let app = app.ok_or_else(|| tr("core-update-no-app", &[]))?;
         let _ = tokio::fs::remove_dir_all(staged).await;
         run(Command::new("ditto").arg(&app).arg(staged))
             .await
-            .map_err(|e| format!("Could not copy the new app beside this one: {e}"))
+            .map_err(|e| tr("core-update-cannot-copy", &[("error", e.into())]))
     }
     .await;
     let _ = run(Command::new("hdiutil")
@@ -473,17 +563,9 @@ impl Prepared {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
         if let Prepared::AppImage { .. } = self {
-            // The AppImage runtime pointed these at the old copy's mount, which goes when
-            // this process does; the new copy's runtime sets them again.
             let appdir = std::env::var("APPDIR").ok().filter(|d| !d.is_empty());
             for (name, value) in std::env::vars_os() {
-                let mounted = appdir
-                    .as_deref()
-                    .is_some_and(|d| value.to_string_lossy().contains(d));
-                let runtime = ["APPIMAGE", "APPDIR", "ARGV0", "OWD"]
-                    .iter()
-                    .any(|n| name == *n);
-                if mounted || runtime {
+                if from_old_mount(&name, &value, appdir.as_deref()) {
                     cmd.env_remove(name);
                 }
             }
@@ -600,6 +682,19 @@ if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
     }
 }
 
+/// Whether a variable in this run's environment is left out of an AppImage's restart. The
+/// AppImage runtime pointed these at the old copy's mount, which goes when this process does;
+/// the new copy's runtime sets them again. Everything else carries over, such as the
+/// `APPIMAGELAUNCHER_DISABLE=1` the installer's menu entry sets, which keeps AppImageLauncher
+/// from offering to move the new file.
+fn from_old_mount(name: &std::ffi::OsStr, value: &std::ffi::OsStr, appdir: Option<&str>) -> bool {
+    let mounted = appdir.is_some_and(|d| value.to_string_lossy().contains(d));
+    let runtime = ["APPIMAGE", "APPDIR", "ARGV0", "OWD"]
+        .iter()
+        .any(|n| name == *n);
+    mounted || runtime
+}
+
 /// A PowerShell single-quoted string: nothing inside is expanded, and a quote is doubled.
 fn ps(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "''"))
@@ -691,7 +786,7 @@ mod tests {
             Some("AniBeam-2.5.0-windows-x64.zip")
         );
         assert_eq!(picked(Install::Source, "x86_64"), None);
-        assert_eq!(picked(Install::Package { package: None }, "x86_64"), None);
+        assert_eq!(picked(Install::Package { owner: None }, "x86_64"), None);
     }
 
     /// Unix paths: Windows reads `/home/...` as relative.
@@ -714,11 +809,11 @@ mod tests {
         // Started from a terminal inside some AppImage: its variables are not ours
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), runtime(), Os::Linux),
-            Install::Package { package: None }
+            Install::Package { owner: None }
         );
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), None, Os::Linux),
-            Install::Package { package: None }
+            Install::Package { owner: None }
         );
         assert_eq!(
             Install::classify(
@@ -788,6 +883,21 @@ mod tests {
         assert_eq!(h.args[3], "42");
         assert_eq!(h.args[4], "/home/a/AniBeam.AppImage");
         assert_eq!(h.args[5..], ["--root", "/tmp/s"]);
+    }
+
+    #[test]
+    fn an_appimage_restart_drops_the_old_mount_and_keeps_the_rest() {
+        let drops = |name: &str, value: &str| {
+            from_old_mount(name.as_ref(), value.as_ref(), Some("/tmp/.mount_AniBeaXYZ"))
+        };
+        assert!(drops("APPIMAGE", "/opt/AniBeam.AppImage"));
+        assert!(drops("APPDIR", "/tmp/.mount_AniBeaXYZ"));
+        assert!(drops("ARGV0", "anibeam"));
+        assert!(drops("OWD", "/srv"));
+        assert!(drops("QT_PLUGIN_PATH", "/tmp/.mount_AniBeaXYZ/usr/plugins"));
+        assert!(!drops("APPIMAGELAUNCHER_DISABLE", "1"));
+        assert!(!drops("PATH", "/usr/bin:/bin"));
+        assert!(!from_old_mount("PATH".as_ref(), "/usr/bin".as_ref(), None));
     }
 
     #[test]
@@ -895,5 +1005,18 @@ mod tests {
         assert!(bundle.join("new").is_dir());
         assert!(!staged.exists());
         assert!(!dir.path().join(".AniBeam.app.update.old").exists());
+    }
+
+    #[test]
+    fn repo_installs_get_their_own_upgrade_command() {
+        assert_eq!(
+            repo_command(Manager::Apt, "anibeam").as_deref(),
+            Some("sudo apt update && sudo apt install --only-upgrade anibeam")
+        );
+        assert_eq!(
+            repo_command(Manager::Dnf, "anibeam").as_deref(),
+            Some("sudo dnf upgrade --refresh anibeam")
+        );
+        assert_eq!(repo_command(Manager::Pacman, "anibeam-bin"), None);
     }
 }

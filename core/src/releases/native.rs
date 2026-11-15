@@ -6,23 +6,22 @@
 use std::sync::Arc;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::net::Http;
 
-use super::{BestfitConfig, Endpoint, bestfit, endpoints, refinement, stats};
+use super::{BestfitConfig, Endpoint, endpoints, refinement, stats};
 
-/// The groups the desktop's best fit trusts out of the box: the owner's anirss config.
-pub const TRUSTED_GROUPS: [&str; 9] = [
-    "Erai-raws",
-    "SubsPlease",
-    "ASW",
-    "EMBER",
-    "Judas",
-    "Osiris",
-    "Moozzi2",
-    "VCB-Studio",
-    "Kawaiika-Raws",
-];
+/// The release groups `installed` trust, in their order, each once, told apart without case.
+pub fn trusted_groups(installed: &[crate::repos::Runnable]) -> Vec<String> {
+    let mut groups: Vec<String> = Vec::new();
+    for g in installed.iter().flat_map(|r| &r.trusted_groups) {
+        let g = g.trim();
+        if !groups.iter().any(|h| h.eq_ignore_ascii_case(g)) {
+            groups.push(g.to_string());
+        }
+    }
+    groups
+}
 
 /// What a search found before its analysis (anirss `SearchResult`).
 #[derive(Clone, Debug)]
@@ -59,15 +58,13 @@ pub struct Native {
 }
 
 impl Native {
+    /// Best fit trusts no group of the core's own; `for_core` gives it the ones the installed
+    /// definitions trust.
     pub fn new(http: Arc<dyn Http>, endpoints: Vec<Endpoint>) -> Native {
-        let bestfit = BestfitConfig {
-            preferred_groups: TRUSTED_GROUPS.map(String::from).to_vec(),
-            ..BestfitConfig::default()
-        };
         Native {
             http,
             endpoints,
-            bestfit,
+            bestfit: BestfitConfig::default(),
         }
     }
 
@@ -76,19 +73,30 @@ impl Native {
     /// repos' and the ones added by hand) that `first` does not already name. The phone
     /// passes the sources it searches; the desktop passes none.
     ///
-    /// The desktop's list is the core's own, not anirss's `config.toml`: whether it should
-    /// match anirss's endpoints before the native engine is the default is the owner's call
-    /// (#119, decision B).
-    pub fn for_core(core: &Core, first: Vec<Endpoint>) -> Native {
-        let installed = crate::repos::runnable(core);
-        let http = crate::repos::paced_http(core, &installed);
+    /// The desktop's list is the core's own, not anirss's `config.toml` (#119, decision B).
+    /// `bestfit` ranks best fit when given (the desktop passes what anirss's config saved);
+    /// None trusts the groups the enabled installed definitions name, in their order, over
+    /// anirss's defaults.
+    pub fn for_core(
+        services: &Services,
+        first: Vec<Endpoint>,
+        bestfit: Option<BestfitConfig>,
+    ) -> Native {
+        let installed = crate::repos::runnable(services);
+        let http = crate::repos::paced_http(services, &installed);
+        let groups = trusted_groups(&installed);
         let mut endpoints = first;
         for r in installed {
             if !endpoints.iter().any(|e| e.name == r.endpoint.name) {
                 endpoints.push(r.endpoint);
             }
         }
-        Native::new(http, endpoints)
+        let mut native = Native::new(http, endpoints);
+        match bestfit {
+            Some(bestfit) => native.bestfit = bestfit,
+            None => native.bestfit.preferred_groups = groups,
+        }
+        native
     }
 
     /// The endpoint by name, else the first (anirss `endpoint`).
@@ -96,7 +104,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                "no endpoints yet: add a repo, or one by hand, under Endpoints in More",
+                crate::i18n::tr("core-releases-no-endpoints", &[]),
             ));
         }
         match name {
@@ -105,7 +113,12 @@ impl Native {
                 .endpoints
                 .iter()
                 .find(|e| e.name == name)
-                .ok_or_else(|| CoreError::invalid("endpoint", format!("no source named {name}"))),
+                .ok_or_else(|| {
+                    CoreError::invalid(
+                        "endpoint",
+                        crate::i18n::tr("core-releases-no-source-named", &[("name", name.into())]),
+                    )
+                }),
         }
     }
 
@@ -137,6 +150,7 @@ impl Native {
                 client_side_refine: refinement::is_client_side(e),
                 on_demand: None,
                 running: None,
+                followable: endpoints::answers_rss(&e.kind),
             })
             .collect()
     }
@@ -153,7 +167,10 @@ impl Native {
     ) -> Result<Found, CoreError> {
         let query = query.trim();
         if query.is_empty() {
-            return Err(CoreError::invalid("query", "type something to search for"));
+            return Err(CoreError::invalid(
+                "query",
+                crate::i18n::tr("core-releases-empty-query", &[]),
+            ));
         }
         let active = self.endpoint(endpoint)?;
         let mut order = vec![active];
@@ -212,15 +229,15 @@ impl Native {
                     service,
                     code,
                     message,
-                } => CoreError::Service {
+                } => CoreError::service(
                     service,
                     code,
-                    message: [message]
+                    [message]
                         .into_iter()
                         .chain(rest)
                         .collect::<Vec<_>>()
                         .join("; "),
-                },
+                ),
                 other => other,
             });
         }
@@ -288,7 +305,7 @@ impl Native {
             Box::pin(async move { endpoints::refetch(http.as_ref(), &ep, &q, all_uploads).await })
         });
         let outcome =
-            refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref(), None).await?;
+            refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref()).await?;
         let groups = refinement::compute_groups(&outcome.items);
         let best_fit = refinement::best_fit_info(&outcome.query, &outcome.items, &self.bestfit);
         let count = outcome.items.len() as i64;
@@ -309,6 +326,9 @@ impl Native {
     }
 
     /// What subscribing to (query, items) would register (anirss `subscription_spec`).
+    /// A source whose search answers JSON has no feed a client can read, so it is
+    /// refused with a line saying so rather than handed over as one (#507); the
+    /// desktop's rule and the phone's both come from here.
     pub async fn preview(
         &self,
         query: &str,
@@ -316,47 +336,22 @@ impl Native {
         items: &[Release],
     ) -> Result<SubscriptionSpec, CoreError> {
         let ep = self.step_endpoint(endpoint)?;
+        if !endpoints::answers_rss(&ep.kind) {
+            return Err(CoreError::invalid(
+                "endpoint",
+                crate::i18n::tr(
+                    "core-releases-cannot-follow",
+                    &[("name", ep.name.as_str().into())],
+                ),
+            ));
+        }
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
-    }
-
-    /// The release best fit would pick.
-    pub fn best_item(&self, items: &[Release]) -> Option<Release> {
-        bestfit::best_item(items, &self.bestfit).cloned()
     }
 }
 
 /// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    format!("{name} is not available any more: removed, switched off or missing its key")
-}
-
-/// Query parameters that hold a secret, with the label a person reads for each. A source
-/// added by hand has these lifted out of its address, a listed address has them masked, and
-/// the tailnet snapshot leaves them out. Names match case-insensitively.
-pub const SECRET_PARAMS: [(&str, &str); 15] = [
-    ("apikey", "API key"),
-    ("api_key", "API key"),
-    ("jackett_apikey", "API key"),
-    ("token", "Token"),
-    ("passkey", "Passkey"),
-    ("torrent_pass", "Passkey"),
-    ("rsskey", "RSS key"),
-    ("authkey", "Auth key"),
-    ("auth", "Auth key"),
-    ("key", "Key"),
-    ("secret", "Secret"),
-    ("sig", "Signature"),
-    ("pass", "Password"),
-    ("password", "Password"),
-    ("uid", "User id"),
-];
-
-/// The label of a query parameter that holds a secret; None for any other.
-pub fn secret_param(name: &str) -> Option<&'static str> {
-    SECRET_PARAMS
-        .iter()
-        .find(|(p, _)| p.eq_ignore_ascii_case(name))
-        .map(|(_, label)| *label)
+    crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
@@ -383,7 +378,7 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v)) if crate::redact::secret_param(k).is_some() && !v.starts_with('{') => {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),
@@ -413,9 +408,13 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
-                Endpoint::new("search", "nyaa", "https://e/"),
+                Endpoint::new("search", crate::releases::kinds::FILTERED_RSS, "https://e/"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+                Endpoint::new(
+                    "anime",
+                    crate::releases::kinds::JSON_FEED,
+                    "https://d/?q={query}",
+                ),
             ],
         );
         assert!(native.feed_is_rss("feed"));
@@ -425,6 +424,22 @@ mod tests {
         assert!(!native.feed_is_rss("anime"));
         // One the core no longer has: nothing to read.
         assert!(!native.feed_is_rss("gone"));
+        // The shells offer a subscription only on a source the list calls followable.
+        let followable: Vec<(String, bool)> = native
+            .list()
+            .into_iter()
+            .map(|e| (e.name, e.followable))
+            .collect();
+        assert_eq!(
+            followable,
+            [
+                ("feed".to_string(), true),
+                ("indexer".to_string(), true),
+                ("search".to_string(), true),
+                ("api".to_string(), false),
+                ("anime".to_string(), false),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -457,6 +472,32 @@ mod tests {
             search.to_string().contains("no source named gone"),
             "{search}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_source_that_answers_json_cannot_be_followed() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![
+                Endpoint::new("feed", "rss", "https://a/?q={query}"),
+                Endpoint::new("api", "json", "https://c/?q={query}"),
+                Endpoint::new(
+                    "anime",
+                    crate::releases::kinds::JSON_FEED,
+                    "https://d/?q={query}",
+                ),
+            ],
+        );
+        for name in ["api", "anime"] {
+            let err = native.preview("show", name, &[]).await.unwrap_err();
+            let text = err.to_string();
+            assert!(
+                text.contains(&format!("{name} cannot be followed")),
+                "{text}"
+            );
+        }
+        let spec = native.preview("show", "feed", &[]).await.unwrap();
+        assert!(spec.feed_url.starts_with("https://a/"), "{}", spec.feed_url);
     }
 
     #[tokio::test]

@@ -17,8 +17,8 @@ set -euo pipefail
 PBS_RELEASE=20261013
 PBS_PYTHON=3.13.16
 PBS_SHA256=16a5332fb0dcb77f163fc8f8cbccd95be1644cc53e68e5d2a79f50afd6680a0e
-ANIRSS_VERSION=0.6.1
-ANIRSS_SHA256=ee700625e89e8002c6a39b89c3faabee1ac3004d7e9313232ff2913701b7d22a
+ANIRSS_VERSION=0.7.1
+ANIRSS_SHA256=ffa15a2292fa70e134387bd55fadb1188cbcc1baa406d1a8920a6faf6899f6a8
 
 app="$(cd "$1" && pwd)"
 dest="$app/Contents/Resources/anirss"
@@ -62,7 +62,7 @@ cp -R "$src/anirss_lib" "$dest/app/anirss_lib"
 chmod 755 "$dest/app/anirss"
 cat > "$dest/bin/anirss" <<'SH'
 #!/bin/sh
-# AniBeam's own anirss: the release it was built with, on the Python beside it.
+# Anibeam's own anirss: the release it was built with, on the Python beside it.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$here/python/bin/python3" "$here/app/anirss" "$@"
 SH

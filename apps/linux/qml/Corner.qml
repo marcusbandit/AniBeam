@@ -182,7 +182,7 @@ Item {
         s = Math.max(0, Math.min(0.99, s))
         function f(v) { return Math.round(v * 1000) / 1000 }
         if (p < 0.05)
-            return "M" + f(x0) + " " + f(y0) + " H" + f(x1) + " V" + f(y1) + " H" + f(x0) + " Z"
+            return "M" + f(x0) + " " + f(y0) + " H" + f(x1) + " V" + f(y1) + " H" + f(x0) + " Z" // i18n: none
         var r = p / (1 + s)
         var arcMeasure = 90 * (1 - s)
         var toRad = Math.PI / 180
@@ -197,26 +197,26 @@ Item {
         var curved = (a + b + c + d) > 0.001
         var arced = arcSection > 0.001
         function cc(ax, ay, bx, by, cx, cy) {
-            return curved ? " c" + f(ax) + " " + f(ay) + " " + f(bx) + " " + f(by) + " " + f(cx) + " " + f(cy) : ""
+            return curved ? " c" + f(ax) + " " + f(ay) + " " + f(bx) + " " + f(by) + " " + f(cx) + " " + f(cy) : "" // i18n: none
         }
         function arc(dx, dy) {
-            return arced ? " a" + f(r) + " " + f(r) + " 0 0 1 " + f(dx) + " " + f(dy) : ""
+            return arced ? " a" + f(r) + " " + f(r) + " 0 0 1 " + f(dx) + " " + f(dy) : "" // i18n: none
         }
         // top right, then clockwise; a flat pair is a plain corner point instead
-        var path = flatTop ? "M" + f(x0) + " " + f(y0) + " L" + f(x1) + " " + f(y0)
+        var path = flatTop ? "M" + f(x0) + " " + f(y0) + " L" + f(x1) + " " + f(y0) // i18n: none
                            : "M" + f(x1 - p) + " " + f(y0)
                              + cc(a, 0, a + b, 0, a + b + c, d) + arc(arcSection, arcSection) + cc(d, c, d, b + c, d, a + b + c)
         if (flatBottom) {
-            path += " L" + f(x1) + " " + f(y1) + " L" + f(x0) + " " + f(y1)
+            path += " L" + f(x1) + " " + f(y1) + " L" + f(x0) + " " + f(y1) // i18n: none
         } else {
-            path += " L" + f(x1) + " " + f(y1 - p)
+            path += " L" + f(x1) + " " + f(y1 - p) // i18n: none
             path += cc(0, a, 0, a + b, -d, a + b + c) + arc(-arcSection, arcSection) + cc(-c, d, -(b + c), d, -(a + b + c), d)
-            path += " L" + f(x0 + p) + " " + f(y1)
+            path += " L" + f(x0 + p) + " " + f(y1) // i18n: none
             path += cc(-a, 0, -(a + b), 0, -(a + b + c), -d) + arc(-arcSection, -arcSection) + cc(-d, -c, -d, -(b + c), -d, -(a + b + c))
         }
-        if (flatTop) return path + " Z"
-        path += " L" + f(x0) + " " + f(y0 + p)
+        if (flatTop) return path + " Z" // i18n: none
+        path += " L" + f(x0) + " " + f(y0 + p) // i18n: none
         path += cc(0, -a, 0, -(a + b), d, -(a + b + c)) + arc(arcSection, -arcSection) + cc(c, -d, b + c, -d, a + b + c, -d)
-        return path + " Z"
+        return path + " Z" // i18n: none
     }
 }

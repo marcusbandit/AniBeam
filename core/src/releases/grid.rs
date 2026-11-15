@@ -401,7 +401,7 @@ pub struct Plan {
     /// The torrents behind them: a batch once however many episodes it covers.
     pub items: Vec<Release>,
     pub bytes: u64,
-    /// The groups they come from: "SubsPlease", "Erai-raws's batch".
+    /// The groups they come from: "Lumen", "Kumo-Subs's batch".
     pub groups: Vec<String>,
     /// Follow's search and the releases it is made from; empty when there is no row to
     /// follow.
@@ -448,15 +448,16 @@ pub fn plan(
     let mut groups = Vec::new();
     for i in &seen {
         let f = &facts[*i];
-        let g = format!(
-            "{}{}",
-            if f.group.is_empty() {
-                provider
-            } else {
-                &f.group
-            },
-            if f.batch { "'s batch" } else { "" }
-        );
+        let group = if f.group.is_empty() {
+            provider
+        } else {
+            f.group.as_str()
+        };
+        let g = if f.batch {
+            crate::i18n::tr("core-releases-group-batch", &[("group", group.into())])
+        } else {
+            group.to_string()
+        };
         if !groups.contains(&g) {
             groups.push(g);
         }
@@ -504,23 +505,25 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
             b = n;
             continue;
         }
-        parts.push(if a == b {
-            a.to_string()
-        } else {
-            format!("{a} to {b}")
-        });
+        parts.push(if a == b { a.to_string() } else { range(a, b) });
         a = n;
         b = n;
     }
-    parts.push(if a == b {
-        a.to_string()
-    } else {
-        format!("{a} to {b}")
-    });
-    format!(
-        "{} {}",
-        if ns.len() == 1 { "Episode" } else { "Episodes" },
-        parts.join(", ")
+    parts.push(if a == b { a.to_string() } else { range(a, b) });
+    crate::i18n::tr(
+        "core-releases-episodes-phrase",
+        &[
+            ("count", ns.len().into()),
+            ("list", parts.join(", ").into()),
+        ],
+    )
+}
+
+/// "3 to 5": a run of episode numbers.
+fn range(a: u32, b: u32) -> String {
+    crate::i18n::tr(
+        "core-releases-episode-range",
+        &[("from", a.to_string().into()), ("to", b.to_string().into())],
     )
 }
 
@@ -578,18 +581,18 @@ mod tests {
             title: "Naruto".into(),
             ..Default::default()
         };
-        assert!(names_show(&s, "[SubsPlease] Naruto - 01 (1080p)"));
+        assert!(names_show(&s, "[Lumen] Naruto - 01 (1080p)"));
         assert!(!names_show(&s, "[Naruto-Kun.Hu] One Piece - 1100"));
     }
 
     #[test]
     fn the_group_that_fills_the_most_gaps_is_picked_and_the_plan_follows_it() {
         let items = vec![
-            rel("[SubsPlease] Sousou no Frieren - 01 (1080p)", 50),
-            rel("[SubsPlease] Sousou no Frieren - 02 (1080p)", 50),
-            rel("[SubsPlease] Sousou no Frieren - 03 (1080p)", 50),
-            rel("[Erai-raws] Sousou no Frieren - 03 [1080p]", 90),
-            rel("[Erai-raws] Sousou no Frieren - 04 [1080p]", 90),
+            rel("[Lumen] Sousou no Frieren - 01 (1080p)", 50),
+            rel("[Lumen] Sousou no Frieren - 02 (1080p)", 50),
+            rel("[Lumen] Sousou no Frieren - 03 (1080p)", 50),
+            rel("[Kumo-Subs] Sousou no Frieren - 03 [1080p]", 90),
+            rel("[Kumo-Subs] Sousou no Frieren - 04 [1080p]", 90),
         ];
         let f: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
         let s = show("dd"); // 1 and 2 on disk
@@ -597,10 +600,10 @@ mod tests {
         let t = total(&s, &f, &flight);
         assert_eq!(t, 4);
         let lib = library(&s, t, &flight);
-        let rs = rows(&items, &f, t, "nyaa");
+        let rs = rows(&items, &f, t, "tracker");
         assert_eq!(rs.len(), 2);
         let best = best_row(&rs, &lib, t).unwrap();
-        assert_eq!(rs[best].group, "Erai-raws", "fills 3 and 4");
+        assert_eq!(rs[best].group, "Kumo-Subs", "fills 3 and 4");
         let picks = pick_row(&rs[best], &lib, t, false);
         assert_eq!(picks.map.keys().copied().collect::<Vec<_>>(), vec![3, 4]);
         let codes: String = codes_of(&rs[best], &picks, &lib, t).into_iter().collect();
@@ -614,11 +617,11 @@ mod tests {
             &picks,
             &lib,
             false,
-            "nyaa",
+            "tracker",
         );
         assert_eq!(p.episodes, vec![3, 4]);
         assert_eq!(p.items.len(), 2);
-        assert_eq!(p.follow_query, "Sousou no Frieren Erai-raws 1080p");
+        assert_eq!(p.follow_query, "Sousou no Frieren Kumo-Subs 1080p");
         assert_eq!(episodes_phrase(&p.episodes), "Episodes 3 to 4");
     }
 
@@ -629,7 +632,7 @@ mod tests {
         let s = show("");
         let t = total(&s, &f, &BTreeMap::new());
         let lib = library(&s, t, &BTreeMap::new());
-        let rs = rows(&items, &f, t, "nyaa");
+        let rs = rows(&items, &f, t, "tracker");
         assert!(rs[0].batch);
         assert_eq!(rs[0].label, "1-4");
         let mut picks = Picks::default();

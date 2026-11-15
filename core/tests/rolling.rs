@@ -9,6 +9,7 @@
 //! the case waits until the earlier pass is done before queuing it.
 
 mod common;
+use common::started;
 mod fixtures;
 
 use std::path::Path;
@@ -38,7 +39,8 @@ fn settings() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     }
 }
 
@@ -62,15 +64,8 @@ fn save_settings(core: &Core) {
     assert_eq!(reply, Reply::Ok);
 }
 
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
 fn release(title: &str, link: &str) -> Release {
-    serde_json::from_value(json!({"title": title, "link": link, "source": "nyaa"})).unwrap()
+    serde_json::from_value(json!({"title": title, "link": link, "source": "tracker"})).unwrap()
 }
 
 fn batch_release(hash: &str) -> Release {
@@ -307,7 +302,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .rev()
         .map(|n| {
             release(
-                &format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"),
+                &format!("[Kumo-Subs] Black Clover - {n:03} [1080p].mkv"),
                 &format!("magnet:?xt=urn:btih:{n:040x}"),
             )
         })
@@ -349,7 +344,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .map(|i| i["title"].as_str().unwrap())
         .collect();
     let want: Vec<String> = (1..=12)
-        .map(|n| format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"))
+        .map(|n| format!("[Kumo-Subs] Black Clover - {n:03} [1080p].mkv"))
         .collect();
     assert_eq!(sent, want, "episodes 1 to 12, in episode order");
     core.shutdown();
@@ -477,15 +472,7 @@ fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_ar
         "Black Clover",
     );
     for n in 1..=4 {
-        fixtures::insert_file(
-            &core,
-            series,
-            &on_disk(n).to_string_lossy(),
-            n as f64,
-            None,
-            "episode",
-            1,
-        );
+        fixtures::insert_episode_file(&core, series, &on_disk(n).to_string_lossy(), n as f64, 1);
     }
     let key = |n: usize| classifier::number_key(None, n as f64);
     // Episodes 1 to 3 finished after the roll begins; episode 4 was seen

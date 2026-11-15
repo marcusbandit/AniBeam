@@ -31,8 +31,11 @@ Corner {
         cursorShape: Qt.IBeamCursor
         onClicked: input.forceActiveFocus()
     }
+    property string accessibleName: ""
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: theme.spokenName(root.accessibleName, "", root, "") || root.placeholder
         anchors.fill: parent
         anchors.leftMargin: theme.space(3)
         anchors.rightMargin: theme.space(3)
@@ -48,6 +51,9 @@ Corner {
         selectedTextColor: theme.text
         clip: true
         onEditingFinished: root.edited(text)
+        // Not being edited, a value longer than the field shows its start, not its end: an
+        // address reads "http://local..." rather than "...ost:8080". The caret stays put.
+        autoScroll: activeFocus
         Text {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter

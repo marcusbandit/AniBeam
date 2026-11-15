@@ -8,6 +8,11 @@
 // on the tracker is in none of those: it closes the page on a shelf of its own, a reminder
 // of what can leave the disk. Every shelf is a plain grid whose column count comes from the
 // width, and a shelf that could run long stops at a row or two with "See all".
+//
+// With no library yet (#203) Home still has something to open on: the season from AniList,
+// the episodes out this week and the season's most popular shows, the same read the Airing
+// page makes, with the call to add a folder under them. A card there opens Airing, where
+// its actions live. Offline, or before the first read lands, the call stands alone.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -15,7 +20,7 @@ Item {
     id: page
     objectName: "home-page"
     property var props: ({})
-    property string title: "Home"
+    property string title: words.t("home-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     // The arrows with nothing focused go to the scroll's grid keys (Down lands on the hero's
@@ -27,6 +32,66 @@ Item {
     property var airingRows: []   // releasing, on disk, not done with
     property var resume: null     // { card, detail, episode, partial }
     property bool libraryEmpty: false
+    // A read that failed shows Try again on the page, not a blank Home
+    property bool loadFailed: false
+    // An empty library with folders is a scan that found nothing, not a library to start
+    property bool hasFolders: false
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("home-scan-started")) }
+    onLibraryEmptyChanged: if (libraryEmpty) loadSeason()
+    // The season as the Airing page reads it (AiringNow), for an empty library only
+    property var season: null
+    readonly property var seasonShows: season ? season.shows : []
+    function showOf(id) {
+        for (var i = 0; i < seasonShows.length; i++) if (seasonShows[i].anilist_id === id) return seasonShows[i]
+        return null
+    }
+    function ago(at) {
+        var secs = Math.max(0, nowMs / 1000 - at)
+        if (secs < 3600) return words.t("home-ago-minutes", { count: Math.max(1, Math.floor(secs / 60)) })
+        if (secs < 86400) return words.t("home-ago-hours", { count: Math.floor(secs / 3600) })
+        return words.t("home-ago-days", { count: Math.floor(secs / 86400) })
+    }
+    // An AiringShow as a Card reads a series card
+    function airingCard(s, meta) {
+        return {
+            id: s.anilist_id, title: s.title, poster: s.poster || "",
+            watched: null, total_episodes: s.episodes || null, total_is_estimate: false,
+            watched_state: "Unknown", strip: null, code: "",
+            community_score: s.average_score !== null && s.average_score !== undefined ? s.average_score / 10 : null,
+            my_score: null, hidden: false, next_airing: s.next_airing || null,
+            episodes_on_disk: 0, list_status: null, site_url: "", meta: meta
+        }
+    }
+    // Out now: one card per show, its newest episode, newest first. Free of nowMs, so the
+    // 30 s clock does not rebuild the row; each card's "out 2h ago" line is its own binding.
+    readonly property var outNowList: {
+        if (!season) return []
+        var seen = ({}), out = []
+        var aired = season.aired.slice().sort(function(a, b) { return b.at - a.at })
+        for (var i = 0; i < aired.length; i++) {
+            var e = aired[i]
+            if (seen[e.anilist_id]) continue
+            var s = showOf(e.anilist_id)
+            if (!s) continue
+            seen[e.anilist_id] = true
+            var c = airingCard(s, "")
+            c.aired_episode = e.episode
+            c.aired_at = e.at
+            out.push(c)
+        }
+        return out
+    }
+    // AniList's own order for the season: most popular first
+    readonly property var popularList: seasonShows.map(function(s) {
+        return airingCard(s, s.episodes ? words.t("count-episodes", { count: s.episodes }) : "")
+    })
+    readonly property bool seasonShown: outNowList.length > 0 || popularList.length > 0
+    function loadSeason() {
+        var r = Door.listAiringNow("Now")
+        if (!r.error) season = r.reply.now
+        // AniList only when the cached read is stale; the refresh ends in AiringNowRefreshed
+        Door.refreshAiringNow("Now", false)
+    }
     Timer { interval: 30000; running: true; repeat: true; onTriggered: page.nowMs = Date.now() }
 
     readonly property real gap: theme.space(4)
@@ -88,22 +153,61 @@ Item {
 
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
-        if (r.error) { frame.toast(r.error.message); return }
+        loadFailed = !!r.error && shelf.length === 0
+        // A failed read is not an empty library, whatever the last read said
+        if (r.error) { if (loadFailed) libraryEmpty = false; frame.fail(r.error, page.reload); return }
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}
         libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0
+        if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         resume = pickResume()
         nowMs = Date.now()
+    }
+    // ---- Recommended for you (#779): the recommender's ranking held to one scope, best first.
+    // The scope is a Home preference; the core refits after every tracker refresh and says so
+    // with RecommendedRefreshed.
+    readonly property var recScopes: ["All", "InLibrary", "OnList"]
+    readonly property string recScope: Door.preferences.home_recommended || "All"
+    property var recommended: null
+    readonly property var recList: recommended ? recommended.shows : []
+    // Read off the Qt thread: the read parses the whole ranking
+    property int recToken: -1
+    function loadRecommended() { page.recToken = Door.callAsync("ListRecommended", { scope: page.recScope }) }
+    Timer { id: recDebounce; interval: 500; onTriggered: page.loadRecommended() }
+    function setRecScope(scope) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.home_recommended = scope
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error)
+    }
+    onRecScopeChanged: loadRecommended()
+    // A show the library has opens its series; any other opens its own page
+    function openShow(s) {
+        if (s.owned) frame.go("series", { id: s.owned }, s.title)
+        else frame.go("show", { anilist: s.anilist_id }, s.title)
     }
     Timer { id: debounce; interval: 500; onTriggered: page.reload() }
     Connections {
         target: Door
-        function onSeriesChanged() { if (!debounce.running) debounce.start() }
-        function onSeriesRemoved() { if (!debounce.running) debounce.start() }
+        function onSeriesChanged() { if (!debounce.running) debounce.start(); recDebounce.restart() }
+        function onSeriesRemoved() { if (!debounce.running) debounce.start(); recDebounce.restart() }
         function onPreferencesChanged(p) { if (!debounce.running) debounce.start() }
+        function onAiringNowRefreshed(s) { if (s === "Now" && page.libraryEmpty) { var r = Door.listAiringNow("Now"); if (!r.error) page.season = r.reply.now } }
+        function onEvent(envelope) { if (envelope.kind === "RecommendedRefreshed") page.loadRecommended() }
+        function onTrackersChanged() { recDebounce.restart() }
+        function onCallDone(token, reply) {
+            if (token !== page.recToken) return
+            page.recToken = -1
+            if (!reply.error) page.recommended = reply.reply.recommended
+        }
     }
-    Component.onCompleted: reload()
+    Component.onCompleted: {
+        reload()
+        loadRecommended()
+        // AniList only when the last fit is stale; the fit ends in RecommendedRefreshed
+        Door.call("RefreshRecommended", { force: false })
+    }
 
     function playFile(file, title) { if (file) frame.go("player", { file: file }, title) }
     function wholeFirst(d) { return d && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null }
@@ -116,7 +220,7 @@ Item {
         else openSeries(c)
     }
 
-    // ---- The lists. The hero's series shows only in the hero.
+    // ---- The lists. The hero's series shows in the hero and Continue, nowhere else.
     readonly property int heroId: resume ? resume.card.id : -1
     readonly property var airingIds: {
         var m = {}
@@ -139,8 +243,8 @@ Item {
         var days = []
         for (var i = -2; i < 7; i++) {
             var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
-            days.push({ label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : i === -1 ? "Yesterday" : Qt.formatDate(d, "dddd"),
-                        date: Qt.formatDate(d, "d MMM"), today: i === 0, past: i < 0,
+            days.push({ label: i === 0 ? words.t("home-today") : i === 1 ? words.t("home-tomorrow") : i === -1 ? words.t("home-yesterday") : Qt.formatDate(d, words.t("home-weekday-format")),
+                        date: Qt.formatDate(d, words.t("home-date-format")), today: i === 0, past: i < 0,
                         from: d.getTime() / 1000, cards: [] })
         }
         var end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).getTime() / 1000
@@ -167,7 +271,7 @@ Item {
             if (!placed) later.push({ card: c, drop: null })
         }
         for (var q = 0; q < days.length; q++) days[q].cards.sort(function(a, b) { return a.drop.at - b.drop.at })
-        if (later.length) days.push({ label: "No date yet", date: "", today: false, past: false, cards: later, later: true })
+        if (later.length) days.push({ label: words.t("home-no-date-yet"), date: "", today: false, past: false, cards: later, later: true })
         return days
     }
     // Where an episode that is due stands: "future" until its time, then "here" with its file
@@ -189,13 +293,18 @@ Item {
     // a fresh split would rebuild every card under it, dropping focus and hover. `weekKey`
     // reads the clock and changes only when a standing does; the split follows the key.
     function weekEntries() {
-        var out = [], ahead = [], later = [], seen = {}
+        var out = [], ahead = [], later = [], aired = [], seen = {}
         for (var i = 0; i < week.length; i++) {
             var day = week[i]
             for (var k = 0; k < day.cards.length; k++) {
                 var e = day.cards[k]
                 if (day.later) { later.push({ card: e.card, drop: null, state: "none", day: i }); continue }
                 var st = page.dropState(e.card, e.drop, nowMs)
+                // Yesterday's and today's episodes stay on their day once they air, saying how
+                // long ago, watched or not, so the board still answers whether something came out
+                if ((i === 1 || i === 2) && (st === "here" || st === "downloading" || st === "late"))
+                    aired.push({ card: e.card, drop: e.drop, day: i, state: st, aired: true,
+                                 watched: st === "here" && page.dropWatched(e.card, e.drop) })
                 if (st === "here" || st === "downloading" || st === "late") {
                     if (st === "here" && page.dropWatched(e.card, e.drop)) continue
                     out.push({ card: e.card, drop: e.drop, day: i, state: st })
@@ -207,7 +316,8 @@ Item {
         out = out.filter(function(o) { if (seen[o.card.id]) return false; seen[o.card.id] = true; return true })
         out.sort(function(a, b) { return a.drop.at - b.drop.at })
         ahead.sort(function(a, b) { return a.drop.at - b.drop.at })
-        return { out: out, ahead: ahead, later: later }
+        aired.sort(function(a, b) { return a.drop.at - b.drop.at })
+        return { out: out, ahead: ahead, later: later, aired: aired }
     }
     // Watched already: the tracker's progress reaches it, or with no tracker the core reads
     // the series caught up
@@ -221,17 +331,19 @@ Item {
     readonly property string weekKey: {
         var e = weekEntries()
         function entries(list) { return list.map(function(x) { return [x.card, x.drop, x.state] }) }
-        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later)])
+        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later), e.aired.map(function(x) { return [x.card.id, x.drop, x.state, x.watched] })])
     }
-    property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
+    property var weekSplit: ({ out: [], ahead: [], next: null, later: [], aired: [] })
     function splitWeek() {
         var e = weekEntries(), next = null
         for (var j = 0; j < e.ahead.length; j++) if (e.ahead[j].state === "future") { next = e.ahead.splice(j, 1)[0]; break }
-        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later }
+        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later, aired: e.aired }
     }
     onWeekKeyChanged: splitWeek()
     // The board (#352): today and the six days after as columns, each with its episodes
-    // still to come in air order, the next one first in its day. A day with nothing on it
+    // still to come in air order, the next one first in its day. Today opens with the
+    // episodes that already aired today (#715), over a Now line, and a Yesterday column
+    // leads when something aired yesterday. A day with nothing on it
     // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
     // guessed episode past its time and not out yet sits on today, after the next one; the
     // series with no date close the board in a column of their own.
@@ -240,29 +352,44 @@ Item {
         // every standing as it was keeps the board's tiles, their focus and hover
         var cols = [], split = weekSplit, now = new Date(dayKey + "T00:00:00")
         var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
+        // Yesterday leads the board only when something aired on it
+        var yesterday = split.aired.filter(function(a) { return a.day === 1 })
+        if (yesterday.length) {
+            var yd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+            cols.push({ name: words.t("home-yesterday"), short: words.t("home-yesterday"), date: Qt.formatDate(yd, words.t("home-day-date-format")), shortDate: Qt.formatDate(yd, words.t("home-date-format")),
+                        today: false, past: true, later: false, items: yesterday, next: null })
+        }
         for (var o = 0; o < 7; o++) {
             var i = o + 2   // the week's index: it starts two days back
             var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
-            if (o === 0) items = items.concat(overdue)
+            if (o === 0) items = split.aired.filter(function(a) { return a.day === i }).concat(items, overdue)
             // A copy marked as the next, since a model hands the tiles copies, never the same object
             var next = split.next && split.next.day === i ? { card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true } : null
             if (next) items.unshift(next)
             var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + o)
-            var name = o === 0 ? "Today" : o === 1 ? "Tomorrow" : Qt.formatDate(d, "dddd")
-            cols.push({ name: name, short: o === 0 ? name : Qt.formatDate(d, "ddd"),
-                        date: o < 2 ? Qt.formatDate(d, "ddd d MMM") : Qt.formatDate(d, "d MMM"), shortDate: Qt.formatDate(d, "d MMM"),
+            var name = o === 0 ? words.t("home-today") : o === 1 ? words.t("home-tomorrow") : Qt.formatDate(d, words.t("home-weekday-format"))
+            cols.push({ name: name, short: o === 0 ? name : Qt.formatDate(d, words.t("home-weekday-short-format")),
+                        date: o < 2 ? Qt.formatDate(d, words.t("home-day-date-format")) : Qt.formatDate(d, words.t("home-date-format")), shortDate: Qt.formatDate(d, words.t("home-date-format")),
                         today: o === 0, later: false, items: items, next: next })
         }
-        if (split.later.length) cols.push({ name: "No date yet", short: "No date yet", date: "", shortDate: "", today: false, later: true, items: split.later, next: null })
+        if (split.later.length) cols.push({ name: words.t("home-no-date-yet"), short: words.t("home-no-date-yet"), date: "", shortDate: "", today: false, later: true, items: split.later, next: null })
         return cols
+    }
+    // Whether the board leaves out the days with nothing on them (#688), kept in the
+    // preferences so it holds across launches
+    readonly property bool hideEmptyDays: Door.preferences.home_hide_empty_days === true
+    function setHideEmptyDays(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.home_hide_empty_days = on
+        Door.setPreferences(p)
     }
     // "1 day 20 h 36 m" as parts, for the countdown's large figures
     function countdownParts(secs) {
         var t = Math.max(0, Math.floor(secs)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
         var parts = []
-        if (d > 0) parts.push({ n: d, unit: d === 1 ? "day" : "days" })
-        if (d > 0 || h > 0) parts.push({ n: h, unit: "h" })
-        parts.push({ n: Math.max(d > 0 || h > 0 ? 0 : 1, m), unit: "m" })
+        if (d > 0) parts.push({ n: d, unit: words.t("home-unit-days", { count: d }) })
+        if (d > 0 || h > 0) parts.push({ n: h, unit: words.t("home-unit-hours") })
+        parts.push({ n: Math.max(d > 0 || h > 0 ? 0 : 1, m), unit: words.t("home-unit-minutes") })
         return parts
     }
     readonly property int lateCount: {
@@ -276,18 +403,18 @@ Item {
     }
     readonly property bool weekFactCounts: lateCount === 0 && weekSplit.out.every(function(o) { return o.state !== "here" })
     readonly property string weekFact: {
-        if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
+        if (lateCount > 0) return words.t("home-week-late", { count: lateCount })
         var waiting = weekSplit.out.filter(function(o) { return o.state === "here" }).length
-        if (waiting > 0) return Fmt.plural(waiting, "episode", "episodes") + " out to watch"
+        if (waiting > 0) return words.t("home-week-waiting", { count: waiting })
         // The board names the next episode itself; the fact counts what is on it instead
         var coming = weekSplit.ahead.length + (weekSplit.next ? 1 : 0)
-        if (coming > 0) return Fmt.plural(coming, "episode", "episodes") + " in the next seven days"
+        if (coming > 0) return words.t("home-week-coming", { count: coming })
         var now = nowMs / 1000, next = null
         for (var i = 0; i < airingRows.length; i++) {
             var n = airingRows[i].next_airing
             if (n && n.at > now && (!next || n.at < next.n.at)) next = { n: n, c: airingRows[i] }
         }
-        return next ? "Next up: " + next.c.title + " in " + shortCountdown(next.n.at - now) : ""
+        return next ? words.t("home-week-next", { title: next.c.title, time: shortCountdown(next.n.at - now) }) : ""
     }
     // Episodes waiting: behind on the tracker, or watched recently and not caught up
     readonly property var catchUpList: {
@@ -340,7 +467,8 @@ Item {
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
-        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
+        return d > 0 ? words.t("home-countdown-days", { days: d, hours: h }) : h > 0 ? words.t("home-countdown-hours", { hours: h, minutes: m })
+            : words.t("home-countdown-minutes", { minutes: Math.max(1, m) })
     }
 
     // ---- A section heading: the name in the display cut, its one fact beside it, and an
@@ -387,10 +515,10 @@ Item {
 
     // What an Out now poster says under its title: when it aired, or why it cannot play yet
     function outLine(o) {
-        var t = Qt.formatTime(new Date(o.drop.at * 1000), "HH:mm"), day = week[o.day] ? week[o.day].label : ""
-        if (o.state === "late") return "Not downloaded yet"
-        if (o.state === "downloading") return "Downloading"
-        return day + " " + t
+        var t = Qt.formatTime(new Date(o.drop.at * 1000), words.t("home-time-format")), day = week[o.day] ? week[o.day].label : ""
+        if (o.state === "late") return words.t("home-out-not-downloaded")
+        if (o.state === "downloading") return words.t("home-out-downloading")
+        return words.t("home-out-when", { day: day, time: t })
     }
     // A sub-heading inside the week: a word and a dim count
     component WeekLabel: Row {
@@ -400,9 +528,9 @@ Item {
         Label { id: wl; role: "title"; font.pointSize: theme.typeNormal }
         Label { id: wf; anchors.baseline: wl.baseline; role: "ui"; color: theme.textDim; visible: text !== "" }
     }
-    // The next episode to air, first in its day on the board: the poster on a band in its
-    // own tone, the time left in large figures, then the title and when. The one loud thing
-    // on the board. Opens the series.
+    // The next episode to air, first in its day on the board: a band in its own tone with
+    // the poster fading in from the right, the time left in large figures, then the title
+    // and when. The one loud thing on the board. Opens the series.
     component NextTile: Corner {
         id: nextTile
         objectName: "home-week-next"
@@ -426,41 +554,71 @@ Item {
         Keys.onSpacePressed: page.playSeries(card)
         scale: theme.reducedMotion ? 1 : (nm.pressed ? 0.99 : 1)
         PosterTone { id: nextTone; source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : "" }
-        // Wide, the poster stands at the left and the words beside it; in a narrow column the
-        // time left runs across the top and a smaller poster sits beside the title under it.
-        // Every size here follows the width, so the height never feeds back into it.
+        // Like the series page band: the poster fills the right side top to bottom, the show's
+        // colour is solid under the words and fades across into it. Every size follows the
+        // width, so the height never feeds back into it.
         readonly property bool compact: width < theme.space(110)
-        readonly property real pad: compact ? theme.space(4) : theme.space(3)
+        readonly property real pad: compact ? theme.space(4) : theme.space(5)
         readonly property real gap: theme.space(2)
-        readonly property real wordsH: lead.height + gap + info.height
-        readonly property real wideH: Math.max(nextPoster.height, wordsH)
-        height: compact ? nextPoster.y + Math.max(nextPoster.height, info.height) + pad : wideH + pad * 2
+        readonly property real artW: Math.round(width * (compact ? 0.4 : 0.36))
+        // The words stop where the wash is still near solid
+        readonly property real wordsW: width - pad * 2 - artW * 0.45
+        readonly property bool hasArt: nextArt.status === Image.Ready
+        // Tall enough that the poster shows as a poster, not a strip from its middle
+        height: Math.max(theme.space(compact ? 30 : 36), Math.round(artW * 1.15), lead.height + gap + info.height + pad * 2)
+        // Only with a poster to show: without one the band is the tone alone
         Corner {
             id: nextPoster
-            x: nextTile.pad
-            y: nextTile.compact ? lead.y + lead.height + theme.space(3) : nextTile.pad + Math.round((nextTile.wideH - height) / 2)
-            height: nextTile.compact ? theme.space(24) : theme.space(40); width: Math.round(height * 2 / 3)
-            radius: theme.radiusInner(theme.space(3))
-            color: Qt.rgba(0, 0, 0, 0.3)
-            fillItem: nextArt.status === Image.Ready ? nextArt : null
+            visible: nextTile.hasArt
+            anchors.right: parent.right
+            width: nextTile.artW; height: parent.height
+            radius: nextTile.radius
+            fillItem: nextTile.hasArt ? nextArt : null
             Image {
                 id: nextArt
                 visible: false
                 width: nextPoster.width; height: nextPoster.height
                 source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
+                // the shared poster decode, a cache hit; Corner scales it to the box
                 sourceSize: theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
             }
         }
+        // The wash: solid under the words, clearing to the right. Its radius rounds the two
+        // right corners it shares with the card.
+        Rectangle {
+            visible: nextTile.hasArt
+            anchors.right: parent.right
+            width: nextTile.artW + theme.space(12); height: parent.height
+            radius: nextTile.radius
+            antialiasing: true
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: nextTile.base }
+                GradientStop { position: 0.25; color: nextTile.base }
+                GradientStop { position: 0.5; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.8) }
+                GradientStop { position: 0.8; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.2) }
+                GradientStop { position: 1.0; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.0) }
+            }
+        }
+        // The card's own edge (focus ring, hover line) above the art, so it runs all the way round
+        Corner {
+            z: 2
+            anchors.fill: parent
+            radius: nextTile.radius
+            color: "transparent"
+            borderColor: nextTile.borderColor
+            borderWidth: nextTile.borderWidth
+        }
         // The time left
         Column {
             id: lead
-            x: nextTile.compact ? nextTile.pad : nextPoster.x + nextPoster.width + theme.space(5)
-            y: nextTile.compact ? nextTile.pad : nextTile.pad + Math.round((nextTile.wideH - nextTile.wordsH) / 2)
-            width: nextTile.width - x - nextTile.pad
+            x: nextTile.pad
+            y: nextTile.pad
+            width: nextTile.wordsW
             spacing: theme.space(1)
-            Label { text: "Next up"; role: "ledger"; color: nextTile.inkAccent }
+            Label { msg: "home-next-up"; role: "ledger"; color: nextTile.inkAccent }
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
@@ -478,9 +636,9 @@ Item {
         // The series and when
         Column {
             id: info
-            x: nextTile.compact ? nextPoster.x + nextPoster.width + theme.space(3) : lead.x
-            y: nextTile.compact ? nextPoster.y : lead.y + lead.height + nextTile.gap
-            width: nextTile.width - x - nextTile.pad
+            x: nextTile.pad
+            y: lead.y + lead.height + nextTile.gap
+            width: nextTile.wordsW
             spacing: theme.space(1)
             Label {
                 width: parent.width
@@ -494,16 +652,24 @@ Item {
             }
             Label {
                 width: parent.width
-                text: nextTile.drop ? (nextTile.drop.season && nextTile.drop.season !== 1 ? "Season " + nextTile.drop.season + ", " : "")
-                      + Fmt.episodeSpan(nextTile.drop.episode, nextTile.drop.through || 0) + ", "
-                      + Qt.formatDateTime(new Date(nextTile.drop.at * 1000), "dddd HH:mm")
-                      + (nextTile.drop.predicted ? ", time estimated" : "") : ""
+                text: {
+                    var d = nextTile.drop
+                    if (!d) return ""
+                    var args = { season: d.season, span: words.episodeSpan(d.episode, d.through || 0),
+                                 time: Qt.formatDateTime(new Date(d.at * 1000), words.t("home-next-time-format")) }
+                    var seasoned = d.season && d.season !== 1
+                    return d.predicted ? words.t(seasoned ? "home-next-when-season-estimated" : "home-next-when-estimated", args)
+                        : words.t(seasoned ? "home-next-when-season" : "home-next-when", args)
+                }
                 role: "ui"
                 color: nextTile.inkDim
                 wrapMode: Text.Wrap
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: { nextTile.forceActiveFocus(); page.openSeries(nextTile.card) }
+            Accessible.name: theme.nameNear(parent)
             id: nm
             anchors.fill: parent
             hoverEnabled: true
@@ -525,6 +691,9 @@ Item {
         readonly property var drop: entry.drop || null
         readonly property bool overdue: entry.state === "overdue"
         readonly property bool guessed: entry.state === "future" && !!drop && !!drop.predicted
+        // Out already today: it stays, counting up from when it aired
+        readonly property bool aired: entry.aired === true
+        readonly property real dim: aired && entry.watched ? 0.55 : 1
         readonly property int toWatch: page.toWatchOf(card)
         height: Math.max(theme.space(21), tileText.implicitHeight + theme.space(4))
         radius: theme.radiusMd
@@ -543,6 +712,7 @@ Item {
             height: theme.space(17); width: Math.round(height * 2 / 3)
             radius: theme.radiusSm
             color: theme.tileSunken
+            opacity: tile.dim
             fillItem: thumbImg.status === Image.Ready ? thumbImg : null
             Image {
                 id: thumbImg
@@ -560,12 +730,13 @@ Item {
             anchors.right: parent.right; anchors.rightMargin: theme.space(3)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
+            opacity: tile.dim
             Row {
                 width: parent.width
                 spacing: theme.space(1.5)
                 Label {
                     id: when
-                    text: !tile.drop ? "No date" : Qt.formatDateTime(new Date(tile.drop.at * 1000), tile.overdue ? "ddd HH:mm" : "HH:mm")
+                    text: !tile.drop ? words.t("home-no-date") : Qt.formatDateTime(new Date(tile.drop.at * 1000), tile.overdue ? words.t("home-day-time-format") : words.t("home-time-format"))
                     role: "ledger"
                     font.pointSize: theme.typeNormal
                     color: tile.overdue ? theme.red : tile.guessed ? theme.yellow : tile.drop ? theme.text : theme.textDim
@@ -574,11 +745,13 @@ Item {
                     anchors.baseline: when.baseline
                     width: Math.min(implicitWidth, parent.width - when.width - parent.spacing)
                     elide: Text.ElideRight
-                    visible: tile.overdue || tile.guessed
-                    text: tile.overdue ? "not out yet" : "estimated"
+                    visible: tile.overdue || tile.guessed || tile.aired
+                    text: tile.aired ? (tile.entry.watched ? words.t("home-tile-watched") : tile.entry.state === "downloading" ? words.t("home-tile-downloading") : words.t("home-tile-out", { ago: page.ago(tile.drop.at) }))
+                        : tile.overdue ? words.t("home-tile-not-out") : words.t("home-tile-estimated")
                     role: "ledger"
-                    color: tile.overdue ? theme.red : theme.yellow
-                    opacity: 0.8
+                    color: tile.aired ? (tile.entry.state === "late" ? theme.red : tile.entry.state === "here" && !tile.entry.watched ? theme.accent : theme.textDim)
+                        : tile.overdue ? theme.red : theme.yellow
+                    opacity: tile.aired ? 1 : 0.8
                 }
             }
             Label {
@@ -597,15 +770,19 @@ Item {
                 Label {
                     width: Math.min(implicitWidth, parent.width - (waits.visible ? waits.implicitWidth + parent.spacing : 0))
                     elide: Text.ElideRight
-                    text: tile.drop ? (tile.drop.season && tile.drop.season !== 1 ? "S" + tile.drop.season + " " : "") + Fmt.episodeSpan(tile.drop.episode, tile.drop.through || 0) : ""
+                    text: !tile.drop ? "" : tile.drop.season && tile.drop.season !== 1 ? words.t("home-tile-season-span", { season: tile.drop.season, span: words.episodeSpan(tile.drop.episode, tile.drop.through || 0) })
+                        : words.episodeSpan(tile.drop.episode, tile.drop.through || 0)
                     visible: text !== ""
                     role: "ledger"
                     color: theme.textDim
                 }
-                Label { id: waits; visible: tile.toWatch > 0; text: tile.toWatch + " to watch"; role: "ledger"; color: theme.accent }
+                Label { id: waits; visible: tile.toWatch > 0; text: words.t("home-tile-to-watch", { count: tile.toWatch }); role: "ledger"; color: theme.accent }
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: { tile.forceActiveFocus(); page.openSeries(tile.card) }
+            Accessible.name: theme.nameNear(parent)
             id: tm
             anchors.fill: parent
             hoverEnabled: true
@@ -646,7 +823,7 @@ Item {
                 text: bday.narrow && !bday.across ? bday.day.short : bday.day.name
                 role: "title"
                 font.pointSize: theme.typeNormal
-                color: bday.day.today ? theme.accent : bday.day.later ? theme.textDim : theme.text
+                color: bday.day.today ? theme.accent : bday.day.later || bday.day.past ? theme.textDim : theme.text
                 elide: Text.ElideRight
             }
             Label {
@@ -663,14 +840,33 @@ Item {
             y: bday.across ? rule.height + theme.space(3) : rule.y + rule.height + theme.space(2)
             width: bday.width - x
             spacing: theme.space(2)
-            Label { visible: !(bday.day.items && bday.day.items.length); text: "Nothing"; role: "ledger"; color: theme.textFaint }
+            Label { visible: !(bday.day.items && bday.day.items.length); msg: "home-day-nothing"; role: "ledger"; color: theme.textFaint }
+            Repeater {
+                model: (bday.day.items || []).filter(function(e) { return e.aired })
+                BoardTile { required property var modelData; entry: modelData; width: bday.tileW }
+            }
+            // Now, between what already came out today and what is still to come
+            Item {
+                objectName: "week-now-line"
+                readonly property bool hasAired: (bday.day.items || []).some(function(e) { return e.aired })
+                visible: bday.day.today && hasAired && bday.day.items.some(function(e) { return !e.aired })
+                width: list.width
+                height: nowLabel.implicitHeight
+                Label { id: nowLabel; text: words.t("home-now", { time: Qt.formatTime(new Date(page.nowMs), words.t("home-time-format")) }); role: "ledger"; color: theme.accent }
+                Rectangle {
+                    anchors.left: nowLabel.right; anchors.leftMargin: theme.space(2)
+                    anchors.right: parent.right
+                    anchors.verticalCenter: nowLabel.verticalCenter
+                    height: 1; color: theme.accent; opacity: 0.6
+                }
+            }
             NextTile {
                 visible: !!bday.day.next
                 entry: bday.day.next
                 width: bday.across ? Math.min(list.width, bday.tileW * 2 + list.spacing) : bday.tileW
             }
             Repeater {
-                model: (bday.day.items || []).filter(function(e) { return !e.next })
+                model: (bday.day.items || []).filter(function(e) { return !e.next && !e.aired })
                 BoardTile { required property var modelData; entry: modelData; width: bday.tileW }
             }
         }
@@ -684,7 +880,9 @@ Item {
         property var list: []
         property real minWidth: theme.posterWidth
         property int maxRows: 0
-        property string moreText: "See all"
+        property string moreText: words.t("action-see-all")
+        // Cards from the season, not the library: they open Airing and carry their own line
+        property bool airing: false
         signal more()
         readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (minWidth + page.gap)))
         readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
@@ -711,10 +909,13 @@ Item {
                     required property var modelData
                     objectName: "card-" + modelData.id   // a --drive target
                     item: modelData
+                    metaOverride: !shelfBox.airing ? ""
+                        : modelData.aired_at !== undefined ? words.t("home-card-aired", { episode: words.episodeName("", modelData.aired_episode), ago: page.ago(modelData.aired_at) })
+                        : (modelData.meta || "")
                     posterWidth: shelfBox.cardWidth
                     nowMs: page.nowMs
-                    onOpened: page.openSeries(modelData)
-                    onPlayed: page.playSeries(modelData)
+                    onOpened: if (shelfBox.airing) frame.go("airing"); else page.openSeries(modelData)
+                    onPlayed: if (shelfBox.airing) frame.go("airing"); else page.playSeries(modelData)
                 }
             }
         }
@@ -744,11 +945,11 @@ Item {
             Heading {
                 visible: row.lead > 0
                 width: row.split ? row.leadWidth : row.width
-                text: "Continue"
-                fact: page.continueList.length > 1 ? Fmt.plural(page.continueList.length - 1, "more series", "more series") + " to go on with" : ""
+                text: words.t("home-continue")
+                fact: page.continueList.length ? words.t("home-continue-fact", { count: page.continueList.length }) : ""
                 action: Button {
                     visible: !row.split && row.continueCards.length > row.lead
-                    text: "See all"
+                    msg: "action-see-all"
                     small: true
                     flat: true
                     onClicked: frame.go("library", { arrange: "WatchState", box: "Watching" })
@@ -759,14 +960,14 @@ Item {
                 visible: row.split
                 x: row.holdX
                 width: row.width - row.holdX
-                text: "On hold"
-                fact: Fmt.plural(row.holdCards.length, "series", "series") + " to come back to"
+                text: words.t("home-on-hold")
+                fact: words.t("home-on-hold-fact", { count: row.holdCards.length })
                 action: Button {
                     visible: row.holdCards.length > row.holdShown
-                    text: "See all"
+                    msg: "action-see-all"
                     small: true
                     flat: true
-                    onClicked: frame.go("library", { arrange: "WatchState", box: "On hold" })
+                    onClicked: frame.go("library", { arrange: "WatchState", box: "On hold" }) // i18n: none
                 }
             }
         }
@@ -806,6 +1007,12 @@ Item {
             }
         }
     }
+
+    RecommendedHover {
+        id: recHover
+        onOpened: function(s) { page.openShow(s) }
+    }
+    Connections { target: scroll; function onContentYChanged() { recHover.close() } }
 
     PageScroll {
         id: scroll
@@ -897,7 +1104,8 @@ Item {
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSeries(hero.c) }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSeries(hero.c); Accessible.role: Accessible.Button; Accessible.name: words.t("home-hero-open", { title: hero.c ? hero.c.title || "" : "" })
+                    Accessible.onPressAction: page.openSeries(hero.c) }
             }
 
             Column {
@@ -909,7 +1117,7 @@ Item {
                 spacing: theme.space(2.5)
 
                 Label {
-                    text: hero.r && hero.r.partial ? "Pick up where you stopped" : "Up next"
+                    text: hero.r && hero.r.partial ? words.t("home-hero-pick-up") : words.t("home-hero-up-next")
                     role: "title"
                     font.pointSize: theme.typeNormal
                     color: hero.inkAccent
@@ -926,7 +1134,7 @@ Item {
                 }
                 Label {
                     width: parent.width
-                    text: hero.ep ? Fmt.episodeName(hero.ep.title || "", hero.ep.number) : ""
+                    text: hero.ep ? words.episodeName(hero.ep.title || "", hero.ep.number) : ""
                     role: "ui"
                     color: hero.ink
                     elide: Text.ElideRight
@@ -934,7 +1142,7 @@ Item {
                 Label {
                     objectName: "hero-downloading"
                     visible: !!(hero.c && hero.c.downloading && hero.c.downloading.length > 0)
-                    text: visible ? "Downloading " + Fmt.plural(hero.c.downloading.length, "episode", "episodes") : ""
+                    text: visible ? words.t("home-hero-downloading", { count: hero.c.downloading.length }) : ""
                     role: "ledger"
                     font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                     color: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
@@ -962,10 +1170,10 @@ Item {
                             if (!hero.r) return ""
                             if (hero.r.partial) {
                                 var left = Math.max(1, Math.round((hero.ep.resume.duration - hero.ep.resume.position) / 60))
-                                return left + " min left"
+                                return words.t("home-hero-min-left", { count: left })
                             }
                             var w = page.watchedOf(hero.c)
-                            return hero.c.total_episodes > 0 ? w + " of " + hero.c.total_episodes + " watched" : ""
+                            return hero.c.total_episodes > 0 ? words.t("home-hero-watched", { watched: w, total: hero.c.total_episodes }) : ""
                         }
                     }
                 }
@@ -980,11 +1188,13 @@ Item {
                         primary: true
                         tint: hero.inkAccent
                         icon: "play"
-                        text: hero.ep ? (hero.r.partial ? "Resume " : "Play ") + Fmt.episodeName("", hero.ep.number).toLowerCase() : ""
+                        text: !hero.ep ? "" : words.episodeNumber(hero.ep.number) === null
+                              ? words.t(hero.r.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
+                              : words.t(hero.r.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(hero.ep.number) })
                         onClicked: if (hero.ep) page.playFile(hero.ep.file, hero.c.title)
                     }
                     Button {
-                        text: "Open series"
+                        msg: "action-open-series"
                         flat: true
                         onClicked: page.openSeries(hero.c)
                     }
@@ -994,13 +1204,13 @@ Item {
 
         Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
 
-        // ---- Continue: the other series with an episode to go on with, after the hero, and
+        // ---- Continue: every series with an episode to go on with, the hero's first (#719), and
         // On hold in what is left of the row
         ContinueRow {
             id: continueRow
             objectName: "home-continue"
             width: parent.width
-            continueCards: page.continueList.slice(1).map(function(e) { return e.card })
+            continueCards: page.continueList.map(function(e) { return e.card })
             holdCards: page.holdList
         }
         Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
@@ -1008,8 +1218,8 @@ Item {
         Shelf {
             objectName: "home-downloaded"
             width: parent.width
-            heading: "Recently downloaded"
-            fact: page.downloadedList.length ? Fmt.plural(page.downloadedList.length, "series", "series") + " with new files this fortnight" : ""
+            heading: words.t("home-downloaded")
+            fact: page.downloadedList.length ? words.t("home-downloaded-fact", { count: page.downloadedList.length }) : ""
             list: page.downloadedList
             maxRows: 1
             onMore: frame.go("library", { sort: "Downloaded", arrange: "None" })
@@ -1030,10 +1240,23 @@ Item {
             readonly property var split: page.weekSplit
             readonly property int outCount: split.out.length
             readonly property bool hasAhead: page.board.some(function(d) { return d.items.length > 0 })
+            // Still to come, leaving out what aired today and stays on Today
+            readonly property bool hasUpcoming: page.board.some(function(d) { return d.items.some(function(e) { return !e.aired }) })
             readonly property real cardW: theme.posterWidth
             Heading {
-                text: "This week"; fact: page.weekFact
-                action: Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
+                text: words.t("home-week"); fact: page.weekFact
+                action: Row {
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "home-week-hide-empty"
+                        visible: weekBox.hasAhead
+                        flat: true; small: true
+                        text: page.hideEmptyDays ? words.t("home-week-show-empty") : words.t("home-week-hide-empty")
+                        icon: page.hideEmptyDays ? "eye" : "eye-off"
+                        onClicked: page.setHideEmptyDays(!page.hideEmptyDays)
+                    }
+                    Button { objectName: "home-week-airing"; flat: true; small: true; msg: "home-week-airing"; icon: "chevron-right"; onClicked: frame.go("airing") }
+                }
             }
             // Out now
             Column {
@@ -1041,7 +1264,7 @@ Item {
                 visible: weekBox.outCount > 0
                 width: parent.width
                 spacing: theme.space(3)
-                WeekLabel { text: "Out now"; fact: Fmt.plural(weekBox.outCount, "episode", "episodes") }
+                WeekLabel { text: words.t("home-week-out"); fact: words.t("count-episodes", { count: weekBox.outCount }) }
                 Flow {
                     width: parent.width
                     spacing: page.gap
@@ -1062,10 +1285,10 @@ Item {
             }
             Item { visible: weekBox.outCount > 0 && weekBox.hasAhead; width: 1; height: theme.space(3) }
             WeekLabel {
-                visible: weekBox.outCount > 0 && weekBox.hasAhead
-                text: "Coming up"
+                visible: weekBox.outCount > 0 && weekBox.hasUpcoming
+                text: words.t("home-week-coming-up")
                 // The heading counts them already when it has nothing more pressing to say
-                fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n && !page.weekFactCounts ? Fmt.plural(n, "episode", "episodes") : "" }
+                fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n && !page.weekFactCounts ? words.t("count-episodes", { count: n }) : "" }
             }
             // The board
             Flow {
@@ -1076,16 +1299,18 @@ Item {
                 spacing: across ? theme.space(4) : theme.space(3)
                 readonly property real narrowW: theme.space(20)
                 readonly property real minDayW: theme.space(52)
-                readonly property int busy: page.board.filter(function(d) { return d.items.length > 0 }).length
-                readonly property int idle: page.board.length - busy
-                readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (page.board.length - 1) * theme.space(3)) / busy) : 0
+                // The days drawn: every one, or with #688's toggle on only those with episodes
+                readonly property var shown: page.hideEmptyDays ? page.board.filter(function(d) { return d.items.length > 0 }) : page.board
+                readonly property int busy: shown.filter(function(d) { return d.items.length > 0 }).length
+                readonly property int idle: shown.length - busy
+                readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (shown.length - 1) * theme.space(3)) / busy) : 0
                 // Too narrow for a column a day: a row a day instead, the days down the page
                 readonly property bool across: dayW < minDayW
                 // Its days are lanes for the arrow keys (GridKeys)
                 readonly property bool gridBoard: true
                 readonly property bool gridAcross: across
                 Repeater {
-                    model: page.board
+                    model: board.shown
                     BoardDay {
                         required property var modelData
                         day: modelData
@@ -1098,11 +1323,77 @@ Item {
         }
         Item { width: 1; height: page.airingRows.length ? theme.space(4) : 0 }
 
+        // ---- Recommended for you (#779): ranked from the user's own list, best first. The
+        // switch picks what the row holds: every show still to watch, only what the library
+        // has, or only what is on a list. Holding the pointer on a tile opens its hover card.
+        Column {
+            id: recBox
+            objectName: "home-recommended"
+            width: parent.width
+            spacing: theme.space(3)
+            visible: !!page.recommended && page.recommended.counts.all > 0
+            readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (theme.posterWidth + page.gap)))
+            readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
+            readonly property var shown: page.recList.slice(0, cols)
+            readonly property var counts: page.recommended ? page.recommended.counts : ({ all: 0, in_library: 0, on_list: 0 })
+            Heading {
+                text: words.t("home-recommended")
+                fact: words.t("home-recommended-fact")
+                action: Row {
+                    spacing: theme.space(3)
+                    Seg {
+                        objectName: "home-rec-scope"
+                        anchors.verticalCenter: parent.verticalCenter
+                        small: true
+                        accessibleName: words.t("home-recommended-scope")
+                        options: [{ text: words.t("home-recommended-all"), name: "all", count: recBox.counts.all },
+                                  { text: words.t("home-recommended-in-library"), name: "library", count: recBox.counts.in_library },
+                                  { text: words.t("home-recommended-on-list"), name: "list", count: recBox.counts.on_list }]
+                        index: Math.max(0, page.recScopes.indexOf(page.recScope))
+                        onPicked: function(i) { page.setRecScope(page.recScopes[i]) }
+                    }
+                    Button {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: page.recList.length > recBox.shown.length
+                        msg: "action-see-all"
+                        small: true
+                        flat: true
+                        onClicked: frame.go("recommended", {})
+                    }
+                }
+            }
+            Flow {
+                width: recBox.width
+                spacing: page.gap
+                visible: recBox.shown.length > 0
+                Repeater {
+                    model: recBox.shown
+                    RecommendedCard {
+                        id: recTile
+                        required property var modelData
+                        objectName: "rec-" + modelData.anilist_id
+                        rec: modelData
+                        posterWidth: recBox.cardWidth
+                        onOpened: { recHover.close(); page.openShow(modelData) }
+                        onRested: function(on) { on ? recHover.enter(recTile, modelData) : recHover.leave(recTile) }
+                    }
+                }
+            }
+            Label {
+                visible: recBox.shown.length === 0
+                text: page.recScope === "InLibrary" ? words.t("home-recommended-none-library")
+                    : words.t("home-recommended-none-list")
+                role: "ui"
+                color: theme.textDim
+            }
+        }
+        Item { width: 1; height: recBox.visible ? theme.space(4) : 0 }
+
         Shelf {
             objectName: "home-catch-up"
             width: parent.width
-            heading: "Catch up"
-            fact: page.catchUpList.length ? Fmt.plural(page.catchUpList.length, "series", "series") + " with episodes waiting" : ""
+            heading: words.t("home-catch-up")
+            fact: page.catchUpList.length ? words.t("home-catch-up-fact", { count: page.catchUpList.length }) : ""
             list: page.catchUpList
             maxRows: 2
             onMore: frame.go("library", { arrange: "WatchState", box: "Watching" })
@@ -1112,11 +1403,11 @@ Item {
         Shelf {
             objectName: "home-fresh"
             width: parent.width
-            heading: "Start something new"
-            fact: Fmt.plural(page.freshList.length, "series", "series") + " not started"
+            heading: words.t("home-fresh")
+            fact: words.t("home-fresh-fact", { count: page.freshList.length })
             list: page.freshList
             maxRows: 1
-            onMore: frame.go("library", { arrange: "WatchState", box: "Not started" })
+            onMore: frame.go("library", { arrange: "WatchState", box: "Not started" }) // i18n: none
         }
         Item { width: 1; height: page.freshList.length ? theme.space(4) : 0 }
 
@@ -1127,9 +1418,9 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             Heading {
-                text: "Genres"
+                text: words.t("home-genres")
                 action: Button {
-                    text: "Open library"
+                    msg: "home-open-library"
                     icon: "layers"
                     small: true
                     flat: true
@@ -1164,6 +1455,9 @@ Item {
                             Label { text: genre.modelData.count; role: "ledger"; color: theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
                         }
                         MouseArea {
+                            Accessible.role: Accessible.Button
+                            Accessible.onPressAction: genre.open()
+                            Accessible.name: theme.nameNear(parent)
                             id: gm
                             anchors.fill: parent
                             hoverEnabled: true
@@ -1180,26 +1474,94 @@ Item {
         Shelf {
             objectName: "home-dropped"
             width: parent.width
-            heading: "Dropped"
-            fact: Fmt.plural(page.droppedFiles, "file", "files") + " still on disk"
+            heading: words.t("home-dropped")
+            fact: words.t("home-dropped-fact", { count: page.droppedFiles })
             list: page.droppedList
             maxRows: 1
             onMore: frame.go("library", { arrange: "WatchState", box: "Dropped" })
         }
     }
 
+    // ---- No library yet: the season first, then the call to add a folder under it
+    PageScroll {
+        id: freshScroll
+        objectName: "home-fresh-install"
+        anchors.fill: parent
+        visible: page.libraryEmpty && page.seasonShown
+
+        Shelf {
+            objectName: "home-out-now"
+            width: parent.width
+            airing: true
+            heading: words.t("home-out-now")
+            fact: words.t("home-out-now-fact")
+            list: page.outNowList
+            maxRows: 1
+            onMore: frame.go("airing")
+        }
+        Item { width: 1; height: page.outNowList.length ? theme.space(4) : 0 }
+        Shelf {
+            objectName: "home-popular"
+            width: parent.width
+            airing: true
+            heading: words.t("home-popular")
+            fact: page.season ? page.season.label : ""
+            list: page.popularList
+            // One row, so the call to add a folder is on the first screen too
+            maxRows: 1
+            onMore: frame.go("airing")
+        }
+        Item { width: 1; height: theme.space(8) }
+        Tile {
+            objectName: "home-add-folder"
+            width: parent.width
+            height: addWords.implicitHeight + padding * 2
+            padding: theme.space(7)
+            Icon { id: addMark; glyph: "folder-plus"; size: theme.space(10); color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
+            Column {
+                id: addWords
+                anchors.left: addMark.right; anchors.leftMargin: theme.space(6)
+                anchors.right: addButton.left; anchors.rightMargin: theme.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(1)
+                Label { msg: "home-add-folder-title"; role: "title"; font.pointSize: theme.typeLarge }
+                Label { width: parent.width; msg: "home-add-folder-body"; color: theme.textDim; wrapMode: Text.Wrap }
+            }
+            Button { id: addButton; objectName: "home-add-folder-button"; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "home-add-folder-button"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+        }
+        Item { width: 1; height: theme.grout }
+        TrackerNudge {
+            objectName: "home-tracker-nudge-fresh"
+            visible: wanted
+            width: parent.width
+            height: visible ? implicitHeight : 0
+        }
+    }
+
     EmptyState {
+        objectName: "home-empty"
         anchors.centerIn: parent
-        visible: page.libraryEmpty
-        icon: "folder-plus"
-        title: "No series yet"
-        body: "Add the folder your anime lives in and the library fills itself."
-        Button { text: "Add a folder"; primary: true; onClicked: frame.go("settings") }
+        visible: page.libraryEmpty && !page.seasonShown
+        icon: page.hasFolders ? "folder-search" : "folder-plus"
+        title: page.hasFolders ? words.t("home-empty-scanned-title") : words.t("home-empty-title")
+        body: page.hasFolders ? words.t("home-empty-scanned-body")
+            : words.t("home-empty-body")
+        Button { visible: page.hasFolders; msg: "home-scan-all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+        Button { text: page.hasFolders ? words.t("home-library-settings") : words.t("home-add-folder-button"); icon: page.hasFolders ? "settings" : "folder-plus"; primary: !page.hasFolders; flat: page.hasFolders; onClicked: frame.go("settings", { tab: "library" }) }
+    }
+    EmptyState {
+        objectName: "home-failed"
+        anchors.centerIn: parent
+        visible: page.loadFailed && !page.libraryEmpty
+        icon: "circle-alert"
+        title: words.t("home-failed-title")
+        body: words.t("home-failed-body")
+        Button { msg: "action-try-again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
     }
     // A new install has no library to hold the tracker nudge, so the empty Home carries it
     TrackerNudge {
         objectName: "home-tracker-nudge"
-        visible: page.libraryEmpty && wanted
+        visible: page.libraryEmpty && !page.seasonShown && wanted
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
         width: Math.min(parent.width - theme.space(16), theme.space(220))

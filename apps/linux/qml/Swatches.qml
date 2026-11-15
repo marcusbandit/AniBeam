@@ -9,8 +9,8 @@ Row {
 
     // Terminal slots: 1 red, 3 yellow, 2 green, 6 cyan, 4 blue; 7 is the derived orange
     readonly property var swatches: [
-        { slot: 1, color: theme.red }, { slot: 7, color: theme.orange }, { slot: 3, color: theme.yellow },
-        { slot: 2, color: theme.green }, { slot: 6, color: theme.cyan }, { slot: 4, color: theme.blue }
+        { slot: 1, color: theme.red, msg: "swatches-accent-red" }, { slot: 7, color: theme.orange, msg: "swatches-accent-orange" }, { slot: 3, color: theme.yellow, msg: "swatches-accent-yellow" },
+        { slot: 2, color: theme.green, msg: "swatches-accent-green" }, { slot: 6, color: theme.cyan, msg: "swatches-accent-cyan" }, { slot: 4, color: theme.blue, msg: "swatches-accent-blue" }
     ]
     readonly property real size: theme.space(6)
     readonly property real ring: theme.space(0.5)
@@ -38,6 +38,9 @@ Row {
                 color: modelData.color
             }
             MouseArea {
+                Accessible.role: Accessible.RadioButton
+                Accessible.onPressAction: root.picked(modelData.slot)
+                Accessible.name: words.t(modelData.msg); Accessible.checkable: true; Accessible.checked: on
                 id: m
                 anchors.fill: parent
                 hoverEnabled: true

@@ -1,4 +1,4 @@
-//! Another AniBeam's library, read from its tailnet snapshot, in the shapes the Slint pages
+//! Another Anibeam's library, read from its tailnet snapshot, in the shapes the Slint pages
 //! take. The phone never changes that library; its episodes stream from there.
 
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use anibeam_companion::store::{AniListCache, Cache};
 use slint::Image;
 
 use crate::posters;
-use crate::{CalDay, CalItem, EpisodeLine, SeriesHead, Tile};
+use crate::{CalDay, CalItem, EpisodeLine, EpisodeVersionLine, SeriesHead, Tile};
 
 /// Decoded posters and their hues, by series id.
 #[derive(Default)]
@@ -62,14 +62,19 @@ fn library_tile(t: &LibraryTile, art: &Art, now: i64) -> Tile {
         out.ledger_tone = 1;
     } else if t.movie {
         out.ledger = if t.watched > 0 {
-            "Watched".into()
+            tr!("remote-watched").into()
         } else {
-            "Movie".into()
+            tr!("remote-movie").into()
         };
     } else if let Some(total) = t.total.filter(|n| *n > 0) {
-        out.ledger = format!("{} of {total} watched", t.watched.min(total)).into();
+        out.ledger = tr!(
+            "remote-watched-of",
+            done = t.watched.min(total).to_string(),
+            total = total.to_string()
+        )
+        .into();
     } else if t.on_disk > 0 {
-        out.ledger = format!("{} on disk", t.on_disk).into();
+        out.ledger = tr!("remote-on-disk", count = t.on_disk.to_string()).into();
     }
     out
 }
@@ -109,15 +114,25 @@ pub fn series(
     let page = library::detail(cache, anilist, series_id, now)?;
     let (poster, has_poster) = art.poster(Some(series_id));
     let tone = art.tone(series_id);
-    let movie = page.facts.first().is_some_and(|f| f == "Movie");
+    let movie = page.movie;
 
     let progress_text = if movie {
         let seen = page.episodes.iter().any(|e| e.watched) || page.watched > 0;
-        if seen { "Watched" } else { "Not watched yet" }.to_string()
+        if seen {
+            tr!("remote-watched")
+        } else {
+            tr!("remote-not-watched-yet")
+        }
     } else {
         match page.total.filter(|n| *n > 0) {
-            Some(total) => format!("{} of {total} watched", page.watched.min(total)),
-            None if page.watched > 0 => format!("{} watched", page.watched),
+            Some(total) => tr!(
+                "remote-watched-of",
+                done = page.watched.min(total).to_string(),
+                total = total.to_string()
+            ),
+            None if page.watched > 0 => {
+                tr!("remote-watched-count", count = page.watched.to_string())
+            }
             None => String::new(),
         }
     };
@@ -141,7 +156,15 @@ pub fn series(
         id: id(Some(series_id)),
         title: page.title.clone().into(),
         alt_title: page.alt_title.clone().unwrap_or_default().into(),
-        facts: page.facts.join("  ").into(),
+        // The computer's snapshot names the season in English ("Fall 2026"); the phone's
+        // own page words it in the language the app speaks, and so does this one.
+        facts: page
+            .facts
+            .iter()
+            .map(|f| crate::seasons::localized(f))
+            .collect::<Vec<_>>()
+            .join("  ")
+            .into(),
         poster,
         has_poster,
         initials: format::initials(&page.title).into(),
@@ -151,11 +174,20 @@ pub fn series(
             .upcoming
             .first()
             .map(|a| {
-                let ep = match a.season.filter(|s| *s > 1) {
-                    Some(s) => format!("S{s} Episode {}", a.episode),
-                    None => format!("Episode {}", a.episode),
-                };
-                format!("{ep} airs in {}", format::countdown_full(a.at - now))
+                let countdown = format::countdown_full(a.at - now);
+                match a.season.filter(|s| *s > 1) {
+                    Some(s) => tr!(
+                        "remote-airs-in-season",
+                        season = s.to_string(),
+                        n = a.episode.to_string(),
+                        countdown = countdown
+                    ),
+                    None => tr!(
+                        "remote-airs-in",
+                        n = a.episode.to_string(),
+                        countdown = countdown
+                    ),
+                }
             })
             .unwrap_or_default()
             .into(),
@@ -173,11 +205,11 @@ pub fn series(
             play_file: file,
             play_remote: true,
             play_label: if movie {
-                "Play".into()
+                tr!("common-play").into()
             } else if next.is_some() {
-                format!("Play episode {}", e.number).into()
+                tr!("remote-play-episode", n = e.number.to_string()).into()
             } else {
-                format!("Watch episode {} again", e.number).into()
+                tr!("remote-watch-again", n = e.number.to_string()).into()
             },
             ..head
         },
@@ -192,7 +224,7 @@ pub fn series(
                 if movie {
                     page.title.clone()
                 } else {
-                    format!("Episode {}", e.number)
+                    tr!("common-episode-n", n = e.number.to_string())
                 }
             });
             let line = EpisodeLine {
@@ -201,16 +233,19 @@ pub fn series(
                 date: e.aired_at.map(format::day_month).unwrap_or_default().into(),
                 // A host too old to stream lists no files; the row says what to do.
                 note: if e.file.is_none() {
-                    "Update AniBeam on that computer to play this here"
+                    tr!("remote-update-host")
                 } else {
-                    ""
+                    String::new()
                 }
                 .into(),
+                note_kind: 0,
                 cube: if e.watched { 0 } else { 2 },
                 // Streamed from the other device, from a host that can.
                 file: e.file.and_then(|f| i32::try_from(f).ok()).unwrap_or(0),
                 picked: false,
                 remote: e.file.is_some(),
+                versions: version_lines(e),
+                ..Default::default()
             };
             ((e.season.unwrap_or(1), e.number), line)
         })
@@ -218,13 +253,16 @@ pub fn series(
     for n in &missing {
         let line = EpisodeLine {
             code: format::episode_code(None, *n).into(),
-            title: format!("Episode {n}").into(),
-            date: "aired".into(),
-            note: "Missing".into(),
+            title: tr!("common-episode-n", n = n.to_string()).into(),
+            date: tr!("remote-aired").into(),
+            note: tr!("remote-missing").into(),
+            note_kind: 2,
             cube: 3,
             file: 0,
             picked: false,
             remote: false,
+            versions: Default::default(),
+            ..Default::default()
         };
         lines.push(((1, f64::from(*n)), line));
     }
@@ -234,7 +272,7 @@ pub fn series(
         let soon = a.at - now < 7 * 86_400;
         lines.push(EpisodeLine {
             code: code(a).into(),
-            title: format!("Episode {}", a.episode).into(),
+            title: tr!("common-episode-n", n = a.episode.to_string()).into(),
             date: if soon {
                 format::countdown(a.at - now)
             } else {
@@ -242,13 +280,26 @@ pub fn series(
             }
             .into(),
             note: Default::default(),
+            note_kind: 0,
             cube: 5,
             file: 0,
             picked: false,
             remote: false,
+            versions: Default::default(),
+            ..Default::default()
         });
     }
     Some((head, lines))
+}
+
+/// The versions the other device keeps of an episode, streamed from there at a tap.
+fn version_lines(e: &library::DiskEpisode) -> slint::ModelRc<EpisodeVersionLine> {
+    let list: Vec<(u64, String)> = e
+        .versions
+        .iter()
+        .map(|v| (v.file, v.label.clone()))
+        .collect();
+    crate::versions::model(crate::versions::offered(&list, |_| true))
 }
 
 /// The computer's calendar over the same days as this phone's, from its cached snapshot:
@@ -276,8 +327,8 @@ pub fn calendar(
             let (poster, has_poster) = art.poster(e.series_id);
             let (state, when) = match e.state {
                 State::Upcoming => (0, format::countdown(e.at - now)),
-                State::OnDisk { .. } => (1, "On your computer".to_string()),
-                State::Missing => (2, format!("Out {}", format::ago(now - e.at))),
+                State::OnDisk { .. } => (1, tr!("remote-on-computer")),
+                State::Missing => (2, tr!("remote-out", ago = format::ago(now - e.at))),
             };
             let item = CalItem {
                 id: id(e.series_id),
@@ -287,8 +338,12 @@ pub fn calendar(
                 initials: format::initials(&e.title).into(),
                 time: format::clock(e.at).into(),
                 episode: match e.season {
-                    Some(s) if s > 1 => format!("Season {s}, episode {}", e.episode),
-                    _ => format!("Episode {}", e.episode),
+                    Some(s) if s > 1 => tr!(
+                        "remote-season-episode",
+                        season = s.to_string(),
+                        n = e.episode.to_string()
+                    ),
+                    _ => tr!("common-episode-n", n = e.episode.to_string()),
                 }
                 .into(),
                 when: when.into(),

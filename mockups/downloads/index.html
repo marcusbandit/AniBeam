@@ -492,7 +492,7 @@ kbd {
           </div>
           <div class="sug-foot">
             <span>Search releases named <b>"reinca"</b> instead <kbd>Enter</kbd></span>
-            <span class="live"><span>nyaa 31</span><span>animetosho 28</span><span>1337x starting</span></span>
+            <span class="live"><span>Tracker 31</span><span>Feed 28</span><span>Proxy starting</span></span>
           </div>
         </div>
 
@@ -552,9 +552,9 @@ kbd {
           </div>
 
           <div class="sources">
-            <div class="source"><b>nyaa</b><span>31 releases in 0.6 s</span><i class="bar" style="width:100%"></i></div>
-            <div class="source"><b>animetosho</b><span>28 releases in 1.1 s</span><i class="bar" style="width:100%"></i></div>
-            <div class="source running"><b>1337x</b><span>Waking up, 14 of about 40 s</span><i class="bar"></i></div>
+            <div class="source"><b>Tracker</b><span>31 releases in 0.6 s</span><i class="bar" style="width:100%"></i></div>
+            <div class="source"><b>Feed</b><span>28 releases in 1.1 s</span><i class="bar" style="width:100%"></i></div>
+            <div class="source running"><b>Proxy</b><span>Waking up, 14 of about 40 s</span><i class="bar"></i></div>
           </div>
 
           <div class="matrix" id="matrix"></div>
@@ -576,7 +576,7 @@ kbd {
         <aside class="plan" aria-label="What will happen">
           <section>
             <h3 class="display" id="planTitle">Get 2 episodes</h3>
-            <p class="sum" id="planSum">From <b>SubsPlease</b>, 1080p, <b>2.8 GB</b>. About 4 minutes at your current speed.</p>
+            <p class="sum" id="planSum">From <b>Lumen</b>, 1080p, <b>2.8 GB</b>. About 4 minutes at your current speed.</p>
             <div class="eps" id="planEps"></div>
           </section>
           <section>
@@ -634,10 +634,10 @@ kbd {
     <h5>Today</h5>
     <ul class="log">
       <li class="new"><time>14:02</time><b>Link Click S3, episode 4</b> arrived and is in the library.</li>
-      <li><time>13:30</time>Checked 9 followed shows. 1 new release, from Erai-raws.</li>
+      <li><time>13:30</time>Checked 9 followed shows. 1 new release, from Orbit.</li>
       <li><time>11:48</time><b>Mushoku Tensei S3</b> finished. All 14 episodes on disk, sharing stopped.</li>
-      <li><time>09:15</time>1337x did not answer in 60 s, so nyaa and animetosho covered the search on their own.</li>
-      <li><time>08:00</time>Following <b>HORROR COLLECTOR</b>, SubsPlease 1080p.</li>
+      <li><time>09:15</time>Proxy did not answer in 60 s, so Tracker and Feed covered the search on their own.</li>
+      <li><time>08:00</time>Following <b>HORROR COLLECTOR</b>, Lumen 1080p.</li>
     </ul>
   </aside>
 </div>
@@ -668,12 +668,12 @@ const AIRING = [
   { id: "fate", t: "Fate/strange Fake", s: "hhhhhhhhhhhhh", note: "Complete on disk" },
 ];
 const GAPS = [
-  { id: "sword", t: "Reincarnated as a Sword S2", s: "hhhghdgfffff", miss: "Episodes 4 and 7", from: "SubsPlease has both" },
-  { id: "lastboss", t: "A Wild Last Boss Appeared! S2", s: "hhhggfffffff", miss: "Episodes 4 and 5", from: "Erai-raws has both" },
+  { id: "sword", t: "Reincarnated as a Sword S2", s: "hhhghdgfffff", miss: "Episodes 4 and 7", from: "Lumen has both" },
+  { id: "lastboss", t: "A Wild Last Boss Appeared! S2", s: "hhhggfffffff", miss: "Episodes 4 and 5", from: "Orbit has both" },
   { id: "bookworm", t: "Ascendance of a Bookworm", s: "hhhhhhhhhhhhhhhhggggggggg".slice(0, 24), miss: "Episodes 17 to 24", from: "One batch from EMBER, 9.6 GB" },
   { id: "rezero", t: "Re:ZERO Season 4", s: "hhhhhhhhhhhhhhhhhgg", miss: "Episodes 18 and 19", from: "ToonsHub has both" },
-  { id: "ranma", t: "Ranma1/2 Season 3", s: "hhdfffffffff", miss: "Episode 3 is stuck", from: "Erai-raws has 40 seeders for it" },
-  { id: "tanya", t: "Saga of Tanya the Evil S2", s: "hhhhhhhhhhgg", miss: "Episodes 11 and 12", from: "SubsPlease has both" },
+  { id: "ranma", t: "Ranma1/2 Season 3", s: "hhdfffffffff", miss: "Episode 3 is stuck", from: "Orbit has 40 seeders for it" },
+  { id: "tanya", t: "Saga of Tanya the Evil S2", s: "hhhhhhhhhhgg", miss: "Episodes 11 and 12", from: "Lumen has both" },
 ];
 
 function strip(code) {
@@ -709,14 +709,14 @@ const AIRED = 7;
 const LIB = { 1: "have", 2: "have", 3: "have", 4: "gap", 5: "have", 6: "dl", 7: "gap" };
 const DATES = ["4 Sep", "11 Sep", "18 Sep", "25 Sep", "2 Oct", "9 Oct", "16 Oct", "23 Oct", "30 Oct", "6 Nov", "13 Nov", "20 Nov"];
 const GROUPS = [
-  { key: "sp", who: "SubsPlease", what: "1080p, 1.4 GB each", eps: [1,2,3,4,5,6,7], seeds: [210,190,170,160,140,320,480] },
-  { key: "erai", who: "Erai-raws", what: "1080p, multi-sub", eps: [1,2,3,4,5,6,7], seeds: [80,74,60,58,55,90,130] },
+  { key: "lumen", who: "Lumen", what: "1080p, 1.4 GB each", eps: [1,2,3,4,5,6,7], seeds: [210,190,170,160,140,320,480] },
+  { key: "orbit", who: "Orbit", what: "1080p, multi-sub", eps: [1,2,3,4,5,6,7], seeds: [80,74,60,58,55,90,130] },
   { key: "toons", who: "ToonsHub", what: "1080p WEB-DL, 2.1 GB", eps: [1,2,3,4,5,6], seeds: [40,31,28,22,20,35] },
   { key: "asw", who: "ASW", what: "HEVC 1080p, 380 MB", eps: [1,2,3,4,5], seeds: [44,30,25,20,18] },
   { key: "s1", who: "EMBER", what: "Season 1 batch, wrong season", batch: true },
 ];
-let chosen = "sp";
-let picked = new Set(["sp:4", "sp:7"]);
+let chosen = "lumen";
+let picked = new Set(["lumen:4", "lumen:7"]);
 
 function renderMatrix() {
   const head = '<div class="mrow cols"><div></div>' + DATES.map((d, i) =>
@@ -793,7 +793,7 @@ matrix.addEventListener("mouseover", e => {
   const g = GROUPS.find(x => x.key === cell.dataset.g);
   const n = String(cell.dataset.n).padStart(2, "0");
   pop.innerHTML = `<div class="name">[${g.who}] Tensei shitara Ken deshita S2 - ${n} (1080p) [${(Math.random() * 0xffffff | 0).toString(16).toUpperCase()}].mkv</div>
-    <dl><dt>Seeders</dt><dd>${cell.dataset.s}</dd><dt>Size</dt><dd>${g.what.match(/[\d.]+ [GM]B/)?.[0] || "1.4 GB"}</dd><dt>Posted</dt><dd>${DATES[cell.dataset.n - 1]}, from nyaa</dd><dt>Subtitles</dt><dd>English, softsubs</dd></dl>`;
+    <dl><dt>Seeders</dt><dd>${cell.dataset.s}</dd><dt>Size</dt><dd>${g.what.match(/[\d.]+ [GM]B/)?.[0] || "1.4 GB"}</dd><dt>Posted</dt><dd>${DATES[cell.dataset.n - 1]}, from Tracker</dd><dt>Subtitles</dt><dd>English, softsubs</dd></dl>`;
   const r = cell.getBoundingClientRect(), m = document.querySelector("main").getBoundingClientRect();
   pop.style.left = (r.left - m.left + r.width / 2 - 150) + "px";
   pop.style.top = (r.bottom - m.top + window.scrollY + 8) + "px";

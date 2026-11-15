@@ -18,13 +18,14 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
-use crate::core::Core;
-use crate::jobs::{Finished, JobCtx};
-use crate::library::titles;
+use crate::foundation::services::Services;
+use crate::foundation::titles::{self, fallback_title};
+use crate::jobs::Finished;
+use crate::metadata::Metadata;
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
+use crate::net::as_u32;
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, accounts, as_u32, writes};
 
 /// How old a season may be before `RefreshAiringNow` without `force` goes
 /// back to AniList.
@@ -33,8 +34,8 @@ pub const STALE_AFTER_SECS: i64 = 30 * 60;
 /// How long a season browsed to, neither on air nor next, stays cached.
 const BROWSED_KEPT_SECS: i64 = 86_400;
 
-/// How far back the strip of episodes out reaches.
-pub const AIRED_WINDOW_SECS: i64 = 2 * 86_400;
+/// How far back the strip of episodes out reaches: the last 24 hours.
+pub const AIRED_WINDOW_SECS: i64 = 86_400;
 
 /// Fifty shows a page. Ten pages is more than any season has carried, and
 /// a cap all the same: a reply that keeps saying there is more must not
@@ -54,11 +55,12 @@ pub struct Season {
     pub year: Option<i32>,
 }
 
+/// Each season's AniList name and the catalog ID of its label.
 const SEASONS: [(&str, &str); 4] = [
-    ("WINTER", "Winter"),
-    ("SPRING", "Spring"),
-    ("SUMMER", "Summer"),
-    ("FALL", "Fall"),
+    ("WINTER", "core-airing-now-winter"),
+    ("SPRING", "core-airing-now-spring"),
+    ("SUMMER", "core-airing-now-summer"),
+    ("FALL", "core-airing-now-fall"),
 ];
 
 /// `Now` is everything releasing, whatever season it started in, which is
@@ -69,7 +71,7 @@ pub fn season_of(pick: SeasonPick, now: i64) -> Season {
     match pick {
         SeasonPick::Now => Season {
             key: "NOW".to_string(),
-            label: "Airing now".to_string(),
+            label: crate::i18n::tr("core-airing-now-now", &[]),
             status: Some("RELEASING"),
             season: None,
             year: None,
@@ -93,7 +95,7 @@ fn named(index: usize, year: i32) -> Season {
     let (name, label) = SEASONS[index];
     Season {
         key: format!("{name}-{year}"),
-        label: format!("{label} {year}"),
+        label: crate::i18n::tr(label, &[("year", year.to_string().into())]),
         status: None,
         season: Some(name),
         year: Some(year),
@@ -113,8 +115,9 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
             WHERE t.tracker = 'anilist' AND t.media_id = s.anilist_id AND a.connected_at IS NOT NULL),
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
-            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL)),
-        b.path
+            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL),
+          (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = s.anilist_id ORDER BY ls.id LIMIT 1)),
+        b.path, s.trending, s.favourites, s.duration, s.start_date
      FROM season_shows s
      LEFT JOIN images i ON i.url = s.cover_url
      LEFT JOIN images b ON b.url = s.banner_url
@@ -143,10 +146,6 @@ const AIRED_SQL: &str = "SELECT anilist_id, episode, aired_at, title_romaji, tit
        AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1
                        AND (h.anilist_id = a.anilist_id OR (a.mal_id IS NOT NULL AND h.mal_id = a.mal_id)))
      ORDER BY aired_at DESC, anilist_id, episode DESC, guess";
-
-fn fallback_title(anilist_id: u64) -> String {
-    format!("AniList {anilist_id}")
-}
 
 /// The page off the database: no request and no waiting.
 pub fn list(
@@ -214,6 +213,10 @@ pub fn list(
             format: r.get(5)?,
             episodes: r.get::<_, Option<i64>>(6)?.map(|e| e as u32),
             average_score: r.get::<_, Option<i64>>(7)?.map(|s| s as u32),
+            trending: r.get::<_, Option<i64>>(15)?.map(|v| v.max(0) as u32),
+            favourites: r.get::<_, Option<i64>>(16)?.map(|v| v.max(0) as u32),
+            duration: r.get::<_, Option<i64>>(17)?.map(|v| v.max(0) as u32),
+            start_date: r.get::<_, Option<i64>>(18)?.map(|v| v.max(0) as u32),
             site_url: r.get(8)?,
             // An episode whose moment has passed is the strip's now, not
             // a countdown to something already out.
@@ -270,21 +273,26 @@ pub fn list(
 
 /// The `ListAiringNow` call: the cached season at once, and the id of a
 /// refresh already running so the page can say one is on its way.
-pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
+pub fn list_call(metadata: &Metadata, pick: SeasonPick) -> Result<Reply, CoreError> {
+    let images_dir = metadata.services.paths.images_dir();
     let now = time::now_secs();
-    let listed = core.store.read(|c| list(c, &images_dir, pick, now))?;
+    let listed = metadata
+        .services
+        .store
+        .read(|c| list(c, &images_dir, pick, now))?;
     Ok(Reply::AiringNow {
         now: listed,
-        refreshing: running(core, pick),
+        refreshing: running(metadata, pick),
     })
 }
 
 /// This season's read while it is still running.
-fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
+fn running(metadata: &Metadata, pick: SeasonPick) -> Option<u64> {
     let key = season_of(pick, time::now_secs()).key;
-    let id = *core.airing_reads.lock().unwrap().get(&key)?;
-    core.jobs
+    let id = *metadata.airing_reads.lock().unwrap().get(&key)?;
+    metadata
+        .services
+        .jobs
         .list()
         .into_iter()
         .any(|j| j.id == id)
@@ -295,10 +303,14 @@ fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
 /// never read) or `force` says so, `Ok` when it is fresh. One read runs per
 /// season: a second ask for a season being read joins that read, and the
 /// other season's read runs beside it. Its event names the season.
-pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply, CoreError> {
+pub fn refresh_call(
+    metadata: &Arc<Metadata>,
+    pick: SeasonPick,
+    force: bool,
+) -> Result<Reply, CoreError> {
     let now = time::now_secs();
     let key = season_of(pick, now).key;
-    let fetched_at: Option<i64> = core.store.read(|c| {
+    let fetched_at: Option<i64> = metadata.services.store.read(|c| {
         c.query_row(
             "SELECT fetched_at FROM season_fetches WHERE season = ?1",
             params![key],
@@ -311,14 +323,20 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let mut reads = core.airing_reads.lock().unwrap();
+    let mut reads = metadata.airing_reads.lock().unwrap();
     if let Some(id) = reads.get(&key).copied()
-        && core.jobs.list().into_iter().any(|j| j.id == id)
+        && metadata
+            .services
+            .jobs
+            .list()
+            .into_iter()
+            .any(|j| j.id == id)
     {
         return Ok(Reply::Started { job: id });
     }
-    let owner = core.owner()?;
-    let job = core
+    let owner = metadata.clone();
+    let job = metadata
+        .services
         .jobs
         .clone()
         .start(JobKind::RefreshAiringNow, move |_| async move {
@@ -349,6 +367,10 @@ pub struct SeasonRow {
     pub format: Option<String>,
     pub episodes: Option<u32>,
     pub average_score: Option<u32>,
+    pub trending: Option<u32>,
+    pub favourites: Option<u32>,
+    pub duration: Option<u32>,
+    pub start_date: Option<u32>,
     pub cover_url: Option<String>,
     pub banner_url: Option<String>,
     pub site_url: Option<String>,
@@ -371,13 +393,13 @@ pub struct AiredRow {
 /// so its rows are held to the same list here.
 const FORMATS: [&str; 3] = ["TV", "TV_SHORT", "ONA"];
 
-async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreError> {
+async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, CoreError> {
     let now = time::now_secs();
     let season = season_of(pick, now);
-    let shows = fetch_shows(&core, &season).await?;
+    let shows = fetch_shows(&metadata, &season).await?;
     // The strip belongs to what is on air, so only that read asks for it.
     let aired = if pick == SeasonPick::Now {
-        fetch_aired(&core, now).await?
+        fetch_aired(&metadata, now).await?
     } else {
         Vec::new()
     };
@@ -397,16 +419,18 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
     let count = shows.len();
     let next_key = season_of(SeasonPick::Next, now).key;
     let key = season.key.clone();
-    core.store
+    metadata
+        .services
+        .store
         .tx_async(move |tx| write(tx, &key, &next_key, &shows, &aired, now))
         .await?;
     // Every cover before the event, so the cards draw local files.
-    for (url, outcome) in core.images.ensure(&covers).await {
+    for (url, outcome) in metadata.net.images.ensure(&covers).await {
         if let Err(e) = outcome {
             tracing::debug!("an Airing now cover {url} was not fetched: {e}");
         }
     }
-    for (url, outcome) in core.images.ensure(&banners).await {
+    for (url, outcome) in metadata.net.images.ensure(&banners).await {
         if let Err(e) = outcome {
             tracing::debug!("an Airing now banner {url} was not fetched: {e}");
         }
@@ -421,11 +445,12 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
 
 /// Every page of the season, most popular first, each show once: AniList
 /// can hand a show back on two pages when the order shifts mid-read.
-async fn fetch_shows(core: &Arc<Core>, season: &Season) -> Result<Vec<SeasonRow>, CoreError> {
+async fn fetch_shows(metadata: &Metadata, season: &Season) -> Result<Vec<SeasonRow>, CoreError> {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut rows: Vec<SeasonRow> = Vec::new();
     for page in 1..=MAX_PAGES {
-        let data = core
+        let data = metadata
+            .net
             .anilist
             .graphql(SEASON_PAGE_QUERY, season_variables(season, page), None)
             .await?;
@@ -442,10 +467,11 @@ async fn fetch_shows(core: &Arc<Core>, season: &Season) -> Result<Vec<SeasonRow>
 }
 
 /// The episodes out in the window, newest first.
-async fn fetch_aired(core: &Arc<Core>, now: i64) -> Result<Vec<AiredRow>, CoreError> {
+async fn fetch_aired(metadata: &Metadata, now: i64) -> Result<Vec<AiredRow>, CoreError> {
     let mut out: Vec<AiredRow> = Vec::new();
     for page in 1..=MAX_PAGES {
-        let data = core
+        let data = metadata
+            .net
             .anilist
             .graphql(
                 AIRED_PAGE_QUERY,
@@ -508,6 +534,10 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
                 format: text(&m["format"]),
                 episodes: as_u32(m["episodes"].as_u64()),
                 average_score: as_u32(m["averageScore"].as_u64()),
+                trending: as_u32(m["trending"].as_u64()),
+                favourites: as_u32(m["favourites"].as_u64()),
+                duration: as_u32(m["duration"].as_u64()),
+                start_date: start_date(&m["startDate"]),
                 cover_url: text(&m["coverImage"]["large"]),
                 banner_url: text(&m["bannerImage"]),
                 site_url: text(&m["siteUrl"]),
@@ -515,6 +545,15 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
             })
         })
         .collect()
+}
+
+/// AniList's `startDate` as yyyymmdd. A year alone is a date too, so a show
+/// with a known year and no month still sorts among the rest; no year is none.
+fn start_date(date: &serde_json::Value) -> Option<u32> {
+    let year = as_u32(date["year"].as_u64())?;
+    let month = as_u32(date["month"].as_u64()).unwrap_or(0).min(12);
+    let day = as_u32(date["day"].as_u64()).unwrap_or(0).min(31);
+    Some(year * 10_000 + month * 100 + day)
 }
 
 /// One page of `AIRED_PAGE_QUERY`. An adult show, or one in a format the
@@ -580,8 +619,9 @@ fn write(
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
-            format, episodes, average_score, cover_url, site_url, next_episode, next_at, banner_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            format, episodes, average_score, cover_url, site_url, next_episode, next_at, banner_url,
+            trending, favourites, duration, start_date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
     )?;
     for (rank, s) in shows.iter().enumerate() {
         insert.execute(params![
@@ -600,6 +640,10 @@ fn write(
             s.next.map(|(e, _)| i64::from(e)),
             s.next.map(|(_, at)| at),
             s.banner_url,
+            s.trending.map(i64::from),
+            s.favourites.map(i64::from),
+            s.duration.map(i64::from),
+            s.start_date.map(i64::from),
         ])?;
     }
     tx.execute(
@@ -629,6 +673,28 @@ fn write(
          ON CONFLICT(season) DO UPDATE SET fetched_at = excluded.fetched_at",
         params![key, now],
     )?;
+    // A read stopped at the page cap may have left shows on air unread.
+    let whole = !shows.is_empty() && shows.len() < (MAX_PAGES * 50) as usize;
+    if key == "NOW" && whole {
+        prune_not_interested(tx)?;
+    }
+    Ok(())
+}
+
+/// A mark with nothing left to hide is one for a show off the air, so a
+/// full read of what is on air takes it off the list (#725). Being on air
+/// is the check: no status is asked for. A show in another season the page
+/// still holds, next season's above all, keeps its mark until it airs and
+/// then ends, and one whose finale is still in the strip keeps it until the
+/// strip lets go. An empty read is AniList failing, not every show ending,
+/// and takes nothing.
+fn prune_not_interested(tx: &Transaction) -> Result<(), CoreError> {
+    tx.execute(
+        "DELETE FROM not_interested
+          WHERE anilist_id NOT IN (SELECT anilist_id FROM season_shows
+                                   UNION SELECT anilist_id FROM season_aired)",
+        [],
+    )?;
     Ok(())
 }
 
@@ -638,9 +704,13 @@ fn write(
 /// they read now, from a season row or else the library's media row, so
 /// Settings can name it after every season has moved on. Marking twice
 /// keeps the first moment; taking the mark back is a plain delete.
-pub fn set_not_interested(core: &Core, anilist_id: u64, on: bool) -> Result<Reply, CoreError> {
+pub fn set_not_interested(
+    services: &Services,
+    anilist_id: u64,
+    on: bool,
+) -> Result<Reply, CoreError> {
     let now = time::now_secs();
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         if !on {
             c.execute(
                 "DELETE FROM not_interested WHERE anilist_id = ?1",
@@ -687,9 +757,9 @@ pub fn set_not_interested(core: &Core, anilist_id: u64, on: bool) -> Result<Repl
 }
 
 /// The `ListNotInterested` call: newest mark first.
-pub fn list_not_interested(core: &Core) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let shows = core.store.read(|c| {
+pub fn list_not_interested(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let shows = services.store.read(|c| {
         let mut stmt = c.prepare(
             "SELECT n.anilist_id, n.title, i.path, n.marked_at FROM not_interested n
              LEFT JOIN images i ON i.url = n.cover_url
@@ -706,209 +776,6 @@ pub fn list_not_interested(core: &Core) -> Result<Reply, CoreError> {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     })?;
     Ok(Reply::NotInterested { shows })
-}
-
-// Plan to watch ---------------------------------------------------------------
-
-/// The `PlanToWatch` call: Planning on every connected tracker that does
-/// not list the show yet. A show already on a list keeps its status there,
-/// whatever it is; this never moves an entry. `Ok` when every connected
-/// tracker lists it already. Refused when the library hides the show, the
-/// rule every tracker write keeps, or when no connected tracker has an id
-/// for it (a MAL-only account and a show AniList gives no MAL id), and
-/// `NotConnected` when no tracker is connected at all.
-pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let (targets, title) = core.store.read(|c| {
-        let lang = prefs::load_preferences(c)?.title_language;
-        let found = c
-            .query_row(
-                "SELECT mal_id, title_romaji, title_english, title_native FROM season_shows
-                  WHERE anilist_id = ?1
-                 UNION ALL
-                 SELECT mal_id, title_romaji, title_english, title_native FROM anilist_media
-                  WHERE id = ?1
-                 LIMIT 1",
-                params![anilist_id as i64],
-                |r| {
-                    Ok((
-                        r.get::<_, Option<i64>>(0)?.map(|id| id as u64),
-                        r.get::<_, Option<String>>(1)?,
-                        r.get::<_, Option<String>>(2)?,
-                        r.get::<_, Option<String>>(3)?,
-                    ))
-                },
-            )
-            .optional()?
-            .unwrap_or_default();
-        let title = titles::resolve(
-            lang,
-            found.1.as_deref(),
-            found.2.as_deref(),
-            found.3.as_deref(),
-            &fallback_title(anilist_id),
-        );
-        let ids = [
-            (Tracker::Anilist, Some(anilist_id)),
-            (Tracker::Mal, found.0),
-        ];
-        for (t, id) in ids {
-            if let Some(id) = id
-                && writes::is_hidden(c, t, id)?
-            {
-                return Err(CoreError::Refused {
-                    reason: Refusal::Hidden,
-                });
-            }
-        }
-        let mut targets: Vec<(Tracker, u64, Option<u64>)> = Vec::new();
-        let (mut connected, mut listed) = (false, false);
-        for (t, id) in ids {
-            let Some(row) = accounts::load_row(c, t)? else {
-                continue;
-            };
-            if row.connected_at.is_none() {
-                continue;
-            }
-            connected = true;
-            let Some(id) = id else { continue };
-            let on_list: bool = c.query_row(
-                "SELECT EXISTS (SELECT 1 FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2)",
-                params![t.as_str(), id as i64],
-                |r| r.get(0),
-            )?;
-            if on_list {
-                listed = true;
-            } else {
-                targets.push((t, id, row.user_id));
-            }
-        }
-        if !connected {
-            return Err(CoreError::NotConnected {
-                tracker: Tracker::Anilist,
-            });
-        }
-        if targets.is_empty() && !listed {
-            return Err(CoreError::Refused {
-                reason: Refusal::NoMatch,
-            });
-        }
-        Ok((targets, title))
-    })?;
-    if targets.is_empty() {
-        return Ok(Reply::Ok);
-    }
-    let owner = core.owner()?;
-    let job = core
-        .jobs
-        .clone()
-        .start(JobKind::SetStatus, move |ctx| async move {
-            plan(owner, ctx, title, targets).await
-        });
-    Ok(Reply::Started { job })
-}
-
-/// A status as a sentence says it.
-fn status_words(status: ListStatus) -> &'static str {
-    match status {
-        ListStatus::Watching => "Watching",
-        ListStatus::Repeating => "Rewatching",
-        ListStatus::Planning => "Planning",
-        ListStatus::Completed => "Completed",
-        ListStatus::Paused => "On hold",
-        ListStatus::Dropped => "Dropped",
-    }
-}
-
-/// The SetStatus job behind `PlanToWatch`. Each tracker is read live first:
-/// an entry made somewhere else since the list was read is left as it is
-/// there, and the cache takes it, so the card says where the show stands.
-async fn plan(
-    core: Arc<Core>,
-    ctx: Arc<JobCtx>,
-    title: String,
-    targets: Vec<(Tracker, u64, Option<u64>)>,
-) -> Result<Finished, CoreError> {
-    let mut planned: Vec<Tracker> = Vec::new();
-    let mut found: Vec<(Tracker, ListStatus)> = Vec::new();
-    let mut failure: Option<String> = None;
-    for (t, media_id, user_id) in targets {
-        ctx.checkpoint()?;
-        let attempt = async {
-            let token = accounts::access_token(&core, t)
-                .await?
-                .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
-            let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
-            if let Some(live) = live
-                && let Some(status) = live.status
-            {
-                writes::record_progress(&core, t, media_id, live.progress, status, live.updated_at)
-                    .await?;
-                return Ok::<Option<ListStatus>, CoreError>(Some(status));
-            }
-            let stamp =
-                writes::send_status(&core, t, media_id, &token, ListStatus::Planning).await?;
-            writes::record_progress(&core, t, media_id, 0, ListStatus::Planning, stamp).await?;
-            Ok(None)
-        };
-        match attempt.await {
-            Ok(None) => planned.push(t),
-            Ok(Some(status)) => found.push((t, status)),
-            Err(e) => {
-                failure.get_or_insert_with(|| writes::sanitize_error(t, &e));
-            }
-        }
-    }
-    let names = |ts: &[Tracker]| {
-        ts.iter()
-            .map(|t| crate::trackers::oauth::site_name(*t))
-            .collect::<Vec<_>>()
-            .join(" and ")
-    };
-    let labels = |ts: &[Tracker]| {
-        ts.iter()
-            .map(|t| t.label())
-            .collect::<Vec<_>>()
-            .join(" and ")
-    };
-    Ok(match (planned.is_empty(), found.first(), failure) {
-        (false, _, _) => Finished {
-            plain: Some(format!(
-                "Added {title} to your Planning list on {}.",
-                names(&planned)
-            )),
-            level: Level::Info,
-            message: format!("{title} is on Planning on {}", labels(&planned)),
-            body: EventBody::Notice,
-        },
-        (true, Some((t, status)), _) => Finished {
-            plain: Some(format!(
-                "{title} is already on your {} list as {}.",
-                crate::trackers::oauth::site_name(*t),
-                status_words(*status)
-            )),
-            level: Level::Info,
-            message: format!(
-                "{title} is already on {} as {}",
-                t.label(),
-                status_words(*status)
-            ),
-            body: EventBody::Notice,
-        },
-        (true, None, Some(why)) => Finished {
-            plain: Some(format!(
-                "Could not add {title} to your Planning list. Try again later."
-            )),
-            level: Level::Warn,
-            message: format!("{title} could not go on Planning: {why}"),
-            body: EventBody::Notice,
-        },
-        (true, None, None) => Finished {
-            plain: None,
-            level: Level::Debug,
-            message: format!("{title} needed no change"),
-            body: EventBody::Notice,
-        },
-    })
 }
 
 #[cfg(test)]
@@ -980,6 +847,25 @@ mod tests {
         assert_eq!(rows[0].title_english, None);
         assert_eq!(rows[0].next, Some((7, 100)));
         assert!(has_next(&data));
+    }
+
+    #[test]
+    fn the_orderable_fields_are_read_and_a_partial_date_still_sorts() {
+        let data = serde_json::json!({ "Page": { "media": [
+            { "id": 1, "trending": 120, "favourites": 3400, "duration": 24,
+              "startDate": { "year": 2026, "month": 10, "day": 4 } },
+            { "id": 2, "startDate": { "year": 2027, "month": null, "day": null } },
+            { "id": 3, "startDate": { "year": null, "month": null, "day": null } },
+        ] } });
+        let rows = parse_shows(&data);
+        assert_eq!(
+            (rows[0].trending, rows[0].favourites, rows[0].duration),
+            (Some(120), Some(3400), Some(24))
+        );
+        assert_eq!(rows[0].start_date, Some(20_261_004));
+        assert_eq!(rows[1].start_date, Some(20_270_000));
+        assert_eq!(rows[2].start_date, None);
+        assert_eq!(rows[1].trending, None);
     }
 
     #[test]

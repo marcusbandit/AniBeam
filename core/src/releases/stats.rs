@@ -1,7 +1,7 @@
-//! Tracker stats for feeds that do not carry them (Erai-raws and others). Ported from
+//! Tracker stats for feeds that do not carry them (some groups' feeds and others). Ported from
 //! anirss `stats.py`.
 //!
-//! A feed item without nyaa-style stat extensions has unknown counts, but the numbers do
+//! A feed item without filtered-rss stat extensions has unknown counts, but the numbers do
 //! exist: they live at the torrent's tracker, which is where qBittorrent reads them from
 //! after adding. This module does the same without adding the torrent:
 //!
@@ -28,24 +28,26 @@ use tokio::net::UdpSocket;
 
 use super::endpoints::{quote, split_url, unquote_plus};
 use crate::contract::Release;
-use crate::downloads::replace::magnet_hash;
-use crate::net::{BoxFuture, Http, HttpRequest, Method};
+use crate::net::{BoxFuture, Http, HttpRequest};
 
-/// Tracker counts go stale quickly.
+// Every number here is anirss's, from `stats.py` as of anirss 0.7.1, and has to stay so: the
+// native engine's lookups give up when anirss's do (#547). Change one only with anirss.
+
+/// Tracker counts go stale quickly. anirss `CACHE_TTL_SECONDS`.
 pub const CACHE_TTL: Duration = Duration::from_secs(2 * 60 * 60);
-/// Per HTTP scrape request.
+/// Per HTTP scrape request. anirss `HTTP_SCRAPE_TIMEOUT`.
 pub const HTTP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(8);
-/// For each step of the UDP connect and scrape.
+/// For each step of the UDP connect and scrape. anirss `UDP_SCRAPE_TIMEOUT`.
 pub const UDP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Per .torrent download.
-pub const TORRENT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Info-hashes per HTTP scrape.
+/// Info-hashes per HTTP scrape. anirss `MAX_HTTP_BATCH`.
 pub const MAX_HTTP_BATCH: usize = 50;
-/// Keeps the datagram well under the MTU.
+/// Keeps the datagram well under the MTU. anirss `MAX_UDP_BATCH`.
 pub const MAX_UDP_BATCH: usize = 60;
+/// Trackers an enrich scrapes. anirss `MAX_TRACKERS_TRIED`.
 pub const MAX_TRACKERS_TRIED: usize = 4;
+/// .torrent downloads at a time. anirss `DOWNLOAD_WORKERS`.
 pub const DOWNLOAD_WORKERS: usize = 8;
-/// anirss `enrich(deadline_s=20.0)`.
+/// anirss `enrich(deadline_s=20.0)`, checked before each tracker as anirss checks it.
 pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(20);
 
 const USER_AGENT: &str = "anirss/1.0";
@@ -274,11 +276,7 @@ pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
 pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
     let query = link.trim().strip_prefix("magnet:?")?;
     // The hex or base32 hash, read the way a download reads it, as 20 bytes.
-    let hex = magnet_hash(link)?;
-    let mut hash = [0u8; 20];
-    for (i, byte) in hash.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
-    }
+    let hash = crate::foundation::magnet::hash_bytes(link)?;
     let mut trackers: Vec<String> = Vec::new();
     for (key, value) in query.split('&').filter_map(|p| p.split_once('=')) {
         // A magnet's values are percent-encoded; a `+` in one is a plus, not a space.
@@ -436,13 +434,9 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
-        let request = HttpRequest {
-            method: Method::Get,
-            url: format!("{url}?{prefix}{qs}"),
-            headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
-            body: None,
-            timeout: Some(HTTP_SCRAPE_TIMEOUT),
-        };
+        let request = HttpRequest::get(format!("{url}?{prefix}{qs}"))
+            .header("User-Agent", USER_AGENT)
+            .timeout(HTTP_SCRAPE_TIMEOUT);
         let body = match http.send(request).await {
             Ok(r) if r.is_success() => r.body,
             Ok(r) => {
@@ -587,15 +581,23 @@ const QUERY_SAFE: &str = "/%:@!$&'()*+,;=?";
 
 /// Percent-encode what an http(s) URL cannot hold raw.
 ///
-/// Feed links carry raw spaces and brackets (t.erai-raws.info does). The host is left alone
+/// Feed links carry raw spaces and brackets (t.keyed.example does). The host is left alone
 /// so an IPv6 literal keeps its brackets. Errors on a malformed host, for example an
-/// unclosed `[`.
+/// unclosed `[`. The link is read by the HTTP client's own parser (#493).
 pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
-    let mut parts = split_url(link).map_err(|_| BadBencode)?;
-    parts.path = quote(parts.path.as_bytes(), PATH_SAFE);
-    parts.query = quote(parts.query.as_bytes(), QUERY_SAFE);
-    parts.fragment = quote(parts.fragment.as_bytes(), QUERY_SAFE);
-    Ok(parts.geturl())
+    // Parsed by the HTTP client's own parser, so the host, path and query are the ones it
+    // fetches: a backslash, a tab or a control character reads as it does (#493). One
+    // it would not fetch, or that names no host, is malformed here too.
+    let mut url = crate::net::parsed(link).ok_or(BadBencode)?;
+    let path = quote(url.path().as_bytes(), PATH_SAFE);
+    url.set_path(&path);
+    if let Some(query) = url.query().map(|q| quote(q.as_bytes(), QUERY_SAFE)) {
+        url.set_query(Some(&query));
+    }
+    if let Some(fragment) = url.fragment().map(|f| quote(f.as_bytes(), QUERY_SAFE)) {
+        url.set_fragment(Some(&fragment));
+    }
+    Ok(url.to_string())
 }
 
 /// Where the network is reached, so tests can stand in for it as anirss's do.
@@ -626,13 +628,9 @@ impl Backend for Net<'_> {
                 tracing::warn!("torrent download failed ({shown}): malformed URL");
                 return None;
             };
-            let request = HttpRequest {
-                method: Method::Get,
-                url: encoded,
-                headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
-                body: None,
-                timeout: Some(timeout),
-            };
+            let request = HttpRequest::get(encoded)
+                .header("User-Agent", USER_AGENT)
+                .timeout(timeout);
             match self.0.send(request).await {
                 Ok(r) if r.is_success() => Some(r.body),
                 Ok(r) => {
@@ -806,7 +804,7 @@ fn with_stats(mut item: Release, stats: Stats) -> Release {
 
 /// Fill in unknown seed, peer and download counts from the items' trackers.
 ///
-/// Items whose feed already carries stats (nyaa) pass through untouched. For the rest,
+/// Items whose feed already carries stats (filtered-rss) pass through untouched. For the rest,
 /// stats come from scraping the .torrent's trackers, or for a magnet link the trackers its
 /// `tr=` parameters name: the same numbers qBittorrent shows after adding. Never fails; on
 /// any failure the item keeps its unknown stats.
@@ -967,15 +965,6 @@ async fn enrich_with(
         }
     }
     apply(items, &resolved)
-}
-
-/// Top-N by downloads, clamped to the item count. Stable for ties. Unknown downloads
-/// (feeds without stats) sort last, like -1, with seeders breaking the tie.
-pub fn top_by_downloads(items: &[Release], n: usize) -> Vec<Release> {
-    let mut sorted: Vec<Release> = items.to_vec();
-    sorted.sort_by_key(|i| std::cmp::Reverse((i.downloads.unwrap_or(-1), i.seeders.unwrap_or(-1))));
-    sorted.truncate(n);
-    sorted
 }
 
 #[cfg(test)]
@@ -1573,21 +1562,43 @@ mod tests {
         );
         // Already-encoded input passes through, and an IPv6 host keeps its brackets.
         assert_eq!(
-            encode_http_link("http://[::1]:80/a%20b").unwrap(),
-            "http://[::1]:80/a%20b"
+            encode_http_link("http://[::1]:8080/a%20b").unwrap(),
+            "http://[::1]:8080/a%20b"
         );
         assert!(encode_http_link("http://[::1/x").is_err());
+    }
+
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so a link written
+    /// that way is encoded with the host the client reads, and its path stays the path
+    /// rather than tripping the bracket check in a host it never was (#493).
+    #[test]
+    fn a_backslash_link_is_encoded_with_the_host_the_client_reads() {
+        assert_eq!(
+            encode_http_link("https://t.example\\dl\\Show [1080p.torrent?k=1").unwrap(),
+            "https://t.example/dl/Show%20%5B1080p.torrent?k=1"
+        );
+        // A backslash in the query is no slash, and stays encoded as before.
+        assert_eq!(
+            encode_http_link("https://t.example/dl?q=a\\b").unwrap(),
+            "https://t.example/dl?q=a%5Cb"
+        );
+        // A control character before the scheme reads as the client reads it, so the
+        // path never lands in the host either.
+        assert_eq!(
+            encode_http_link("\u{1}https://t.example\\dl\\x [y").unwrap(),
+            "https://t.example/dl/x%20%5By"
+        );
+        // A link naming no host the client could reach is malformed.
+        assert!(encode_http_link("https://").is_err());
     }
 
     #[tokio::test]
     async fn fetch_torrent_encodes_the_link_and_sends_the_anirss_agent() {
         let http = FakeHttp::new();
         http.push(200, b"d4:infod1:xi1eee".to_vec());
+        let timeout = Duration::from_secs(10);
         let got = Net(http.as_ref())
-            .fetch_torrent(
-                "https://h.example/[G] a b.torrent?token=1&x=y",
-                TORRENT_TIMEOUT,
-            )
+            .fetch_torrent("https://h.example/[G] a b.torrent?token=1&x=y", timeout)
             .await;
         assert!(got.is_some());
         let req = &http.requests()[0];
@@ -1600,7 +1611,7 @@ mod tests {
                 .iter()
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
-        assert_eq!(req.timeout, Some(TORRENT_TIMEOUT));
+        assert_eq!(req.timeout, Some(timeout));
     }
 
     #[tokio::test]
@@ -1609,7 +1620,7 @@ mod tests {
         http.push(404, "gone");
         assert!(
             Net(http.as_ref())
-                .fetch_torrent("http://h/a.torrent", TORRENT_TIMEOUT)
+                .fetch_torrent("http://h/a.torrent", Duration::from_secs(10))
                 .await
                 .is_none()
         );
@@ -1678,7 +1689,7 @@ mod tests {
         }
     }
 
-    const T: &str = "http://erai/t.torrent";
+    const T: &str = "http://keyed.example/t.torrent";
 
     fn infohash() -> Hash {
         torrent_facts(&default_torrent()).unwrap().0
@@ -1770,7 +1781,7 @@ mod tests {
     #[tokio::test]
     async fn enrich_failure_leaves_unknown_and_negative_caches() {
         let cache = StatsCache::default();
-        let items = vec![rel("http://erai/broken.torrent")];
+        let items = vec![rel("http://keyed.example/broken.torrent")];
         let mock = Mock::new(&[]);
         assert_eq!(
             counts(&enrich_one(&mock, &cache, items.clone()).await[0]),
@@ -1872,13 +1883,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_fetch_with_almost_no_time_left_still_gets_half_a_second() {
+        // anirss fetch_torrents: each attempt gets max(0.5, left), so a stalled server with
+        // 0.1 s left still costs about half a second, not nothing
+        let mut mock = Mock::new(&[]);
+        mock.stall = true;
+        let urls = vec!["http://h/a.torrent".to_string()];
+        let started = Instant::now();
+        let got = fetch_torrents_with(&mock, &urls, Duration::from_millis(100)).await;
+        let took = started.elapsed();
+        assert!(got.is_empty());
+        assert!(took >= Duration::from_millis(450), "{took:?}");
+        assert!(took < Duration::from_secs(3), "{took:?}");
+    }
+
+    #[tokio::test]
     async fn enrich_respects_deadline() {
         // A stalled server: the fetch sleeps exactly as long as its timeout allows, so the
         // deadline must bound the total.
         let mut mock = Mock::new(&[]);
         mock.stall = true;
         let items: Vec<Release> = (0..9)
-            .map(|i| rel(&format!("http://erai/{i}.torrent")))
+            .map(|i| rel(&format!("http://keyed.example/{i}.torrent")))
             .collect();
         let started = Instant::now();
         enrich_with(&mock, &StatsCache::default(), items, Duration::from_secs(1)).await;
@@ -1943,28 +1969,5 @@ mod tests {
         let got = fetch_torrents_with(&gauge, &urls, Duration::from_secs(5)).await;
         assert_eq!(got.len(), 20);
         assert_eq!(gauge.now.lock().unwrap().1, DOWNLOAD_WORKERS);
-    }
-
-    #[test]
-    fn top_by_downloads_sorts_unknown_last_and_clamps() {
-        let mk = |link: &str, d: Option<i64>, s: Option<i64>| {
-            let mut r = rel(link);
-            r.downloads = d;
-            r.seeders = s;
-            r
-        };
-        let items = vec![
-            mk("none", None, None),
-            mk("few", Some(5), Some(1)),
-            mk("many", Some(50), Some(1)),
-            mk("tie", Some(5), Some(9)),
-            mk("noseed", None, Some(3)),
-        ];
-        let top: Vec<String> = top_by_downloads(&items, 4)
-            .into_iter()
-            .map(|r| r.link)
-            .collect();
-        assert_eq!(top, ["many", "tie", "few", "noseed"]);
-        assert_eq!(top_by_downloads(&items, 99).len(), 5);
     }
 }

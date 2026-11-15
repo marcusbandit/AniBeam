@@ -3,6 +3,7 @@
 //! beats an embedded track, dialogue beats signs), then the first subtitle track and the
 //! file's default audio, so a file never plays unsubbed by accident.
 
+use crate::i18n::tr;
 use crate::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
 use serde_json::Value;
 
@@ -13,6 +14,7 @@ pub struct Track {
     pub lang: Option<String>,
     pub title: Option<String>,
     pub default: bool,
+    pub forced: bool,
     pub external: bool,
 }
 
@@ -35,6 +37,7 @@ pub fn parse(list: &Value) -> Vec<Track> {
                         lang: t.get("lang").and_then(Value::as_str).map(String::from),
                         title: t.get("title").and_then(Value::as_str).map(String::from),
                         default: t.get("default").and_then(Value::as_bool).unwrap_or(false),
+                        forced: t.get("forced").and_then(Value::as_bool).unwrap_or(false),
                         external: t.get("external").and_then(Value::as_bool).unwrap_or(false),
                     })
                 })
@@ -93,22 +96,51 @@ fn lang_matches(t: &Track, lang: &str) -> bool {
 }
 
 /// A track meant to carry the dialogue rather than the signs, the songs, a forced line or
-/// a commentary. Nothing in the title is the ordinary case, so it says yes.
+/// a commentary. Nothing in the title is the ordinary case, so it says yes, unless the file
+/// flags the track forced: a release that names both English tracks "English" marks the
+/// signs-only one that way and no other.
 fn is_dialogue(t: &Track) -> bool {
     let title = t.title.as_deref().unwrap_or("").to_ascii_lowercase();
-    !["signs", "songs", "forced", "commentary"]
-        .iter()
-        .any(|w| title.contains(w))
+    !t.forced
+        && !["signs", "songs", "forced", "commentary"]
+            .iter()
+            .any(|w| title.contains(w))
+}
+
+/// Two optional tags are the same when both are missing, or both are there and `eq` says so.
+fn same_opt(a: Option<&str>, b: Option<&str>, eq: fn(&str, &str) -> bool) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => eq(a, b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// A track a ref's `nth` counts among: same place (sidecar or embedded), language, title
+/// and forced flag. Storing and looking up both go through here, so `nth` names the same
+/// track both times. The caller has already kept to one kind, audio or sub.
+fn is_twin(
+    t: &Track,
+    external: bool,
+    lang: Option<&str>,
+    title: Option<&str>,
+    forced: bool,
+) -> bool {
+    t.external == external
+        && t.forced == forced
+        && same_opt(t.lang.as_deref(), lang, same_lang)
+        && same_opt(t.title.as_deref(), title, str::eq_ignore_ascii_case)
 }
 
 /// The stored choice against what this file actually carries, loosening a step at a time:
-/// kind, language and title; then kind and language; then the language alone.
+/// the nth of its exact twins; then kind, language and title; then kind and language; then
+/// the language alone. Every loose step takes a track with the stored forced flag before
+/// one without, so a pick of the full track never lands on a signs-only one when the
+/// full one is there.
 fn by_ref<'a>(tracks: &'a [Track], kind: &str, r: &TrackRef) -> Option<&'a Track> {
     let of_kind: Vec<&Track> = tracks.iter().filter(|t| t.kind == kind).collect();
-    let kind_ok = |t: &Track| match r.kind {
-        TrackKind::Sidecar => t.external,
-        TrackKind::Embedded => !t.external,
-    };
+    let external = r.kind == TrackKind::Sidecar;
+    let kind_ok = |t: &Track| t.external == external;
     let lang_ok = |t: &Track| match &r.language {
         Some(l) => lang_matches(t, l),
         None => t.lang.is_none(),
@@ -118,51 +150,72 @@ fn by_ref<'a>(tracks: &'a [Track], kind: &str, r: &TrackRef) -> Option<&'a Track
             .as_deref()
             .is_none_or(|x| x.eq_ignore_ascii_case(t.title.as_deref().unwrap_or("")))
     };
-    of_kind
+    let lang_alone = |t: &Track| r.language.as_deref().is_some_and(|l| lang_matches(t, l));
+    let prefer_forced = |ok: &dyn Fn(&Track) -> bool| {
+        of_kind
+            .iter()
+            .copied()
+            .find(|t| ok(t) && t.forced == r.forced)
+            .or_else(|| of_kind.iter().copied().find(|t| ok(t)))
+    };
+    let twins: Vec<&Track> = of_kind
         .iter()
         .copied()
-        .find(|t| kind_ok(t) && lang_ok(t) && title_ok(t))
-        .or_else(|| of_kind.iter().copied().find(|t| kind_ok(t) && lang_ok(t)))
-        .or_else(|| {
-            r.language
-                .as_deref()
-                .and_then(|l| of_kind.iter().copied().find(|t| lang_matches(t, l)))
+        .filter(|t| {
+            is_twin(
+                t,
+                external,
+                r.language.as_deref(),
+                r.title.as_deref(),
+                r.forced,
+            )
         })
+        .collect();
+    twins
+        .get(r.nth as usize)
+        .or(twins.first())
+        .copied()
+        .or_else(|| prefer_forced(&|t| kind_ok(t) && lang_ok(t) && title_ok(t)))
+        .or_else(|| prefer_forced(&|t| kind_ok(t) && lang_ok(t)))
+        .or_else(|| prefer_forced(&lang_alone))
 }
 
 pub fn pick(tracks: &[Track], choice: &TrackChoice, defaults: &SubtitleDefaults) -> Pick {
     let subs: Vec<&Track> = tracks.iter().filter(|t| t.kind == "sub").collect();
     let audio: Vec<&Track> = tracks.iter().filter(|t| t.kind == "audio").collect();
 
+    // A stored track that this file still has wins outright; one it no longer has falls
+    // through to the language orders rather than leaving the file unsubbed.
+    let stored = match &choice.subtitle {
+        Some(SubtitleChoice::Track { track }) => by_ref(tracks, "sub", track),
+        _ => None,
+    };
     let sid = match &choice.subtitle {
         Some(SubtitleChoice::Off) => None,
-        // A stored track that this file still has wins outright; one it no longer has
-        // falls through to the language orders rather than leaving the file unsubbed.
-        Some(SubtitleChoice::Track { track }) if by_ref(tracks, "sub", track).is_some() => {
-            by_ref(tracks, "sub", track).map(|t| t.id)
-        }
-        _ => defaults
-            .subtitle_languages
-            .iter()
-            .find_map(|lang| {
-                let in_lang: Vec<&Track> = subs
-                    .iter()
-                    .copied()
-                    .filter(|t| lang_matches(t, lang))
-                    .collect();
-                if in_lang.is_empty() {
-                    return None;
-                }
-                in_lang
-                    .iter()
-                    .copied()
-                    .find(|t| t.external && is_dialogue(t))
-                    .or_else(|| in_lang.iter().copied().find(|t| t.external))
-                    .or_else(|| in_lang.iter().copied().find(|t| is_dialogue(t)))
-                    .or_else(|| in_lang.first().copied())
-                    .map(|t| t.id)
-            })
-            .or_else(|| subs.first().map(|t| t.id)),
+        _ => stored.map(|t| t.id).or_else(|| {
+            defaults
+                .subtitle_languages
+                .iter()
+                .find_map(|lang| {
+                    let in_lang: Vec<&Track> = subs
+                        .iter()
+                        .copied()
+                        .filter(|t| lang_matches(t, lang))
+                        .collect();
+                    if in_lang.is_empty() {
+                        return None;
+                    }
+                    in_lang
+                        .iter()
+                        .copied()
+                        .find(|t| t.external && is_dialogue(t))
+                        .or_else(|| in_lang.iter().copied().find(|t| t.external))
+                        .or_else(|| in_lang.iter().copied().find(|t| is_dialogue(t)))
+                        .or_else(|| in_lang.first().copied())
+                        .map(|t| t.id)
+                })
+                .or_else(|| subs.first().map(|t| t.id))
+        }),
     };
 
     let aid = choice
@@ -191,7 +244,23 @@ pub fn pick(tracks: &[Track], choice: &TrackChoice, defaults: &SubtitleDefaults)
     Pick { aid, sid }
 }
 
-pub fn track_ref(t: &Track) -> TrackRef {
+/// The ref a pick is stored as. `tracks` is the file's whole list, which places the track
+/// among its twins: the tracks of its kind with the same language, title and forced flag.
+pub fn track_ref(tracks: &[Track], t: &Track) -> TrackRef {
+    let nth = tracks
+        .iter()
+        .filter(|o| {
+            o.kind == t.kind
+                && is_twin(
+                    o,
+                    t.external,
+                    t.lang.as_deref(),
+                    t.title.as_deref(),
+                    t.forced,
+                )
+        })
+        .position(|o| o.id == t.id)
+        .unwrap_or(0) as u32;
     TrackRef {
         kind: if t.external {
             TrackKind::Sidecar
@@ -200,6 +269,8 @@ pub fn track_ref(t: &Track) -> TrackRef {
         },
         language: t.lang.clone(),
         title: t.title.clone(),
+        forced: t.forced,
+        nth,
     }
 }
 
@@ -222,10 +293,13 @@ pub fn label(t: &Track) -> String {
         }
         (Some(title), _) => title.clone(),
         (None, Some(lang)) => lang,
-        (None, None) => format!("Track {}", t.id),
+        (None, None) => tr(
+            "core-playback-track-number",
+            &[("number", t.id.to_string().into())],
+        ),
     };
     if t.external {
-        out.push_str(" (file)");
+        out = tr("core-playback-track-file", &[("label", out.into())]);
     }
     out
 }
@@ -239,50 +313,54 @@ fn language_name(tag: &str) -> Option<String> {
     let base = parts.next()?;
     let region = parts.next();
     let name = match base {
-        "en" | "eng" => "English",
-        "ja" | "jpn" => "Japanese",
-        "es" | "spa" => "Spanish",
-        "pt" | "por" => "Portuguese",
-        "fr" | "fre" | "fra" => "French",
-        "de" | "ger" | "deu" => "German",
-        "it" | "ita" => "Italian",
-        "ru" | "rus" => "Russian",
-        "zh" | "chi" | "zho" => "Chinese",
-        "ko" | "kor" => "Korean",
-        "ar" | "ara" => "Arabic",
-        "hi" | "hin" => "Hindi",
-        "id" | "ind" => "Indonesian",
-        "ms" | "may" | "msa" => "Malay",
-        "th" | "tha" => "Thai",
-        "vi" | "vie" => "Vietnamese",
-        "pl" | "pol" => "Polish",
-        "tr" | "tur" => "Turkish",
-        "nl" | "dut" | "nld" => "Dutch",
-        "sv" | "swe" => "Swedish",
-        "no" | "nor" | "nb" | "nob" => "Norwegian",
-        "da" | "dan" => "Danish",
-        "fi" | "fin" => "Finnish",
-        "he" | "heb" => "Hebrew",
-        "uk" | "ukr" => "Ukrainian",
-        "cs" | "cze" | "ces" => "Czech",
-        "hu" | "hun" => "Hungarian",
-        "el" | "gre" | "ell" => "Greek",
-        "ro" | "rum" | "ron" => "Romanian",
-        "fil" | "tl" | "tgl" => "Filipino",
+        "en" | "eng" => "core-playback-lang-english",
+        "ja" | "jpn" => "core-playback-lang-japanese",
+        "es" | "spa" => "core-playback-lang-spanish",
+        "pt" | "por" => "core-playback-lang-portuguese",
+        "fr" | "fre" | "fra" => "core-playback-lang-french",
+        "de" | "ger" | "deu" => "core-playback-lang-german",
+        "it" | "ita" => "core-playback-lang-italian",
+        "ru" | "rus" => "core-playback-lang-russian",
+        "zh" | "chi" | "zho" => "core-playback-lang-chinese",
+        "ko" | "kor" => "core-playback-lang-korean",
+        "ar" | "ara" => "core-playback-lang-arabic",
+        "hi" | "hin" => "core-playback-lang-hindi",
+        "id" | "ind" => "core-playback-lang-indonesian",
+        "ms" | "may" | "msa" => "core-playback-lang-malay",
+        "th" | "tha" => "core-playback-lang-thai",
+        "vi" | "vie" => "core-playback-lang-vietnamese",
+        "pl" | "pol" => "core-playback-lang-polish",
+        "tr" | "tur" => "core-playback-lang-turkish",
+        "nl" | "dut" | "nld" => "core-playback-lang-dutch",
+        "sv" | "swe" => "core-playback-lang-swedish",
+        "no" | "nor" | "nb" | "nob" => "core-playback-lang-norwegian",
+        "da" | "dan" => "core-playback-lang-danish",
+        "fi" | "fin" => "core-playback-lang-finnish",
+        "he" | "heb" => "core-playback-lang-hebrew",
+        "uk" | "ukr" => "core-playback-lang-ukrainian",
+        "cs" | "cze" | "ces" => "core-playback-lang-czech",
+        "hu" | "hun" => "core-playback-lang-hungarian",
+        "el" | "gre" | "ell" => "core-playback-lang-greek",
+        "ro" | "rum" | "ron" => "core-playback-lang-romanian",
+        "fil" | "tl" | "tgl" => "core-playback-lang-filipino",
         _ => return None,
     };
     let region = match region {
-        Some("br") => Some("Brazil"),
-        Some("pt") => Some("Portugal"),
-        Some("419") | Some("la") => Some("Latin America"),
-        Some("es") if base == "es" || base == "spa" => Some("Spain"),
-        Some("hans") | Some("cn") => Some("Simplified"),
-        Some("hant") | Some("tw") | Some("hk") => Some("Traditional"),
+        Some("br") => Some("core-playback-region-brazil"),
+        Some("pt") => Some("core-playback-region-portugal"),
+        Some("419") | Some("la") => Some("core-playback-region-latin-america"),
+        Some("es") if base == "es" || base == "spa" => Some("core-playback-region-spain"),
+        Some("hans") | Some("cn") => Some("core-playback-region-simplified"),
+        Some("hant") | Some("tw") | Some("hk") => Some("core-playback-region-traditional"),
         _ => None,
     };
+    let name = tr(name, &[]);
     Some(match region {
-        Some(r) => format!("{name} ({r})"),
-        None => name.to_string(),
+        Some(r) => tr(
+            "core-playback-lang-region",
+            &[("name", name.into()), ("region", tr(r, &[]).into())],
+        ),
+        None => name,
     })
 }
 
@@ -341,12 +419,16 @@ mod tests {
                 kind: TrackKind::Embedded,
                 language: Some("eng".into()),
                 title: Some("English Dub".into()),
+                forced: false,
+                nth: 0,
             }),
             subtitle: Some(SubtitleChoice::Track {
                 track: TrackRef {
                     kind: TrackKind::Embedded,
                     language: Some("en".into()),
                     title: Some("Signs & Songs".into()),
+                    forced: false,
+                    nth: 0,
                 },
             }),
         };
@@ -359,6 +441,8 @@ mod tests {
                     kind: TrackKind::Sidecar,
                     language: Some("en".into()),
                     title: Some("gone".into()),
+                    forced: false,
+                    nth: 0,
                 },
             }),
         };
@@ -374,6 +458,8 @@ mod tests {
                     kind: TrackKind::Embedded,
                     language: Some("es".into()),
                     title: None,
+                    forced: false,
+                    nth: 0,
                 },
             }),
         };
@@ -401,7 +487,7 @@ mod tests {
     #[test]
     fn refs_and_labels() {
         let l = list();
-        let r = track_ref(&l[5]);
+        let r = track_ref(&l, &l[5]);
         assert_eq!(r.kind, TrackKind::Sidecar);
         assert_eq!(r.language.as_deref(), Some("eng"));
         assert_eq!(r.title.as_deref(), Some("English"));
@@ -439,6 +525,113 @@ mod tests {
         );
     }
 
+    /// The Judas layout from #727: two "English" subtitles, the first forced and signs only,
+    /// and two "French" ones told apart by nothing but their order.
+    fn twins() -> Vec<Track> {
+        parse(&json!([
+            { "id": 1, "type": "audio", "lang": "jpn", "title": "Japanese", "default": true },
+            { "id": 2, "type": "audio", "lang": "eng", "title": "English" },
+            { "id": 1, "type": "sub", "lang": "eng", "title": "English", "forced": true, "default": true },
+            { "id": 2, "type": "sub", "lang": "eng", "title": "English" },
+            { "id": 3, "type": "sub", "lang": "fre", "title": "French" },
+            { "id": 4, "type": "sub", "lang": "fre", "title": "French" }
+        ]))
+    }
+
+    fn stored(tracks: &[Track], sid: i64) -> TrackChoice {
+        let t = tracks
+            .iter()
+            .find(|t| t.kind == "sub" && t.id == sid)
+            .unwrap();
+        TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: track_ref(tracks, t),
+            }),
+        }
+    }
+
+    #[test]
+    fn a_pick_among_same_named_tracks_comes_back_as_that_track() {
+        let t = twins();
+        for sid in 1..=4 {
+            assert_eq!(
+                pick(&t, &stored(&t, sid), &defaults()).sid,
+                Some(sid),
+                "subtitle {sid} reopens as itself"
+            );
+        }
+        // Through the store and back, as the next episode reads it
+        let json = serde_json::to_string(&stored(&t, 4)).unwrap();
+        let back: TrackChoice = serde_json::from_str(&json).unwrap();
+        assert_eq!(pick(&t, &back, &defaults()).sid, Some(4));
+    }
+
+    #[test]
+    fn a_choice_stored_before_the_forced_flag_finds_the_full_track() {
+        let old: TrackChoice = serde_json::from_str(
+            r#"{"audio":{"kind":"Embedded","language":"ja","title":"Japanese"},
+                "subtitle":{"Track":{"track":{"kind":"Embedded","language":"en","title":"English"}}}}"#,
+        )
+        .unwrap();
+        let p = pick(&twins(), &old, &defaults());
+        assert_eq!((p.aid, p.sid), (Some(1), Some(2)));
+    }
+
+    #[test]
+    fn a_forced_track_is_never_the_dialogue_the_language_order_wants() {
+        assert_eq!(
+            pick(&twins(), &TrackChoice::default(), &defaults()).sid,
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn a_forced_pick_whose_twin_is_gone_still_lands_on_its_language() {
+        let t = twins();
+        let choice = stored(&t, 1);
+        let only_full: Vec<Track> = t.into_iter().filter(|x| !x.forced).collect();
+        assert_eq!(pick(&only_full, &choice, &defaults()).sid, Some(2));
+    }
+
+    #[test]
+    fn a_loose_match_takes_the_full_track_over_its_forced_twin() {
+        let untitled = TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: TrackRef {
+                    kind: TrackKind::Embedded,
+                    language: Some("en".into()),
+                    title: None,
+                    forced: false,
+                    nth: 0,
+                },
+            }),
+        };
+        assert_eq!(
+            pick(&twins(), &untitled, &defaults()).sid,
+            Some(2),
+            "a ref with no title matches any title, and still skips the forced one"
+        );
+        let sidecar = TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: TrackRef {
+                    kind: TrackKind::Sidecar,
+                    language: Some("en".into()),
+                    title: Some("ep01.en".into()),
+                    forced: false,
+                    nth: 0,
+                },
+            }),
+        };
+        assert_eq!(
+            pick(&twins(), &sidecar, &defaults()).sid,
+            Some(2),
+            "a sidecar pick on a file without one falls to the full embedded track"
+        );
+    }
+
     #[test]
     fn an_undetermined_tag_is_no_language_but_still_finds_its_own_ref() {
         let tracks = parse(&json!([
@@ -456,7 +649,7 @@ mod tests {
         let stored = TrackChoice {
             audio: None,
             subtitle: Some(SubtitleChoice::Track {
-                track: track_ref(&tracks[0]),
+                track: track_ref(&tracks, &tracks[0]),
             }),
         };
         assert_eq!(

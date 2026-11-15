@@ -46,6 +46,9 @@ pub mod qobject {
         /// The x-ray of `item`'s tree inside `window`.
         #[qinvokable]
         unsafe fn scene(self: &Dev, item: *mut QObject, window: *mut QObject) -> QString;
+        /// What a screen reader gets from `window`: every control and its name.
+        #[qinvokable]
+        unsafe fn accessible(self: &Dev, window: *mut QObject) -> QString;
         /// The process's memory in kilobytes, as the kernel counts it.
         #[qinvokable]
         fn memory(self: &Dev) -> QString;
@@ -106,6 +109,12 @@ impl qobject::Dev {
         window: *mut cxx_qt::QObject,
     ) -> QString {
         unsafe { crate::bridge::helpers::ffi::dev_scene(item, window) }
+    }
+
+    /// # Safety
+    /// The pointer comes from QML and names the live window for the length of the call.
+    pub unsafe fn accessible(&self, window: *mut cxx_qt::QObject) -> QString {
+        unsafe { crate::bridge::helpers::ffi::dev_accessible(window) }
     }
 
     pub fn memory(&self) -> QString {

@@ -1,12 +1,15 @@
 //! libmpv, the desktop's player, over its C API: one core per open episode, its events on a
 //! thread of their own, and the picture drawn through the render API by `video.rs`.
 //!
-//! The libraries come from mpv-android's releases (`scripts/fetch-mpv.sh`). Off Android
-//! there is no libmpv to link, so the same type opens nothing and every call is a no-op;
-//! the rest of the app, and its tests, build on the desktop all the same.
+//! The libraries come from mpv-android's releases on Android (`scripts/fetch-mpv.sh`) and
+//! from MPVKit's on the iPhone (`scripts/fetch-mpv-ios.sh`). Where build.rs links no libmpv
+//! (`cfg(libmpv)` unset: the desktop the tests run on), the same type opens nothing and
+//! every call is a no-op; the rest of the app, and its tests, build on the desktop all the
+//! same. What the platform has to do before mpv starts is
+//! `crate::platform::prepare_mpv`'s.
 
-// Off Android the types stand in for a player that never opens.
-#![cfg_attr(not(target_os = "android"), allow(dead_code))]
+// Without libmpv the types stand in for a player that never opens.
+#![cfg_attr(not(libmpv), allow(dead_code))]
 
 use std::sync::Arc;
 
@@ -32,7 +35,7 @@ pub enum MpvEvent {
 
 /// What the player observes, with the format each is read in. `track-list` comes as JSON
 /// text, the same list the desktop parses.
-pub const OBSERVED: [(&str, Format); 9] = [
+pub const OBSERVED: [(&str, Format); 11] = [
     ("time-pos", Format::Double),
     ("duration", Format::Double),
     ("pause", Format::Flag),
@@ -42,6 +45,8 @@ pub const OBSERVED: [(&str, Format); 9] = [
     ("track-list", Format::Text),
     ("aid", Format::Text),
     ("sid", Format::Text),
+    ("sub-delay", Format::Double),
+    ("audio-delay", Format::Double),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -54,8 +59,9 @@ pub enum Format {
 /// The options set before mpv starts, the phone's own: the picture goes through the render
 /// API, decoding uses MediaCodec with a copy back, which works with any GL context, and
 /// sound goes to AudioTrack. No GL interop for hardware frames: the copy does not need it,
-/// and the AImageReader one wants a Surface the render API never gives it. AniBeam's owned
+/// and the AImageReader one wants a Surface the render API never gives it. Anibeam's owned
 /// options and the subtitle table follow at load.
+#[cfg(not(target_os = "ios"))]
 pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("gpu-hwdec-interop", "no"),
     ("vo", "libmpv"),
@@ -66,14 +72,30 @@ pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("terminal", "no"),
 ];
 
-#[cfg(not(target_os = "android"))]
+/// The iPhone's: the picture goes through the render API on OpenGL ES, decoding uses
+/// VideoToolbox with a copy back into ordinary textures. Without the copy, mpv's `ios-gl`
+/// interop maps the frames as luminance textures and their colour comes out purple and green
+/// (#977). Sound goes to an AudioUnit, which sets up the app's audio session itself. Film grain
+/// is the decoder's to apply: left to the GL renderer, this build's software HEVC frames come
+/// out black or in streaks.
+#[cfg(target_os = "ios")]
+pub const BOOT_OPTIONS: [(&str, &str); 6] = [
+    ("vo", "libmpv"),
+    ("hwdec", "videotoolbox-copy"),
+    ("vd-lavc-film-grain", "cpu"),
+    ("ao", "audiounit"),
+    ("idle", "yes"),
+    ("terminal", "no"),
+];
+
+#[cfg(not(libmpv))]
 pub use host::Mpv;
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 pub use imp::Mpv;
 
 pub type Listener = Box<dyn Fn(MpvEvent) + Send + 'static>;
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 pub(crate) mod ffi {
     #![allow(non_camel_case_types, dead_code)]
     use std::ffi::{c_char, c_int, c_void};
@@ -213,17 +235,13 @@ pub(crate) mod ffi {
         ) -> c_int;
         pub fn mpv_render_context_report_swap(ctx: *mut mpv_render_context);
         pub fn mpv_render_context_free(ctx: *mut mpv_render_context);
-
-        /// libavcodec's: MediaCodec and AudioTrack reach Java through the VM it is given.
-        pub fn av_jni_set_java_vm(vm: *mut c_void, log_ctx: *mut c_void) -> c_int;
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 mod imp {
     use super::*;
     use std::ffi::{CStr, CString, c_char};
-    use std::sync::Once;
 
     use ffi::*;
 
@@ -240,17 +258,6 @@ mod imp {
         CString::new(s.replace('\0', "")).unwrap()
     }
 
-    /// Whether this is the Android emulator rather than a phone.
-    fn emulator() -> bool {
-        unsafe extern "C" {
-            fn __system_property_get(name: *const c_char, value: *mut c_char) -> i32;
-        }
-        let mut value = [0 as c_char; 92];
-        let n = unsafe { __system_property_get(c"ro.hardware".as_ptr(), value.as_mut_ptr()) };
-        let hw = unsafe { CStr::from_ptr(value.as_ptr()) }.to_string_lossy();
-        n > 0 && (hw == "ranchu" || hw == "goldfish")
-    }
-
     fn error(code: i32) -> String {
         unsafe { CStr::from_ptr(mpv_error_string(code)) }
             .to_string_lossy()
@@ -259,27 +266,29 @@ mod imp {
 
     impl Mpv {
         pub fn new(listener: Listener) -> Result<Arc<Mpv>, String> {
-            static VM: Once = Once::new();
-            VM.call_once(|| unsafe {
-                av_jni_set_java_vm(ndk_context::android_context().vm(), std::ptr::null_mut());
-            });
+            crate::platform::prepare_mpv();
             let handle = unsafe { mpv_create() };
             if handle.is_null() {
-                return Err("mpv did not start".into());
+                return Err(tr!("player-mpv-no-start"));
             }
             for (k, v) in BOOT_OPTIONS {
                 // The emulator's MediaCodec H.264 decoder (c2.goldfish) streaks the picture
-                // with black lines through the copy; software decoding there is clean.
-                let v = if k == "hwdec" && emulator() { "no" } else { v };
+                // with black lines through the copy, and the iOS Simulator has no dependable
+                // VideoToolbox to GL path; software decoding is clean on both.
+                let v = if k == "hwdec" && crate::platform::emulator() {
+                    "no"
+                } else {
+                    v
+                };
                 let (k, v) = (c(k), c(v));
                 unsafe { mpv_set_option_string(handle, k.as_ptr(), v.as_ptr()) };
             }
-            // mpv's own warnings and errors go to logcat beside the app's.
+            // mpv's own warnings and errors go to the log beside the app's.
             unsafe { mpv_request_log_messages(handle, c"warn".as_ptr()) };
             let code = unsafe { mpv_initialize(handle) };
             if code < 0 {
                 unsafe { mpv_terminate_destroy(handle) };
-                return Err(format!("mpv did not start: {}", error(code)));
+                return Err(tr!("player-mpv-no-start-why", why = error(code)));
             }
             for (i, (name, format)) in OBSERVED.iter().enumerate() {
                 let format = match format {
@@ -420,16 +429,16 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 mod host {
     use super::*;
 
-    /// No libmpv off Android: nothing opens, so nothing plays.
+    /// No libmpv linked: nothing opens, so nothing plays.
     pub struct Mpv;
 
     impl Mpv {
         pub fn new(_listener: Listener) -> Result<Arc<Mpv>, String> {
-            Err("the player runs on Android only".into())
+            Err(tr!("player-android-only"))
         }
         pub fn set(&self, _name: &str, _value: &str) {}
         pub fn command(&self, _args: &[&str]) {}

@@ -2,6 +2,7 @@
 //! next broadcast right without asking for the whole record again.
 
 mod common;
+use common::started;
 mod fixtures;
 use std::time::Duration;
 
@@ -65,25 +66,12 @@ fn matched(
         &format!("/lib/{name}"),
         name,
     );
-    fixtures::insert_file(
-        core,
-        series,
-        &format!("/lib/{name}/01.mkv"),
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        core,
-        anilist_id,
-        Some(name),
-        None,
-        Some(12),
-        status,
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(core, series, &format!("/lib/{name}/01.mkv"), 1.0, 1);
+    fixtures::media(anilist_id, name)
+        .episodes(12)
+        .status(status)
+        .score(80)
+        .insert(core);
     fixtures::match_series(core, series, Some(anilist_id), Some(mal_id));
     series
 }
@@ -100,13 +88,6 @@ fn episodes(core: &Core, anilist_id: u64) -> Vec<Row> {
             Ok(rows.collect::<Result<Vec<_>, _>>()?)
         })
         .unwrap()
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 /// The whole point of the job: the next broadcast lands, the dates come
@@ -383,7 +364,7 @@ fn a_transport_failure_ends_the_sweep_and_stamps_nothing() {
     // the sweep makes a single request and never reaches the second row.
     http.fail_next("connection refused");
 
-    let job = anibeam_core::metadata::airing::start_refresh_library(&core);
+    let job = anibeam_core::metadata::airing::start_refresh_library(core.metadata());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(

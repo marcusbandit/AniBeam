@@ -144,7 +144,7 @@ Item {
                                 height: theme.controlHeight
                                 radius: height / 2
                                 smoothing: theme.cornerSmoothing
-                                color: on ? theme.accentSoft : lit ? theme.floatHover : "transparent"
+                                color: on ? (lit ? theme.accentSoftHover : theme.accentSoft) : lit ? theme.floatHover : "transparent"
                                 borderColor: on ? theme.accentEdge : "transparent"
                                 borderWidth: 1
                                 Row {
@@ -163,6 +163,9 @@ Item {
                                     }
                                 }
                                 MouseArea {
+                                    Accessible.role: Accessible.Button
+                                    Accessible.onPressAction: { pop.close(); root.picked(root.names[cell.index], yearRow.year) }
+                                    Accessible.name: theme.nameNear(parent)
                                     id: cm
                                     anchors.fill: parent
                                     hoverEnabled: true
