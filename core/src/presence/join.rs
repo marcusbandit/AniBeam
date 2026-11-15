@@ -138,8 +138,8 @@ pub(super) fn follow_rooms(playback: &Arc<Playback>) {
         .services
         .bus
         .subscribe(Arc::new(Follow(Arc::downgrade(playback))));
-    if let Ok(Reply::Room { room }) = room_call(playback, Call::RoomStatus) {
-        set_room(playback, room.as_ref().map(show_of));
+    if let Some(rooms) = playback.presence.rooms.get() {
+        set_room(playback, rooms.status().as_ref().map(show_of));
     }
 }
 
@@ -282,16 +282,18 @@ pub(crate) fn answer_call(
         let name = ask.map(|a| a.name).unwrap_or_else(|| user_id.clone());
         block(playback, &user_id, &name)?;
         post_answer(playback, user_id, false);
-        return room_call(playback, Call::RoomStatus);
+        return Ok(Reply::Room {
+            room: room_status(playback),
+        });
     }
-    let open = room_call(playback, Call::RoomStatus)?;
-    let reply = match open {
-        Reply::Room { room: Some(_) } => open,
-        _ => {
+    let room = match room_status(playback) {
+        Some(open) => open,
+        None => {
             let session = playback.sessions.playing().map(|s| s.id);
-            room_call(playback, Call::RoomCreate { session })?
+            room_create(playback, session)?
         }
     };
+    let reply = Reply::Room { room: Some(room) };
     recover(&playback.presence.inner)
         .let_in
         .insert(user_id.clone());
@@ -316,18 +318,23 @@ pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Repl
     super::status_call(playback)
 }
 
-/// A `Room*` call to the room team above, which `Core::open` links; once
-/// it has gone there is no room to read or open.
-fn room_call(playback: &Playback, call: Call) -> Result<Reply, CoreError> {
+/// The room this person is in, from the room team above, which `Core::open`
+/// links. Once it has gone there is none.
+fn room_status(playback: &Playback) -> Option<RoomInfo> {
+    playback.presence.rooms.get().and_then(|rooms| rooms.status())
+}
+
+/// A room opened by the room team above, for `session` or for none.
+fn room_create(playback: &Playback, session: Option<u64>) -> Result<RoomInfo, CoreError> {
     match playback.presence.rooms.get() {
-        Some(rooms) => rooms.call(call),
+        Some(rooms) => rooms.create(session),
         None => Err(not_in_room()),
     }
 }
 
-/// The room's own error for a call that needs a room (`room::error`), the
-/// same code and words.
-fn not_in_room() -> CoreError {
+/// The error a room call gives outside a room, with the same code and words
+/// as the room team's own; a room test holds the two the same.
+pub(crate) fn not_in_room() -> CoreError {
     CoreError::service(
         crate::i18n::tr("core-room-service", &[]),
         "not_in_room".to_string(),

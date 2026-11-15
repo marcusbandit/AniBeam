@@ -151,8 +151,12 @@ impl Follower for Rooms {
 
 /// Discord's join: the room's status, and a room opened for a friend let in.
 impl JoinRooms for Rooms {
-    fn call(self: Arc<Self>, c: Call) -> Result<Reply, CoreError> {
-        call(&self, c)
+    fn status(&self) -> Option<RoomInfo> {
+        self.lock().as_ref().and_then(Active::info)
+    }
+
+    fn create(self: Arc<Self>, session: Option<u64>) -> Result<RoomInfo, CoreError> {
+        create(&self, session)
     }
 }
 
@@ -1092,7 +1096,7 @@ pub(crate) fn shutdown(rooms: &Rooms) {
 /// One tick of a playback session. Only the attached session's count. A player
 /// that disagrees with the room on playing is put right, unless this member's
 /// own command is still out, which the relay's answer settles.
-pub(crate) fn tick(rooms: &Rooms, session: u64, position: f64, paused: bool) {
+fn tick(rooms: &Rooms, session: u64, position: f64, paused: bool) {
     if !position.is_finite() {
         return;
     }
@@ -1151,7 +1155,7 @@ pub(crate) fn tick(rooms: &Rooms, session: u64, position: f64, paused: bool) {
 
 /// The session closed: the room stops driving it, and the others see this member
 /// is no longer ready.
-pub(crate) fn closed(rooms: &Rooms, session: u64) {
+fn closed(rooms: &Rooms, session: u64) {
     let out = {
         let mut slot = rooms.lock();
         let Some(a) = slot.as_mut() else {
@@ -1169,7 +1173,7 @@ pub(crate) fn closed(rooms: &Rooms, session: u64) {
 
 /// The skip windows job found where the attached session's opening starts: the
 /// suggestion follows, and moves the offset when none was stored or set.
-pub(crate) fn opening_known(rooms: &Rooms, session: u64, start: f64) {
+fn opening_known(rooms: &Rooms, session: u64, start: f64) {
     let mut out = Vec::new();
     {
         let mut slot = rooms.lock();
@@ -1761,5 +1765,12 @@ mod tests {
         assert!(!relay_ok("rooms.example.com"));
         assert!(!relay_ok("https://"));
         assert!(!relay_ok(""));
+    }
+
+    /// Discord's join answers a call that needs a room with the room's own
+    /// error, though presence, below the room, builds it itself (#854).
+    #[test]
+    fn presence_says_not_in_room_as_the_room_does() {
+        assert_eq!(crate::presence::join::not_in_room(), not_in_room());
     }
 }

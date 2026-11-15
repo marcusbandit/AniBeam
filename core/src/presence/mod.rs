@@ -487,8 +487,10 @@ pub struct Presence {
 /// What Discord's join asks of the watch together room, which sits above
 /// presence (#854): its status, and a room opened for a friend let in.
 pub trait JoinRooms: Send + Sync {
-    /// One `Room*` call, answered as a shell's would be.
-    fn call(self: Arc<Self>, call: Call) -> Result<Reply, CoreError>;
+    /// The room this person is in, if any, as `RoomStatus` answers.
+    fn status(&self) -> Option<RoomInfo>;
+    /// A room opened for `session`, or for none, as `RoomCreate` opens one.
+    fn create(self: Arc<Self>, session: Option<u64>) -> Result<RoomInfo, CoreError>;
 }
 
 #[derive(Default)]

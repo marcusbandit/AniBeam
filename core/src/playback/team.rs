@@ -1,6 +1,6 @@
 //! The playback team (#854): the player's sessions, Discord presence and
-//! casting. The watch together room sits above it (`room::Rooms`) and hears
-//! about a session through [`Follower`].
+//! casting. The watch together room sits above it and hears about a session
+//! through [`Follower`].
 
 use std::sync::Arc;
 
