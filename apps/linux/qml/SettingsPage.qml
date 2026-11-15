@@ -84,10 +84,23 @@ FocusScope {
         function onScanFinished(s, a, c, r) { sourcesDebounce.restart() }
     }
     Timer { interval: 0; running: true; onTriggered: page.readSources() }
-    // An entry that wants attention: a folder gone, an update waiting. A step the person
-    // skipped (no list connected) is not one: the dot would never clear
+    // Downloads' state, for its dot: searches can run and there is nothing to search, no source
+    // list added yet (#1003)
+    property var downloads: null
+    function readDownloads() { var d = Door.getDownloads(); if (!d.error) downloads = d.reply.status }
+    Timer { interval: 0; running: true; onTriggered: page.readDownloads() }
+    Connections { target: Door; function onDownloadsStatusChanged(status) { page.downloads = status } }
+    function noSources() {
+        if (!downloads) return false
+        var native = !!downloads.settings && downloads.settings.engine === "Native"
+        var ready = native || (!!downloads.anirss && downloads.anirss.state === "Ready")
+        return ready && (downloads.endpoints || []).length === 0
+    }
+    // An entry that wants attention: a folder gone, no source list to search, an update
+    // waiting. A step the person skipped (no list connected) is not one: the dot would never clear
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
+        if (id === "downloads") return noSources()
         if (id === "about") return frame.updatePanel.pending
         return false
     }

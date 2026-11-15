@@ -1,5 +1,6 @@
-// Endpoint repos (#143) on the desktop: the repos added by address, each repo's key
-// fingerprint shown before it is trusted, the endpoints they offer installed one at a time,
+// Endpoint repos (#143) on the desktop: adding one first, in one step (SourceAttach, #1003:
+// the address, then Add turns on every source in it that asks for nothing), the repos added
+// with each one's key fingerprint, the sources that wait for a value installed one at a time,
 // and endpoints added by hand beside them for a site no repo carries (one through
 // Jackett). What is installed goes into Anibeam's own anirss, so the search sees it; one
 // anirss already has from its own config.toml keeps its place and the row says so.
@@ -14,8 +15,6 @@ Panel {
     title: words.t("endpoint-repos-panel-title"); icon: "archive"; grows: true
 
     property var catalog: null
-    property var preview: null
-    property string repoUrl: ""
     property string error: ""
     property bool busy: false
     // An install or update waiting for values: { call, args, fields, values, title, note },
@@ -58,32 +57,12 @@ Panel {
             done(reply)
         }
     }
-    // What the error line's Try again runs: the last load, refresh or add
+    // What the error line's Try again runs: the last load, refresh or change
     property var again: null
     // The bridge's fix for the error shown: Try again only where trying again can help
     property var errorFix: undefined
     function load() { root.again = root.load; take(Door.call("ListRepoEndpoints", {})) }
     function refresh() { root.again = root.refresh; root.busy = true; later("RefreshEndpointRepos", {}, root.take) }
-    function add() {
-        if (root.repoUrl.trim() === "") return
-        root.again = root.add
-        root.busy = true; root.error = ""
-        later("AddEndpointRepo", { url: root.repoUrl.trim() }, function(r) {
-            root.busy = false
-            var p = replyOf(r, "EndpointRepoPreview")
-            if (p) root.preview = p.preview
-            else if (r.error) { root.error = frame.plainText(r.error); root.errorFix = r.error.fix }
-        })
-    }
-    function trust() {
-        if (!root.preview) return
-        root.again = root.trust
-        root.busy = true
-        var p = root.preview
-        later("TrustEndpointRepo", { url: p.url, key: p.key }, function(r) {
-            if (root.take(r)) { root.preview = null; root.repoUrl = "" }
-        })
-    }
     function remove(url) { root.again = function() { root.remove(url) }; root.take(Door.call("RemoveEndpointRepo", { url: url })) }
     function hostLine(e) { return e.host + "  " + e.kind + (e.lang ? "  " + e.lang : "") }
     function run(call, args) {
@@ -142,35 +121,29 @@ Panel {
         if (repos.length > 0) refresh()
     }
 
+    // Adding a list: the one step, first, so it is the first thing the panel offers
+    Item {
+        readonly property bool hairline: true
+        width: parent ? parent.width : theme.space(100)
+        height: attach.height + theme.space(5)
+        SourceAttach {
+            id: attach
+            y: theme.space(2.5)
+            width: parent.width
+            catalog: root.catalog
+            showWaiting: false
+            onAttached: function(c) { root.catalog = c; root.error = "" }
+        }
+    }
     // The repos.
     Repeater {
         model: root.repos
         SettingRow {
             required property var modelData
             label: modelData.name + (modelData.nsfw ? "  (18+)" : "")
-            line: modelData.fingerprint
+            line: words.t("endpoint-repos-panel-fingerprint", { fingerprint: modelData.fingerprint })
             status: modelData.error ? modelData.url + "\n" + words.t("endpoint-repos-panel-unreadable") : modelData.url
             Button { msg: "action-remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.remove(modelData.url) }
-        }
-    }
-    SettingRow {
-        visible: !root.preview
-        label: words.t("endpoint-repos-panel-add-list")
-        Row {
-            spacing: theme.space(1.5)
-            Field { objectName: "repos-url"; text: root.repoUrl; mono: true; width: theme.space(56); placeholder: "https://.../index.json"; onEdited: function(t) { root.repoUrl = t } }
-            Button { text: root.busy ? words.t("endpoint-repos-panel-checking") : words.t("endpoint-repos-panel-add"); icon: "plus"; busy: root.busy; enabled: !root.busy && root.repoUrl.trim() !== ""; onClicked: root.add() }
-        }
-    }
-    SettingRow {
-        visible: !!root.preview
-        label: root.preview ? words.t("endpoint-repos-panel-trust-question", { name: root.preview.name + (root.preview.nsfw ? " (18+)" : "") }) : ""
-        line: root.preview ? words.t("endpoint-repos-panel-fingerprint", { fingerprint: root.preview.fingerprint }) : ""
-        status: root.preview ? words.t(root.preview.trusted ? "endpoint-repos-panel-preview-trusted" : "endpoint-repos-panel-preview", { url: root.preview.url, count: root.preview.endpoints.length }) : ""
-        Row {
-            spacing: theme.space(1.5)
-            Button { msg: "endpoint-repos-panel-trust"; icon: "badge-check"; primary: true; enabled: !root.busy; onClicked: root.trust() }
-            Button { msg: "action-cancel"; flat: true; onClicked: root.preview = null }
         }
     }
     Row {

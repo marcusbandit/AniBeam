@@ -274,7 +274,6 @@ frame-downloads-not-read = Nicht gelesen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestartet
 home-ago-minutes = vor { $count } Min.
 home-ago-hours = vor { $count } Std.
 home-ago-days = vor { $count } T.
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } zu schauen
 home-day-nothing = Nichts
 home-now = Jetzt { $time }
-home-card-aired = { $episode } erschienen { $ago }
 home-continue = Weiterschauen
 home-continue-fact = { $count } Serien zum Weiterschauen
 home-on-hold = Pausiert
@@ -375,18 +373,6 @@ home-dropped-fact = { $count ->
     [one] { $count } Datei noch auf der Platte
    *[other] { $count } Dateien noch auf der Platte
 }
-home-out-now = Jetzt da
-home-out-now-fact = Neue Folgen dieser Woche, von AniList
-home-popular = Beliebt diese Saison
-home-add-folder-title = Deine eigenen Serien gehören auch hierher
-home-add-folder-body = Füge den Ordner mit deinen Anime hinzu, und Start füllt sich mit dem, was du schaust.
-home-add-folder-button = Ordner hinzufügen
-home-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-home-empty-title = Noch keine Serien
-home-empty-scanned-body = Anibeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-home-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst.
-home-scan-all = Alle scannen
-home-library-settings = Bibliothekseinstellungen
 home-failed-title = Start wurde nicht geladen
 home-failed-body = Anibeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
 
@@ -457,9 +443,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } Quelle bereit zum Suchen.
    *[other] { $count } Quellen bereit zum Suchen.
 }
-onboarding-search-none = Anibeam bringt keine eigenen Quellen mit. Du fügst sie aus einem Quellen-Repo hinzu: ein Link, den dir jemand gibt und den du unter Einstellungen, Downloads einfügst.
-onboarding-sources-after = Öffnet nach der Einrichtung
-onboarding-sources-add = Repo nach der Einrichtung hinzufügen
 onboarding-fetch-title = Wer lädt
 onboarding-fetch-auto = Anibeam kümmert sich
 onboarding-fetch-recommended = Empfohlen
@@ -484,7 +467,7 @@ onboarding-ready-lists = Deine Liste
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Noch nicht verbunden. Das findet sich unter Einstellungen, Konten, wenn du es brauchst.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Noch keine Quellen
     [one] { $sources } Quelle
    *[other] { $sources } Quellen
@@ -494,9 +477,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] Alles bereit.
     [opens] Als Nächstes öffnet Einstellungen, Downloads.
-   *[both] Beides findest du unter Einstellungen, Downloads.
+   *[sources] Füge eine Quellenliste hinzu, um zu suchen.
 }
-onboarding-ready-open-downloads = Einstellungen, Downloads öffnen
 onboarding-ready-set-up = Jetzt einrichten
 
 ## Rail.qml
@@ -699,7 +681,28 @@ library-group-season = Saison
 library-group-type = Typ
 library-group-genre = Genre
 library-group-watch-state = Schaustatus
-library-scan-started = Scan gestartet
+library-empty-none = Deine Bibliothek ist leer
+library-empty-scanning = { $count ->
+    [1] Suche nach Videos in deinem Ordner
+   *[other] Suche nach Videos in deinen Ordnern
+}
+library-empty-nothing = { $count ->
+    [1] Noch keine Videos in diesem Ordner
+   *[other] Noch keine Videos in diesen Ordnern
+}
+library-empty-missing = { $count ->
+    [1] Dieser Ordner ist nicht da
+   *[other] Diese Ordner sind nicht da
+}
+library-empty-more-folders = { $count ->
+    [one] und { $count } weiterer Ordner
+   *[other] und { $count } weitere Ordner
+}
+library-empty-add-folder = Ordner hinzufügen
+library-empty-get = Etwas zum Schauen holen
+library-empty-scan-again = Erneut scannen
+library-empty-settings = Bibliothekseinstellungen
+library-empty-pick-folder = Ordner für deine Bibliothek wählen
 library-tab-all = Alle
 library-tab-series = Serien
 library-tab-movies = Filme
@@ -765,18 +768,6 @@ library-rescan = Neu scannen
 library-find-match = Zuordnung suchen
 library-find-match-tip = Für jede Auswahl ohne Zuordnung suchen
 library-all-matched = Jede Auswahl ist zugeordnet
-library-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-library-empty-title = Deine Bibliothek ist leer
-library-empty-scanned-body = Anibeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-library-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst, oder importiere einen Anibeam-Export.
-library-scan-all = Alle scannen
-library-add-folder = Ordner hinzufügen
-library-settings = Bibliothekseinstellungen
-library-import = Importieren
-library-import-title = Anibeam-Export importieren
-library-import-filter-export = Anibeam-Export (*.json)
-library-import-filter-all = Alle Dateien (*)
-library-import-started = Import gestartet
 
 ## MetadataPage.qml
 
@@ -1675,6 +1666,7 @@ downloads-error-unknown = Etwas ist schiefgegangen. Versuch es nochmal.
 downloads-search-all-off = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
 downloads-turn-on = { $name } einschalten
 downloads-search-no-sources = Es gibt noch keine Quellen zum Suchen. Füge in den Einstellungen unter Downloads eine Quellenliste hinzu.
+downloads-no-sources = Noch keine Quellen zum Suchen
 downloads-search-none-started = Keine Quelle konnte die Suche starten. Versuch es gleich nochmal.
 downloads-auto-resolution = Eingegrenzt auf { $resolution }, die schärfste im Angebot
 downloads-search-one-failed = Die Suche bei { $name } hat nicht geklappt. Versuch es nochmal oder durchsuche eine andere Quelle.
@@ -2168,18 +2160,9 @@ endpoint-repos-panel-needs-fields = Braucht { $fields }, bevor es sucht.
 endpoint-repos-panel-no-longer-offered = Von seiner Quellenliste nicht mehr angeboten.
 endpoint-repos-panel-update-requests-to = Das Update sendet Anfragen an { $host }.
 endpoint-repos-panel-unreadable = Diese Liste war nicht lesbar. Listen aktualisieren versucht es erneut.
-endpoint-repos-panel-add-list = Quellenliste hinzufügen
 endpoint-repos-panel-checking = Prüfe
 endpoint-repos-panel-add = Hinzufügen
-endpoint-repos-panel-trust-question = { $name } vertrauen?
 endpoint-repos-panel-fingerprint = Schlüssel-Fingerabdruck  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } Quellen, signiert. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } Quellen, signiert, schon vertraut. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-trust = Vertrauen
 endpoint-repos-panel-saving = Speichere
 endpoint-repos-panel-install = Installieren
 endpoint-repos-panel-update = Aktualisieren
@@ -2193,6 +2176,22 @@ endpoint-repos-panel-by-hand = Von Hand hinzufügen
 endpoint-repos-panel-name = Name
 endpoint-repos-panel-refreshing = Aktualisiere
 endpoint-repos-panel-refresh = Listen aktualisieren
+
+## SourceAttach.qml
+
+source-attach-placeholder = Adresse einer Quellenliste einfügen
+source-attach-what = Was ist eine Quellenliste?
+source-attach-recent = Schon verwendet
+source-attach-added = { $count ->
+    [one] { $name } hinzugefügt: { $count } Quelle ist an.
+   *[other] { $name } hinzugefügt: { $count } Quellen sind an.
+}
+source-attach-added-none = { $name } hinzugefügt. Keine neue Quelle zum Einschalten.
+source-attach-waiting = { $count ->
+    [one] { $names } braucht zuerst einen Wert.
+   *[other] { $names } brauchen zuerst einen Wert.
+}
+source-attach-fill-in = Ausfüllen
 
 ## ScheduleSheet.qml
 

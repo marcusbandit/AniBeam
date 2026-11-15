@@ -888,6 +888,7 @@ impl Core {
             }
             Call::AddEndpointRepo { url } => repos::add_repo(&self.releases, url),
             Call::TrustEndpointRepo { url, key } => repos::trust_repo(&self.releases, url, key),
+            Call::AttachEndpointRepo { url } => repos::attach_repo(&self.releases, url),
             Call::RemoveEndpointRepo { url } => repos::remove_repo(&self.releases, url),
             Call::RefreshEndpointRepos => repos::refresh(&self.releases),
             Call::InstallEndpoint {

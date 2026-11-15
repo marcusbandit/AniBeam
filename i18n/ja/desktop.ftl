@@ -223,7 +223,6 @@ frame-downloads-not-read = 読み込まれていません。
 ## HomePage
 
 home-title = ホーム
-home-scan-started = スキャンを開始しました
 home-ago-minutes = { $count }分前
 home-ago-hours = { $count }時間前
 home-ago-days = { $count }日前
@@ -266,7 +265,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = 未視聴{ $count }話
 home-day-nothing = なし
 home-now = 現在 { $time }
-home-card-aired = { $episode }、{ $ago }公開
 home-continue = 続きを見る
 home-continue-fact = 続きのある作品が{ $count }件
 home-on-hold = 保留
@@ -306,18 +304,6 @@ home-genres = ジャンル
 home-open-library = ライブラリを開く
 home-dropped = 中止
 home-dropped-fact = ディスクに残っているファイルが{ $count }個
-home-out-now = 公開中
-home-out-now-fact = 今週の新エピソード、AniListから
-home-popular = 今期の人気作品
-home-add-folder-title = 手持ちの作品もここに
-home-add-folder-body = アニメを保存しているフォルダを追加すると、視聴中の作品がホームに並びます。
-home-add-folder-button = フォルダを追加
-home-empty-scanned-title = フォルダにはまだ何も見つかりません
-home-empty-title = まだ作品がありません
-home-empty-scanned-body = 監視中のフォルダに作品や映画が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-home-empty-body = アニメを保存しているフォルダを追加すると、ライブラリが自動で埋まります。
-home-scan-all = すべてスキャン
-home-library-settings = ライブラリの設定
 home-failed-title = ホームを読み込めませんでした
 home-failed-body = 今はライブラリを読み込めませんでした。少し待ってからもう一度お試しください。
 
@@ -385,9 +371,6 @@ onboarding-lists-connected = 連携しました。ここで視聴したものが
 onboarding-lists-no-account = アカウントがない場合は? どちらも無料で、1つあれば十分です。連携は設定の「アカウント」でいつでも解除できます。
 onboarding-search-title = 検索先
 onboarding-search-ready = { $count }件のソースで検索できます。
-onboarding-search-none = Anibeamにはソースが入っていません。ソースリポジトリから追加します。共有されたリンクを、設定の「ダウンロード」に貼り付けてください。
-onboarding-sources-after = 設定後に開きます
-onboarding-sources-add = 設定後にリポジトリを追加
 onboarding-fetch-title = 取得の方法
 onboarding-fetch-auto = Anibeamに任せる
 onboarding-fetch-recommended = おすすめ
@@ -403,7 +386,7 @@ onboarding-ready-lists = リスト
 onboarding-ready-lists-as = { $tracker }、{ $user }
 onboarding-ready-lists-none = まだ連携していません。必要なときに設定の「アカウント」で連携できます。
 onboarding-ready-downloads = ダウンロード
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] ソースなし
    *[other] ソース{ $sources }件
 }、{ $client ->
@@ -412,9 +395,8 @@ onboarding-ready-downloads-line = { $sources ->
 }{ $next ->
     [ready] 準備完了です。
     [opens] 次に設定の「ダウンロード」が開きます。
-   *[both] どちらも設定の「ダウンロード」にあります。
+   *[sources] 検索するにはソースリストを追加してください。
 }
-onboarding-ready-open-downloads = 設定の「ダウンロード」を開く
 onboarding-ready-set-up = 今すぐ設定
 
 ## Rail.qml
@@ -569,7 +551,24 @@ library-group-season = シーズン
 library-group-type = 種類
 library-group-genre = ジャンル
 library-group-watch-state = 視聴状況
-library-scan-started = スキャンを開始しました
+library-empty-none = ライブラリは空です
+library-empty-scanning = { $count ->
+   *[other] フォルダ内の動画を探しています
+}
+library-empty-nothing = { $count ->
+   *[other] フォルダにまだ動画がありません
+}
+library-empty-missing = { $count ->
+   *[other] フォルダが見つかりません
+}
+library-empty-more-folders = { $count ->
+   *[other] ほかフォルダ{ $count }個
+}
+library-empty-add-folder = フォルダを追加
+library-empty-get = 見るものを探す
+library-empty-scan-again = もう一度スキャン
+library-empty-settings = ライブラリの設定
+library-empty-pick-folder = ライブラリのフォルダを選択
 library-tab-all = すべて
 library-tab-series = シリーズ
 library-tab-movies = 映画
@@ -628,18 +627,6 @@ library-rescan = 再スキャン
 library-find-match = 照合先を探す
 library-find-match-tip = 照合されていない作品をそれぞれ検索します
 library-all-matched = 選んだ作品はすべて照合済みです
-library-empty-scanned-title = フォルダにはまだ何も見つかりません
-library-empty-title = ライブラリは空です
-library-empty-scanned-body = 監視中のフォルダに作品や映画が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-library-empty-body = アニメを保存しているフォルダを追加するとライブラリが自動で埋まります。Anibeamのエクスポートを読み込むこともできます。
-library-scan-all = すべてスキャン
-library-add-folder = フォルダを追加
-library-settings = ライブラリの設定
-library-import = インポート
-library-import-title = Anibeamのエクスポートをインポート
-library-import-filter-export = Anibeamエクスポート (*.json)
-library-import-filter-all = すべてのファイル (*)
-library-import-started = インポートを開始しました
 
 ## MetadataPage.qml
 
@@ -1312,6 +1299,7 @@ downloads-error-unknown = 問題が発生しました。もう一度お試しく
 downloads-search-all-off = すべてのソースがオフです。検索するにはどれかをオンにしてください。
 downloads-turn-on = { $name }をオンにする
 downloads-search-no-sources = 検索できるソースがまだありません。設定の「ダウンロード」でソースリストを追加してください。
+downloads-no-sources = 検索できるソースがまだありません
 downloads-search-none-started = どのソースも検索を開始できませんでした。少し待ってからもう一度お試しください。
 downloads-auto-resolution = 提供中で最高画質の{ $resolution }に絞り込みました
 downloads-search-one-failed = { $name }での検索がうまくいきませんでした。もう一度試すか、別のソースを検索してください。
@@ -1726,18 +1714,9 @@ endpoint-repos-panel-needs-fields = 検索する前に{ $fields }が必要です
 endpoint-repos-panel-no-longer-offered = ソースリストでもう提供されていません。
 endpoint-repos-panel-update-requests-to = アップデートは{ $host }にリクエストを送信します。
 endpoint-repos-panel-unreadable = このリストを読み込めませんでした。「リストを更新」で再試行します。
-endpoint-repos-panel-add-list = ソースリストを追加
 endpoint-repos-panel-checking = 確認中
 endpoint-repos-panel-add = 追加
-endpoint-repos-panel-trust-question = { $name }を信頼しますか?
 endpoint-repos-panel-fingerprint = 鍵のフィンガープリント  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    署名付きのソース{ $count }件。検索がどこに送られるかはソースが決めます。信頼できる人のリストだけを信頼してください。
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    署名付きのソース{ $count }件、信頼済み。検索がどこに送られるかはソースが決めます。信頼できる人のリストだけを信頼してください。
-endpoint-repos-panel-trust = 信頼する
 endpoint-repos-panel-saving = 保存中
 endpoint-repos-panel-install = インストール
 endpoint-repos-panel-update = 更新
@@ -1751,6 +1730,22 @@ endpoint-repos-panel-by-hand = 手動で追加
 endpoint-repos-panel-name = 名前
 endpoint-repos-panel-refreshing = 更新中
 endpoint-repos-panel-refresh = リストを更新
+
+## SourceAttach.qml
+
+source-attach-placeholder = ソースリストのアドレスを貼り付け
+source-attach-what = ソースリストとは？
+source-attach-recent = 以前に使用
+source-attach-added = { $count ->
+    [one] { $name } を追加しました: { $count } 個のソースが有効です。
+   *[other] { $name } を追加しました: { $count } 個のソースが有効です。
+}
+source-attach-added-none = { $name } を追加しました。新しく有効にするソースはありません。
+source-attach-waiting = { $count ->
+    [one] { $names } は先に値が必要です。
+   *[other] { $names } は先に値が必要です。
+}
+source-attach-fill-in = 入力する
 
 ## ScheduleSheet.qml
 

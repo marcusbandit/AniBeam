@@ -233,7 +233,6 @@ frame-downloads-not-read = 읽지 않음.
 ## HomePage
 
 home-title = 홈
-home-scan-started = 스캔 시작됨
 home-ago-minutes = { $count }분 전
 home-ago-hours = { $count }시간 전
 home-ago-days = { $count }일 전
@@ -284,7 +283,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = 볼 에피소드 { $count }개
 home-day-nothing = 없음
 home-now = 지금 { $time }
-home-card-aired = { $episode } { $ago } 공개
 home-continue = 이어 보기
 home-continue-fact = 이어 볼 작품 { $count }개
 home-on-hold = 보류
@@ -326,18 +324,6 @@ home-dropped = 중단
 home-dropped-fact = { $count ->
    *[other] 디스크에 남은 파일 { $count }개
 }
-home-out-now = 지금 공개
-home-out-now-fact = AniList 기준 이번 주 새 에피소드
-home-popular = 이번 시즌 인기작
-home-add-folder-title = 내 작품도 여기에 표시돼요
-home-add-folder-body = 애니가 있는 폴더를 추가하면 홈에 보고 있는 작품이 채워져요.
-home-add-folder-button = 폴더 추가
-home-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-home-empty-title = 아직 작품이 없어요
-home-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-home-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요.
-home-scan-all = 모두 스캔
-home-library-settings = 라이브러리 설정
 home-failed-title = 홈을 불러오지 못했어요
 home-failed-body = 지금은 Anibeam이 라이브러리를 읽지 못했어요. 잠시 후 다시 시도하세요.
 
@@ -407,9 +393,6 @@ onboarding-search-title = 검색할 곳
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-search-none = Anibeam에는 자체 소스가 없어요. 소스 저장소에서 추가해요: 누군가 공유해 준 링크를 설정, 다운로드에 붙여넣으면 돼요.
-onboarding-sources-after = 설정 후에 열려요
-onboarding-sources-add = 설정 후 저장소 추가
 onboarding-fetch-title = 받아 오는 곳
 onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천
@@ -431,7 +414,7 @@ onboarding-ready-lists = 내 목록
 onboarding-ready-lists-as = { $tracker }, { $user }
 onboarding-ready-lists-none = 아직 연결 안 됨. 원할 때 설정, 계정에서 연결하세요.
 onboarding-ready-downloads = 다운로드
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] 아직 소스 없음
    *[other] 소스 { $sources }개
 }, { $client ->
@@ -440,9 +423,8 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] 모두 준비됐어요.
     [opens] 다음으로 설정, 다운로드가 열려요.
-   *[both] 둘 다 설정, 다운로드에 있어요.
+   *[sources] 검색하려면 소스 목록을 추가하세요.
 }
-onboarding-ready-open-downloads = 설정, 다운로드 열기
 onboarding-ready-set-up = 지금 설정
 
 ## Rail.qml
@@ -631,7 +613,24 @@ library-group-season = 시즌
 library-group-type = 유형
 library-group-genre = 장르
 library-group-watch-state = 시청 상태
-library-scan-started = 스캔 시작됨
+library-empty-none = 라이브러리가 비어 있어요
+library-empty-scanning = { $count ->
+   *[other] 폴더에서 동영상을 찾고 있어요
+}
+library-empty-nothing = { $count ->
+   *[other] 폴더에 아직 동영상이 없어요
+}
+library-empty-missing = { $count ->
+   *[other] 폴더를 찾을 수 없어요
+}
+library-empty-more-folders = { $count ->
+   *[other] 외 폴더 { $count }개
+}
+library-empty-add-folder = 폴더 추가
+library-empty-get = 볼 거리 찾기
+library-empty-scan-again = 다시 스캔
+library-empty-settings = 라이브러리 설정
+library-empty-pick-folder = 라이브러리 폴더 선택
 library-tab-all = 전체
 library-tab-series = 시리즈
 library-tab-movies = 영화
@@ -695,18 +694,6 @@ library-rescan = 다시 스캔
 library-find-match = 매칭 찾기
 library-find-match-tip = 선택한 작품 중 매칭이 없는 것을 하나씩 검색해요
 library-all-matched = 선택한 작품이 모두 매칭돼 있어요
-library-empty-scanned-title = 폴더에서 아직 찾은 게 없어요
-library-empty-title = 라이브러리가 비어 있어요
-library-empty-scanned-body = Anibeam이 지켜보는 폴더에서 작품이나 영화를 찾지 못했어요. 다시 스캔하거나 설정에서 폴더를 확인하세요.
-library-empty-body = 애니가 있는 폴더를 추가하면 라이브러리가 저절로 채워져요. Anibeam 내보내기 파일을 가져와도 돼요.
-library-scan-all = 모두 스캔
-library-add-folder = 폴더 추가
-library-settings = 라이브러리 설정
-library-import = 가져오기
-library-import-title = Anibeam 내보내기 파일 가져오기
-library-import-filter-export = Anibeam 내보내기 (*.json)
-library-import-filter-all = 모든 파일 (*)
-library-import-started = 가져오기 시작됨
 
 ## MetadataPage.qml
 
@@ -1507,6 +1494,7 @@ downloads-error-unknown = 문제가 생겼어요. 다시 시도하세요.
 downloads-search-all-off = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
 downloads-turn-on = { $name } 켜기
 downloads-search-no-sources = 아직 검색할 소스가 없어요. 설정의 다운로드에서 소스 목록을 추가하세요.
+downloads-no-sources = 아직 검색할 소스가 없습니다
 downloads-search-none-started = 검색을 시작할 수 있는 소스가 없어요. 잠시 후 다시 시도하세요.
 downloads-auto-resolution = 제공되는 가장 선명한 { $resolution }(으)로 좁혔어요
 downloads-search-one-failed = { $name } 검색이 실패했어요. 다시 시도하거나 다른 소스를 검색하세요.
@@ -1979,18 +1967,9 @@ endpoint-repos-panel-needs-fields = 검색하려면 { $fields }이(가) 필요�
 endpoint-repos-panel-no-longer-offered = 소스 목록에서 더 이상 제공하지 않아요.
 endpoint-repos-panel-update-requests-to = 업데이트하면 { $host }에 요청을 보내요.
 endpoint-repos-panel-unreadable = 이 목록을 읽지 못했어요. 목록 새로고침으로 다시 시도해요.
-endpoint-repos-panel-add-list = 소스 목록 추가
 endpoint-repos-panel-checking = 확인 중
 endpoint-repos-panel-add = 추가
-endpoint-repos-panel-trust-question = { $name }을(를) 신뢰할까요?
 endpoint-repos-panel-fingerprint = 키 지문  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    소스 { $count }개, 서명됨. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    소스 { $count }개, 서명됨, 이미 신뢰함. 검색 요청이 어디로 갈지는 소스가 정해요. 신뢰하는 사람의 목록만 믿으세요.
-endpoint-repos-panel-trust = 신뢰
 endpoint-repos-panel-saving = 저장 중
 endpoint-repos-panel-install = 설치
 endpoint-repos-panel-update = 업데이트
@@ -2004,6 +1983,22 @@ endpoint-repos-panel-by-hand = 직접 추가
 endpoint-repos-panel-name = 이름
 endpoint-repos-panel-refreshing = 새로고침 중
 endpoint-repos-panel-refresh = 목록 새로고침
+
+## SourceAttach.qml
+
+source-attach-placeholder = 소스 목록 주소 붙여 넣기
+source-attach-what = 소스 목록이란?
+source-attach-recent = 이전에 사용함
+source-attach-added = { $count ->
+    [one] { $name } 추가됨: 소스 { $count }개 켜짐.
+   *[other] { $name } 추가됨: 소스 { $count }개 켜짐.
+}
+source-attach-added-none = { $name } 추가됨. 새로 켤 소스가 없습니다.
+source-attach-waiting = { $count ->
+    [one] { $names }에는 먼저 값이 필요합니다.
+   *[other] { $names }에는 먼저 값이 필요합니다.
+}
+source-attach-fill-in = 입력
 
 ## ScheduleSheet.qml
 
