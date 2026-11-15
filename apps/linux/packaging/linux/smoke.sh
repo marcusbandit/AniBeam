@@ -125,7 +125,7 @@ if [ -n "${SMOKE_DOWNLOADS:-}" ]; then
 ]
 JSON
   # A fresh HOME and a PATH that holds no anirss and no qbittorrent-nox: whatever answers
-  # on the page came out of the image. A fresh install searches on AniBeam's own engine
+  # on the page came out of the image. A fresh install searches on Anibeam's own engine
   # (#552), so anirss stays off here; "the helpers" above already ran the bundled one.
   QT_FORCE_STDERR_LOGGING=1 xvfb-run -a -s "-screen 0 1920x1080x24" \
     env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$dhome" PATH=/usr/bin:/bin \

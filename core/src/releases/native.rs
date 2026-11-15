@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::net::Http;
 
 use super::{BestfitConfig, Endpoint, endpoints, refinement, stats};
@@ -77,9 +77,13 @@ impl Native {
     /// `bestfit` ranks best fit when given (the desktop passes what anirss's config saved);
     /// None trusts the groups the enabled installed definitions name, in their order, over
     /// anirss's defaults.
-    pub fn for_core(core: &Core, first: Vec<Endpoint>, bestfit: Option<BestfitConfig>) -> Native {
-        let installed = crate::repos::runnable(core);
-        let http = crate::repos::paced_http(core, &installed);
+    pub fn for_core(
+        services: &Services,
+        first: Vec<Endpoint>,
+        bestfit: Option<BestfitConfig>,
+    ) -> Native {
+        let installed = crate::repos::runnable(services);
+        let http = crate::repos::paced_http(services, &installed);
         let groups = trusted_groups(&installed);
         let mut endpoints = first;
         for r in installed {
@@ -225,15 +229,15 @@ impl Native {
                     service,
                     code,
                     message,
-                } => CoreError::Service {
+                } => CoreError::service(
                     service,
                     code,
-                    message: [message]
+                    [message]
                         .into_iter()
                         .chain(rest)
                         .collect::<Vec<_>>()
                         .join("; "),
-                },
+                ),
                 other => other,
             });
         }

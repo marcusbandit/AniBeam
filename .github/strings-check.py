@@ -41,6 +41,9 @@ DEV_ONLY = {
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
     "contract/src/**/*.rs",
+    "foundation/src/**/*.rs",
+    "net/src/**/*.rs",
+    "library/src/**/*.rs",
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",
@@ -56,7 +59,7 @@ NOT_TEXT = re.compile(
 
 # Literals made only of these words stay as they are in every language.
 BRANDS = {
-    "AniBeam", "AniList", "MyAnimeList", "MAL", "TVmaze", "Jikan", "AniSkip", "qBittorrent",
+    "Anibeam", "AniList", "MyAnimeList", "MAL", "TVmaze", "Jikan", "AniSkip", "qBittorrent",
     "Discord", "Tailscale", "mpv", "libmpv", "Qt", "GitHub", "AUR", "Chromecast", "DLNA",
     "RSS", "torznab", "anirss", "MPRIS", "Linux", "Windows", "Mac", "macOS", "Android",
 }

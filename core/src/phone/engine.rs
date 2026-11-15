@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::storage::Shelf;
 use crate::contract::*;
 use crate::downloads::rolling::{NORMAL, SKIP};
+use crate::sync::recover;
 
 /// What the engine itself does not keep: each torrent's title, folder and times, and
 /// whether the person paused it (a hold for Wi-Fi resumes only the others).
@@ -77,11 +78,7 @@ pub struct Engine {
 }
 
 fn fail(e: impl std::fmt::Display) -> CoreError {
-    CoreError::Service {
-        service: "torrents".to_string(),
-        code: "engine".to_string(),
-        message: e.to_string(),
-    }
+    CoreError::service("torrents", "engine", e.to_string())
 }
 
 fn now() -> i64 {
@@ -216,7 +213,7 @@ impl Engine {
     /// order their lists were taken and the newest is the one left on disk (#582). The
     /// list is held only while it is copied, never across the write.
     fn save_entries(&self) {
-        let _turn = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let _turn = recover(&self.saving);
         let entries = self.entries.lock().unwrap().clone();
         match serde_json::to_vec_pretty(&entries) {
             Ok(bytes) => {

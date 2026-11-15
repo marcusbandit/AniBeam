@@ -12,7 +12,8 @@ name: Nightly
 #
 # The phone rides the same train under its own number: when the phone or what it builds on
 # changed since its last nightly, the same run builds its APK from apps/android/Cargo.toml's
-# version, 2.4.3-nightly.20261030.12, and publishes it as android-v2.4.3-nightly.20261030.12.
+# version, 2.4.3-nightly.20261030.12, and publishes it as android-v2.4.3-nightly.20261030.12,
+# with the iPhone's unsigned IPA (AniBeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
 on:
   workflow_dispatch:
     inputs:
@@ -64,7 +65,7 @@ jobs:
             read -r tag _ <<<"$last"
             echo "previous=$tag" >> "$GITHUB_OUTPUT"
             git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
-            if git diff --quiet "$tag" "$sha" -- contract core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
+            if git diff --quiet "$tag" "$sha" -- contract foundation net library core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
               echo "The app has not changed on main since $tag."
               build=false
             fi
@@ -85,7 +86,7 @@ jobs:
           if [ -n "$last" ]; then
             echo "phone_previous=$last" >> "$GITHUB_OUTPUT"
             git fetch -q origin "refs/tags/$last:refs/tags/$last"
-            if git diff --quiet "$last" "$sha" -- apps/android contract core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
+            if git diff --quiet "$last" "$sha" -- apps/android contract foundation net library core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
               echo "The phone has not changed on main since $last."
               phone=false
             fi
@@ -124,6 +125,18 @@ jobs:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.version }}
 
+  # The AUR tarball is built only to show it still packs (#993): a pull request builds it only
+  # under the `full ci` label (#986), so a rolling Arch update that breaks it shows up here,
+  # before a release. Not published.
+  arch:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/arch.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
   android:
     needs: gate
     if: needs.gate.outputs.phone == 'true'
@@ -132,6 +145,18 @@ jobs:
     with:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.phone_version }}
+
+  # The phone's unsigned IPA, for AltStore, SideStore and LiveContainer to sign. It rides the
+  # phone's nightly; a failed IPA build never holds the APK back.
+  ios:
+    needs: gate
+    if: needs.gate.outputs.phone == 'true'
+    uses: ./.github/workflows/ios-ipa.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.phone_version }}
+      nightly: true
 
   publish:
     needs: [gate, macos, linux, windows]
@@ -183,7 +208,9 @@ jobs:
   # The phone's nightly, its own pre-release the way the desktop's is: a draft until the APK
   # is on it.
   publish-phone:
-    needs: [gate, android]
+    needs: [gate, android, ios]
+    # The IPA is optional: only the APK build has to succeed.
+    if: ${{ !cancelled() && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,6 +221,19 @@ jobs:
         with:
           name: phone-apk
           path: dist
+
+      - uses: actions/download-artifact@v4
+        if: needs.ios.result == 'success'
+        with:
+          name: phone-ipa
+          path: ipa
+
+      - name: Name the IPA for this nightly
+        if: needs.ios.result == 'success'
+        env:
+          VERSION: ${{ needs.gate.outputs.phone_version }}
+        # AniBeam-Nightly-: the site lists only IPAs built with the nightly bundle id (site/tools/altstore.py).
+        run: mv ipa/AniBeam.ipa "dist/AniBeam-Nightly-$VERSION.ipa"
 
       - name: Publish the phone's nightly
         env:
@@ -211,7 +251,10 @@ jobs:
           } > notes.md
           start=()
           if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
-          gh release create "$tag" dist/*.apk --draft --prerelease --latest=false --target "$SHA" \
+          # The IPA is there when its build succeeded; no match must not reach gh as a name.
+          shopt -s nullglob
+          files=(dist/*.apk dist/*.aab dist/*.ipa)
+          gh release create "$tag" "${files[@]}" --draft --prerelease --latest=false --target "$SHA" \
             --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 

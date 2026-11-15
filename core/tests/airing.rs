@@ -364,7 +364,7 @@ fn a_transport_failure_ends_the_sweep_and_stamps_nothing() {
     // the sweep makes a single request and never reaches the second row.
     http.fail_next("connection refused");
 
-    let job = anibeam_core::metadata::airing::start_refresh_library(&core);
+    let job = anibeam_core::metadata::airing::start_refresh_library(core.metadata());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(

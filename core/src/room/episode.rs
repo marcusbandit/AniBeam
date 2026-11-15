@@ -21,6 +21,7 @@ pub fn of_session(s: &Session) -> proto::EpisodeRef {
         episode_title: s.episode_title.clone(),
         duration: s.duration,
         opening_start: s.opening_start,
+        film: s.is_film,
     }
 }
 
@@ -37,6 +38,7 @@ pub fn to_contract(e: &proto::EpisodeRef) -> EpisodeRef {
         episode_title: e.episode_title.clone(),
         duration: e.duration,
         opening_start: e.opening_start,
+        film: e.film,
     }
 }
 
@@ -49,6 +51,25 @@ pub fn same(a: &proto::EpisodeRef, b: &proto::EpisodeRef) -> bool {
         && a.tvmaze_id == b.tvmaze_id
 }
 
+/// Whether a member's session plays the room's episode: a show id in common, and
+/// the same key or, when the keys differ, the same number, as a copy filed under
+/// its season ("S03E06" for "6") is. Keys that both name a season must name the
+/// same one: a TVmaze show shares its id across seasons, so S01E06 is not S02E06.
+pub fn plays(mine: &proto::EpisodeRef, room: &proto::EpisodeRef) -> bool {
+    let shared = |a: Option<i64>, b: Option<i64>| a.is_some() && a == b;
+    let show = shared(mine.anilist_id, room.anilist_id)
+        || shared(mine.mal_id, room.mal_id)
+        || shared(mine.tvmaze_id, room.tvmaze_id);
+    let season = match (season_of(&mine.episode_key), season_of(&room.episode_key)) {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
+    let episode = mine.episode_key == room.episode_key
+        || (season
+            && matches!((mine.number, room.number), (Some(a), Some(b)) if (a - b).abs() < 0.001));
+    show && episode
+}
+
 /// What this library has of a room's episode.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Local {
@@ -59,9 +80,9 @@ pub struct Local {
 }
 
 /// Finds the room's episode here: the series by its AniList id, then its MAL id,
-/// then its TVmaze id, and in those the file by the episode's history key. A
-/// series that matches without the file is still named, so the shell can say the
-/// episode is missing from a show the person has.
+/// then its TVmaze id, and in those the file by the episode's history key, else
+/// by its number (`by_number`). A series that matches without the file is still
+/// named, so the shell can say the episode is missing from a show the person has.
 pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, CoreError> {
     let mut candidates: Vec<u64> = Vec::new();
     let by = [
@@ -93,28 +114,88 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
             }
         }
     }
+    // The key first; then the episode by its number, since two copies of one
+    // episode can carry different keys ("6" here, "S03E06" in a folder named for
+    // its season)
+    let mut found = None;
     for &series in &candidates {
-        let file: Option<i64> = conn
+        let file: Option<(i64, String)> = conn
             .query_row(
-                "SELECT id FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
+                "SELECT id, episode_key FROM files WHERE series_id = ?1 AND episode_key = ?2 ORDER BY id LIMIT 1",
                 params![series as i64, e.episode_key],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
         if let Some(file) = file {
-            let opening = skip::cached(conn, series, &e.episode_key, crate::time::now_secs())?
-                .and_then(|windows| opening_of(&windows));
-            return Ok(Local {
-                series: Some(series),
-                file: Some(file as u64),
-                opening,
-            });
+            found = Some((series, file));
+            break;
         }
+    }
+    if found.is_none()
+        && let Some(number) = e.number.filter(|n| n.is_finite())
+    {
+        for &series in &candidates {
+            if let Some(file) = by_number(conn, series, number, season_of(&e.episode_key))? {
+                found = Some((series, file));
+                break;
+            }
+        }
+    }
+    if let Some((series, (file, key))) = found {
+        let opening = skip::cached(conn, series, &key, crate::time::now_secs())?
+            .and_then(|windows| opening_of(&windows));
+        return Ok(Local {
+            series: Some(series),
+            file: Some(file as u64),
+            opening,
+        });
     }
     Ok(Local {
         series: candidates.first().copied(),
         file: None,
         opening: None,
+    })
+}
+
+/// The season a history key names: 3 for `S03E06`, None for a bare number,
+/// which is the first season or a file that names none.
+pub(super) fn season_of(key: &str) -> Option<i64> {
+    let rest = key.strip_prefix(['S', 's'])?;
+    let (season, _) = rest.split_once(['E', 'e'])?;
+    season.parse().ok()
+}
+
+/// The file of one series with the episode's number. A file of the room's
+/// season when the key names one; else, or when none is of that season, only a
+/// file that is the one with that number, since several seasons in one folder
+/// each have an episode 6 and the lowest id is no answer.
+fn by_number(
+    conn: &Connection,
+    series: u64,
+    number: f64,
+    season: Option<i64>,
+) -> Result<Option<(i64, String)>, CoreError> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, episode_key, season FROM files WHERE series_id = ?1 AND kind = 'episode'
+         AND abs(number - ?2) < 0.001 ORDER BY id",
+    )?;
+    let files = stmt
+        .query_map(params![series as i64, number], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(want) = season
+        && let Some((id, key, _)) = files.iter().find(|(_, _, s)| *s == Some(want))
+    {
+        return Ok(Some((*id, key.clone())));
+    }
+    Ok(match files.as_slice() {
+        [(id, key, _)] => Some((*id, key.clone())),
+        _ => None,
     })
 }
 
@@ -159,11 +240,12 @@ mod tests {
             mal_id: mal,
             tvmaze_id: tvmaze,
             episode_key: key.into(),
-            number: Some(1.0),
+            number: Some(key.parse().unwrap_or(1.0)),
             series_title: "Show".into(),
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         }
     }
 
@@ -182,6 +264,56 @@ mod tests {
                 opening: None
             }
         );
+    }
+
+    #[test]
+    fn a_copy_under_another_key_is_found_by_its_number() {
+        let c = conn();
+        series(&c, 1, Some(21), None);
+        c.execute(
+            "INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at)
+             VALUES (12, 1, '/lib/1/12.mkv', 0, 0, 'episode', 6, 3, 'EP 6', 'S03E06', '[]', 0)",
+            [],
+        )
+        .unwrap();
+        let found = find_local(&c, &episode(Some(21), None, "6")).unwrap();
+        assert_eq!(found.file, Some(12));
+    }
+
+    fn file_of_season(c: &Connection, id: i64, season: i64, number: i64) {
+        let key = if season == 1 {
+            number.to_string()
+        } else {
+            format!("S{season:02}E{number:02}")
+        };
+        c.execute(
+            "INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at)
+             VALUES (?1, 1, ?2, 0, 0, 'episode', ?3, ?4, 'EP', ?5, '[]', 0)",
+            params![id, format!("/lib/1/{id}.mkv"), number, season, key],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_number_finds_the_room_s_season_and_never_guesses_between_seasons() {
+        let c = conn();
+        series(&c, 1, Some(21), None);
+        file_of_season(&c, 10, 2, 6);
+        file_of_season(&c, 12, 3, 6);
+        // The room names season 3 under a key this folder writes otherwise
+        let mut s3 = episode(Some(21), None, "6");
+        s3.episode_key = "S3E6".into();
+        assert_eq!(find_local(&c, &s3).unwrap().file, Some(12));
+        // A season none of them is, or none named: two files have episode 6
+        let mut s4 = s3.clone();
+        s4.episode_key = "S04E06".into();
+        assert_eq!(find_local(&c, &s4).unwrap().file, None);
+        assert_eq!(
+            find_local(&c, &episode(Some(21), None, "6")).unwrap().file,
+            None
+        );
+        assert_eq!(season_of("S03E06"), Some(3));
+        assert_eq!(season_of("12.5"), None);
     }
 
     #[test]
@@ -226,6 +358,25 @@ mod tests {
         .unwrap();
         let found = find_local(&c, &episode(Some(21), None, "1")).unwrap();
         assert_eq!(found.opening, Some(92.5));
+    }
+
+    #[test]
+    fn a_session_plays_the_room_s_episode_only_in_the_same_season() {
+        let at = |key: &str, number: f64| proto::EpisodeRef {
+            number: Some(number),
+            ..episode(None, Some(5), key)
+        };
+        assert!(plays(&at("S02E06", 6.0), &at("S02E06", 6.0)));
+        // A copy filed under its season, or with a key that names none
+        assert!(plays(&at("S03E06", 6.0), &at("6", 6.0)));
+        assert!(plays(&at("6", 6.0), &at("S3E6", 6.0)));
+        // The same number in another season is another episode
+        assert!(!plays(&at("S01E06", 6.0), &at("S02E06", 6.0)));
+        assert!(!plays(&at("S02E05", 5.0), &at("S02E06", 6.0)));
+        // Another show altogether
+        let mut other = at("S02E06", 6.0);
+        other.tvmaze_id = Some(6);
+        assert!(!plays(&other, &at("S02E06", 6.0)));
     }
 
     #[test]

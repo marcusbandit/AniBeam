@@ -18,14 +18,14 @@
 //! while the setting is on and qBittorrent answers, and never in a shell
 //! that disabled it (`Core::disable_unattended_changes`).
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 use time::macros::format_description;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
 use crate::store::settings as kv;
 
 use super::backend::DownloadsBackend;
@@ -212,20 +212,20 @@ pub fn plan(
 /// The hook `list_rules` calls after a successful read. Failures stay
 /// here: a check that cannot run is not the page's problem.
 pub(super) async fn after_read(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     backend: &DownloadsBackend,
     rules: &[SubscriptionRule],
 ) {
-    if !core.downloads.unattended_allowed() {
+    if !downloads.unattended_allowed() {
         return;
     }
-    if let Err(e) = check(core, backend, rules, crate::time::now_secs()).await {
+    if let Err(e) = check(downloads, backend, rules, crate::time::now_secs()).await {
         tracing::warn!("finished feeds not pruned: {}", super::plain(&e));
     }
 }
 
 async fn check(
-    core: &Arc<Core>,
+    downloads: &Downloads,
     backend: &DownloadsBackend,
     rules: &[SubscriptionRule],
     now: i64,
@@ -233,8 +233,8 @@ async fn check(
     if rules.iter().all(|r| r.show.is_none()) {
         return Ok(());
     }
-    let home = super::home::AnirssHome::of(&core.paths);
-    let (enabled, last) = core.store.read(move |c| {
+    let home = super::home::AnirssHome::of(&downloads.services.paths);
+    let (enabled, last) = downloads.services.store.read(move |c| {
         Ok((
             settings::load_stored(c, &home)?.prune_finished_feeds,
             kv::get::<i64>(c, LAST_CHECK)?,
@@ -244,24 +244,30 @@ async fn check(
     if !enabled || last.is_some_and(|t| t <= now && now - t < CHECK_EVERY) {
         return Ok(());
     }
-    let (due, _) = core.store.read(|c| plan(c, true, rules, now))?;
+    let (due, _) = downloads
+        .services
+        .store
+        .read(|c| plan(c, true, rules, now))?;
     if !due.is_empty() {
         // Nothing is removed while the torrent client is down: the shell
         // would show a library it cannot act on
-        if super::qbt_client(core).await?.version().await.is_err() {
+        if super::qbt_client(downloads).await?.version().await.is_err() {
             return Ok(());
         }
     }
     // Recorded before the removals, so the re-read each one prompts
     // finds the day already checked
-    core.store.write(move |c| kv::set(c, LAST_CHECK, &now))?;
+    downloads
+        .services
+        .store
+        .write(move |c| kv::set(c, LAST_CHECK, &now))?;
     for d in due {
         match backend
             .remove(std::slice::from_ref(&d.rule), false, false, false)
             .await
         {
             Ok(_) => {
-                core.bus.say(
+                downloads.services.bus.say(
                     Level::Info,
                     Stage::Downloads,
                     crate::words!("core-downloads-pruned", title = &d.title),
@@ -274,7 +280,7 @@ async fn check(
                 );
             }
             Err(e) => {
-                core.bus.say(
+                downloads.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
                     crate::words!("core-downloads-prune-failed", title = &d.title),

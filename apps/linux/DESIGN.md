@@ -1,6 +1,6 @@
 # The Linux shell's design direction: flat, home first
 
-AniBeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
+Anibeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
 portrait panel, a local folder of series, mpv in the window, AniList on the side. Its first job
 is getting from launch to the next episode in one click. Its second is keeping the library
 tidy.
@@ -188,7 +188,7 @@ The killed idioms (below) still hold.
 - **Downloads is shows first (#69).** The field suggests shows as you type and searches release
   names on Return, asking every source that is on; a Sources row of chips (lit on, grey off)
   switches providers, and a site reached through a search proxy is on only while it runs. Clicking it while it is down opens a
-  sheet asking whether to start Jackett, and AniBeam starts it only on that confirm. A release
+  sheet asking whether to start Jackett, and Anibeam starts it only on that confirm. A release
   list opened from a show's grid has Back to the grid (and Escape). Four lenses (Gaps, Airing, Following, Downloaded) and
   an Activity column at the right. A show opens `GetShow.qml`: its providers, a click fetches
   one, the releases as a grid of cubes a group to a row under the library's own row, and a plan

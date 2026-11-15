@@ -13,8 +13,9 @@ use anibeam_host_api as wire;
 use sha2::{Digest, Sha256};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::downloads;
+use crate::foundation::services::Services;
+use crate::host::Host;
 use crate::library::snapshot::Snapshot;
 use crate::time;
 
@@ -63,10 +64,10 @@ fn tag_of(path: &str) -> Option<String> {
 
 /// The whole library read once, on the reader connection, with one profile's
 /// progress (#631). Blocking: the caller runs it off the async threads.
-pub fn library_part(core: &Core, profile: u64) -> Result<LibraryPart, CoreError> {
-    let images_dir = core.paths.images_dir();
+pub fn library_part(services: &Services, profile: u64) -> Result<LibraryPart, CoreError> {
+    let images_dir = services.paths.images_dir();
     let now = time::now();
-    let hosted = core
+    let hosted = services
         .store
         .read(|c| Ok(Snapshot::load_for(c, profile, &images_dir, now, None)?.host_series()))?;
     let mut part = LibraryPart::default();
@@ -187,18 +188,20 @@ pub fn torrents(list: Vec<crate::contract::Torrent>) -> Vec<wire::Torrent> {
 /// run side by side; a Downloads half that fails becomes a sentence in
 /// `problems` and the snapshot goes out without it.
 pub async fn snapshot(
-    core: &Arc<Core>,
-    host: &str,
+    host: &Arc<Host>,
+    hostname: &str,
     profile: u64,
 ) -> Result<(wire::Snapshot, LibraryPart), CoreError> {
-    let reader = core.clone();
+    let reader = host.clone();
     let library = async move {
-        tokio::task::spawn_blocking(move || library_part(&reader, profile))
+        tokio::task::spawn_blocking(move || library_part(&reader.services, profile))
             .await
             .map_err(|e| CoreError::internal(format!("library read: {e}")))?
     };
-    let (library, (rules, list)) =
-        tokio::join!(library, downloads::host_read(core, DOWNLOADS_LIMIT));
+    let (library, (rules, list)) = tokio::join!(
+        library,
+        downloads::host_read(&host.downloads, DOWNLOADS_LIMIT)
+    );
     let library = library?;
     let mut problems = Vec::new();
     let subscriptions = match rules {
@@ -219,7 +222,7 @@ pub async fn snapshot(
     };
     let snapshot = wire::Snapshot {
         api: wire::API_VERSION,
-        host: host.to_string(),
+        host: hostname.to_string(),
         version: crate::VERSION.to_string(),
         generated_at: time::now_secs(),
         series: library.series.clone(),
@@ -301,17 +304,9 @@ mod tests {
 
     #[test]
     fn problems_are_plain_sentences() {
-        let late = CoreError::Service {
-            service: "qBittorrent".into(),
-            code: "timeout".into(),
-            message: "slow".into(),
-        };
+        let late = CoreError::service("qBittorrent", "timeout", "slow");
         assert_eq!(problem("qBittorrent", &late), "qBittorrent did not answer");
-        let down = CoreError::Service {
-            service: "anirss".into(),
-            code: "unreachable".into(),
-            message: "refused".into(),
-        };
+        let down = CoreError::service("anirss", "unreachable", "refused");
         assert_eq!(problem("anirss", &down), "anirss is not running");
     }
 

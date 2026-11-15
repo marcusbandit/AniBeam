@@ -579,7 +579,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     );
     http.push_json(200, bare_enrichment(11, None));
     http.push_json(200, empty_schedule(11));
-    let job = anibeam_core::metadata::apply::backfill_stubs(&core);
+    let job = anibeam_core::metadata::apply::backfill_stubs(core.metadata());
     let done = common::wait_job(&c, job);
     assert_eq!(
         done.body,
@@ -600,7 +600,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     );
 
     // Nothing is a stub any more, so a second backfill has no work at all.
-    let job = anibeam_core::metadata::apply::backfill_stubs(&core);
+    let job = anibeam_core::metadata::apply::backfill_stubs(core.metadata());
     let done = common::wait_job(&c, job);
     assert_eq!(
         done.body,
@@ -718,7 +718,7 @@ fn the_backfill_sweeps_the_image_cache_like_every_other_refresh() {
     );
     http.push_json(200, bare_enrichment(11, None));
     http.push_json(200, empty_schedule(11));
-    let job = anibeam_core::metadata::apply::backfill_stubs(&core);
+    let job = anibeam_core::metadata::apply::backfill_stubs(core.metadata());
     common::wait_job(&c, job);
 
     let rows: i64 = core

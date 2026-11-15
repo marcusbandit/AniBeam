@@ -76,7 +76,7 @@ def pending(changes_dir, ref=None):
 
 
 def respell(text):
-    """The site spells the name Anibeam; the notes are shared with the apps, which still say
+    """The site spells the name Anibeam. Change files written before the rename can still say
     AniBeam, so prose is respelled here. Code spans, paths and file names (Pictures/AniBeam,
     %APPDATA%\\AniBeam, AniBeam.AppImage, AniBeam-2.4.0) keep their spelling."""
     parts = text.split("`")

@@ -1,4 +1,4 @@
-# bash completion for the AniBeam watch together relay.
+# bash completion for the Anibeam watch together relay.
 
 _anibeam_relay() {
   local cur prev

@@ -12,6 +12,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
+use crate::sync::recover;
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
 /// or when it has none: `net::front`'s gap, which keeps a front's edge answering (#135). A
@@ -63,7 +64,7 @@ impl Paced {
             FLOOR
         };
         let gap = self.gaps.get(host).copied().unwrap_or_default().max(floor);
-        let mut next = NEXT.lock().unwrap_or_else(|e| e.into_inner());
+        let mut next = recover(&NEXT);
         let start = next.get(host).copied().unwrap_or(now).max(now);
         next.insert(host.to_string(), start + gap);
         start - now
@@ -122,15 +123,7 @@ mod tests {
     async fn an_endpoint_request_goes_out_as_one_so_only_it_can_be_fronted() {
         let doors = Arc::new(Doors::default());
         let paced = Paced::new(doors.clone(), Vec::new());
-        let _ = paced
-            .send(HttpRequest {
-                method: crate::net::Method::Get,
-                url: "http://localhost:1/x".into(),
-                headers: Vec::new(),
-                body: None,
-                timeout: None,
-            })
-            .await;
+        let _ = paced.send(HttpRequest::get("http://localhost:1/x")).await;
         assert_eq!(*doors.0.lock().unwrap(), ["endpoint"]);
     }
 

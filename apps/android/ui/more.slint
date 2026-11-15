@@ -107,21 +107,27 @@ export component HostField inherits VerticalLayout {
         font-size: Theme.small;
         wrap: word-wrap;
     }
-    if AppData.host-result != "": HorizontalLayout {
-        spacing: Theme.unit * 2;
-        Rectangle {
-            y: (parent.height - self.height) / 2;
-            width: 2.5 * Theme.unit;
-            height: self.width;
-            border-radius: self.width / 2;
-            background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
-        }
-        Text {
-            horizontal-stretch: 1;
-            text: AppData.host-result;
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
+    // Its height is its own row's at the width set outright, so a long result that wraps
+    // onto several lines pushes the buttons down rather than under the card's edge (#935).
+    if AppData.host-result != "": Rectangle {
+        height: result.preferred-height;
+        result := HorizontalLayout {
+            width: parent.width;
+            spacing: Theme.unit * 2;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 2.5 * Theme.unit;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: AppData.host-result;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
         }
     }
     HorizontalLayout {
@@ -379,7 +385,11 @@ component SectionPage inherits Rectangle {
         flick.content-y = Math.max(Math.min(0px, flick.height - flick.content-height), Math.min(0px, -(y - root.absolute-position.y - flick.content-y - 6 * Theme.unit)));
     }
     flick := Flickable {
+        // Only ever as wide as the pane, as a page's Scroll is: a section never scrolls
+        // sideways, and its cards fit the width they are given.
+        content-width: self.width;
         VerticalLayout {
+            width: flick.width;
             alignment: start;
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
@@ -900,7 +910,9 @@ export component MorePage inherits Rectangle {
 
     if root.shown == 5: computer := SectionPage {
         title: Tr.t("more-computer");
-        note: Status.computer;
+        // The card says how the last test went, with its dot; the head says it only before
+        // there is one (#935).
+        note: AppData.host-result != "" ? "" : Status.computer;
         Lit {
             on: Settings.lit == Tr.t("more-set-computer");
             reveal(y) => { computer.reveal(y); }

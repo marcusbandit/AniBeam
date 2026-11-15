@@ -15,10 +15,13 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
+use super::Host;
 use super::build::{self, LibraryPart};
 use super::{convert, history, keys, peers, stream, trust};
 use crate::contract::CoreError;
-use crate::core::Core;
+use crate::foundation::machine::hostname;
+use crate::foundation::trust::{Asker, TailnetUser};
+use crate::sync::recover;
 use crate::time;
 
 /// How long a built snapshot answers every request.
@@ -27,7 +30,8 @@ pub const CACHE_FOR: Duration = Duration::from_secs(30);
 const POSTER_MAX_AGE: &str = "max-age=86400";
 
 pub struct Served {
-    pub(super) core: Weak<Core>,
+    /// The host team, held by a `Weak` as every task of a team holds it.
+    pub(super) team: Weak<Host>,
     pub(super) streams: stream::Streams,
     host: String,
     /// The built snapshot per profile, each behind its own lock, so one person's
@@ -40,23 +44,22 @@ pub struct Served {
     peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
-/// The machine's name, for `Hello::host`.
-pub fn hostname() -> String {
-    #[cfg(unix)]
-    return rustix::system::uname()
-        .nodename()
-        .to_string_lossy()
-        .into_owned();
-    #[cfg(not(unix))]
-    return std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Windows".to_string());
+impl Served {
+    /// The host team, while the core it answers for is still there: a request
+    /// that lands as the core goes away is refused, as it was when the server
+    /// held the core itself.
+    pub(super) fn live(&self) -> Option<Arc<Host>> {
+        let team = self.team.upgrade()?;
+        team.front.get().is_some().then_some(team)
+    }
 }
 
-pub fn router(core: Weak<Core>) -> Router {
+pub fn router(team: Weak<Host>) -> Router {
     // The encoders are tried now, so the first phone to say hello hears
     // whether this machine converts.
     let _ = convert::known();
     let served = Arc::new(Served {
-        core,
+        team,
         streams: stream::Streams::default(),
         host: hostname(),
         snapshot: std::sync::Mutex::new(HashMap::new()),
@@ -125,7 +128,7 @@ pub struct Profile(pub u64);
 /// The person a request is answered as, as the tailnet names them right now, set beside
 /// [`Profile`] (#633). None when the tailnet does not say, as on a tagged machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Person(pub Option<trust::TailnetUser>);
+pub struct Person(pub Option<TailnetUser>);
 
 /// The sentence a phone shows when it asks for an episode here while
 /// streaming is off.
@@ -139,7 +142,7 @@ async fn streaming_on(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let on = st.core.upgrade().is_some_and(|c| c.host.streaming());
+    let on = st.live().is_some_and(|team| team.streaming());
     if on || request.uri().path() == wire::CALL {
         next.run(request).await
     } else {
@@ -159,7 +162,7 @@ async fn trusted(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let Some(core) = st.core.upgrade() else {
+    let Some(team) = st.live() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let header = request
@@ -175,10 +178,9 @@ async fn trusted(
     // both stay off the async threads.
     let served = st.clone();
     let judged = tokio::task::spawn_blocking(move || {
-        core.host.keys.mine(&core.paths.device_key_path());
-        let verdict = core.host.verdict(from.ip());
-        let proof = core
-            .host
+        team.keys.mine(&team.services.paths.device_key_path());
+        let verdict = team.verdict(from.ip());
+        let proof = team
             .keys
             .judge(header.as_deref(), &method, &path, time::now_secs());
         // A paired proof opens only an address off the tailnet. One the host
@@ -196,35 +198,31 @@ async fn trusted(
         // owner, so it is the owner's; a tailnet device is its Tailscale user's.
         let (asker, me) = match (&verdict, &proof) {
             (trust::Verdict::Outside, keys::Proof::Paired(_)) => (
-                trust::Asker::Owner,
-                core.host.tailnet_now().and_then(|t| t.owner().cloned()),
+                Asker::Owner,
+                team.tailnet_now().and_then(|t| t.owner().cloned()),
             ),
-            _ => core.host.asker(from.ip()),
+            _ => team.asker(from.ip()),
         };
         // Who it is, as the tailnet names them now, for the hello (#633). The profile
         // id below is cached for the launch; the name is read fresh with every request.
         let who = match &asker {
-            trust::Asker::Owner => me.clone(),
-            trust::Asker::Person(user) => Some(user.clone()),
-            trust::Asker::Unknown => None,
+            Asker::Owner => me.clone(),
+            Asker::Person(user) => Some(user.clone()),
+            Asker::Unknown => None,
         };
         let key = match &asker {
-            trust::Asker::Owner => String::new(),
-            trust::Asker::Person(user) => user.id.clone(),
-            trust::Asker::Unknown => return Ok((verdict, proof, None, None)),
+            Asker::Owner => String::new(),
+            Asker::Person(user) => user.id.clone(),
+            Asker::Unknown => return Ok((verdict, proof, None, None)),
         };
-        let known = served
-            .profiles
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&key)
-            .copied();
+        let known = recover(&served.profiles).get(&key).copied();
         if let Some(id) = known {
             return Ok((verdict, proof, None, Some((id, who))));
         }
         let now = time::now_secs();
         let learned = me.is_some();
-        let profile = core
+        let profile = team
+            .services
             .store
             .write(move |c| crate::profiles::resolve(c, &asker, me.as_ref(), now))?;
         // The owner is remembered only once their Tailscale user is known, so
@@ -232,11 +230,7 @@ async fn trusted(
         if let Some(id) = profile
             && (!key.is_empty() || learned)
         {
-            served
-                .profiles
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(key, id);
+            recover(&served.profiles).insert(key, id);
         }
         Ok::<_, CoreError>((verdict, proof, None, profile.map(|id| (id, who))))
     })
@@ -332,17 +326,16 @@ async fn hello(
     // takes them from (#733).
     let owner = profile
         .as_ref()
-        .is_some_and(|p| p.0.0 == crate::profiles::OWNER);
+        .is_some_and(|p| p.0.0 == crate::foundation::trust::OWNER);
+    let team = st.live();
     // `trusted` read the key before this route, so this only takes it.
-    let key = st
-        .core
-        .upgrade()
-        .and_then(|c| c.host.keys.mine(&c.paths.device_key_path()));
-    let streaming = st.core.upgrade().is_some_and(|c| c.host.streaming());
-    let relayed = st
-        .core
-        .upgrade()
-        .is_some_and(|core| super::relayed(&core, from.ip()));
+    let key = team
+        .as_ref()
+        .and_then(|team| team.keys.mine(&team.services.paths.device_key_path()));
+    let streaming = team.as_ref().is_some_and(|team| team.streaming());
+    let relayed = team
+        .as_ref()
+        .is_some_and(|team| super::relayed(team, from.ip()));
     // Whose progress this device gets (#633): named as the tailnet names them now, or as
     // the profile was last seen when the tailnet does not say.
     let id = profile.map(|p| p.0.0);
@@ -350,15 +343,15 @@ async fn hello(
         .and_then(|p| p.0.0)
         .zip(id)
         .and_then(|(user, id)| crate::profiles::shown(&user, id));
-    let named = match (fresh, st.core.upgrade(), id) {
+    let named = match (fresh, team, id) {
         (Some(named), _, _) => Some(named),
-        (None, Some(core), Some(id)) => {
-            tokio::task::spawn_blocking(move || core.store.read(|c| crate::profiles::named(c, id)))
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .flatten()
-        }
+        (None, Some(team), Some(id)) => tokio::task::spawn_blocking(move || {
+            team.services.store.read(|c| crate::profiles::named(c, id))
+        })
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .flatten(),
         _ => None,
     };
     let hello = wire::Hello {
@@ -379,7 +372,7 @@ async fn hello(
     }
 }
 
-/// What this host serves past the snapshot: the list of other AniBeams and
+/// What this host serves past the snapshot: the list of other Anibeams and
 /// this one's history always, since neither is streaming; downloads to the
 /// owner's devices, the only ones that may send them; request
 /// proofs while it has its key; streaming while its switch is on;
@@ -406,7 +399,7 @@ fn features(streaming: bool, keyed: bool, owner: bool) -> Vec<String> {
     out
 }
 
-/// The other AniBeams on the tailnet. Asking them all takes a moment, so the
+/// The other Anibeams on the tailnet. Asking them all takes a moment, so the
 /// list answers every request for `CACHE_FOR`; the slot stays locked while it
 /// is made, so a burst of clients waits for one round of hellos. A tailnet
 /// that cannot be read gives no list rather than an empty one, and nothing is
@@ -423,14 +416,14 @@ async fn peer_list(
     let hosts = match fresh {
         Some(hosts) => hosts,
         None => {
-            let Some(core) = st.core.upgrade() else {
+            let Some(team) = st.live() else {
                 return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
             };
             let asked = tokio::task::spawn_blocking(move || {
-                let tailnet = core.host.tailnet(false)?;
+                let tailnet = team.tailnet(false)?;
                 Some(peers::candidates(
                     &tailnet,
-                    &core.host.switched_off(),
+                    &team.switched_off(),
                     wire::DEFAULT_PORT,
                 ))
             })
@@ -472,27 +465,20 @@ async fn snapshot(
 /// while one is built, so a burst of clients waits for one build instead of
 /// starting many.
 async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
-    let slot = st
-        .snapshot
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .entry(profile)
-        .or_default()
-        .clone();
+    let slot = recover(&st.snapshot).entry(profile).or_default().clone();
     let mut slot = slot.lock().await;
     if let Some((at, body)) = slot.as_ref()
         && at.elapsed() < CACHE_FOR
     {
         return Ok(body.clone());
     }
-    let core = st
-        .core
-        .upgrade()
+    let team = st
+        .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let (snapshot, library) = build::snapshot(&core, &st.host, profile).await?;
+    let (snapshot, library) = build::snapshot(&team, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
     // The posters are everyone's; the owner's read keeps their table fresh.
-    if profile == crate::profiles::OWNER {
+    if profile == crate::foundation::trust::OWNER {
         *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
     }
     *slot = Some((Instant::now(), body.clone()));
@@ -508,14 +494,14 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
     {
         return Ok(part.clone());
     }
-    let core = st
-        .core
-        .upgrade()
+    let team = st
+        .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let part =
-        tokio::task::spawn_blocking(move || build::library_part(&core, crate::profiles::OWNER))
-            .await
-            .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
+    let part = tokio::task::spawn_blocking(move || {
+        build::library_part(&team.services, crate::foundation::trust::OWNER)
+    })
+    .await
+    .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
     let part = Arc::new(part);
     *slot = Some((Instant::now(), part.clone()));
     Ok(part)
@@ -589,19 +575,19 @@ pub fn content_type(path: &FsPath, bytes: &[u8]) -> &'static str {
     }
 }
 
-/// This computer's series and history, for another AniBeam to merge
+/// This computer's series and history, for another Anibeam to merge
 /// (`history`). The asker is pulled from in turn, so two computers that
 /// see each other both end up with everything.
 async fn history_document(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
-    let Some(core) = st.core.upgrade() else {
+    let Some(team) = st.live() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let built = tokio::task::spawn_blocking(move || {
-        let doc = history::document(&core);
-        history::pull_back(&core, from.ip());
+        let doc = history::document(&team.services);
+        history::pull_back(&team, from.ip());
         doc
     })
     .await;
@@ -621,15 +607,12 @@ mod tests {
     #[test]
     fn only_this_machine_or_an_address_passes_the_host_check() {
         use super::host_allowed;
-        assert!(host_allowed("100.94.40.21:8790", "banditbox"));
-        assert!(host_allowed("[fd7a:115c:a1e0::1]:8790", "banditbox"));
-        assert!(host_allowed(
-            "banditbox.tail24c6a9.ts.net:8790",
-            "banditbox"
-        ));
-        assert!(host_allowed("banditbox:8790", "banditbox"));
-        assert!(!host_allowed("evil.example:8790", "banditbox"));
-        assert!(!host_allowed("", "banditbox"));
+        assert!(host_allowed("100.64.0.2:8790", "desk"));
+        assert!(host_allowed("[fd7a:115c:a1e0::1]:8790", "desk"));
+        assert!(host_allowed("desk.example-tailnet.ts.net:8790", "desk"));
+        assert!(host_allowed("desk:8790", "desk"));
+        assert!(!host_allowed("evil.example:8790", "desk"));
+        assert!(!host_allowed("", "desk"));
     }
 
     use super::*;

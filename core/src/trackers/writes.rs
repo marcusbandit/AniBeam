@@ -23,7 +23,7 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::i18n::{Arg, tr};
 use crate::jobs::{Finished, JobCtx};
 use crate::library::history::How;
@@ -35,7 +35,9 @@ use crate::net::anilist::{
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
 };
 use crate::prefs;
+use crate::sync::recover;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::{
     TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
 };
@@ -208,8 +210,8 @@ pub fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
 /// Marks an episode watched on every connected tracker. The number is
 /// floored, since a tracker counts whole episodes and 12.5 is still the
 /// twelfth.
-pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, CoreError> {
+    let target = trackers.services.store.read(|c| targets(c, series))?;
     if !episode.is_finite() || episode.floor() < 1.0 {
         return Err(CoreError::invalid(
             "episode",
@@ -220,14 +222,15 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
         ));
     }
     let episode = episode.floor() as u32;
-    let main = guard(core, &target)?;
+    let main = guard(&trackers.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover.
-    let again = core
+    let again = trackers
+        .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?;
     let slot = if again {
-        core.rewatching.hold(series)
+        trackers.rewatching.hold(series)
     } else {
         None
     };
@@ -237,7 +240,8 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     // refused without a request. The job checks again against the tracker
     // itself, which is what actually decides.
     if !again
-        && core
+        && trackers
+            .services
             .store
             .read(|c| cached_progress(c, &target, main))?
             .is_some_and(|current| current >= episode)
@@ -247,7 +251,7 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
         });
     }
     start_holding(
-        core,
+        trackers,
         JobKind::Mark,
         target,
         Action::Mark { episode, again },
@@ -305,28 +309,25 @@ fn finished_again(
     Ok(watched == 1)
 }
 
-/// The series whose rewatch is being written right now, one set per core. Two
-/// marks of one finish (the rule at the end and the player's button, say) both
-/// read the list before either has written, so the second waits its turn out
-/// here rather than counting the same rewatch twice.
+/// The series whose rewatch is being written right now, one set per trackers
+/// team, so two cores in one process never share a slot (#776). Two marks of
+/// one finish (the rule at the end and the player's button, say) both read the
+/// list before either has written, so the second waits its turn out here
+/// rather than counting the same rewatch twice.
 #[derive(Clone, Default)]
-pub(crate) struct Rewatching(std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
+pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
 
 impl Rewatching {
-    fn set(&self) -> std::sync::MutexGuard<'_, std::collections::HashSet<u64>> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
     /// The series' slot, or None while another mark holds it.
     fn hold(&self, series: u64) -> Option<RewatchSlot> {
-        self.set().insert(series).then(|| RewatchSlot {
+        recover(&self.0).insert(series).then(|| RewatchSlot {
             set: self.clone(),
             series,
         })
     }
 }
 
-/// A series' place in its core's [`Rewatching`], given up when the job that
+/// A series' place in its team's [`Rewatching`], given up when the job that
 /// holds it ends however it ends.
 struct RewatchSlot {
     set: Rewatching,
@@ -335,7 +336,7 @@ struct RewatchSlot {
 
 impl Drop for RewatchSlot {
     fn drop(&mut self) {
-        self.set.set().remove(&self.series);
+        recover(&self.set.0).remove(&self.series);
     }
 }
 
@@ -357,19 +358,19 @@ fn cached_id(target: &Targets, main: Tracker) -> Option<(Tracker, u64)> {
 /// are marked completed on this device and the ones after it are not, at
 /// once, with no job. None then, where a tracker write answers with its job.
 pub fn set_progress(
-    core: &Core,
+    trackers: &Arc<Trackers>,
     series: u64,
     progress: u32,
     season: Option<u32>,
 ) -> Result<Option<u64>, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+    let target = trackers.services.store.read(|c| targets(c, series))?;
     if !target.matched() {
-        mark_here(core, series, progress, season.unwrap_or(1))?;
+        mark_here(&trackers.services, series, progress, season.unwrap_or(1))?;
         return Ok(None);
     }
-    guard(core, &target)?;
+    guard(&trackers.services, &target)?;
     start(
-        core,
+        trackers,
         JobKind::SetProgress,
         target,
         Action::Progress { progress },
@@ -382,10 +383,15 @@ pub fn set_progress(
 /// every one past it is not, and the card is pushed so the page redraws. A
 /// half episode goes with the whole one before it, so 12.5 is watched with
 /// 12, the way a tracker's count reads it. An episode 0 is never touched.
-fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(), CoreError> {
+fn mark_here(
+    services: &Services,
+    series: u64,
+    progress: u32,
+    season: u32,
+) -> Result<(), CoreError> {
     let now = time::now_secs();
     let past = f64::from(progress) + 1.0;
-    core.store.tx(move |tx| {
+    services.store.tx(move |tx| {
         // Each episode this marks for the first time is a hand-set finish in
         // the watch log, which Stats leaves out (#593). One already watched
         // keeps its own finishes and gains none.
@@ -425,11 +431,11 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
         )?;
         Ok(())
     })?;
-    let images_dir = core.paths.images_dir();
-    let cards = core
+    let images_dir = services.paths.images_dir();
+    let cards = services
         .store
         .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))?;
-    core.bus.debug(
+    services.bus.debug(
         Stage::Library,
         "watched episodes set here",
         EventBody::SeriesChanged { series: cards },
@@ -444,8 +450,12 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
 /// A series no connected tracker carries keeps its score on this device
 /// instead (#213), at once and with no job: None then, where a tracker
 /// write answers with its job.
-pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<u64>, CoreError> {
-    let target = core.store.read(|c| targets(c, series))?;
+pub fn set_score(
+    trackers: &Arc<Trackers>,
+    series: u64,
+    score: Option<f64>,
+) -> Result<Option<u64>, CoreError> {
+    let target = trackers.services.store.read(|c| targets(c, series))?;
     let score = score.unwrap_or(0.0);
     if !(0.0..=10.0).contains(&score) {
         return Err(CoreError::invalid(
@@ -456,16 +466,18 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<
             ),
         ));
     }
-    if kept_here(core, &target)? {
+    if kept_here(&trackers.services, &target)? {
         let now = time::now_secs();
         // Nought is unrated here as it is on a tracker.
         let rated = (score > 0.0).then_some(score);
-        core.store
+        trackers
+            .services
+            .store
             .write(move |c| local::set_score(c, series, rated, now))?;
-        push_card(core, series, "score kept here");
+        push_card(&trackers.services, series, "score kept here");
         return Ok(None);
     }
-    start(core, JobKind::Score, target, Action::Score { score }).map(Some)
+    start(trackers, JobKind::Score, target, Action::Score { score }).map(Some)
 }
 
 /// Puts a series on one list on every connected tracker: the status pill's
@@ -475,7 +487,7 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<
 /// A series no connected tracker carries keeps its status on this device
 /// instead (#213), the way `set_score` keeps a score.
 pub fn set_list_status(
-    core: &Core,
+    trackers: &Arc<Trackers>,
     series: u64,
     status: ListStatus,
 ) -> Result<Option<u64>, CoreError> {
@@ -485,15 +497,23 @@ pub fn set_list_status(
             tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
-    let target = core.store.read(|c| targets(c, series))?;
-    if kept_here(core, &target)? {
+    let target = trackers.services.store.read(|c| targets(c, series))?;
+    if kept_here(&trackers.services, &target)? {
         let now = time::now_secs();
-        core.store
+        trackers
+            .services
+            .store
             .write(move |c| local::set_status(c, series, status, now))?;
-        push_card(core, series, "list status kept here");
+        push_card(&trackers.services, series, "list status kept here");
         return Ok(None);
     }
-    start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
+    start(
+        trackers,
+        JobKind::SetStatus,
+        target,
+        Action::Status { status },
+    )
+    .map(Some)
 }
 
 /// The library's metadata for a show: its MAL id, episode count and three titles.
@@ -530,7 +550,7 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
     let m = media.unwrap_or_default();
     let (lib_mal, lib_eps, romaji, english, native) = library.unwrap_or_default();
     let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
-    let folder_name = crate::library::titles::resolve(
+    let folder_name = crate::foundation::titles::resolve(
         lang,
         text(&m["title"]["romaji"]).or(romaji).as_deref(),
         text(&m["title"]["english"]).or(english).as_deref(),
@@ -551,8 +571,8 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
 }
 
 /// The series the library has for an AniList id, when it has one.
-fn series_of(core: &Core, anilist_id: u64) -> Result<Option<u64>, CoreError> {
-    core.store.read(|c| {
+fn series_of(services: &Services, anilist_id: u64) -> Result<Option<u64>, CoreError> {
+    services.store.read(|c| {
         Ok(c.query_row(
             "SELECT MIN(id) FROM series WHERE anilist_id = ?1 AND missing_since IS NULL",
             params![anilist_id as i64],
@@ -566,12 +586,12 @@ fn series_of(core: &Core, anilist_id: u64) -> Result<Option<u64>, CoreError> {
 /// tracker (#779). With no tracker there is nowhere to keep it: the list on
 /// this device is kept by series.
 pub fn set_show_list_status(
-    core: &Core,
+    trackers: &Arc<Trackers>,
     anilist_id: u64,
     status: ListStatus,
 ) -> Result<Option<u64>, CoreError> {
-    if let Some(series) = series_of(core, anilist_id)? {
-        return set_list_status(core, series, status);
+    if let Some(series) = series_of(&trackers.services, anilist_id)? {
+        return set_list_status(trackers, series, status);
     }
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
@@ -579,16 +599,29 @@ pub fn set_show_list_status(
             tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
-    let target = core.store.read(|c| show_targets(c, anilist_id))?;
-    guard(core, &target)?;
-    start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
+    let target = trackers
+        .services
+        .store
+        .read(|c| show_targets(c, anilist_id))?;
+    guard(&trackers.services, &target)?;
+    start(
+        trackers,
+        JobKind::SetStatus,
+        target,
+        Action::Status { status },
+    )
+    .map(Some)
 }
 
 /// A score out of 10 for a show the library does not have, on every
 /// connected tracker; nought clears it.
-pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option<u64>, CoreError> {
-    if let Some(series) = series_of(core, anilist_id)? {
-        return set_score(core, series, Some(score));
+pub fn set_show_score(
+    trackers: &Arc<Trackers>,
+    anilist_id: u64,
+    score: f64,
+) -> Result<Option<u64>, CoreError> {
+    if let Some(series) = series_of(&trackers.services, anilist_id)? {
+        return set_score(trackers, series, Some(score));
     }
     if !(0.0..=10.0).contains(&score) {
         return Err(CoreError::invalid(
@@ -599,19 +632,22 @@ pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option
             ),
         ));
     }
-    let target = core.store.read(|c| show_targets(c, anilist_id))?;
-    guard(core, &target)?;
-    start(core, JobKind::Score, target, Action::Score { score }).map(Some)
+    let target = trackers
+        .services
+        .store
+        .read(|c| show_targets(c, anilist_id))?;
+    guard(&trackers.services, &target)?;
+    start(trackers, JobKind::Score, target, Action::Score { score }).map(Some)
 }
 
 /// Whether a status or a score stays on this device: the series has no
 /// tracker match, or no account is connected behind the ids it has. A
 /// hidden series is still refused, since hiding is about its tracker sync
 /// and a person who hid it asked for nothing to go out.
-fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
+fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
     // `guard` answers NoMatch before it looks at the hidden flag, which a
     // series with no ids has nothing else to say about.
-    let hidden = core.store.read(|c| {
+    let hidden = services.store.read(|c| {
         Ok(c.query_row(
             "SELECT hidden FROM series WHERE id = ?1",
             params![target.series as i64],
@@ -623,7 +659,7 @@ fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
             reason: Refusal::Hidden,
         });
     }
-    match guard(core, target) {
+    match guard(services, target) {
         Ok(_) => Ok(false),
         Err(CoreError::Refused {
             reason: Refusal::NoMatch,
@@ -636,14 +672,14 @@ fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
 /// The series' card pushed after a write here, so the page redraws. The
 /// write has already landed by now, so a card that cannot be read is a
 /// line in the log rather than a failure of the call.
-fn push_card(core: &Core, series: u64, line: &str) {
-    let images_dir = core.paths.images_dir();
-    match core
+fn push_card(services: &Services, series: u64, line: &str) {
+    let images_dir = services.paths.images_dir();
+    match services
         .store
         .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))
     {
         Ok(cards) => {
-            core.bus.debug(
+            services.bus.debug(
                 Stage::Library,
                 line.to_string(),
                 EventBody::SeriesChanged { series: cards },
@@ -659,7 +695,7 @@ pub const NOTES_MAX: usize = 2000;
 
 /// Writes the series' notes to every connected tracker: AniList's notes,
 /// MAL's comments. Blank clears them on both.
-pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError> {
+pub fn set_notes(trackers: &Arc<Trackers>, series: u64, notes: &str) -> Result<u64, CoreError> {
     let notes = notes.trim();
     if notes.chars().count() > NOTES_MAX {
         return Err(CoreError::invalid(
@@ -670,10 +706,10 @@ pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError
             ),
         ));
     }
-    let target = core.store.read(|c| targets(c, series))?;
-    guard(core, &target)?;
+    let target = trackers.services.store.read(|c| targets(c, series))?;
+    guard(&trackers.services, &target)?;
     let notes = cache::note_of(Some(notes));
-    start(core, JobKind::Notes, target, Action::Notes { notes })
+    start(trackers, JobKind::Notes, target, Action::Notes { notes })
 }
 
 /// A score or a list status for several series at once (#208).
@@ -692,7 +728,11 @@ pub enum ManyWrite {
 /// A pick no connected tracker carries keeps the score or the status on
 /// this device instead (#213), as one menu's write does. None when every
 /// pick was kept here, so there was no job to start.
-pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Option<u64>, CoreError> {
+pub fn start_many(
+    trackers: &Arc<Trackers>,
+    series: &[u64],
+    write: ManyWrite,
+) -> Result<Option<u64>, CoreError> {
     let action = match write {
         ManyWrite::Score(score) => {
             let score = score.unwrap_or(0.0);
@@ -720,17 +760,17 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
     let mut left_out = LeftOut::default();
     let now = time::now_secs();
     for &id in series {
-        let target = core.store.read(|c| targets(c, id))?;
-        match kept_here(core, &target) {
+        let target = trackers.services.store.read(|c| targets(c, id))?;
+        match kept_here(&trackers.services, &target) {
             Ok(false) => reachable.push(target),
             Ok(true) => {
-                core.store.write(move |c| match write {
+                trackers.services.store.write(move |c| match write {
                     ManyWrite::Score(score) => {
                         local::set_score(c, id, score.filter(|s| *s > 0.0), now)
                     }
                     ManyWrite::Status(status) => local::set_status(c, id, status, now),
                 })?;
-                push_card(core, id, "kept here");
+                push_card(&trackers.services, id, "kept here");
                 left_out.kept += 1;
             }
             Err(e) => {
@@ -757,17 +797,15 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
         Action::Score { .. } => JobKind::Score,
         _ => JobKind::SetStatus,
     };
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let jobs = owner.jobs.clone();
+    let owner = trackers.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(Some(jobs.start(kind, move |ctx| async move {
         run_many(owner, ctx, reachable, action, left_out).await
     })))
 }
 
 async fn run_many(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     targets: Vec<Targets>,
     action: Action,
@@ -781,7 +819,7 @@ async fn run_many(
     for (i, target) in targets.iter().enumerate() {
         ctx.checkpoint()?;
         ctx.progress(i as u64, Some(total), &target.folder_name);
-        let outcomes = write_all(&core, &ctx, target, &action, false).await?;
+        let outcomes = write_all(&trackers, &ctx, target, &action, false).await?;
         if outcomes.iter().any(|o| o.ok) {
             done += 1;
             named = Some(target.folder_name.clone());
@@ -796,7 +834,7 @@ async fn run_many(
                 reason = outcomes.iter().find_map(|o| o.message.clone());
             }
         }
-        if let Some(card) = card_for(&core, target.series).await? {
+        if let Some(card) = card_for(&trackers.services, target.series).await? {
             ctx.changed(card);
         }
     }
@@ -888,8 +926,8 @@ fn sites_of(landed: impl Iterator<Item = Tracker>) -> Option<&'static str> {
 /// nothing to write to, a series the user hid, and no account behind
 /// either id. Answers with the main tracker, which is the one the
 /// `NotConnected` refusal names and the one the monotonic guard reads.
-fn guard(core: &Core, target: &Targets) -> Result<Tracker, CoreError> {
-    core.store.read(|c| {
+fn guard(services: &Services, target: &Targets) -> Result<Tracker, CoreError> {
+    services.store.read(|c| {
         if !target.matched() {
             return Err(CoreError::Refused {
                 reason: Refusal::NoMatch,
@@ -975,22 +1013,25 @@ impl Action {
     }
 }
 
-fn start(core: &Core, kind: JobKind, target: Targets, action: Action) -> Result<u64, CoreError> {
-    start_holding(core, kind, target, action, None)
+fn start(
+    trackers: &Arc<Trackers>,
+    kind: JobKind,
+    target: Targets,
+    action: Action,
+) -> Result<u64, CoreError> {
+    start_holding(trackers, kind, target, action, None)
 }
 
 /// `start`, with the rewatch slot the job keeps until it ends.
 fn start_holding(
-    core: &Core,
+    trackers: &Arc<Trackers>,
     kind: JobKind,
     target: Targets,
     action: Action,
     slot: Option<RewatchSlot>,
 ) -> Result<u64, CoreError> {
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let jobs = owner.jobs.clone();
+    let owner = trackers.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
         let _slot = slot;
         run(owner, ctx, target, action).await
@@ -998,16 +1039,16 @@ fn start_holding(
 }
 
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     target: Targets,
     action: Action,
 ) -> Result<Finished, CoreError> {
-    let outcomes = write_all(&core, &ctx, &target, &action, true).await?;
+    let outcomes = write_all(&trackers, &ctx, &target, &action, true).await?;
     // The cache was patched by each write above, so the card built here
     // already carries the new number. The runner flushes this before the
     // terminal event.
-    if let Some(card) = card_for(&core, target.series).await? {
+    if let Some(card) = card_for(&trackers.services, target.series).await? {
         ctx.changed(card);
     }
     Ok(finished(&target, action, outcomes))
@@ -1017,7 +1058,7 @@ async fn run(
 /// for. `loud` says each tracker's failure in the plain log; a write over
 /// several series keeps them to the developer log and counts them instead.
 async fn write_all(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     target: &Targets,
     action: &Action,
@@ -1031,7 +1072,8 @@ async fn write_all(
         let Some(media_id) = target.id_for(t) else {
             continue;
         };
-        let row = core
+        let row = trackers
+            .services
             .store
             .write_async(move |c| accounts::load_row(c, t))
             .await?
@@ -1039,7 +1081,19 @@ async fn write_all(
         if row.connected_at.is_none() {
             continue;
         }
-        outcomes.push(write_one(core, ctx, t, target, media_id, row.user_id, action, loud).await);
+        outcomes.push(
+            write_one(
+                trackers,
+                ctx,
+                t,
+                target,
+                media_id,
+                row.user_id,
+                action,
+                loud,
+            )
+            .await,
+        );
     }
     Ok(outcomes)
 }
@@ -1172,7 +1226,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
 /// carries on to the other tracker.
 #[allow(clippy::too_many_arguments)]
 async fn write_one(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     t: Tracker,
     target: &Targets,
@@ -1181,7 +1235,7 @@ async fn write_one(
     action: &Action,
     loud: bool,
 ) -> TrackerOutcome {
-    match attempt(core, ctx, t, target, media_id, user_id, action).await {
+    match attempt(trackers, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome,
         Err(e) if !loud => {
             ctx.emit(
@@ -1233,7 +1287,7 @@ async fn write_one(
 /// the mutation, the account's `synced_at`, the cache patch and the line
 /// the activity log gets.
 pub(crate) async fn attempt(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     t: Tracker,
     target: &Targets,
@@ -1241,10 +1295,10 @@ pub(crate) async fn attempt(
     user_id: Option<u64>,
     action: &Action,
 ) -> Result<TrackerOutcome, CoreError> {
-    let token = accounts::access_token(core, t)
+    let token = accounts::access_token(trackers, t)
         .await?
         .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-    let entry = read_entry(core, t, media_id, user_id, &token).await?;
+    let entry = read_entry(trackers, t, media_id, user_id, &token).await?;
     let current = entry.progress;
     let today = today();
     match action {
@@ -1266,9 +1320,10 @@ pub(crate) async fn attempt(
             let progress = current.max(episode);
             let status = watched_status(&entry, target.completes(progress));
             let extras = plan(&entry, status, true, rewatch, today);
-            let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
-            record_progress(core, t, media_id, progress, status, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+            let stamp =
+                send_progress(trackers, t, media_id, &token, progress, status, &extras).await?;
+            record_progress(&trackers.services, t, media_id, progress, status, stamp).await?;
+            record_repeat(&trackers.services, t, media_id, &extras).await?;
             // The terminal event carries every tracker's outcome, so a
             // line per tracker here would say the same thing twice.
             ctx.emit(
@@ -1295,9 +1350,10 @@ pub(crate) async fn attempt(
                 watched_status(&entry, target.completes(progress))
             };
             let extras = plan(&entry, status, progress > 0, false, today);
-            let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
-            record_progress(core, t, media_id, progress, status, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+            let stamp =
+                send_progress(trackers, t, media_id, &token, progress, status, &extras).await?;
+            record_progress(&trackers.services, t, media_id, progress, status, stamp).await?;
+            record_repeat(&trackers.services, t, media_id, &extras).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -1325,9 +1381,9 @@ pub(crate) async fn attempt(
                 false => Extras::default(),
             };
             let (sent, stamp) =
-                send_score(core, t, media_id, &token, score, completed, &extras).await?;
-            record_score(core, t, media_id, sent, completed, stamp).await?;
-            record_repeat(core, t, media_id, &extras).await?;
+                send_score(trackers, t, media_id, &token, score, completed, &extras).await?;
+            record_score(&trackers.services, t, media_id, sent, completed, stamp).await?;
+            record_repeat(&trackers.services, t, media_id, &extras).await?;
             let tail = if completed { " + completed" } else { "" };
             ctx.emit(
                 Level::Debug,
@@ -1356,10 +1412,11 @@ pub(crate) async fn attempt(
             };
             let fill = (progress != current).then_some(progress);
             let extras = plan(&entry, status, false, false, today);
-            let stamp = send_list_status(core, t, media_id, &token, status, fill, &extras).await?;
+            let stamp =
+                send_list_status(trackers, t, media_id, &token, status, fill, &extras).await?;
             // A series not on the list yet has no cached entry to patch, so
             // the entry is upserted with the progress the tracker now has.
-            record_progress(core, t, media_id, progress, status, stamp).await?;
+            record_progress(&trackers.services, t, media_id, progress, status, stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -1393,8 +1450,8 @@ pub(crate) async fn attempt(
                     )),
                 });
             }
-            let stamp = send_notes(core, t, media_id, &token, notes.as_deref()).await?;
-            record_notes(core, t, media_id, notes.clone(), stamp).await?;
+            let stamp = send_notes(trackers, t, media_id, &token, notes.as_deref()).await?;
+            record_notes(&trackers.services, t, media_id, notes.clone(), stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!("{} notes saved (mediaId {media_id})", t.as_str()),
@@ -1553,7 +1610,7 @@ fn fuzzy_dated(date: &serde_json::Value) -> bool {
 /// added is an empty entry rather than a failure: that is exactly what a
 /// first mark is for, on either tracker.
 async fn read_entry(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     user_id: Option<u64>,
@@ -1567,7 +1624,8 @@ async fn read_entry(
             let user_id = user_id
                 .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-no-user-id", &[])))?;
             let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
-            match core
+            match trackers
+                .net
                 .anilist
                 .graphql_within(
                     MEDIA_LIST_ENTRY_QUERY,
@@ -1595,7 +1653,7 @@ async fn read_entry(
             let url = format!(
                 "{MAL_API}/anime/{media_id}?fields=my_list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,start_date,finish_date}}"
             );
-            let response = core.mal.get(&url, token).await?;
+            let response = trackers.net.mal.get(&url, token).await?;
             if response.status == 404 {
                 return Ok(Current::default());
             }
@@ -1625,7 +1683,7 @@ async fn read_entry(
 /// no longer holds. MAL has no broadcast schedule, so its `next` is empty
 /// and the library's schedule rows date its next episode.
 pub(crate) async fn read_live(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     user_id: Option<u64>,
@@ -1636,7 +1694,8 @@ pub(crate) async fn read_live(
             let user_id = user_id
                 .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-no-user-id", &[])))?;
             let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
-            let data = match core
+            let data = match trackers
+                .net
                 .anilist
                 .graphql_within(ON_HOLD_ENTRY_QUERY, variables, Some(token), TRACKER_TIMEOUT)
                 .await
@@ -1663,7 +1722,7 @@ pub(crate) async fn read_live(
         Tracker::Mal => {
             let url =
                 format!("{MAL_API}/anime/{media_id}?fields=my_list_status,status,num_episodes");
-            let response = core.mal.get(&url, token).await?;
+            let response = trackers.net.mal.get(&url, token).await?;
             if response.status == 404 {
                 return Ok(None);
             }
@@ -1695,7 +1754,7 @@ pub(crate) async fn read_live(
 /// along, answering with the tracker's own stamp for the write when its
 /// reply carried one.
 async fn send_progress(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     token: &str,
@@ -1707,7 +1766,8 @@ async fn send_progress(
         Tracker::Anilist => {
             let mut variables = serde_json::json!({ "mediaId": media_id, "progress": progress, "status": anilist_status(status) });
             anilist_extras(&mut variables, extras);
-            let data = core
+            let data = trackers
+                .net
                 .anilist
                 .graphql_within(
                     SAVE_PROGRESS_MUTATION,
@@ -1724,7 +1784,8 @@ async fn send_progress(
                 ("status".to_string(), mal_status(status).to_string()),
             ];
             mal_extras(&mut form, extras);
-            let response = core
+            let response = trackers
+                .net
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
                 .await?;
@@ -1759,7 +1820,7 @@ fn mal_stamp(response: &HttpResponse) -> Option<i64> {
 /// was sent comes back, so the cache and the log line agree with the list,
 /// and beside it the tracker's stamp for the write when its reply carried one.
 async fn send_score(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     token: &str,
@@ -1778,7 +1839,8 @@ async fn send_score(
                     serde_json::Value::String(anilist_status(ListStatus::Completed).to_string());
             }
             anilist_extras(&mut variables, extras);
-            let data = core
+            let data = trackers
+                .net
                 .anilist
                 .graphql_within(SAVE_SCORE_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
                 .await?;
@@ -1794,7 +1856,8 @@ async fn send_score(
                 ));
             }
             mal_extras(&mut form, extras);
-            let response = core
+            let response = trackers
+                .net
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
                 .await?;
@@ -1811,7 +1874,7 @@ async fn send_score(
 /// write names them. Answers with the tracker's own stamp for the change
 /// when its reply carried one.
 pub(crate) async fn send_status(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     token: &str,
@@ -1821,7 +1884,8 @@ pub(crate) async fn send_status(
         Tracker::Anilist => {
             let variables =
                 serde_json::json!({ "mediaId": media_id, "status": anilist_status(status) });
-            let data = core
+            let data = trackers
+                .net
                 .anilist
                 .graphql_within(
                     SAVE_STATUS_MUTATION,
@@ -1834,7 +1898,8 @@ pub(crate) async fn send_status(
         }
         Tracker::Mal => {
             let form = vec![("status".to_string(), mal_status(status).to_string())];
-            let response = core
+            let response = trackers
+                .net
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
                 .await?;
@@ -1851,7 +1916,7 @@ pub(crate) async fn send_status(
 /// Watching would read back as Rewatching on the next refresh. `fill` is the
 /// progress Completed raises the list to, when it is short of the total.
 async fn send_list_status(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     token: &str,
@@ -1861,13 +1926,14 @@ async fn send_list_status(
 ) -> Result<Option<i64>, CoreError> {
     match (t, fill) {
         (Tracker::Anilist, Some(progress)) => {
-            send_progress(core, t, media_id, token, progress, status, extras).await
+            send_progress(trackers, t, media_id, token, progress, status, extras).await
         }
         (Tracker::Anilist, None) => {
             let mut variables =
                 serde_json::json!({ "mediaId": media_id, "status": anilist_status(status) });
             anilist_extras(&mut variables, extras);
-            let data = core
+            let data = trackers
+                .net
                 .anilist
                 .graphql_within(
                     SAVE_LIST_STATUS_MUTATION,
@@ -1887,7 +1953,8 @@ async fn send_list_status(
                 form.push(("num_watched_episodes".to_string(), progress.to_string()));
             }
             mal_extras(&mut form, extras);
-            let response = core
+            let response = trackers
+                .net
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
                 .await?;
@@ -1902,7 +1969,7 @@ async fn send_list_status(
 /// The entry's notes alone: AniList's notes, MAL's comments. None clears
 /// them, which both trackers read from an empty string.
 async fn send_notes(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     media_id: u64,
     token: &str,
@@ -1912,7 +1979,8 @@ async fn send_notes(
     match t {
         Tracker::Anilist => {
             let variables = serde_json::json!({ "mediaId": media_id, "notes": text });
-            let data = core
+            let data = trackers
+                .net
                 .anilist
                 .graphql_within(SAVE_NOTES_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
                 .await?;
@@ -1920,7 +1988,8 @@ async fn send_notes(
         }
         Tracker::Mal => {
             let form = vec![("comments".to_string(), text)];
-            let response = core
+            let response = trackers
+                .net
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
                 .await?;
@@ -1947,12 +2016,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
         .and_then(|body| body["message"].as_str().map(str::to_string))
         .filter(|message| !message.is_empty())
         .unwrap_or(text);
-    CoreError::Provider {
-        provider: Provider::Mal,
-        status: Some(u32::from(response.status)),
-        message,
-        retry_after: None,
-    }
+    CoreError::provider(Provider::Mal, Some(u32::from(response.status)), message)
 }
 
 // What is left behind --------------------------------------------------------
@@ -1960,7 +2024,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
 /// The account's `synced_at` and the entry's progress, in one transaction:
 /// two tables move together or neither does.
 pub(crate) async fn record_progress(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     progress: u32,
@@ -1968,7 +2032,8 @@ pub(crate) async fn record_progress(
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_progress(tx, t, media_id, progress, Some(status), stamp, now)
@@ -1980,7 +2045,7 @@ pub(crate) async fn record_progress(
 /// rating of nothing, and a status is only written when the rating
 /// completed the entry.
 async fn record_score(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     score: f64,
@@ -1990,7 +2055,8 @@ async fn record_score(
     let now = time::now_secs();
     let rated = (score > 0.0).then_some(score);
     let status = completed.then_some(ListStatus::Completed);
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_score(tx, t, media_id, rated, status, stamp, now)
@@ -2000,7 +2066,7 @@ async fn record_score(
 
 /// The rewatch count a write sent, when it sent one.
 async fn record_repeat(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     extras: &Extras,
@@ -2009,21 +2075,23 @@ async fn record_repeat(
         return Ok(());
     };
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat, now))
         .await
 }
 
 /// The same for a notes write.
 async fn record_notes(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     notes: Option<String>,
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_notes(tx, t, media_id, notes.as_deref(), stamp, now)
@@ -2034,14 +2102,15 @@ async fn record_notes(
 /// The same for a status On hold sent, with the tracker's stamp for it
 /// when the reply carried one.
 pub(crate) async fn record_status(
-    core: &Arc<Core>,
+    services: &Services,
     t: Tracker,
     media_id: u64,
     status: ListStatus,
     stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
-    core.store
+    services
+        .store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_status(tx, t, media_id, status, stamp, now)
@@ -2271,22 +2340,12 @@ mod tests {
     /// and the status still decides the line where there is one.
     #[test]
     fn an_error_is_sanitised_by_its_status_then_its_message() {
-        let limited = CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(429),
-            message: "AniList rate limited".into(),
-            retry_after: None,
-        };
+        let limited = CoreError::provider(Provider::Anilist, Some(429), "AniList rate limited");
         assert_eq!(
             sanitize_error(Tracker::Anilist, &limited),
             "AniList rate limited, try again in a minute."
         );
-        let refused = CoreError::Provider {
-            provider: Provider::Mal,
-            status: None,
-            message: "connection refused".into(),
-            retry_after: None,
-        };
+        let refused = CoreError::provider(Provider::Mal, None, "connection refused");
         assert_eq!(sanitize_error(Tracker::Mal, &refused), "connection refused");
         // Anything that is not a provider failure still reads as one line.
         assert_eq!(

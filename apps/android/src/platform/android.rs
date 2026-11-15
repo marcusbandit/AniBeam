@@ -34,7 +34,7 @@ fn android_main(android: slint::android::AndroidApp) {
     .expect("the Slint Android backend starts");
 
     if let Err(e) = crate::run(data_dir, commands, inbox) {
-        eprintln!("AniBeam stopped: {e}");
+        eprintln!("Anibeam stopped: {e}");
     }
 }
 
@@ -842,6 +842,11 @@ pub fn set_volume(level: f32) {
         "(Landroid/app/Activity;F)V",
         Some(jni::objects::JValue::Float(level)),
     );
+}
+
+/// The activity's window is Java's to change, through `Screen`.
+pub fn window_up(window: &crate::AppWindow) {
+    let _ = window;
 }
 
 /// The player's screen: landscape with the system bars hidden, or back as it was.

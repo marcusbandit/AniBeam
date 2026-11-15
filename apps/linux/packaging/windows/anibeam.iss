@@ -1,4 +1,4 @@
-; AniBeam's Windows installer, compiled by bundle.sh with Inno Setup 6. A per-user install:
+; Anibeam's Windows installer, compiled by bundle.sh with Inno Setup 6. A per-user install:
 ; no administrator prompt, the app under %LOCALAPPDATA%\Programs\AniBeam, a Start menu entry
 ; and an uninstaller. The library, settings and downloads live in the user's own AppData and
 ; are left alone on uninstall.
@@ -6,15 +6,15 @@
 
 [Setup]
 AppId={{6F3B2A51-5E0C-4C7B-9A0E-2B7D3E4A1C90}
-AppName=AniBeam
+AppName=Anibeam
 AppVersion={#AppVersion}
-AppVerName=AniBeam {#AppVersion}
+AppVerName=Anibeam {#AppVersion}
 VersionInfoVersion={#AppVersion}
 VersionInfoProductTextVersion={#FullVersion}
 AppPublisher=Marcus Rosado
 AppPublisherURL=https://github.com/marcusbandit/AniBeam
 DefaultDirName={autopf}\AniBeam
-DefaultGroupName=AniBeam
+DefaultGroupName=Anibeam
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 PrivilegesRequired=lowest
@@ -25,11 +25,11 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#OutputName}
 SetupIconFile={#SourceDir}\anibeam.ico
 UninstallDisplayIcon={app}\anibeam.exe
-UninstallDisplayName=AniBeam
+UninstallDisplayName=Anibeam
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-; AniBeam keeps running the qBittorrent it started; an update replaces its files too.
+; Anibeam keeps running the qBittorrent it started; an update replaces its files too.
 CloseApplications=yes
 RestartApplications=no
 
@@ -44,13 +44,17 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; behind to be loaded by mistake.
 Type: filesandordirs; Name: "{app}\qml"
 Type: filesandordirs; Name: "{app}\anirss"
+; Shortcuts from before the name was spelled Anibeam. NTFS ignores case, so an update would
+; overwrite AniBeam.lnk in place and keep the old name; deleting them first lets [Icons] make new ones.
+Type: files; Name: "{autoprograms}\AniBeam.lnk"
+Type: files; Name: "{autodesktop}\AniBeam.lnk"
 
 [Icons]
-Name: "{autoprograms}\AniBeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"
-Name: "{autodesktop}\AniBeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"; Tasks: desktopicon
+Name: "{autoprograms}\Anibeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"
+Name: "{autodesktop}\Anibeam"; Filename: "{app}\anibeam.exe"; IconFilename: "{app}\anibeam.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\anibeam.exe"; Description: "{cm:LaunchProgram,AniBeam}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\anibeam.exe"; Description: "{cm:LaunchProgram,Anibeam}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; The managed qBittorrent outlives the app on purpose; it has to stop before its files go.

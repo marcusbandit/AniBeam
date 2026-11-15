@@ -16,7 +16,7 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::Http;
 
 /// The kinds an endpoint can be, each named for the shape it reads (`kinds.rs`).
-/// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is AniBeam's
+/// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is Anibeam's
 /// own: a JSON feed in one fixed layout (json_feed.rs). So is `json`: any JSON search API,
 /// read through the field map its repo definition supplies (json.rs). `torznab` is an
 /// indexer's torznab search, read as RSS; it may name the person's own server as `{host}`.
@@ -565,11 +565,11 @@ async fn fetch_exact(
         // Which search syntax an API takes is the site's business, so exclusions are applied
         // here rather than sent.
         let Some(map) = &ep.json else {
-            return Err(CoreError::Service {
-                service: ep.name.clone(),
-                code: "unmapped".into(),
-                message: json_needs_repo(),
-            });
+            return Err(CoreError::service(
+                ep.name.clone(),
+                "unmapped",
+                json_needs_repo(),
+            ));
         };
         let (positive, excluded) = split_exclusions(query);
         let items =

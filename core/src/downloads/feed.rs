@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 const FEED_TIMEOUT: Duration = Duration::from_secs(30);
 /// More than any feed anirss registers holds; a broad one is cut here.
@@ -18,38 +18,25 @@ const MAX_ENTRIES: usize = 200;
 pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreError> {
     let host = crate::net::host_shown(url);
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![(
-                "Accept".to_string(),
-                "application/rss+xml, application/xml, text/xml".to_string(),
-            )],
-            body: None,
-            timeout: Some(FEED_TIMEOUT),
-        })
+        .send(
+            HttpRequest::get(url)
+                .header("Accept", "application/rss+xml, application/xml, text/xml")
+                .timeout(FEED_TIMEOUT),
+        )
         .await
-        .map_err(|e| CoreError::Service {
-            service: host.clone(),
-            code: "unreachable".to_string(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(host.clone(), "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: host,
-            code: format!("http_{}", response.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            host,
+            format!("http_{}", response.status),
+            crate::i18n::tr(
                 "core-downloads-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),
-        });
+        ));
     }
     let text = String::from_utf8_lossy(&response.body);
-    parse(&text).map_err(|message| CoreError::Service {
-        service: host,
-        code: "unreadable".to_string(),
-        message,
-    })
+    parse(&text).map_err(|message| CoreError::service(host, "unreadable", message))
 }
 
 pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
@@ -140,7 +127,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
     });
     let info_hash = child("infoHash")
         .or_else(|| attr("infohash"))
-        .or_else(|| hash_in(&link))
+        .or_else(|| crate::foundation::magnet::hash(&link))
         .unwrap_or_default()
         .to_ascii_lowercase();
     FeedEntry {
@@ -163,16 +150,6 @@ fn date(text: &str) -> Option<i64> {
     time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc2822)
         .ok()
         .map(|d| d.unix_timestamp())
-}
-
-/// The btih in a magnet link, hex only (a base32 one is left alone).
-fn hash_in(link: &str) -> Option<String> {
-    let at = link.find("urn:btih:")? + "urn:btih:".len();
-    let hash: String = link[at..]
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
-        .collect();
-    (hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit())).then_some(hash)
 }
 
 fn human(bytes: u64) -> String {
@@ -269,6 +246,12 @@ mod tests {
         assert_eq!(
             parse(xml).unwrap()[0].info_hash,
             "0123456789abcdef0123456789abcdef01234567"
+        );
+        // A base32 hash reads as the hex one it is, the way a download reads it.
+        let xml = r#"<rss><channel><item><title>m</title><link>magnet:?xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&amp;dn=x</link></item></channel></rss>"#;
+        assert_eq!(
+            parse(xml).unwrap()[0].info_hash,
+            "000102030405060708090a0b0c0d0e0f10111213"
         );
     }
 
