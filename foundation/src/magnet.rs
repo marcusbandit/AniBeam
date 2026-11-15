@@ -47,6 +47,63 @@ pub fn hash(link: &str) -> Option<String> {
     None
 }
 
+/// The magnet rebuilt from what another peer needs and nothing else: its
+/// hash, its name, and the trackers whose address carries nothing personal
+/// (`is_public_tracker`). Every other parameter goes, a web seed or an exact
+/// source among them, since each is an address a client would fetch. None
+/// for anything that is not a magnet with a hash.
+pub fn public_only(link: &str) -> Option<String> {
+    let hash = hash(link)?;
+    let query = &link.trim()[8..];
+    let mut out = format!("magnet:?xt=urn:btih:{hash}");
+    let mut named = false;
+    for part in query.split('&') {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        if key.eq_ignore_ascii_case("dn") && !named {
+            let name = crate::percent::decode(value);
+            if !name.trim().is_empty() {
+                named = true;
+                out.push_str("&dn=");
+                out.push_str(&crate::percent::encode(&name));
+            }
+        } else if key.eq_ignore_ascii_case("tr") {
+            let tracker = crate::percent::decode(value);
+            if is_public_tracker(&tracker) {
+                out.push_str("&tr=");
+                out.push_str(&crate::percent::encode(&tracker));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Whether a tracker's announce address is one anyone may use: a plain
+/// `udp`, `http(s)` or `ws(s)` address of a host whose path is the bare
+/// announce. A private tracker puts the member's passkey in the path, the
+/// query or the user part, so anything else is left out.
+pub fn is_public_tracker(url: &str) -> bool {
+    let url = url.trim();
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !["udp", "http", "https", "ws", "wss"]
+        .iter()
+        .any(|s| scheme.eq_ignore_ascii_case(s))
+    {
+        return false;
+    }
+    let cut = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (host, tail) = rest.split_at(cut);
+    if host.is_empty() || host.contains('@') || tail.contains(['?', '#']) {
+        return false;
+    }
+    ["", "/", "/announce", "/announce.php"]
+        .iter()
+        .any(|p| tail.eq_ignore_ascii_case(p))
+}
+
 /// [`hash`] as the 20 bytes a tracker is asked about.
 pub fn hash_bytes(link: &str) -> Option<[u8; 20]> {
     let hex = hash(link)?;
@@ -101,6 +158,43 @@ mod tests {
             hash(&format!("Magnet:?xt=urn:btih:{hex}")).as_deref(),
             Some(hex)
         );
+    }
+
+    #[test]
+    fn a_public_magnet_keeps_the_hash_the_name_and_open_trackers() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let link = format!(
+            "magnet:?xt=urn:btih:{}&dn=Some%20Show%20-%2005&tr=udp%3A%2F%2Ftracker.example%3A1337\
+             &tr=https%3A%2F%2Fprivate.example%2F0a1b2c3d4e5f6a7b8c9d%2Fannounce\
+             &tr=http%3A%2F%2Ftracker.example%2Fannounce.php%3Fpasskey%3Dabc\
+             &tr=http%3A%2F%2Fme%3Asecret%40tracker.example%2Fannounce\
+             &tr=http%3A%2F%2Fopen.example%3A6969%2Fannounce\
+             &xs=http%3A%2F%2F198.51.100.7%2Fx.torrent&ws=http%3A%2F%2F198.51.100.7%2F",
+            hex.to_uppercase()
+        );
+        assert_eq!(
+            public_only(&link).as_deref(),
+            Some(
+                "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Some%20Show%20-%2005\
+                 &tr=udp%3A%2F%2Ftracker.example%3A1337&tr=http%3A%2F%2Fopen.example%3A6969%2Fannounce"
+            )
+        );
+        assert_eq!(public_only("http://198.51.100.7/a.torrent"), None);
+        assert_eq!(public_only("magnet:?dn=no-hash"), None);
+    }
+
+    #[test]
+    fn a_tracker_with_anything_personal_is_not_public() {
+        assert!(is_public_tracker("udp://tracker.example:1337"));
+        assert!(is_public_tracker("udp://tracker.example:1337/announce"));
+        assert!(is_public_tracker("wss://tracker.example"));
+        assert!(!is_public_tracker(
+            "https://tracker.example/0a1b2c3d4e5f/announce"
+        ));
+        assert!(!is_public_tracker("https://tracker.example/announce?pk=1"));
+        assert!(!is_public_tracker("http://u:p@tracker.example/announce"));
+        assert!(!is_public_tracker("ftp://tracker.example/announce"));
+        assert!(!is_public_tracker("tracker.example/announce"));
     }
 
     #[test]

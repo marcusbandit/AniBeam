@@ -220,6 +220,7 @@ fn main() {
         "assets/icons/clapperboard.svg",
         "assets/icons/clock.svg",
         "assets/icons/copy.svg",
+        "assets/icons/crown.svg",
         "assets/icons/database.svg",
         "assets/icons/download.svg",
         "assets/icons/ellipsis.svg",

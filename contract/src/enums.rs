@@ -387,6 +387,25 @@ pub enum RoomReady {
     Ready,
     Missing,
     Loading,
+    /// Missing, and downloading it now (#889): the member's progress says how far.
+    Downloading,
+}
+
+/// Where this member's Get media is (#889): asking the host, searching this library's
+/// own sources for the host's release, downloading, or stopped short. `Idle` before and
+/// after.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum RoomFetch {
+    #[default]
+    Idle,
+    Asking,
+    Searching,
+    Downloading,
+    /// The host had nothing to pass on, no source had the release, or the download could
+    /// not start. The activity log says which; Get media can be tried again.
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
