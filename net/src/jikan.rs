@@ -46,23 +46,11 @@ pub struct JikanEpisode {
 
 pub struct JikanClient {
     client: ProviderClient,
-    timeout: Duration,
 }
 
 impl JikanClient {
     pub fn new(client: ProviderClient) -> JikanClient {
-        JikanClient {
-            client,
-            timeout: JIKAN_TIMEOUT,
-        }
-    }
-
-    /// Tests shorten the cap on each request; production keeps
-    /// `JIKAN_TIMEOUT`.
-    #[doc(hidden)]
-    pub fn with_timeout(mut self, timeout: Duration) -> JikanClient {
-        self.timeout = timeout;
-        self
+        JikanClient { client }
     }
 
     /// Every episode Jikan holds for that MAL id, in episode order. A 404
@@ -71,10 +59,9 @@ impl JikanClient {
     pub async fn episodes(&self, mal_id: u64) -> Result<Vec<JikanEpisode>, CoreError> {
         let response = self
             .client
-            .send_within(
+            .send(
                 HttpRequest::get(format!("{JIKAN_API}/anime/{mal_id}/episodes"))
                     .header("Accept", "application/json"),
-                self.timeout,
             )
             .await?;
         if response.status == 404 {
@@ -114,7 +101,6 @@ impl JikanClient {
 mod tests {
     use super::*;
     use crate::limiter::ProviderClient;
-    use crate::{BoxFuture, Http, HttpError, HttpResponse};
     use crate::{FakeHttp, Upstream};
     use std::sync::Arc;
 
@@ -178,32 +164,6 @@ mod tests {
                     ..
                 }
             ),
-            "{err:?}"
-        );
-    }
-
-    /// A server that never answers.
-    struct Silent;
-
-    impl Http for Silent {
-        fn send(&self, _req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
-            Box::pin(std::future::pending())
-        }
-    }
-
-    /// A Jikan that never answers is a failure after the cap, not a match
-    /// left waiting on it.
-    #[tokio::test]
-    async fn a_request_that_never_answers_fails_at_the_cap() {
-        let client = JikanClient::new(ProviderClient::new(
-            Upstream::Jikan,
-            Arc::new(Silent),
-            Duration::from_millis(1),
-        ))
-        .with_timeout(Duration::from_millis(20));
-        let err = client.episodes(1).await.err().unwrap();
-        assert!(
-            matches!(&err, CoreError::Provider { status: None, message, .. } if message.contains("timed out")),
             "{err:?}"
         );
     }

@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::aired::Aired;
 use crate::calendar::Calendar;
-use crate::contract::{EventBody, Stage};
+use crate::contract::{CoreError, EventBody, Stage};
 use crate::events::Signal;
 use crate::foundation::services::Services;
 use crate::library::Library;
@@ -87,10 +87,12 @@ impl Metadata {
     }
 
     /// Jikan's episodes for `mal_id`, or `None` when Jikan has nothing to
-    /// say: it failed just now, or it failed inside the last
+    /// say: it failed just now, or it went down inside the last
     /// `OUTAGE_WINDOW` and is not asked again until the window has passed.
     /// A caller reads `None` as a Jikan half it does not have, which is not
-    /// the same as an empty list.
+    /// the same as an empty list. Only a failure that looks like Jikan
+    /// itself being down opens the window; one series' bad answer costs
+    /// that series its titles and nothing else.
     pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> Option<Vec<JikanEpisode>> {
         if self.jikan_down() {
             return None;
@@ -98,7 +100,9 @@ impl Metadata {
         match self.net.jikan.episodes(mal_id).await {
             Ok(episodes) => Some(episodes),
             Err(e) => {
-                self.report_jikan_outage(&message_of(&e));
+                if is_outage(&e) {
+                    self.report_jikan_outage(&message_of(&e));
+                }
                 None
             }
         }
@@ -127,5 +131,37 @@ impl Metadata {
             format!("Jikan is not answering: {message}"),
             EventBody::Notice,
         );
+    }
+}
+
+/// Whether a Jikan failure says Jikan is down rather than that one series'
+/// answer was bad: no answer at all (a timeout or a dropped connection), a
+/// rate limit the limiter already waited out, or a server error.
+fn is_outage(e: &CoreError) -> bool {
+    match e {
+        CoreError::Provider { status, .. } => match status {
+            None => true,
+            Some(code) => *code == 429 || *code >= 500,
+        },
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contract::Provider;
+
+    fn provider(status: Option<u32>) -> CoreError {
+        CoreError::provider(Provider::Mal, status, "Jikan")
+    }
+
+    #[test]
+    fn only_a_jikan_that_is_down_opens_the_window() {
+        assert!(is_outage(&provider(None)));
+        assert!(is_outage(&provider(Some(429))));
+        assert!(is_outage(&provider(Some(504))));
+        assert!(!is_outage(&provider(Some(400))));
+        assert!(!is_outage(&provider(Some(403))));
     }
 }
