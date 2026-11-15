@@ -33,8 +33,8 @@ const SILENT: i64 = -2;
 
 /// Unpacks `Crease.at`'s answer: -2 for a phone without extensions, -1 for no fold, and
 /// otherwise bit 40 for across, bit 41 for half open, bits 20 to 39 the start and bits 0
-/// to 19 the end. Only a platform with window extensions calls it.
-#[allow(dead_code)]
+/// to 19 the end. Only Android, which has window extensions, calls it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn decode(packed: i64) -> Reading {
     match packed {
         SILENT => Reading::Silent,

@@ -45,7 +45,7 @@ pub enum Install {
         exe: PathBuf,
     },
     /// Under /usr or /opt. `owner` is the package manager that owns the file and its name for
-    /// the package, when one does and its updates come from a source AniBeam knows.
+    /// the package, when one does and its updates come from a source Anibeam knows.
     Package {
         owner: Option<(Manager, String)>,
     },
@@ -148,11 +148,6 @@ impl Install {
                 }
             }
         }
-    }
-
-    /// Whether `fetch` can update this copy.
-    pub fn updates_itself(&self) -> bool {
-        self.suffix(std::env::consts::ARCH).is_some()
     }
 
     /// The end of the release file's name for this install on `arch` (Rust's name for it).

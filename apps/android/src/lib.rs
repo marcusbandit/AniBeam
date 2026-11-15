@@ -1,7 +1,8 @@
-//! AniBeam for Android: the Slint screens and the thread that syncs behind them.
+//! Anibeam for Android: the Slint screens and the thread that syncs behind them.
 //!
-//! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone),
-//! which hands `run` the data directory and calls back in through the functions below.
+//! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone,
+//! `platform/ios.rs`'s `ios_main` on the iPhone, which `main.rs` calls), which hands `run`
+//! the data directory and calls back in through the functions below.
 //! Everything that differs by platform goes through `platform`.
 
 // Clippy asks for `const` on thread_local initialisers that already have it on targets
@@ -53,13 +54,15 @@ mod video;
 mod worker;
 
 pub use app::run;
+#[cfg(target_os = "ios")]
+pub use platform::ios_main;
 
 // The calls a platform makes into the app. A target whose platform never makes them
-// still keeps them.
+// still keeps them, allowed unused there.
 
 /// The device's light or dark setting or its language changed: Appearance's System mode
 /// and a language left to follow the device follow it. Called on the UI loop.
-#[allow(dead_code)]
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
 pub(crate) fn system_changed() {
     look::system_changed();
     lang::system_changed();
@@ -67,7 +70,7 @@ pub(crate) fn system_changed() {
 
 /// The platform moved the audio focus; `code` is Android's `AudioManager` change. Called on
 /// the UI loop.
-#[allow(dead_code)]
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
 pub(crate) fn audio_focus(code: i32) {
     player::audio_focus(code);
 }

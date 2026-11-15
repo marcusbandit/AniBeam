@@ -10,6 +10,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::*;
+use crate::sync::recover;
 
 /// One subscription: a feed, its filter, and where its episodes go.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,7 +44,7 @@ fn yes() -> bool {
 static EDITING: Mutex<()> = Mutex::new(());
 
 fn editing() -> MutexGuard<'static, ()> {
-    EDITING.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&EDITING)
 }
 
 /// The rules on disk, in one JSON file.

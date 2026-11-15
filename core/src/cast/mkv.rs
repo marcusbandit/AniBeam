@@ -11,6 +11,7 @@ use matroska_demuxer::{
 };
 
 use super::vtt::Cue;
+use crate::sync::recover;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum VideoCodec {
@@ -128,7 +129,7 @@ impl Mkv {
     pub fn seek_ms(&mut self, probe: &Probe, ms: u64) -> Result<(), String> {
         let at = super::ebml::cluster_before(&self.clusters, probe.units(ms))
             .ok_or("the file has no clusters")?;
-        *self.jump.lock().unwrap_or_else(|e| e.into_inner()) = Some(at);
+        *recover(&self.jump) = Some(at);
         Ok(())
     }
 

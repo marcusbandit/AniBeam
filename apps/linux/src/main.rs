@@ -6,6 +6,7 @@ mod args;
 mod bridge;
 mod dbus;
 mod devstats;
+mod discord_link;
 mod format;
 mod inhibit;
 #[cfg(target_os = "macos")]
@@ -22,6 +23,7 @@ mod problem;
 mod read_cache;
 mod runtime;
 mod scan_summary;
+mod scheme;
 mod serve;
 mod theme;
 #[cfg(windows)]
@@ -32,11 +34,11 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 pub const APP_ID: &str = "com.marcusrosado.AniBeam";
 pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
 
-/// Debug builds only: ANIBEAM_QML_DIR=qml (relative to where it runs; shoot.sh and drive.sh make
-/// it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
+/// Debug builds and the `dev-qml` feature only: ANIBEAM_QML_DIR=qml (relative to where it runs;
+/// shoot.sh and drive.sh make it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
 /// cargo build. A directory without Main.qml is almost certainly a mistyped or wrongly
 /// relative path, so it warns and keeps the compiled QML instead of claiming a disk load.
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "dev-qml"))]
 fn install_dev_qml_dir(
     mut engine: std::pin::Pin<&mut QQmlApplicationEngine>,
 ) -> std::pin::Pin<&mut QQmlApplicationEngine> {
@@ -123,7 +125,7 @@ fn main() {
                     Ok(Some(lock)) => Some(lock),
                     _ => {
                         eprintln!(
-                            "anibeam: the host service let the library go, but another AniBeam took it first"
+                            "anibeam: the host service let the library go, but another Anibeam took it first"
                         );
                         std::process::exit(1);
                     }
@@ -150,7 +152,7 @@ fn main() {
         match result {
             Ok(()) => std::process::exit(0),
             Err(e) => {
-                eprintln!("anibeam: another AniBeam is running and {e}");
+                eprintln!("anibeam: another Anibeam is running and {e}");
                 std::process::exit(1);
             }
         }
@@ -164,6 +166,10 @@ fn main() {
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
     paths::name_bundled_helpers();
+    // anibeam:// links come here even on an install from before rooms (#888). A thread,
+    // so after the setenvs above.
+    scheme::ensure();
+    discord_link::ensure();
 
     // The core is open before the engine, so the Door singleton the first QML file names
     // finds it already there.
@@ -195,6 +201,10 @@ fn main() {
     if args.drive.is_some() || args.shoot.is_some() {
         core.disable_unattended_changes();
     }
+    // Discord launched the app to hand over a join (#966): listen for it
+    if args.link.as_deref().is_some_and(args::is_discord_link) {
+        let _ = core.call(anibeam_core::Call::DiscordListen);
+    }
     devstats::startup_mark("core open");
     runtime::install_core(core);
 
@@ -206,7 +216,7 @@ fn main() {
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
         bridge::helpers::ffi::install_dev_tools(engine.as_mut());
-        #[cfg(debug_assertions)]
+        #[cfg(any(debug_assertions, feature = "dev-qml"))]
         let engine = install_dev_qml_dir(engine);
         engine.load(&QUrl::from(MAIN_QML));
         devstats::startup_mark("Main.qml loaded");

@@ -1,4 +1,4 @@
-// The confirm before AniBeam starts a service: a small sheet by the chip that asked, saying
+// The confirm before Anibeam starts a service: a small sheet by the chip that asked, saying
 // which service and what starting it does. Start runs the core's StartEndpoint call (the page
 // owns that), and the sheet stays up while it waits, since a pod can take a minute to answer;
 // a failure (not installed, did not start) shows here as a line and the button becomes Try

@@ -15,22 +15,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{as_i64, as_u64};
 use crate::contract::CoreError;
 
-/// The relations the walk follows. CHARACTER and OTHER are deliberately
-/// missing: a shared character or a loose link is drawn, never walked, or
-/// one cameo would glue every franchise it touches into a single blob.
-pub const TRAVERSABLE: [&str; 11] = [
-    "PREQUEL",
-    "SEQUEL",
-    "SIDE_STORY",
-    "SPIN_OFF",
-    "ALTERNATIVE",
-    "PARENT",
-    "CONTAINS",
-    "SUMMARY",
-    "COMPILATION",
-    "SOURCE",
-    "ADAPTATION",
-];
+/// The relations the walk follows, which the library's franchise boxes walk
+/// too, so the list sits below both (#854).
+pub use crate::foundation::relations::TRAVERSABLE;
 
 /// How many nodes one closure will discover. Electron's number.
 pub const CAP: usize = 150;

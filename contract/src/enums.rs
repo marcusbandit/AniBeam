@@ -387,6 +387,40 @@ pub enum RoomReady {
     Ready,
     Missing,
     Loading,
+    /// Missing, and downloading it now (#889): the member's progress says how far.
+    Downloading,
+}
+
+/// Where this member's Get media is (#889): asking the host, searching this library's
+/// own sources for the host's release, downloading, or stopped short. `Idle` before and
+/// after.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum RoomFetch {
+    #[default]
+    Idle,
+    Asking,
+    Searching,
+    Downloading,
+    /// The host had nothing to pass on, no source had the release, or the download could
+    /// not start. The activity log says which; Get media can be tried again.
+    Failed,
+}
+
+/// The host's ready gate (#922). `Asking` once the host pressed play while someone in
+/// the room lacks the episode or is still opening it: the room stays paused until the
+/// host chooses (`RoomStart`), even once everyone is ready. `Waiting` after choosing to
+/// wait: the room starts on its own once everyone is ready. Back to `Off` once the
+/// episode plays, or on a new one.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum RoomGate {
+    #[default]
+    Off,
+    Asking,
+    Waiting,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
@@ -548,12 +582,16 @@ pub enum JobKind {
     SkipWindows,
     Export,
     Import,
+    /// No call starts it any more (#851); kept so the activity log still reads
+    /// the jobs it logged before.
     Subscriptions,
     ConnectDownloads,
     SearchReleases,
     RefineReleases,
     Subscribe,
     Download,
+    /// No call starts it any more (#851); kept so the activity log still reads
+    /// the jobs it logged before.
     RemoveSubscription,
     ControlTorrents,
     TestTorrentClient,

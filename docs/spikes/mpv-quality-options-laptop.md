@@ -4,7 +4,7 @@ Resolves the laptop half of wayfinder ticket #23 on the native line map (#2). Th
 half is its own ticket, the same split the libmpv spike took between [#9](libmpv-qml.md) and
 [#18](libmpv-qml-laptop.md).
 
-Run on 2026-09-04 on kangaeru over SSH from the desktop: Arch, kernel 7.1.11-zen1, Hyprland 0.56
+Run on 2026-09-04 on the laptop over SSH from the desktop: Arch, kernel 7.1.11-zen1, Hyprland 0.56
 on the laptop's own 1920 by 1200 panel at 60 Hz, Radeon 860M (Krackan) on Mesa 26.2.1 with libva
 2.24.1, qt6-base and qt6-declarative 6.11.2, mpv 0.41.0, mpvqt 1.2.0, libplacebo 7.360.1. On
 mains the whole time, battery 27 to 72 percent, nobody at the machine, the window on an empty
@@ -169,7 +169,7 @@ zero silhouette. libass draws after the scaler, so no quality option reaches it.
 ## What the file holds after this
 
 ```conf
-# AniBeam's base mpv configuration. The user's own mpv.conf loads after this one when
+# Anibeam's base mpv configuration. The user's own mpv.conf loads after this one when
 # "Use my mpv.conf" is on, and ~/.config/anibeam/mpv.conf loads last. The shell re-sets
 # what it owns after every load. Scripts never load.
 

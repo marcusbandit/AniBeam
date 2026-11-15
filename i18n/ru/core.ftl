@@ -92,7 +92,7 @@ event-problem-trackers = Что-то пошло не так с вашими сп
 event-problem-franchise = Что-то пошло не так со связанными сериалами. Подробности в параметрах разработчика.
 event-problem-playback = Что-то пошло не так с воспроизведением. Подробности в параметрах разработчика.
 event-problem-store = Что-то пошло не так при сохранении данных. Подробности в параметрах разработчика.
-event-problem-system = Что-то пошло не так в AniBeam. Подробности в параметрах разработчика.
+event-problem-system = Что-то пошло не так в Anibeam. Подробности в параметрах разработчика.
 event-problem-downloads = Что-то пошло не так с загрузками. Подробности в параметрах разработчика.
 
 ## Ошибки (contract::CoreError)
@@ -119,8 +119,8 @@ core-error-io = Не удалось прочитать или записать �
 core-error-storage = Не удалось сохранить библиотеку: { $message }
 core-error-keyring = Нет доступа к системному хранилищу паролей: { $message }
 core-error-unsupported = { $what } пока не поддерживается.
-core-error-version = Этот экспорт из более новой версии AniBeam (формат { $found }). Обновите AniBeam, чтобы импортировать его.
-core-error-internal = Внутренняя ошибка AniBeam: { $message }
+core-error-version = Этот экспорт из более новой версии Anibeam (формат { $found }). Обновите Anibeam, чтобы импортировать его.
+core-error-internal = Внутренняя ошибка Anibeam: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
@@ -465,7 +465,7 @@ core-core-guest-not-interested = «Не интересно» на том ком�
 core-core-guest-recommended = рекомендации на том компьютере подобраны по списку его владельца
 core-core-nothing-picked = ничего не выбрано
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } не является источником данных
 core-prefs-provider-count = { $provider } указан несколько раз ({ $count }); каждый источник указывается один раз
@@ -509,16 +509,16 @@ core-host-not-an-address = { $text } не является адресом с п�
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = время ожидания истекло через { $ms } мс
 core-net-rate-limited = { $provider } ограничил частоту запросов
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: только что не ответил вовремя; { -app-name } ждёт { $seconds } с перед новым запросом
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = нет данных
 
@@ -549,7 +549,7 @@ core-update-cannot-copy = Не удалось скопировать новое 
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
 core-calendar-episode = { $title }, серия { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = нет домашней папки
 
@@ -561,6 +561,9 @@ core-first-run-not-absolute = папка с видео должна быть у�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал
+core-presence-room = Смотрим вместе
+core-presence-in-room = В комнате
+core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -626,7 +629,7 @@ core-trackers-oauth-port-failed = не удалось открыть порт { 
 core-trackers-oauth-port-busy = порт { $port } на этом компьютере занят другой программой. Подождите немного и попробуйте снова или закройте ту программу, если порт не освобождается.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } вернул ошибку: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } подключён к { $app }
 core-trackers-page-close-tab = Эту вкладку можно закрыть.
@@ -635,7 +638,7 @@ core-trackers-page-failed = Вход не завершился
 core-trackers-page-go-back = Вернитесь в { $app } и попробуйте снова.
 core-trackers-page-finishing-title = { $app }, вход завершается
 core-trackers-page-finishing = Вход завершается
-core-trackers-page-finishing-body = { $site } ответил, и AniBeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
+core-trackers-page-finishing-body = { $site } ответил, и Anibeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
 core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
@@ -977,7 +980,7 @@ core-metadata-progress-imdb-ratings = рейтинги IMDb
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений
@@ -1004,7 +1007,7 @@ core-transfer-wrong-format = это не документ { $format }
 
 core-transfer-imported = Библиотека загружена из файла.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = в библиотеке нет файла { $id }
@@ -1047,7 +1050,7 @@ core-library-watched-removed =
        *[trash] перемещено в корзину
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1077,7 +1080,7 @@ core-library-runs-span = с { $first } по { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } и { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = номер серии от 0 до 10000
 core-library-fix-season-range = номер сезона не больше 200
@@ -1099,7 +1102,7 @@ core-library-fixed =
        *[other] «{ $title }»: исправлено чтение { $count } файла.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = «{ $title }» скрыт.
@@ -1109,12 +1112,12 @@ core-library-back-many = Снова видно сериалов: { $count }.
 core-library-episode-count-set = Число серий «{ $title }»: { $count }.
 core-library-episode-count-cleared = Число серий «{ $title }» сброшено.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Заметки о расписании «{ $title }» удалены.
 core-library-schedule-saved = Сохранено заметок о расписании «{ $title }»: { $count }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = путь к источнику должен быть абсолютным
 core-library-source-exists = уже есть такой источник
@@ -1166,7 +1169,7 @@ core-library-scan-done =
         }{ $removed } пропало
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1217,8 +1220,8 @@ core-downloads-anirss-slow-start-said = anirss не запустился за { 
 core-downloads-anirss-install-mac = Установите anirss { $version } или новее командой: { $command }
 core-downloads-anirss-install-linux = Установите anirss { $version } или новее: пакет anirss в AUR или { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } слишком старый для AniBeam, нужен { $minimum } или новее. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а AniBeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
+core-downloads-anirss-too-old = anirss { $version } слишком старый для Anibeam, нужен { $minimum } или новее. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а Anibeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
 core-downloads-anirss-update-mac = Обновите его командой: { $command }
 core-downloads-anirss-update-linux = Обновите пакет anirss или выполните: { $command }
 
@@ -1251,23 +1254,23 @@ core-downloads-anirss-command-missing = { $command } не найден. { $insta
 core-downloads-anirss-start-failed = Не удалось запустить { $command }: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } Его ответ: { $message }
-core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у AniBeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и AniBeam будет запускать его сам
-core-downloads-own-client-gone = qBittorrent от AniBeam пропал: qbittorrent-nox не установлен. Переустановите AniBeam или укажите в настройках свой qBittorrent
+core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у Anibeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и Anibeam будет запускать его сам
+core-downloads-own-client-gone = qBittorrent от Anibeam пропал: qbittorrent-nox не установлен. Переустановите Anibeam или укажите в настройках свой qBittorrent
 core-downloads-no-port = в { $address } нет порта
 core-downloads-own-client-settings = не удалось записать настройки qBittorrent: { $error }
 core-downloads-own-client-start-failed = Не удалось запустить { $command }: { $error }
-core-downloads-own-client-slow-start = qBittorrent от AniBeam не запустился
+core-downloads-own-client-slow-start = qBittorrent от Anibeam не запустился
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = qBittorrent от AniBeam не запустился: { $said }
+core-downloads-own-client-slow-start-said = qBittorrent от Anibeam не запустился: { $said }
 core-downloads-not-ready = Загрузки не готовы. Проверьте раздел «Загрузки» в настройках.
 core-downloads-ready = Загрузки готовы.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [few] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [many] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-       *[other] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [one] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [few] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [many] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+       *[other] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
     }
 core-downloads-client-connected = Торрент-клиент подключён.
 core-downloads-client-not-connected = Торрент-клиент не подключён. Проверьте его адрес в настройках.
@@ -1298,7 +1301,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = ссылка на фильм должна быть magnet или адресом http(s)
 core-downloads-added-movie = Фильм добавлен в загрузки.
-core-downloads-unsubscribed = Подписка на «{ $name }» отменена.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } это папка библиотеки сериала «{ $name }», и в ней есть серии, скачанные не этой подпиской: удалите подписку без файлов или удалите «{ $name }» на его странице
 core-downloads-no-torrents-named = не указаны торренты
@@ -1385,7 +1387,7 @@ core-downloads-name-not-folder = { $name } не подходит как имя �
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
 core-downloads-prune-failed = Не удалось отписаться от «{ $title }». Проверьте раздел «Загрузки» в настройках.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } не является простым абсолютным путём, поэтому ничего не удалено
 core-downloads-refuse-root = { $path } это корень файловой системы, поэтому ничего не удалено
@@ -1522,19 +1524,9 @@ core-releases-episodes-phrase =
 # A run of episode numbers
 core-releases-episode-range = с { $from } по { $to }
 
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = anirss на этой платформе
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = его ответ не читается ({ $message })
-core-subscriptions-stopped = он остановился без объяснения
-# $said is what anirss printed
-core-subscriptions-stopped-said = он остановился: { $said }
-
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1546,6 +1538,7 @@ core-room-service = Совместный просмотр
 core-room-not-found = Комнаты с таким кодом нет. Возможно, она закрылась.
 core-room-full = Эта комната заполнена.
 core-room-proto = Этот ретранслятор работает на другой версии комнат. Обновите { -app-name }, чтобы войти.
+core-room-needs-episode = Этому ретранслятору нужна серия, чтобы создать комнату. Создайте её из плеера или обновите ретранслятор.
 core-room-unreachable = Не удалось связаться с ретранслятором: { $message }
 core-room-refused = Ретранслятор отказал: { $message }
 core-room-not-in = Вы не в комнате.
@@ -1559,3 +1552,20 @@ core-room-member-left = { $name } покидает комнату.
 core-room-closed = Комната совместного просмотра закрыта.
 core-room-lost = Связь с комнатой совместного просмотра потеряна. Пробуем снова.
 core-room-back = Снова в комнате совместного просмотра.
+core-room-media-asked = Вы попросили серию у ведущего.
+core-room-media-cannot = Ведущий сейчас не может поделиться этой серией.
+core-room-media-sent = Торрент серии отправлен: { $name }.
+core-room-media-sent-name = Название релиза серии отправлено: { $name }.
+core-room-media-nothing = У ведущего нет копии серии, которой можно поделиться.
+core-room-media-no-answer = Приложение ведущего не ответило. Попробуйте ещё раз чуть позже.
+core-room-media-torrent = Серия скачивается по торренту ведущего.
+core-room-media-searching = Поиск релиза ведущего в ваших источниках.
+core-room-media-not-found = Ни в одном из ваших источников нет релиза ведущего.
+core-room-media-no-sources = Все источники выключены. Включите один, чтобы искать.
+core-room-media-no-start = Не удалось начать загрузку: { $message }
+core-room-media-client = торрент-клиент его не принял
+core-room-media-lost = Торрент-клиент потерял загрузку серии.
+core-room-media-stalled = Загрузка не продвигается уже десять минут. Попробуйте ещё раз позже.
+core-room-media-not-in-library = Серия скачана, но её нет в вашей библиотеке. Проверьте, что загрузки сохраняются в папку библиотеки.
+core-room-media-here = Серия теперь в вашей библиотеке.
+core-room-media-rest-missing = Не удалось получить остальные серии. Скачивается только эта серия.

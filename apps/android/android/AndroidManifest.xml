@@ -22,7 +22,7 @@
          turns into "go to Next up"; with targetSdk 36 the system would finish the
          activity instead. -->
     <application
-        android:label="AniBeam"
+        android:label="Anibeam"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AniBeam"
         android:hasCode="true"

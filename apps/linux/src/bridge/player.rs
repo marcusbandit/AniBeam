@@ -76,7 +76,7 @@ pub mod qobject {
         fn track_ref(self: &Player, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
-        /// The subtitle defaults AniBeam ships with, for Settings' Reset.
+        /// The subtitle defaults Anibeam ships with, for Settings' Reset.
         #[qinvokable]
         fn stock_subtitle_defaults(self: &Player) -> QJsonObject;
         /// The subtitle preview's fallback source when there is no view history: a black

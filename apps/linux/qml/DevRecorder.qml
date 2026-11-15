@@ -167,7 +167,7 @@ QtObject {
         return lines.join("\n")
     }
     function report() {
-        var out = ["AniBeam " + Shell.build + ", page loads, newest first", ""]
+        var out = ["Anibeam " + Shell.build + ", page loads, newest first", ""]
         if (tourResult) {
             out.push("Tour (median per page, images on / off):")
             tourResult.rows.forEach(function(r) {

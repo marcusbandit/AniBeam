@@ -2,12 +2,13 @@
 //! `crate::platform::*` and never names a platform itself.
 //!
 //! `android.rs` is the phone: its entry point and the calls only Java answers, over JNI.
-//! `other.rs` stands in on every other target (the desktop the tests and host clippy run
-//! on, and any shell that has not brought its own yet) and does the harmless thing: nothing,
-//! None, or the value a phone without the feature would give. Both are re-exported through
-//! the one list in `calls!`: the app reaches only the calls named there, so a helper made
-//! `pub` in one file stays out of it, and a listed call one file lacks fails that target's
-//! build. What every platform shares sits here.
+//! `ios.rs` is the iPhone: its entry point and the hinge, with `other.rs`'s stand-ins for
+//! the rest. `other.rs` stands in on every other target (the desktop the tests and host
+//! clippy run on, and any shell that has not brought its own yet) and does the harmless
+//! thing: nothing, None, or the value a phone without the feature would give. Each is
+//! re-exported through the one list in `calls!`: the app reaches only the calls named there,
+//! so a helper made `pub` in one file stays out of it, and a listed call one file lacks fails
+//! that target's build. What every platform shares sits here.
 
 /// Re-exports the platform calls from `$p`. A new call goes in this list and in every
 /// platform file.
@@ -18,9 +19,9 @@ macro_rules! calls {
             give_audio_focus, line_colours, log, multicast, notification_settings,
             notifications_allowed, open_url, pick_file, player_awake, player_screen, relocalize,
             set_app_icon, set_brightness, set_volume, start_service, stop_service, system_dark,
-            system_locale, take_audio_focus, unmetered, update_service, volume,
+            system_locale, take_audio_focus, unmetered, update_service, volume, window_up,
         };
-        // Only the player calls these, and it links libmpv on Android alone.
+        // Only the player calls these, and it links libmpv only where libmpv was fetched.
         #[cfg_attr(not(libmpv), allow(unused_imports))]
         pub use $p::{emulator, prepare_mpv};
     };
@@ -31,9 +32,16 @@ mod android;
 #[cfg(target_os = "android")]
 calls!(android);
 
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(target_os = "ios")]
+calls!(ios);
+#[cfg(target_os = "ios")]
+pub use ios::ios_main;
+
 #[cfg(not(target_os = "android"))]
 mod other;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 calls!(other);
 
 /// What the platform said to a request for the audio focus.
