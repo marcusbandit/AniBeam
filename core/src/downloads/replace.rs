@@ -37,7 +37,6 @@ use std::time::Duration;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::releases::facts;
 use super::qbt::QbtClient;
 use crate::contract::*;
 use crate::downloads::Downloads;
@@ -45,6 +44,7 @@ use crate::foundation::magnet;
 use crate::foundation::names::title_key;
 use crate::foundation::services::Services;
 use crate::library::trash;
+use crate::releases::facts;
 use crate::store::{Store, settings};
 use crate::time::now_secs;
 

@@ -870,8 +870,7 @@ fn an_endpoint_the_repo_stops_offering_stays_installed() {
 fn a_json_endpoint_searches_through_the_map_its_definition_supplies() {
     let http = FakeHttp::new();
     let body = std::fs::read(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../releases/tests/fixtures/json-search.json"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../releases/tests/fixtures/json-search.json"),
     )
     .unwrap();
     http.push_for("search.example.org", 200, body);

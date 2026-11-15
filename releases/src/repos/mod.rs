@@ -17,12 +17,12 @@ use std::time::Duration;
 
 use rusqlite::params;
 
+use crate::{AnirssView, EndpointSync, Releases};
+use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
 use anibeam_foundation::services::Services;
-use anibeam_contract::i18n::tr;
-use anibeam_net::{BoxFuture, HttpRequest};
-use crate::{AnirssView, EndpointSync, Releases};
 use anibeam_foundation::sync::recover;
+use anibeam_net::{BoxFuture, HttpRequest};
 use index::{Definition, Index, RepoFault};
 
 pub use pace::{FLOOR, Paced};
@@ -1235,7 +1235,12 @@ type Synced = std::collections::BTreeMap<String, String>;
 fn read_synced(services: &Services) -> Synced {
     services
         .store
-        .read(|c| anibeam_foundation::store::settings::get(c, anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS))
+        .read(|c| {
+            anibeam_foundation::store::settings::get(
+                c,
+                anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS,
+            )
+        })
         .ok()
         .flatten()
         .unwrap_or_default()
@@ -1378,7 +1383,11 @@ pub async fn sync_anirss(
     }
     if synced != before {
         let _ = services.store.write(move |c| {
-            anibeam_foundation::store::settings::set(c, anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
+            anibeam_foundation::store::settings::set(
+                c,
+                anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS,
+                &synced,
+            )
         });
     }
     changed
@@ -1800,16 +1809,37 @@ mod tests {
     use anibeam_foundation::store::Store;
     use anibeam_net::FakeHttp;
 
-    /// The oldest anirss that takes endpoints, as the downloads' anirss client says it.
+    use crate::Searcher;
+
+    /// The oldest anirss the views below take endpoints from. A note reads it off the view,
+    /// so this is the tests' own number, not a copy of the downloads' threshold.
     const MIN_VERSION: &str = "0.6.0";
 
     /// What these tests need of a running core: the services over a store in a temporary
-    /// directory, with the fake transport, and the releases team over them. The runtime
-    /// lives as long as it does.
+    /// directory, with the fake transport, and the releases team over them, linked to a
+    /// searcher that answers as a fresh core's downloads do. The runtime lives as long as
+    /// it does.
     struct Fake {
         services: Arc<Services>,
         releases: Arc<Releases>,
+        _searcher: Arc<FreshDownloads>,
         runtime: Option<tokio::runtime::Runtime>,
+    }
+
+    /// The downloads of a core that has just opened: the native engine, the default, and
+    /// no anirss read yet. Told that the endpoints changed, it has nothing to tell.
+    struct FreshDownloads;
+
+    impl Searcher for FreshDownloads {
+        fn engine(&self) -> Result<DownloadsEngine, CoreError> {
+            Ok(DownloadsEngine::Native)
+        }
+
+        fn anirss_view(&self) -> Option<AnirssView> {
+            None
+        }
+
+        fn endpoints_changed(self: Arc<Self>) {}
     }
 
     impl Fake {
@@ -1833,14 +1863,21 @@ mod tests {
                 http,
             });
             let releases = Arc::new(Releases::new(services.clone()));
+            let searcher = Arc::new(FreshDownloads);
+            releases
+                .searcher
+                .set(Arc::downgrade(&searcher) as std::sync::Weak<dyn Searcher>);
             Fake {
                 services,
                 releases,
+                _searcher: searcher,
                 runtime: Some(runtime),
             }
         }
 
+        /// As `Core::shutdown` does: the jobs are cancelled before the runtime goes.
         fn shutdown(mut self) {
+            self.services.jobs.cancel_all();
             if let Some(runtime) = self.runtime.take() {
                 runtime.shutdown_background();
             }

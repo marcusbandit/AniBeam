@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
+use crate::repos::Pending;
 use anibeam_contract::{CoreError, DownloadsEngine};
 use anibeam_foundation::above::Above;
 use anibeam_foundation::services::Services;
-use crate::repos::Pending;
 
 pub struct Releases {
     pub services: Arc<Services>,

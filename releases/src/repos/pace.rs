@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use anibeam_net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 use anibeam_foundation::sync::recover;
+use anibeam_net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
 /// or when it has none: `net::front`'s gap, which keeps a front's edge answering (#135). A

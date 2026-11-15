@@ -292,7 +292,10 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         CoreError::service(
             endpoint_name,
             "unreadable",
-            anibeam_contract::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
+            anibeam_contract::i18n::tr(
+                "core-releases-bad-feed",
+                &[("error", e.to_string().into())],
+            ),
         )
     })?;
     if let Some(e) = indexer_error(&doc, endpoint_name) {

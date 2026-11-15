@@ -11,8 +11,8 @@ use std::time::SystemTime;
 use rusqlite::Connection;
 
 use anibeam_contract::*;
-use anibeam_library::snapshot::{NextEpisode, Snapshot};
 use anibeam_foundation::time;
+use anibeam_library::snapshot::{NextEpisode, Snapshot};
 
 /// One series's place on the Recent feed: the reason it is there, the
 /// highest episode number the series can claim (on disk, or the on-disk

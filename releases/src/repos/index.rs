@@ -8,9 +8,9 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use anibeam_contract::{CoreError, EndpointField};
-use anibeam_contract::i18n::tr;
 use crate::endpoints::VALID_KINDS;
+use anibeam_contract::i18n::tr;
+use anibeam_contract::{CoreError, EndpointField};
 
 /// The envelope's `format`.
 pub const FORMAT: &str = "anibeam-endpoint-repo";

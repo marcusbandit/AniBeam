@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::repos::index::JsonMap;
 use anibeam_contract::*;
 use anibeam_foundation::magnet::is_hash;
 use anibeam_net::{Http, HttpRequest};
-use crate::repos::index::JsonMap;
 
 /// The value at a dot path of object keys; the value itself for an empty path.
 fn at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
@@ -178,9 +178,10 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
                 .map(super::fetch::their_message)
                 .filter(|m| !m.is_empty())
             {
-                Some(m) => {
-                    anibeam_contract::i18n::tr("core-releases-search-error-said", &[("message", m.into())])
-                }
+                Some(m) => anibeam_contract::i18n::tr(
+                    "core-releases-search-error-said",
+                    &[("message", m.into())],
+                ),
                 None => anibeam_contract::i18n::tr("core-releases-search-error", &[]),
             },
         );
@@ -194,7 +195,12 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
             ));
         }
         Some(Value::Array(items)) => items,
-        Some(_) => return Err(anibeam_contract::i18n::tr("core-releases-results-not-list", &[])),
+        Some(_) => {
+            return Err(anibeam_contract::i18n::tr(
+                "core-releases-results-not-list",
+                &[],
+            ));
+        }
     };
     Ok(items
         .iter()

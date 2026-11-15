@@ -116,7 +116,10 @@ impl Native {
                 .ok_or_else(|| {
                     CoreError::invalid(
                         "endpoint",
-                        anibeam_contract::i18n::tr("core-releases-no-source-named", &[("name", name.into())]),
+                        anibeam_contract::i18n::tr(
+                            "core-releases-no-source-named",
+                            &[("name", name.into())],
+                        ),
                     )
                 }),
         }
@@ -378,7 +381,10 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if anibeam_foundation::redact::secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v))
+                    if anibeam_foundation::redact::secret_param(k).is_some()
+                        && !v.starts_with('{') =>
+                {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),
@@ -410,11 +416,7 @@ mod tests {
                 Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
                 Endpoint::new("search", crate::kinds::FILTERED_RSS, "https://e/"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new(
-                    "anime",
-                    crate::kinds::JSON_FEED,
-                    "https://d/?q={query}",
-                ),
+                Endpoint::new("anime", crate::kinds::JSON_FEED, "https://d/?q={query}"),
             ],
         );
         assert!(native.feed_is_rss("feed"));
@@ -481,11 +483,7 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new(
-                    "anime",
-                    crate::kinds::JSON_FEED,
-                    "https://d/?q={query}",
-                ),
+                Endpoint::new("anime", crate::kinds::JSON_FEED, "https://d/?q={query}"),
             ],
         );
         for name in ["api", "anime"] {
