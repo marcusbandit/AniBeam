@@ -28,7 +28,7 @@ use anibeam_room::proto::{
 use anibeam_room::room::{CLOSED_BYE, CLOSED_REPLACED};
 
 use super::Rooms;
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// How long a connection to the relay may take to open.
 pub const CONNECT_WAIT: Duration = Duration::from_secs(10);
@@ -69,16 +69,20 @@ pub enum Fail {
 impl Fail {
     pub fn to_error(&self) -> CoreError {
         match self {
-            Fail::NotFound => super::error("not_found", crate::words!("core-room-not-found")),
-            Fail::NeedsEpisode => {
-                super::error("needs_episode", crate::words!("core-room-needs-episode"))
+            Fail::NotFound => {
+                super::error("not_found", anibeam_contract::words!("core-room-not-found"))
             }
-            Fail::Refused(m) => {
-                super::error("refused", crate::words!("core-room-refused", message = m))
-            }
+            Fail::NeedsEpisode => super::error(
+                "needs_episode",
+                anibeam_contract::words!("core-room-needs-episode"),
+            ),
+            Fail::Refused(m) => super::error(
+                "refused",
+                anibeam_contract::words!("core-room-refused", message = m),
+            ),
             Fail::Unreachable(m) => super::error(
                 "unreachable",
-                crate::words!("core-room-unreachable", message = m),
+                anibeam_contract::words!("core-room-unreachable", message = m),
             ),
         }
     }
@@ -98,7 +102,7 @@ pub async fn create(
         })
         .send()
         .await
-        .map_err(|e| Fail::Unreachable(crate::net::url_shown(relay) + ": " + &plain(&e)))?;
+        .map_err(|e| Fail::Unreachable(anibeam_net::url_shown(relay) + ": " + &plain(&e)))?;
     let status = response.status();
     // A relay from before #922 wants an episode in every new room
     if episode.is_none() && status == StatusCode::BAD_REQUEST {
@@ -125,7 +129,7 @@ async fn open(client: &reqwest::Client, relay: &str, code: &str) -> Result<Ws, F
         .header("Sec-WebSocket-Key", &key)
         .send()
         .await
-        .map_err(|e| Fail::Unreachable(crate::net::url_shown(relay) + ": " + &plain(&e)))?;
+        .map_err(|e| Fail::Unreachable(anibeam_net::url_shown(relay) + ": " + &plain(&e)))?;
     match response.status() {
         StatusCode::SWITCHING_PROTOCOLS => {}
         StatusCode::NOT_FOUND => return Err(Fail::NotFound),
@@ -319,7 +323,7 @@ impl Link<'_> {
         let hello = ClientMsg::Hello {
             name: self.name.to_string(),
             proto: PROTO,
-            client: format!("anibeam/{}", crate::VERSION),
+            client: format!("anibeam/{}", anibeam_net::VERSION),
             host_key: self.host_key.map(str::to_string),
             rejoin_key: rejoin.clone(),
             key: Some(self.key.to_string()),
@@ -462,8 +466,8 @@ impl Link<'_> {
 fn refused(code: ErrorCode, message: &str) -> CoreError {
     match code {
         ErrorCode::NotFound => Fail::NotFound.to_error(),
-        ErrorCode::Full => super::error("full", crate::words!("core-room-full")),
-        ErrorCode::Proto => super::error("proto", crate::words!("core-room-proto")),
+        ErrorCode::Full => super::error("full", anibeam_contract::words!("core-room-full")),
+        ErrorCode::Proto => super::error("proto", anibeam_contract::words!("core-room-proto")),
         _ => Fail::Refused(message.to_string()).to_error(),
     }
 }

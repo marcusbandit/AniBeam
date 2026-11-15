@@ -30,7 +30,7 @@ pub fn owned_options() -> Vec<(&'static str, String)> {
     .collect()
 }
 
-fn colour(c: &crate::Colour) -> String {
+fn colour(c: &anibeam_contract::Colour) -> String {
     format!("#{:02X}{:02X}{:02X}{:02X}", c.a, c.r, c.g, c.b)
 }
 
@@ -45,8 +45,8 @@ fn num(v: f64) -> String {
 }
 
 /// Every field of SubtitleDefaults as one mpv option, spec 4.4's table.
-pub fn subtitle_options(d: &crate::SubtitleDefaults) -> Vec<(&'static str, String)> {
-    use crate::AssOverride;
+pub fn subtitle_options(d: &anibeam_contract::SubtitleDefaults) -> Vec<(&'static str, String)> {
+    use anibeam_contract::AssOverride;
     let s = &d.text_style;
     let mut o = vec![
         ("slang", d.subtitle_languages.join(",")),
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn subtitle_defaults_become_mpv_options() {
-        let mut d = crate::SubtitleDefaults::default();
+        let mut d = anibeam_contract::SubtitleDefaults::default();
         let o = subtitle_options(&d);
         let get = |k: &str| {
             o.iter()
@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(get("sub-pos"), "100");
         assert_eq!(get("sub-border-style"), "outline-and-shadow");
         d.text_style.box_opacity = 0.5;
-        d.ass_override = crate::AssOverride::Force;
+        d.ass_override = anibeam_contract::AssOverride::Force;
         d.subtitle_languages = vec!["en".into(), "ja".into()];
         let o = subtitle_options(&d);
         let get = |k: &str| {

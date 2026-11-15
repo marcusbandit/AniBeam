@@ -2,7 +2,7 @@
 //! that can be sent to one. The demuxer's own seek misreads the cues ffmpeg writes, and a
 //! file with no cues has nothing for it to use; the clusters themselves are always there.
 
-use crate::sync::recover;
+use anibeam_foundation::sync::recover;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;

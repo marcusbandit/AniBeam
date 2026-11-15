@@ -36,14 +36,13 @@ anibeam-releases.workspace = true
 anibeam-metadata.workspace = true
 anibeam-trackers.workspace = true
 anibeam-downloads.workspace = true
-anibeam-room.workspace = true
+anibeam-playback.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
-regex = "1"
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 rand = "0.10"
@@ -52,37 +51,16 @@ base64 = "0.23"
 ed25519-dalek = "2"
 tracing = "0.1"
 flate2 = "1"
-roxmltree = "0.20"
 anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
-# Watch together rooms (#846): the relay's WebSocket, opened through reqwest's own client
-# and HTTP upgrade so it rides the same TLS setup as every other request.
-tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-# Get media (#889): what the host passes a member is sealed end to end, an X25519 agreement
-# per pair and XChaCha20-Poly1305 under a key HKDF draws from it, so the relay forwards bytes
-# it cannot read.
-x25519-dalek = { version = "2", features = ["static_secrets"] }
-chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
-hkdf = "0.13"
-# Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
-# for their TLS. Only the shells that cast turn it on.
-matroska-demuxer = { version = "0.8", optional = true }
-mdns-sd = { version = "0.21", optional = true }
-rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"], optional = true }
-futures-core = { version = "0.3", optional = true }
 
 [features]
 phone = ["anibeam-downloads/phone", "anibeam-trackers/phone"]
-cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
+cast = ["anibeam-playback/cast"]
 
 # Pausing and resuming a host conversion with STOP and CONT.
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process"] }
-
-# Peeks at Discord's named pipe for events without blocking (#966).
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Pipes"] }
 
 [dev-dependencies]
 tempfile = "3"

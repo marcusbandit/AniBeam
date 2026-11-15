@@ -113,10 +113,14 @@ if [ $cargo -eq 1 ]; then
       step "clippy $crate alone" cargo clippy --locked -p "$crate" --all-targets -- -D warnings
     done
     [ "$core" = true ] && step "clippy phone features" cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
-    # The phone's engine has tests behind the downloads crate's own feature, which the core's
-    # turns on for the library only (ci.yml says more). With no list, every crate was picked.
+    # The phone's engine and casting have tests behind their crates' own features, which the
+    # core's turn on for the libraries only (ci.yml says more). With no list, every crate was
+    # picked.
     if [ ${#crates[@]} -eq 0 ] || [[ " ${crates[*]} " == *" anibeam-downloads "* ]]; then
       step "clippy downloads with phone" cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+    fi
+    if [ ${#crates[@]} -eq 0 ] || [[ " ${crates[*]} " == *" anibeam-playback "* ]]; then
+      step "clippy playback with cast" cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
     fi
     step test cargo test --locked "${packages[@]}"
   else

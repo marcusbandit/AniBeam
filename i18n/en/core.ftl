@@ -191,7 +191,7 @@ core-repos-check-auth-key = { $id }: bad auth key { $key }
 core-repos-check-host-torznab = { $id }: only a torznab address may name its host as {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: a placeholder in the host
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Track { $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -349,7 +349,7 @@ core-airing-now-plan-failed = Could not add { $title } to your Planning list. Tr
 
 core-aired-episode-out = Episode { $number } of { $title } is out.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Casting to { $device }.
 core-cast-ended = Finished casting to { $device }.
@@ -370,7 +370,7 @@ core-cast-refused-both = { $error }; it refused the file as it is too ({ $first 
 core-cast-chromecast-stopped = the Chromecast stopped
 core-cast-hevc = { $error }. This episode is HEVC, which only newer Chromecasts (with Google TV, or Ultra) decode
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = could not reach the Chromecast: { $error }
 core-cast-chromecast-broke = the Chromecast connection broke: { $error }
@@ -382,14 +382,14 @@ core-cast-no-reason = no reason
 core-cast-chromecast-cannot-play = the Chromecast could not play this ({ $kind })
 core-cast-chromecast-error = the Chromecast stopped with an error playing this
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = the TV did not answer: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = the TV refused { $action }
 core-cast-tv-refused-code = the TV refused { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = This file has no video.
 core-cast-hi10p = This episode is 10-bit H.264 (Hi10P), which no TV or Chromecast decodes. Casting it needs a transcode, which is not built yet.
@@ -435,13 +435,13 @@ core-phone-check-reaching = { $label }: reaching { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = setup
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Your progress on { $folder } was not saved. Match the show first.
 # $done is a whole percentage.
 core-playback-still-downloading = episode { $number } is still downloading, { $done }% done
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = a duration is a positive number of seconds
 
@@ -563,7 +563,7 @@ core-paths-no-home = no home directory
 
 core-first-run-not-absolute = the videos folder must be an absolute path
 
-## core/src/room/mod.rs
+## playback/src/room/mod.rs
 
 # The service named in a watch together error: "Watch together: That room is full."
 core-room-service = Watch together
@@ -603,7 +603,7 @@ core-room-media-not-in-library = The episode downloaded, but it is not in your l
 core-room-media-here = The episode is in your library now.
 core-room-media-rest-missing = Could not get the rest of the show. Only this episode is downloading.
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Extra

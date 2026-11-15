@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use super::fmp4;
 use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, VideoCodec};
 use super::vtt::{self, Cue};
-use crate::sync::recover;
+use anibeam_foundation::sync::recover;
 
 /// What kind of receiver the episode is going to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,10 +54,10 @@ pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> 
     let video = probe.video.as_ref().ok_or_else(no_video)?;
     match &video.codec {
         VideoCodec::H264 { profile, .. } if *profile >= 110 => {
-            return Err(crate::i18n::tr("core-cast-hi10p", &[]));
+            return Err(anibeam_contract::i18n::tr("core-cast-hi10p", &[]));
         }
         VideoCodec::Other(id) => {
-            return Err(crate::i18n::tr(
+            return Err(anibeam_contract::i18n::tr(
                 "core-cast-video-codec",
                 &[("codec", id.as_str().into())],
             ));
@@ -67,7 +67,7 @@ pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> 
     if let Some(a) = audio
         && let AudioCodec::Other(id) = &a.codec
     {
-        return Err(crate::i18n::tr(
+        return Err(anibeam_contract::i18n::tr(
             "core-cast-audio-codec",
             &[("codec", id.as_str().into())],
         ));
@@ -76,7 +76,7 @@ pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> 
 }
 
 fn no_video() -> String {
-    crate::i18n::tr("core-cast-no-video", &[])
+    anibeam_contract::i18n::tr("core-cast-no-video", &[])
 }
 
 /// A subtitle choice for the receiver: a track in the file, or a file beside it.

@@ -5,9 +5,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use anibeam_room::proto;
 
-use crate::contract::*;
-use crate::playback::session::{Session, opening_of};
-use crate::playback::skip;
+use crate::session::{Session, opening_of};
+use crate::skip;
+use anibeam_contract::*;
 
 /// The episode a session plays, as a room carries it.
 pub fn of_session(s: &Session) -> proto::EpisodeRef {
@@ -142,7 +142,7 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
         }
     }
     if let Some((series, (file, key))) = found {
-        let opening = skip::cached(conn, series, &key, crate::time::now_secs())?
+        let opening = skip::cached(conn, series, &key, anibeam_foundation::time::now_secs())?
             .and_then(|windows| opening_of(&windows));
         return Ok(Local {
             series: Some(series),
@@ -206,7 +206,7 @@ mod tests {
     fn conn() -> Connection {
         let mut c = Connection::open_in_memory().unwrap();
         c.pragma_update(None, "foreign_keys", "ON").unwrap();
-        crate::store::migrations::apply(&mut c).unwrap();
+        anibeam_foundation::store::migrations::apply(&mut c).unwrap();
         c.execute(
             "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0)",
             [],
@@ -353,7 +353,7 @@ mod tests {
         }];
         c.execute(
             "INSERT INTO skip_windows (series_id, episode_key, windows, source, fetched_at) VALUES (1, '1', ?1, 'chapters', ?2)",
-            params![serde_json::to_string(&windows).unwrap(), crate::time::now_secs()],
+            params![serde_json::to_string(&windows).unwrap(), anibeam_foundation::time::now_secs()],
         )
         .unwrap();
         let found = find_local(&c, &episode(Some(21), None, "1")).unwrap();

@@ -20,13 +20,13 @@ use std::time::Duration;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::jobs::{Finished, JobCtx};
-use crate::metadata::fetch::message_of;
-use crate::playback::Playback;
-use crate::playback::session::{self, Session};
-use crate::time;
+use crate::Playback;
+use crate::session::{self, Session};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_metadata::fetch::message_of;
 
 /// The longest a chapter may run and still describe an intro or an outro.
 /// Some files carry one chapter over the whole episode labelled Opening,
@@ -188,7 +188,7 @@ pub fn start(
     if !duration.is_finite() || duration <= 0.0 {
         return Err(CoreError::invalid(
             "duration",
-            crate::i18n::tr("core-playback-bad-duration", &[]),
+            anibeam_contract::i18n::tr("core-playback-bad-duration", &[]),
         ));
     }
     session::report_chapters(playback, session, duration, None);

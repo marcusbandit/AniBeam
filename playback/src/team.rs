@@ -5,13 +5,13 @@
 use std::sync::Arc;
 
 use crate::cast::Cast;
-use crate::downloads::Downloads;
-use crate::foundation::above::Above;
-use crate::foundation::services::Services;
-use crate::net::Net;
-use crate::playback::session::Sessions;
 use crate::presence::Presence;
-use crate::trackers::Trackers;
+use crate::session::Sessions;
+use anibeam_downloads::Downloads;
+use anibeam_foundation::above::Above;
+use anibeam_foundation::services::Services;
+use anibeam_net::Net;
+use anibeam_trackers::Trackers;
 
 /// What a team above hears about a session as it plays: the watch together
 /// room, which drives the session it is attached to. Each runs where the
@@ -33,20 +33,20 @@ pub struct Playback {
     /// Every open playback session, and the counter that names the next
     /// one. A session lives in memory for one run of the player: the rows
     /// its rules write are the record, and none of it survives a restart.
-    pub(crate) sessions: Arc<Sessions>,
+    pub sessions: Arc<Sessions>,
     /// Discord rich presence: what the player shows on Discord while the
     /// switch is on. Holds no thread or socket until it is first switched on.
-    pub(crate) presence: Presence,
+    pub presence: Presence,
     /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
     #[cfg_attr(not(feature = "cast"), allow(dead_code))]
     pub(crate) cast: Cast,
     /// The watch together room, linked by `Core::open`; nothing to tell
     /// before that or once it is gone.
-    pub(crate) follower: Above<dyn Follower>,
+    pub follower: Above<dyn Follower>,
 }
 
 impl Playback {
-    pub(crate) fn new(
+    pub fn new(
         services: Arc<Services>,
         net: Arc<Net>,
         trackers: Arc<Trackers>,

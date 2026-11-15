@@ -11,7 +11,7 @@ use matroska_demuxer::{
 };
 
 use super::vtt::Cue;
-use crate::sync::recover;
+use anibeam_foundation::sync::recover;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum VideoCodec {

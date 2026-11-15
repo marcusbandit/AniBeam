@@ -173,7 +173,7 @@ core-repos-check-auth-key = { $id }: ugyldig auth-nøgle { $key }
 core-repos-check-host-torznab = { $id }: kun en torznab-adresse må angive sin vært som {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: en pladsholder i værten
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Spor { $number }
 core-playback-track-file = { $label } (fil)
@@ -326,7 +326,7 @@ core-airing-now-plan-failed = Kunne ikke føje { $title } til din Planlagt-liste
 
 core-aired-episode-out = Afsnit { $number } af { $title } er udkommet.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Caster til { $device }.
 core-cast-ended = Færdig med at caste til { $device }.
@@ -346,7 +346,7 @@ core-cast-refused-both = { $error }; den afviste også filen, som den er ({ $fir
 core-cast-chromecast-stopped = Chromecasten stoppede
 core-cast-hevc = { $error }. Dette afsnit er HEVC, som kun nyere Chromecasts (med Google TV, eller Ultra) kan afkode
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = kunne ikke nå Chromecasten: { $error }
 core-cast-chromecast-broke = forbindelsen til Chromecasten blev afbrudt: { $error }
@@ -356,13 +356,13 @@ core-cast-no-reason = ingen grund
 core-cast-chromecast-cannot-play = Chromecasten kunne ikke afspille dette ({ $kind })
 core-cast-chromecast-error = Chromecasten stoppede med en fejl under afspilningen
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = tv'et svarede ikke: { $error }
 core-cast-tv-refused = tv'et afviste { $action }
 core-cast-tv-refused-code = tv'et afviste { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Denne fil har ingen video.
 core-cast-hi10p = Dette afsnit er 10-bit H.264 (Hi10P), som intet tv eller Chromecast kan afkode. Det skal omkodes for at kunne castes, og det er ikke bygget endnu.
@@ -403,12 +403,12 @@ core-phone-check-reaching = { $label }: når { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = opsætning
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Din fremgang i { $folder } blev ikke gemt. Match serien først.
 core-playback-still-downloading = afsnit { $number } downloades stadig, { $done } % færdigt
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = en varighed er et positivt antal sekunder
 
@@ -517,7 +517,7 @@ core-paths-no-home = ingen hjemmemappe
 
 core-first-run-not-absolute = videomappen skal være en absolut sti
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Ekstra
 core-presence-room = Ser sammen

@@ -1,5 +1,5 @@
 // The bundled credentials' reader, shared by the build scripts of the crates that compile
-// one in: this crate's (the tracker apps) and the core's (Discord). Each `include!`s it, so
+// one in: this crate's (the tracker apps) and the playback's (Discord). Each `include!`s it, so
 // `.env.local` is read one way. It is not a module of the crate; only build scripts use it.
 
 use std::path::Path;
@@ -13,7 +13,7 @@ fn bundle(names: &[&str]) {
     // Watched only when it exists: Cargo reads a missing file as changed, which would rerun
     // this script and rebuild the crate on every build of a clone without one. The cost is
     // that a newly created .env.local goes unnoticed until both scripts that read it are
-    // touched: `touch trackers/build.rs core/build.rs`.
+    // touched: `touch trackers/build.rs playback/build.rs`.
     if file.exists() {
         println!("cargo:rerun-if-changed={}", file.display());
     }

@@ -337,7 +337,7 @@ fn run(
     on_status: &impl Fn(Status),
 ) -> Result<(), String> {
     let tls = connect(addr).map_err(|e| {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-cast-chromecast-unreachable",
             &[("error", e.to_string().into())],
         )
@@ -351,7 +351,7 @@ fn run(
         request: 0,
     };
     let io = |e: io::Error| {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-cast-chromecast-broke",
             &[("error", e.to_string().into())],
         )
@@ -434,7 +434,10 @@ fn run(
             last_poll = Instant::now();
         }
         if transport.is_none() && launched_at.elapsed() > Duration::from_secs(20) {
-            return Err(crate::i18n::tr("core-cast-chromecast-no-player", &[]));
+            return Err(anibeam_contract::i18n::tr(
+                "core-cast-chromecast-no-player",
+                &[],
+            ));
         }
 
         let Some(m) = link.read().map_err(io)? else {
@@ -488,9 +491,9 @@ fn run(
             (NS_RECEIVER, "LAUNCH_ERROR") => {
                 let reason = match p["reason"].as_str() {
                     Some(reason) => reason.to_string(),
-                    None => crate::i18n::tr("core-cast-no-reason", &[]),
+                    None => anibeam_contract::i18n::tr("core-cast-no-reason", &[]),
                 };
-                return Err(crate::i18n::tr(
+                return Err(anibeam_contract::i18n::tr(
                     "core-cast-chromecast-refused-player",
                     &[("reason", reason.into())],
                 ));
@@ -498,7 +501,7 @@ fn run(
             (NS_MEDIA, "LOAD_FAILED")
             | (NS_MEDIA, "INVALID_REQUEST")
             | (NS_MEDIA, "LOAD_CANCELLED") => {
-                return Err(crate::i18n::tr(
+                return Err(anibeam_contract::i18n::tr(
                     "core-cast-chromecast-cannot-play",
                     &[("kind", kind.into())],
                 ));
@@ -555,7 +558,7 @@ pub fn parse_status(s: &Value) -> Status {
         None
     };
     let error = (idle_reason.as_deref() == Some("ERROR"))
-        .then(|| crate::i18n::tr("core-cast-chromecast-error", &[]));
+        .then(|| anibeam_contract::i18n::tr("core-cast-chromecast-error", &[]));
     Status {
         position: s["currentTime"].as_f64().unwrap_or(0.0),
         duration: s["media"]["duration"].as_f64(),

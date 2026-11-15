@@ -6,7 +6,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
 use super::dlna;
-use crate::contract::{CastDevice, CastKind};
+use anibeam_contract::{CastDevice, CastKind};
 
 /// A found device with what it takes to talk to it.
 #[derive(Clone, Debug, PartialEq)]

@@ -174,7 +174,7 @@ core-repos-check-auth-key = { $id }: ongeldige auth-sleutel { $key }
 core-repos-check-host-torznab = { $id }: alleen een torznab-adres mag zijn host als {"{"}{ $key }{"}"} noemen
 core-repos-check-host-placeholder = { $id }: een placeholder in de host
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Spoor { $number }
 core-playback-track-file = { $label } (bestand)
@@ -327,7 +327,7 @@ core-airing-now-plan-failed = Kon { $title } niet op je Gepland-lijst zetten. Pr
 
 core-aired-episode-out = Aflevering { $number } van { $title } is uit.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Casten naar { $device }.
 core-cast-ended = Casten naar { $device } is klaar.
@@ -347,7 +347,7 @@ core-cast-refused-both = { $error }; het bestand zoals het is werd ook geweigerd
 core-cast-chromecast-stopped = de Chromecast is gestopt
 core-cast-hevc = { $error }. Deze aflevering is HEVC, wat alleen nieuwere Chromecasts (met Google TV, of Ultra) decoderen
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = kon de Chromecast niet bereiken: { $error }
 core-cast-chromecast-broke = de verbinding met de Chromecast is verbroken: { $error }
@@ -357,13 +357,13 @@ core-cast-no-reason = geen reden
 core-cast-chromecast-cannot-play = de Chromecast kon dit niet afspelen ({ $kind })
 core-cast-chromecast-error = de Chromecast stopte met een fout bij het afspelen
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = de tv antwoordde niet: { $error }
 core-cast-tv-refused = de tv weigerde { $action }
 core-cast-tv-refused-code = de tv weigerde { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Dit bestand heeft geen video.
 core-cast-hi10p = Deze aflevering is 10-bit H.264 (Hi10P), wat geen tv of Chromecast decodeert. Casten vraagt om transcoderen, en dat is er nog niet.
@@ -404,12 +404,12 @@ core-phone-check-reaching = { $label }: { $ip } bereiken
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = instellen
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Je voortgang in { $folder } is niet opgeslagen. Koppel eerst de serie.
 core-playback-still-downloading = aflevering { $number } wordt nog gedownload, { $done }% klaar
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = een duur is een positief aantal seconden
 
@@ -518,7 +518,7 @@ core-paths-no-home = geen thuismap
 
 core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Extra
 core-presence-room = Samen kijken

@@ -163,7 +163,7 @@ core-repos-check-auth-key = { $id }：认证键 { $key } 无效
 core-repos-check-host-torznab = { $id }：只有 torznab 地址可以把主机写成 {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }：主机中有占位符
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = 轨道 { $number }
 core-playback-track-file = { $label }（文件）
@@ -316,7 +316,7 @@ core-airing-now-plan-failed = 无法把《{ $title }》加入“想看”列表�
 
 core-aired-episode-out = 《{ $title }》第 { $number } 集已播出。
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = 正在投屏到 { $device }。
 core-cast-ended = 已结束投屏到 { $device }。
@@ -336,7 +336,7 @@ core-cast-refused-both = { $error }；原文件它也拒绝了（{ $first }）
 core-cast-chromecast-stopped = Chromecast 已停止
 core-cast-hevc = { $error }。这一集是 HEVC 编码，只有较新的 Chromecast（带 Google TV 或 Ultra）才能解码
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = 无法连接 Chromecast：{ $error }
 core-cast-chromecast-broke = Chromecast 连接中断：{ $error }
@@ -346,13 +346,13 @@ core-cast-no-reason = 未说明原因
 core-cast-chromecast-cannot-play = Chromecast 无法播放此内容（{ $kind }）
 core-cast-chromecast-error = Chromecast 播放时出错并停止
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = 电视没有响应：{ $error }
 core-cast-tv-refused = 电视拒绝了 { $action }
 core-cast-tv-refused-code = 电视拒绝了 { $action }（{ $code }）
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = 这个文件没有视频。
 core-cast-hi10p = 这一集是 10 位 H.264（Hi10P），电视和 Chromecast 都无法解码。投屏需要转码，目前尚未实现。
@@ -389,12 +389,12 @@ core-phone-check-reaching = { $label }：正在连接 { $ip }
 core-phone-check-http = HTTP { $status }，{ $bytes } 字节
 core-phone-check-setup = 设置
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = 《{ $folder }》的进度没有保存。请先匹配这部番剧。
 core-playback-still-downloading = 第 { $number } 集仍在下载，已完成 { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 时长必须是正数秒
 
@@ -503,7 +503,7 @@ core-paths-no-home = 没有主目录
 
 core-first-run-not-absolute = 视频文件夹必须是绝对路径
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = 附加内容
 core-presence-room = 一起观看

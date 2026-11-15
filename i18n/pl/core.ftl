@@ -184,7 +184,7 @@ core-repos-check-auth-key = { $id }: zły klucz uwierzytelniania { $key }
 core-repos-check-host-torznab = { $id }: tylko adres torznab może podać host jako {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: symbol zastępczy w hoście
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Ścieżka { $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -342,7 +342,7 @@ core-airing-now-plan-failed = Nie udało się dodać { $title } do listy Planuj�
 
 core-aired-episode-out = Wyszedł odcinek { $number } serialu { $title }.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Przesyłanie na: { $device }.
 core-cast-ended = Zakończono przesyłanie na: { $device }.
@@ -363,7 +363,7 @@ core-cast-refused-both = { $error }; odrzucił też plik w oryginale ({ $first }
 core-cast-chromecast-stopped = Chromecast się zatrzymał
 core-cast-hevc = { $error }. Ten odcinek jest w HEVC, który dekodują tylko nowsze Chromecasty (z Google TV albo Ultra)
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = nie udało się połączyć z Chromecastem: { $error }
 core-cast-chromecast-broke = połączenie z Chromecastem zostało przerwane: { $error }
@@ -375,14 +375,14 @@ core-cast-no-reason = bez powodu
 core-cast-chromecast-cannot-play = Chromecast nie mógł tego odtworzyć ({ $kind })
 core-cast-chromecast-error = Chromecast zatrzymał się z błędem podczas odtwarzania
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = telewizor nie odpowiedział: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = telewizor odrzucił { $action }
 core-cast-tv-refused-code = telewizor odrzucił { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Ten plik nie ma obrazu.
 core-cast-hi10p = Ten odcinek jest w 10-bitowym H.264 (Hi10P), którego nie dekoduje żaden telewizor ani Chromecast. Przesłanie go wymaga transkodowania, którego jeszcze nie ma.
@@ -429,13 +429,13 @@ core-phone-check-reaching = { $label }: łączenie z { $ip }
 core-phone-check-http = HTTP { $status }, bajty: { $bytes }
 core-phone-check-setup = konfiguracja
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Postęp w { $folder } nie został zapisany. Najpierw dopasuj serial.
 # $done is a whole percentage.
 core-playback-still-downloading = odcinek { $number } wciąż się pobiera, gotowe { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = czas trwania to dodatnia liczba sekund
 
@@ -555,7 +555,7 @@ core-paths-no-home = brak katalogu domowego
 
 core-first-run-not-absolute = folder z filmami musi być ścieżką bezwzględną
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Dodatek
