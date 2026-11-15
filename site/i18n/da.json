@@ -87,5 +87,8 @@
  "Download IPA": "Download IPA",
  "Nightly test build, unsigned, for sideloading": "Nightly-testversion, usigneret, til sideloading",
  "Unsigned, for sideloading": "Unsigneret, til sideloading",
- "Or install this build once in": "Eller installer denne version én gang i"
+ "Or install this build once in": "Eller installer denne version én gang i",
+ "Every platform": "Alle systemer",
+ "Installer": "Installationsprogram",
+ "From a terminal": "Fra en terminal"
 }

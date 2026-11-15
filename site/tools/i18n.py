@@ -32,7 +32,8 @@ JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "Wha
 # A folder name is the short code; hreflang and lang take the full tag where the script matters.
 TAG = {"zh": "zh-Hans"}
 SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
-        "$", "|", "English", "AniList", "AltStore", "SideStore", "LiveContainer", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
+        "$", "|", "English", "AppImage", "anibeam-bin", ".dmg", "brew", "Android", "APK", "IPA", "install.sh",
+        "Arch", "Debian, Ubuntu", "Fedora", "AniList", "AltStore", "SideStore", "LiveContainer", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
         "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan", "Season 2",
         "Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}

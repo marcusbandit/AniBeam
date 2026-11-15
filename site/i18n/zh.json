@@ -87,5 +87,8 @@
   "Download IPA": "下载 IPA",
   "Nightly test build, unsigned, for sideloading": "Nightly 测试版，未签名，用于侧载",
   "Unsigned, for sideloading": "未签名，用于侧载",
-  "Or install this build once in": "或者在以下应用中一次性安装此版本："
+  "Or install this build once in": "或者在以下应用中一次性安装此版本：",
+  "Every platform": "所有平台",
+  "Installer": "安装程序",
+  "From a terminal": "通过终端"
 }
