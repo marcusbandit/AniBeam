@@ -8,6 +8,21 @@ repository.workspace = true
 description = "Anibeam's core: every rule in one crate, used by every shell"
 build = "build.rs"
 
+# Files outside this folder the tests read, so a change to one checks the core and what builds
+# on it (.github/affected-crates.py): the apps' patch notes and their versions
+# (tests/changelog.rs), and the anirss pins in the packaging (downloads/anirss.rs).
+[package.metadata.ci]
+reads = [
+  "../.github/changelog-fold.sh",
+  "../apps/linux/CHANGELOG.md",
+  "../apps/linux/changes",
+  "../apps/linux/packaging",
+  "../apps/android/CHANGELOG.md",
+  "../apps/android/changes",
+  "../apps/android/Cargo.toml",
+  "../apps/android/android/AndroidManifest.xml",
+]
+
 [lib]
 name = "anibeam_core"
 crate-type = ["lib"]
