@@ -9,14 +9,14 @@ use crate::app;
 use crate::cast;
 use crate::contract::*;
 use crate::downloads::{self, Downloads};
-use crate::events::{EventBus, Subscription};
+use crate::events::Subscription;
 use crate::feed;
 use crate::foundation::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::foundation::services::Services;
 use crate::franchise;
 use crate::host::{self, Host};
 use crate::images;
-use crate::jobs::{Jobs, started, started_or_ok};
+use crate::jobs::{started, started_or_ok};
 use crate::launch;
 use crate::library::scan;
 use crate::library::watcher::Watcher;
@@ -80,10 +80,6 @@ pub struct Core {
 /// through the limiter's own per-attempt timeout.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long `shutdown` waits for the runtime's tasks to observe the
-/// cancellation before it stops waiting and closes the store anyway.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
-
 /// The line every start logs, around the version: "AniBeam core 2.1.0
 /// ready". `earlier_starts` reads the version back out of it.
 const READY_BEFORE: &str = "AniBeam core ";
@@ -119,31 +115,7 @@ impl Core {
         http: Arc<dyn Http>,
         secrets: Arc<Secrets>,
     ) -> Result<Arc<Core>, CoreError> {
-        let store = Store::open(&paths.db_path())?;
-        let bus = EventBus::new(store.clone())?;
-        // Creating the cache directory is opening, the same as creating the
-        // data directory the database file lives in. Before the runtime, so
-        // that nothing after it can fail and drop a live runtime here.
-        let images_dir = paths.images_dir();
-        std::fs::create_dir_all(&images_dir)
-            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("anibeam-core")
-            .enable_all()
-            .build()
-            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
-        let handle = runtime.handle().clone();
-        let jobs = Jobs::new(handle.clone(), bus.clone());
-        let services = Arc::new(Services {
-            paths,
-            store,
-            bus,
-            jobs,
-            handle,
-            http,
-            secrets,
-        });
+        let (services, runtime) = Services::open(paths, http, secrets)?;
         // Each team over the ones below it, bottom up.
         let closed = Arc::new(AtomicBool::new(false));
         let net = Arc::new(Net::new(services.clone(), crate::library::cards::cards_for));
@@ -1074,15 +1046,7 @@ impl Core {
         // keeps the guard alive for the whole `if let` body, which would
         // hold this lock for as long as the wait below.
         let runtime = self.runtime.lock().unwrap().take();
-        if let Some(runtime) = runtime {
-            // Two seconds is the whole budget for the tasks to observe the
-            // cancellation above. A shell is on its way out by now, and an
-            // ffprobe or a keyring call that will not stop must not be the
-            // reason the window hangs around.
-            runtime.shutdown_timeout(SHUTDOWN_GRACE);
-        }
-        self.services.store.checkpoint();
-        self.services.store.close();
+        self.services.close(runtime);
     }
 }
 

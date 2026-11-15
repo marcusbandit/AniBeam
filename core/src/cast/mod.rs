@@ -1064,8 +1064,56 @@ mod imp {
 
         use super::*;
 
-        use crate::CorePaths;
-        use crate::trackers::Secrets;
+        use anibeam_foundation::testing::Running;
+
+        /// The playback team over the teams below it, each built as
+        /// `Core::open` builds it, and the services they run on. None of
+        /// `Core::open`'s links: casting reads none of them.
+        struct Teams {
+            playback: Arc<Playback>,
+            _running: Running,
+        }
+
+        impl Teams {
+            fn open(dir: &std::path::Path) -> Teams {
+                let running = Running::open(dir, crate::net::FakeHttp::new());
+                let services = running.services.clone();
+                let net = Arc::new(crate::net::Net::new(
+                    services.clone(),
+                    crate::library::cards::cards_for,
+                ));
+                let library = Arc::new(crate::library::Library::new(
+                    services.clone(),
+                    net.clone(),
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                ));
+                let metadata = Arc::new(crate::metadata::Metadata::new(
+                    services.clone(),
+                    net.clone(),
+                    library.clone(),
+                ));
+                let trackers = Arc::new(crate::trackers::Trackers::new(
+                    services.clone(),
+                    net.clone(),
+                ));
+                let downloads = Arc::new(crate::downloads::Downloads::new(
+                    services.clone(),
+                    net.clone(),
+                ));
+                let playback = Arc::new(Playback::new(
+                    services, net, trackers, downloads, library, metadata,
+                ));
+                Teams {
+                    playback,
+                    _running: running,
+                }
+            }
+
+            /// A `Cast*` call, as the core hands it on.
+            fn call(&self, c: Call) -> Result<Reply, CoreError> {
+                call(&self.playback, c)
+            }
+        }
 
         /// What the fake TV was told and what it read.
         #[derive(Default)]
@@ -1156,10 +1204,10 @@ mod imp {
             }
         }
 
-        /// A fake TV and a core that knows it, on loopback, for the tests below.
-        fn tv_and_core(
+        /// A fake TV and a playback team that knows it, on loopback, for the tests below.
+        fn tv_and_teams(
             rt: &tokio::runtime::Runtime,
-        ) -> (Arc<Mutex<Tv>>, tempfile::TempDir, Arc<crate::Core>) {
+        ) -> (Arc<Mutex<Tv>>, tempfile::TempDir, Teams) {
             let tv_state = Arc::new(Mutex::new(Tv::default()));
             let tv_at = rt.block_on(async {
                 let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1171,10 +1219,8 @@ mod imp {
                 at
             });
             let dir = tempfile::tempdir().unwrap();
-            let paths = CorePaths::under(dir.path());
-            let secrets = Secrets::file_only(paths.secrets_path());
-            let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
-            inner(&core.playback).devices.lock().unwrap().push(Found {
+            let teams = Teams::open(dir.path());
+            inner(&teams.playback).devices.lock().unwrap().push(Found {
                 device: CastDevice {
                     id: "dlna:fake".into(),
                     name: "Fake TV".into(),
@@ -1185,7 +1231,7 @@ mod imp {
                 addr: tv_at,
                 control: Some(format!("http://{tv_at}/ctl")),
             });
-            (tv_state, dir, core)
+            (tv_state, dir, teams)
         }
 
         fn serve(rt: &tokio::runtime::Runtime, app: Router) -> std::net::SocketAddr {
@@ -1200,7 +1246,7 @@ mod imp {
         #[test]
         fn a_stop_while_the_playlist_comes_leaves_the_tv_alone() {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let (tv_state, _dir, core) = tv_and_core(&rt);
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
             // The other computer takes its time over the playlist, as it does
             // while it starts converting.
             let slow = Router::new().route(
@@ -1211,15 +1257,16 @@ mod imp {
                 }),
             );
             let computer_at = serve(&rt, slow);
-            core.call(Call::CastStartStream {
-                device: "dlna:fake".into(),
-                url: format!("http://{computer_at}/hls/index.m3u8"),
-                title: "Show 1".into(),
-                start: 0.0,
-                duration: 18.0,
-            })
-            .unwrap();
-            core.call(Call::CastStop).unwrap();
+            teams
+                .call(Call::CastStartStream {
+                    device: "dlna:fake".into(),
+                    url: format!("http://{computer_at}/hls/index.m3u8"),
+                    title: "Show 1".into(),
+                    start: 0.0,
+                    duration: 18.0,
+                })
+                .unwrap();
+            teams.call(Call::CastStop).unwrap();
             std::thread::sleep(Duration::from_millis(1500));
             let t = tv_state.lock().unwrap();
             assert!(t.uris.is_empty(), "the TV was handed {:?}", t.uris);
@@ -1229,7 +1276,7 @@ mod imp {
         #[test]
         fn a_redirect_from_the_other_computer_is_not_followed() {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let (tv_state, _dir, core) = tv_and_core(&rt);
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
             let elsewhere = serve(
                 &rt,
                 Router::new().route("/secret", get(|| async { "not for the TV" })),
@@ -1262,14 +1309,15 @@ mod imp {
                 }),
             );
             let computer_at = serve(&rt, computer);
-            core.call(Call::CastStartStream {
-                device: "dlna:fake".into(),
-                url: format!("http://{computer_at}/hls/index.m3u8"),
-                title: "Show 1".into(),
-                start: 0.0,
-                duration: 12.0,
-            })
-            .unwrap();
+            teams
+                .call(Call::CastStartStream {
+                    device: "dlna:fake".into(),
+                    url: format!("http://{computer_at}/hls/index.m3u8"),
+                    title: "Show 1".into(),
+                    start: 0.0,
+                    duration: 12.0,
+                })
+                .unwrap();
             until("the TV to read the stream", || {
                 !tv_state.lock().unwrap().read.is_empty()
             });
@@ -1300,10 +1348,8 @@ mod imp {
             });
 
             let dir = tempfile::tempdir().unwrap();
-            let paths = CorePaths::under(dir.path());
-            let secrets = Secrets::file_only(paths.secrets_path());
-            let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
-            inner(&core.playback).devices.lock().unwrap().push(Found {
+            let teams = Teams::open(dir.path());
+            inner(&teams.playback).devices.lock().unwrap().push(Found {
                 device: CastDevice {
                     id: "dlna:fake".into(),
                     name: "Fake TV".into(),
@@ -1315,14 +1361,15 @@ mod imp {
                 control: Some(format!("http://{tv_at}/ctl")),
             });
 
-            core.call(Call::CastStartStream {
-                device: "dlna:fake".into(),
-                url: format!("http://{computer_at}/hls/index.m3u8?burn=0"),
-                title: "Show 1".into(),
-                start: 7.0,
-                duration: 18.0,
-            })
-            .expect("a TV over DLNA takes another computer's episode");
+            teams
+                .call(Call::CastStartStream {
+                    device: "dlna:fake".into(),
+                    url: format!("http://{computer_at}/hls/index.m3u8?burn=0"),
+                    title: "Show 1".into(),
+                    start: 7.0,
+                    duration: 18.0,
+                })
+                .expect("a TV over DLNA takes another computer's episode");
 
             until("the TV to read the stream", || {
                 !tv_state.lock().unwrap().read.is_empty()
@@ -1347,12 +1394,12 @@ mod imp {
             // The TV counts from the start of what it was handed: 6 plus its 2.
             until("the position from the TV", || {
                 matches!(
-                    core.call(Call::CastStatus),
+                    teams.call(Call::CastStatus),
                     Ok(Reply::CastState { state: Some(s) }) if (s.position - 8.0).abs() < 0.01
                 )
             });
 
-            core.call(Call::CastSeek { to: 13.5 }).unwrap();
+            teams.call(Call::CastSeek { to: 13.5 }).unwrap();
             until("the TV to read the stream again", || {
                 tv_state.lock().unwrap().read.len() == 2
             });
@@ -1364,11 +1411,11 @@ mod imp {
             }
             until("the position after the seek", || {
                 matches!(
-                    core.call(Call::CastStatus),
+                    teams.call(Call::CastStatus),
                     Ok(Reply::CastState { state: Some(s) }) if (s.position - 14.0).abs() < 0.01
                 )
             });
-            core.call(Call::CastStop).unwrap();
+            teams.call(Call::CastStop).unwrap();
         }
     }
 }
