@@ -4,27 +4,14 @@ name: Windows
 # zip, each carrying Qt, libmpv, MpvQt, qbittorrent-nox and anirss on its own Python. Runs
 # the core and shell tests there, then smoke-tests the bundled app, the two helpers and the
 # Downloads page starting them on a fresh install. nightly.yml, release.yml and pr-build.yml
-# call it and put the installer and the zip on their release. A pull request that touches the
-# core, the Qt shell or the workspace runs it too. Run it from the Actions tab (Run
-# workflow) for a build without a release.
+# call it and put the installer and the zip on their release. A pull request does not run it
+# on a push (#993); the `full ci` label (full-ci.yml) and the `test build` label build it. Run it
+# from the Actions tab (Run workflow) for a build without a release.
 on:
-  pull_request:
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/windows.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
-    # ships as; a pull request's own run builds its head and describes itself from git.
+    # ships as; a run from the Actions tab builds the branch it starts on.
     inputs:
       ref:
         type: string
@@ -178,6 +165,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       # aws-lc-sys (rustls' crypto) assembles with NASM; its prebuilt copy saves installing it.
