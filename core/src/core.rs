@@ -83,10 +83,19 @@ pub struct Core {
 /// through the limiter's own per-attempt timeout.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The line every start logs, around the version: "AniBeam core 2.1.0
+/// The line every start logs, around the version: "Anibeam core 2.1.0
 /// ready". `earlier_starts` reads the version back out of it.
-const READY_BEFORE: &str = "AniBeam core ";
+const READY_BEFORE: &str = "Anibeam core ";
 const READY_AFTER: &str = " ready";
+
+/// The version in a start's line. Builds before 2.5 logged the name with a capital B
+/// (#1047), so the name matches in any case.
+fn ready_version(message: &str) -> Option<&str> {
+    let name = message.get(..READY_BEFORE.len())?;
+    name.eq_ignore_ascii_case(READY_BEFORE)
+        .then(|| message[READY_BEFORE.len()..].strip_suffix(READY_AFTER))
+        .flatten()
+}
 
 impl Core {
     /// `open` with the transport handed in, so a test drives every provider
@@ -361,10 +370,7 @@ impl Core {
                 let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
                 Ok(rows
                     .filter_map(Result::ok)
-                    .filter_map(|m| {
-                        let v = m.strip_prefix(READY_BEFORE)?.strip_suffix(READY_AFTER)?;
-                        Some(v.to_string())
-                    })
+                    .filter_map(|m| ready_version(&m).map(str::to_string))
                     .collect())
             })
             .unwrap_or_default()
@@ -1146,5 +1152,14 @@ mod tests {
         core.services.bus.signal(Signal::TrackersChanged);
         assert_eq!(refits(&c), 1);
         core.shutdown();
+    }
+
+    #[test]
+    fn a_start_line_from_before_the_rename_still_gives_its_version() {
+        assert_eq!(ready_version("Anibeam core 2.5.0 ready"), Some("2.5.0"));
+        let old = format!("Ani{}eam core 2.4.0 ready", 'B');
+        assert_eq!(ready_version(&old), Some("2.4.0"));
+        assert_eq!(ready_version("Anibeam core 2.5.0"), None);
+        assert_eq!(ready_version("core 2.5.0 ready"), None);
     }
 }

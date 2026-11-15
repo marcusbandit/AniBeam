@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bundle.sh <out-dir>
-# Turns target/release/anibeam.exe into <out-dir>/AniBeam (the folder the installer copies),
-# <out-dir>/AniBeam-<ver>-windows-x64-setup.exe and a portable <out-dir>/AniBeam-<ver>-windows-x64.zip.
+# Turns target/release/anibeam.exe into <out-dir>/Anibeam (the folder the installer copies),
+# <out-dir>/Anibeam-<ver>-windows-x64-setup.exe and a portable <out-dir>/Anibeam-<ver>-windows-x64.zip.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam.exe)
 #   DEPS_PREFIX   where deps.sh put libmpv, MpvQt and qbittorrent-nox
 # Runs in Git Bash on the runner, with Qt's bin (windeployqt) on PATH. The folder holds the
@@ -28,7 +28,7 @@ describe="$(git -C "$repo" describe --tags --match 'v*' --exclude 'v*-*' --dirty
 pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")}"
 short="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$pkgver")"
 
-app="$out/AniBeam"
+app="$out/Anibeam"
 rm -rf "$app"
 mkdir -p "$app"
 cp "$bin" "$app/anibeam.exe"
@@ -63,13 +63,13 @@ echo "== the app starts"
 "$app/anibeam.exe" --version
 
 echo "== zip"
-zip="$out/AniBeam-$pkgver-windows-x64.zip"
+zip="$out/Anibeam-$pkgver-windows-x64.zip"
 rm -f "$zip"
-(cd "$out" && 7z a -tzip -mx=7 "$zip" AniBeam > /dev/null)
+(cd "$out" && 7z a -tzip -mx=7 "$zip" Anibeam > /dev/null)
 
 echo "== installer"
 iscc="${ISCC:-C:/Program Files (x86)/Inno Setup 6/ISCC.exe}"
 "$iscc" /Q "/DAppVersion=$short" "/DFullVersion=$pkgver" "/DSourceDir=$(cygpath -w "$app")" \
-  "/DOutputDir=$(cygpath -w "$out")" "/DOutputName=AniBeam-$pkgver-windows-x64-setup" \
+  "/DOutputDir=$(cygpath -w "$out")" "/DOutputName=Anibeam-$pkgver-windows-x64-setup" \
   "$(cygpath -w "$here/anibeam.iss")"
-du -sh "$app" "$zip" "$out/AniBeam-$pkgver-windows-x64-setup.exe"
+du -sh "$app" "$zip" "$out/Anibeam-$pkgver-windows-x64-setup.exe"

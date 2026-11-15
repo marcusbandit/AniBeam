@@ -8,7 +8,7 @@
 // open the hover card (`rested`); the page's RecommendedHover owns the timing, the warm
 // path and the closing. A click, Return or Space opens the show.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

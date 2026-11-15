@@ -8,12 +8,12 @@
 #   scripts/build-ios.sh Release    a Release build for the simulator
 #   scripts/build-ios.sh ipa        an unsigned Release IPA for a device
 #
-# The simulator app lands in build/ios/Build/Products/<configuration>-iphonesimulator/AniBeam.app.
-# The IPA lands in build/ios/AniBeam.ipa, and carries no signature: AltStore and LiveContainer
+# The simulator app lands in build/ios/Build/Products/<configuration>-iphonesimulator/Anibeam.app.
+# The IPA lands in build/ios/Anibeam.ipa, and carries no signature: AltStore and LiveContainer
 # sign it themselves when they install it. It is built as ANIBEAM_RELEASE_VERSION when CI
 # sets one (2.4.3 or 2.4.3-nightly.20261113.41), else as Cargo.toml's version. The bundle's
 # short version is the base, 2.4.3, which is all iOS takes, and its build number the run
-# number of a nightly. ANIBEAM_NIGHTLY=1 builds it as AniBeam Nightly, bundle id
+# number of a nightly. ANIBEAM_NIGHTLY=1 builds it as Anibeam Nightly, bundle id
 # com.marcusrosado.anibeam.nightly, so a nightly installs beside the release (#944).
 set -euo pipefail
 
@@ -54,23 +54,23 @@ fi
 xcodegen generate --spec "$here/ios/project.yml" --quiet
 
 if [ "$mode" = ipa ]; then
-  xcodebuild -project "$here/ios/AniBeam.xcodeproj" -scheme AniBeam -configuration Release \
+  xcodebuild -project "$here/ios/Anibeam.xcodeproj" -scheme Anibeam -configuration Release \
     -sdk iphoneos -destination 'generic/platform=iOS' \
     -derivedDataPath "$here/build/ios" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$version" \
     CURRENT_PROJECT_VERSION="$build_number" ${identity[@]+"${identity[@]}"} -quiet build
   # An IPA is a zip whose root is Payload/, holding the .app.
   stage="$here/build/ios/ipa"
-  rm -rf "$stage" "$here/build/ios/AniBeam.ipa"
+  rm -rf "$stage" "$here/build/ios/Anibeam.ipa"
   mkdir -p "$stage/Payload"
-  ditto "$here/build/ios/Build/Products/Release-iphoneos/AniBeam.app" "$stage/Payload/AniBeam.app"
-  (cd "$stage" && zip -qry "$here/build/ios/AniBeam.ipa" Payload)
+  ditto "$here/build/ios/Build/Products/Release-iphoneos/Anibeam.app" "$stage/Payload/Anibeam.app"
+  (cd "$stage" && zip -qry "$here/build/ios/Anibeam.ipa" Payload)
   rm -rf "$stage"
-  echo "build-ios.sh: $here/build/ios/AniBeam.ipa"
+  echo "build-ios.sh: $here/build/ios/Anibeam.ipa"
   exit 0
 fi
 
-xcodebuild -project "$here/ios/AniBeam.xcodeproj" -scheme AniBeam -configuration "$mode" \
+xcodebuild -project "$here/ios/Anibeam.xcodeproj" -scheme Anibeam -configuration "$mode" \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath "$here/build/ios" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$version" \
   CURRENT_PROJECT_VERSION="$build_number" ${identity[@]+"${identity[@]}"} -quiet build
-echo "build-ios.sh: $here/build/ios/Build/Products/$mode-iphonesimulator/AniBeam.app"
+echo "build-ios.sh: $here/build/ios/Build/Products/$mode-iphonesimulator/Anibeam.app"

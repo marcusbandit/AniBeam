@@ -24,7 +24,7 @@
     <application
         android:label="Anibeam"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/AniBeam"
+        android:theme="@style/Anibeam"
         android:hasCode="true"
         android:extractNativeLibs="false"
         android:usesCleartextTraffic="true"

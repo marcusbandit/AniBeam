@@ -4,7 +4,7 @@
 // frame opens it once the scan and the lookup after it have settled; Escape, Later, a
 // press outside or a move to another page close it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

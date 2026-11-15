@@ -2,7 +2,7 @@
 // full-bleed, the title on the rising scrim at its foot, an Available or AniList tag top
 // left, the list-status square bottom right. Hover draws the 1 px accent inner outline.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 Item {
     id: root
     property var rec: ({})

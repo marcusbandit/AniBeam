@@ -42,7 +42,7 @@
 // An objectName target is the first visible item with that name, depth first from the
 // window's content item, which holds the Controls overlay and so every open Popup too.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: driver

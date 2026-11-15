@@ -8,7 +8,7 @@
 // the window. The addresses used before live in shell.conf, never in the library.
 import QtQuick
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Column {
     id: root

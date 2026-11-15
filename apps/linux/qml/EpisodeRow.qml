@@ -12,7 +12,7 @@
 // (#169). While the page picks files to delete, the cube gives way to the phone's circle,
 // filled red once picked, and a click on the row or the circle picks (#168).
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

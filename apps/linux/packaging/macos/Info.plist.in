@@ -9,9 +9,9 @@
 	<key>CFBundleExecutable</key>
 	<string>anibeam</string>
 	<key>CFBundleIconFile</key>
-	<string>AniBeam</string>
+	<string>Anibeam</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.marcusrosado.AniBeam</string>
+	<string>com.marcusrosado.Anibeam</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

@@ -28,7 +28,7 @@ from pathlib import Path
 
 import altstore  # the iPhone app's sources, from the same releases
 
-REPO = "marcusbandit/AniBeam"
+REPO = "marcusbandit/Anibeam"
 MATCH = {
     "appimage": lambda n: n.endswith(".AppImage"),
     "deb": lambda n: n.endswith("_amd64.deb"),

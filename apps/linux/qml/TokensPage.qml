@@ -1,6 +1,6 @@
 // Every token and every primitive on one page, for a capture. Reached with --page tokens.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Flickable {
     id: root

@@ -9,7 +9,7 @@ pkgver=2.4.0
 pkgrel=1
 pkgdesc="Browse, play and track a local anime library (Qt 6 and libmpv), prebuilt"
 arch=(x86_64)
-url="https://github.com/marcusbandit/AniBeam"
+url="https://github.com/marcusbandit/Anibeam"
 license=(GPL-3.0-or-later)
 # The same runtime as anibeam: anirss and qbittorrent-nox are the Downloads page's.
 depends=(qt6-base qt6-declarative qt6-svg mpvqt mpv gcc-libs glibc hicolor-icon-theme
@@ -21,10 +21,10 @@ optdepends=(
 options=(!strip !debug)
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
-source=("AniBeam-$pkgver-linux-x86_64.tar.zst::$url/releases/download/v$pkgver/AniBeam-$pkgver-linux-x86_64.tar.zst")
-noextract=("AniBeam-$pkgver-linux-x86_64.tar.zst")
+source=("Anibeam-$pkgver-linux-x86_64.tar.zst::$url/releases/download/v$pkgver/Anibeam-$pkgver-linux-x86_64.tar.zst")
+noextract=("Anibeam-$pkgver-linux-x86_64.tar.zst")
 sha256sums=('SKIP')
 
 package() {
-  bsdtar -xf "$srcdir/AniBeam-$pkgver-linux-x86_64.tar.zst" -C "$pkgdir"
+  bsdtar -xf "$srcdir/Anibeam-$pkgver-linux-x86_64.tar.zst" -C "$pkgdir"
 }

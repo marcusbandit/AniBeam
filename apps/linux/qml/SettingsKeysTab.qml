@@ -2,7 +2,7 @@
 // is the one ? shows: the player's two groups, then the frame's two, the keys as chips at
 // the right of what they do.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

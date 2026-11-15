@@ -8,7 +8,7 @@
 // frame (frame.connecting and its neighbours), so this only reads it; Escape or the scrim
 // closes the sheet and the connect keeps running, its result announced by the toast.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

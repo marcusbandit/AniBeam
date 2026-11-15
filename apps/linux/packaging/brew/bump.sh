@@ -8,7 +8,7 @@ set -euo pipefail
 version="${1:?usage: bump.sh <version>}"
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"
 cask="$root/Casks/anibeam.rb"
-url="https://github.com/marcusbandit/AniBeam/releases/download/v$version/AniBeam-$version-macos-arm64.dmg"
+url="https://github.com/marcusbandit/Anibeam/releases/download/v$version/Anibeam-$version-macos-arm64.dmg"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 

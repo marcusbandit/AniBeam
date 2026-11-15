@@ -9,7 +9,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Flickable {
     id: root

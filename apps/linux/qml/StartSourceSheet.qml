@@ -7,7 +7,7 @@
 // The page opens it with openAt(anchor, name) and drives `busy` and `error`; `startRequested`
 // is the confirmed click.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
