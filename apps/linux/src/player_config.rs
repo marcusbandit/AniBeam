@@ -99,6 +99,32 @@ pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {
     out.into_iter().filter(|p| p.is_file()).collect()
 }
 
+/// A drive or a shot plays into nothing, and so does a run with ANIBEAM_SILENT=1 (bench.sh):
+/// a capture must never make a sound on the speakers of whoever sits at the machine (#564).
+/// These go out with the owned options, after every config layer, so no plain mpv.conf line
+/// can bring the sound back. A profile mpv applies at load time can still pick an output, so
+/// `SILENT_ENV` takes the sound servers away as well. Audio still decodes, so tracks, volume
+/// and mute work as usual.
+pub fn silent_options(silent: bool) -> Vec<(&'static str, &'static str)> {
+    if silent {
+        vec![("ao", "null")]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Whether this run is one `silent_options` covers.
+pub fn is_silent_run(capturing: bool, silent_env: Option<&std::ffi::OsStr>) -> bool {
+    capturing || silent_env.is_some_and(|v| v == "1")
+}
+
+/// What a silent run sets in its own environment before anything starts: PulseAudio and
+/// PipeWire clients, the ALSA plugin that routes into PipeWire among them, find no server.
+pub const SILENT_ENV: [(&str, &str); 2] = [
+    ("PULSE_SERVER", "unix:/nonexistent"),
+    ("PIPEWIRE_REMOTE", "/nonexistent"),
+];
+
 /// The subtitle preview's fallback source: a black lavfi picture with one sample line,
 /// through a generated SRT under the cache directory. The file is written once and reused
 /// after that, so a preview opened twice does not rewrite it.
@@ -158,6 +184,22 @@ mod tests {
                 && p.contains(&("pause", "yes"))
                 && p.contains(&("hr-seek", "yes"))
         );
+    }
+
+    #[test]
+    fn captures_send_their_audio_nowhere() {
+        use std::ffi::OsStr;
+        assert!(is_silent_run(true, None), "a drive or a shot");
+        assert!(
+            is_silent_run(false, Some(OsStr::new("1"))),
+            "ANIBEAM_SILENT=1"
+        );
+        assert!(!is_silent_run(false, None), "a normal run keeps its sound");
+        assert!(!is_silent_run(false, Some(OsStr::new("0"))));
+        assert_eq!(silent_options(true), vec![("ao", "null")]);
+        assert!(silent_options(false).is_empty());
+        let names: Vec<_> = SILENT_ENV.iter().map(|(k, _)| *k).collect();
+        assert_eq!(names, ["PULSE_SERVER", "PIPEWIRE_REMOTE"]);
     }
 
     #[test]
