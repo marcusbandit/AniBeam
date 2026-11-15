@@ -1,6 +1,30 @@
 // The redesign mockup's own behaviour, beside app.js: the bar that turns to glass, the hero's
 // beams following the pointer, and the tour's tabs projecting their screen.
 (() => {
+  // While the phone layout is being chosen: ?m=flow, swipe or list picks one (flow by default).
+  const mode = new URLSearchParams(location.search).get("m") || "flow";
+  document.body.classList.add(`m-${mode}`);
+  const narrow = matchMedia("(max-width: 760px)");
+  const rows = document.querySelector(".rows");
+  if (rows && mode === "swipe") {
+    const feats = [...rows.querySelectorAll(".feat")];
+    const dots = document.createElement("div");
+    dots.className = "swipe-dots";
+    dots.setAttribute("aria-hidden", "true");
+    feats.forEach((_, i) => dots.append(Object.assign(document.createElement("i"), { className: i ? "" : "on" })));
+    rows.after(dots);
+    rows.addEventListener("scroll", () => {
+      const i = Math.round(rows.scrollLeft / (feats[0].offsetWidth + 12));
+      [...dots.children].forEach((d, j) => d.classList.toggle("on", j === i));
+    }, { passive: true });
+  }
+  if (rows && mode === "list") {
+    const feats = [...rows.querySelectorAll(".feat")];
+    const open = (f) => feats.forEach((g) => { g.classList.toggle("open", g === f); if (g === f) setTimeout(() => g.classList.add("in"), 120); });
+    feats.forEach((f) => f.querySelector(".row-text").addEventListener("click", () => { if (narrow.matches) open(f.classList.contains("open") ? null : f); }));
+    open(feats[0]);
+  }
+
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // The bar turns to glass once the page has scrolled under it.

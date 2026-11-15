@@ -664,62 +664,54 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
 .rd .tour-window { background: var(--solid-0); }
 .rd .dev .lp-screen { background: var(--solid-1); }
 
-/* ---- Phones: their own layout, not the desktop stacked up. ----
-   The hero keeps one strong action. The features are a deck: each is a solid card that sticks
-   under the bar while the next slides up over it, edged at the top with a line of the beam. */
+/* ---- Phones: the hero keeps one strong action. ---- */
 @media (max-width: 760px) {
   .rd .nav-gh { display: none; }
-
   .bhero { min-height: max(640px, min(100svh, 860px)); padding-bottom: 40px; }
   .bhero .hero-actions { gap: 4px; }
   .bhero .dl-other, .endcard .dl-other { height: 44px; background: none; box-shadow: none; color: var(--fg-2); font-weight: 560; }
   .bhero .dl-other::after, .endcard .dl-other::after { display: none; }
-
-  .rows { gap: 18px; padding-top: 72px; }
-  .rows .feat.row, .rows .feat.row.flip, .rows .feat.row.stack {
-    position: sticky;
-    top: calc(80px + var(--k, 0) * 10px);
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 20px;
-    padding: 24px 18px 22px;
-    border-radius: 26px;
-    background: var(--solid-1);
-    box-shadow: inset 0 0 0 1px var(--hair), 0 -18px 40px -12px #000;
-    overflow: hidden;
-  }
-  .rows .feat.row::before {
-    content: "";
-    position: absolute;
-    left: 10%;
-    right: 10%;
-    top: 0;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.85) 30%, rgba(255, 238, 170, 1) 60%, transparent);
-    box-shadow: 0 0 14px 2px rgba(253, 201, 1, 0.45);
-  }
-  .rows .feat:nth-child(1) { --k: 0; }
-  .rows .feat:nth-child(2) { --k: 1; }
-  .rows .feat:nth-child(3) { --k: 2; }
-  .rows .feat:nth-child(4) { --k: 3; }
-  .rows .feat:nth-child(5) { --k: 4; }
-  .rows .feat:nth-child(6) { --k: 5; }
-  .rows .feat:nth-child(7) { --k: 6; }
-  .rows .feat.row h3 { font-size: 28px; }
-  .rows .feat.row .row-text { gap: 14px; }
-  .rd .rows .card { background: var(--solid-2); }
-  .rows .row-vis > * { width: 100% !important; }
-
-  /* Each card fits the screen under the bar, so the deck never hides half a demo. */
-  .feat-scan .scan-shelf { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 14px; }
-  .feat-scan .sp:nth-child(n+4) { display: none; }
-  .feat-scan .sf:nth-of-type(n+5) { display: none; }
-  .bl { gap: 8px; }
-  .bl-stop { grid-template-columns: 38px minmax(0, 1fr); }
-  .bl-stop img { width: 38px; }
-  .bl-stop span { font-size: 14px; }
-  .feat-room .row-text { display: flex; }
-  .feat-room .room-open { display: none; }
 }
+
+/* ---- Three phone layouts for the features, picked with ?m= while we choose (redesign.js). ---- */
+@media (max-width: 760px) {
+  /* A, flow: one feature after another on the page itself, no boxes, a line of the beam
+     between them. */
+  body.m-flow .rows { gap: 0; }
+  body.m-flow .rows .feat.row { position: relative; gap: 20px; padding: 48px 0; }
+  body.m-flow .rows .feat.row + .feat.row::before { content: ""; position: absolute; left: -10%; right: -10%; top: 0; height: 2px; border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(253, 201, 1, 0.75) 30%, rgba(255, 238, 170, 0.95) 60%, transparent); box-shadow: 0 0 14px 2px rgba(253, 201, 1, 0.35); transform: rotate(-4deg); }
+  body.m-flow .rows .feat.row h3 { font-size: 32px; }
+
+  /* B, swipe: the features are a row of cards you swipe through, like an app's screenshots,
+     with the dots under them saying where you are. */
+  body.m-swipe .rows { display: flex; gap: 12px; margin: 0; padding: 72px var(--gutter) 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter); scrollbar-width: none; }
+  body.m-swipe .rows::-webkit-scrollbar { display: none; }
+  body.m-swipe .rows .feat.row { flex: 0 0 86%; display: flex; flex-direction: column; justify-content: flex-start; gap: 18px; padding: 22px 18px; border-radius: 24px; background: var(--solid-1); box-shadow: inset 0 0 0 1px var(--hair); scroll-snap-align: start; }
+  body.m-swipe .rows .feat.row h3 { font-size: 26px; }
+  body.m-swipe .feat-scan .sp:nth-child(n+4), body.m-swipe .feat-scan .sf:nth-of-type(n+5) { display: none; }
+  body.m-swipe .bl { gap: 8px; }
+  body.m-swipe .bl-stop { grid-template-columns: 36px minmax(0, 1fr); }
+  body.m-swipe .bl-stop img { width: 36px; }
+  body.m-swipe .feat-room .row-text { display: flex; }
+  body.m-swipe .feat-room .room-open { display: none; }
+  .swipe-dots { display: flex; justify-content: center; gap: 8px; padding: 14px 0 0; }
+  .swipe-dots i { width: 7px; height: 7px; border-radius: 999px; background: var(--fg-4); transition: width 0.25s var(--ease), background-color 0.25s ease; }
+  .swipe-dots i.on { width: 22px; background: var(--brand); box-shadow: 0 0 10px rgba(253, 201, 1, 0.6); }
+
+  /* C, list: every feature is a line you tap open, one open at a time, the demo sliding out
+     under it. A short page that still holds everything. */
+  body.m-list .rows { gap: 0; padding-top: 64px; }
+  body.m-list .rows .feat.row { gap: 0; border-top: 1px solid var(--hair); }
+  body.m-list .rows .feat.row:last-child { border-bottom: 1px solid var(--hair); }
+  body.m-list .feat-room .row-text { display: flex; }
+  body.m-list .feat-room .room-open { display: none; }
+  body.m-list .rows .feat.row .row-text { cursor: pointer; }
+  body.m-list .rows .feat.row h3 { position: relative; width: 100%; padding: 20px 36px 20px 0; font-size: 24px; color: var(--fg-2); transition: color 0.25s ease; }
+  body.m-list .rows .feat.row h3::after { content: ""; position: absolute; right: 6px; top: 50%; width: 10px; height: 10px; margin-top: -7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 0.3s var(--ease); }
+  body.m-list .rows .feat.row.open h3 { color: var(--fg); }
+  body.m-list .rows .feat.row.open h3::after { transform: rotate(225deg); margin-top: -2px; color: var(--brand); }
+  body.m-list .rows .feat.row:not(.open) .row-vis { display: none; }
+  body.m-list .rows .feat.row.open .row-vis { padding-bottom: 24px; animation: list-open 0.4s var(--ease) both; }
+}
+
+@keyframes list-open { from { opacity: 0; transform: translateY(-8px); } }
