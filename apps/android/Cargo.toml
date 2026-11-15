@@ -51,6 +51,10 @@ objc2-metal = { version = "0.3", default-features = false, features = ["std", "M
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSError", "NSLocale", "NSNotification", "NSOperation", "NSString", "NSURL", "NSValue"] }
 block2 = "0.6"
 
+# Lays the Slint pages out headless in tests, to measure them at a narrow width.
+[dev-dependencies]
+i-slint-backend-testing = "1.18"
+
 [build-dependencies]
 slint-build = "1.18"
 
