@@ -789,21 +789,21 @@ mod tests {
         assert_eq!(picked(Install::Package { owner: None }, "x86_64"), None);
     }
 
-    /// Unix paths: Windows reads `/opt/...` as relative.
+    /// Unix paths: Windows reads `/srv/...` as relative.
     #[cfg(unix)]
     #[test]
     fn linux_tells_an_appimage_a_package_and_a_build_apart() {
         let exe = Path::new("/tmp/.mount_AnibeaXYZ/usr/bin/anibeam");
         let runtime = || {
             Some((
-                PathBuf::from("/opt/example/Anibeam.AppImage"),
+                PathBuf::from("/srv/example/Anibeam.AppImage"),
                 PathBuf::from("/tmp/.mount_AnibeaXYZ"),
             ))
         };
         assert_eq!(
             Install::classify(exe, runtime(), Os::Linux),
             Install::AppImage {
-                path: "/opt/example/Anibeam.AppImage".into()
+                path: "/srv/example/Anibeam.AppImage".into()
             }
         );
         // Started from a terminal inside some AppImage: its variables are not ours
@@ -817,7 +817,7 @@ mod tests {
         );
         assert_eq!(
             Install::classify(
-                Path::new("/opt/example/Anibeam/target/release/anibeam"),
+                Path::new("/srv/example/Anibeam/target/release/anibeam"),
                 None,
                 Os::Linux
             ),
@@ -873,7 +873,7 @@ mod tests {
     #[test]
     fn an_appimage_restart_waits_then_opens_the_same_path() {
         let p = Prepared::AppImage {
-            path: "/opt/example/Anibeam.AppImage".into(),
+            path: "/srv/example/Anibeam.AppImage".into(),
         };
         assert_eq!(p.helper(42, false, &[]), None);
         let h = p
@@ -881,7 +881,7 @@ mod tests {
             .unwrap();
         assert_eq!(h.program, PathBuf::from("/bin/sh"));
         assert_eq!(h.args[3], "42");
-        assert_eq!(h.args[4], "/opt/example/Anibeam.AppImage");
+        assert_eq!(h.args[4], "/srv/example/Anibeam.AppImage");
         assert_eq!(h.args[5..], ["--root", "/tmp/s"]);
     }
 
