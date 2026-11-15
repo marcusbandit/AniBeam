@@ -21,9 +21,9 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
-use crate::contract::*;
-use crate::net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
-use crate::sync::recover;
+use anibeam_contract::*;
+use anibeam_foundation::sync::recover;
+use anibeam_net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "anirss";
@@ -172,7 +172,7 @@ impl AnirssClient {
         let mut endpoints: Vec<SearchEndpoint> =
             serde_json::from_value(v["endpoints"].clone()).unwrap_or_default();
         for e in &mut endpoints {
-            e.kind = crate::releases::kinds::shape_of(&e.kind).to_string();
+            e.kind = anibeam_releases::kinds::shape_of(&e.kind).to_string();
         }
         Ok(endpoints)
     }
@@ -397,7 +397,7 @@ impl AnirssClient {
         let mut rules: Vec<SubscriptionRule> =
             serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
         for r in &mut rules {
-            r.query = crate::downloads::query::decode_search_query(&r.feed_url).unwrap_or_default();
+            r.query = crate::query::decode_search_query(&r.feed_url).unwrap_or_default();
         }
         Ok(rules)
     }
@@ -498,7 +498,7 @@ impl AnirssClient {
             CoreError::service(
                 SERVICE,
                 "unreachable",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-anirss-no-answer",
                     &[("message", e.message.into())],
                 ),
@@ -508,7 +508,7 @@ impl AnirssClient {
 }
 
 /// The endpoint writes the releases below sync the installed endpoints with (#854).
-impl crate::repos::AnirssEndpoints for AnirssClient {
+impl anibeam_releases::repos::AnirssEndpoints for AnirssClient {
     fn put_endpoint(&self, spec: Value) -> BoxFuture<'_, Result<(), CoreError>> {
         Box::pin(AnirssClient::put_endpoint(self, spec))
     }
@@ -536,7 +536,7 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
         .as_str()
         .map(String::from)
         .unwrap_or_else(|| {
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-anirss-answered",
                 &[
                     ("status", response.status.to_string().into()),
@@ -662,13 +662,13 @@ impl Sidecar {
         home: &super::home::AnirssHome,
     ) -> Result<Sidecar, SpawnFailure> {
         let port = free_port().map_err(|e| {
-            SpawnFailure::Io(crate::i18n::tr(
+            SpawnFailure::Io(anibeam_contract::i18n::tr(
                 "core-downloads-no-free-port",
                 &[("error", e.to_string().into())],
             ))
         })?;
         let token = random_token();
-        let mut cmd = crate::process::command(command);
+        let mut cmd = anibeam_foundation::process::command(command);
         cmd.arg("--serve")
             .arg("--port")
             .arg(port.to_string())
@@ -736,11 +736,11 @@ impl Sidecar {
             if let Ok(Some(status)) = self.child.try_wait() {
                 let status = status.to_string();
                 return Err(match self.stderr_tail() {
-                    Some(said) => crate::i18n::tr(
+                    Some(said) => anibeam_contract::i18n::tr(
                         "core-downloads-anirss-exited-said",
                         &[("status", status.into()), ("said", said.into())],
                     ),
-                    None => crate::i18n::tr(
+                    None => anibeam_contract::i18n::tr(
                         "core-downloads-anirss-exited",
                         &[("status", status.into())],
                     ),
@@ -753,11 +753,11 @@ impl Sidecar {
                 let _ = self.child.start_kill();
                 let seconds = READY_TIMEOUT.as_secs();
                 return Err(match self.stderr_tail() {
-                    Some(said) => crate::i18n::tr(
+                    Some(said) => anibeam_contract::i18n::tr(
                         "core-downloads-anirss-slow-start-said",
                         &[("seconds", seconds.into()), ("said", said.into())],
                     ),
-                    None => crate::i18n::tr(
+                    None => anibeam_contract::i18n::tr(
                         "core-downloads-anirss-slow-start",
                         &[("seconds", seconds.into())],
                     ),
@@ -796,7 +796,7 @@ impl Sidecar {
 /// Asked after a sidecar failed to come up, to tell an anirss too old for
 /// `--serve` from one that broke some other way.
 pub async fn installed_version(command: &str) -> Option<String> {
-    let mut cmd = crate::process::command(command);
+    let mut cmd = anibeam_foundation::process::command(command);
     cmd.arg("--version")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -839,7 +839,7 @@ fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
 /// shows.
 pub fn install_hint() -> String {
     if cfg!(target_os = "macos") {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-anirss-install-mac",
             &[
                 ("version", MIN_VERSION.into()),
@@ -847,7 +847,7 @@ pub fn install_hint() -> String {
             ],
         )
     } else {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-anirss-install-linux",
             &[
                 ("version", MIN_VERSION.into()),
@@ -862,7 +862,7 @@ pub fn install_hint() -> String {
 
 /// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
 pub fn too_old_message(version: &str) -> String {
-    crate::i18n::tr(
+    anibeam_contract::i18n::tr(
         "core-downloads-anirss-too-old",
         &[
             ("version", version.into()),
@@ -875,7 +875,7 @@ pub fn too_old_message(version: &str) -> String {
 /// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
 /// being its own.
 pub fn lacks_feature_message(version: &str) -> String {
-    crate::i18n::tr(
+    anibeam_contract::i18n::tr(
         "core-downloads-anirss-lacks-feature",
         &[
             ("version", version.into()),
@@ -888,12 +888,12 @@ pub fn lacks_feature_message(version: &str) -> String {
 /// How this platform updates anirss, for the message an old one shows.
 pub fn update_hint() -> String {
     if cfg!(target_os = "macos") {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-anirss-update-mac",
             &[("command", "brew upgrade anirss".into())],
         )
     } else {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-anirss-update-linux",
             &[("command", "uv tool upgrade anirss".into())],
         )
@@ -1050,7 +1050,7 @@ mod tests {
         assert_eq!(too_old("anirss dev"), None);
         assert_eq!(too_old(""), None);
     }
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     fn client(http: &Arc<FakeHttp>) -> AnirssClient {
         AnirssClient::new("http://127.0.0.1:8787/", "tok", http.clone())
@@ -1059,7 +1059,7 @@ mod tests {
     #[tokio::test]
     async fn the_endpoints_anirss_lists_come_back_under_their_shape_kinds() {
         let http = Arc::new(FakeHttp::new());
-        let old = crate::releases::kinds::RENAMED[0].0;
+        let old = anibeam_releases::kinds::RENAMED[0].0;
         http.push_json(
             200,
             json!({"endpoints": [
@@ -1303,26 +1303,18 @@ mod tests {
     /// `sync_anirss` writes ours and leaves what was written by hand.
     #[test]
     fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
-        use crate::core::Core;
-        use crate::foundation::secrets::Secrets;
-        use crate::repos::{add_custom, sync_anirss};
-        use crate::{CorePaths, SearchEndpoint};
+        use crate::testing::Teams;
+        use anibeam_releases::repos::{add_custom, sync_anirss};
 
-        let custom = |core: &Core, name: &str, url: &str| {
-            add_custom(&core.releases, name.into(), url.into(), Vec::new()).unwrap();
+        let custom = |teams: &Teams, name: &str, url: &str| {
+            add_custom(&teams.releases, name.into(), url.into(), Vec::new()).unwrap();
         };
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        custom(&core, "mine", "https://a.example/rss?q={query}&token=t1");
+        let http = anibeam_net::FakeHttp::new();
+        let teams = Teams::open(dir.path(), http.clone());
+        custom(&teams, "mine", "https://a.example/rss?q={query}&token=t1");
         custom(
-            &core,
+            &teams,
             "proxied",
             "http://127.0.0.1:9117/x?apikey=k&q={query}",
         );
@@ -1342,8 +1334,8 @@ mod tests {
         // version says: nothing is sent.
         let have = vec![theirs("proxied", "http://elsewhere/")];
         let without = health("0.6.0", &["qbt_env_session"]);
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
             &anirss,
             without.has(ENDPOINT_WRITES),
             &have
@@ -1353,8 +1345,8 @@ mod tests {
         // One that lists it takes them, even with a version no parser reads.
         let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
         http.push_json(201, serde_json::json!({}));
-        assert!(core.services.handle.block_on(sync_anirss(
-            &core.services,
+        assert!(teams.services.handle.block_on(sync_anirss(
+            &teams.services,
             &anirss,
             writes.has(ENDPOINT_WRITES),
             &have
@@ -1373,8 +1365,8 @@ mod tests {
             theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token=***"),
         ];
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
             &anirss,
             writes.has(ENDPOINT_WRITES),
             &have
@@ -1382,7 +1374,8 @@ mod tests {
         assert_eq!(http.requests().len(), 1);
 
         // Switched off: it comes out of anirss again, and the hand-written one stays.
-        core.services
+        teams
+            .services
             .store
             .write(|c| {
                 c.execute(
@@ -1397,8 +1390,8 @@ mod tests {
             theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token={token}"),
         ];
-        assert!(core.services.handle.block_on(sync_anirss(
-            &core.services,
+        assert!(teams.services.handle.block_on(sync_anirss(
+            &teams.services,
             &anirss,
             writes.has(ENDPOINT_WRITES),
             &have
@@ -1409,13 +1402,13 @@ mod tests {
         assert!(sent[1].url.ends_with("/endpoints/mine"));
         // Nothing left to do: nothing is sent.
         let have = vec![theirs("proxied", "http://elsewhere/")];
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
             &anirss,
             writes.has(ENDPOINT_WRITES),
             &have
         )));
         assert_eq!(http.requests().len(), 2);
-        core.shutdown();
+        teams.shutdown();
     }
 }

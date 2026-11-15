@@ -121,6 +121,7 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-contract",
+ "anibeam-downloads",
  "anibeam-foundation",
  "anibeam-host-api",
  "anibeam-library",
@@ -130,7 +131,6 @@ dependencies = [
  "anibeam-releases",
  "anibeam-room",
  "anibeam-trackers",
- "anyhow",
  "axum",
  "base64 0.23.1",
  "chacha20poly1305",
@@ -139,7 +139,6 @@ dependencies = [
  "futures-core",
  "futures-util",
  "hkdf",
- "librqbit",
  "matroska-demuxer",
  "mdns-sd",
  "rand 0.10.2",
@@ -157,12 +156,38 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
- "toml",
  "tracing",
  "uniffi",
- "walkdir",
  "windows-sys 0.61.2",
  "x25519-dalek",
+]
+
+[[package]]
+name = "anibeam-downloads"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "anibeam-releases",
+ "anibeam-trackers",
+ "anyhow",
+ "librqbit",
+ "rand 0.10.2",
+ "regex",
+ "reqwest",
+ "roxmltree",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+ "tokio",
+ "toml",
+ "tracing",
+ "walkdir",
 ]
 
 [[package]]

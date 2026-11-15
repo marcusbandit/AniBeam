@@ -9,9 +9,9 @@ use std::sync::{Arc, Weak};
 use anibeam_foundation::testing::Running;
 
 use super::Downloads;
-use crate::foundation::services::Services;
-use crate::net::{Http, Net};
-use crate::releases::{Releases, Searcher};
+use anibeam_foundation::services::Services;
+use anibeam_net::{Http, Net};
+use anibeam_releases::{Releases, Searcher};
 
 pub(crate) struct Teams {
     pub(crate) services: Arc<Services>,
@@ -27,7 +27,10 @@ impl Teams {
     pub(crate) fn open(dir: &Path, http: Arc<dyn Http>) -> Teams {
         let running = Running::open(dir, http);
         let services = running.services.clone();
-        let net = Arc::new(Net::new(services.clone(), crate::library::cards::cards_for));
+        let net = Arc::new(Net::new(
+            services.clone(),
+            anibeam_library::cards::cards_for,
+        ));
         let releases = Arc::new(Releases::new(services.clone()));
         let downloads = Arc::new(Downloads::new(services.clone(), net));
         releases

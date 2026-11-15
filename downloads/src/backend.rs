@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::services::Services;
-use crate::releases::BestfitConfig;
-use crate::releases::native::Native;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_releases::BestfitConfig;
+use anibeam_releases::native::Native;
 
 use super::anirss::{Analysis, AnirssClient, SearchRaw};
 use super::{ensure_client, native as on_qbt, settings};
@@ -252,7 +252,7 @@ impl DownloadsBackend {
     /// hand as a plain feed; the core's are its own.
     pub fn narrows_locally(&self, downloads: &Downloads, endpoint: &str) -> bool {
         let plain =
-            |kind: &str, narrows: bool| kind != crate::releases::kinds::FILTERED_RSS && !narrows;
+            |kind: &str, narrows: bool| kind != anibeam_releases::kinds::FILTERED_RSS && !narrows;
         match self {
             DownloadsBackend::Anirss(_) => {
                 let Some(kind) = downloads
@@ -264,8 +264,8 @@ impl DownloadsBackend {
                 else {
                     return false;
                 };
-                kind != crate::releases::kinds::FILTERED_RSS
-                    && !crate::repos::installed_narrows(&downloads.services, endpoint)
+                kind != anibeam_releases::kinds::FILTERED_RSS
+                    && !anibeam_releases::repos::installed_narrows(&downloads.services, endpoint)
             }
             DownloadsBackend::Native(native, _) => native
                 .endpoints

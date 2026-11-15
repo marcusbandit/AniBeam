@@ -16,12 +16,12 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use rusqlite::{Connection, params, params_from_iter};
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::downloads::qbt::QbtClient;
-use crate::foundation::services::Services;
-use crate::store::sql::placeholders;
-use crate::sync::recover;
+use crate::Downloads;
+use crate::qbt::QbtClient;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::sync::recover;
 
 /// One recorded origin: the torrent's info hash, lower case, and its name.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,7 +62,7 @@ pub fn of(conn: &Connection, paths: &[&str]) -> Result<HashMap<String, Origin>, 
 /// the release reads as the torrent the way it would read as the file
 /// (`releases::facts::same_release`, with the torrent's name in the file's place).
 pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts) -> bool {
-    match crate::foundation::magnet::hash(link) {
+    match anibeam_foundation::magnet::hash(link) {
         Some(hash) => hash.eq_ignore_ascii_case(&origin.hash),
         None => super::facts::same_release(title, facts, &origin.name),
     }
@@ -159,7 +159,7 @@ pub async fn record_from(
             }
         }
     }
-    let now = crate::time::now_secs();
+    let now = anibeam_foundation::time::now_secs();
     let count = found.len() as u64;
     services.store
         .tx_async(move |tx| {
@@ -213,7 +213,7 @@ pub fn after_scan(downloads: &Arc<Downloads>) {
 
 /// The debug line a read of origins off the caller's path leaves: nothing
 /// when no file was new, else how many, or why none were.
-pub(crate) fn logged(recorded: Result<u64, CoreError>, when: &str) {
+pub fn logged(recorded: Result<u64, CoreError>, when: &str) {
     match recorded {
         Ok(0) => {}
         Ok(n) => tracing::debug!("recorded the torrent of {n} files {when}"),
@@ -267,8 +267,8 @@ fn slashes(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
     use anibeam_foundation::testing::Running;
+    use anibeam_net::FakeHttp;
 
     fn origin(hash: &str, name: &str) -> Origin {
         Origin {
@@ -346,7 +346,7 @@ mod tests {
     }
 
     fn torrent(hash: &str, name: &str, content: &str) -> Torrent {
-        let mut t = crate::downloads::qbt::tests_torrent();
+        let mut t = crate::qbt::tests_torrent();
         t.progress = 1.0;
         t.hash = hash.into();
         t.name = name.into();
@@ -558,7 +558,7 @@ mod tests {
             // No origin for episode 2: the name still decides
             release("Show - 02", "https://example.invalid/2.torrent"),
         ];
-        let (facts, show) = crate::downloads::annotate(&running.services, "Show", &items);
+        let (facts, show) = crate::annotate(&running.services, "Show", &items);
         assert!(show.is_some());
         assert_eq!((facts[0].on_disk, facts[0].other_on_disk), (false, true));
         assert_eq!((facts[1].on_disk, facts[1].other_on_disk), (true, false));

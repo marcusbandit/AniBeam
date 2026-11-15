@@ -17,9 +17,9 @@ use librqbit::{
 use serde::{Deserialize, Serialize};
 
 use super::storage::Shelf;
-use crate::contract::*;
-use crate::downloads::rolling::{NORMAL, SKIP};
-use crate::sync::recover;
+use crate::rolling::{NORMAL, SKIP};
+use anibeam_contract::*;
+use anibeam_foundation::sync::recover;
 
 /// What the engine itself does not keep: each torrent's title, folder and times, and
 /// whether the person paused it (a hold for Wi-Fi resumes only the others).
@@ -82,7 +82,7 @@ fn fail(e: impl std::fmt::Display) -> CoreError {
 }
 
 fn now() -> i64 {
-    crate::time::now_secs()
+    anibeam_foundation::time::now_secs()
 }
 
 /// An add that gives up after a minute: a magnet nobody answers for would wait forever.
@@ -139,7 +139,7 @@ fn files_of(
                 let done = stats.file_progress.get(i).copied().unwrap_or(0);
                 let name = f.relative_filename.to_string_lossy().into_owned();
                 TorrentFile {
-                    episode: crate::releases::facts::read_name(&name).episode,
+                    episode: anibeam_releases::facts::read_name(&name).episode,
                     name,
                     size: f.len,
                     progress: if f.len == 0 {
@@ -217,7 +217,7 @@ impl Engine {
         let entries = self.entries.lock().unwrap().clone();
         match serde_json::to_vec_pretty(&entries) {
             Ok(bytes) => {
-                if let Err(e) = crate::atomic_file::write(&self.entries_path, bytes) {
+                if let Err(e) = anibeam_foundation::atomic_file::write(&self.entries_path, bytes) {
                     tracing::warn!("the download list was not saved: {e}");
                 }
             }
@@ -294,7 +294,7 @@ impl Engine {
             .map(|d| {
                 let name = d.filename.to_pathbuf().to_string_lossy().into_owned();
                 TorrentFile {
-                    episode: crate::releases::facts::read_name(&name).episode,
+                    episode: anibeam_releases::facts::read_name(&name).episode,
                     name,
                     size: d.len,
                     progress: 0.0,
@@ -478,7 +478,7 @@ impl Engine {
                     .to_string_lossy()
                     .into_owned(),
             };
-            let facts = crate::releases::facts::read_name(&name);
+            let facts = anibeam_releases::facts::read_name(&name);
             out.push(Torrent {
                 hash,
                 name,

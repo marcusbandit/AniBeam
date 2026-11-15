@@ -369,7 +369,7 @@ core-cast-hi10p = Cet épisode est en H.264 10 bits (Hi10P), qu'aucune TV ni auc
 core-cast-video-codec = La vidéo de cet épisode ({ $codec }) ne peut pas être diffusée.
 core-cast-audio-codec = L'audio de cet épisode ({ $codec }) ne peut pas être diffusé.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -386,7 +386,7 @@ core-phone-empty-search = la recherche est vide
 core-phone-no-results = aucun résultat pour { $query }
 core-phone-own-engine = un moteur torrent intégré
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = connecté
 core-phone-check-refused = refusé : { $error }
@@ -1024,7 +1024,7 @@ core-transfer-progress-accounts = comptes
 core-transfer-progress-preferences = préférences
 core-transfer-progress-done = terminé
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss n'a pas répondu : { $message }
 core-downloads-anirss-answered = anirss a répondu { $status } : { $text }
@@ -1040,24 +1040,24 @@ core-downloads-anirss-lacks-feature = anirss { $version } ne sait pas garder la 
 core-downloads-anirss-update-mac = Mettez-le à jour avec : { $command }
 core-downloads-anirss-update-linux = Mettez à jour le paquet anirss, ou lancez : { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = le fichier torrent n'est pas arrivé : { $message }
 core-downloads-torrent-file-answered = le fichier torrent a répondu { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = le flux a répondu { $status }
 core-downloads-not-a-feed = ce n'est pas un flux : { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett n'est pas installé : { $program } est introuvable. Installez-le, ou changez la commande dans les réglages.
 core-downloads-endpoint-start-failed = { $name } n'a pas pu démarrer : { $why }
 core-downloads-endpoint-start-timeout = { $name } a démarré mais n'a pas répondu en { $seconds } secondes.
 core-downloads-command-exited = la commande s'est terminée avec { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss s'est arrêté
 core-downloads-anirss-missing = { $install }. Ou indiquez un serveur en marche dans les réglages.
@@ -1138,7 +1138,7 @@ core-downloads-client-switched = Les téléchargements utilisent maintenant une 
 core-downloads-host-not-running = ne tourne pas sur l'hôte
 core-downloads-host-late = n'a pas répondu à temps
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = recherche vide
 core-downloads-native-no-results = aucun résultat pour { $query }
@@ -1153,7 +1153,7 @@ core-downloads-native-outside-folders = refus de supprimer des fichiers hors des
 core-downloads-refuse-home-folder = { $path } est le dossier personnel ou le contient, donc rien n'a été retiré
 core-downloads-refuse-library-folder = { $path } est un dossier de bibliothèque ou en contient un, donc rien n'a été retiré
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent n'indique aucun dossier d'enregistrement par défaut ; définissez-en un dans qBittorrent
 # $folder is the folder given
@@ -1164,7 +1164,7 @@ core-downloads-name-empty = le nom ne peut pas être vide
 core-downloads-name-slash = le nom ne doit contenir ni / ni \
 core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Désabonné de { $title }, sa diffusion est terminée.
 core-downloads-prune-failed = Impossible de se désabonner de { $title }. Vérifiez Téléchargements dans les réglages.
@@ -1176,11 +1176,11 @@ core-downloads-refuse-root = { $path } est la racine du système de fichiers, do
 core-downloads-refuse-outside-library = { $path } n'est pas dans un dossier de bibliothèque, donc rien n'a été retiré
 core-downloads-refuse-save-folder = { $path } est le dossier où le torrent a été enregistré, pas ce qu'il a téléchargé, donc rien n'a été retiré
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = L'épisode { $episode } de { $title } n'est toujours pas arrivé trois jours après sa diffusion. Votre flux continue de le chercher.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = la commande anirss ne peut pas être vide
 core-downloads-settings-anirss-address = l'adresse d'anirss doit commencer par http:// ou https://
@@ -1190,7 +1190,7 @@ core-downloads-settings-same-id = deux clients ont l'identifiant { $id }
 core-downloads-settings-saved-address = l'adresse de { $name } doit commencer par http:// ou https://
 core-downloads-settings-same-name = deux clients s'appellent { $name } ; donnez à chacun son propre nom
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = qBittorrent n'a pas répondu à { $address } : { $message }
 core-downloads-qbt-password-rejected = qBittorrent a refusé le mot de passe ; corrigez-le dans les réglages
@@ -1202,13 +1202,13 @@ core-downloads-qbt-not-added = qBittorrent n'a pas ajouté les torrents : { $sa
 core-downloads-qbt-some-not-added = qBittorrent n'a pas pu ajouter { $count } des torrents : { $said }
 core-downloads-qbt-answered = qBittorrent a répondu { $status } : { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = l'élément { $item } ne fait pas partie des { $count } releases
 core-downloads-not-replaced = L'épisode { $episode } n'a pas été remplacé.
 core-downloads-replaced = Épisode { $episode } remplacé par le nouveau téléchargement.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = aucun téléchargement glissant { $id }
 core-downloads-rolled = { $title } : maintenant sur les épisodes { $from } à { $to } sur { $total }.

@@ -14,17 +14,17 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::services::Services;
-use crate::releases::native::Native;
-use crate::releases::stats;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_releases::native::Native;
+use anibeam_releases::stats;
 
 use super::anirss::url_safe;
 use super::paths::{self, SavePaths};
 use super::qbt::{self, QbtClient};
 use super::settings;
-use crate::library::trash;
+use anibeam_library::trash;
 
 /// How `CoreError::Service` names a refusal that is the engine's own,
 /// not the torrent client's.
@@ -61,11 +61,11 @@ pub(super) async fn subscribe(
     if query.is_empty() {
         return Err(CoreError::invalid(
             "query",
-            crate::i18n::tr("core-downloads-native-empty-query", &[]),
+            anibeam_contract::i18n::tr("core-downloads-native-empty-query", &[]),
         ));
     }
     if items.is_empty() {
-        return Err(not_found(crate::i18n::tr(
+        return Err(not_found(anibeam_contract::i18n::tr(
             "core-downloads-native-no-results",
             &[("query", format!("{query:?}").into())],
         )));
@@ -91,7 +91,7 @@ pub(super) async fn subscribe(
         // A feed already sits at that path with another address
         return Err(CoreError::invalid(
             "name",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-native-feed-taken",
                 &[("name", format!("{name:?}").into())],
             ),
@@ -182,7 +182,7 @@ pub(super) async fn download(
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
-            crate::i18n::tr("core-downloads-native-no-items", &[]),
+            anibeam_contract::i18n::tr("core-downloads-native-no-items", &[]),
         ));
     }
     let name = paths::name_for(name, items, FALLBACK_NAME)?;
@@ -221,7 +221,7 @@ fn link_file_name(link: &str) -> String {
         None => "",
     };
     // A path's `+` is a plus, not a form's space
-    let name = crate::percent::decode(&last.replace('+', "%2B"));
+    let name = anibeam_foundation::percent::decode(&last.replace('+', "%2B"));
     if name.is_empty() {
         "file.torrent".to_string()
     } else {
@@ -248,7 +248,7 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
         if !fits || safe.chars().any(char::is_whitespace) {
             return Err(CoreError::invalid(
                 "links",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-native-bad-link",
                     &[("link", format!("{link:?}").into())],
                 ),
@@ -259,7 +259,7 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
     if out.is_empty() {
         return Err(CoreError::invalid(
             "links",
-            crate::i18n::tr("core-downloads-native-no-links", &[]),
+            anibeam_contract::i18n::tr("core-downloads-native-no-links", &[]),
         ));
     }
     Ok(out)
@@ -324,7 +324,7 @@ async fn add_links(
             file_hashes
                 .get(l)
                 .cloned()
-                .or_else(|| crate::foundation::magnet::hash(l))
+                .or_else(|| anibeam_foundation::magnet::hash(l))
         })
         .collect();
     Ok(AddedTorrents {
@@ -365,7 +365,7 @@ pub(super) async fn subscriptions(
             let save_path = rule_save_path(rule).unwrap_or("").to_string();
             SubscriptionRule {
                 name: name.clone(),
-                query: crate::downloads::query::decode_search_query(&feed_url).unwrap_or_default(),
+                query: crate::query::decode_search_query(&feed_url).unwrap_or_default(),
                 feed_url,
                 torrent_count: counts.get(&paths::norm(&save_path)).copied().unwrap_or(0),
                 file_count: 0,
@@ -441,14 +441,14 @@ pub(super) async fn remove(
     if unique.is_empty() {
         return Err(CoreError::invalid(
             "names",
-            crate::i18n::tr("core-downloads-native-no-names", &[]),
+            anibeam_contract::i18n::tr("core-downloads-native-no-names", &[]),
         ));
     }
     let here = files_here(&downloads.services)?;
     if files && !torrents && !here {
         return Err(CoreError::invalid(
             "files",
-            crate::i18n::tr("core-downloads-native-files-elsewhere", &[]),
+            anibeam_contract::i18n::tr("core-downloads-native-files-elsewhere", &[]),
         ));
     }
     let qbt = super::qbt_client(downloads).await?;
@@ -489,7 +489,7 @@ async fn plan(
         .map(String::as_str)
         .collect();
     if !missing.is_empty() {
-        return Err(not_found(crate::i18n::tr(
+        return Err(not_found(anibeam_contract::i18n::tr(
             "core-downloads-native-unknown-feeds",
             &[("names", missing.join(", ").into())],
         )));
@@ -565,7 +565,7 @@ fn confined(
     if !outside.is_empty() {
         return Err(CoreError::invalid(
             "files",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-native-outside-folders",
                 &[("paths", outside.join(", ").into())],
             ),
@@ -601,7 +601,7 @@ fn confined(
         if home.as_deref().is_some_and(holds) {
             return Err(CoreError::invalid(
                 "files",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-refuse-home-folder",
                     &[("path", p.save_path.as_str().into())],
                 ),
@@ -610,7 +610,7 @@ fn confined(
         if sources.iter().any(|s| holds(s)) {
             return Err(CoreError::invalid(
                 "files",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-refuse-library-folder",
                     &[("path", p.save_path.as_str().into())],
                 ),
@@ -685,7 +685,7 @@ fn only_its_own(p: &Plan) -> bool {
             };
             if meta.is_dir() {
                 videos(&path, out);
-            } else if crate::foundation::names::is_video(&path.to_string_lossy()) {
+            } else if anibeam_foundation::names::is_video(&path.to_string_lossy()) {
                 out.push(path);
             }
         }

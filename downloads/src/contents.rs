@@ -7,8 +7,8 @@
 
 use std::collections::BTreeSet;
 
-use crate::contract::*;
-use crate::net::{Http, HttpRequest};
+use anibeam_contract::*;
+use anibeam_net::{Http, HttpRequest};
 
 /// The files a `.torrent` lists, path and size; empty when the bytes are
 /// not a torrent.
@@ -50,7 +50,7 @@ pub fn episodes_of(files: &[(String, u64)]) -> Vec<u32> {
     let mut out = BTreeSet::new();
     for (path, _) in files {
         let base = path.rsplit('/').next().unwrap_or(path);
-        if !crate::foundation::names::is_video(base) {
+        if !anibeam_foundation::names::is_video(base) {
             continue;
         }
         let facts = super::facts::read_name(base);
@@ -77,7 +77,7 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
             CoreError::service(
                 "torrent",
                 "unreachable",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-torrent-file-no-answer",
                     &[("message", e.message.into())],
                 ),
@@ -87,7 +87,7 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
         return Err(CoreError::service(
             "torrent",
             format!("http_{}", r.status),
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-torrent-file-answered",
                 &[("status", r.status.to_string().into())],
             ),

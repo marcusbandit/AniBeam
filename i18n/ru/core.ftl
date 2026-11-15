@@ -391,7 +391,7 @@ core-cast-hi10p = Эта серия в 10-битном H.264 (Hi10P), котор
 core-cast-video-codec = Видео этой серии ({ $codec }) нельзя транслировать.
 core-cast-audio-codec = Аудио этой серии ({ $codec }) нельзя транслировать.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -413,7 +413,7 @@ core-phone-no-results = ничего не найдено по запросу { $
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = Собственный торрент-движок
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = подключено
@@ -1203,7 +1203,7 @@ core-transfer-progress-accounts = аккаунты
 core-transfer-progress-preferences = настройки
 core-transfer-progress-done = готово
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirss не ответил: { $message }
@@ -1225,17 +1225,17 @@ core-downloads-anirss-lacks-feature = anirss { $version } не умеет хра
 core-downloads-anirss-update-mac = Обновите его командой: { $command }
 core-downloads-anirss-update-linux = Обновите пакет anirss или выполните: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = торрент-файл не получен: { $message }
 core-downloads-torrent-file-answered = на запрос торрент-файла пришёл ответ { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = лента ответила { $status }
 core-downloads-not-a-feed = это не лента: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackett не установлен: { $program } не найден. Установите его или измените команду в настройках.
@@ -1244,7 +1244,7 @@ core-downloads-endpoint-start-failed = Не удалось запустить { 
 core-downloads-endpoint-start-timeout = { $name } запустился, но не ответил за { $seconds } с.
 core-downloads-command-exited = команда завершилась с кодом { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss остановился
 # $install is core-downloads-anirss-install-mac or -linux
@@ -1352,7 +1352,7 @@ core-downloads-client-switched = Загрузки теперь идут чере
 core-downloads-host-not-running = не запущен на хосте
 core-downloads-host-late = не ответил вовремя
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = пустой запрос
 # $query is the search, in quotes
@@ -1373,7 +1373,7 @@ core-downloads-native-outside-folders = отказ удалять файлы в�
 core-downloads-refuse-home-folder = { $path } это домашняя папка или содержит её, поэтому ничего не удалено
 core-downloads-refuse-library-folder = { $path } это папка библиотеки или содержит её, поэтому ничего не удалено
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = в qBittorrent не задана папка сохранения по умолчанию; задайте её в qBittorrent
 # $folder is the folder given
@@ -1385,7 +1385,7 @@ core-downloads-name-slash = имя не должно содержать / или
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name } не подходит как имя папки
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
@@ -1398,12 +1398,12 @@ core-downloads-refuse-root = { $path } это корень файловой си
 core-downloads-refuse-outside-library = { $path } не находится в папке библиотеки, поэтому ничего не удалено
 core-downloads-refuse-save-folder = { $path } это папка, куда сохранён торрент, а не то, что он скачал, поэтому ничего не удалено
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = Серия { $episode } «{ $title }» не появилась через три дня после выхода. Лента продолжает её искать.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = команда anirss не может быть пустой
 core-downloads-settings-anirss-address = адрес anirss должен начинаться с http:// или https://
@@ -1416,7 +1416,7 @@ core-downloads-settings-same-id = у двух клиентов одинаков�
 core-downloads-settings-saved-address = адрес { $name } должен начинаться с http:// или https://
 core-downloads-settings-same-name = два клиента называются { $name }; дайте каждому своё имя
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = qBittorrent не ответил по адресу { $address }: { $message }
@@ -1432,7 +1432,7 @@ core-downloads-qbt-some-not-added = qBittorrent не смог добавить �
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrent ответил { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = элемента { $item } нет среди релизов (всего { $count })
@@ -1440,7 +1440,7 @@ core-downloads-replace-bad-item = элемента { $item } нет среди �
 core-downloads-not-replaced = Серия { $episode } не заменена.
 core-downloads-replaced = Серия { $episode } заменена новой загрузкой.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = нет скользящей загрузки { $id }

@@ -13,11 +13,11 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use super::home::AnirssHome;
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::releases::BestfitConfig;
-use crate::store::settings;
-use crate::trackers::Secrets;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_releases::BestfitConfig;
+use anibeam_trackers::Secrets;
 
 /// The settings-table key.
 pub const KEY: &str = settings::DOWNLOADS;
@@ -156,19 +156,19 @@ pub fn validate(s: &mut DownloadSettings, retired: &[SavedTorrentClient]) -> Res
     if s.anirss_mode == AnirssMode::Sidecar && s.anirss_command.is_empty() {
         return Err(CoreError::invalid(
             "anirss_command",
-            crate::i18n::tr("core-downloads-settings-command-empty", &[]),
+            anibeam_contract::i18n::tr("core-downloads-settings-command-empty", &[]),
         ));
     }
     if s.anirss_mode == AnirssMode::Remote && !is_http(&s.anirss_url) {
         return Err(CoreError::invalid(
             "anirss_url",
-            crate::i18n::tr("core-downloads-settings-anirss-address", &[]),
+            anibeam_contract::i18n::tr("core-downloads-settings-anirss-address", &[]),
         ));
     }
     if !is_http(&s.torrent_url) {
         return Err(CoreError::invalid(
             "torrent_url",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-settings-client-address",
                 &[("client", s.torrent_client.as_str().into())],
             ),
@@ -238,7 +238,7 @@ pub fn settle_clients(
         {
             return Err(CoreError::invalid(
                 "saved_clients",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-settings-bad-id",
                     &[("id", format!("{:?}", c.id).into())],
                 ),
@@ -247,7 +247,7 @@ pub fn settle_clients(
         if ids.contains(&c.id) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-settings-same-id",
                     &[("id", c.id.as_str().into())],
                 ),
@@ -256,7 +256,7 @@ pub fn settle_clients(
         if !is_http(&c.url) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-settings-saved-address",
                     &[("name", c.name.as_str().into())],
                 ),
@@ -269,7 +269,7 @@ pub fn settle_clients(
         if names.contains(&name) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-settings-same-name",
                     &[("name", c.name.as_str().into())],
                 ),
@@ -332,8 +332,8 @@ pub fn files_here(s: &DownloadSettings) -> bool {
 fn is_this_machine(host: &str) -> bool {
     names_this_machine(
         host,
-        &crate::foundation::machine::hostname(),
-        crate::foundation::machine::local_addresses,
+        &anibeam_foundation::machine::hostname(),
+        anibeam_foundation::machine::local_addresses,
         |name| remembered(&LOOKUPS, name, Instant::now(), bounded_lookup),
     )
 }
@@ -580,7 +580,7 @@ pub fn anirss_saved_password(home: &AnirssHome) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::store::testing::conn as store;
+    use anibeam_foundation::store::testing::conn as store;
 
     /// A home with nothing in it, so no test reads the machine's own anirss.
     fn nowhere() -> AnirssHome {
@@ -1079,7 +1079,7 @@ pub fn anirss_bestfit(path: &Path) -> Option<BestfitConfig> {
 #[cfg(test)]
 mod bestfit_tests {
     use super::*;
-    use crate::releases::bestfit::best_item;
+    use anibeam_releases::bestfit::best_item;
 
     fn read(text: &str) -> Option<BestfitConfig> {
         let dir = tempfile::tempdir().unwrap();
@@ -1226,8 +1226,8 @@ assumed_source = "WEB"
         let both = [x264.clone(), hevc.clone()];
         assert_eq!(best_item(&both, &stock).unwrap().title, hevc.title);
         assert!(
-            crate::releases::bestfit::size_ratio(&x264, &lowered, None).unwrap()
-                > crate::releases::bestfit::size_ratio(&x264, &stock, None).unwrap()
+            anibeam_releases::bestfit::size_ratio(&x264, &lowered, None).unwrap()
+                > anibeam_releases::bestfit::size_ratio(&x264, &stock, None).unwrap()
         );
     }
 }

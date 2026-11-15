@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use crate::contract::*;
-use crate::net::{Http, HttpRequest};
+use anibeam_contract::*;
+use anibeam_net::{Http, HttpRequest};
 
 const FEED_TIMEOUT: Duration = Duration::from_secs(30);
 /// More than any feed anirss registers holds; a broad one is cut here.
@@ -16,7 +16,7 @@ const MAX_ENTRIES: usize = 200;
 /// Fetches and reads one feed. A non-2xx answer or a body that is not
 /// XML is a `Service` error naming the feed's host.
 pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreError> {
-    let host = crate::net::host_shown(url);
+    let host = anibeam_net::host_shown(url);
     let response = http
         .send(
             HttpRequest::get(url)
@@ -29,7 +29,7 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
         return Err(CoreError::service(
             host,
             format!("http_{}", response.status),
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),
@@ -41,7 +41,7 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
 
 pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
     let doc = roxmltree::Document::parse(text).map_err(|e| {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-not-a-feed",
             &[("error", e.to_string().into())],
         )
@@ -127,7 +127,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
     });
     let info_hash = child("infoHash")
         .or_else(|| attr("infohash"))
-        .or_else(|| crate::foundation::magnet::hash(&link))
+        .or_else(|| anibeam_foundation::magnet::hash(&link))
         .unwrap_or_default()
         .to_ascii_lowercase();
     FeedEntry {
@@ -170,7 +170,7 @@ fn human(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     const NAMESPACED: &str = r#"<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:x="https://t.example/xmlns/feed" version="2.0">
 <channel><title>A feed</title>

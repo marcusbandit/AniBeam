@@ -370,7 +370,7 @@ core-cast-hi10p = Deze aflevering is 10-bit H.264 (Hi10P), wat geen tv of Chrome
 core-cast-video-codec = De video van deze aflevering ({ $codec }) kan niet worden gecast.
 core-cast-audio-codec = De audio van deze aflevering ({ $codec }) kan niet worden gecast.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -387,7 +387,7 @@ core-phone-empty-search = de zoekopdracht is leeg
 core-phone-no-results = geen resultaten voor { $query }
 core-phone-own-engine = een eigen torrent-engine
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = verbonden
 core-phone-check-refused = geweigerd: { $error }
@@ -1013,7 +1013,7 @@ core-transfer-progress-accounts = accounts
 core-transfer-progress-preferences = voorkeuren
 core-transfer-progress-done = klaar
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss antwoordde niet: { $message }
 core-downloads-anirss-answered = anirss antwoordde { $status }: { $text }
@@ -1029,24 +1029,24 @@ core-downloads-anirss-lacks-feature = anirss { $version } kan de login van elke 
 core-downloads-anirss-update-mac = Werk het bij met: { $command }
 core-downloads-anirss-update-linux = Werk het anirss-pakket bij, of voer uit: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = het torrentbestand kwam niet: { $message }
 core-downloads-torrent-file-answered = het torrentbestand antwoordde { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = de feed antwoordde { $status }
 core-downloads-not-a-feed = geen feed: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett is niet geïnstalleerd: { $program } is niet gevonden. Installeer het, of wijzig het commando in Instellingen.
 core-downloads-endpoint-start-failed = { $name } kon niet starten: { $why }
 core-downloads-endpoint-start-timeout = { $name } is gestart maar antwoordde niet binnen { $seconds } seconden.
 core-downloads-command-exited = het commando stopte met { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss is gestopt
 core-downloads-anirss-missing = { $install }. Of laat Instellingen naar een draaiende server wijzen.
@@ -1127,7 +1127,7 @@ core-downloads-client-switched = Downloads gebruiken nu een andere downloadapp.
 core-downloads-host-not-running = draait niet op de host
 core-downloads-host-late = antwoordde niet op tijd
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = lege zoekopdracht
 core-downloads-native-no-results = geen resultaten voor { $query }
@@ -1142,7 +1142,7 @@ core-downloads-native-outside-folders = bestanden buiten de downloadmappen worde
 core-downloads-refuse-home-folder = { $path } is de thuismap of bevat die, dus er is niets weggehaald
 core-downloads-refuse-library-folder = { $path } is een bibliotheekmap of bevat er een, dus er is niets weggehaald
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent noemt geen standaard opslagmap; stel er een in qBittorrent in
 # $folder is the folder given
@@ -1153,7 +1153,7 @@ core-downloads-name-empty = de naam mag niet leeg zijn
 core-downloads-name-slash = de naam mag geen / of \ bevatten
 core-downloads-name-not-folder = { $name } is geen mapnaam
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Abonnement op { $title } opgezegd, de uitzending is afgelopen.
 core-downloads-prune-failed = Kon het abonnement op { $title } niet opzeggen. Controleer Downloads in Instellingen.
@@ -1165,11 +1165,11 @@ core-downloads-refuse-root = { $path } is de root van het bestandssysteem, dus e
 core-downloads-refuse-outside-library = { $path } ligt niet in een bibliotheekmap, dus er is niets weggehaald
 core-downloads-refuse-save-folder = { $path } is de map waarin de torrent is opgeslagen, niet wat hij downloadde, dus er is niets weggehaald
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = Aflevering { $episode } van { $title } is drie dagen na uitzending nog niet opgedoken. Je feed blijft ernaar zoeken.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = het anirss-commando mag niet leeg zijn
 core-downloads-settings-anirss-address = het anirss-adres moet beginnen met http:// of https://
@@ -1179,7 +1179,7 @@ core-downloads-settings-same-id = twee clients hebben het id { $id }
 core-downloads-settings-saved-address = het adres van { $name } moet beginnen met http:// of https://
 core-downloads-settings-same-name = twee clients heten { $name }; geef elk een eigen naam
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = qBittorrent antwoordde niet op { $address }: { $message }
 core-downloads-qbt-password-rejected = qBittorrent weigerde het wachtwoord; pas het aan in Instellingen
@@ -1191,13 +1191,13 @@ core-downloads-qbt-not-added = qBittorrent voegde de torrents niet toe: { $said 
 core-downloads-qbt-some-not-added = qBittorrent kon { $count } van de torrents niet toevoegen: { $said }
 core-downloads-qbt-answered = qBittorrent antwoordde { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = item { $item } is niet een van de { $count } releases
 core-downloads-not-replaced = Aflevering { $episode } is niet vervangen.
 core-downloads-replaced = Aflevering { $episode } vervangen door de nieuwe download.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = geen doorlopende download { $id }
 core-downloads-rolled = { $title }: nu op afleveringen { $from } t/m { $to } van { $total }.

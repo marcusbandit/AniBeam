@@ -12,11 +12,11 @@ pub mod storage;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::contract::*;
-use crate::downloads::Downloads;
+use crate::Downloads;
 #[cfg(feature = "phone")]
-use crate::downloads::paths::name_for;
-use crate::foundation::services::Services;
+use crate::paths::name_for;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
 
 /// The library folder the phone downloads into, beside the core's own folders. The app
 /// registers the same folder as its one library source.
@@ -42,14 +42,14 @@ fn sources_path(services: &Services) -> PathBuf {
 }
 
 /// `PhoneSources`: the sources saved here, as the call's reply.
-pub(crate) fn sources_call(services: &Services) -> Result<Reply, CoreError> {
+pub fn sources_call(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneSources {
         sources: sources(services),
     })
 }
 
 /// `PhoneSearchSources`: [`search_sources`] as the call's reply.
-pub(crate) fn search_sources_call(services: &Services) -> Result<Reply, CoreError> {
+pub fn search_sources_call(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneSources {
         sources: search_sources(services),
     })
@@ -61,7 +61,7 @@ pub(crate) fn search_sources_call(services: &Services) -> Result<Reply, CoreErro
 pub fn sources(services: &Services) -> Vec<PhoneSource> {
     let mut sources = saved_sources(services);
     for s in &mut sources {
-        s.kind = crate::releases::kinds::shape_of(s.kind.trim()).to_string();
+        s.kind = anibeam_releases::kinds::shape_of(s.kind.trim()).to_string();
     }
     sources
 }
@@ -75,11 +75,11 @@ fn saved_sources(services: &Services) -> Vec<PhoneSource> {
 
 /// The saved sources whose kind has a name from before #602 get its shape name, in place and
 /// once, beside `repos::rename_old_kinds` in `Core::open`. Returns how many.
-pub(crate) fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
+pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
     let mut saved = saved_sources(services);
     let mut renamed = 0;
     for s in &mut saved {
-        let now = crate::releases::kinds::shape_of(s.kind.trim());
+        let now = anibeam_releases::kinds::shape_of(s.kind.trim());
         if now != s.kind.trim() {
             s.kind = now.to_string();
             renamed += 1;
@@ -91,7 +91,7 @@ pub(crate) fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> 
     let path = sources_path(services);
     let bytes =
         serde_json::to_vec_pretty(&saved).map_err(|e| CoreError::internal(e.to_string()))?;
-    crate::atomic_file::write(&path, bytes)
+    anibeam_foundation::atomic_file::write(&path, bytes)
         .map_err(|e| CoreError::internal(e.source.to_string()))?;
     Ok(renamed)
 }
@@ -111,7 +111,7 @@ pub fn set_sources(services: &Services, sources: Vec<PhoneSource>) -> Result<Rep
             continue;
         }
         let s = trimmed(&s);
-        crate::releases::endpoints::validate(&s.name, &s.kind, &s.url)?;
+        anibeam_releases::endpoints::validate(&s.name, &s.kind, &s.url)?;
         checked.push((s, true));
     }
     // Search tells sources apart by name, so a new one takes a name of its own.
@@ -125,7 +125,7 @@ pub fn set_sources(services: &Services, sources: Vec<PhoneSource>) -> Result<Rep
         {
             return Err(CoreError::invalid(
                 "endpoint name",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-phone-name-taken",
                     &[("name", format!("{:?}", s.name).into())],
                 ),
@@ -136,7 +136,7 @@ pub fn set_sources(services: &Services, sources: Vec<PhoneSource>) -> Result<Rep
     let path = sources_path(services);
     let bytes =
         serde_json::to_vec_pretty(&sources).map_err(|e| CoreError::internal(e.to_string()))?;
-    crate::atomic_file::write(&path, bytes)
+    anibeam_foundation::atomic_file::write(&path, bytes)
         .map_err(|e| CoreError::internal(e.source.to_string()))?;
     Ok(Reply::PhoneSources { sources })
 }
@@ -144,9 +144,9 @@ pub fn set_sources(services: &Services, sources: Vec<PhoneSource>) -> Result<Rep
 /// What a search tries, in order: the enabled feeds saved before repos, then the installed
 /// endpoints. An installed endpoint whose id is a saved feed's name takes that feed's place,
 /// so installing an endpoint from a repo replaces an old saved one rather than searching it twice.
-fn searched(services: &Services) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
-    let mut installed = crate::repos::runnable(services);
-    let mut out: Vec<(PhoneSource, crate::releases::Endpoint)> = Vec::new();
+fn searched(services: &Services) -> Vec<(PhoneSource, anibeam_releases::Endpoint)> {
+    let mut installed = anibeam_releases::repos::runnable(services);
+    let mut out: Vec<(PhoneSource, anibeam_releases::Endpoint)> = Vec::new();
     // Trimmed, so the name the search page shows is the endpoint's name.
     for s in sources(services).iter().filter(|s| s.enabled).map(trimmed) {
         if out.iter().any(|(o, _)| o.name == s.name) {
@@ -155,8 +155,8 @@ fn searched(services: &Services) -> Vec<(PhoneSource, crate::releases::Endpoint)
         if let Some(at) = installed.iter().position(|r| r.endpoint.name == s.name) {
             let r = installed.remove(at);
             out.push((installed_source(&r), r.endpoint));
-        } else if crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok() {
-            let endpoint = crate::releases::Endpoint::new(&s.name, &s.kind, &s.url);
+        } else if anibeam_releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok() {
+            let endpoint = anibeam_releases::Endpoint::new(&s.name, &s.kind, &s.url);
             out.push((s, endpoint));
         }
         // A source saved before the checks that would now refuse it searches one fixed
@@ -172,16 +172,16 @@ fn searched(services: &Services) -> Vec<(PhoneSource, crate::releases::Endpoint)
 /// ones (`repos::fillers`, which the feed poller reads rules through too), then the feeds
 /// saved before repos that no installed one replaced (#536).
 #[cfg(feature = "phone")]
-fn followed_sources(services: &Services) -> Vec<crate::releases::Endpoint> {
-    let mut out: Vec<crate::releases::Endpoint> = crate::repos::fillers(services)
+fn followed_sources(services: &Services) -> Vec<anibeam_releases::Endpoint> {
+    let mut out: Vec<anibeam_releases::Endpoint> = anibeam_releases::repos::fillers(services)
         .into_iter()
         .map(|r| r.endpoint)
         .collect();
     for s in sources(services).iter().map(trimmed) {
         if !out.iter().any(|e| e.name == s.name)
-            && crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok()
+            && anibeam_releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok()
         {
-            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+            out.push(anibeam_releases::Endpoint::new(&s.name, &s.kind, &s.url));
         }
     }
     out
@@ -197,7 +197,7 @@ fn trimmed(s: &PhoneSource) -> PhoneSource {
     }
 }
 
-fn installed_source(r: &crate::repos::Runnable) -> PhoneSource {
+fn installed_source(r: &anibeam_releases::repos::Runnable) -> PhoneSource {
     PhoneSource {
         name: r.endpoint.name.clone(),
         kind: r.endpoint.kind.clone(),
@@ -213,9 +213,9 @@ pub fn search_sources(services: &Services) -> Vec<PhoneSource> {
 
 /// The sources as the ported anirss endpoints, enabled ones in order, each host held to the
 /// pace its repo definition asks for.
-fn native(services: &Services) -> crate::releases::native::Native {
+fn native(services: &Services) -> anibeam_releases::native::Native {
     let sources = searched(services).into_iter().map(|(_, e)| e).collect();
-    crate::releases::native::Native::for_core(services, sources, None)
+    anibeam_releases::native::Native::for_core(services, sources, None)
 }
 
 /// How long the show search waits for covers before answering without them.
@@ -237,7 +237,7 @@ pub fn find_shows(downloads: &Downloads, query: String, limit: u32) -> Result<Re
         .block_on(downloads.net.anilist.search(&query, limit.clamp(1, 20)))?;
     let shows: Vec<SearchResult> = media
         .iter()
-        .map(crate::metadata::apply::to_result)
+        .map(anibeam_metadata::apply::to_result)
         .collect();
     let urls: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
     // The hits go back after COVER_WAIT at most. Each cover is its own task, so the ones
@@ -318,7 +318,7 @@ pub fn search(
         }
     } else {
         let a = native.analyze(&found.query, &found.endpoint, &items, true)?;
-        let (facts, show) = crate::downloads::annotate(services, &a.query, &a.items);
+        let (facts, show) = crate::annotate(services, &a.query, &a.items);
         ReleaseSearch {
             query: a.query,
             endpoint: found.endpoint,
@@ -349,15 +349,15 @@ pub fn refine(
     let mut refinement = services
         .handle
         .block_on(native.apply(&query, &endpoint, &items, &op))?;
-    let (facts, show) = crate::downloads::annotate(services, &refinement.query, &refinement.items);
+    let (facts, show) = crate::annotate(services, &refinement.query, &refinement.items);
     refinement.facts = facts;
     refinement.show = show;
     Ok(Reply::PhoneRefined { refinement })
 }
 
 #[cfg(feature = "phone")]
-fn rules_store(services: &Services) -> crate::releases::rules::RuleStore {
-    crate::releases::rules::RuleStore::new(
+fn rules_store(services: &Services) -> anibeam_releases::rules::RuleStore {
+    anibeam_releases::rules::RuleStore::new(
         PathBuf::from(&services.paths.config_dir).join("phone-rules.json"),
     )
 }
@@ -366,7 +366,7 @@ fn rules_store(services: &Services) -> crate::releases::rules::RuleStore {
 /// `lifted` says the launch's lift of hand-added sources' secrets went through.
 #[cfg(feature = "phone")]
 pub fn rekeep_rules(services: &Services, lifted: bool) {
-    match crate::repos::rekeep_old_rules(services, &rules_store(services), lifted) {
+    match anibeam_releases::repos::rekeep_old_rules(services, &rules_store(services), lifted) {
         Ok(0) => {}
         Ok(n) => {
             tracing::info!(
@@ -448,13 +448,13 @@ async fn torrent_file(services: &Services, link: &str) -> Result<Option<Vec<u8>>
     if !(link.starts_with("http://") || link.starts_with("https://")) {
         return Ok(None);
     }
-    let http = crate::repos::endpoint_http(services);
-    let reply = crate::net::Http::send(
+    let http = anibeam_releases::repos::endpoint_http(services);
+    let reply = anibeam_net::Http::send(
         &http,
-        crate::net::HttpRequest::get(link).timeout(std::time::Duration::from_secs(30)),
+        anibeam_net::HttpRequest::get(link).timeout(std::time::Duration::from_secs(30)),
     )
     .await
-    .map_err(|e| CoreError::service(crate::net::host_shown(link), "unreachable", e.message))?;
+    .map_err(|e| CoreError::service(anibeam_net::host_shown(link), "unreachable", e.message))?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
@@ -466,18 +466,18 @@ pub fn download(
     limit_bytes: Option<u64>,
     rolling: Option<bool>,
 ) -> Result<Reply, CoreError> {
-    use crate::downloads::rolling;
+    use crate::rolling;
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
-            crate::i18n::tr("core-phone-nothing-to-download", &[]),
+            anibeam_contract::i18n::tr("core-phone-nothing-to-download", &[]),
         ));
     }
     let folder = name_for(name.as_deref(), &items, "Downloads")?;
     // A long show is held to a window of episodes, as on the desktop: a pick of single
     // episodes adds only the first window, and a batch is added with only its first window
     // fetched, picked from its file list before a byte of the rest is written.
-    let settings = crate::downloads::settings::read(&downloads.services)?.rolling;
+    let settings = crate::settings::read(&downloads.services)?.rolling;
     let options = DownloadOptions {
         rolling,
         ..Default::default()
@@ -487,7 +487,7 @@ pub fn download(
         &options,
         &settings,
         Some(&folder),
-        crate::time::now_secs(),
+        anibeam_foundation::time::now_secs(),
     );
     let owner = downloads.clone();
     let (added, failed) = downloads.services.handle.block_on(async {
@@ -530,13 +530,13 @@ pub fn download(
                         })
                         .map(|(_, f)| f.size)
                         .sum(),
-                    None => crate::foundation::size::size_bytes(&i.size).unwrap_or(1_500_000_000),
+                    None => anibeam_foundation::size::size_bytes(&i.size).unwrap_or(1_500_000_000),
                 })
                 .sum();
             if used + pending + size > limit {
                 return Err(CoreError::invalid(
                     "limit",
-                    crate::i18n::tr(
+                    anibeam_contract::i18n::tr(
                         "core-phone-over-cap",
                         &[
                             (
@@ -634,7 +634,7 @@ pub fn download(
     downloads.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!(
+        anibeam_contract::words!(
             "core-phone-download-started",
             count = count,
             folder = &folder,
@@ -652,7 +652,7 @@ pub fn download(
         downloads.services.bus.say(
             Level::Warn,
             Stage::Downloads,
-            crate::words!(
+            anibeam_contract::words!(
                 "core-phone-download-partial",
                 folder = &folder,
                 error = e.to_string(),
@@ -672,7 +672,7 @@ struct PhoneRolls<'a> {
 }
 
 #[cfg(feature = "phone")]
-impl crate::downloads::rolling::RollClient for PhoneRolls<'_> {
+impl crate::rolling::RollClient for PhoneRolls<'_> {
     async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
         self.engine.files(hash)
     }
@@ -715,7 +715,7 @@ impl crate::downloads::rolling::RollClient for PhoneRolls<'_> {
         &self,
         _: &std::sync::Arc<Downloads>,
         items: &[Release],
-        roll: &crate::downloads::rolling::Roll,
+        roll: &crate::rolling::Roll,
     ) -> Result<Vec<String>, CoreError> {
         let folder = name_for(roll.name.as_deref(), items, "Downloads")?;
         let mut hashes = Vec::new();
@@ -740,7 +740,7 @@ pub async fn roll_pass(downloads: &std::sync::Arc<Downloads>) {
     };
     let torrents = engine.list().await;
     let client = PhoneRolls { downloads, engine };
-    crate::downloads::rolling::tick(downloads, &client, &torrents).await;
+    crate::rolling::tick(downloads, &client, &torrents).await;
 }
 
 /// Subscribes to a search (`Subscribe`): the core keeps the feed and its rule, takes what
@@ -758,13 +758,16 @@ pub fn subscribe(
     if query.is_empty() {
         return Err(CoreError::invalid(
             "query",
-            crate::i18n::tr("core-phone-empty-search", &[]),
+            anibeam_contract::i18n::tr("core-phone-empty-search", &[]),
         ));
     }
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
-            crate::i18n::tr("core-phone-no-results", &[("query", query.as_str().into())]),
+            anibeam_contract::i18n::tr(
+                "core-phone-no-results",
+                &[("query", query.as_str().into())],
+            ),
         ));
     }
     let native = native(&downloads.services);
@@ -775,9 +778,10 @@ pub fn subscribe(
     let name = name_for(name.as_deref(), &items, &query)?;
     let store = rules_store(&downloads.services);
     // The rules file keeps the endpoint's secrets as placeholders, never the values (#149).
-    let kept = crate::repos::kept_spec(&downloads.services, &spec, &query);
-    let fillers = crate::repos::fillers(&downloads.services);
-    let fill = |feed: &str, endpoint: &str| crate::repos::filled_feed(&fillers, endpoint, feed);
+    let kept = anibeam_releases::repos::kept_spec(&downloads.services, &spec, &query);
+    let fillers = anibeam_releases::repos::fillers(&downloads.services);
+    let fill =
+        |feed: &str, endpoint: &str| anibeam_releases::repos::filled_feed(&fillers, endpoint, feed);
     let filled = fill(&kept.feed_url, &kept.endpoint_name).unwrap_or_else(|| spec.feed_url.clone());
     let (_, subscribed) = store.subscribe(
         &name,
@@ -796,7 +800,7 @@ pub fn subscribe(
         &kept.endpoint_name,
         &from,
     )) {
-        let (facts, _) = crate::downloads::annotate(&downloads.services, &query, &now);
+        let (facts, _) = crate::annotate(&downloads.services, &query, &now);
         let had: Vec<String> = now
             .iter()
             .zip(&facts)
@@ -810,7 +814,7 @@ pub fn subscribe(
     downloads.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-phone-subscribed", name = &subscribed.name),
+        anibeam_contract::words!("core-phone-subscribed", name = &subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
@@ -840,9 +844,9 @@ pub fn rules(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> 
                 .flatten()
                 .filter(|e| e.file_type().is_file())
                 .count() as u64;
-            let mut info = crate::releases::rules::info(r, in_engine, files);
+            let mut info = anibeam_releases::rules::info(r, in_engine, files);
             info.followable =
-                crate::releases::endpoints::follows(&sources, &r.feed_url, Some(&r.endpoint));
+                anibeam_releases::endpoints::follows(&sources, &r.feed_url, Some(&r.endpoint));
             info
         })
         .collect();
@@ -887,14 +891,14 @@ async fn feed(
     url: &str,
     name: &str,
     endpoint: &str,
-    sources: &[crate::releases::Endpoint],
+    sources: &[anibeam_releases::Endpoint],
 ) -> Result<Vec<Release>, CoreError> {
-    let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
-    let http = crate::repos::endpoint_http(services);
+    let timeout = anibeam_releases::fetch::DEFAULT_TIMEOUT;
+    let http = anibeam_releases::repos::endpoint_http(services);
     if is_json_feed(sources, url, endpoint) {
-        crate::releases::json_feed::fetch(&http, url, name, timeout).await
+        anibeam_releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
-        crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
+        anibeam_releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
 }
 
@@ -903,13 +907,13 @@ async fn feed(
 #[cfg_attr(not(feature = "phone"), allow(dead_code))]
 fn feed_sources(
     services: &Services,
-    installed: &[crate::repos::Runnable],
-) -> Vec<crate::releases::Endpoint> {
-    let mut out: Vec<crate::releases::Endpoint> =
+    installed: &[anibeam_releases::repos::Runnable],
+) -> Vec<anibeam_releases::Endpoint> {
+    let mut out: Vec<anibeam_releases::Endpoint> =
         installed.iter().map(|r| r.endpoint.clone()).collect();
     for s in sources(services).iter().map(trimmed) {
         if !out.iter().any(|e| e.name == s.name) {
-            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+            out.push(anibeam_releases::Endpoint::new(&s.name, &s.kind, &s.url));
         }
     }
     out
@@ -917,9 +921,9 @@ fn feed_sources(
 
 /// Whether the feed `url` of a rule on `endpoint` comes from a json-feed source.
 #[cfg_attr(not(feature = "phone"), allow(dead_code))]
-fn is_json_feed(sources: &[crate::releases::Endpoint], url: &str, endpoint: &str) -> bool {
-    crate::releases::endpoints::source_of(sources, url, Some(endpoint))
-        .is_some_and(|e| e.kind == crate::releases::kinds::JSON_FEED)
+fn is_json_feed(sources: &[anibeam_releases::Endpoint], url: &str, endpoint: &str) -> bool {
+    anibeam_releases::endpoints::source_of(sources, url, Some(endpoint))
+        .is_some_and(|e| e.kind == anibeam_releases::kinds::JSON_FEED)
 }
 
 /// How often the core reads the subscriptions' feeds: qBittorrent's default.
@@ -941,10 +945,12 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
     // One round at a time: a subscribe's round and the timer's would add the same releases.
     let _one = downloads.phone.poll_lock.lock().await;
     let store = rules_store(&downloads.services);
-    let fillers = crate::repos::fillers(&downloads.services);
+    let fillers = anibeam_releases::repos::fillers(&downloads.services);
     let from = feed_sources(&downloads.services, &fillers);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
-        let Some(url) = crate::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url) else {
+        let Some(url) =
+            anibeam_releases::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url)
+        else {
             // Its endpoint was removed, or its credentials were: said once, not every round.
             if downloads
                 .phone
@@ -956,7 +962,7 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
                 downloads.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    crate::words!("core-phone-rule-stopped", name = &rule.name),
+                    anibeam_contract::words!("core-phone-rule-stopped", name = &rule.name),
                     format!(
                         "Subscription {} stopped: no credentials for {}",
                         rule.name, rule.endpoint
@@ -979,7 +985,7 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| rule.name.clone());
         let mut taken = Vec::new();
-        for item in crate::releases::rules::due(&rule, &items) {
+        for item in anibeam_releases::rules::due(&rule, &items) {
             let file = match torrent_file(&downloads.services, &item.link).await {
                 Ok(file) => file,
                 // The rest are left for the next round, like a feed that does not answer.
@@ -993,7 +999,7 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
                     downloads.services.bus.say(
                         Level::Info,
                         Stage::Downloads,
-                        crate::words!("core-phone-new-episode", name = &rule.name),
+                        anibeam_contract::words!("core-phone-new-episode", name = &rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );
@@ -1018,16 +1024,11 @@ pub fn torrents(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreErro
         let engine = engine(downloads).await?;
         let mut torrents = engine.list().await;
         if downloads.unattended_allowed()
-            && crate::downloads::rolling::tick(
-                downloads,
-                &PhoneRolls { downloads, engine },
-                &torrents,
-            )
-            .await
+            && crate::rolling::tick(downloads, &PhoneRolls { downloads, engine }, &torrents).await
         {
             torrents = engine.list().await;
         }
-        crate::downloads::rolling::annotate(&downloads.services, &mut torrents);
+        crate::rolling::annotate(&downloads.services, &mut torrents);
         // Which torrent each library file came from, as the desktop records it from
         // qBittorrent (#620), off this call's path so the list never waits on the store.
         record_origins(&downloads.services, torrents.clone(), "on a list read");
@@ -1051,9 +1052,8 @@ pub(crate) fn after_scan(downloads: &std::sync::Arc<Downloads>) {
             return;
         };
         let torrents = engine.list().await;
-        let recorded =
-            crate::downloads::origins::record_from(&owner.services, None, &torrents).await;
-        crate::downloads::origins::logged(recorded, "after a scan");
+        let recorded = crate::origins::record_from(&owner.services, None, &torrents).await;
+        crate::origins::logged(recorded, "after a scan");
     });
 }
 
@@ -1063,8 +1063,8 @@ pub(crate) fn after_scan(downloads: &std::sync::Arc<Downloads>) {
 fn record_origins(services: &std::sync::Arc<Services>, torrents: Vec<Torrent>, when: &'static str) {
     let owner = services.clone();
     services.handle.spawn(async move {
-        let recorded = crate::downloads::origins::record_from(&owner, None, &torrents).await;
-        crate::downloads::origins::logged(recorded, when);
+        let recorded = crate::origins::record_from(&owner, None, &torrents).await;
+        crate::origins::logged(recorded, when);
     });
 }
 
@@ -1093,7 +1093,7 @@ pub fn set_held(downloads: &std::sync::Arc<Downloads>, held: bool) -> Result<Rep
 #[cfg(not(feature = "phone"))]
 fn unsupported() -> CoreError {
     CoreError::Unsupported {
-        what: crate::i18n::tr("core-phone-own-engine", &[]),
+        what: anibeam_contract::i18n::tr("core-phone-own-engine", &[]),
     }
 }
 
@@ -1146,14 +1146,14 @@ pub fn set_held(_: &Downloads, _: bool) -> Result<Reply, CoreError> {
 
 #[cfg(all(test, feature = "phone"))]
 mod origin_tests {
-    use crate::downloads::testing::Teams;
+    use crate::testing::Teams;
 
     /// A scan reads origins only through an engine already open (#620): it never opens one.
     #[test]
     fn a_scan_does_not_open_the_engine() {
         let dir = tempfile::tempdir().unwrap();
-        let teams = Teams::open(dir.path(), crate::net::FakeHttp::new());
-        crate::downloads::origins::after_scan(&teams.downloads);
+        let teams = Teams::open(dir.path(), anibeam_net::FakeHttp::new());
+        crate::origins::after_scan(&teams.downloads);
         assert!(teams.downloads.phone.engine.get().is_none());
         teams.shutdown();
     }
@@ -1162,8 +1162,8 @@ mod origin_tests {
 #[cfg(test)]
 mod feed_tests {
     use super::*;
-    use crate::releases::Endpoint;
     use anibeam_foundation::testing::Running;
+    use anibeam_releases::Endpoint;
 
     #[test]
     fn a_feed_is_read_the_way_its_sources_kind_answers() {
@@ -1194,7 +1194,7 @@ mod feed_tests {
     #[test]
     fn a_source_saved_before_repos_still_says_how_its_feed_reads() {
         let dir = tempfile::tempdir().unwrap();
-        let running = Running::open(dir.path(), crate::net::FakeHttp::new());
+        let running = Running::open(dir.path(), anibeam_net::FakeHttp::new());
         let saved = serde_json::json!([{"name": "old", "kind": "json-feed",
             "url": "https://feed.example/json?q={query}", "enabled": true}]);
         std::fs::create_dir_all(&running.services.paths.config_dir).unwrap();

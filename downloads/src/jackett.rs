@@ -18,7 +18,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use crate::net::{Http, HttpRequest};
+use anibeam_net::{Http, HttpRequest};
 
 /// How long a command with no ready URL to wait for is given to fail
 /// before it counts as started.
@@ -77,21 +77,21 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
     match failure {
         StartFailure::Missing(program) => (
             "missing",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-jackett-missing",
                 &[("program", program.as_str().into())],
             ),
         ),
         StartFailure::Failed(why) => (
             "failed",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-endpoint-start-failed",
                 &[("name", name.into()), ("why", why.as_str().into())],
             ),
         ),
         StartFailure::Timeout(secs) => (
             "timeout",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-endpoint-start-timeout",
                 &[("name", name.into()), ("seconds", (*secs).into())],
             ),
@@ -194,7 +194,7 @@ pub async fn start(
     let err = out
         .try_clone()
         .map_err(|e| StartFailure::Failed(e.to_string()))?;
-    let mut cmd = crate::process::shell(command);
+    let mut cmd = anibeam_foundation::process::shell(command);
     cmd.stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
@@ -218,7 +218,7 @@ pub async fn start(
             }
             if !status.success() {
                 let why = last_line(log).unwrap_or_else(|| {
-                    crate::i18n::tr(
+                    anibeam_contract::i18n::tr(
                         "core-downloads-command-exited",
                         &[("status", status.to_string().into())],
                     )
@@ -244,7 +244,7 @@ pub async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     const READY: &str = "http://127.0.0.1:9117/caps";
 
@@ -265,7 +265,7 @@ mod tests {
             Duration::from_secs(3),
             Duration::from_millis(20),
             &log(dir),
-            &crate::downloads::home::AnirssHome::Shared,
+            &crate::home::AnirssHome::Shared,
         )
         .await
     }
@@ -395,7 +395,7 @@ mod tests {
             Duration::from_millis(200),
             Duration::from_millis(20),
             &log(&dir),
-            &crate::downloads::home::AnirssHome::Shared,
+            &crate::home::AnirssHome::Shared,
         )
         .await;
         assert_eq!(r, Err(StartFailure::Timeout(0)));

@@ -23,11 +23,11 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use rusqlite::{Connection, params};
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::events::Signal;
-use crate::foundation::services::Services;
-use crate::sync::recover;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
 
 /// When a followed episode is looked for, counted from the moment it aired:
 /// the feed is asked a little after it airs, since a release takes a while
@@ -155,7 +155,7 @@ pub async fn remember(downloads: &Arc<Downloads>, rules: &[SubscriptionRule]) {
         .filter(|r| r.rule_enabled)
         .filter_map(|r| r.show.as_ref().map(|s| (s.series_id, r.feed_url.clone())))
         .collect();
-    let now = crate::time::now_secs();
+    let now = anibeam_foundation::time::now_secs();
     let saved = downloads
         .services
         .store
@@ -199,7 +199,7 @@ impl Drop for Slot {
 /// Arms the timers again when the metadata below says an airing refresh
 /// moved a schedule (#854), which may be a new time for a followed show's
 /// next episode. Set once, by `Core::open`.
-pub(crate) fn listen(downloads: &Arc<Downloads>) {
+pub fn listen(downloads: &Arc<Downloads>) {
     let weak = Arc::downgrade(downloads);
     downloads.services.bus.on_signal(Arc::new(move |signal| {
         if signal == Signal::SchedulesMoved
@@ -214,7 +214,7 @@ pub(crate) fn listen(downloads: &Arc<Downloads>) {
 /// launch, after the rules are read, after a schedule changes, and when a
 /// watch ends, so the episode after it gets one.
 pub fn arm(downloads: &Arc<Downloads>) {
-    let now = crate::time::now_secs();
+    let now = anibeam_foundation::time::now_secs();
     let found = match downloads.services.store.read(|c| due(c, now)) {
         Ok(found) => found,
         Err(e) => {
@@ -247,11 +247,11 @@ const NAP: u64 = 10 * 60;
 /// One episode's watch, step by step. True when it ended on its own (the
 /// episode arrived, or the watch gave up), so the next one can be armed.
 async fn watch(downloads: &Downloads, d: &Due) -> bool {
-    for (at, step) in steps_ahead(d.aired_at, crate::time::now_secs()) {
+    for (at, step) in steps_ahead(d.aired_at, anibeam_foundation::time::now_secs()) {
         // The runtime ends this sleep with the core, so a shutdown needs
         // nothing of its own here.
         loop {
-            let left = at - crate::time::now_secs();
+            let left = at - anibeam_foundation::time::now_secs();
             if left <= 0 {
                 break;
             }
@@ -338,7 +338,7 @@ async fn refresh(downloads: &Downloads, series: u64) {
 
 /// The one line for an episode that never came, said once ever.
 async fn give_up(services: &Services, d: &Due) {
-    let (series, episode, now) = (d.series, d.episode, crate::time::now_secs());
+    let (series, episode, now) = (d.series, d.episode, anibeam_foundation::time::now_secs());
     let first = services
         .store
         .write_async(move |c| {
@@ -364,8 +364,8 @@ async fn give_up(services: &Services, d: &Due) {
 }
 
 /// What the activity log says when a followed episode never came.
-pub fn missed_line(title: &str, episode: u32) -> crate::contract::Words {
-    crate::words!(
+pub fn missed_line(title: &str, episode: u32) -> anibeam_contract::Words {
+    anibeam_contract::words!(
         "core-downloads-episode-missed",
         episode = episode,
         title = title
@@ -375,7 +375,7 @@ pub fn missed_line(title: &str, episode: u32) -> crate::contract::Words {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::downloads::testing::Teams;
+    use crate::testing::Teams;
 
     const H: i64 = 3600;
 
@@ -414,7 +414,7 @@ mod tests {
 
     fn teams() -> (tempfile::TempDir, Teams) {
         let dir = tempfile::tempdir().unwrap();
-        let teams = Teams::open(dir.path(), crate::net::FakeHttp::new());
+        let teams = Teams::open(dir.path(), anibeam_net::FakeHttp::new());
         (dir, teams)
     }
 
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn a_moved_schedule_arms_the_followed_episodes() {
         let (_dir, teams) = teams();
-        let now = crate::time::now_secs();
+        let now = anibeam_foundation::time::now_secs();
         followed(&teams, now);
         let next = (1, 4, now + 86_400);
         let missed = (1, 2, now - 86_400);

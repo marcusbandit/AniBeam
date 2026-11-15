@@ -365,7 +365,7 @@ core-cast-hi10p = 이 에피소드는 10비트 H.264(Hi10P)라서 TV나 Chromeca
 core-cast-video-codec = 이 에피소드의 영상({ $codec })은 캐스트할 수 없어요.
 core-cast-audio-codec = 이 에피소드의 오디오({ $codec })는 캐스트할 수 없어요.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -381,7 +381,7 @@ core-phone-empty-search = 검색어가 비어 있어요
 core-phone-no-results = { $query } 검색 결과가 없어요
 core-phone-own-engine = 자체 토렌트 엔진
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = 연결됨
 core-phone-check-refused = 거부됨: { $error }
@@ -926,7 +926,7 @@ core-transfer-progress-accounts = 계정
 core-transfer-progress-preferences = 환경설정
 core-transfer-progress-done = 완료
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss가 응답하지 않았어요: { $message }
 core-downloads-anirss-answered = anirss 응답 { $status }: { $text }
@@ -942,24 +942,24 @@ core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클�
 core-downloads-anirss-update-mac = 다음 명령으로 업데이트하세요: { $command }
 core-downloads-anirss-update-linux = anirss 패키지를 업데이트하거나 다음을 실행하세요: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = 토렌트 파일을 받지 못했어요: { $message }
 core-downloads-torrent-file-answered = 토렌트 파일 응답 { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = 피드 응답 { $status }
 core-downloads-not-a-feed = 피드가 아니에요: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett가 설치되지 않았어요: { $program }을(를) 찾지 못했어요. 설치하거나 설정에서 명령을 바꾸세요.
 core-downloads-endpoint-start-failed = { $name }을(를) 시작하지 못했어요: { $why }
 core-downloads-endpoint-start-timeout = { $name }이(가) 시작됐지만 { $seconds }초 안에 응답하지 않았어요.
 core-downloads-command-exited = 명령이 { $status }(으)로 종료됐어요
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss가 멈췄어요
 core-downloads-anirss-missing = { $install }. 또는 설정에서 실행 중인 서버를 지정하세요.
@@ -1034,7 +1034,7 @@ core-downloads-client-switched = 이제 다운로드에 다른 다운로드 앱�
 core-downloads-host-not-running = 호스트에서 실행 중이 아니에요
 core-downloads-host-late = 제시간에 응답하지 않았어요
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 검색어가 비어 있어요
 core-downloads-native-no-results = { $query } 검색 결과가 없어요
@@ -1049,7 +1049,7 @@ core-downloads-native-outside-folders = 다운로드 폴더 밖의 파일은 제
 core-downloads-refuse-home-folder = { $path }은(는) 홈 폴더이거나 홈 폴더를 포함해서 아무것도 제거하지 않았어요
 core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더이거나 라이브러리 폴더를 포함해서 아무것도 제거하지 않았어요
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
 # $folder is the folder given
@@ -1060,7 +1060,7 @@ core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = { $title } 방영이 끝나서 구독을 해지했어요.
 core-downloads-prune-failed = { $title } 구독을 해지하지 못했어요. 설정의 다운로드를 확인하세요.
@@ -1072,11 +1072,11 @@ core-downloads-refuse-root = { $path }은(는) 파일 시스템 루트라서 아
 core-downloads-refuse-outside-library = { $path }은(는) 라이브러리 폴더 안에 있지 않아서 아무것도 제거하지 않았어요
 core-downloads-refuse-save-folder = { $path }은(는) 토렌트가 받은 내용이 아니라 저장된 폴더라서 아무것도 제거하지 않았어요
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = { $title } { $episode }화가 방영 후 3일이 지나도 나오지 않았어요. 피드에서 계속 찾고 있어요.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss 명령은 비워 둘 수 없어요
 core-downloads-settings-anirss-address = anirss 주소는 http:// 또는 https://로 시작해야 해요
@@ -1086,7 +1086,7 @@ core-downloads-settings-same-id = 두 클라이언트의 ID가 { $id }(으)로 �
 core-downloads-settings-saved-address = { $name }의 주소는 http:// 또는 https://로 시작해야 해요
 core-downloads-settings-same-name = 두 클라이언트의 이름이 { $name }(으)로 같아요. 각각 다른 이름을 지어 주세요
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = { $address }의 qBittorrent가 응답하지 않았어요: { $message }
 core-downloads-qbt-password-rejected = qBittorrent가 비밀번호를 거부했어요. 설정에서 고치세요
@@ -1098,13 +1098,13 @@ core-downloads-qbt-not-added = qBittorrent가 토렌트를 추가하지 않았�
 core-downloads-qbt-some-not-added = qBittorrent가 토렌트 { $count }개를 추가하지 못했어요: { $said }
 core-downloads-qbt-answered = qBittorrent 응답 { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = 항목 { $item }은(는) 릴리스 { $count }개 중 하나가 아니에요
 core-downloads-not-replaced = { $episode }화를 교체하지 않았어요.
 core-downloads-replaced = { $episode }화를 새 다운로드로 교체했어요.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = 순환 다운로드 { $id }이(가) 없어요
 core-downloads-rolled = { $title }: 이제 { $total }화 중 { $from }~{ $to }화를 보관해요.

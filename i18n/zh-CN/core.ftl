@@ -359,7 +359,7 @@ core-cast-hi10p = 这一集是 10 位 H.264（Hi10P），电视和 Chromecast �
 core-cast-video-codec = 这一集的视频（{ $codec }）无法投屏。
 core-cast-audio-codec = 这一集的音频（{ $codec }）无法投屏。
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started = 已开始下载《{ $folder }》的 { $count } 集。
 core-phone-subscribed = 已订阅《{ $name }》。
@@ -372,7 +372,7 @@ core-phone-empty-search = 搜索内容为空
 core-phone-no-results = 没有“{ $query }”的结果
 core-phone-own-engine = 自带的种子下载引擎
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = 已连接
 core-phone-check-refused = 被拒绝：{ $error }
@@ -857,7 +857,7 @@ core-transfer-progress-accounts = 账号
 core-transfer-progress-preferences = 偏好设置
 core-transfer-progress-done = 完成
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss 没有响应：{ $message }
 core-downloads-anirss-answered = anirss 返回 { $status }：{ $text }
@@ -873,24 +873,24 @@ core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子�
 core-downloads-anirss-update-mac = 更新命令：{ $command }
 core-downloads-anirss-update-linux = 请更新 anirss 包，或运行：{ $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = 种子文件没有传来：{ $message }
 core-downloads-torrent-file-answered = 种子文件返回 { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = 订阅源返回 { $status }
 core-downloads-not-a-feed = 不是订阅源：{ $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = 未安装 Jackett：找不到 { $program }。请安装它，或在设置中更改命令。
 core-downloads-endpoint-start-failed = { $name } 无法启动：{ $why }
 core-downloads-endpoint-start-timeout = { $name } 已启动，但没有在 { $seconds } 秒内响应。
 core-downloads-command-exited = 命令以 { $status } 退出
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss 已停止
 core-downloads-anirss-missing = { $install }。或在设置中指向一个正在运行的服务器。
@@ -947,7 +947,7 @@ core-downloads-client-switched = 下载现在使用另一个下载应用。
 core-downloads-host-not-running = 没有在主机上运行
 core-downloads-host-late = 没有及时响应
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 搜索为空
 core-downloads-native-no-results = 没有 { $query } 的结果
@@ -962,7 +962,7 @@ core-downloads-native-outside-folders = 拒绝移除下载文件夹以外的文�
 core-downloads-refuse-home-folder = { $path } 是主文件夹或包含主文件夹，未移除任何内容
 core-downloads-refuse-library-folder = { $path } 是媒体库文件夹或包含媒体库文件夹，未移除任何内容
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent 没有默认保存文件夹，请在 qBittorrent 中设置
 # $folder is the folder given
@@ -973,7 +973,7 @@ core-downloads-name-empty = 名称不能为空
 core-downloads-name-slash = 名称不能包含 / 或 \
 core-downloads-name-not-folder = { $name } 不是文件夹名称
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = 《{ $title }》已完结，已取消订阅。
 core-downloads-prune-failed = 无法取消订阅《{ $title }》。请检查设置中的“下载”。
@@ -985,11 +985,11 @@ core-downloads-refuse-root = { $path } 是文件系统根目录，未移除任�
 core-downloads-refuse-outside-library = { $path } 不在媒体库文件夹内，未移除任何内容
 core-downloads-refuse-save-folder = { $path } 是种子的保存文件夹，而不是它下载的内容，未移除任何内容
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = 《{ $title }》第 { $episode } 集播出三天了仍未出现。你的订阅源会继续寻找。
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss 命令不能为空
 core-downloads-settings-anirss-address = anirss 地址必须以 http:// 或 https:// 开头
@@ -999,7 +999,7 @@ core-downloads-settings-same-id = 有两个客户端的 ID 都是 { $id }
 core-downloads-settings-saved-address = { $name } 的地址必须以 http:// 或 https:// 开头
 core-downloads-settings-same-name = 有两个客户端都叫 { $name }，请给每个起不同的名字
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = { $address } 上的 qBittorrent 没有响应：{ $message }
 core-downloads-qbt-password-rejected = qBittorrent 拒绝了密码，请在设置中修改
@@ -1011,13 +1011,13 @@ core-downloads-qbt-not-added = qBittorrent 没有添加这些种子：{ $said }
 core-downloads-qbt-some-not-added = qBittorrent 有 { $count } 个种子无法添加：{ $said }
 core-downloads-qbt-answered = qBittorrent 返回 { $status }：{ $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = 条目 { $item } 不在 { $count } 个资源之中
 core-downloads-not-replaced = 第 { $episode } 集没有被替换。
 core-downloads-replaced = 已用新下载替换第 { $episode } 集。
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = 没有滚动下载 { $id }
 core-downloads-rolled = 《{ $title }》：现在保留第 { $from } 至 { $to } 集，共 { $total } 集。

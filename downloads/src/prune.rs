@@ -24,9 +24,9 @@ use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 use time::macros::format_description;
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::store::settings as kv;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::store::settings as kv;
 
 use super::backend::DownloadsBackend;
 use super::settings;
@@ -219,7 +219,14 @@ pub(super) async fn after_read(
     if !downloads.unattended_allowed() {
         return;
     }
-    if let Err(e) = check(downloads, backend, rules, crate::time::now_secs()).await {
+    if let Err(e) = check(
+        downloads,
+        backend,
+        rules,
+        anibeam_foundation::time::now_secs(),
+    )
+    .await
+    {
         tracing::warn!("finished feeds not pruned: {}", super::plain(&e));
     }
 }
@@ -270,7 +277,7 @@ async fn check(
                 downloads.services.bus.say(
                     Level::Info,
                     Stage::Downloads,
-                    crate::words!("core-downloads-pruned", title = &d.title),
+                    anibeam_contract::words!("core-downloads-pruned", title = &d.title),
                     format!(
                         "Unsubscribed from {}: finished airing {} ago",
                         d.title,
@@ -283,7 +290,7 @@ async fn check(
                 downloads.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    crate::words!("core-downloads-prune-failed", title = &d.title),
+                    anibeam_contract::words!("core-downloads-prune-failed", title = &d.title),
                     format!(
                         "Could not unsubscribe from {}: {}",
                         d.title,
