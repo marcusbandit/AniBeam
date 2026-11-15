@@ -125,8 +125,9 @@ jobs:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.version }}
 
-  # The AUR tarball is built only to show it still packs (#993): pull requests no longer build
-  # it, so a rolling Arch update that breaks it shows up here, before a release. Not published.
+  # The AUR tarball is built only to show it still packs (#993): a pull request builds it only
+  # under the `full ci` label (#986), so a rolling Arch update that breaks it shows up here,
+  # before a release. Not published.
   arch:
     needs: gate
     if: needs.gate.outputs.build == 'true'
