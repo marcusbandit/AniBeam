@@ -85,7 +85,7 @@ event-problem-trackers = 목록에 문제가 생겼어요. 자세한 내용은 �
 event-problem-franchise = 관련 작품에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-playback = 재생에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-store = 데이터를 저장하다가 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
-event-problem-system = AniBeam에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
+event-problem-system = Anibeam에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 event-problem-downloads = 다운로드에 문제가 생겼어요. 자세한 내용은 개발자 옵션에 있어요.
 
 ## Errors (contract::CoreError)
@@ -110,8 +110,8 @@ core-error-io = 파일을 읽거나 쓰지 못했어요: { $message }
 core-error-storage = 라이브러리를 저장하지 못했어요: { $message }
 core-error-keyring = 시스템 비밀번호 저장소에 연결하지 못했어요: { $message }
 core-error-unsupported = { $what }은(는) 아직 지원하지 않아요.
-core-error-version = 더 새로운 AniBeam에서 내보낸 파일이에요(형식 { $found }). 가져오려면 AniBeam을 업데이트하세요.
-core-error-internal = AniBeam 내부 오류가 발생했어요: { $message }
+core-error-version = 더 새로운 Anibeam에서 내보낸 파일이에요(형식 { $found }). 가져오려면 Anibeam을 업데이트하세요.
+core-error-internal = Anibeam 내부 오류가 발생했어요: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -211,7 +211,7 @@ core-playback-region-spain = 스페인
 core-playback-region-simplified = 간체
 core-playback-region-traditional = 번체
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = 폴더 확인 중
     .stopped = 폴더 확인 중 문제가 생겨 멈췄어요.
@@ -426,7 +426,7 @@ core-core-guest-not-interested = 그 컴퓨터의 관심 없음 목록은 소유
 core-core-guest-recommended = 그 컴퓨터의 추천은 소유자의 목록을 바탕으로 해요
 core-core-nothing-picked = 선택한 항목 없음
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }은(는) 매칭 제공처가 아니에요
 core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제공처는 한 번씩만 넣어야 해요
@@ -466,16 +466,16 @@ core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 후 시간 초과
 core-net-rate-limited = { $provider } 요청 한도 초과
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 방금 시간이 초과됐어요. { -app-name }이(가) { $seconds }초 기다린 뒤 다시 요청해요
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 데이터 없음
 
@@ -504,7 +504,7 @@ core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: {
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 홈 디렉터리가 없어요
 
@@ -515,6 +515,9 @@ core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 ## core/src/presence/mod.rs
 
 core-presence-extra = 번외
+core-presence-room = 함께 보는 중
+core-presence-in-room = 방에 있음
+core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
 ## core/src/trackers/accounts.rs
 
@@ -567,7 +570,7 @@ core-trackers-page-failed = 로그인을 마치지 못했어요
 core-trackers-page-go-back = { $app }(으)로 돌아가서 다시 시도하세요.
 core-trackers-page-finishing-title = { $app }, 마무리 중
 core-trackers-page-finishing = 마무리 중
-core-trackers-page-finishing-body = { $site }이(가) 응답했고 AniBeam이 로그인을 마무리하고 있어요. { $app }(으)로 돌아가면 완료됐을 때 알려 줘요.
+core-trackers-page-finishing-body = { $site }이(가) 응답했고 Anibeam이 로그인을 마무리하고 있어요. { $app }(으)로 돌아가면 완료됐을 때 알려 줘요.
 core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
@@ -780,7 +783,7 @@ core-metadata-progress-imdb-ratings = IMDb 평점
 
 core-franchise-relation-character = 같은 캐릭터
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 이미지 가져오는 중
 
@@ -800,7 +803,7 @@ core-transfer-wrong-format = { $format } 문서가 아니에요
 
 core-transfer-imported = 파일에서 라이브러리를 불러왔어요.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 라이브러리에 파일 { $id }이(가) 없어요
 core-library-file-elsewhere-not-removed = 파일 { $id }은(는) 다른 작품의 파일이라 아무것도 제거하지 않았어요
@@ -821,7 +824,7 @@ core-library-watched-removed =
        *[trash] 휴지통으로 옮겼어요
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     여기 있는 파일 하나가 { $read ->
@@ -836,7 +839,7 @@ core-library-fix-numbered-on = { $from }화는 이전 시즌에서 이어 매긴
 core-library-runs-span = { $first }~{ $last }
 core-library-runs-list = { $init }, { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 에피소드 번호는 0부터 10000까지예요
 core-library-fix-season-range = 시즌은 200까지예요
@@ -851,7 +854,7 @@ core-library-fixed =
        *[other] { $title } 파일 { $count }개를 읽는 방식을 수정했어요.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title }을(를) 숨겼어요.
 core-library-back-one = { $title }이(가) 다시 보여요.
@@ -860,12 +863,12 @@ core-library-back-many = 작품 { $count }개가 다시 보여요.
 core-library-episode-count-set = 이제 { $title }은(는) 에피소드 { $count }개예요.
 core-library-episode-count-cleared = { $title }의 에피소드 수를 지웠어요.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = { $title }의 방영 일정 메모를 지웠어요.
 core-library-schedule-saved = { $title }의 방영 일정 메모 { $count }개를 저장했어요.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 소스 경로는 절대 경로여야 해요
 core-library-source-exists = 이미 추가된 소스예요
@@ -900,7 +903,7 @@ core-library-scan-done =
         }누락 { $removed }개
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 안에 응답 없음
 core-library-agent-stopped-code = 코드 { $code }(으)로 멈췄어요
@@ -934,8 +937,8 @@ core-downloads-anirss-slow-start = anirss가 { $seconds }초 안에 시작되지
 core-downloads-anirss-slow-start-said = anirss가 { $seconds }초 안에 시작되지 않았어요: { $said }
 core-downloads-anirss-install-mac = anirss { $version } 이상을 설치하세요: { $command }
 core-downloads-anirss-install-linux = anirss { $version } 이상을 설치하세요: AUR의 anirss 패키지 또는 { $command }
-core-downloads-anirss-too-old = anirss { $version }은(는) 너무 오래됐어요. AniBeam에는 { $minimum } 이상이 필요해요. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클라이언트별 로그인을 따로 보관할 수 없어서, AniBeam이 클라이언트를 전환할 수 없어요. anirss { $minimum } 이상은 가능해요. { $update }.
+core-downloads-anirss-too-old = anirss { $version }은(는) 너무 오래됐어요. Anibeam에는 { $minimum } 이상이 필요해요. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클라이언트별 로그인을 따로 보관할 수 없어서, Anibeam이 클라이언트를 전환할 수 없어요. anirss { $minimum } 이상은 가능해요. { $update }.
 core-downloads-anirss-update-mac = 다음 명령으로 업데이트하세요: { $command }
 core-downloads-anirss-update-linux = anirss 패키지를 업데이트하거나 다음을 실행하세요: { $command }
 
@@ -963,18 +966,18 @@ core-downloads-anirss-missing = { $install }. 또는 설정에서 실행 중인 
 core-downloads-anirss-command-missing = { $command }을(를) 찾지 못했어요. { $install }. 또는 설정에서 실행 중인 서버를 지정하세요.
 core-downloads-anirss-start-failed = { $command }을(를) 시작하지 못했어요: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } 응답 내용: { $message }
-core-downloads-no-torrent-client = { $address }에서 응답하는 qBittorrent가 없고, AniBeam에도 실행할 자체 qBittorrent가 없어요. qBittorrent를 설치하고 Web UI를 켜거나, qbittorrent-nox를 설치하면 AniBeam이 대신 실행해요
-core-downloads-own-client-gone = AniBeam의 qBittorrent가 없어요: qbittorrent-nox가 설치돼 있지 않아요. AniBeam을 다시 설치하거나 설정에서 직접 쓰는 qBittorrent를 지정하세요
+core-downloads-no-torrent-client = { $address }에서 응답하는 qBittorrent가 없고, Anibeam에도 실행할 자체 qBittorrent가 없어요. qBittorrent를 설치하고 Web UI를 켜거나, qbittorrent-nox를 설치하면 Anibeam이 대신 실행해요
+core-downloads-own-client-gone = Anibeam의 qBittorrent가 없어요: qbittorrent-nox가 설치돼 있지 않아요. Anibeam을 다시 설치하거나 설정에서 직접 쓰는 qBittorrent를 지정하세요
 core-downloads-no-port = { $address }에 포트가 없어요
 core-downloads-own-client-settings = qBittorrent 설정을 쓸 수 없어요: { $error }
 core-downloads-own-client-start-failed = { $command }을(를) 시작하지 못했어요: { $error }
-core-downloads-own-client-slow-start = AniBeam의 qBittorrent가 시작되지 않았어요
-core-downloads-own-client-slow-start-said = AniBeam의 qBittorrent가 시작되지 않았어요: { $said }
+core-downloads-own-client-slow-start = Anibeam의 qBittorrent가 시작되지 않았어요
+core-downloads-own-client-slow-start-said = Anibeam의 qBittorrent가 시작되지 않았어요: { $said }
 core-downloads-not-ready = 다운로드를 사용할 준비가 안 됐어요. 설정의 다운로드를 확인하세요.
 core-downloads-ready = 다운로드를 사용할 준비가 됐어요.
 core-downloads-helper-sources =
     { $count ->
-       *[other] 이제 다운로드 검색을 AniBeam이 직접 해요. 검색 도우미 설정에 있는 소스 { $count }개는 읽지 않아요. 설정, 다운로드에서 추가하거나 그곳에서 검색 도우미를 선택하세요.
+       *[other] 이제 다운로드 검색을 Anibeam이 직접 해요. 검색 도우미 설정에 있는 소스 { $count }개는 읽지 않아요. 설정, 다운로드에서 추가하거나 그곳에서 검색 도우미를 선택하세요.
     }
 core-downloads-client-connected = 다운로드 앱이 연결됐어요.
 core-downloads-client-not-connected = 다운로드 앱이 연결되지 않았어요. 설정에서 주소를 확인하세요.
@@ -997,7 +1000,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = 영화 링크는 magnet이나 http(s) 주소여야 해요
 core-downloads-added-movie = 다운로드에 영화를 추가했어요.
-core-downloads-unsubscribed = { $name } 구독을 해지했어요.
 core-downloads-library-folder = { $folder }은(는) { $name }의 라이브러리 폴더이고, 이 구독이 받지 않은 에피소드가 있어요. 파일은 두고 구독만 제거하거나, { $name } 페이지에서 작품을 제거하세요
 core-downloads-no-torrents-named = 지정한 토렌트가 없어요
 core-downloads-paused =
@@ -1059,7 +1061,7 @@ core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
 core-downloads-pruned = { $title } 방영이 끝나서 구독을 해지했어요.
 core-downloads-prune-failed = { $title } 구독을 해지하지 못했어요. 설정의 다운로드를 확인하세요.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path }은(는) 일반 절대 경로가 아니라서 아무것도 제거하지 않았어요
 core-downloads-refuse-root = { $path }은(는) 파일 시스템 루트라서 아무것도 제거하지 않았어요
@@ -1168,16 +1170,9 @@ core-releases-episodes-phrase =
     }
 core-releases-episode-range = { $from }~{ $to }
 
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = 이 플랫폼의 anirss
-core-subscriptions-unreadable = 응답을 읽을 수 없어요({ $message })
-core-subscriptions-stopped = 이유 없이 멈췄어요
-core-subscriptions-stopped-said = 멈췄어요: { $said }
-
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1189,6 +1184,7 @@ core-room-service = 함께 보기
 core-room-not-found = 그 코드의 방이 없어요. 닫혔을 수 있어요.
 core-room-full = 방이 꽉 찼어요.
 core-room-proto = 그 릴레이는 다른 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+core-room-needs-episode = 그 릴레이는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들거나 릴레이를 업데이트하세요.
 core-room-unreachable = 릴레이에 연결하지 못했어요: { $message }
 core-room-refused = 릴레이가 거부했어요: { $message }
 core-room-not-in = 방에 있지 않아요.
@@ -1202,3 +1198,20 @@ core-room-member-left = { $name }님이 방에서 나갔어요.
 core-room-closed = 함께 보기 방이 닫혔어요.
 core-room-lost = 함께 보기 방과 연결이 끊겼어요. 다시 시도하는 중이에요.
 core-room-back = 함께 보기 방에 다시 연결됐어요.
+core-room-media-asked = 호스트에게 에피소드를 요청했어요.
+core-room-media-cannot = 호스트가 지금은 이 에피소드를 공유할 수 없어요.
+core-room-media-sent = { $name }님에게 에피소드 토렌트를 보냈어요.
+core-room-media-sent-name = { $name }님에게 에피소드 릴리스 이름을 보냈어요.
+core-room-media-nothing = 호스트에게 공유할 에피소드 사본이 없어요.
+core-room-media-no-answer = 호스트의 앱이 응답하지 않았어요. 잠시 후 다시 시도하세요.
+core-room-media-torrent = 호스트의 토렌트로 에피소드를 내려받고 있어요.
+core-room-media-searching = 내 소스에서 호스트의 릴리스를 찾고 있어요.
+core-room-media-not-found = 내 소스 중 호스트의 릴리스가 있는 곳이 없어요.
+core-room-media-no-sources = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
+core-room-media-no-start = 다운로드를 시작할 수 없었어요: { $message }
+core-room-media-client = 토렌트 클라이언트가 받지 않았어요
+core-room-media-lost = 토렌트 클라이언트가 에피소드 다운로드를 놓쳤어요.
+core-room-media-stalled = 다운로드가 10분 동안 진행되지 않았어요. 나중에 다시 시도하세요.
+core-room-media-not-in-library = 에피소드는 내려받았지만 라이브러리에 없어요. 다운로드가 라이브러리 폴더에 저장되는지 확인하세요.
+core-room-media-here = 에피소드가 이제 라이브러리에 있어요.
+core-room-media-rest-missing = 시리즈의 나머지를 가져오지 못했어요. 이 에피소드만 다운로드하고 있어요.

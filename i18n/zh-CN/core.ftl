@@ -79,7 +79,7 @@ event-problem-trackers = 你的列表出了问题。详情见开发者选项。
 event-problem-franchise = 相关番剧出了问题。详情见开发者选项。
 event-problem-playback = 播放出了问题。详情见开发者选项。
 event-problem-store = 保存数据时出了问题。详情见开发者选项。
-event-problem-system = AniBeam 出了问题。详情见开发者选项。
+event-problem-system = Anibeam 出了问题。详情见开发者选项。
 event-problem-downloads = 下载出了问题。详情见开发者选项。
 
 ## Errors (contract::CoreError)
@@ -104,8 +104,8 @@ core-error-io = 无法读写文件：{ $message }
 core-error-storage = 无法保存媒体库：{ $message }
 core-error-keyring = 无法访问系统密码存储：{ $message }
 core-error-unsupported = 暂不支持 { $what }。
-core-error-version = 这份导出来自更新版本的 AniBeam（格式 { $found }）。请更新 AniBeam 后再导入。
-core-error-internal = AniBeam 遇到内部错误：{ $message }
+core-error-version = 这份导出来自更新版本的 Anibeam（格式 { $found }）。请更新 Anibeam 后再导入。
+core-error-internal = Anibeam 遇到内部错误：{ $message }
 core-error-service = { $service }：{ $message }
 
 ## core/src/repos/mod.rs
@@ -205,7 +205,7 @@ core-playback-region-spain = 西班牙
 core-playback-region-simplified = 简体
 core-playback-region-traditional = 繁体
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = 正在检查文件夹
     .stopped = 检查文件夹时出现问题，已停止。
@@ -417,7 +417,7 @@ core-core-guest-not-interested = 那台电脑上的“不感兴趣”是它主�
 core-core-guest-recommended = 那台电脑上的推荐是根据它主人的列表生成的
 core-core-nothing-picked = 未选择任何内容
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } 不是匹配服务
 core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服务只能出现一次
@@ -457,16 +457,16 @@ core-host-not-an-address = { $text } 不是地址和端口
 
 core-host-not-a-key = { $key } 不是设备密钥
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 后超时
 core-net-rate-limited = { $provider } 限制了请求频率
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }：刚才超时了；{ -app-name } 会等待 { $seconds } 秒后再请求
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 没有数据
 
@@ -495,7 +495,7 @@ core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $err
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 没有主目录
 
@@ -506,6 +506,9 @@ core-first-run-not-absolute = 视频文件夹必须是绝对路径
 ## core/src/presence/mod.rs
 
 core-presence-extra = 附加内容
+core-presence-room = 一起观看
+core-presence-in-room = 在房间中
+core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 
 ## core/src/trackers/accounts.rs
 
@@ -550,7 +553,7 @@ core-trackers-page-failed = 登录没有完成
 core-trackers-page-go-back = 请回到 { $app } 重试。
 core-trackers-page-finishing-title = { $app }，仍在完成中
 core-trackers-page-finishing = 仍在完成中
-core-trackers-page-finishing-body = { $site } 已响应，AniBeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
+core-trackers-page-finishing-body = { $site } 已响应，Anibeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
 core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 此次登录已取消
 core-trackers-page-cancelled-body = 你可以关闭此标签页。如有需要，请从 { $app } 重新开始。
@@ -729,7 +732,7 @@ core-metadata-progress-imdb-ratings = IMDb 评分
 
 core-franchise-relation-character = 共同角色
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 正在获取图片
 
@@ -746,7 +749,7 @@ core-transfer-wrong-format = 不是 { $format } 文档
 
 core-transfer-imported = 已从文件载入媒体库。
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 媒体库中没有文件 { $id }
 core-library-file-elsewhere-not-removed = 文件 { $id } 属于另一部番剧，未移除任何内容
@@ -767,7 +770,7 @@ core-library-watched-removed =
        *[trash] 已移到回收站
     }。
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     这里唯一的文件被识别为{ $read ->
@@ -782,7 +785,7 @@ core-library-fix-numbered-on = 第 { $from } 集看起来是此条目的第 { $t
 core-library-runs-span = { $first } 至 { $last }
 core-library-runs-list = { $init } 和 { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 集数范围为 0 到 10000
 core-library-fix-season-range = 季数最多为 200
@@ -791,7 +794,7 @@ core-library-file-elsewhere-not-fixed = 文件 { $id } 属于另一部番剧，�
 core-library-fix-undone = 已恢复按文件名识别《{ $title }》的 { $count } 个文件。
 core-library-fixed = 已修正《{ $title }》中 { $count } 个文件的识别方式。
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = 已隐藏《{ $title }》。
 core-library-back-one = 《{ $title }》已恢复显示。
@@ -800,12 +803,12 @@ core-library-back-many = { $count } 部番剧已恢复显示。
 core-library-episode-count-set = 《{ $title }》现在共 { $count } 集。
 core-library-episode-count-cleared = 已清除《{ $title }》的集数。
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = 已清除《{ $title }》的排期备注。
 core-library-schedule-saved = 已为《{ $title }》保存 { $count } 条排期备注。
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 来源路径必须是绝对路径
 core-library-source-exists = 已是来源
@@ -837,7 +840,7 @@ core-library-scan-done =
         }{ $removed } 部缺失
     }。
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 内没有响应
 core-library-agent-stopped-code = 它以代码 { $code } 停止
@@ -865,8 +868,8 @@ core-downloads-anirss-slow-start = anirss 没有在 { $seconds } 秒内启动
 core-downloads-anirss-slow-start-said = anirss 没有在 { $seconds } 秒内启动：{ $said }
 core-downloads-anirss-install-mac = 请安装 anirss { $version } 或更高版本：{ $command }
 core-downloads-anirss-install-linux = 请安装 anirss { $version } 或更高版本：AUR 上的 anirss 包，或 { $command }
-core-downloads-anirss-too-old = anirss { $version } 版本太旧，AniBeam 需要 { $minimum } 或更高版本。{ $update }。
-core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 AniBeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
+core-downloads-anirss-too-old = anirss { $version } 版本太旧，Anibeam 需要 { $minimum } 或更高版本。{ $update }。
+core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 Anibeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
 core-downloads-anirss-update-mac = 更新命令：{ $command }
 core-downloads-anirss-update-linux = 请更新 anirss 包，或运行：{ $command }
 
@@ -894,16 +897,16 @@ core-downloads-anirss-missing = { $install }。或在设置中指向一个正在
 core-downloads-anirss-command-missing = 找不到 { $command }。{ $install }。或在设置中指向一个正在运行的服务器。
 core-downloads-anirss-start-failed = { $command } 无法启动：{ $error }
 core-downloads-anirss-too-old-said = { $tooOld } 它说：{ $message }
-core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，AniBeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，AniBeam 会替你运行它
-core-downloads-own-client-gone = AniBeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 AniBeam，或在设置中指向你自己的 qBittorrent
+core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，Anibeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，Anibeam 会替你运行它
+core-downloads-own-client-gone = Anibeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 Anibeam，或在设置中指向你自己的 qBittorrent
 core-downloads-no-port = { $address } 中没有端口
 core-downloads-own-client-settings = 无法写入 qBittorrent 的设置：{ $error }
 core-downloads-own-client-start-failed = { $command } 无法启动：{ $error }
-core-downloads-own-client-slow-start = AniBeam 的 qBittorrent 没有启动
-core-downloads-own-client-slow-start-said = AniBeam 的 qBittorrent 没有启动：{ $said }
+core-downloads-own-client-slow-start = Anibeam 的 qBittorrent 没有启动
+core-downloads-own-client-slow-start-said = Anibeam 的 qBittorrent 没有启动：{ $said }
 core-downloads-not-ready = 下载尚未就绪。请检查设置中的“下载”。
 core-downloads-ready = 下载已就绪。
-core-downloads-helper-sources = 下载现在由 AniBeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
+core-downloads-helper-sources = 下载现在由 Anibeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
 core-downloads-client-connected = 下载应用已连接。
 core-downloads-client-not-connected = 下载应用未连接。请在设置中检查它的地址。
 core-downloads-not-on-demand = { $name } 不是按需启动的端点
@@ -922,7 +925,6 @@ core-downloads-nothing-selected = 没有选择要下载的内容
 core-downloads-added = 已添加 { $count } 个下载。
 core-downloads-movie-link = 电影链接必须是磁力链接或 http(s) 网址
 core-downloads-added-movie = 已把一部电影加入下载。
-core-downloads-unsubscribed = 已取消订阅《{ $name }》。
 core-downloads-library-folder = { $folder } 是《{ $name }》的媒体库文件夹，其中有不是此订阅下载的剧集：请移除订阅但保留文件，或在《{ $name }》的页面中移除它
 core-downloads-no-torrents-named = 没有指定种子
 core-downloads-paused = 已暂停 { $count } 个下载。
@@ -972,7 +974,7 @@ core-downloads-name-not-folder = { $name } 不是文件夹名称
 core-downloads-pruned = 《{ $title }》已完结，已取消订阅。
 core-downloads-prune-failed = 无法取消订阅《{ $title }》。请检查设置中的“下载”。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } 不是普通的绝对路径，未移除任何内容
 core-downloads-refuse-root = { $path } 是文件系统根目录，未移除任何内容
@@ -1078,16 +1080,9 @@ core-releases-group-batch = { $group } 的合集
 core-releases-episodes-phrase = 第 { $list } 集
 core-releases-episode-range = { $from } 至 { $to }
 
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = 此平台上的 anirss
-core-subscriptions-unreadable = 无法读取它的响应（{ $message }）
-core-subscriptions-stopped = 它停止了，没有说明原因
-core-subscriptions-stopped-said = 它停止了：{ $said }
-
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1099,6 +1094,7 @@ core-room-service = 一起看
 core-room-not-found = 没有使用该代码的房间。房间可能已关闭。
 core-room-full = 该房间已满。
 core-room-proto = 该中继运行的是另一个版本的房间。请更新 { -app-name } 后再加入。
+core-room-needs-episode = 该中继需要一集才能创建房间。请在播放器里创建，或更新中继。
 core-room-unreachable = 无法连接中继：{ $message }
 core-room-refused = 中继拒绝了请求：{ $message }
 core-room-not-in = 你不在房间中。
@@ -1112,3 +1108,20 @@ core-room-member-left = { $name } 离开了房间。
 core-room-closed = 一起看房间已关闭。
 core-room-lost = 与一起看房间的连接已断开，正在重试。
 core-room-back = 已重新回到一起看房间。
+core-room-media-asked = 已向房主请求这一集。
+core-room-media-cannot = 房主现在无法分享这一集。
+core-room-media-sent = 已将这一集的种子发送给 { $name }。
+core-room-media-sent-name = 已将这一集的发布名称发送给 { $name }。
+core-room-media-nothing = 房主没有可分享的这一集。
+core-room-media-no-answer = 房主的应用没有回应。请稍后再试。
+core-room-media-torrent = 正在通过房主的种子下载这一集。
+core-room-media-searching = 正在你的来源中搜索房主的发布。
+core-room-media-not-found = 你的来源中都没有房主的发布。
+core-room-media-no-sources = 所有来源都已关闭。开启一个才能搜索。
+core-room-media-no-start = 无法开始下载：{ $message }
+core-room-media-client = 种子客户端没有接受
+core-room-media-lost = 种子客户端丢失了这一集的下载。
+core-room-media-stalled = 下载已经十分钟没有进展。请稍后再试。
+core-room-media-not-in-library = 这一集已下载，但不在你的媒体库中。请检查下载是否保存到媒体库文件夹。
+core-room-media-here = 这一集已在你的媒体库中。
+core-room-media-rest-missing = 无法获取这部剧的其余剧集。只在下载这一集。

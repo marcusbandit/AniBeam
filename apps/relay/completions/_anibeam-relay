@@ -1,5 +1,5 @@
 #compdef anibeam-relay
-# zsh completion for the AniBeam watch together relay.
+# zsh completion for the Anibeam watch together relay.
 
 _anibeam-relay() {
   _arguments \

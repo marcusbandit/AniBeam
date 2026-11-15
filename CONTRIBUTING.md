@@ -10,7 +10,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
-   [AniBeam project board](https://github.com/users/marcusbandit/projects/1),
+   [Anibeam project board](https://github.com/users/marcusbandit/projects/1),
    and its card moves as the work does. A security problem never goes in an
    issue: [`SECURITY.md`](SECURITY.md) says where to report it privately.
    Before your first card, ask the owner for board access and run
@@ -46,6 +46,14 @@ The scope is the crate the change belongs to: `core`, `shell` for
 in one part of the window can name it instead: `home`, `library`, `series`,
 `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
+`apps/android` is the phone app for Android and the iPhone alike, so its scope
+says whose code a change touches. `android` covers Android's own files only:
+`android/` and `src/platform/android.rs`. `ios` covers the iPhone's own only:
+`ios/`, `src/platform/ios.rs` and the `*ios*` scripts. Anything else in
+`apps/android` builds into both phones and is `phone core`, even when only one
+phone shows the difference: `feat(phone core): the phone app builds and opens
+on the iPhone simulator`.
+
 A `docs` change names the document: `readme`, `contributing`, `context`,
 `spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
 genuinely spans two scopes lists both, comma separated:
@@ -77,7 +85,7 @@ gives the run its own bus names, so it opens beside the installed app instead
 of handing off to it and never touches its data. anirss gets a home of its own
 there too, `<root>/state/home`: the run reads anirss's config from
 `<root>/state/home/.config/anirss/config.toml`, the anirss it starts keeps its
-state there, and a fresh run sets up AniBeam's own qBittorrent rather than
+state there, and a fresh run sets up Anibeam's own qBittorrent rather than
 taking one it finds on the machine. Point it at your own qBittorrent in
 Settings when you want that. For a picture without a
 window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
@@ -157,7 +165,7 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - A version can have a title to remember it by, between the number and the day:
   `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
   none. What's new and the update notice show it, and the release goes out named
-  "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
+  "Anibeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
 Good, as `apps/linux/changes/160-seek-jump.md`:
 
@@ -220,7 +228,7 @@ format string, ends in `// i18n: none`.
 
 ## Sources
 
-AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
+Anibeam ships no download sources, and this repo takes no PR that adds one. Nothing in
 the app points at a site: no address, no host, no default, no onboarding link, and no code,
 test or fixture that names one. A PR that adds a site gets closed, however well it is built.
 CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
@@ -240,7 +248,7 @@ that site. A new source goes in one of two places:
 
 - A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
   the owner's own repo. Its README says how to write a definition.
-- A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
+- A repo of your own, signed with your own key, that anyone can add in Anibeam beside or
   instead of the owner's.
 
 Endpoints are not part of this project, and that is final. No PR here decides which sources
@@ -253,12 +261,25 @@ kind, open an issue about the kind and leave the source out.
 
 ## Before you open it
 
-- The test, clippy and fmt commands in `docs/build-from-source.md` under Working on it pass.
+- `.github/local-ci.sh` passes on your machine. It runs the Linux checks: fmt, the patch note
+  heading, strings, site names, clippy, the tests and a tester build to try by hand.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in a change file under the app's `changes/`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
 - Nothing in the diff names a download site. See Sources.
 - `.github/strings-check.py` passes: new words go in `i18n/en/` under an ID. See Words.
+
+## Checks on GitHub
+
+A push to a pull request runs only the fast checks: CI (fmt, clippy and the core's tests),
+Strings, No sites, the PR checks and the Android check when the phone or the core changed,
+about seven minutes. Work on one platform at a time and check it locally with
+`.github/local-ci.sh`.
+
+When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
+and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
+Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
+last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
 
 ## Releases
 

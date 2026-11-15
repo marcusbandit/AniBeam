@@ -195,7 +195,7 @@ impl qobject::Theme {
         self.as_mut().set_text_scale(s.text_size.factor());
         let icon = QString::from(s.icon.as_str());
         if self.as_ref().app_icon() != &icon {
-            crate::bridge::helpers::ffi::set_window_icon(&QString::from(crate::app_icon::qrc(
+            crate::bridge::helpers::ffi::set_window_icon(&QString::from(&crate::app_icon::qrc(
                 s.icon,
             )));
             crate::app_icon::install(s.icon);

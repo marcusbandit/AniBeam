@@ -5,12 +5,15 @@ and every nightly, so the file is current without each visitor asking GitHub's A
 60 unauthenticated calls an hour per address).
 
   {
-    "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"}},
+    "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"},
+                "sizes": the same keys, each file's size in bytes, for the download page},
     "nightly": the same, or null when no nightly is newer than the stable release,
-    "phone":   {"tag", "version", "published", "url", "assets": {"apk"}},
+    "phone":   {"tag", "version", "published", "url", "assets": {"apk", "ipa"}},
     "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
     "tags":    every published tag, for What's new to link only releases that exist
   }
+and <site>/altstore/source.json, the iPhone app's AltStore-format source
+(tools/altstore.py).
 
 usage: releases.py <site-dir>    GH_TOKEN, when set, authenticates the call
 Without network, or when GitHub fails, nothing is written and the pages keep their plain links
@@ -23,6 +26,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+import altstore  # the iPhone app's sources, from the same releases
+
 REPO = "marcusbandit/AniBeam"
 MATCH = {
     "appimage": lambda n: n.endswith(".AppImage"),
@@ -32,6 +37,7 @@ MATCH = {
     "setup": lambda n: n.endswith("-setup.exe"),
     "zip": lambda n: bool(re.search(r"windows.*\.zip$", n)),
     "apk": lambda n: n.endswith(".apk"),
+    "ipa": lambda n: n.endswith(".ipa"),
 }
 
 
@@ -46,13 +52,14 @@ def fetch():
 def shape(r, keys):
     if not r:
         return None
-    assets = {}
+    assets, sizes = {}, {}
     for k in keys:
         a = next((a for a in r["assets"] if MATCH[k](a["name"])), None)
         if a:
             assets[k] = a["browser_download_url"]
+            sizes[k] = a["size"]
     return {"tag": r["tag_name"], "version": re.sub(r"^(android-)?v", "", r["tag_name"]),
-            "published": r["published_at"], "url": r["html_url"], "assets": assets}
+            "published": r["published_at"], "url": r["html_url"], "assets": assets, "sizes": sizes}
 
 
 def semver(tag):
@@ -85,11 +92,12 @@ def main(site):
     data = {
         "stable": shape(stable, desktop),
         "nightly": shape(nightly, desktop),
-        "phone": shape(phone, ["apk"]),
-        "phone_nightly": shape(phone_nightly, ["apk"]),
+        "phone": shape(phone, ["apk", "ipa"]),
+        "phone_nightly": shape(phone_nightly, ["apk", "ipa"]),
         "tags": sorted(r["tag_name"] for r in releases),
     }
     Path(site, "releases.json").write_text(json.dumps(data, indent=1) + "\n")
+    altstore.write(site, releases)
     print(f"releases: stable {data['stable'] and data['stable']['version']}, "
           f"nightly {data['nightly'] and data['nightly']['version']}, phone {data['phone'] and data['phone']['version']}, "
           f"phone nightly {data['phone_nightly'] and data['phone_nightly']['version']}")

@@ -90,7 +90,7 @@ event-problem-trackers = Er ging iets mis met je lijsten. Ontwikkelaarsopties he
 event-problem-franchise = Er ging iets mis met verwante series. Ontwikkelaarsopties hebben de details.
 event-problem-playback = Er ging iets mis met afspelen. Ontwikkelaarsopties hebben de details.
 event-problem-store = Er ging iets mis met het opslaan van je gegevens. Ontwikkelaarsopties hebben de details.
-event-problem-system = Er ging iets mis met AniBeam. Ontwikkelaarsopties hebben de details.
+event-problem-system = Er ging iets mis met Anibeam. Ontwikkelaarsopties hebben de details.
 event-problem-downloads = Er ging iets mis met downloads. Ontwikkelaarsopties hebben de details.
 
 ## Fouten (contract::CoreError)
@@ -115,8 +115,8 @@ core-error-io = Kon een bestand niet lezen of schrijven: { $message }
 core-error-storage = Kon je bibliotheek niet opslaan: { $message }
 core-error-keyring = Kon de wachtwoordopslag van het systeem niet bereiken: { $message }
 core-error-unsupported = { $what } wordt nog niet ondersteund.
-core-error-version = Deze export komt van een nieuwere AniBeam (formaat { $found }). Werk AniBeam bij om hem te importeren.
-core-error-internal = AniBeam liep tegen een interne fout aan: { $message }
+core-error-version = Deze export komt van een nieuwere Anibeam (formaat { $found }). Werk Anibeam bij om hem te importeren.
+core-error-internal = Anibeam liep tegen een interne fout aan: { $message }
 core-error-service = { $service }: { $message }
 
 ## core/src/repos/mod.rs
@@ -216,7 +216,7 @@ core-playback-region-spain = Spanje
 core-playback-region-simplified = vereenvoudigd
 core-playback-region-traditional = traditioneel
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Je mappen controleren
     .stopped = Mappen controleren stopte door een probleem.
@@ -432,7 +432,7 @@ core-core-guest-not-interested = Niet interessant op die computer is de lijst va
 core-core-guest-recommended = de aanbevelingen op die computer komen uit de lijst van de eigenaar
 core-core-nothing-picked = niets gekozen
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } is geen bron voor koppelen
 core-prefs-provider-count = { $provider } staat er { $count } keer in; elke bron staat er één keer in
@@ -472,16 +472,16 @@ core-host-not-an-address = { $text } is geen adres met poort
 
 core-host-not-a-key = { $key } is geen apparaatsleutel
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = time-out na { $ms }ms
 core-net-rate-limited = { $provider } remt verzoeken af
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: zojuist een time-out; { -app-name } wacht { $seconds } s voordat het weer vraagt
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = geen gegevens
 
@@ -510,7 +510,7 @@ core-update-cannot-copy = Kon de nieuwe app niet naast deze kopiëren: { $error 
 core-calendar-season-episode = { $title } - Seizoen { $season } Aflevering { $number }
 core-calendar-episode = { $title } - Aflevering { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = geen thuismap
 
@@ -521,6 +521,9 @@ core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Samen kijken
+core-presence-in-room = In een kamer
+core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
 
 ## core/src/trackers/accounts.rs
 
@@ -576,7 +579,7 @@ core-trackers-page-failed = Het inloggen is niet afgerond
 core-trackers-page-go-back = Ga terug naar { $app } en probeer het opnieuw.
 core-trackers-page-finishing-title = { $app }, bijna klaar
 core-trackers-page-finishing = Bijna klaar
-core-trackers-page-finishing-body = { $site } heeft geantwoord en AniBeam rondt het inloggen af. Ga terug naar { $app }, dat meldt wanneer het klaar is.
+core-trackers-page-finishing-body = { $site } heeft geantwoord en Anibeam rondt het inloggen af. Ga terug naar { $app }, dat meldt wanneer het klaar is.
 core-trackers-page-cancelled-title = { $app }, inloggen geannuleerd
 core-trackers-page-cancelled = Dit inloggen is geannuleerd
 core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } als je dat wilde.
@@ -839,7 +842,7 @@ core-metadata-progress-imdb-ratings = IMDb-beoordelingen
 
 core-franchise-relation-character = Gedeelde personages
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = afbeeldingen ophalen
 
@@ -860,7 +863,7 @@ core-transfer-wrong-format = geen { $format }-document
 
 core-transfer-imported = Je bibliotheek is uit het bestand geladen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = geen bestand { $id } in de bibliotheek
 core-library-file-elsewhere-not-removed = bestand { $id } hoort bij een andere serie, dus er is niets weggehaald
@@ -890,7 +893,7 @@ core-library-watched-removed =
        *[trash] naar de prullenbak verplaatst
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Het enige bestand hier wordt gelezen als { $read ->
@@ -912,7 +915,7 @@ core-library-fix-numbered-on = Afleveringen { $from } lijken de afleveringen { $
 core-library-runs-span = { $first } t/m { $last }
 core-library-runs-list = { $init } en { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = een afleveringsnummer loopt van 0 tot 10000
 core-library-fix-season-range = een seizoen loopt tot 200
@@ -929,7 +932,7 @@ core-library-fixed =
        *[other] Hersteld hoe { $count } bestanden van { $title } worden gelezen.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } verborgen.
 core-library-back-one = { $title } is terug.
@@ -938,12 +941,12 @@ core-library-back-many = { $count } series zijn terug.
 core-library-episode-count-set = { $title } heeft nu { $count } afleveringen.
 core-library-episode-count-cleared = Het aantal afleveringen van { $title } gewist.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = De schemanotities van { $title } gewist.
 core-library-schedule-saved = { $count } schemanotities voor { $title } opgeslagen.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = een bronpad moet absoluut zijn
 core-library-source-exists = is al een bron
@@ -985,7 +988,7 @@ core-library-scan-done =
         }{ $removed } ontbreken
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = geen antwoord binnen { $span }
 core-library-agent-stopped-code = gestopt met code { $code }
@@ -1021,8 +1024,8 @@ core-downloads-anirss-slow-start = anirss startte niet binnen { $seconds } secon
 core-downloads-anirss-slow-start-said = anirss startte niet binnen { $seconds } seconden: { $said }
 core-downloads-anirss-install-mac = Installeer anirss { $version } of nieuwer met: { $command }
 core-downloads-anirss-install-linux = Installeer anirss { $version } of nieuwer: het anirss-pakket in de AUR, of { $command }
-core-downloads-anirss-too-old = anirss { $version } is te oud voor AniBeam, dat { $minimum } of nieuwer nodig heeft. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } kan de login van elke torrentclient niet apart houden, en dat heeft AniBeam nodig om van client te wisselen; anirss { $minimum } en nieuwer kunnen dat wel. { $update }.
+core-downloads-anirss-too-old = anirss { $version } is te oud voor Anibeam, dat { $minimum } of nieuwer nodig heeft. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } kan de login van elke torrentclient niet apart houden, en dat heeft Anibeam nodig om van client te wisselen; anirss { $minimum } en nieuwer kunnen dat wel. { $update }.
 core-downloads-anirss-update-mac = Werk het bij met: { $command }
 core-downloads-anirss-update-linux = Werk het anirss-pakket bij, of voer uit: { $command }
 
@@ -1050,19 +1053,19 @@ core-downloads-anirss-missing = { $install }. Of laat Instellingen naar een draa
 core-downloads-anirss-command-missing = { $command } is niet gevonden. { $install }. Of laat Instellingen naar een draaiende server wijzen.
 core-downloads-anirss-start-failed = { $command } kon niet starten: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Het zei: { $message }
-core-downloads-no-torrent-client = Geen qBittorrent antwoordt op { $address }, en AniBeam heeft er zelf geen om te draaien. Installeer qBittorrent en zet de Web UI aan, of installeer qbittorrent-nox, dat AniBeam dan voor je draait
-core-downloads-own-client-gone = De qBittorrent van AniBeam is weg: qbittorrent-nox is niet geïnstalleerd. Installeer AniBeam opnieuw, of laat Instellingen naar je eigen qBittorrent wijzen
+core-downloads-no-torrent-client = Geen qBittorrent antwoordt op { $address }, en Anibeam heeft er zelf geen om te draaien. Installeer qBittorrent en zet de Web UI aan, of installeer qbittorrent-nox, dat Anibeam dan voor je draait
+core-downloads-own-client-gone = De qBittorrent van Anibeam is weg: qbittorrent-nox is niet geïnstalleerd. Installeer Anibeam opnieuw, of laat Instellingen naar je eigen qBittorrent wijzen
 core-downloads-no-port = geen poort in { $address }
 core-downloads-own-client-settings = kan de instellingen van qBittorrent niet schrijven: { $error }
 core-downloads-own-client-start-failed = { $command } kon niet starten: { $error }
-core-downloads-own-client-slow-start = De qBittorrent van AniBeam is niet gestart
-core-downloads-own-client-slow-start-said = De qBittorrent van AniBeam is niet gestart: { $said }
+core-downloads-own-client-slow-start = De qBittorrent van Anibeam is niet gestart
+core-downloads-own-client-slow-start-said = De qBittorrent van Anibeam is niet gestart: { $said }
 core-downloads-not-ready = Downloads zijn niet klaar. Controleer Downloads in Instellingen.
 core-downloads-ready = Downloads zijn klaar.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads zoeken nu met AniBeam zelf, dat de { $count } bron in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
-       *[other] Downloads zoeken nu met AniBeam zelf, dat de { $count } bronnen in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
+        [one] Downloads zoeken nu met Anibeam zelf, dat de { $count } bron in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
+       *[other] Downloads zoeken nu met Anibeam zelf, dat de { $count } bronnen in de eigen config van de zoekhulp niet leest. Voeg ze toe in Instellingen, Downloads, of kies daar de zoekhulp.
     }
 core-downloads-client-connected = De downloadapp is gekoppeld.
 core-downloads-client-not-connected = De downloadapp is niet gekoppeld. Controleer het adres in Instellingen.
@@ -1086,7 +1089,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = een filmlink moet een magnet of een http(s)-URL zijn
 core-downloads-added-movie = Een film aan je downloads toegevoegd.
-core-downloads-unsubscribed = Abonnement op { $name } opgezegd.
 core-downloads-library-folder = { $folder } is de bibliotheekmap van { $name }, met afleveringen die dit abonnement niet downloadde: haal het abonnement weg zonder de bestanden, of haal { $name } weg vanaf de pagina ervan
 core-downloads-no-torrents-named = geen torrents genoemd
 core-downloads-paused =
@@ -1152,7 +1154,7 @@ core-downloads-name-not-folder = { $name } is geen mapnaam
 core-downloads-pruned = Abonnement op { $title } opgezegd, de uitzending is afgelopen.
 core-downloads-prune-failed = Kon het abonnement op { $title } niet opzeggen. Controleer Downloads in Instellingen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is geen gewoon absoluut pad, dus er is niets weggehaald
 core-downloads-refuse-root = { $path } is de root van het bestandssysteem, dus er is niets weggehaald
@@ -1262,16 +1264,9 @@ core-releases-episodes-phrase =
     }
 core-releases-episode-range = { $from } t/m { $to }
 
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = anirss op dit platform
-core-subscriptions-unreadable = het antwoord kon niet worden gelezen ({ $message })
-core-subscriptions-stopped = het stopte zonder te zeggen waarom
-core-subscriptions-stopped-said = het stopte: { $said }
-
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1283,6 +1278,7 @@ core-room-service = Samen kijken
 core-room-not-found = Geen kamer met die code. Misschien is hij gesloten.
 core-room-full = Die kamer is vol.
 core-room-proto = Die relay draait een andere versie van kamers. Werk { -app-name } bij om mee te doen.
+core-room-needs-episode = Die relay heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler of werk de relay bij.
 core-room-unreachable = Kon de relay niet bereiken: { $message }
 core-room-refused = De relay weigerde: { $message }
 core-room-not-in = Je zit niet in een kamer.
@@ -1296,3 +1292,20 @@ core-room-member-left = { $name } verliet de kamer.
 core-room-closed = De kamer om samen te kijken is gesloten.
 core-room-lost = Verbinding met de kamer om samen te kijken verloren. Opnieuw proberen.
 core-room-back = Weer in de kamer om samen te kijken.
+core-room-media-asked = De host om de aflevering gevraagd.
+core-room-media-cannot = De host kan deze aflevering nu niet delen.
+core-room-media-sent = { $name } de torrent van de aflevering gestuurd.
+core-room-media-sent-name = { $name } de naam van de release van de aflevering gestuurd.
+core-room-media-nothing = De host heeft geen kopie van de aflevering om te delen.
+core-room-media-no-answer = De app van de host antwoordde niet. Probeer het zo opnieuw.
+core-room-media-torrent = De aflevering wordt gedownload via de torrent van de host.
+core-room-media-searching = Je bronnen worden doorzocht op de release van de host.
+core-room-media-not-found = Geen van je bronnen heeft de release van de host.
+core-room-media-no-sources = Elke bron staat uit. Zet er een aan om te zoeken.
+core-room-media-no-start = De download kon niet starten: { $message }
+core-room-media-client = de torrentclient nam hem niet aan
+core-room-media-lost = De torrentclient is de download van de aflevering kwijt.
+core-room-media-stalled = De download is in tien minuten niet opgeschoten. Probeer het later opnieuw.
+core-room-media-not-in-library = De aflevering is gedownload, maar staat niet in je bibliotheek. Controleer of downloads in een bibliotheekmap terechtkomen.
+core-room-media-here = De aflevering staat nu in je bibliotheek.
+core-room-media-rest-missing = De rest van de serie kon niet worden opgehaald. Alleen deze aflevering wordt gedownload.

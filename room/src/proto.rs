@@ -16,6 +16,21 @@ pub const MAX_MEMBERS: u32 = 10;
 /// The largest position a command may carry, in seconds (a day).
 pub const MAX_POSITION: f64 = 86_400.0;
 
+/// The longest public key a member may publish, in characters. An X25519 key in
+/// base64 is 44.
+pub const MAX_KEY: usize = 64;
+
+/// The longest sealed payload one member may pass to another, in characters.
+pub const MAX_SEALED: usize = 8 * 1024;
+
+/// What the relay says to a seal for a member who is not connected, so the
+/// sender can tell that refusal from any other.
+pub const SEAL_NOBODY: &str = "nobody else in the room has that id";
+
+/// The longest a download may still take, as a member's status says it, in
+/// seconds (a week). Anything longer reads as unknown.
+pub const MAX_ETA: u64 = 7 * 24 * 3600;
+
 /// The id the protocol shows for one person in a room. Stable across a rejoin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -44,6 +59,10 @@ pub struct EpisodeRef {
     /// with their own file's to suggest an offset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opening_start: Option<f64>,
+    /// The host's show is a film, not a series of episodes. A client from before
+    /// leaves it out, which reads as a series.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub film: bool,
 }
 
 /// The room's play state. While `playing`, the canonical position now is
@@ -68,6 +87,30 @@ pub enum Ready {
     Loading,
 }
 
+/// How far a member's download of the episode is. Plain on purpose: it says
+/// how much, never what or from where.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Progress {
+    /// From 0 to 100.
+    pub percent: f64,
+    /// Seconds left, when the torrent client can tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta: Option<u64>,
+}
+
+impl Progress {
+    /// The progress with its numbers in range, or `None` when they make no sense.
+    pub fn clean(self) -> Option<Progress> {
+        if !self.percent.is_finite() || !(0.0..=100.0).contains(&self.percent) {
+            return None;
+        }
+        Some(Progress {
+            percent: self.percent,
+            eta: self.eta.filter(|s| *s <= MAX_ETA),
+        })
+    }
+}
+
 /// One person in a room, as everyone in it sees them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Member {
@@ -76,6 +119,13 @@ pub struct Member {
     pub host: bool,
     pub ready: Ready,
     pub joined_ms: u64,
+    /// The member's public key for this session (X25519, base64), which others
+    /// seal payloads to. None from a client that seals nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// The member is downloading the episode, this far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<Progress>,
 }
 
 /// The whole room, as a joiner gets it in [`ServerMsg::Welcome`].
@@ -86,7 +136,10 @@ pub struct RoomView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<MemberId>,
     pub members: Vec<Member>,
-    pub episode: EpisodeRef,
+    /// What the room watches. None until the host picks something: a room can
+    /// start before that (#922).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<EpisodeRef>,
     pub state: PlayState,
     pub max: u32,
 }
@@ -137,6 +190,15 @@ pub enum ClientMsg {
         /// From an earlier [`ServerMsg::Welcome`]: the same member comes back.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rejoin_key: Option<String>,
+        /// This member's public key for the session, base64, at most [`MAX_KEY`].
+        /// A relay from before keys ignores it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        /// This client can be in a room that has no episode yet. A relay turns
+        /// a client without it away from such a room with `proto`, since the
+        /// welcome would carry no episode for it to read.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        unpicked: bool,
     },
     /// A clock probe; `c` is the client's clock in milliseconds.
     Ping { c: u64 },
@@ -144,10 +206,19 @@ pub enum ClientMsg {
     Cmd { action: Action, position: f64 },
     /// Move the room to another episode. The host only.
     Episode { episode: EpisodeRef },
-    /// Whether this member has the episode open.
-    Status { ready: Ready },
+    /// Whether this member has the episode open, and how far its download is
+    /// while it is fetching it.
+    Status {
+        ready: Ready,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        progress: Option<Progress>,
+    },
     /// Leaving for good: the member's rejoin key stops working at once.
     Bye,
+    /// An opaque payload for one other member, at most [`MAX_SEALED`]
+    /// characters. The relay passes it on as [`ServerMsg::Sealed`] and cannot
+    /// read it: the members seal it to each other's keys.
+    Seal { to: MemberId, data: String },
 }
 
 impl ClientMsg {
@@ -199,6 +270,11 @@ pub enum ServerMsg {
     Closed {
         reason: String,
     },
+    /// Another member's [`ClientMsg::Seal`], passed on as it came.
+    Sealed {
+        from: MemberId,
+        data: String,
+    },
 }
 
 impl ServerMsg {
@@ -220,10 +296,14 @@ impl ServerMsg {
     }
 }
 
-/// The body of `POST /rooms`.
+/// The body of `POST /rooms`. `{}` makes a room that has not picked an
+/// episode yet (#922). Any other field is refused, so a malformed body or a
+/// misspelt `episode` never makes an empty room.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRoom {
-    pub episode: EpisodeRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<EpisodeRef>,
 }
 
 /// The `201` answer to `POST /rooms`. Whoever hellos with `host_key` is the host.
@@ -249,6 +329,7 @@ mod tests {
             episode_title: None,
             duration: Some(1440.0),
             opening_start: Some(30.5),
+            film: false,
         }
     }
 
@@ -266,6 +347,8 @@ mod tests {
                 client: "anibeam/2.5.0".into(),
                 host_key: Some("ab".into()),
                 rejoin_key: None,
+                key: None,
+                unpicked: false,
             }
         );
     }
@@ -279,6 +362,8 @@ mod tests {
                 client: "anibeam/2.5.0".into(),
                 host_key: None,
                 rejoin_key: Some("k".into()),
+                key: Some("a2V5".into()),
+                unpicked: true,
             },
             ClientMsg::Ping { c: 12 },
             ClientMsg::Cmd {
@@ -288,8 +373,20 @@ mod tests {
             ClientMsg::Episode { episode: episode() },
             ClientMsg::Status {
                 ready: Ready::Missing,
+                progress: None,
+            },
+            ClientMsg::Status {
+                ready: Ready::Missing,
+                progress: Some(Progress {
+                    percent: 42.5,
+                    eta: Some(90),
+                }),
             },
             ClientMsg::Bye,
+            ClientMsg::Seal {
+                to: MemberId(2),
+                data: "c2VhbGVk".into(),
+            },
         ];
         for msg in all {
             assert_eq!(ClientMsg::parse(&msg.to_json()).unwrap(), msg);
@@ -318,7 +415,8 @@ mod tests {
         assert_eq!(
             status,
             ClientMsg::Status {
-                ready: Ready::Loading
+                ready: Ready::Loading,
+                progress: None,
             }
         );
     }
@@ -355,11 +453,52 @@ mod tests {
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         };
         let v: serde_json::Value = serde_json::to_value(&e).unwrap();
         assert_eq!(v, json!({"episode_key": "k", "series_title": "S"}));
         let back: EpisodeRef = serde_json::from_value(v).unwrap();
         assert_eq!(back, e);
+    }
+
+    #[test]
+    fn a_room_without_an_episode_leaves_it_out() {
+        let view = RoomView {
+            code: "K7QM2X".into(),
+            host: None,
+            members: Vec::new(),
+            episode: None,
+            state: PlayState {
+                playing: false,
+                position: 0.0,
+                rate: 1.0,
+                at_ms: 0,
+                rev: 0,
+            },
+            max: MAX_MEMBERS,
+        };
+        let v = serde_json::to_value(&view).unwrap();
+        assert!(v.get("episode").is_none());
+        assert_eq!(serde_json::from_value::<RoomView>(v).unwrap(), view);
+        // A hello from before #922 reads as one that cannot take such a room
+        let Ok(ClientMsg::Hello { unpicked, .. }) =
+            ClientMsg::parse(r#"{"t":"hello","name":"Ann","proto":1,"client":"anibeam/2.5.0"}"#)
+        else {
+            panic!("hello did not read")
+        };
+        assert!(!unpicked);
+        let film = serde_json::to_value(EpisodeRef {
+            film: true,
+            ..episode()
+        })
+        .unwrap();
+        assert_eq!(film["film"], json!(true));
+        assert!(
+            serde_json::to_value(episode())
+                .unwrap()
+                .get("film")
+                .is_none()
+        );
     }
 
     #[test]
@@ -377,6 +516,8 @@ mod tests {
             host: true,
             ready: Ready::Ready,
             joined_ms: 5,
+            key: None,
+            progress: None,
         };
         let all = [
             ServerMsg::Welcome {
@@ -386,7 +527,7 @@ mod tests {
                     code: "K7QM2X".into(),
                     host: Some(MemberId(1)),
                     members: vec![member.clone()],
-                    episode: episode(),
+                    episode: Some(episode()),
                     state,
                     max: MAX_MEMBERS,
                 },
@@ -412,10 +553,78 @@ mod tests {
             ServerMsg::Closed {
                 reason: "bye".into(),
             },
+            ServerMsg::Sealed {
+                from: MemberId(1),
+                data: "c2VhbGVk".into(),
+            },
         ];
         for msg in all {
             assert_eq!(ServerMsg::parse(&msg.to_json()).unwrap(), msg);
         }
+    }
+
+    #[test]
+    fn members_with_keys_and_progress_read_and_old_ones_still_do() {
+        let v = json!({"t": "members", "members": [{
+            "id": 3, "name": "Cy", "host": false, "ready": "missing", "joined_ms": 1,
+            "key": "a2V5", "progress": {"percent": 12.5, "eta": 40}
+        }]});
+        let Ok(ServerMsg::Members { members }) = serde_json::from_value(v) else {
+            panic!("members did not read")
+        };
+        assert_eq!(members[0].key.as_deref(), Some("a2V5"));
+        assert_eq!(
+            members[0].progress,
+            Some(Progress {
+                percent: 12.5,
+                eta: Some(40)
+            })
+        );
+        let old = json!({"t": "members", "members": [{
+            "id": 3, "name": "Cy", "host": false, "ready": "missing", "joined_ms": 1
+        }]});
+        let Ok(ServerMsg::Members { members }) = serde_json::from_value(old) else {
+            panic!("old members did not read")
+        };
+        assert_eq!((members[0].key.clone(), members[0].progress), (None, None));
+        // What a client from before writes still reads
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"status","ready":"ready"}"#).unwrap(),
+            ClientMsg::Status {
+                ready: Ready::Ready,
+                progress: None
+            }
+        );
+        assert_eq!(
+            ClientMsg::Status {
+                ready: Ready::Ready,
+                progress: None
+            }
+            .to_json(),
+            r#"{"t":"status","ready":"ready"}"#
+        );
+    }
+
+    #[test]
+    fn progress_out_of_range_is_dropped() {
+        let p = |percent, eta| Progress { percent, eta }.clean();
+        assert_eq!(
+            p(50.0, Some(10)),
+            Some(Progress {
+                percent: 50.0,
+                eta: Some(10)
+            })
+        );
+        assert_eq!(p(101.0, None), None);
+        assert_eq!(p(-1.0, None), None);
+        assert_eq!(p(f64::NAN, None), None);
+        assert_eq!(
+            p(5.0, Some(MAX_ETA + 1)),
+            Some(Progress {
+                percent: 5.0,
+                eta: None
+            })
+        );
     }
 
     #[test]
@@ -456,7 +665,17 @@ mod tests {
             "episode": {"episode_key": "k", "series_title": "S", "anilist_id": 5}
         }))
         .unwrap();
-        assert_eq!(body.episode.anilist_id, Some(5));
+        assert_eq!(body.episode.unwrap().anilist_id, Some(5));
+        let empty: CreateRoom = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(empty.episode, None);
+        assert_eq!(serde_json::to_value(&empty).unwrap(), json!({}));
+        // Anything but an episode is refused, a misspelt one included
+        for bad in [
+            json!({"nope": 1}),
+            json!({"epsiode": {"episode_key": "k", "series_title": "S"}}),
+        ] {
+            assert!(serde_json::from_value::<CreateRoom>(bad).is_err());
+        }
         let created = CreatedRoom {
             code: "K7QM2X".into(),
             host_key: "00".into(),

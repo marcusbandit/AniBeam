@@ -13,6 +13,10 @@ on:
     branches: [main]
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
       - 'core/**'
       - 'host-api/**'
       - 'recs/**'
@@ -23,6 +27,10 @@ on:
   pull_request:
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
       - 'core/**'
       - 'host-api/**'
       - 'recs/**'
@@ -87,6 +95,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/android
 
       - name: Test

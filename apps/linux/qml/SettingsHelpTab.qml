@@ -9,7 +9,7 @@ SettingsTab {
     title: words.t("settings-help-title")
     lead: words.t("settings-help-lead")
     readonly property var about: Door.about || ({})
-    // Folders AniBeam could not put a name to, from the library as it is now
+    // Folders Anibeam could not put a name to, from the library as it is now
     property int unrecognised: 0
     property int folders: 0
     // Counted the way Show info sections them, hidden shows included when they are revealed

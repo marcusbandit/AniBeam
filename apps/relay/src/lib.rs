@@ -3,9 +3,12 @@
 //!
 //! Routes:
 //!
-//! - `POST /rooms` with `{"episode": EpisodeRef}` makes a room: `201` with
+//! - `POST /rooms` with `{"episode": EpisodeRef}`, or `{}` for a room with
+//!   nothing picked yet (#922), makes a room: `201` with
 //!   `{"code", "host_key"}`.
 //! - `GET /rooms/{code}/ws` joins one over WebSocket; `404` when it does not exist.
+//! - `GET /` is the find page, where a code is typed; `/?code=...` goes to
+//!   that room's page.
 //! - `GET /{code}` is the join page a shared link opens.
 //! - `GET /health` answers `ok`.
 //!
@@ -27,9 +30,9 @@ use axum::Router;
 use axum::body::Bytes;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, RawQuery, State};
 use axum::http::{StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -57,12 +60,16 @@ const QUEUE: usize = 256;
 pub struct Options {
     /// How long a socket may stay open without saying hello.
     pub hello_wait: Duration,
+    /// The time in ms since the epoch, as every limit and room timer reads
+    /// it. Tests stop it so a rate holds however slow the machine is.
+    pub clock: fn() -> u64,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             hello_wait: Duration::from_millis(HELLO_MS),
+            clock: now_ms,
         }
     }
 }
@@ -82,6 +89,7 @@ pub async fn serve_with(listener: TcpListener, options: Options) -> std::io::Res
         .route("/health", get(health))
         .route("/rooms", post(create))
         .route("/rooms/{code}/ws", get(join))
+        .route("/", get(find_page))
         .route("/{code}", get(join_page))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .with_state(relay);
@@ -216,7 +224,7 @@ async fn create(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: Bytes,
 ) -> Response {
-    let now = now_ms();
+    let now = relay.now();
     let mut inner = relay.lock();
     if !inner.allow(addr.ip(), Kind::Create, now) {
         return (
@@ -226,7 +234,7 @@ async fn create(
             .into_response();
     }
     let Ok(request) = serde_json::from_slice::<CreateRoom>(&body) else {
-        return (StatusCode::BAD_REQUEST, "expected {\"episode\": ...}").into_response();
+        return (StatusCode::BAD_REQUEST, "expected {} or {\"episode\": ...}").into_response();
     };
     if inner.rooms.len() >= MAX_ROOMS {
         return (StatusCode::SERVICE_UNAVAILABLE, "the relay is full").into_response();
@@ -281,7 +289,7 @@ async fn join(
     Path(raw): Path<String>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
-    let now = now_ms();
+    let now = relay.now();
     let room_code = {
         let mut inner = relay.lock();
         if !inner.allow(addr.ip(), Kind::Open, now) {
@@ -300,6 +308,17 @@ async fn join(
     }
 }
 
+/// The find page, or the room page a script-less form asked for.
+async fn find_page(RawQuery(query): RawQuery) -> Response {
+    match page::code_from_query(query.as_deref()) {
+        Ok(Some(room_code)) => Redirect::to(&format!("/{room_code}")).into_response(),
+        Ok(None) => Html(page::find_html(None)).into_response(),
+        Err(typed) => {
+            (StatusCode::BAD_REQUEST, Html(page::find_html(Some(&typed)))).into_response()
+        }
+    }
+}
+
 async fn join_page(
     State(relay): State<Relay>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -310,7 +329,8 @@ async fn join_page(
     };
     let view = {
         let mut inner = relay.lock();
-        if !inner.allow(addr.ip(), Kind::Page, now_ms()) {
+        let now = (inner.options.clock)();
+        if !inner.allow(addr.ip(), Kind::Page, now) {
             return (StatusCode::TOO_MANY_REQUESTS, "too many pages").into_response();
         }
         inner.rooms.get(&room_code).map(|e| e.room.view())
@@ -328,23 +348,23 @@ async fn join_page(
 /// not, and one that has not said hello by the deadline is closed.
 async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
     let (tx, mut rx) = mpsc::channel(QUEUE);
-    let (conn, hello_wait) = {
+    let (conn, hello_wait, clock) = {
         let mut inner = relay.lock();
         let conn = ConnId(inner.next_conn);
         inner.next_conn += 1;
-        let hello_wait = inner.options.hello_wait;
+        let Options { hello_wait, clock } = inner.options;
         let conn = inner.rooms.get_mut(&room_code).map(|entry| {
             entry.sockets.insert(conn, tx);
             conn
         });
-        (conn, hello_wait)
+        (conn, hello_wait, clock)
     };
     let Some(conn) = conn else {
         // The room closed between the upgrade and now.
         let _ = socket.send(Message::Close(None)).await;
         return;
     };
-    let mut window = Window::new(now_ms());
+    let mut window = Window::new(clock());
     let deadline = tokio::time::sleep(hello_wait);
     tokio::pin!(deadline);
     let mut awaiting_hello = true;
@@ -380,7 +400,7 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
                     Some(Ok(Message::Close(_)) | Err(_)) | None => break,
                 };
-                match window.hit(now_ms()) {
+                match window.hit(clock()) {
                     Verdict::Pass => relay.on_text(&room_code, conn, text.as_str()),
                     // Leaving is never dropped, however fast the socket was.
                     _ if is_bye(text.as_str()) => relay.on_text(&room_code, conn, text.as_str()),
@@ -399,6 +419,10 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
 }
 
 impl Relay {
+    fn now(&self) -> u64 {
+        (self.lock().options.clock)()
+    }
+
     fn is_member(&self, room_code: &str, conn: ConnId) -> bool {
         self.lock()
             .rooms
@@ -407,7 +431,7 @@ impl Relay {
     }
 
     fn on_text(&self, room_code: &str, conn: ConnId, text: &str) {
-        let now = now_ms();
+        let now = self.now();
         let mut inner = self.lock();
         if let Some(entry) = inner.rooms.get_mut(room_code) {
             let outs = entry.room.handle_text(conn, text, now);
@@ -416,7 +440,7 @@ impl Relay {
     }
 
     fn on_close(&self, room_code: &str, conn: ConnId) {
-        let now = now_ms();
+        let now = self.now();
         let mut inner = self.lock();
         if let Some(entry) = inner.rooms.get_mut(room_code) {
             entry.sockets.remove(&conn);
@@ -436,8 +460,8 @@ async fn tick_loop(relay: Weak<Mutex<Inner>>) {
         let Some(relay) = relay.upgrade() else {
             return;
         };
-        let now = now_ms();
         let mut inner = lock(&relay);
+        let now = (inner.options.clock)();
         for entry in inner.rooms.values_mut() {
             let outs = entry.room.tick(now);
             entry.send(outs);

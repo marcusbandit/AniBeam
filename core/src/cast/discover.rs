@@ -146,8 +146,9 @@ pub async fn describe(locations: Vec<String>, found: &impl Fn(Found)) {
 /// discovery cannot see, an emulator being behind NAT. `renderer=<description URL>` adds a
 /// DLNA renderer, `port=` fixes the server's port and `advertise=host:port` is the address
 /// the receiver is told to fetch from (an `adb forward` on the host, say). Read from
-/// `/data/local/tmp/anibeam-cast-dev` on Android and the file `ANIBEAM_CAST_DEV` names
-/// elsewhere; absent in normal use.
+/// `/data/local/tmp/anibeam-cast-dev` on Android, where `adb push` puts it, and the file
+/// `ANIBEAM_CAST_DEV` names elsewhere, the iPhone included (a simulator run passes it as
+/// `SIMCTL_CHILD_ANIBEAM_CAST_DEV`); absent in normal use.
 #[derive(Clone, Debug, Default)]
 pub struct Dev {
     pub renderers: Vec<String>,

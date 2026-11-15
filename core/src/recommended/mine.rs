@@ -5,10 +5,9 @@
 use std::collections::{HashMap, HashSet};
 
 use anibeam_recs::{Entry, Status};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::trackers::accounts;
 
 /// One show on the user's list, as the row reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -44,6 +43,20 @@ fn status_of(s: ListStatus) -> Status {
     }
 }
 
+/// The account's user id, when the tracker is connected: the row the trackers
+/// keep, read here as the list tables below are, so the recommender imports
+/// no team above it (#854). `None` when it is not connected.
+fn connected(conn: &Connection, t: Tracker) -> Result<Option<Option<u64>>, CoreError> {
+    let user = conn
+        .query_row(
+            "SELECT user_id FROM tracker_accounts WHERE tracker = ?1 AND connected_at IS NOT NULL",
+            params![t.as_str()],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .optional()?;
+    Ok(user.map(|id| id.map(|id| id as u64)))
+}
+
 impl Mine {
     /// The list from the AniList account when it is connected, which is what
     /// the recommender's ids are. Without it, a connected MyAnimeList list
@@ -51,10 +64,9 @@ impl Mine {
     /// kept on this device fills in what neither carries.
     pub fn read(conn: &Connection) -> Result<Mine, CoreError> {
         let mut mine = Mine::default();
-        let anilist =
-            accounts::load_row(conn, Tracker::Anilist)?.filter(|row| row.connected_at.is_some());
-        let mal = accounts::load_row(conn, Tracker::Mal)?.filter(|row| row.connected_at.is_some());
-        mine.user = anilist.as_ref().and_then(|row| row.user_id);
+        let anilist = connected(conn, Tracker::Anilist)?;
+        let mal = connected(conn, Tracker::Mal)?;
+        mine.user = anilist.flatten();
         let sql = if anilist.is_some() {
             Some(
                 "SELECT media_id, status, score, repeat, progress FROM tracker_entries

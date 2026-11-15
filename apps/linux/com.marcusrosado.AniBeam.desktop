@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=AniBeam
+Name=Anibeam
 Comment=Browse, play, and track your local anime library
 Exec=anibeam %u
 Icon=com.marcusrosado.AniBeam

@@ -257,7 +257,7 @@ In `createWindow` (after `mainWindow = new BrowserWindow(...)`), add a single bo
 
 ```ts
 mainWindow.webContents.once('did-finish-load', () => {
-  logger.info('system', 'AniBeam ready');
+  logger.info('system', 'Anibeam ready');
 });
 ```
 
@@ -670,7 +670,7 @@ Run: `bun run typecheck`
 Expected: no errors.
 
 Run: `bun run dev`
-Expected: app starts, an "Activity" pill is visible at bottom-right. Click it. The drawer opens; you should see one entry: `system | AniBeam ready`. Stage filter chips and level chips toggle visibility. Clear empties the list. Close it.
+Expected: app starts, an "Activity" pill is visible at bottom-right. Click it. The drawer opens; you should see one entry: `system | Anibeam ready`. Stage filter chips and level chips toggle visibility. Clear empties the list. Close it.
 
 If the drawer doesn't appear: open DevTools (Ctrl+Shift+I in dev mode), check console for IPC errors. Most likely cause is the preload import path or a missing channel registration in `main.ts`.
 
