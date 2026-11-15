@@ -1,6 +1,6 @@
 //! A feed's search, read back from its feed URL.
 
-use crate::percent;
+use anibeam_foundation::percent;
 
 /// A feed's `q` parameter, percent-decoded with `+` read as a
 /// space. `None` for a URL with no query, no `q` in it, or a `q` that

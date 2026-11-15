@@ -367,7 +367,7 @@ core-cast-hi10p = Este episódio é H.264 de 10 bits (Hi10P), que nenhuma TV ou 
 core-cast-video-codec = O vídeo deste episódio ({ $codec }) não pode ser transmitido.
 core-cast-audio-codec = O áudio deste episódio ({ $codec }) não pode ser transmitido.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -384,7 +384,7 @@ core-phone-empty-search = a busca está vazia
 core-phone-no-results = nenhum resultado para { $query }
 core-phone-own-engine = um motor de torrent próprio
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = conectado
 core-phone-check-refused = recusado: { $error }
@@ -1030,7 +1030,7 @@ core-transfer-progress-accounts = contas
 core-transfer-progress-preferences = preferências
 core-transfer-progress-done = pronto
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = o anirss não respondeu: { $message }
 core-downloads-anirss-answered = o anirss respondeu { $status }: { $text }
@@ -1046,24 +1046,24 @@ core-downloads-anirss-lacks-feature = O anirss { $version } não consegue guarda
 core-downloads-anirss-update-mac = Atualize com: { $command }
 core-downloads-anirss-update-linux = Atualize o pacote anirss, ou rode: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = o arquivo torrent não veio: { $message }
 core-downloads-torrent-file-answered = o arquivo torrent respondeu { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = o feed respondeu { $status }
 core-downloads-not-a-feed = não é um feed: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = O Jackett não está instalado: { $program } não foi encontrado. Instale-o, ou mude o comando nas Configurações.
 core-downloads-endpoint-start-failed = { $name } não pôde iniciar: { $why }
 core-downloads-endpoint-start-timeout = { $name } iniciou mas não respondeu em { $seconds } segundos.
 core-downloads-command-exited = o comando terminou com { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = o anirss parou
 core-downloads-anirss-missing = { $install }. Ou aponte as Configurações para um servidor em execução.
@@ -1144,7 +1144,7 @@ core-downloads-client-switched = Os downloads agora usam outro app de download.
 core-downloads-host-not-running = não está rodando no host
 core-downloads-host-late = não respondeu a tempo
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = busca vazia
 core-downloads-native-no-results = nenhum resultado para { $query }
@@ -1159,7 +1159,7 @@ core-downloads-native-outside-folders = recusando remover arquivos fora das past
 core-downloads-refuse-home-folder = { $path } é a pasta pessoal ou a contém, então nada foi removido
 core-downloads-refuse-library-folder = { $path } é uma pasta da biblioteca ou contém uma, então nada foi removido
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = o qBittorrent não tem pasta padrão de destino; defina uma no qBittorrent
 # $folder is the folder given
@@ -1170,7 +1170,7 @@ core-downloads-name-empty = o nome não pode ficar vazio
 core-downloads-name-slash = o nome não pode conter / nem \
 core-downloads-name-not-folder = { $name } não é um nome de pasta
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Deixou de seguir { $title }, a exibição terminou.
 core-downloads-prune-failed = Não foi possível deixar de seguir { $title }. Confira Downloads nas Configurações.
@@ -1182,11 +1182,11 @@ core-downloads-refuse-root = { $path } é a raiz do sistema de arquivos, então 
 core-downloads-refuse-outside-library = { $path } não está dentro de uma pasta da biblioteca, então nada foi removido
 core-downloads-refuse-save-folder = { $path } é a pasta onde o torrent foi salvo, não o que ele baixou, então nada foi removido
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = O episódio { $episode } de { $title } não apareceu três dias depois de ir ao ar. Seu feed continua procurando.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = o comando do anirss não pode ficar vazio
 core-downloads-settings-anirss-address = o endereço do anirss precisa começar com http:// ou https://
@@ -1196,7 +1196,7 @@ core-downloads-settings-same-id = dois clientes têm o id { $id }
 core-downloads-settings-saved-address = o endereço de { $name } precisa começar com http:// ou https://
 core-downloads-settings-same-name = dois clientes se chamam { $name }; dê a cada um um nome próprio
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = O qBittorrent não respondeu em { $address }: { $message }
 core-downloads-qbt-password-rejected = O qBittorrent recusou a senha; corrija nas Configurações
@@ -1208,13 +1208,13 @@ core-downloads-qbt-not-added = O qBittorrent não incluiu os torrents: { $said }
 core-downloads-qbt-some-not-added = O qBittorrent não conseguiu incluir { $count } dos torrents: { $said }
 core-downloads-qbt-answered = O qBittorrent respondeu { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = o item { $item } não é um dos { $count } releases
 core-downloads-not-replaced = O episódio { $episode } não foi substituído.
 core-downloads-replaced = Episódio { $episode } substituído pelo novo download.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = nenhum download contínuo { $id }
 core-downloads-rolled = { $title }: agora nos episódios { $from } a { $to } de { $total }.

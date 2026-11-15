@@ -7,9 +7,9 @@
 //! `/mnt/media/Anime/X`), and a rule's name can spell the folder a little
 //! differently ("Ranma 1 2" for "Ranma 1_2").
 
-use crate::contract::*;
-use crate::foundation::names::title_key;
-use crate::library::snapshot::Snapshot;
+use anibeam_contract::*;
+use anibeam_foundation::names::title_key;
+use anibeam_library::snapshot::Snapshot;
 use rusqlite::Connection;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -87,7 +87,7 @@ impl Linker {
 
 fn trim(path: &str) -> &str {
     let t = path.trim();
-    let t = crate::paths::trim_separators(t);
+    let t = anibeam_foundation::paths::trim_separators(t);
     if t.is_empty() && path.trim().starts_with('/') {
         "/"
     } else {

@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::store::settings as kv;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings as kv;
 
 use super::home::AnirssHome;
 use super::qbt::QbtClient;
@@ -197,7 +197,7 @@ pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), 
     {
         return Err(CoreError::invalid(
             "folder",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-save-folder-not-absolute",
                 &[("folder", f.into())],
             ),
@@ -211,7 +211,7 @@ pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), 
         if !Path::new(f).is_dir() || at.parent().is_none() || home.as_ref() == Some(&at) {
             return Err(CoreError::invalid(
                 "folder",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-save-folder-unusable",
                     &[("folder", f.into())],
                 ),
@@ -238,7 +238,7 @@ pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, 
             if base.is_empty() {
                 return Err(CoreError::invalid(
                     "save_path",
-                    crate::i18n::tr("core-downloads-no-default-folder", &[]),
+                    anibeam_contract::i18n::tr("core-downloads-no-default-folder", &[]),
                 ));
             }
             base
@@ -287,19 +287,19 @@ pub(crate) fn validate_name(name: &str) -> Result<String, CoreError> {
     if name.is_empty() {
         return Err(CoreError::invalid(
             "name",
-            crate::i18n::tr("core-downloads-name-empty", &[]),
+            anibeam_contract::i18n::tr("core-downloads-name-empty", &[]),
         ));
     }
     if name.contains(['/', '\\']) {
         return Err(CoreError::invalid(
             "name",
-            crate::i18n::tr("core-downloads-name-slash", &[]),
+            anibeam_contract::i18n::tr("core-downloads-name-slash", &[]),
         ));
     }
     if name == "." || name == ".." || name.chars().any(|c| (c as u32) < 32 || c as u32 == 127) {
         return Err(CoreError::invalid(
             "name",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-downloads-name-not-folder",
                 &[("name", format!("{name:?}").into())],
             ),
@@ -320,7 +320,7 @@ pub(crate) fn name_for(
         None => {
             let shown = items
                 .first()
-                .map(|i| crate::releases::titles::show_name(&i.title))
+                .map(|i| anibeam_releases::titles::show_name(&i.title))
                 .unwrap_or_default();
             validate_name(if shown.is_empty() { fallback } else { &shown })
         }

@@ -51,14 +51,14 @@ use serde::{Deserialize, Serialize};
 use super::qbt::QbtClient;
 use super::replace::names_match;
 use super::settings;
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::magnet;
-use crate::foundation::names::{is_video, title_key};
-use crate::foundation::services::Services;
-use crate::releases::facts;
-use crate::store::settings as kv;
-use crate::time::now_secs;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::magnet;
+use anibeam_foundation::names::{is_video, title_key};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings as kv;
+use anibeam_foundation::time::now_secs;
+use anibeam_releases::facts;
 
 /// The rolls, as JSON in the settings table.
 pub const ROLLS: &str = "download_rolls";
@@ -914,7 +914,10 @@ fn edit(
         let Some(r) = cur.iter_mut().find(|r| r.id == id) else {
             return Err(CoreError::invalid(
                 "id",
-                crate::i18n::tr("core-downloads-no-roll", &[("id", id.to_string().into())]),
+                anibeam_contract::i18n::tr(
+                    "core-downloads-no-roll",
+                    &[("id", id.to_string().into())],
+                ),
             ));
         };
         f(r);
@@ -1218,7 +1221,7 @@ async fn step<C: RollClient>(
         downloads.services.bus.say(
             Level::Info,
             Stage::Downloads,
-            crate::words!(
+            anibeam_contract::words!(
                 "core-downloads-rolled",
                 title = &roll.title,
                 from = (after.start + 1).min(after.total),
@@ -1361,7 +1364,7 @@ pub fn set(
     if ahead == Some(0) {
         return Err(CoreError::invalid(
             "ahead",
-            crate::i18n::tr("core-downloads-roll-ahead", &[]),
+            anibeam_contract::i18n::tr("core-downloads-roll-ahead", &[]),
         ));
     }
     edit(&downloads.services, id, move |r| {
@@ -1380,7 +1383,7 @@ pub fn set(
 }
 
 /// `GetRollingSettings`: the rolling part of the downloads settings.
-pub(crate) fn settings_call(services: &Services) -> Result<Reply, CoreError> {
+pub fn settings_call(services: &Services) -> Result<Reply, CoreError> {
     Ok(Reply::RollingSettings {
         rolling: super::settings::read(services)?.rolling,
     })
@@ -1408,7 +1411,7 @@ pub fn roll_more(downloads: &Arc<Downloads>, id: u64, count: u32) -> Result<Repl
     if count == 0 {
         return Err(CoreError::invalid(
             "count",
-            crate::i18n::tr("core-downloads-roll-nothing", &[]),
+            anibeam_contract::i18n::tr("core-downloads-roll-nothing", &[]),
         ));
     }
     edit(&downloads.services, id, move |r| {
@@ -1776,7 +1779,7 @@ mod tests {
         let mut r = batch(3, 2);
         r.parts[0].hash.clear();
         r.created_at = 1_000;
-        let mut t1 = crate::downloads::qbt::tests_torrent();
+        let mut t1 = crate::qbt::tests_torrent();
         t1.hash = "OLD".into();
         t1.name = "[G] Show (01-170) [Batch]".into();
         t1.added_on = 10;
@@ -1793,7 +1796,7 @@ mod tests {
         let mut r = batch(3, 2);
         r.parts[0].hash.clear();
         r.parts[0].release.title = "[Test] Black Clover (01-40) [1080p][Batch]".into();
-        let mut t = crate::downloads::qbt::tests_torrent();
+        let mut t = crate::qbt::tests_torrent();
         t.hash = "ABC".into();
         t.name = "Black Clover".into();
         t.added_on = 200;

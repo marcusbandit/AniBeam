@@ -379,7 +379,7 @@ core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テ�
 core-cast-video-codec = このエピソードの映像（{ $codec }）はキャストできません。
 core-cast-audio-codec = このエピソードの音声（{ $codec }）はキャストできません。
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started = { $folder }のエピソード{ $count }話のダウンロードを開始しました。
 core-phone-subscribed = { $name }を購読しました。
@@ -395,7 +395,7 @@ core-phone-no-results = { $query }の結果はありません
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = 独自のトレントエンジン
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = 接続しました
@@ -949,7 +949,7 @@ core-transfer-progress-accounts = アカウント
 core-transfer-progress-preferences = 設定
 core-transfer-progress-done = 完了
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirssから応答がありません: { $message }
@@ -971,17 +971,17 @@ core-downloads-anirss-lacks-feature = anirss { $version }はトレントクラ�
 core-downloads-anirss-update-mac = 次のコマンドで更新してください: { $command }
 core-downloads-anirss-update-linux = anirssパッケージを更新するか、次を実行してください: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = トレントファイルが届きませんでした: { $message }
 core-downloads-torrent-file-answered = トレントファイルの取得で{ $status }が返りました
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = フィードが{ $status }を返しました
 core-downloads-not-a-feed = フィードではありません: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackettがインストールされていません: { $program }が見つかりませんでした。インストールするか、設定でコマンドを変更してください。
@@ -990,7 +990,7 @@ core-downloads-endpoint-start-failed = { $name }を起動できませんでし�
 core-downloads-endpoint-start-timeout = { $name }は起動しましたが、{ $seconds }秒以内に応答しませんでした。
 core-downloads-command-exited = コマンドが{ $status }で終了しました
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirssが停止しました
 # $install is core-downloads-anirss-install-mac or -linux
@@ -1062,7 +1062,7 @@ core-downloads-client-switched = ダウンロードに別のダウンロード�
 core-downloads-host-not-running = ホストで動作していません
 core-downloads-host-late = 時間内に応答しませんでした
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 検索語が空です
 # $query is the search, in quotes
@@ -1083,7 +1083,7 @@ core-downloads-native-outside-folders = ダウンロードフォルダ外のフ�
 core-downloads-refuse-home-folder = { $path }はホームフォルダか、それを含んでいるので、何も削除しませんでした
 core-downloads-refuse-library-folder = { $path }はライブラリフォルダか、それを含んでいるので、何も削除しませんでした
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
 # $folder is the folder given
@@ -1095,7 +1095,7 @@ core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name }はフォルダ名ではありません
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = 放送が終了したため、{ $title }の購読を解除しました。
@@ -1108,12 +1108,12 @@ core-downloads-refuse-root = { $path }はファイルシステムのルートな
 core-downloads-refuse-outside-library = { $path }はライブラリフォルダ内にないので、何も削除しませんでした
 core-downloads-refuse-save-folder = { $path }はトレントの保存先フォルダで、ダウンロードしたものではないので、何も削除しませんでした
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = { $title }の第{ $episode }話が、放送から3日たっても見つかりません。フィードで探し続けます。
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirssのコマンドを空にはできません
 core-downloads-settings-anirss-address = anirssのアドレスはhttp://かhttps://で始めてください
@@ -1126,7 +1126,7 @@ core-downloads-settings-same-id = 2つのクライアントのIDが{ $id }で重
 core-downloads-settings-saved-address = { $name }のアドレスはhttp://かhttps://で始めてください
 core-downloads-settings-same-name = 2つのクライアントの名前が{ $name }で重複しています。それぞれ別の名前を付けてください
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = { $address }のqBittorrentから応答がありません: { $message }
@@ -1142,7 +1142,7 @@ core-downloads-qbt-some-not-added = qBittorrentは{ $count }件のトレント�
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrentが{ $status }を返しました: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリースのどれでもありません
@@ -1150,7 +1150,7 @@ core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリース
 core-downloads-not-replaced = 第{ $episode }話は置き換えられませんでした。
 core-downloads-replaced = 第{ $episode }話を新しいダウンロードに置き換えました。
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = 順次ダウンロード{ $id }はありません

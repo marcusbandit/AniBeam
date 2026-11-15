@@ -2,8 +2,9 @@
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
 //! plumbing every team shares is the `anibeam-foundation` crate, the network
 //! team is `anibeam-net`, the library team `anibeam-library`, and the releases,
-//! metadata and trackers teams `anibeam-releases`, `anibeam-metadata` and
-//! `anibeam-trackers`, each handed on here under the name it had in the core.
+//! metadata, trackers and downloads teams `anibeam-releases`, `anibeam-metadata`,
+//! `anibeam-trackers` and `anibeam-downloads`, each handed on here under the name
+//! it had in the core.
 
 pub(crate) mod act;
 pub mod agent;
@@ -12,14 +13,12 @@ pub mod cast;
 pub mod changelog;
 pub mod contract;
 pub mod core;
-pub mod downloads;
 pub mod events;
 pub mod first_run;
 pub mod foundation;
 pub mod host;
 pub mod launch;
 pub mod paths;
-pub mod phone;
 pub mod playback;
 pub mod presence;
 pub(crate) mod process;
@@ -28,10 +27,13 @@ pub mod stats;
 pub mod transfer;
 pub mod update;
 
+/// Only casting's server reads it now that the downloads left (#854).
+#[cfg(feature = "cast")]
+pub(crate) use anibeam_foundation::percent;
+pub(crate) use anibeam_foundation::sync;
 pub use anibeam_foundation::{
     atomic_file, html, jobs, prefs, profiles, redact, store, time, words,
 };
-pub(crate) use anibeam_foundation::{percent, sync};
 
 /// The network layer, in its own crate. Not part of the contract and not
 /// exported to any shell; it is public only so the integration tests can
@@ -57,6 +59,12 @@ pub use anibeam_metadata::{aired, airing_now, calendar, franchise, recommended};
 /// The trackers team, in its own crate above metadata: AniList and MAL, the
 /// list cache and the writes, Watching, On hold and Plan to watch.
 pub use anibeam_trackers as trackers;
+
+/// The downloads team, in its own crate above trackers: the backends, search,
+/// rules, rolling downloads and the watch for new episodes, with the phone's
+/// torrent engine behind its `phone` feature.
+pub use anibeam_downloads as downloads;
+pub use anibeam_downloads::phone;
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

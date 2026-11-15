@@ -10,13 +10,12 @@ build = "build.rs"
 
 # Files outside this folder the tests read, so a change to one checks the core and what builds
 # on it (.github/affected-crates.py): the apps' patch notes and their versions
-# (tests/changelog.rs), and the anirss pins in the packaging (downloads/anirss.rs).
+# (tests/changelog.rs). The anirss pins in the packaging are the downloads crate's.
 [package.metadata.ci]
 reads = [
   "../.github/changelog-fold.sh",
   "../apps/linux/CHANGELOG.md",
   "../apps/linux/changes",
-  "../apps/linux/packaging",
   "../apps/android/CHANGELOG.md",
   "../apps/android/changes",
   "../apps/android/Cargo.toml",
@@ -36,6 +35,7 @@ anibeam-library.workspace = true
 anibeam-releases.workspace = true
 anibeam-metadata.workspace = true
 anibeam-trackers.workspace = true
+anibeam-downloads.workspace = true
 anibeam-room.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -45,7 +45,6 @@ rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
 regex = "1"
 sha2 = "0.11"
-walkdir = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 rand = "0.10"
 base64 = "0.23"
@@ -53,7 +52,6 @@ base64 = "0.23"
 ed25519-dalek = "2"
 tracing = "0.1"
 flate2 = "1"
-toml = "1"
 roxmltree = "0.20"
 anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
@@ -73,13 +71,9 @@ matroska-demuxer = { version = "0.8", optional = true }
 mdns-sd = { version = "0.21", optional = true }
 rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"], optional = true }
 futures-core = { version = "0.3", optional = true }
-# The phone's torrent engine; only the Android app turns it on.
-librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
-# The error type librqbit's storage trait answers in.
-anyhow = { version = "1", optional = true }
 
 [features]
-phone = ["dep:librqbit", "dep:anyhow", "anibeam-trackers/phone"]
+phone = ["anibeam-downloads/phone", "anibeam-trackers/phone"]
 cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
 
 # Pausing and resuming a host conversion with STOP and CONT.

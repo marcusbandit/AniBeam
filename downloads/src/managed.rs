@@ -186,7 +186,7 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
     cmd.process_group(0);
     // CREATE_NEW_PROCESS_GROUP, so a console Ctrl+C never reaches it either.
     #[cfg(windows)]
-    cmd.creation_flags(crate::process::NO_WINDOW | 0x0000_0200);
+    cmd.creation_flags(anibeam_foundation::process::NO_WINDOW | 0x0000_0200);
     let mut child = cmd.spawn()?;
     tokio::spawn(async move {
         let _ = child.wait().await;

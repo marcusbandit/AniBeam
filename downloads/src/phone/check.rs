@@ -7,11 +7,11 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::services::Services;
-use crate::i18n::tr;
-use crate::net::HttpRequest;
+use crate::Downloads;
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_net::HttpRequest;
 
 const STEP: Duration = Duration::from_secs(6);
 
@@ -31,7 +31,7 @@ fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
     let mut out: Vec<(String, String, u16)> = Vec::new();
     // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
     for (_, e) in super::searched(services) {
-        let host = crate::repos::index::host_of(&e.url);
+        let host = anibeam_releases::repos::index::host_of(&e.url);
         let port = port_of(&e.url);
         // By host and port: a Prowlarr and a Jackett on one machine are two servers.
         if host.is_empty() || out.iter().any(|(h, _, p)| *h == host && *p == port) {
@@ -43,7 +43,7 @@ fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
             "https"
         };
         // The port stays (a Prowlarr listens on 9696); a login in the address never goes out.
-        let authority = crate::repos::index::authority_of(&e.url);
+        let authority = anibeam_releases::repos::index::authority_of(&e.url);
         let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
         out.push((host.clone(), format!("{scheme}://{authority}/"), port));
     }
@@ -52,7 +52,7 @@ fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
 
 /// The port a connection to `url` goes to: the one in the address, else the scheme's own.
 fn port_of(url: &str) -> u16 {
-    let authority = crate::repos::index::authority_of(url);
+    let authority = anibeam_releases::repos::index::authority_of(url);
     let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
     // A ':' inside an IPv6 literal's brackets is not a port.
     authority
@@ -98,7 +98,7 @@ async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
 
 async fn host(
     services: &Services,
-    doh: &crate::net::doh::Doh,
+    doh: &anibeam_net::doh::Doh,
     name: &str,
     url: &str,
     port: u16,
@@ -170,7 +170,7 @@ async fn host(
             tr("core-phone-check-skipped-address", &[]),
             0,
         ));
-    } else if crate::net::doh::is_home_name(name) {
+    } else if anibeam_net::doh::is_home_name(name) {
         out.push(line(
             doh_line,
             true,
@@ -180,7 +180,7 @@ async fn host(
     } else {
         let start = Instant::now();
         match doh.find(name).await {
-            crate::net::doh::Found::Addresses(found) => {
+            anibeam_net::doh::Found::Addresses(found) => {
                 let shown = found
                     .iter()
                     .map(ToString::to_string)
@@ -195,13 +195,13 @@ async fn host(
             }
             // The resolvers answered: the name has no public address, and this network's
             // DNS is the one to ask.
-            crate::net::doh::Found::NoRecord => out.push(line(
+            anibeam_net::doh::Found::NoRecord => out.push(line(
                 doh_line,
                 true,
                 tr("core-phone-check-no-record", &[]),
                 ms(start),
             )),
-            crate::net::doh::Found::NoAnswer => out.push(line(
+            anibeam_net::doh::Found::NoAnswer => out.push(line(
                 doh_line,
                 false,
                 tr("core-phone-check-no-resolver", &[]),
@@ -227,7 +227,7 @@ async fn host(
         .http
         .send(
             HttpRequest::get(url)
-                .header("User-Agent", crate::releases::fetch::USER_AGENT)
+                .header("User-Agent", anibeam_releases::fetch::USER_AGENT)
                 // Cloudflare's resolver refuses anything but exactly its own type.
                 .header(
                     "Accept",
@@ -264,7 +264,7 @@ async fn host(
 }
 
 /// `PhoneNetCheck`: [`run`], waited for on the core's runtime.
-pub(crate) fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
+pub fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> {
     Ok(Reply::PhoneNetCheck {
         checks: downloads.services.handle.block_on(run(downloads)),
     })
@@ -272,7 +272,7 @@ pub(crate) fn run_call(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, C
 
 /// Every check, hosts side by side so the whole run takes about as long as the slowest.
 pub async fn run(downloads: &std::sync::Arc<Downloads>) -> Vec<NetCheck> {
-    let client = match crate::net::resolver_client() {
+    let client = match anibeam_net::resolver_client() {
         Ok(c) => c,
         Err(e) => {
             return vec![line(
@@ -283,7 +283,7 @@ pub async fn run(downloads: &std::sync::Arc<Downloads>) -> Vec<NetCheck> {
             )];
         }
     };
-    let doh = crate::net::doh::Doh::new(client);
+    let doh = anibeam_net::doh::Doh::new(client);
     let owner = downloads.clone();
     let mut hosts = searched_hosts(&downloads.services);
     hosts.extend(

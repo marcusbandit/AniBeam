@@ -47,6 +47,7 @@ CODE = UI + [
     "releases/src/**/*.rs",
     "metadata/src/**/*.rs",
     "trackers/src/**/*.rs",
+    "downloads/src/**/*.rs",
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",

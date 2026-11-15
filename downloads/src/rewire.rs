@@ -21,7 +21,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::contract::{FeedEntry, Release};
+use anibeam_contract::{FeedEntry, Release};
 
 /// anirss's own field split: a `-"quoted phrase"`, a `"quoted"` or a word.
 static FIELDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"-?"[^"]*"|\S+"#).unwrap());
@@ -182,7 +182,7 @@ pub fn search_param(url: &str) -> Option<(String, String)> {
     let pairs: Vec<(&str, &str)> = query.split('&').filter_map(|p| p.split_once('=')).collect();
     for want in ["q", "s"] {
         if let Some((k, v)) = pairs.iter().find(|(k, _)| *k == want) {
-            let value = crate::percent::decode(v);
+            let value = anibeam_foundation::percent::decode(v);
             if !value.trim().is_empty() {
                 return Some((k.to_string(), value));
             }
@@ -199,7 +199,9 @@ pub fn with_search(url: &str, key: &str, value: &str) -> String {
     let parts: Vec<String> = query
         .split('&')
         .map(|p| match p.split_once('=') {
-            Some((k, _)) if k == key => format!("{k}={}", crate::percent::encode(value)),
+            Some((k, _)) if k == key => {
+                format!("{k}={}", anibeam_foundation::percent::encode(value))
+            }
             _ => p.to_string(),
         })
         .collect();

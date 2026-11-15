@@ -17,9 +17,9 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
-use crate::contract::*;
-use crate::net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
-use crate::sync::recover;
+use anibeam_contract::*;
+use anibeam_foundation::sync::recover;
+use anibeam_net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "qBittorrent";
@@ -259,7 +259,7 @@ impl QbtClient {
     pub async fn matching_articles(&self, rule: &str) -> Result<Vec<String>, CoreError> {
         let path = format!(
             "rss/matchingArticles?ruleName={}",
-            crate::percent::encode(rule)
+            anibeam_foundation::percent::encode(rule)
         );
         let v: Value = self.call(&path, None).await?.json()?;
         let mut out = Vec::new();
@@ -421,7 +421,7 @@ impl QbtClient {
                 CoreError::service(
                     SERVICE,
                     "unreachable",
-                    crate::i18n::tr(
+                    anibeam_contract::i18n::tr(
                         "core-downloads-qbt-no-answer",
                         &[
                             ("address", self.base.as_str().into()),
@@ -434,7 +434,7 @@ impl QbtClient {
 
     async fn login(&self) -> Result<(), CoreError> {
         if *recover(&self.rejected) {
-            return Err(unauthorized(crate::i18n::tr(
+            return Err(unauthorized(anibeam_contract::i18n::tr(
                 "core-downloads-qbt-password-rejected",
                 &[],
             )));
@@ -455,7 +455,7 @@ impl QbtClient {
                 CoreError::service(
                     SERVICE,
                     "unreachable",
-                    crate::i18n::tr(
+                    anibeam_contract::i18n::tr(
                         "core-downloads-qbt-no-answer",
                         &[
                             ("address", self.base.as_str().into()),
@@ -468,7 +468,7 @@ impl QbtClient {
             return Err(CoreError::service(
                 SERVICE,
                 "banned",
-                crate::i18n::tr("core-downloads-qbt-banned", &[]),
+                anibeam_contract::i18n::tr("core-downloads-qbt-banned", &[]),
             ));
         }
         // 4.x answers a good login with `Ok.` and a bad one with `Fails.`, both 200;
@@ -477,7 +477,7 @@ impl QbtClient {
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
         if r.status == 401 || (r.is_success() && text == "Fails.") {
             *recover(&self.rejected) = true;
-            return Err(unauthorized(crate::i18n::tr(
+            return Err(unauthorized(anibeam_contract::i18n::tr(
                 "core-downloads-qbt-login-rejected",
                 &[],
             )));
@@ -486,7 +486,7 @@ impl QbtClient {
             return Err(CoreError::service(
                 SERVICE,
                 "unreachable",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-qbt-login-failed",
                     &[
                         ("address", self.base.as_str().into()),
@@ -522,7 +522,7 @@ impl QbtClient {
             None => Err(CoreError::service(
                 SERVICE,
                 format!("http_{}", r.status),
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-qbt-not-web-ui",
                     &[
                         ("address", self.base.as_str().into()),
@@ -565,20 +565,20 @@ fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
     }
     let failed = |message: String| Err(CoreError::service(SERVICE, "add_failed", message));
     let Ok(v) = serde_json::from_str::<Value>(body) else {
-        return failed(crate::i18n::tr(
+        return failed(anibeam_contract::i18n::tr(
             "core-downloads-qbt-not-added",
             &[("said", format!("{body:?}").into())],
         ));
     };
     if !v.is_object() {
-        return failed(crate::i18n::tr(
+        return failed(anibeam_contract::i18n::tr(
             "core-downloads-qbt-not-added",
             &[("said", format!("{body:?}").into())],
         ));
     }
     match num(&v["failure_count"]) {
         0 => Ok(()),
-        n => failed(crate::i18n::tr(
+        n => failed(anibeam_contract::i18n::tr(
             "core-downloads-qbt-some-not-added",
             &[("count", n.into()), ("said", format!("{body:?}").into())],
         )),
@@ -618,7 +618,7 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
     let text = r.text();
     let text = text.trim();
     let message = if text.starts_with('<') {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-qbt-not-web-ui",
             &[
                 ("address", base.into()),
@@ -633,7 +633,7 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
             .chars()
             .take(160)
             .collect();
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-downloads-qbt-answered",
             &[
                 ("status", r.status.to_string().into()),
@@ -719,16 +719,18 @@ fn tracker_host(url: &str) -> String {
     host.to_ascii_lowercase()
 }
 
-/// A blank torrent for other modules' tests.
-#[cfg(test)]
-pub(crate) fn tests_torrent() -> Torrent {
+/// A blank torrent for other modules' tests, this crate's and the room's
+/// above it. Compiled in, since a crate's `cfg(test)` items are not there
+/// for the tests of the crates above it; nothing else calls it.
+#[doc(hidden)]
+pub fn tests_torrent() -> Torrent {
     torrent(&Value::Null)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
     use serde_json::json;
 
     fn client(http: &Arc<FakeHttp>) -> QbtClient {

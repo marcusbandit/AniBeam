@@ -16,7 +16,7 @@ use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use crate::sync::{recover, recover_read, recover_write};
+use anibeam_foundation::sync::{recover, recover_read, recover_write};
 use anyhow::Context;
 use librqbit::storage::filesystem::FilesystemStorageFactory;
 use librqbit::storage::{BoxStorageFactory, StorageFactory, TorrentStorage};

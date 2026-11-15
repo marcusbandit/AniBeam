@@ -135,6 +135,13 @@ jobs:
         if: steps.affected.outputs.core == 'true'
         run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
 
+      # The phone's torrent engine and its tests sit behind the downloads crate's own `phone`
+      # feature. The core's `phone` turns it on for the library only, so without this nothing
+      # compiles those tests, which the step above did while they were in the core.
+      - name: Clippy (downloads with phone)
+        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-downloads ')
+        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+
       - name: Test
         if: steps.affected.outputs.crates != ''
         env:

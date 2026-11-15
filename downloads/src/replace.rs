@@ -38,15 +38,15 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use super::qbt::QbtClient;
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::magnet;
-use crate::foundation::names::title_key;
-use crate::foundation::services::Services;
-use crate::library::trash;
-use crate::releases::facts;
-use crate::store::{Store, settings};
-use crate::time::now_secs;
+use crate::Downloads;
+use anibeam_contract::*;
+use anibeam_foundation::magnet;
+use anibeam_foundation::names::title_key;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::{Store, settings};
+use anibeam_foundation::time::now_secs;
+use anibeam_library::trash;
+use anibeam_releases::facts;
 
 /// Followups still to do, as JSON in the settings table.
 pub const FOLLOWUPS: &str = "download_followups";
@@ -456,7 +456,7 @@ pub fn prepare(
         if r.item as usize >= items.len() {
             return Err(CoreError::invalid(
                 "options",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-downloads-replace-bad-item",
                     &[("item", r.item.into()), ("count", items.len().into())],
                 ),
@@ -508,7 +508,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
     if n > 0 {
         bits.push(format!(
             "replacing {n} {} once the new files finish",
-            crate::words::pick(n, "episode", "episodes")
+            anibeam_foundation::words::pick(n, "episode", "episodes")
         ));
     }
     if bits.is_empty() {
@@ -766,7 +766,10 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
                 services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    crate::words!("core-downloads-not-replaced", episode = entry.episode),
+                    anibeam_contract::words!(
+                        "core-downloads-not-replaced",
+                        episode = entry.episode
+                    ),
                     format!("Episode {} was not replaced: {e}", entry.episode),
                     EventBody::Notice,
                 );
@@ -827,7 +830,7 @@ async fn replace_episode(
     services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-downloads-replaced", episode = entry.episode),
+        anibeam_contract::words!("core-downloads-replaced", episode = entry.episode),
         format!(
             "Replaced episode {}: {} {}",
             entry.episode,
@@ -887,8 +890,8 @@ pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::downloads::qbt::tests_torrent;
-    use crate::store::Store;
+    use crate::qbt::tests_torrent;
+    use anibeam_foundation::store::Store;
 
     fn torrent(hash: &str, name: &str, added_on: i64) -> Torrent {
         let mut t = tests_torrent();

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::process::Command;
 
-use crate::CorePaths;
+use anibeam_foundation::paths::CorePaths;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnirssHome {

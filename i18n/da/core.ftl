@@ -369,7 +369,7 @@ core-cast-hi10p = Dette afsnit er 10-bit H.264 (Hi10P), som intet tv eller Chrom
 core-cast-video-codec = Dette afsnits video ({ $codec }) kan ikke castes.
 core-cast-audio-codec = Dette afsnits lyd ({ $codec }) kan ikke castes.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -386,7 +386,7 @@ core-phone-empty-search = søgningen er tom
 core-phone-no-results = ingen resultater for { $query }
 core-phone-own-engine = en egen torrentmotor
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = forbundet
 core-phone-check-refused = afvist: { $error }
@@ -1012,7 +1012,7 @@ core-transfer-progress-accounts = konti
 core-transfer-progress-preferences = præferencer
 core-transfer-progress-done = færdig
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss svarede ikke: { $message }
 core-downloads-anirss-answered = anirss svarede { $status }: { $text }
@@ -1028,24 +1028,24 @@ core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert t
 core-downloads-anirss-update-mac = Opdater den med: { $command }
 core-downloads-anirss-update-linux = Opdater anirss-pakken, eller kør: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = torrentfilen kom ikke: { $message }
 core-downloads-torrent-file-answered = torrentfilen svarede { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = feedet svarede { $status }
 core-downloads-not-a-feed = ikke et feed: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett er ikke installeret: { $program } blev ikke fundet. Installer det, eller skift kommandoen i Indstillinger.
 core-downloads-endpoint-start-failed = { $name } kunne ikke starte: { $why }
 core-downloads-endpoint-start-timeout = { $name } startede, men svarede ikke inden for { $seconds } sekunder.
 core-downloads-command-exited = kommandoen sluttede med { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss stoppede
 core-downloads-anirss-missing = { $install }. Eller peg Indstillinger på en server, der kører.
@@ -1126,7 +1126,7 @@ core-downloads-client-switched = Downloads bruger nu et andet downloadprogram.
 core-downloads-host-not-running = kører ikke på værten
 core-downloads-host-late = svarede ikke i tide
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = tom søgning
 core-downloads-native-no-results = ingen resultater for { $query }
@@ -1141,7 +1141,7 @@ core-downloads-native-outside-folders = nægter at fjerne filer uden for downloa
 core-downloads-refuse-home-folder = { $path } er hjemmemappen eller indeholder den, så intet blev fjernet
 core-downloads-refuse-library-folder = { $path } er en biblioteksmappe eller indeholder en, så intet blev fjernet
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent har ingen standardmappe at gemme i; vælg en i qBittorrent
 # $folder is the folder given
@@ -1152,7 +1152,7 @@ core-downloads-name-empty = navnet må ikke være tomt
 core-downloads-name-slash = navnet må ikke indeholde / eller \
 core-downloads-name-not-folder = { $name } er ikke et mappenavn
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Afmeldte { $title }, den er færdig med at blive sendt.
 core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i Indstillinger.
@@ -1164,11 +1164,11 @@ core-downloads-refuse-root = { $path } er filsystemets rod, så intet blev fjern
 core-downloads-refuse-outside-library = { $path } ligger ikke i en biblioteksmappe, så intet blev fjernet
 core-downloads-refuse-save-folder = { $path } er mappen, torrenten blev gemt i, ikke det den downloadede, så intet blev fjernet
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = Afsnit { $episode } af { $title } er ikke dukket op tre dage efter, det blev sendt. Dit feed leder stadig efter det.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss-kommandoen må ikke være tom
 core-downloads-settings-anirss-address = anirss-adressen skal starte med http:// eller https://
@@ -1178,7 +1178,7 @@ core-downloads-settings-same-id = to programmer har id'et { $id }
 core-downloads-settings-saved-address = adressen på { $name } skal starte med http:// eller https://
 core-downloads-settings-same-name = to programmer hedder { $name }; giv hvert sit eget navn
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = qBittorrent svarede ikke på { $address }: { $message }
 core-downloads-qbt-password-rejected = qBittorrent afviste adgangskoden; ret den i Indstillinger
@@ -1190,13 +1190,13 @@ core-downloads-qbt-not-added = qBittorrent tilføjede ikke torrents: { $said }
 core-downloads-qbt-some-not-added = qBittorrent kunne ikke tilføje { $count } af de torrents: { $said }
 core-downloads-qbt-answered = qBittorrent svarede { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = element { $item } er ikke en af de { $count } udgivelser
 core-downloads-not-replaced = Afsnit { $episode } blev ikke erstattet.
 core-downloads-replaced = Erstattede afsnit { $episode } med det nye download.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = intet løbende download { $id }
 core-downloads-rolled = { $title }: nu på afsnit { $from } til { $to } af { $total }.
