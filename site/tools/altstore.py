@@ -51,8 +51,7 @@ APPS = {
         "name": "Anibeam Nightly",
         "bundle_id": "com.marcusrosado.anibeam.nightly",
         "app_subtitle": "Nightly build of Anibeam",
-        # The website's nightly mark: rsvg-convert -w 512 -h 512 img/logo-nightly.svg
-        # -o img/icon-nightly.png after the logo changes.
+        # The nightly mark, assets/logo/logo-nightly.png, which site/build.sh copies here.
         "icon": "img/icon-nightly.png",
     },
 }
