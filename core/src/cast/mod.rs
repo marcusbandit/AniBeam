@@ -1138,7 +1138,7 @@ mod imp {
         ) -> Vec<u8> {
             asked.lock().unwrap().push(uri.to_string());
             if name == "index.m3u8" {
-                return crate::host::convert::playlist(18.0, "?burn=0").into_bytes();
+                return anibeam_host_api::hls_playlist(18.0, "?burn=0").into_bytes();
             }
             let i: u8 = name
                 .strip_prefix("seg")
@@ -1207,7 +1207,7 @@ mod imp {
                 "/hls/{name}",
                 get(|| async {
                     tokio::time::sleep(Duration::from_millis(800)).await;
-                    crate::host::convert::playlist(18.0, "")
+                    anibeam_host_api::hls_playlist(18.0, "")
                 }),
             );
             let computer_at = serve(&rt, slow);
@@ -1241,7 +1241,7 @@ mod imp {
                         return (
                             axum::http::StatusCode::OK,
                             [(axum::http::header::LOCATION, String::new())],
-                            crate::host::convert::playlist(12.0, "").into_bytes(),
+                            anibeam_host_api::hls_playlist(12.0, "").into_bytes(),
                         );
                     }
                     if name == "seg0.ts" {

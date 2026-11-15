@@ -32,8 +32,9 @@ use crate::sync::recover;
 
 /// ffmpeg's own words, in the job's directory.
 const LOG: &str = "ffmpeg.log";
-/// Seconds per piece. Every piece starts on a keyframe forced at its start.
-pub const PIECE: f64 = 6.0;
+/// Seconds per piece, the length the playlist the host serves lists
+/// (`wire::HLS_PIECE`). Every piece starts on a keyframe forced at its start.
+pub const PIECE: f64 = wire::HLS_PIECE;
 /// A request this many pieces past what ffmpeg has written still waits for it
 /// instead of starting over there.
 const NEAR: u32 = 4;
@@ -355,27 +356,6 @@ fn read_probe(v: &serde_json::Value) -> wire::Probe {
     p
 }
 
-/// The playlist of a whole episode `duration` seconds long, piece by piece.
-/// `query` goes on every piece's address, so it asks for the same conversion.
-pub fn playlist(duration: f64, query: &str) -> String {
-    let count = pieces(duration);
-    let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
-    out.push_str(&format!(
-        "#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n",
-        PIECE.ceil() as u32
-    ));
-    for i in 0..count {
-        let len = (duration - f64::from(i) * PIECE).min(PIECE);
-        out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
-    }
-    out.push_str("#EXT-X-ENDLIST\n");
-    out
-}
-
-fn pieces(duration: f64) -> u32 {
-    (duration / PIECE).ceil().max(1.0) as u32
-}
-
 /// One conversion and the ffmpeg writing it.
 struct Job {
     dir: PathBuf,
@@ -464,7 +444,7 @@ impl Converter {
     /// The bytes of one piece, converting as needed. None when it cannot be
     /// had: no encoder, ffmpeg failed, or the piece is past the end.
     pub async fn piece(&self, key: &Key, source: &Source, i: u32) -> Option<Vec<u8>> {
-        if i >= pieces(source.probe.duration) {
+        if i >= wire::hls_pieces(source.probe.duration) {
             return None;
         }
         let enc = encoder().await?;
@@ -813,16 +793,6 @@ mod tests {
         assert_eq!(height_for(1080), 1080);
         assert_eq!(height_for(900), 720);
         assert_eq!(height_for(100), 480);
-    }
-
-    #[test]
-    fn the_playlist_covers_the_whole_episode() {
-        let list = playlist(14.5, "?audio=1");
-        assert!(list.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
-        assert!(list.contains("#EXTINF:6.000,\nseg0.ts?audio=1\n"));
-        assert!(list.contains("#EXTINF:2.500,\nseg2.ts?audio=1\n"));
-        assert!(!list.contains("seg3.ts"));
-        assert!(list.ends_with("#EXT-X-ENDLIST\n"));
     }
 
     #[test]
