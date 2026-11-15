@@ -786,5 +786,8 @@ mod tests {
         let plain = item("[Lumen] Frieren - 01 (1080p) [ABCD0001].mkv");
         assert_eq!(best_fit_query(&plain), "[Lumen] Frieren 1080p");
         assert_eq!(best_fit_query(&item("")), "");
+        // A batch's range is no part of the show's name.
+        let batch = item("[Lumen] Frieren - 01-12 [1080p].mkv");
+        assert_eq!(best_fit_query(&batch), "[Lumen] Frieren 1080p");
     }
 }

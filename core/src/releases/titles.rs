@@ -25,12 +25,15 @@ pub static RES_RE: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(\d{3,4})p\b"))
 /// " - 04" or " - 04v2" followed by space, end, or bracket; not " - 1080p".
 pub static EPISODE_RE: LazyLock<FancyRegex> =
     LazyLock::new(|| fancy(r"\s+-\s+\d{1,4}(?:v\d+)?(?=\s|\z|\[)"));
-/// An episode range, " - 02-03", " - 01~12" or "(01-12)", which marks a batch.
-/// Kept apart from `EPISODE_RE`, which `bestfit` reads as one episode.
+/// An episode range, " - 02-03", " - E01~E12" or "(01-12)", which marks a batch.
+/// Kept apart from `EPISODE_RE`, which stays a single-episode marker for `bestfit`.
+/// In parentheses a number has at most three digits, so "(2005-2010)" stays a span of
+/// years, as `bestfit::EP_RANGE_RE` reads it.
 static EPISODE_RANGE_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
-    fancy(
-        r"\s+-\s+\d{1,4}(?:v\d+)?\s*[-~]\s*\d{1,4}(?:v\d+)?(?=\s|\z|\[|\()|\s*\(\d{1,4}\s*[-~]\s*\d{1,4}\)",
-    )
+    fancy(concat!(
+        r"\s+-\s+[Ee]?\d{1,4}(?:v\d+)?\s*[-~]\s*[Ee]?\d{1,4}(?:v\d+)?(?=\s|\z|\[|\()",
+        r"|\s*\([Ee]?\d{1,3}(?:v\d+)?\s*[-~]\s*[Ee]?\d{1,3}(?:v\d+)?\)",
+    ))
 });
 /// "S01E02" / "s1e2" / "S01E02v2" season and episode markers. The season half is a
 /// legitimate search facet; the episode half must never leak into queries or refine tags
@@ -159,6 +162,13 @@ mod tests {
         assert_eq!(show_name("[Grp] Show - 01v2-03v2.mkv"), "Show");
         assert_eq!(show_name("[Grp] Show (01-12) [1080p]"), "Show");
         assert_eq!(show_name("[Grp] Show (01~12)"), "Show");
+        assert_eq!(show_name("[Grp] Show - E01-E12 [1080p]"), "Show");
+        assert_eq!(show_name("[Grp] Show (01v2-12) [1080p]"), "Show");
+        // A span of years is part of the name.
+        assert_eq!(
+            show_name("[Grp] Doctor Who (2005-2010) [1080p]"),
+            "Doctor Who (2005-2010)"
+        );
         // A hyphenated name is not a range.
         assert_eq!(show_name("[Grp] Re-Kan - 03 [720p]"), "Re-Kan");
         // A parenthesised word is still part of the name.
