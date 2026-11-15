@@ -1,12 +1,13 @@
-// Downloads: the torrent client first (which one, which of the person's saved clients,
-// where, the login, a test), then how searches run (the search helper, anirss, or Anibeam
-// itself) and, for the helper, how Anibeam reaches it and its state, Rolling
-// downloads, finished shows, the search sources anirss was configured with and the endpoint
-// repos. Edits sit in a draft until Save: the secrets only cross once, and saving stops a
-// running sidecar (its environment carries the password), so a save is one deliberate act
-// followed by a reconnect. While the draft differs, a bar floats at the foot of the section
-// with Discard and Save, so the way to keep a change is never a scroll away from it.
+// Downloads: the source lists first, since nothing searches without one (#1003), then the
+// torrent client (which one, which of the person's saved clients, where, the login, a test),
+// then how searches run (the search helper, anirss, or Anibeam itself) and, for the helper,
+// how Anibeam reaches it and its state, Rolling downloads, finished shows and the search
+// sources anirss was configured with. Edits sit in a draft until Save: the secrets only cross
+// once, and saving stops a running sidecar (its environment carries the password), so a save
+// is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
+// foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
 import QtQuick
+import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
 
 SettingsTab {
@@ -27,6 +28,12 @@ SettingsTab {
     readonly property var settings: status ? status.settings : null
     readonly property var anirss: status ? status.anirss : null
     readonly property var torrent: status ? status.torrent : null
+    // Where a show not in the library yet downloads to (#1005): applied at once, not drafted
+    readonly property var saveFolder: status && status.save_folder ? status.save_folder : ({ path: "", from: "Client", here: false })
+    function setSaveFolder(folder) {
+        var r = Door.call("SetSaveFolder", { folder: folder })
+        if (r.error) frame.fail(r.error, function() { tab.setSaveFolder(folder) })
+    }
     readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true, keep_watched: 1 })
     // "Finishing episode 3 deletes episode 1" for the count kept behind
     readonly property string keepLine: {
@@ -39,6 +46,8 @@ SettingsTab {
     // Anibeam itself, the default (#552), and the core keeps it stored until the search
     // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
+    // The saved engine, as the Save to row applies at once and reads the saved client's folder
+    readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
@@ -181,6 +190,8 @@ SettingsTab {
         return words.t("settings-downloads-mismatch", { helperUrl: a, url: b })
     }
 
+    // The source lists first: nothing searches without one (#1003)
+    EndpointReposPanel { grows: false }
     Panel {
         title: words.t("settings-downloads-torrent-title")
         helper: words.t("settings-downloads-torrent-helper")
@@ -213,6 +224,11 @@ SettingsTab {
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); helper: tab.passwordLine
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
+        SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
+            status: tab.saveFolder.path || words.t("settings-downloads-save-to-client")
+            Row { spacing: theme.space(2)
+                Button { visible: tab.saveFolder.from === "Chosen"; msg: "settings-downloads-save-to-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.setSaveFolder(null) }
+                Button { objectName: "downloads-save-to-choose"; msg: "settings-downloads-save-to-choose"; icon: "folder-open"; flat: true; onClicked: saveFolderDialog.open() } } }
         SettingRow { label: words.t("settings-downloads-connection"); line: tab.torrentLine; status: tab.mismatch
             Row { spacing: theme.space(2)
                 Button { visible: tab.mismatch !== "" && !!(tab.anirss && tab.anirss.config_path); msg: "settings-downloads-open-config"; icon: "external-link"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) }
@@ -271,7 +287,6 @@ SettingsTab {
         title: words.t("settings-downloads-sources-title")
         helper: words.t("settings-downloads-sources-helper")
         SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
-            helper: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty-helper") : ""
             Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
         Repeater {
             model: tab.endpoints
@@ -287,7 +302,12 @@ SettingsTab {
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
             Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
-    EndpointReposPanel { grows: false }
+    FolderDialog {
+        id: saveFolderDialog
+        title: words.t("settings-downloads-save-to-pick")
+        currentFolder: tab.saveFolder.path ? Fmt.fileUrl(tab.saveFolder.path) : ""
+        onAccepted: tab.setSaveFolder(Fmt.localPath(String(selectedFolder)))
+    }
 
     // The save bar: floats over the section's foot while the draft differs from what is saved
     Rectangle {

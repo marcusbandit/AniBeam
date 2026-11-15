@@ -1154,6 +1154,10 @@ core-downloads-refuse-library-folder = { $path } è una cartella della libreria 
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent non ha una cartella di salvataggio predefinita; impostane una in qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } non è un percorso completo a una cartella
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } non può contenere download: scegli una cartella che esiste e che non sia la tua cartella home
 core-downloads-name-empty = il nome non può essere vuoto
 core-downloads-name-slash = il nome non deve contenere / o \
 core-downloads-name-not-folder = { $name } non è un nome di cartella

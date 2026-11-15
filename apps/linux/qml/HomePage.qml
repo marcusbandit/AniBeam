@@ -9,10 +9,8 @@
 // of what can leave the disk. Every shelf is a plain grid whose column count comes from the
 // width, and a shelf that could run long stops at a row or two with "See all".
 //
-// With no library yet (#203) Home still has something to open on: the season from AniList,
-// the episodes out this week and the season's most popular shows, the same read the Airing
-// page makes, with the call to add a folder under them. A card there opens Airing, where
-// its actions live. Offline, or before the first read lands, the call stands alone.
+// With no library yet Home holds the same empty state as Library and nothing else (#1006):
+// rows of the season's shows had nothing to do with the person who opened it.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -34,63 +32,11 @@ Item {
     property bool libraryEmpty: false
     // A read that failed shows Try again on the page, not a blank Home
     property bool loadFailed: false
-    // An empty library with folders is a scan that found nothing, not a library to start
-    property bool hasFolders: false
-    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("home-scan-started")) }
-    onLibraryEmptyChanged: if (libraryEmpty) loadSeason()
-    // The season as the Airing page reads it (AiringNow), for an empty library only
-    property var season: null
-    readonly property var seasonShows: season ? season.shows : []
-    function showOf(id) {
-        for (var i = 0; i < seasonShows.length; i++) if (seasonShows[i].anilist_id === id) return seasonShows[i]
-        return null
-    }
     function ago(at) {
         var secs = Math.max(0, nowMs / 1000 - at)
         if (secs < 3600) return words.t("home-ago-minutes", { count: Math.max(1, Math.floor(secs / 60)) })
         if (secs < 86400) return words.t("home-ago-hours", { count: Math.floor(secs / 3600) })
         return words.t("home-ago-days", { count: Math.floor(secs / 86400) })
-    }
-    // An AiringShow as a Card reads a series card
-    function airingCard(s, meta) {
-        return {
-            id: s.anilist_id, title: s.title, poster: s.poster || "",
-            watched: null, total_episodes: s.episodes || null, total_is_estimate: false,
-            watched_state: "Unknown", strip: null, code: "",
-            community_score: s.average_score !== null && s.average_score !== undefined ? s.average_score / 10 : null,
-            my_score: null, hidden: false, next_airing: s.next_airing || null,
-            episodes_on_disk: 0, list_status: null, site_url: "", meta: meta
-        }
-    }
-    // Out now: one card per show, its newest episode, newest first. Free of nowMs, so the
-    // 30 s clock does not rebuild the row; each card's "out 2h ago" line is its own binding.
-    readonly property var outNowList: {
-        if (!season) return []
-        var seen = ({}), out = []
-        var aired = season.aired.slice().sort(function(a, b) { return b.at - a.at })
-        for (var i = 0; i < aired.length; i++) {
-            var e = aired[i]
-            if (seen[e.anilist_id]) continue
-            var s = showOf(e.anilist_id)
-            if (!s) continue
-            seen[e.anilist_id] = true
-            var c = airingCard(s, "")
-            c.aired_episode = e.episode
-            c.aired_at = e.at
-            out.push(c)
-        }
-        return out
-    }
-    // AniList's own order for the season: most popular first
-    readonly property var popularList: seasonShows.map(function(s) {
-        return airingCard(s, s.episodes ? words.t("count-episodes", { count: s.episodes }) : "")
-    })
-    readonly property bool seasonShown: outNowList.length > 0 || popularList.length > 0
-    function loadSeason() {
-        var r = Door.listAiringNow("Now")
-        if (!r.error) season = r.reply.now
-        // AniList only when the cached read is stale; the refresh ends in AiringNowRefreshed
-        Door.refreshAiringNow("Now", false)
     }
     Timer { interval: 30000; running: true; repeat: true; onTriggered: page.nowMs = Date.now() }
 
@@ -159,8 +105,8 @@ Item {
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}
-        libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0
-        if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
+        // Hidden series are still a library, as Library counts them
+        libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0 && (n.hidden || 0) === 0
         resume = pickResume()
         nowMs = Date.now()
     }
@@ -193,7 +139,6 @@ Item {
         function onSeriesChanged() { if (!debounce.running) debounce.start(); recDebounce.restart() }
         function onSeriesRemoved() { if (!debounce.running) debounce.start(); recDebounce.restart() }
         function onPreferencesChanged(p) { if (!debounce.running) debounce.start() }
-        function onAiringNowRefreshed(s) { if (s === "Now" && page.libraryEmpty) { var r = Door.listAiringNow("Now"); if (!r.error) page.season = r.reply.now } }
         function onEvent(envelope) { if (envelope.kind === "RecommendedRefreshed") page.loadRecommended() }
         function onTrackersChanged() { recDebounce.restart() }
         function onCallDone(token, reply) {
@@ -881,8 +826,6 @@ Item {
         property real minWidth: theme.posterWidth
         property int maxRows: 0
         property string moreText: words.t("action-see-all")
-        // Cards from the season, not the library: they open Airing and carry their own line
-        property bool airing: false
         signal more()
         readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (minWidth + page.gap)))
         readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
@@ -909,13 +852,10 @@ Item {
                     required property var modelData
                     objectName: "card-" + modelData.id   // a --drive target
                     item: modelData
-                    metaOverride: !shelfBox.airing ? ""
-                        : modelData.aired_at !== undefined ? words.t("home-card-aired", { episode: words.episodeName("", modelData.aired_episode), ago: page.ago(modelData.aired_at) })
-                        : (modelData.meta || "")
                     posterWidth: shelfBox.cardWidth
                     nowMs: page.nowMs
-                    onOpened: if (shelfBox.airing) frame.go("airing"); else page.openSeries(modelData)
-                    onPlayed: if (shelfBox.airing) frame.go("airing"); else page.playSeries(modelData)
+                    onOpened: page.openSeries(modelData)
+                    onPlayed: page.playSeries(modelData)
                 }
             }
         }
@@ -1482,72 +1422,10 @@ Item {
         }
     }
 
-    // ---- No library yet: the season first, then the call to add a folder under it
-    PageScroll {
-        id: freshScroll
-        objectName: "home-fresh-install"
-        anchors.fill: parent
-        visible: page.libraryEmpty && page.seasonShown
-
-        Shelf {
-            objectName: "home-out-now"
-            width: parent.width
-            airing: true
-            heading: words.t("home-out-now")
-            fact: words.t("home-out-now-fact")
-            list: page.outNowList
-            maxRows: 1
-            onMore: frame.go("airing")
-        }
-        Item { width: 1; height: page.outNowList.length ? theme.space(4) : 0 }
-        Shelf {
-            objectName: "home-popular"
-            width: parent.width
-            airing: true
-            heading: words.t("home-popular")
-            fact: page.season ? page.season.label : ""
-            list: page.popularList
-            // One row, so the call to add a folder is on the first screen too
-            maxRows: 1
-            onMore: frame.go("airing")
-        }
-        Item { width: 1; height: theme.space(8) }
-        Tile {
-            objectName: "home-add-folder"
-            width: parent.width
-            height: addWords.implicitHeight + padding * 2
-            padding: theme.space(7)
-            Icon { id: addMark; glyph: "folder-plus"; size: theme.space(10); color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
-            Column {
-                id: addWords
-                anchors.left: addMark.right; anchors.leftMargin: theme.space(6)
-                anchors.right: addButton.left; anchors.rightMargin: theme.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(1)
-                Label { msg: "home-add-folder-title"; role: "title"; font.pointSize: theme.typeLarge }
-                Label { width: parent.width; msg: "home-add-folder-body"; color: theme.textDim; wrapMode: Text.Wrap }
-            }
-            Button { id: addButton; objectName: "home-add-folder-button"; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "home-add-folder-button"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
-        }
-        Item { width: 1; height: theme.grout }
-        TrackerNudge {
-            objectName: "home-tracker-nudge-fresh"
-            visible: wanted
-            width: parent.width
-            height: visible ? implicitHeight : 0
-        }
-    }
-
-    EmptyState {
+    // ---- No library yet: the same empty state as Library, and no rows (#1006)
+    LibraryEmpty {
         objectName: "home-empty"
-        anchors.centerIn: parent
-        visible: page.libraryEmpty && !page.seasonShown
-        icon: page.hasFolders ? "folder-search" : "folder-plus"
-        title: page.hasFolders ? words.t("home-empty-scanned-title") : words.t("home-empty-title")
-        body: page.hasFolders ? words.t("home-empty-scanned-body")
-            : words.t("home-empty-body")
-        Button { visible: page.hasFolders; msg: "home-scan-all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
-        Button { text: page.hasFolders ? words.t("home-library-settings") : words.t("home-add-folder-button"); icon: page.hasFolders ? "settings" : "folder-plus"; primary: !page.hasFolders; flat: page.hasFolders; onClicked: frame.go("settings", { tab: "library" }) }
+        visible: page.libraryEmpty
     }
     EmptyState {
         objectName: "home-failed"
@@ -1561,7 +1439,7 @@ Item {
     // A new install has no library to hold the tracker nudge, so the empty Home carries it
     TrackerNudge {
         objectName: "home-tracker-nudge"
-        visible: page.libraryEmpty && !page.seasonShown && wanted
+        visible: page.libraryEmpty && wanted
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
         width: Math.min(parent.width - theme.space(16), theme.space(220))
