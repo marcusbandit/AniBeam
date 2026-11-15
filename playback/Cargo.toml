@@ -22,8 +22,6 @@ anibeam-metadata.workspace = true
 anibeam-trackers.workspace = true
 anibeam-downloads.workspace = true
 anibeam-room.workspace = true
-# The HLS playlist the cast server writes, shared with the host (#1059).
-anibeam-host-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -35,9 +33,6 @@ sha2 = "0.11"
 rand = "0.10"
 base64 = "0.23"
 tracing = "0.1"
-flate2 = "1"
-roxmltree = "0.20"
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 # Watch together rooms (#846): the relay's WebSocket, opened through reqwest's own client
 # and HTTP upgrade so it rides the same TLS setup as every other request.
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
@@ -48,16 +43,22 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
 hkdf = "0.13"
-# Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
-# for their TLS. Only the shells that cast turn it on.
+# Casting: the Matroska reader for cutting segments and zlib for its compressed tracks, mDNS
+# for finding Chromecasts and rustls for their TLS, the server a device reads from, the DLNA
+# replies' XML, and the HLS playlist the host writes too (#1059). Only the shells that cast
+# turn it on.
 matroska-demuxer = { version = "0.8", optional = true }
+flate2 = { version = "1", optional = true }
 mdns-sd = { version = "0.21", optional = true }
 rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"], optional = true }
 futures-core = { version = "0.3", optional = true }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"], optional = true }
+roxmltree = { version = "0.20", optional = true }
+anibeam-host-api = { workspace = true, optional = true }
 
 [features]
 # Casting (cast/). The core's `cast` turns it on.
-cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
+cast = ["dep:matroska-demuxer", "dep:flate2", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "dep:axum", "dep:roxmltree", "dep:anibeam-host-api"]
 
 # Peeks at Discord's named pipe for events without blocking (#966).
 [target.'cfg(windows)'.dependencies]

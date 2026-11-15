@@ -61,7 +61,7 @@ tracking. Nothing is re-encoded: a Chromecast gets HLS cut on keyframes from the
 file (fragmented MP4, so HEVC works where the device decodes it), a DLNA TV gets the file as
 it is, or the same fragments as one stream if it refuses. Subtitles go as text (WebVTT for
 Chromecast, SRT for TVs that read it), so ASS styling is lost. 10-bit H.264 (Hi10P) is refused
-with a reason until the transcode (#141) lands. The core's cast code is in `core/src/cast/`;
+with a reason until the transcode (#141) lands. The cast code is in `playback/src/cast/`;
 `core/examples/cast_drive.rs` drives a whole cast from the desktop. To try it from the
 emulator, which cannot see the LAN's multicast, write `/data/local/tmp/anibeam-cast-dev` with
 `renderer=<a DLNA description URL>`, `port=47000` and `advertise=127.0.0.1:47000`, and

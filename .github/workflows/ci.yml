@@ -118,8 +118,19 @@ jobs:
       - name: Clippy (downloads alone)
         run: cargo clippy --locked -p anibeam-downloads --all-targets -- -D warnings
 
+      # The phone's torrent engine and its tests sit behind the crate's own `phone` feature.
+      # The core's `phone` turns it on for the library only, so without this nothing compiles
+      # those tests, which the core's phone clippy did while they were in the core.
+      - name: Clippy (downloads with phone)
+        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+
       - name: Clippy (playback alone)
         run: cargo clippy --locked -p anibeam-playback --all-targets -- -D warnings
+
+      # Casting and its tests sit behind the crate's own `cast` feature, for the same reason as
+      # the downloads' phone engine above.
+      - name: Clippy (playback with cast)
+        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
 
       - name: Clippy (host alone)
         run: cargo clippy --locked -p anibeam-host --all-targets -- -D warnings

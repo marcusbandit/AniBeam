@@ -65,6 +65,10 @@ if [ $cargo -eq 1 ]; then
   for crate in anibeam-contract anibeam-foundation anibeam-net anibeam-library anibeam-releases anibeam-metadata anibeam-trackers anibeam-downloads anibeam-playback anibeam-host; do
     step "clippy $crate alone" cargo clippy --locked -p "$crate" --all-targets -- -D warnings
   done
+  # The phone's engine and casting have tests behind their crates' own features, which the
+  # core's turn on for the libraries only (ci.yml says more).
+  step "clippy downloads with phone" cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+  step "clippy playback with cast" cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
   step "clippy phone features" cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
   step test cargo test --locked --workspace
   [ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
