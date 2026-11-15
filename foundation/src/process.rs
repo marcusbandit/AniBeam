@@ -1,9 +1,7 @@
-//! Starting the helpers the core runs (anirss, qBittorrent, an endpoint's
-//! start command, ffmpeg) the same way on every desktop. On Windows a child
-//! gets no console window, and the anirss a package carries is a Python
-//! script, so it runs through the Python the package carries beside it. Here
-//! rather than in a team, since the downloads and the host both start them
-//! (#854).
+//! Starting a helper program (anirss, qBittorrent, an endpoint's start
+//! command, ffmpeg) the same way on every desktop. On Windows a child gets no
+//! console window, and the anirss a package carries is a Python script, so it
+//! runs through the Python the package carries beside it.
 
 use tokio::process::Command;
 
