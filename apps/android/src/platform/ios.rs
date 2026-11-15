@@ -35,7 +35,12 @@ use slint::winit_030::winit::window::Window as WinitWindow;
 use super::FocusAsk;
 use crate::worker::Command;
 
-pub use super::other::*;
+// `other.rs`'s stand-ins for the calls the iPhone does not answer yet.
+pub use super::other::{
+    ask_notifications, bars, brightness, copy_text, episode_ready, line_colours, log, multicast,
+    notification_settings, notifications_allowed, open_url, pick_file, relocalize, set_brightness,
+    set_volume, start_service, stop_service, unmetered, update_service, volume,
+};
 
 /// Called by `main.rs`: runs the app over its data directory in the app's container.
 pub fn ios_main() {
