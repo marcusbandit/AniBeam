@@ -7,8 +7,11 @@ off the edges, a dimension nobody filled in, hatching that stops halfway, and a 
 tape saying DEV. A fixed seed keeps it repeatable.
 
 usage: python3 site/tools/dev_logo.py site/img/logo.svg site/img/logo-dev.svg
+       rsvg-convert -w 512 -h 512 site/img/logo-dev.svg -o site/img/icon-dev.png
+
+Every word on it is drawn as strokes, not set in a font, so it looks the same wherever the SVG
+is opened. Only the glyph's bounding box is read here; nightly_logo.py needs the full outline.
 """
-import math
 import random
 import re
 import sys
@@ -59,32 +62,42 @@ def wobble(x1, y1, x2, y2, amount=1.6):
 
 
 grid = []
-for v in range(X0, X0 + SIZE + 1, 32):
-    major = (v - X0) % 128 == 0
+# Centred on the square, so neither edge gets a sliver
+G0 = X0 + (SIZE % 32) // 2
+for v in range(G0, X0 + SIZE, 32):
+    major = (v - G0) % 128 == 0
     grid.append(f'<path d="M{v} {Y0}V{Y0 + SIZE}M{X0} {v}H{X0 + SIZE}" stroke="{MAJOR if major else MINOR}" '
                 f'stroke-width="{2 if major else 1}"/>')
 
 # Construction lines off the glyph's extremes, running past the edges
 guides = []
 for x in (gx0, gx1):
-    guides.append(f'<path d="{wobble(x, 40, x, 990)}" stroke="{GUIDE}" stroke-width="2" stroke-dasharray="14 10" opacity=".7"/>')
+    guides.append(f'<path d="{wobble(x, 0, x, 1024)}" stroke="{GUIDE}" stroke-width="2" stroke-dasharray="14 10" opacity=".7"/>')
 for y in (gy0, gy1):
-    guides.append(f'<path d="{wobble(40, y, 990, y)}" stroke="{GUIDE}" stroke-width="2" stroke-dasharray="14 10" opacity=".7"/>')
+    guides.append(f'<path d="{wobble(0, y, 1024, y)}" stroke="{GUIDE}" stroke-width="2" stroke-dasharray="14 10" opacity=".7"/>')
 
-# A dimension above the mark, its number never filled in
+# A dimension above the mark, its number never filled in: two question marks, drawn
+def question(x, y):
+    """A question mark about 50 units tall, its top at y."""
+    return (f'<path d="M{x - 12:.1f} {y + 12:.1f}C{x - 12:.1f} {y - 4:.1f} {x + 14:.1f} {y - 4:.1f} '
+            f'{x + 14:.1f} {y + 12:.1f}C{x + 14:.1f} {y + 24:.1f} {x:.1f} {y + 22:.1f} {x:.1f} {y + 34:.1f}" '
+            f'fill="none" stroke="{LINE}" stroke-width="7" stroke-linecap="round"/>'
+            f'<circle cx="{x:.1f}" cy="{y + 46:.1f}" r="4.5" fill="{LINE}"/>')
+
+
 dy = gy0 - 52
-dim = (f'<path d="M{gx0} {dy}H{gx1}" stroke="{LINE}" stroke-width="3"/>'
-       f'<path d="M{gx0} {dy}l22 -11v22zM{gx1} {dy}l-22 -11v22z" fill="{LINE}"/>'
-       f'<path d="M{gx0} {dy - 24}v48M{gx1} {dy - 24}v48" stroke="{LINE}" stroke-width="3"/>'
-       f'<rect x="{(gx0 + gx1) / 2 - 46}" y="{dy - 30}" width="92" height="60" rx="8" fill="{BLUE}"/>'
-       f'<text x="{(gx0 + gx1) / 2}" y="{dy + 17}" font-family="DejaVu Sans Mono, monospace" font-size="50" '
-       f'font-weight="700" fill="{LINE}" text-anchor="middle">??</text>')
+mid = (gx0 + gx1) / 2
+dim = (f'<path d="M{gx0:.1f} {dy:.1f}H{gx1:.1f}" stroke="{LINE}" stroke-width="3"/>'
+       f'<path d="M{gx0:.1f} {dy:.1f}l22 -11v22zM{gx1:.1f} {dy:.1f}l-22 -11v22z" fill="{LINE}"/>'
+       f'<path d="M{gx0:.1f} {dy - 24:.1f}v48M{gx1:.1f} {dy - 24:.1f}v48" stroke="{LINE}" stroke-width="3"/>'
+       f'<rect x="{mid - 46:.1f}" y="{dy - 30:.1f}" width="92" height="60" rx="8" fill="url(#bg)"/>'
+       + question(mid - 17, dy - 25) + question(mid + 19, dy - 25))
 
 # A compass arc that was meant to round the hook and missed
 cx, cy = gx1 - 40, gy0 + 210
-arc = (f'<path d="M{cx + 150} {cy} A150 150 0 0 1 {cx - 60} {cy + 138}" fill="none" stroke="{GUIDE}" '
-       f'stroke-width="3" stroke-dasharray="4 9" stroke-linecap="round"/>'
-       f'<circle cx="{cx}" cy="{cy}" r="7" fill="none" stroke="{GUIDE}" stroke-width="3"/>')
+arc = (f'<path d="M{cx + 150:.1f} {cy:.1f} A150 150 0 0 1 {cx - 60:.1f} {cy + 138:.1f}" fill="none" '
+       f'stroke="{GUIDE}" stroke-width="3" stroke-dasharray="4 9" stroke-linecap="round"/>'
+       f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="7" fill="none" stroke="{GUIDE}" stroke-width="3"/>')
 
 # Hatching inside the mark that stops halfway down
 hatch = []
@@ -96,11 +109,12 @@ hatch_svg = (f'<g clip-path="url(#half)"><g clip-path="url(#glyph)">'
 half_y = gy0 + (gy1 - gy0) * 0.48
 
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<!-- Made by site/tools/dev_logo.py from site/img/logo.svg; edit the script, not this file. -->
 <defs>
 <clipPath id="sq"><rect x="{X0}" y="{Y0}" width="{SIZE}" height="{SIZE}" rx="{R}"/></clipPath>
 <clipPath id="glyph"><path d="{glyph_d}"/></clipPath>
 <clipPath id="half"><rect x="0" y="0" width="1024" height="{half_y:.0f}"/></clipPath>
-<radialGradient id="bg" cx=".45" cy=".4" r=".8"><stop offset="0" stop-color="{BLUE}"/><stop offset="1" stop-color="{DEEP}"/></radialGradient>
+<radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="460" cy="410" r="820"><stop offset="0" stop-color="{BLUE}"/><stop offset="1" stop-color="{DEEP}"/></radialGradient>
 </defs>
 <g clip-path="url(#sq)">
 <rect x="{X0}" y="{Y0}" width="{SIZE}" height="{SIZE}" fill="url(#bg)"/>
@@ -109,12 +123,12 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
 {arc}
 {hatch_svg}
 <path d="{glyph_d}" fill="none" stroke="{LINE}" stroke-width="9" stroke-linejoin="round"/>
-<path d="{glyph_d}" fill="none" stroke="{BLUE}" stroke-width="10" stroke-dasharray="0 1500 60 99999" stroke-linecap="round"/>
+<path d="{glyph_d}" fill="none" stroke="url(#bg)" stroke-width="12" stroke-dasharray="60 99999" stroke-dashoffset="-1500" stroke-linecap="round"/>
 {dim}
 <g transform="translate(690 852) rotate(-12)">
 <rect x="-150" y="-50" width="300" height="100" fill="{TAPE}" opacity=".93"/>
 <path d="M-150 -50l-10 12 10 12 -10 12 10 12 -10 12 10 12 -10 12 10 16M150 -50l10 14 -10 12 10 12 -10 12 10 12 -10 12 10 12 -10 14" fill="{TAPE}" opacity=".93"/>
-<text x="0" y="24" font-family="DejaVu Sans, sans-serif" font-size="74" font-weight="800" fill="{RED}" text-anchor="middle" letter-spacing="6">DEV</text>
+<path d="M-87 -30V30M-87 -30H-67C-37 -30 -37 30 -67 30H-87M13 -30H-19V30H13M-19 0H7M35 -30L61 30L87 -30" fill="none" stroke="{RED}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
 </g>
 </g>
 <rect x="{X0 + 3}" y="{Y0 + 3}" width="{SIZE - 6}" height="{SIZE - 6}" rx="{R - 3}" fill="none" stroke="{GUIDE}" stroke-width="6" opacity=".6"/>
