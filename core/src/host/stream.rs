@@ -358,11 +358,11 @@ pub(crate) fn run_to_end(
         }
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let sub = crate::events::Subscription::new(services.bus.clone(), Arc::new(Relay(tx)));
+    let sub = crate::events::Listening::new(services.bus.clone(), Arc::new(Relay(tx)));
     let job = match front.answer(profile, call) {
         Ok(Reply::Started { job }) => job,
         other => {
-            sub.unsubscribe();
+            drop(sub);
             return other;
         }
     };
@@ -384,7 +384,7 @@ pub(crate) fn run_to_end(
             _ => {}
         }
     };
-    sub.unsubscribe();
+    drop(sub);
     answer
 }
 
