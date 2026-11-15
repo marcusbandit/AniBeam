@@ -278,7 +278,7 @@ pub async fn hls(
         return error(StatusCode::BAD_REQUEST, "the file has no such track");
     }
     if name == "index.m3u8" {
-        let list = convert::playlist(probe.duration, &query_of(audio, burn));
+        let list = wire::hls_playlist(probe.duration, &query_of(audio, burn));
         return (
             [
                 (header::CONTENT_TYPE, "application/vnd.apple.mpegurl"),

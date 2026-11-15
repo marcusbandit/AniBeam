@@ -550,7 +550,7 @@ core-presence-no-room = この Discord の招待にはまだルームがあり�
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = { $tracker }のクライアントIDが設定されていません。
@@ -560,15 +560,15 @@ core-trackers-mal-wants-secret = MyAnimeListがこのアプリのクライアン
 core-trackers-token-reply-unreadable = トークンの応答を読めません: { $error }
 core-trackers-token-reply-no-token = トークンの応答にアクセストークンがありませんでした
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = アクセストークンが保存されていません。設定で再連携してください
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = アカウントにユーザーIDがありません
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 移動する作品が選ばれていません
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -577,7 +577,7 @@ core-trackers-moved-up-some-refused = { $site }へ{ $moved }作品を移動し�
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site }は{ $show }を受け付けませんでした: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 認証がタイムアウトしました。もう一度お試しください。
 core-trackers-oauth-state-mismatch = stateが一致しません。CSRFの可能性があるため中止しました。
@@ -608,7 +608,7 @@ core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
 core-trackers-page-cancelled = このログインはキャンセルされました
 core-trackers-page-cancelled-body = このタブは閉じてかまいません。必要なら{ $app }からやり直してください。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = { $tracker }で保留に移動中
@@ -625,7 +625,7 @@ core-trackers-back-on-watching = { $site }で{ $name }を視聴中に戻しま�
 core-trackers-back-on-watching-two = { $site }と{ $secondSite }で{ $name }を視聴中に戻しました。
 core-trackers-back-on-watching-failed = { $name }を視聴中に戻せませんでした。あとでもう一度お試しください。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker }のレート制限中です。1分後にもう一度お試しください。

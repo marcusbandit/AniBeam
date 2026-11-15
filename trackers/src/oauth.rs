@@ -26,15 +26,15 @@ use rand::Rng;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::contract::*;
-use crate::i18n::tr;
-use crate::jobs::{Finished, JobCtx};
-use crate::net::anilist::VIEWER_QUERY;
-use crate::percent::decode;
-use crate::time;
-use crate::trackers::Trackers;
-use crate::trackers::accounts::{self, Tokens};
-use crate::trackers::{TRACKER_TIMEOUT, cache};
+use crate::Trackers;
+use crate::accounts::{self, Tokens};
+use crate::{TRACKER_TIMEOUT, cache};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::percent::decode;
+use anibeam_foundation::time;
+use anibeam_net::anilist::VIEWER_QUERY;
 
 /// The one path the listener serves. Both providers redirect here.
 const CALLBACK_PATH: &str = "/callback";
@@ -151,7 +151,7 @@ async fn run(
     // The line the activity log keeps, with no url in it.
     ctx.say(
         Level::Info,
-        crate::words!("core-trackers-oauth-waiting", site = site_name(t)),
+        anibeam_contract::words!("core-trackers-oauth-waiting", site = site_name(t)),
         format!("{} sign-in: waiting for the browser", site_name(t)),
         EventBody::Notice,
     );
@@ -222,7 +222,7 @@ async fn run(
     // be inside anybody's freshness window.
     cache::start_refresh(&trackers, Some(t), true);
     Ok(Finished {
-        plain: Some(crate::words!(
+        plain: Some(anibeam_contract::words!(
             "core-trackers-oauth-connected",
             site = site_name(t),
             username = &username

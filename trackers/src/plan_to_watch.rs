@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::titles::{self, fallback_title};
-use crate::jobs::{Finished, JobCtx};
-use crate::prefs;
-use crate::trackers::Trackers;
-use crate::trackers::{accounts, no_token, writes};
+use crate::Trackers;
+use crate::{accounts, no_token, writes};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::prefs;
+use anibeam_foundation::titles::{self, fallback_title};
 
 /// The `PlanToWatch` call: Planning on every connected tracker that does
 /// not list the show yet. A show already on a list keeps its status there,
@@ -180,7 +180,7 @@ async fn plan(
     }
     let names = |ts: &[Tracker]| {
         ts.iter()
-            .map(|t| crate::trackers::oauth::site_name(*t))
+            .map(|t| crate::oauth::site_name(*t))
             .collect::<Vec<_>>()
             .join(" and ")
     };
@@ -193,23 +193,27 @@ async fn plan(
     Ok(match (planned.is_empty(), found.first(), failure) {
         (false, _, _) => Finished {
             plain: Some(match planned.as_slice() {
-                [one, other] => crate::words!(
+                [one, other] => anibeam_contract::words!(
                     "core-airing-now-planned-both",
                     title = &title,
-                    site = crate::trackers::oauth::site_name(*one),
-                    other = crate::trackers::oauth::site_name(*other),
+                    site = crate::oauth::site_name(*one),
+                    other = crate::oauth::site_name(*other),
                 ),
-                ts => crate::words!("core-airing-now-planned", title = &title, site = names(ts)),
+                ts => anibeam_contract::words!(
+                    "core-airing-now-planned",
+                    title = &title,
+                    site = names(ts)
+                ),
             }),
             level: Level::Info,
             message: format!("{title} is on Planning on {}", labels(&planned)),
             body: EventBody::Notice,
         },
         (true, Some((t, status)), _) => Finished {
-            plain: Some(crate::words!(
+            plain: Some(anibeam_contract::words!(
                 "core-airing-now-already-on",
                 title = &title,
-                site = crate::trackers::oauth::site_name(*t),
+                site = crate::oauth::site_name(*t),
                 status = status.as_str(),
             )),
             level: Level::Info,
@@ -221,7 +225,10 @@ async fn plan(
             body: EventBody::Notice,
         },
         (true, None, Some(why)) => Finished {
-            plain: Some(crate::words!("core-airing-now-plan-failed", title = &title)),
+            plain: Some(anibeam_contract::words!(
+                "core-airing-now-plan-failed",
+                title = &title
+            )),
             level: Level::Warn,
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,

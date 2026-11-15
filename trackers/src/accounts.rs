@@ -15,14 +15,14 @@ use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::secrets::{Secrets, StoreKind};
-use crate::foundation::services::Services;
-use crate::library::cards;
-use crate::net::HttpResponse;
-use crate::prefs;
-use crate::time;
-use crate::trackers::Trackers;
+use crate::Trackers;
+use anibeam_contract::*;
+use anibeam_foundation::prefs;
+use anibeam_foundation::secrets::{Secrets, StoreKind};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_library::cards;
+use anibeam_net::HttpResponse;
 
 /// The one url the code exchange and the refresh both post to.
 pub(crate) const MAL_TOKEN_URL: &str = "https://myanimelist.net/v1/oauth2/token";
@@ -50,15 +50,15 @@ pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList wants this app's client s
 // Keys and bundled credentials ----------------------------------------------
 
 /// Where a tracker's access token lives, in the keyring's flat key space.
-pub(crate) fn access_key(t: Tracker) -> String {
+pub fn access_key(t: Tracker) -> String {
     format!("{}.access_token", t.as_str())
 }
 
-pub(crate) fn refresh_key(t: Tracker) -> String {
+pub fn refresh_key(t: Tracker) -> String {
     format!("{}.refresh_token", t.as_str())
 }
 
-pub(crate) fn secret_key(t: Tracker) -> String {
+pub fn secret_key(t: Tracker) -> String {
     format!("{}.client_secret", t.as_str())
 }
 
@@ -155,7 +155,7 @@ pub fn state(services: &Services) -> Result<TrackerState, CoreError> {
 
 /// `state` from inside a job. The keyring is synchronous underneath, so it
 /// runs on the blocking pool rather than on a tokio worker.
-pub(crate) async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreError> {
+pub async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreError> {
     let owner = services.clone();
     joined(services.handle.spawn_blocking(move || state(&owner)).await)?
 }
@@ -201,7 +201,7 @@ pub fn effective_credentials(
         .ok_or_else(|| {
             CoreError::invalid(
                 "client_id",
-                crate::i18n::tr(
+                anibeam_contract::i18n::tr(
                     "core-trackers-no-client-id",
                     &[("tracker", t.label().into())],
                 ),
@@ -372,7 +372,7 @@ pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<Stri
             trackers.services.bus.say(
                 Level::Warn,
                 Stage::Trackers,
-                crate::words!("core-trackers-mal-reconnect"),
+                anibeam_contract::words!("core-trackers-mal-reconnect"),
                 MAL_EXPIRED,
                 EventBody::Notice,
             );
@@ -449,7 +449,7 @@ pub(crate) fn token_failure(response: &HttpResponse, sent_secret: bool) -> CoreE
         .ok()
         .and_then(|v| v["error"].as_str().map(str::to_string));
     let message = if !sent_secret && error.as_deref() == Some("invalid_client") {
-        crate::i18n::tr("core-trackers-mal-wants-secret", &[])
+        anibeam_contract::i18n::tr("core-trackers-mal-wants-secret", &[])
     } else {
         response.text()
     };
@@ -470,7 +470,7 @@ pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreE
     let value: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
         tracker_error(
             Tracker::Mal,
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-trackers-token-reply-unreadable",
                 &[("error", e.to_string().into())],
             ),
@@ -482,7 +482,7 @@ pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreE
         .ok_or_else(|| {
             tracker_error(
                 Tracker::Mal,
-                crate::i18n::tr("core-trackers-token-reply-no-token", &[]),
+                anibeam_contract::i18n::tr("core-trackers-token-reply-no-token", &[]),
             )
         })?
         .to_string();
@@ -556,7 +556,7 @@ pub(crate) async fn save_connection(
 /// The facade is taken off the field rather than through `Services::secrets`,
 /// which would run the D-Bus probe on the calling task; whoever started
 /// the job has already been through the accessor.
-pub(crate) async fn with_secrets<T, F>(services: &Services, f: F) -> Result<T, CoreError>
+pub async fn with_secrets<T, F>(services: &Services, f: F) -> Result<T, CoreError>
 where
     T: Send + 'static,
     F: FnOnce(&Secrets) -> Result<T, CoreError> + Send + 'static,

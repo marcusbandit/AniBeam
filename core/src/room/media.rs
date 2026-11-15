@@ -40,12 +40,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use super::{Active, Say, emit, episode, error, not_in_room};
+use super::{Active, Rooms, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
 use crate::downloads::{self, backend::DownloadsBackend, origins, replace};
 use crate::events::Listening;
 use crate::library::scan::ScanScope;
-use crate::playback::Playback;
 use crate::releases::{facts, titles};
 
 /// How long the host's app has to answer before Get media stops waiting.
@@ -154,10 +153,10 @@ impl Why {
 // ---------------------------------------------------------------------------
 
 /// `RoomGetMedia`: seals an ask to the host's app and waits for its answer.
-pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomInfo>, CoreError> {
+pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, CoreError> {
     let mut out = Vec::new();
     let info = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         if !a.can_fetch() {
             return Err(error(
@@ -179,12 +178,12 @@ pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomIn
         let id = begin(a, RoomFetch::Asking);
         a.whole_show = whole_show && !e.film;
         // An app from before Get media, or one gone quiet, never answers
-        let (owner, serial) = (a.playback.clone(), a.serial);
-        playback.services.handle.spawn(async move {
+        let (owner, serial) = (a.rooms.clone(), a.serial);
+        rooms.services.handle.spawn(async move {
             tokio::time::sleep(ASK_WAIT).await;
-            if let Some(playback) = owner.upgrade() {
+            if let Some(rooms) = owner.upgrade() {
                 let late = |a: &Active| a.fetch == RoomFetch::Asking;
-                stop(&playback, serial, id, late, Why::NoAnswer);
+                stop(&rooms, serial, id, late, Why::NoAnswer);
             }
         });
         out.push(Say::said(
@@ -198,7 +197,7 @@ pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomIn
         ));
         a.info()
     };
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     Ok(info)
 }
 
@@ -221,25 +220,23 @@ impl Active {
     }
 }
 
-/// The playback team, held for a task that outlives the call, while the room
+/// The room team, held for a task that outlives the call, while the room
 /// `serial` is still the one here.
-fn owned(playback: &Playback, serial: u64) -> Option<Arc<Playback>> {
-    playback
-        .rooms
+fn owned(rooms: &Rooms, serial: u64) -> Option<Arc<Rooms>> {
+    rooms
         .lock()
         .as_ref()
         .filter(|a| a.serial == serial)
-        .and_then(|a| a.playback.upgrade())
+        .and_then(|a| a.rooms.upgrade())
 }
 
 /// A sealed payload opened: what it asks of this member.
-pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret: Secret) {
+pub(super) fn on_secret(rooms: &Rooms, serial: u64, from: MemberId, secret: Secret) {
     match secret {
         Secret::Ask { episode_key } => {
             // Only the host's app answers: a member asks the host, never another
             // member, whose torrents are its own
-            let hosting = playback
-                .rooms
+            let hosting = rooms
                 .lock()
                 .as_ref()
                 .is_some_and(|a| a.serial == serial && a.is_host());
@@ -247,15 +244,15 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
                 tracing::debug!("room: an ask to a member who is not the host, dropped");
                 return;
             }
-            let Some(owner) = owned(playback, serial) else {
+            let Some(owner) = owned(rooms, serial) else {
                 return;
             };
-            playback
+            rooms
                 .services
                 .handle
                 .spawn(async move { answer(owner, serial, from, episode_key).await });
         }
-        Secret::Offer(offer) => take_offer(playback, serial, from, offer),
+        Secret::Offer(offer) => take_offer(rooms, serial, from, offer),
         Secret::Nothing { episode_key } => {
             let fits = |a: &Active| {
                 a.fetch == RoomFetch::Asking
@@ -264,13 +261,12 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
                         .is_some_and(|e| e.episode_key == episode_key)
                     && a.host_key().is_some_and(|(h, _)| h == from)
             };
-            let id = playback
-                .rooms
+            let id = rooms
                 .lock()
                 .as_ref()
                 .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
             if let Some(id) = id {
-                stop(playback, serial, id, fits, Why::Nothing);
+                stop(rooms, serial, id, fits, Why::Nothing);
             }
         }
     }
@@ -279,22 +275,21 @@ pub(super) fn on_secret(playback: &Playback, serial: u64, from: MemberId, secret
 /// The relay refused to pass a sealed payload on: nobody by that id is
 /// connected, the host having just dropped. An ask waiting on it stops now
 /// rather than when its timer runs out.
-pub(super) fn seal_refused(playback: &Playback, serial: u64) {
-    let id = playback
-        .rooms
+pub(super) fn seal_refused(rooms: &Rooms, serial: u64) {
+    let id = rooms
         .lock()
         .as_ref()
         .filter(|a| a.serial == serial && a.fetch == RoomFetch::Asking)
         .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
     if let Some(id) = id {
         let asking = |a: &Active| a.fetch == RoomFetch::Asking;
-        stop(playback, serial, id, asking, Why::NoAnswer);
+        stop(rooms, serial, id, asking, Why::NoAnswer);
     }
 }
 
 /// The host's offer, when it answers this member's ask: the download starts.
-fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer) {
-    let Some(owner) = owned(playback, serial) else {
+fn take_offer(rooms: &Rooms, serial: u64, from: MemberId, mut offer: Offer) {
+    let Some(owner) = owned(rooms, serial) else {
         return;
     };
     // Only a magnet with a hash reaches the torrent client, rebuilt from its hash,
@@ -312,7 +307,7 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer
         .take()
         .filter(|h| crate::foundation::magnet::is_hash(h));
     let started = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return;
         };
@@ -354,8 +349,8 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer
     let Some((id, token, e, say, whole_show)) = started else {
         return;
     };
-    emit(&playback.services, vec![say]);
-    playback.services.handle.spawn(async move {
+    emit(&rooms.services, vec![say]);
+    rooms.services.handle.spawn(async move {
         let run = fetch(&owner, serial, id, &offer, &e, whole_show);
         let result = tokio::select! {
             _ = token.cancelled() => return,
@@ -369,9 +364,9 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer
 }
 
 /// Changes the fetch `id`, if it still runs, and tells the relay and the shell.
-fn update(playback: &Playback, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bool) {
+fn update(rooms: &Rooms, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bool) {
     let say = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -381,13 +376,13 @@ fn update(playback: &Playback, serial: u64, id: u64, f: impl FnOnce(&mut Active)
         a.send(a.status());
         Say::debug(format!("Room {}: get media", a.code), a.changed())
     };
-    emit(&playback.services, vec![say]);
+    emit(&rooms.services, vec![say]);
 }
 
 /// Stops the fetch `id` short, when `fits` its state, and says why.
-fn stop(playback: &Playback, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
+fn stop(rooms: &Rooms, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
     let say = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -405,14 +400,14 @@ fn stop(playback: &Playback, serial: u64, id: u64, fits: impl FnOnce(&Active) ->
             a.changed(),
         )
     };
-    emit(&playback.services, vec![say]);
+    emit(&rooms.services, vec![say]);
 }
 
 /// The episode is in the library: the fetch ends, and the room's episode is
 /// found again, which says `RoomEpisode` with the file for the shell to open.
-fn arrived(playback: &Playback, serial: u64, id: u64, e: proto::EpisodeRef) {
+fn arrived(rooms: &Rooms, serial: u64, id: u64, e: proto::EpisodeRef) {
     let say = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
             return;
         };
@@ -424,21 +419,21 @@ fn arrived(playback: &Playback, serial: u64, id: u64, e: proto::EpisodeRef) {
             a.changed(),
         )
     };
-    emit(&playback.services, vec![say]);
-    super::find(playback, serial, e);
+    emit(&rooms.services, vec![say]);
+    super::find(rooms, serial, e);
 }
 
 /// The member's side: the release to download, the download, its progress,
 /// and the wait for the library to take it in.
 async fn fetch(
-    playback: &Arc<Playback>,
+    rooms: &Arc<Rooms>,
     serial: u64,
     id: u64,
     offer: &Offer,
     e: &proto::EpisodeRef,
     whole_show: bool,
 ) -> Result<(), Why> {
-    let local = playback
+    let local = rooms
         .services
         .store
         .read(|c| episode::find_local(c, e))
@@ -446,8 +441,8 @@ async fn fetch(
     let release = match &offer.magnet {
         Some(magnet) => release(&offer.name, magnet),
         None => {
-            let found = search(playback, offer, e).await?;
-            update(playback, serial, id, |a| {
+            let found = search(rooms, offer, e).await?;
+            update(rooms, serial, id, |a| {
                 a.fetch = RoomFetch::Downloading;
                 true
             });
@@ -459,7 +454,7 @@ async fn fetch(
     // A batch brings the rest of the show with it
     let rest = whole_show && !facts::read(&release).batch;
     let since = crate::time::now_secs();
-    update(playback, serial, id, |a| {
+    update(rooms, serial, id, |a| {
         a.progress = Some(Progress {
             percent: 0.0,
             eta: None,
@@ -469,7 +464,7 @@ async fn fetch(
     // A Get media tried again finds the torrent the last one handed over:
     // qBittorrent refuses to add it twice, so it is followed where it is
     let held = match &known {
-        Some(hash) => match downloads::qbt_client(&playback.downloads).await {
+        Some(hash) => match downloads::qbt_client(&rooms.downloads).await {
             Ok(qbt) => qbt
                 .torrents_named(std::slice::from_ref(hash))
                 .await
@@ -490,7 +485,7 @@ async fn fetch(
             ..Default::default()
         };
         downloads::download_telling(
-            &playback.downloads,
+            &rooms.downloads,
             vec![release],
             folder(&e.series_title),
             options,
@@ -504,9 +499,9 @@ async fn fetch(
         // then found by its name among those added since
         known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
     };
-    if rest && let Some(token) = start_rest(playback, serial, id) {
-        let (owner, offer, e) = (playback.clone(), offer.clone(), e.clone());
-        playback.services.handle.spawn(async move {
+    if rest && let Some(token) = start_rest(rooms, serial, id) {
+        let (owner, offer, e) = (rooms.clone(), offer.clone(), e.clone());
+        rooms.services.handle.spawn(async move {
             tokio::select! {
                 _ = token.cancelled() => {}
                 _ = rest_of_show(&owner, serial, &offer, &e, local.series) => {}
@@ -514,7 +509,7 @@ async fn fetch(
         });
     }
     let content = follow(
-        playback,
+        rooms,
         serial,
         id,
         hash.as_deref(),
@@ -525,7 +520,7 @@ async fn fetch(
         whole_show,
     )
     .await?;
-    settle_in(playback, e, offer, &content).await
+    settle_in(rooms, e, offer, &content).await
 }
 
 /// Reads the download's progress until it is done; the path of the episode's
@@ -535,7 +530,7 @@ async fn fetch(
 /// rest stay, and the episode's file goes first (`FIRST`).
 #[allow(clippy::too_many_arguments)]
 async fn follow(
-    playback: &Arc<Playback>,
+    rooms: &Arc<Rooms>,
     serial: u64,
     id: u64,
     hash: Option<&str>,
@@ -552,7 +547,7 @@ async fn follow(
     let mut unit: Option<Unit> = None;
     loop {
         tokio::time::sleep(POLL).await;
-        let qbt = downloads::qbt_client(&playback.downloads).await.ok();
+        let qbt = downloads::qbt_client(&rooms.downloads).await.ok();
         let listed = match (&qbt, hash) {
             (Some(qbt), Some(hash)) => qbt
                 .torrents_named(&[hash.to_string()])
@@ -609,7 +604,7 @@ async fn follow(
         };
         let (fraction, path) = followed.unwrap_or((t.progress, Some(t.content_path.clone())));
         let progress = progress_at(fraction, t.eta);
-        update(playback, serial, id, |a| {
+        update(rooms, serial, id, |a| {
             let changed = a.progress != progress;
             a.progress = progress;
             changed
@@ -707,21 +702,21 @@ fn progress_at(fraction: f64, eta: i64) -> Option<Progress> {
 /// it changed, and when the watcher has not brought the file in by
 /// `SCAN_AFTER`, the download's own path is scanned, once.
 async fn settle_in(
-    playback: &Arc<Playback>,
+    rooms: &Arc<Rooms>,
     e: &proto::EpisodeRef,
     offer: &Offer,
     content: &str,
 ) -> Result<(), Why> {
     let woken = Arc::new(Notify::new());
     let _listening = Listening::new(
-        playback.services.bus.clone(),
+        rooms.services.bus.clone(),
         Arc::new(Arrivals(woken.clone())),
     );
     let started = tokio::time::Instant::now();
     let (scan_at, deadline) = (started + SCAN_AFTER, started + ARRIVE_WAIT);
     let (mut matched, mut scanned) = (false, false);
     loop {
-        let local = playback
+        let local = rooms
             .services
             .store
             .read(|c| episode::find_local(c, e))
@@ -730,11 +725,11 @@ async fn settle_in(
             return Ok(());
         }
         if !matched
-            && let Some(series) = series_holding(playback, content)
+            && let Some(series) = series_holding(rooms, content)
             && let Some(target) = target(offer, e)
         {
             matched = true;
-            match crate::metadata::apply::apply_match(&playback.metadata, series, target) {
+            match crate::metadata::apply::apply_match(&rooms.metadata, series, target) {
                 Ok(_) => tracing::info!("room: matched series {series} to the room's show"),
                 Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
             }
@@ -749,7 +744,7 @@ async fn settle_in(
                 if !scanned {
                     scanned = true;
                     let scope = ScanScope::Paths(vec![content.to_string()]);
-                    crate::library::scan::start(&playback.library, scope);
+                    crate::library::scan::start(&rooms.library, scope);
                 }
             }
         }
@@ -774,10 +769,10 @@ impl EventListener for Arrivals {
 
 /// The library series that holds the download, by its content path: the file
 /// itself, or a file in the folder it made.
-fn series_holding(playback: &Playback, content: &str) -> Option<u64> {
+fn series_holding(rooms: &Rooms, content: &str) -> Option<u64> {
     let path = content.replace('\\', "/");
     let folder = format!("{}/", path.trim_end_matches('/'));
-    playback
+    rooms
         .services
         .store
         .read(move |c| {
@@ -832,12 +827,8 @@ fn release(title: &str, link: &str) -> Release {
 /// the host's own (a renamed file, a release no source carries), the best fit
 /// of the same episode from the closest search stands in: the room's offset
 /// covers a cut that differs.
-async fn search(
-    playback: &Arc<Playback>,
-    offer: &Offer,
-    e: &proto::EpisodeRef,
-) -> Result<Release, Why> {
-    let backend = DownloadsBackend::open(&playback.downloads)
+async fn search(rooms: &Arc<Rooms>, offer: &Offer, e: &proto::EpisodeRef) -> Result<Release, Why> {
+    let backend = DownloadsBackend::open(&rooms.downloads)
         .await
         .map_err(|err| Why::Start(err.to_string()))?;
     if backend.has_no_sources() {
@@ -1007,8 +998,8 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
 /// Marks the search for the rest of the show as started for the fetch `id`:
 /// the token that stops it, a child of the room's, or None when the fetch is
 /// gone or the rest was already asked for with this episode.
-fn start_rest(playback: &Playback, serial: u64, id: u64) -> Option<CancellationToken> {
-    let mut slot = playback.rooms.lock();
+fn start_rest(rooms: &Rooms, serial: u64, id: u64) -> Option<CancellationToken> {
+    let mut slot = rooms.lock();
     let a = slot.as_mut().filter(|a| a.is_fetch(serial, id))?;
     if a.rest.is_some() {
         return None;
@@ -1023,7 +1014,7 @@ fn start_rest(playback: &Playback, serial: u64, id: u64) -> Option<CancellationT
 /// engine. When nothing turns up or it cannot start, the member is told: the
 /// room's episode still comes.
 async fn rest_of_show(
-    playback: &Arc<Playback>,
+    rooms: &Arc<Rooms>,
     serial: u64,
     offer: &Offer,
     e: &proto::EpisodeRef,
@@ -1032,13 +1023,13 @@ async fn rest_of_show(
     let have = series
         .and_then(|s| {
             let e = e.clone();
-            playback.services.store.read(move |c| held(c, s, &e)).ok()
+            rooms.services.store.read(move |c| held(c, s, &e)).ok()
         })
         .unwrap_or_default();
-    let backend = match DownloadsBackend::open(&playback.downloads).await {
+    let backend = match DownloadsBackend::open(&rooms.downloads).await {
         Ok(b) => b,
         Err(err) => {
-            no_rest(playback, serial, &format!("no sources: {err}"));
+            no_rest(rooms, serial, &format!("no sources: {err}"));
             return;
         }
     };
@@ -1057,7 +1048,7 @@ async fn rest_of_show(
     }
     if found.is_empty() {
         no_rest(
-            playback,
+            rooms,
             serial,
             "no more of the host's release in the sources",
         );
@@ -1070,22 +1061,22 @@ async fn rest_of_show(
         ..Default::default()
     };
     match downloads::download_telling(
-        &playback.downloads,
+        &rooms.downloads,
         found,
         folder(&e.series_title),
         options,
         None,
     ) {
         Ok(_) => tracing::info!("room: {count} more episodes of the show handed on"),
-        Err(err) => no_rest(playback, serial, &format!("did not start: {err}")),
+        Err(err) => no_rest(rooms, serial, &format!("did not start: {err}")),
     }
 }
 
 /// Tells the member the rest of the show is not coming, while the room is
 /// still the one it was asked in.
-fn no_rest(playback: &Playback, serial: u64, why: &str) {
+fn no_rest(rooms: &Rooms, serial: u64, why: &str) {
     let say = {
-        let slot = playback.rooms.lock();
+        let slot = rooms.lock();
         let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
             return;
         };
@@ -1096,7 +1087,7 @@ fn no_rest(playback: &Playback, serial: u64, why: &str) {
             a.changed(),
         )
     };
-    emit(&playback.services, vec![say]);
+    emit(&rooms.services, vec![say]);
 }
 
 /// The episode numbers a library series holds of the room's season. A key
@@ -1213,9 +1204,9 @@ pub fn rest(items: &[Release], offer: &Offer, e: &proto::EpisodeRef, have: &[f64
 // ---------------------------------------------------------------------------
 
 /// The host's app answers a member's ask with what it has of the episode.
-async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key: String) {
+async fn answer(rooms: Arc<Rooms>, serial: u64, to: MemberId, episode_key: String) {
     let asked = {
-        let slot = playback.rooms.lock();
+        let slot = rooms.lock();
         let Some(a) = slot.as_ref().filter(|a| a.serial == serial && a.is_host()) else {
             return;
         };
@@ -1239,7 +1230,7 @@ async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key:
     let (e, file, (name, theirs), keys, code) = asked;
     let file = match file {
         Some(f) => Some(f),
-        None => playback
+        None => rooms
             .services
             .store
             .read(|c| episode::find_local(c, &e))
@@ -1247,7 +1238,7 @@ async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key:
             .and_then(|l| l.file),
     };
     let offer = match file {
-        Some(f) => offer_for(&playback, f, &e).await,
+        Some(f) => offer_for(&rooms, f, &e).await,
         None => None,
     };
     let torrent = offer.as_ref().is_some_and(|o| o.magnet.is_some());
@@ -1267,7 +1258,7 @@ async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key:
         return;
     };
     let said = {
-        let slot = playback.rooms.lock();
+        let slot = rooms.lock();
         let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
             return;
         };
@@ -1286,7 +1277,7 @@ async fn answer(playback: Arc<Playback>, serial: u64, to: MemberId, episode_key:
             EventBody::RoomChanged { room: a.info() },
         )
     };
-    emit(&playback.services, vec![said]);
+    emit(&rooms.services, vec![said]);
 }
 
 fn seal_one(keys: &super::seal::Keys, code: &str, theirs: &str, s: &Secret) -> Option<String> {
@@ -1324,8 +1315,8 @@ fn seal_offer(
 
 /// What the host can offer for its file `file`: the torrent while the client
 /// holds it, and the release's name always.
-async fn offer_for(playback: &Arc<Playback>, file: u64, e: &proto::EpisodeRef) -> Option<Offer> {
-    let path: String = playback
+async fn offer_for(rooms: &Arc<Rooms>, file: u64, e: &proto::EpisodeRef) -> Option<Offer> {
+    let path: String = rooms
         .services
         .store
         .read(move |c| {
@@ -1336,29 +1327,29 @@ async fn offer_for(playback: &Arc<Playback>, file: u64, e: &proto::EpisodeRef) -
             )
         })
         .ok()?;
-    let read = |playback: &Arc<Playback>, path: &str| {
+    let read = |rooms: &Arc<Rooms>, path: &str| {
         let p = path.to_string();
-        playback
+        rooms
             .services
             .store
             .read(move |c| origins::of(c, &[p.as_str()]))
             .ok()
             .and_then(|mut m| m.remove(path))
     };
-    let mut origin = read(playback, &path);
+    let mut origin = read(rooms, &path);
     // A file the client brought in that nobody has read the client for yet
     if origin.is_none()
-        && let Some(qbt) = downloads::running_qbt(&playback.downloads)
+        && let Some(qbt) = downloads::running_qbt(&rooms.downloads)
         && let Ok(torrents) = qbt.torrents().await
     {
         origins::logged(
-            origins::record_from(&playback.services, Some(&qbt), &torrents).await,
+            origins::record_from(&rooms.services, Some(&qbt), &torrents).await,
             "for a room",
         );
-        origin = read(playback, &path);
+        origin = read(rooms, &path);
     }
     let magnet = match &origin {
-        Some(o) => match downloads::qbt_client(&playback.downloads).await {
+        Some(o) => match downloads::qbt_client(&rooms.downloads).await {
             // Never a private torrent, and only the trackers that carry nothing
             // of the host's own
             Ok(qbt) => qbt

@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicU64};
 
-use crate::foundation::services::Services;
-use crate::net::Net;
+use anibeam_foundation::services::Services;
+use anibeam_net::Net;
 
 /// The loopback port both providers redirect back to. Registered on their
 /// developer panels, so it is a constant rather than a preference.
@@ -21,15 +21,15 @@ pub struct Trackers {
     /// flight. Fixed rather than ephemeral: both providers only redirect
     /// to a URL registered on their developer panel, so the port is part
     /// of that registration. A test moves it out of the way.
-    pub(crate) oauth_port: AtomicU16,
+    pub oauth_port: AtomicU16,
     /// How long, in milliseconds, the browser's callback request is held
     /// open for the sign-in to finish before the tab is let go. A test
     /// shortens it.
-    pub(crate) sign_in_hold_ms: AtomicU64,
+    pub sign_in_hold_ms: AtomicU64,
 }
 
 impl Trackers {
-    pub(crate) fn new(services: Arc<Services>, net: Arc<Net>) -> Trackers {
+    pub fn new(services: Arc<Services>, net: Arc<Net>) -> Trackers {
         Trackers {
             services,
             net,

@@ -9,4 +9,4 @@ pub mod skip;
 mod team;
 pub mod tracks;
 
-pub use team::Playback;
+pub use team::{Follower, Playback};

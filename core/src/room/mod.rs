@@ -45,9 +45,13 @@ use tokio_util::sync::CancellationToken;
 
 use self::sync::{Clock, Drift, LocalTick};
 use crate::contract::*;
+use crate::downloads::Downloads;
 use crate::foundation::services::Services;
-use crate::playback::Playback;
+use crate::library::Library;
+use crate::metadata::Metadata;
+use crate::playback::{Follower, Playback};
 use crate::prefs;
+use crate::presence::JoinRooms;
 use crate::store::settings;
 
 /// The largest offset a member may set, in seconds either way.
@@ -68,8 +72,20 @@ pub const SEEK_GAP: Duration = Duration::from_millis(150);
 /// relay drops a message over its rate) and the relay's last state wins again.
 const LOST_AFTER: Duration = Duration::from_secs(5);
 
-/// The room this core is in, if any.
+/// The watch together team (#854): the room this core is in, if any, over
+/// the playback team whose session it drives. It sits above playback and
+/// presence, and neither names it: the session rules tell it about a tick, a
+/// close and an opening through `playback::Follower`, and Discord's join asks
+/// it about the room through `presence::JoinRooms`, both linked in `Core::open`.
 pub struct Rooms {
+    pub(crate) services: Arc<Services>,
+    pub(crate) playback: Arc<Playback>,
+    /// What a room's Get media downloads through.
+    pub(crate) downloads: Arc<Downloads>,
+    /// The library Get media brings a file into, and the matching that
+    /// points it at the room's show (#889).
+    pub(crate) library: Arc<Library>,
+    pub(crate) metadata: Arc<Metadata>,
     active: Mutex<Option<Active>>,
     /// Names each room this core joins, so a task that outlived its room finds
     /// it gone rather than changing the next one.
@@ -78,17 +94,26 @@ pub struct Rooms {
     gap_ms: AtomicU64,
 }
 
-impl Default for Rooms {
-    fn default() -> Self {
+impl Rooms {
+    pub(crate) fn new(
+        services: Arc<Services>,
+        playback: Arc<Playback>,
+        downloads: Arc<Downloads>,
+        library: Arc<Library>,
+        metadata: Arc<Metadata>,
+    ) -> Rooms {
         Rooms {
+            services,
+            playback,
+            downloads,
+            library,
+            metadata,
             active: Mutex::new(None),
             next: AtomicU64::new(0),
             gap_ms: AtomicU64::new(CORRECTION_GAP.as_millis() as u64),
         }
     }
-}
 
-impl Rooms {
     fn lock(&self) -> MutexGuard<'_, Option<Active>> {
         crate::sync::recover(&self.active)
     }
@@ -105,6 +130,33 @@ impl Rooms {
         if let Some(a) = self.lock().as_ref() {
             a.kick.notify_one();
         }
+    }
+}
+
+/// The session rules' side of a room: what happened to a session, where
+/// they used to call this module directly.
+impl Follower for Rooms {
+    fn tick(&self, session: u64, position: f64, paused: bool) {
+        tick(self, session, position, paused);
+    }
+
+    fn closed(&self, session: u64) {
+        closed(self, session);
+    }
+
+    fn opening_known(&self, session: u64, start: f64) {
+        opening_known(self, session, start);
+    }
+}
+
+/// Discord's join: the room's status, and a room opened for a friend let in.
+impl JoinRooms for Rooms {
+    fn status(&self) -> Option<RoomInfo> {
+        self.lock().as_ref().and_then(Active::info)
+    }
+
+    fn create(self: Arc<Self>, session: Option<u64>) -> Result<RoomInfo, CoreError> {
+        create(&self, session)
     }
 }
 
@@ -177,7 +229,7 @@ struct Active {
     cancel: CancellationToken,
     kick: Arc<Notify>,
     /// For the task that sends a held seek.
-    playback: Weak<Playback>,
+    rooms: Weak<Rooms>,
 }
 
 impl Active {
@@ -493,20 +545,20 @@ fn save_offset(conn: &Connection, file: u64, offset: f64) -> Result<(), CoreErro
 // The calls
 // ---------------------------------------------------------------------------
 
-pub(crate) fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
+pub(crate) fn call(rooms: &Arc<Rooms>, call: Call) -> Result<Reply, CoreError> {
     let room = match call {
-        Call::RoomCreate { session } => Some(create(playback, session)?),
-        Call::RoomStart { wait } => start_room(playback, wait)?,
-        Call::RoomJoin { code } => Some(join(playback, &code)?),
-        Call::RoomAttach { session } => attach(playback, session)?,
-        Call::RoomCommand { action, position } => command(playback, action, position)?,
-        Call::RoomSetOffset { offset } => set_offset(playback, offset)?,
+        Call::RoomCreate { session } => Some(create(rooms, session)?),
+        Call::RoomStart { wait } => start_room(rooms, wait)?,
+        Call::RoomJoin { code } => Some(join(rooms, &code)?),
+        Call::RoomAttach { session } => attach(rooms, session)?,
+        Call::RoomCommand { action, position } => command(rooms, action, position)?,
+        Call::RoomSetOffset { offset } => set_offset(rooms, offset)?,
         Call::RoomLeave => {
-            leave(playback);
+            leave(rooms);
             None
         }
-        Call::RoomStatus => playback.rooms.lock().as_ref().and_then(Active::info),
-        Call::RoomGetMedia { whole_show } => media::get(playback, whole_show)?,
+        Call::RoomStatus => rooms.lock().as_ref().and_then(Active::info),
+        Call::RoomGetMedia { whole_show } => media::get(rooms, whole_show)?,
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
@@ -529,19 +581,19 @@ struct Begin {
     session: Option<(u64, u64)>,
 }
 
-fn create(playback: &Arc<Playback>, session: Option<u64>) -> Result<RoomInfo, CoreError> {
+fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreError> {
     let s = match session {
-        Some(id) => Some(playback.sessions.get(id).ok_or(CoreError::NotFound {
+        Some(id) => Some(rooms.playback.sessions.get(id).ok_or(CoreError::NotFound {
             what: Entity::Session,
             id,
         })?),
         None => None,
     };
-    let (name, relay) = who(&playback.services)?;
+    let (name, relay) = who(&rooms.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
     let episode = s.as_ref().map(episode::of_session);
-    leave(playback);
-    let created = playback
+    leave(rooms);
+    let created = rooms
         .services
         .handle
         .block_on(async {
@@ -550,7 +602,7 @@ fn create(playback: &Arc<Playback>, session: Option<u64>) -> Result<RoomInfo, Co
         .map_err(|_| socket::Fail::Unreachable("timed out".into()).to_error())?
         .map_err(|f| f.to_error())?;
     let info = start(
-        playback,
+        rooms,
         Begin {
             client,
             relay: relay.clone(),
@@ -565,7 +617,7 @@ fn create(playback: &Arc<Playback>, session: Option<u64>) -> Result<RoomInfo, Co
         Some(e) => format!("for {} {}", e.series_title, e.episode_key),
         None => "with nothing picked yet".into(),
     };
-    playback.services.bus.emit_said(
+    rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-created", code = &info.code)),
@@ -582,14 +634,14 @@ fn create(playback: &Arc<Playback>, session: Option<u64>) -> Result<RoomInfo, Co
     Ok(info)
 }
 
-fn join(playback: &Arc<Playback>, code: &str) -> Result<RoomInfo, CoreError> {
+fn join(rooms: &Arc<Rooms>, code: &str) -> Result<RoomInfo, CoreError> {
     let code = anibeam_room::code::normalize(code)
         .ok_or_else(|| CoreError::invalid("code", crate::i18n::tr("core-room-bad-code", &[])))?;
-    let (name, relay) = who(&playback.services)?;
+    let (name, relay) = who(&rooms.services)?;
     let client = crate::net::room_client(socket::CONNECT_WAIT)?;
-    leave(playback);
+    leave(rooms);
     let info = start(
-        playback,
+        rooms,
         Begin {
             client,
             relay: relay.clone(),
@@ -600,7 +652,7 @@ fn join(playback: &Arc<Playback>, code: &str) -> Result<RoomInfo, CoreError> {
             session: None,
         },
     )?;
-    playback.services.bus.emit_said(
+    rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-joined", code = &info.code)),
@@ -618,9 +670,9 @@ fn join(playback: &Arc<Playback>, code: &str) -> Result<RoomInfo, CoreError> {
 }
 
 /// Starts the room's task and waits for its first welcome.
-fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
-    let owner = playback.clone();
-    let serial = playback.rooms.next.fetch_add(1, Ordering::SeqCst) + 1;
+fn start(rooms: &Arc<Rooms>, b: Begin) -> Result<RoomInfo, CoreError> {
+    let owner = rooms.clone();
+    let serial = rooms.next.fetch_add(1, Ordering::SeqCst) + 1;
     let (tx, rx) = mpsc::unbounded_channel();
     let cancel = CancellationToken::new();
     let kick = Arc::new(Notify::new());
@@ -634,7 +686,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         at_ms: 0,
         rev: 0,
     };
-    *playback.rooms.lock() = Some(Active {
+    *rooms.lock() = Some(Active {
         serial,
         relay: b.relay.clone(),
         code: b.code.clone(),
@@ -677,9 +729,9 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         tx,
         cancel: cancel.clone(),
         kick: kick.clone(),
-        playback: Arc::downgrade(&owner),
+        rooms: Arc::downgrade(&owner),
     });
-    playback.services.handle.spawn(socket::run(
+    rooms.services.handle.spawn(socket::run(
         Arc::downgrade(&owner),
         socket::Start {
             serial,
@@ -696,7 +748,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         },
     ));
     drop(owner);
-    let waited = playback
+    let waited = rooms
         .services
         .handle
         .block_on(async { tokio::time::timeout(JOIN_WAIT, answer).await });
@@ -706,7 +758,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         Ok(Err(_)) => Err(socket::Fail::Unreachable("the connection closed".into()).to_error()),
         Err(_) => Err(socket::Fail::Unreachable("timed out".into()).to_error()),
     };
-    let mut slot = playback.rooms.lock();
+    let mut slot = rooms.lock();
     let ours = slot.as_ref().is_some_and(|a| a.serial == serial);
     match result {
         Ok(()) => slot
@@ -724,15 +776,19 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
     }
 }
 
-fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreError> {
-    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
-        what: Entity::Session,
-        id: session,
-    })?;
-    let stored = playback.services.store.read(|c| stored_offset(c, s.file))?;
+fn attach(rooms: &Rooms, session: u64) -> Result<Option<RoomInfo>, CoreError> {
+    let s = rooms
+        .playback
+        .sessions
+        .get(session)
+        .ok_or(CoreError::NotFound {
+            what: Entity::Session,
+            id: session,
+        })?;
+    let stored = rooms.services.store.read(|c| stored_offset(c, s.file))?;
     let mut out = Vec::new();
     let info = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         let host = a.is_host();
         // Only the host picks for a room that has nothing yet (#922)
@@ -807,12 +863,12 @@ fn attach(playback: &Playback, session: u64) -> Result<Option<RoomInfo>, CoreErr
         ));
         a.info()
     };
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     Ok(info)
 }
 
 fn command(
-    playback: &Playback,
+    rooms: &Rooms,
     action: RoomAction,
     position: f64,
 ) -> Result<Option<RoomInfo>, CoreError> {
@@ -831,21 +887,21 @@ fn command(
     }
     let mut out = Vec::new();
     let info = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         if a.you.is_none() {
             return Err(not_in_room());
         }
-        command_in(playback, a, action, position, &mut out);
+        command_in(rooms, a, action, position, &mut out);
         a.info()
     };
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     Ok(info)
 }
 
 /// `command`, under the room's lock.
 fn command_in(
-    playback: &Playback,
+    rooms: &Rooms,
     a: &mut Active,
     action: RoomAction,
     position: f64,
@@ -904,11 +960,11 @@ fn command_in(
                 a.held_seek = Some(canonical);
                 if !a.flush_armed {
                     a.flush_armed = true;
-                    let (owner, serial) = (a.playback.clone(), a.serial);
-                    playback.services.handle.spawn(async move {
+                    let (owner, serial) = (a.rooms.clone(), a.serial);
+                    rooms.services.handle.spawn(async move {
                         tokio::time::sleep_until(tokio::time::Instant::from_std(due)).await;
-                        if let Some(playback) = owner.upgrade() {
-                            flush_seek(&playback, serial);
+                        if let Some(rooms) = owner.upgrade() {
+                            flush_seek(&rooms, serial);
                         }
                     });
                 }
@@ -929,10 +985,10 @@ fn command_in(
 
 /// `RoomStart`: the host's answer to the ready gate. Waiting with everyone
 /// ready already starts at once. Anyone else, or no gate, changes nothing.
-fn start_room(playback: &Playback, wait: bool) -> Result<Option<RoomInfo>, CoreError> {
+fn start_room(rooms: &Rooms, wait: bool) -> Result<Option<RoomInfo>, CoreError> {
     let mut out = Vec::new();
     let info = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         if a.is_host() && a.gate != RoomGate::Off {
             if wait && !a.all_ready() {
@@ -947,13 +1003,13 @@ fn start_room(playback: &Playback, wait: bool) -> Result<Option<RoomInfo>, CoreE
         }
         a.info()
     };
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     Ok(info)
 }
 
 /// Sends the seek `command` held back, once `SEEK_GAP` is up.
-fn flush_seek(playback: &Playback, serial: u64) {
-    let mut slot = playback.rooms.lock();
+fn flush_seek(rooms: &Rooms, serial: u64) {
+    let mut slot = rooms.lock();
     let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
         return;
     };
@@ -963,7 +1019,7 @@ fn flush_seek(playback: &Playback, serial: u64) {
     }
 }
 
-fn set_offset(playback: &Playback, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
+fn set_offset(rooms: &Rooms, offset: f64) -> Result<Option<RoomInfo>, CoreError> {
     if !offset.is_finite() || offset.abs() > MAX_OFFSET {
         return Err(CoreError::invalid(
             "offset",
@@ -979,7 +1035,7 @@ fn set_offset(playback: &Playback, offset: f64) -> Result<Option<RoomInfo>, Core
     }
     let mut out = Vec::new();
     let (file, info) = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         a.offset = offset;
         a.offset_fixed = true;
@@ -1000,25 +1056,25 @@ fn set_offset(playback: &Playback, offset: f64) -> Result<Option<RoomInfo>, Core
         (a.file.filter(|_| keep), a.info())
     };
     if let Some(file) = file {
-        playback
+        rooms
             .services
             .store
             .write(move |c| save_offset(c, file, offset))?;
     }
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     Ok(info)
 }
 
 /// Leaves the room for good: the relay frees the place at once.
-fn leave(playback: &Playback) {
-    let taken = playback.rooms.lock().take();
+fn leave(rooms: &Rooms) {
+    let taken = rooms.lock().take();
     let Some(mut a) = taken else {
         return;
     };
     a.stop_fetch();
     a.send(ClientMsg::Bye);
     a.cancel.cancel();
-    playback.services.bus.emit_said(
+    rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
         Some(crate::words!("core-room-left")),
@@ -1029,8 +1085,8 @@ fn leave(playback: &Playback) {
 }
 
 /// The core is closing: say goodbye, quietly.
-pub(crate) fn shutdown(playback: &Playback) {
-    if let Some(mut a) = playback.rooms.lock().take() {
+pub(crate) fn shutdown(rooms: &Rooms) {
+    if let Some(mut a) = rooms.lock().take() {
         a.stop_fetch();
         a.send(ClientMsg::Bye);
         a.cancel.cancel();
@@ -1044,13 +1100,13 @@ pub(crate) fn shutdown(playback: &Playback) {
 /// One tick of a playback session. Only the attached session's count. A player
 /// that disagrees with the room on playing is put right, unless this member's
 /// own command is still out, which the relay's answer settles.
-pub(crate) fn tick(playback: &Playback, session: u64, position: f64, paused: bool) {
+fn tick(rooms: &Rooms, session: u64, position: f64, paused: bool) {
     if !position.is_finite() {
         return;
     }
-    let gap = Duration::from_millis(playback.rooms.gap_ms.load(Ordering::Relaxed));
+    let gap = Duration::from_millis(rooms.gap_ms.load(Ordering::Relaxed));
     let out = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -1098,14 +1154,14 @@ pub(crate) fn tick(playback: &Playback, session: u64, position: f64, paused: boo
             apply(session, a.state.playing, c.seek_to, c.speed)
         }
     };
-    emit(&playback.services, vec![out]);
+    emit(&rooms.services, vec![out]);
 }
 
 /// The session closed: the room stops driving it, and the others see this member
 /// is no longer ready.
-pub(crate) fn closed(playback: &Playback, session: u64) {
+fn closed(rooms: &Rooms, session: u64) {
     let out = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -1116,15 +1172,15 @@ pub(crate) fn closed(playback: &Playback, session: u64) {
         a.send(a.status());
         Say::debug(format!("Room: session {session} closed"), a.changed())
     };
-    emit(&playback.services, vec![out]);
+    emit(&rooms.services, vec![out]);
 }
 
 /// The skip windows job found where the attached session's opening starts: the
 /// suggestion follows, and moves the offset when none was stored or set.
-pub(crate) fn opening_known(playback: &Playback, session: u64, start: f64) {
+fn opening_known(rooms: &Rooms, session: u64, start: f64) {
     let mut out = Vec::new();
     {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut() else {
             return;
         };
@@ -1149,7 +1205,7 @@ pub(crate) fn opening_known(playback: &Playback, session: u64, start: f64) {
             a.changed(),
         ));
     }
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
 }
 
 // ---------------------------------------------------------------------------
@@ -1158,17 +1214,11 @@ pub(crate) fn opening_known(playback: &Playback, session: u64, start: f64) {
 
 /// The relay welcomed this member, first or again. False when the room is no
 /// longer this core's.
-fn on_welcome(
-    playback: &Playback,
-    serial: u64,
-    you: MemberId,
-    room: RoomView,
-    server_ms: u64,
-) -> bool {
+fn on_welcome(rooms: &Rooms, serial: u64, you: MemberId, room: RoomView, server_ms: u64) -> bool {
     let mut out = Vec::new();
     let to_match;
     {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1242,9 +1292,9 @@ fn on_welcome(
             ));
         }
     }
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     if let Some(e) = to_match {
-        find(playback, serial, e);
+        find(rooms, serial, e);
     }
     true
 }
@@ -1257,8 +1307,8 @@ fn played(state: &PlayState) -> bool {
 }
 
 /// Looks for the room's episode in this library and says what it found.
-fn find(playback: &Playback, serial: u64, e: proto::EpisodeRef) {
-    let local = match playback.services.store.read(|c| episode::find_local(c, &e)) {
+fn find(rooms: &Rooms, serial: u64, e: proto::EpisodeRef) {
+    let local = match rooms.services.store.read(|c| episode::find_local(c, &e)) {
         Ok(local) => local,
         Err(err) => {
             tracing::warn!("room: could not look for the episode: {err}");
@@ -1267,7 +1317,7 @@ fn find(playback: &Playback, serial: u64, e: proto::EpisodeRef) {
     };
     let mut out = Vec::new();
     {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return;
         };
@@ -1306,16 +1356,11 @@ fn find(playback: &Playback, serial: u64, e: proto::EpisodeRef) {
             a.changed(),
         ));
     }
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
 }
 
-fn on_pong(playback: &Playback, serial: u64, c: u64, s: u64) {
-    if let Some(a) = playback
-        .rooms
-        .lock()
-        .as_mut()
-        .filter(|a| a.serial == serial)
-    {
+fn on_pong(rooms: &Rooms, serial: u64, c: u64, s: u64) {
+    if let Some(a) = rooms.lock().as_mut().filter(|a| a.serial == serial) {
         a.clock.pong(c, s, local_ms());
     }
 }
@@ -1360,12 +1405,12 @@ fn take_state(a: &mut Active, state: PlayState, by: MemberId) -> Option<Say> {
 
 /// Every other message from the relay. False when the room is no longer this
 /// core's.
-fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
+fn on_message(rooms: &Rooms, serial: u64, msg: ServerMsg) -> bool {
     let mut out = Vec::new();
     let mut to_match = None;
     let mut secret = None;
     {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1467,21 +1512,21 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             _ => {}
         }
     }
-    emit(&playback.services, out);
+    emit(&rooms.services, out);
     if let Some(e) = to_match {
-        find(playback, serial, e);
+        find(rooms, serial, e);
     }
     if let Some((from, s)) = secret {
-        media::on_secret(playback, serial, from, s);
+        media::on_secret(rooms, serial, from, s);
     }
     true
 }
 
 /// The connection dropped and the task is trying again. Said once per outage.
 /// False when the room is no longer this core's.
-fn on_lost(playback: &Playback, serial: u64) -> bool {
+fn on_lost(rooms: &Rooms, serial: u64) -> bool {
     let out = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
             return false;
         };
@@ -1496,15 +1541,15 @@ fn on_lost(playback: &Playback, serial: u64) -> bool {
             a.changed(),
         )
     };
-    emit(&playback.services, vec![out]);
+    emit(&rooms.services, vec![out]);
     true
 }
 
 /// The room is gone: the relay closed it or refused this member, or two minutes
 /// of trying again came to nothing.
-fn finish(playback: &Playback, serial: u64) {
+fn finish(rooms: &Rooms, serial: u64) {
     let taken = {
-        let mut slot = playback.rooms.lock();
+        let mut slot = rooms.lock();
         if slot.as_ref().is_some_and(|a| a.serial == serial) {
             slot.take()
         } else {
@@ -1516,7 +1561,7 @@ fn finish(playback: &Playback, serial: u64) {
     };
     a.stop_fetch();
     a.cancel.cancel();
-    playback.services.bus.emit_said(
+    rooms.services.bus.emit_said(
         Level::Warn,
         Stage::Playback,
         Some(crate::words!("core-room-closed")),
@@ -1589,7 +1634,7 @@ mod tests {
             tx,
             cancel: CancellationToken::new(),
             kick: Arc::new(Notify::new()),
-            playback: Weak::new(),
+            rooms: Weak::new(),
         }
     }
 
@@ -1714,5 +1759,12 @@ mod tests {
         assert!(!relay_ok("rooms.example.com"));
         assert!(!relay_ok("https://"));
         assert!(!relay_ok(""));
+    }
+
+    /// Discord's join answers a call that needs a room with the room's own
+    /// error, though presence, below the room, builds it itself (#854).
+    #[test]
+    fn presence_says_not_in_room_as_the_room_does() {
+        assert_eq!(crate::presence::join::not_in_room(), not_in_room());
     }
 }
