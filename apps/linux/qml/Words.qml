@@ -5,10 +5,42 @@
 // t() reads Tr.lang before it looks the words up, so a binding that calls it is re-run when
 // the language changes, and the screen switches without a restart.
 import QtQuick
+import QtCore
 import com.marcusrosado.AniBeam
 
 QtObject {
+    id: root
     readonly property string lang: Tr.lang
+
+    // The language picked in Settings or onboarding, by code; "" follows the system's.
+    // ANIBEAM_LANG pins a run to one language (captures), and then the pick waits.
+    readonly property string picked: kept.code
+    readonly property string systemCode: Tr.systemCode()
+    // Its own section of shell.conf, [language], which nothing else writes; main() reads it
+    // before the window loads (bridge/tr.rs)
+    property Settings kept: Settings {
+        location: Shell.settingsUrl
+        category: "language"
+        property string code: ""
+    }
+    function pick(code) {
+        kept.code = code
+        if (!Tr.pinned) Tr.setLanguage(code || systemCode)
+    }
+    Component.onCompleted: if (!Tr.pinned) Tr.setLanguage(kept.code || systemCode)
+    // Every language as a picker lists them: { code, name } in the language itself
+    readonly property var languages: Tr.languages()
+    // A language picker's choices: the system's first, then each one by its own name, and
+    // the code each stands for ("" follows the system)
+    readonly property var pickCodes: [""].concat(languages.map(function(l) { return l.code }))
+    function pickNames() {
+        return [t("settings-appearance-language-system", { language: nameOf(systemCode) })]
+               .concat(languages.map(function(l) { return l.name }))
+    }
+    function nameOf(code) {
+        var hit = languages.filter(function(l) { return l.code === code })
+        return hit.length ? hit[0].name : code
+    }
 
     // The words for message `id`, with `args` ({ count: 3, title: "..." }) filled in. A
     // number in args also picks the plural.
@@ -24,6 +56,8 @@ QtObject {
     function runtime(minutes) { return lang, Fmt.runtime(minutes) }
     function episodeName(title, number) { return lang, Fmt.episodeName(title, number) }
     function episodeSpan(first, through) { return lang, Fmt.episodeSpan(first, through) }
+    function bytes(n) { return lang, Fmt.bytes(n) }
+    function score(x) { return lang, Fmt.score(x) }
     // AniList's words for a show, by its code, "" for a code with no words yet. The status
     // takes AniList's own codes (RELEASING) and the core's (Releasing) alike.
     function formatLabel(code) {

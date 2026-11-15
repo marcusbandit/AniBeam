@@ -1,7 +1,7 @@
 // Endpoint repos (#143) on the desktop: the repos added by address, each repo's key
 // fingerprint shown before it is trusted, the endpoints they offer installed one at a time,
 // and endpoints added by hand beside them for a site no repo carries (one through
-// Jackett). What is installed goes into AniBeam's own anirss, so the search sees it; one
+// Jackett). What is installed goes into Anibeam's own anirss, so the search sees it; one
 // anirss already has from its own config.toml keeps its place and the row says so.
 // The calls that fetch or store a secret run off the Qt thread (Door.callAsync), so a slow or
 // dead repo never freezes the window; the tab refreshes the repos each time it opens.
@@ -248,7 +248,7 @@ Panel {
             spacing: theme.space(1)
             Row {
                 spacing: theme.space(1.5)
-                Field { objectName: "custom-name"; text: root.customName; width: theme.space(20); placeholder: words.t("endpoint-repos-panel-name"); onEdited: function(t) { root.customName = t } }
+                Field { objectName: "custom-name"; text: root.customName; width: theme.space(28); placeholder: words.t("endpoint-repos-panel-name"); onEdited: function(t) { root.customName = t } }
                 Field { objectName: "custom-url"; text: root.customUrl; mono: true; width: theme.space(40); placeholder: "http://...{query}..."; onEdited: function(t) { root.customUrl = t } }
                 Button { msg: "endpoint-repos-panel-add"; icon: "plus"; enabled: root.customName.trim() !== "" && root.customUrl.trim() !== ""; onClicked: root.addCustom() }
             }

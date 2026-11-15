@@ -17,7 +17,7 @@ use axum::extract::connect_info::MockConnectInfo;
 /// The owner (user 100) has this machine and a phone; a friend (user 200) has a tablet;
 /// the laptop names no user.
 const STATUS: &[u8] = br#"{
-    "Self": {"ID": "nSelf", "HostName": "banditbox", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+    "Self": {"ID": "nSelf", "HostName": "desk", "UserID": 100, "TailscaleIPs": ["100.64.0.1"]},
     "Peer": {
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
         "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},
@@ -35,7 +35,7 @@ const LAPTOP: &str = "100.70.1.4";
 
 fn serve_as(rt: &tokio::runtime::Runtime, core: &Arc<Core>, from: &str) -> String {
     let from: SocketAddr = format!("{from}:40000").parse().unwrap();
-    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(from));
+    let app = core.host_router().layer(MockConnectInfo(from));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();
@@ -305,5 +305,30 @@ fn only_the_owners_devices_download_to_the_host() {
         body["core"]["Invalid"]["field"].as_str(),
         Some("items"),
         "{body}"
+    );
+}
+
+/// Each device's hello says whose progress it gets (#633): the owner's phone names the
+/// owner as the computer's own person, the friend's tablet names the friend.
+#[test]
+fn each_hello_names_whose_progress_it_answers_with() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(STATUS.to_vec()));
+    let profile = |base: &str| -> Option<anibeam_host_api::Profile> {
+        let (status, hello) = get(&rt, &format!("{base}{}", anibeam_host_api::HELLO));
+        assert_eq!(status, 200, "{hello}");
+        let hello: anibeam_host_api::Hello = serde_json::from_value(hello).unwrap();
+        hello.profile
+    };
+    let phone = profile(&serve_as(&rt, &core, PHONE)).expect("the owner is named");
+    assert_eq!(
+        (phone.name.as_str(), phone.login.as_str(), phone.owner),
+        ("Owner", "owner@example.com", true)
+    );
+    let tablet = profile(&serve_as(&rt, &core, TABLET)).expect("the friend is named");
+    assert_eq!(
+        (tablet.name.as_str(), tablet.login.as_str(), tablet.owner),
+        ("Friend", "friend@example.com", false)
     );
 }

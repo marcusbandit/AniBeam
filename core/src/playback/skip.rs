@@ -14,16 +14,17 @@
 //! a miss rather than an error, and the network failure that caches
 //! nothing so the next session asks again).
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::fetch::message_of;
+use crate::playback::Playback;
 use crate::playback::session::{self, Session};
 use crate::time;
 
@@ -142,7 +143,7 @@ fn miss_retry_secs() -> i64 {
 /// The answer, and where it came from, against the episode. One row per
 /// episode, replaced whole every time a session settles on one.
 async fn write_cache(
-    core: &Core,
+    services: &Services,
     s: &Session,
     windows: &[SkipWindow],
     source: &str,
@@ -154,7 +155,7 @@ async fn write_cache(
         source.to_string(),
         time::now_secs(),
     );
-    core.store
+    services.store
         .write_async(move |c| {
             c.execute(
                 "INSERT INTO skip_windows (series_id, episode_key, windows, source, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -175,24 +176,25 @@ async fn write_cache(
 /// the mark and the completion rules have it from this tick on, and the
 /// windows follow as the SkipWindows job.
 pub fn start(
-    core: &Core,
+    playback: &Arc<Playback>,
     session: u64,
     chapters: Vec<Chapter>,
     duration: f64,
 ) -> Result<u64, CoreError> {
-    let s = core.sessions.get(session).ok_or(CoreError::NotFound {
+    let s = playback.sessions.get(session).ok_or(CoreError::NotFound {
         what: Entity::Session,
         id: session,
     })?;
     if !duration.is_finite() || duration <= 0.0 {
         return Err(CoreError::invalid(
             "duration",
-            "a duration is a positive number of seconds",
+            crate::i18n::tr("core-playback-bad-duration", &[]),
         ));
     }
-    session::report_chapters(core, session, duration, None);
-    let owner = core.owner()?;
+    session::report_chapters(playback, session, duration, None);
+    let owner = playback.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::SkipWindows, move |ctx| async move {
@@ -202,6 +204,10 @@ pub fn start(
             // closed while the lookup was in flight is nothing to report.
             if let Some(outro) = windows.iter().find(|w| w.kind == SkipKind::Outro) {
                 session::report_chapters(&owner, s.id, duration, Some(outro.start));
+            }
+            // A watch together room suggests an offset from the opening.
+            if let Some(opening) = session::opening_of(&windows) {
+                session::report_opening(&owner, s.id, opening);
             }
             Ok(Finished {
                 plain: None,
@@ -219,7 +225,7 @@ pub fn start(
 /// answer writes it against the episode, so the next session has it
 /// before the first frame.
 async fn resolve(
-    core: &Core,
+    playback: &Playback,
     ctx: &JobCtx,
     s: &Session,
     chapters: &[Chapter],
@@ -235,10 +241,16 @@ async fn resolve(
     let askable =
         !s.is_extra && s.mal_id.is_some() && s.number.is_some_and(|n| n.is_finite() && n > 0.0);
     if from_file.len() == 2 || (!from_file.is_empty() && !askable) {
-        write_cache(core, s, &from_file, SkipSource::Chapters.as_str()).await?;
+        write_cache(
+            &playback.services,
+            s,
+            &from_file,
+            SkipSource::Chapters.as_str(),
+        )
+        .await?;
         return Ok(from_file);
     }
-    let asked = ask(core, ctx, s, duration).await?;
+    let asked = ask(playback, ctx, s, duration).await?;
     Ok(merge(from_file, asked))
 }
 
@@ -258,13 +270,14 @@ fn merge(from_file: Vec<SkipWindow>, asked: Vec<SkipWindow>) -> Vec<SkipWindow> 
 /// The cached answer for the episode, else AniSkip's, cached as found or
 /// as a miss.
 async fn ask(
-    core: &Core,
+    playback: &Playback,
     ctx: &JobCtx,
     s: &Session,
     duration: f64,
 ) -> Result<Vec<SkipWindow>, CoreError> {
     let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
-    if let Some(windows) = core
+    if let Some(windows) = playback
+        .services
         .store
         .write_async(move |c| cached(c, series, &key, now))
         .await?
@@ -285,19 +298,26 @@ async fn ask(
     // Both casts stand on the guards above: the number is finite and
     // positive here, and so is the duration `start` let through.
     let episode = number.floor() as u32;
-    match core
+    match playback
+        .net
         .aniskip
         .skip_times(mal_id, episode, duration.round() as u64)
         .await
     {
         Ok(Some(windows)) => {
-            write_cache(core, s, &windows, SkipSource::AniSkip.as_str()).await?;
+            write_cache(
+                &playback.services,
+                s,
+                &windows,
+                SkipSource::AniSkip.as_str(),
+            )
+            .await?;
             Ok(windows)
         }
         // AniSkip holds nothing for this episode yet. Cached as a miss, so
         // the next play asks nobody, and asked about again in seven days.
         Ok(None) => {
-            write_cache(core, s, &[], MISS).await?;
+            write_cache(&playback.services, s, &[], MISS).await?;
             Ok(Vec::new())
         }
         // A failure to ask says nothing about the episode, so nothing is

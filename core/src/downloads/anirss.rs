@@ -9,7 +9,7 @@
 //! them over in the environment, as the API docs ask of a client that
 //! launches the server: the startup banner is coloured prose, not a thing
 //! to parse. The qBittorrent password rides along as `ANIRSS_QBT_PASSWORD`
-//! so the one saved in AniBeam is the one anirss logs in with.
+//! so the one saved in Anibeam is the one anirss logs in with.
 
 use std::collections::VecDeque;
 use std::process::Stdio;
@@ -22,7 +22,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
 use crate::contract::*;
-use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
+use crate::net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "anirss";
@@ -44,8 +45,8 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The first anirss release with everything this client needs: 0.4.0 brought
 /// `--serve` (0.3.4 and older exit on the flag), 0.4.1 the qBittorrent address
-/// from the environment, 0.4.2 a client that needs no login, which AniBeam's
-/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints AniBeam
+/// from the environment, 0.4.2 a client that needs no login, which Anibeam's
+/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints Anibeam
 /// puts in through `POST` and `DELETE /endpoints` (`repos::sync_anirss`). It names
 /// the release to install in the hints and the oldest the AUR package may ask for
 /// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
@@ -58,7 +59,7 @@ pub const MIN_VERSION: &str = "0.6.0";
 pub const SAVE_PATH_SINCE: &str = "0.7.1";
 
 /// The feature a sidecar has to list in `/health`: an address only the
-/// environment names keeps its own session and saved password. AniBeam points
+/// environment names keeps its own session and saved password. Anibeam points
 /// its sidecar at the client in use through `ANIRSS_QBT_URL`, and an anirss
 /// without it sends that client the session cookie and saved password of the
 /// qBittorrent its own config names. That fails at nothing, so no call can
@@ -66,7 +67,7 @@ pub const SAVE_PATH_SINCE: &str = "0.7.1";
 /// pointed anywhere and needs no such thing.
 pub const SIDECAR_FEATURE: &str = "qbt_env_session";
 
-/// The feature an anirss lists when it takes endpoints from AniBeam (`POST` and `DELETE
+/// The feature an anirss lists when it takes endpoints from Anibeam (`POST` and `DELETE
 /// /endpoints`), 0.6.0 and newer. Whether the desktop syncs its installed endpoints into
 /// anirss follows this, never the version string, which a checkout or a fork can set to
 /// anything (#476).
@@ -185,13 +186,13 @@ impl AnirssClient {
     /// `DELETE /endpoints/<name>` (anirss 0.6).
     pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
         let response = self
-            .send(HttpRequest {
-                method: Method::Delete,
-                url: format!("{}/endpoints/{}", self.base, encode(name)),
-                headers: self.headers(),
-                body: None,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(
+                    Method::Delete,
+                    format!("{}/endpoints/{}", self.base, encode(name)),
+                )
+                .headers(self.headers()),
+            )
             .await?;
         judge(response).map(|_| ())
     }
@@ -396,7 +397,7 @@ impl AnirssClient {
         let mut rules: Vec<SubscriptionRule> =
             serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
         for r in &mut rules {
-            r.query = crate::subscriptions::decode_search_query(&r.feed_url).unwrap_or_default();
+            r.query = crate::downloads::query::decode_search_query(&r.feed_url).unwrap_or_default();
         }
         Ok(rules)
     }
@@ -454,13 +455,11 @@ impl AnirssClient {
             url = format!("{url}?{}", q.join("&"));
         }
         let response = self
-            .send(HttpRequest {
-                method: Method::Get,
-                url,
-                headers: self.headers(),
-                body: None,
-                timeout,
-            })
+            .send(
+                HttpRequest::get(url)
+                    .headers(self.headers())
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }
@@ -474,13 +473,12 @@ impl AnirssClient {
         let mut headers = self.headers();
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
         let response = self
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}{}", self.base, path),
-                headers,
-                body: Some(Body::Json(body)),
-                timeout,
-            })
+            .send(
+                HttpRequest::post(format!("{}{}", self.base, path))
+                    .headers(headers)
+                    .body(Body::Json(body))
+                    .timeout(timeout),
+            )
             .await?;
         judge(response)
     }
@@ -496,11 +494,27 @@ impl AnirssClient {
     }
 
     async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
-        self.http.send(req).await.map_err(|e| CoreError::Service {
-            service: SERVICE.to_string(),
-            code: "unreachable".to_string(),
-            message: format!("anirss did not answer: {}", e.message),
+        self.http.send(req).await.map_err(|e| {
+            CoreError::service(
+                SERVICE,
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-anirss-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
         })
+    }
+}
+
+/// The endpoint writes the releases below sync the installed endpoints with (#854).
+impl crate::repos::AnirssEndpoints for AnirssClient {
+    fn put_endpoint(&self, spec: Value) -> BoxFuture<'_, Result<(), CoreError>> {
+        Box::pin(AnirssClient::put_endpoint(self, spec))
+    }
+
+    fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>> {
+        Box::pin(AnirssClient::delete_endpoint(self, name))
     }
 }
 
@@ -521,12 +535,16 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
     let message = envelope["error"]["message"]
         .as_str()
         .map(String::from)
-        .unwrap_or_else(|| format!("anirss answered {}: {}", response.status, response.text()));
-    Err(CoreError::Service {
-        service: SERVICE.to_string(),
-        code,
-        message,
-    })
+        .unwrap_or_else(|| {
+            crate::i18n::tr(
+                "core-downloads-anirss-answered",
+                &[
+                    ("status", response.status.to_string().into()),
+                    ("text", response.text().into()),
+                ],
+            )
+        });
+    Err(CoreError::service(SERVICE, code, message))
 }
 
 /// Percent-encodes a query value the way a form does.
@@ -643,7 +661,12 @@ impl Sidecar {
         qbt: &QbtLogin<'_>,
         home: &super::home::AnirssHome,
     ) -> Result<Sidecar, SpawnFailure> {
-        let port = free_port().map_err(|e| SpawnFailure::Io(format!("no free port: {e}")))?;
+        let port = free_port().map_err(|e| {
+            SpawnFailure::Io(crate::i18n::tr(
+                "core-downloads-no-free-port",
+                &[("error", e.to_string().into())],
+            ))
+        })?;
         let token = random_token();
         let mut cmd = crate::process::command(command);
         cmd.arg("--serve")
@@ -684,7 +707,7 @@ impl Sidecar {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(pipe).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let mut t = tail.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut t = recover(&tail);
                     if t.len() >= STDERR_TAIL {
                         t.pop_front();
                     }
@@ -711,18 +734,34 @@ impl Sidecar {
         let started = tokio::time::Instant::now();
         loop {
             if let Ok(Some(status)) = self.child.try_wait() {
-                return Err(format!("anirss exited ({status}){}", self.stderr_tail()));
+                let status = status.to_string();
+                return Err(match self.stderr_tail() {
+                    Some(said) => crate::i18n::tr(
+                        "core-downloads-anirss-exited-said",
+                        &[("status", status.into()), ("said", said.into())],
+                    ),
+                    None => crate::i18n::tr(
+                        "core-downloads-anirss-exited",
+                        &[("status", status.into())],
+                    ),
+                });
             }
             if let Ok(health) = client.health().await {
                 return Ok(health);
             }
             if started.elapsed() > READY_TIMEOUT {
                 let _ = self.child.start_kill();
-                return Err(format!(
-                    "anirss did not start within {} seconds{}",
-                    READY_TIMEOUT.as_secs(),
-                    self.stderr_tail()
-                ));
+                let seconds = READY_TIMEOUT.as_secs();
+                return Err(match self.stderr_tail() {
+                    Some(said) => crate::i18n::tr(
+                        "core-downloads-anirss-slow-start-said",
+                        &[("seconds", seconds.into()), ("said", said.into())],
+                    ),
+                    None => crate::i18n::tr(
+                        "core-downloads-anirss-slow-start",
+                        &[("seconds", seconds.into())],
+                    ),
+                });
             }
             tokio::time::sleep(READY_POLL).await;
         }
@@ -737,17 +776,18 @@ impl Sidecar {
         let _ = self.child.start_kill();
     }
 
-    fn stderr_tail(&self) -> String {
-        let t = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
+    /// The last few lines stderr said, joined, or `None` when it said nothing.
+    fn stderr_tail(&self) -> Option<String> {
+        let t = recover(&self.stderr);
         let lines: Vec<&str> = t
             .iter()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
         if lines.is_empty() {
-            String::new()
+            None
         } else {
-            format!(": {}", lines[lines.len().saturating_sub(3)..].join(" / "))
+            Some(lines[lines.len().saturating_sub(3)..].join(" / "))
         }
     }
 }
@@ -799,41 +839,64 @@ fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
 /// shows.
 pub fn install_hint() -> String {
     if cfg!(target_os = "macos") {
-        format!(
-            "Install anirss {MIN_VERSION} or newer with: brew install marcusbandit/anirss/anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-install-mac",
+            &[
+                ("version", MIN_VERSION.into()),
+                ("command", "brew install marcusbandit/anirss/anirss".into()),
+            ],
         )
     } else {
-        format!(
-            "Install anirss {MIN_VERSION} or newer: the anirss package on the AUR, \
-             or uv tool install git+https://github.com/marcusbandit/anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-install-linux",
+            &[
+                ("version", MIN_VERSION.into()),
+                (
+                    "command",
+                    "uv tool install git+https://github.com/marcusbandit/anirss".into(),
+                ),
+            ],
         )
     }
 }
 
 /// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
 pub fn too_old_message(version: &str) -> String {
-    format!(
-        "anirss {version} is too old for AniBeam, which needs {MIN_VERSION} or newer. {}.",
-        update_hint()
+    crate::i18n::tr(
+        "core-downloads-anirss-too-old",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
     )
 }
 
 /// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
 /// being its own.
 pub fn lacks_feature_message(version: &str) -> String {
-    format!(
-        "anirss {version} cannot keep each torrent client's login to itself, which AniBeam \
-         needs to switch clients; anirss {MIN_VERSION} and newer can. {}.",
-        update_hint()
+    crate::i18n::tr(
+        "core-downloads-anirss-lacks-feature",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
     )
 }
 
 /// How this platform updates anirss, for the message an old one shows.
-pub fn update_hint() -> &'static str {
+pub fn update_hint() -> String {
     if cfg!(target_os = "macos") {
-        "Update it with: brew upgrade anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-update-mac",
+            &[("command", "brew upgrade anirss".into())],
+        )
     } else {
-        "Update the anirss package, or run: uv tool upgrade anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-update-linux",
+            &[("command", "uv tool upgrade anirss".into())],
+        )
     }
 }
 
@@ -1206,7 +1269,7 @@ mod tests {
             "the bundles pin different anirss releases: {bundled:?}"
         );
         let version = &bundled[0];
-        // A fresh install searches on AniBeam's own engine (#552), so the Downloads page drive
+        // A fresh install searches on Anibeam's own engine (#552), so the Downloads page drive
         // never starts anirss; the Linux smoke's helpers step runs the bundled one instead.
         let linux = std::fs::read_to_string(packaging.join("linux/smoke.sh")).unwrap();
         assert!(

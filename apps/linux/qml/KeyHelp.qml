@@ -49,6 +49,7 @@ Item {
             [words.t("key-help-key-ctrl-k"), words.t("key-help-library-search")],
             [words.t("key-help-key-search"), words.t("key-help-search-page")],
             [words.t("key-help-key-ctrl-l"), words.t("key-help-activity")],
+            [words.t("key-help-key-ctrl-j"), words.t("key-help-room")],
             [words.t("key-help-key-ctrl-comma"), words.t("key-help-settings")],
             [words.t("key-help-key-ctrl-q"), words.t("key-help-quit")]
         ] }
@@ -69,6 +70,7 @@ Item {
             [words.t("key-help-key-shift-space"), words.t("key-help-pick-range")],
             [words.t("key-help-key-ctrl-a"), words.t("key-help-pick-all")],
             [words.t("key-help-key-ctrl-l"), words.t("key-help-activity")],
+            [words.t("key-help-key-ctrl-j"), words.t("key-help-room")],
             [words.t("key-help-key-ctrl-comma"), words.t("key-help-settings")],
             [words.t("key-help-key-ctrl-q"), words.t("key-help-quit")]
         ] }

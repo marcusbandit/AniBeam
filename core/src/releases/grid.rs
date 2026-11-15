@@ -448,15 +448,16 @@ pub fn plan(
     let mut groups = Vec::new();
     for i in &seen {
         let f = &facts[*i];
-        let g = format!(
-            "{}{}",
-            if f.group.is_empty() {
-                provider
-            } else {
-                &f.group
-            },
-            if f.batch { "'s batch" } else { "" }
-        );
+        let group = if f.group.is_empty() {
+            provider
+        } else {
+            f.group.as_str()
+        };
+        let g = if f.batch {
+            crate::i18n::tr("core-releases-group-batch", &[("group", group.into())])
+        } else {
+            group.to_string()
+        };
         if !groups.contains(&g) {
             groups.push(g);
         }
@@ -504,23 +505,25 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
             b = n;
             continue;
         }
-        parts.push(if a == b {
-            a.to_string()
-        } else {
-            format!("{a} to {b}")
-        });
+        parts.push(if a == b { a.to_string() } else { range(a, b) });
         a = n;
         b = n;
     }
-    parts.push(if a == b {
-        a.to_string()
-    } else {
-        format!("{a} to {b}")
-    });
-    format!(
-        "{} {}",
-        if ns.len() == 1 { "Episode" } else { "Episodes" },
-        parts.join(", ")
+    parts.push(if a == b { a.to_string() } else { range(a, b) });
+    crate::i18n::tr(
+        "core-releases-episodes-phrase",
+        &[
+            ("count", ns.len().into()),
+            ("list", parts.join(", ").into()),
+        ],
+    )
+}
+
+/// "3 to 5": a run of episode numbers.
+fn range(a: u32, b: u32) -> String {
+    crate::i18n::tr(
+        "core-releases-episode-range",
+        &[("from", a.to_string().into()), ("to", b.to_string().into())],
     )
 }
 

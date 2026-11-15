@@ -22,8 +22,9 @@ use serde_json::{Value, json};
 
 use super::{mine::Mine, parse, queries};
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::JobCtx;
+use crate::metadata::Metadata;
 use crate::metadata::apply::{is_rate_limited, provider_unreachable};
 use crate::time;
 
@@ -70,16 +71,16 @@ impl From<CoreError> for Halt {
 
 /// The paced sender. `sent` is what the run's log line counts.
 pub struct Net {
-    core: Arc<Core>,
+    metadata: Arc<Metadata>,
     ctx: Arc<JobCtx>,
     pub sent: u32,
     last: Option<Instant>,
 }
 
 impl Net {
-    pub fn new(core: Arc<Core>, ctx: Arc<JobCtx>) -> Net {
+    pub fn new(metadata: Arc<Metadata>, ctx: Arc<JobCtx>) -> Net {
         Net {
-            core,
+            metadata,
             ctx,
             sent: 0,
             last: None,
@@ -90,7 +91,7 @@ impl Net {
         if self.sent >= BUDGET {
             return Err(Halt::Stop(format!("{BUDGET} requests sent")));
         }
-        let gap = Duration::from_millis(self.core.recommender_gap_ms.load(Ordering::SeqCst));
+        let gap = Duration::from_millis(self.metadata.recommender_gap_ms.load(Ordering::SeqCst));
         if let Some(last) = self.last
             && let Some(wait) = gap.checked_sub(last.elapsed())
         {
@@ -99,7 +100,12 @@ impl Net {
         self.ctx.checkpoint()?;
         self.sent += 1;
         self.last = Some(Instant::now());
-        Ok(self.core.anilist.graphql(query, variables, None).await?)
+        Ok(self
+            .metadata
+            .net
+            .anilist
+            .graphql(query, variables, None)
+            .await?)
     }
 
     fn label(&self, done: u64, total: u64, what: &str) {
@@ -144,10 +150,15 @@ fn stale(conn: &Connection, sql: &str, id: u64, ttl: i64, now: i64) -> Result<bo
     Ok(at.is_none_or(|at| now - at >= ttl))
 }
 
-fn missing(core: &Core, sql: &'static str, ids: &[u64], ttl: i64) -> Result<Vec<u64>, CoreError> {
+fn missing(
+    services: &Services,
+    sql: &'static str,
+    ids: &[u64],
+    ttl: i64,
+) -> Result<Vec<u64>, CoreError> {
     let now = time::now_secs();
     let ids = ids.to_vec();
-    core.store.read(move |c| {
+    services.store.read(move |c| {
         let mut out = Vec::new();
         for id in ids {
             if stale(c, sql, id, ttl, now)? {
@@ -242,7 +253,7 @@ fn similar(conn: &Connection, ids: &[u64]) -> Result<Vec<u64>, CoreError> {
 /// Details for every show in `ids` the cache lacks or holds past its time.
 pub async fn shows(net: &mut Net, ids: &[u64], label: &str) -> Result<(), Halt> {
     let todo = missing(
-        &net.core,
+        &net.metadata.services,
         "SELECT fetched_at FROM rec_shows WHERE anilist_id = ?1",
         ids,
         SHOW_TTL,
@@ -273,7 +284,8 @@ async fn fetch_shows(net: &mut Net, chunk: &[u64]) -> Result<(), Halt> {
     let media: Vec<Value> = v["Page"]["media"].as_array().cloned().unwrap_or_default();
     let chunk = chunk.to_vec();
     let now = time::now_secs();
-    net.core
+    net.metadata
+        .services
         .store
         .write_async(move |c| {
             let mut got = HashSet::new();
@@ -307,18 +319,23 @@ pub fn put_show(c: &Connection, id: u64, media: Option<&str>, now: i64) -> Resul
 
 async fn fetch_raters(net: &mut Net, favourites: &[u64]) -> Result<(), Halt> {
     let todo = missing(
-        &net.core,
+        &net.metadata.services,
         "SELECT fetched_at FROM rec_raters WHERE anilist_id = ?1",
         favourites,
         PEOPLE_TTL,
     )?;
     let total = todo.len().div_ceil(RATERS_PER_REQUEST) as u64;
     for (i, chunk) in todo.chunks(RATERS_PER_REQUEST).enumerate() {
-        net.label(i as u64, total, "Finding people with your taste");
+        net.label(
+            i as u64,
+            total,
+            &crate::i18n::tr("core-recommended-finding-people", &[]),
+        );
         let v = aliased(net, chunk, queries::raters).await?;
         let chunk = chunk.to_vec();
         let now = time::now_secs();
-        net.core
+        net.metadata
+            .services
             .store
             .write_async(move |c| {
                 for id in chunk {
@@ -349,14 +366,18 @@ async fn fetch_raters(net: &mut Net, favourites: &[u64]) -> Result<(), Halt> {
 
 async fn fetch_users(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
     let todo = missing(
-        &net.core,
+        &net.metadata.services,
         "SELECT fetched_at FROM rec_users WHERE user_id = ?1",
         ids,
         PEOPLE_TTL,
     )?;
     let total = todo.len().div_ceil(USERS_PER_REQUEST) as u64;
     for (i, chunk) in todo.chunks(USERS_PER_REQUEST).enumerate() {
-        net.label(i as u64, total, "Reading their lists");
+        net.label(
+            i as u64,
+            total,
+            &crate::i18n::tr("core-recommended-reading-lists", &[]),
+        );
         fetch_user_chunk(net, chunk).await?;
     }
     Ok(())
@@ -367,7 +388,8 @@ async fn fetch_user_chunk(net: &mut Net, chunk: &[u64]) -> Result<(), Halt> {
     let v = aliased(net, chunk, queries::user_lists).await?;
     let chunk = chunk.to_vec();
     let now = time::now_secs();
-    net.core
+    net.metadata
+        .services
         .store
         .write_async(move |c| {
             for id in chunk {
@@ -388,7 +410,7 @@ async fn fetch_user_chunk(net: &mut Net, chunk: &[u64]) -> Result<(), Halt> {
 
 async fn fetch_similar(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
     let todo = missing(
-        &net.core,
+        &net.metadata.services,
         "SELECT fetched_at FROM rec_similar WHERE anilist_id = ?1",
         ids,
         PEOPLE_TTL,
@@ -397,7 +419,8 @@ async fn fetch_similar(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
         let v = aliased(net, chunk, queries::similar).await?;
         let chunk = chunk.to_vec();
         let now = time::now_secs();
-        net.core
+        net.metadata
+            .services
             .store
             .write_async(move |c| {
                 for id in chunk {
@@ -508,30 +531,40 @@ pub async fn read(
     theirs.extend(super::mine::owned_ids(mine));
     theirs.sort_unstable();
     theirs.dedup();
-    shows(net, &theirs, "Reading your shows").await?;
+    shows(
+        net,
+        &theirs,
+        &crate::i18n::tr("core-recommended-reading-yours", &[]),
+    )
+    .await?;
 
-    let core = net.core.clone();
-    let known: HashSet<ShowId> = core.store.read(|c| {
+    let metadata = net.metadata.clone();
+    let known: HashSet<ShowId> = metadata.services.store.read(|c| {
         let mut stmt = c.prepare("SELECT anilist_id FROM rec_shows WHERE media IS NOT NULL")?;
         let rows = stmt.query_map([], |r| r.get::<_, i64>(0))?;
         Ok(rows.filter_map(Result::ok).map(|id| id as u64).collect())
     })?;
     let favs = favourites(signals, &known);
     fetch_raters(net, &favs).await?;
-    let raters = core.store.read(|c| raters(c, &favs))?;
+    let raters = metadata.services.store.read(|c| raters(c, &favs))?;
     let people = people(&raters, mine.user);
     fetch_users(net, &people).await?;
-    let neighbours = core.store.read(|c| neighbours(c, &people))?;
+    let neighbours = metadata.services.store.read(|c| neighbours(c, &people))?;
 
     let hood = Neighborhood::build(signals, mean, &neighbours, anibeam_recs::model::PEERS);
     let on_list: HashSet<ShowId> = mine.entries.iter().map(|e| e.show).collect();
     let pool = pool(&hood, &on_list);
     fetch_similar(net, &favs).await?;
-    let trusted = core.store.read(|c| similar(c, &favs))?;
+    let trusted = metadata.services.store.read(|c| similar(c, &favs))?;
     let mut wanted: Vec<u64> = pool.iter().chain(&trusted).copied().collect();
     wanted.sort_unstable();
     wanted.dedup();
-    shows(net, &wanted, "Reading shows to suggest").await?;
+    shows(
+        net,
+        &wanted,
+        &crate::i18n::tr("core-recommended-reading-suggestions", &[]),
+    )
+    .await?;
     Ok(Found {
         people,
         pool,

@@ -1,4 +1,4 @@
-//! Two AniBeam computers merge their watch history, resume points and
+//! Two Anibeam computers merge their watch history, resume points and
 //! matches (#561): two cores with the same show in different folders, one
 //! serving its real router on loopback and the other pulling from it.
 
@@ -12,7 +12,7 @@ use axum::extract::connect_info::MockConnectInfo;
 
 fn serve(rt: &tokio::runtime::Runtime, core: &Arc<Core>) -> String {
     let me: SocketAddr = "127.0.0.1:40000".parse().unwrap();
-    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(me));
+    let app = core.host_router().layer(MockConnectInfo(me));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();
@@ -78,7 +78,7 @@ fn pull(
     core: &Arc<Core>,
     base: &str,
 ) -> anibeam_core::host::history::Merged {
-    rt.block_on(anibeam_core::host::history::pull(core, base))
+    rt.block_on(anibeam_core::host::history::pull(core.services(), base))
         .unwrap()
 }
 

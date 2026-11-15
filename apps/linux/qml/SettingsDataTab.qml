@@ -1,6 +1,6 @@
 // Storage and backup: Back up the library (one file, with private data or without), Restore
 // from a backup with what the last restore did, the image cache with its size and a clear,
-// and where AniBeam keeps its files. Export, import and the clear are jobs; their results
+// and where Anibeam keeps its files. Export, import and the clear are jobs; their results
 // come back as exportFinished, importFinished and imagesCleared.
 import QtQuick
 import QtQuick.Dialogs
@@ -67,7 +67,7 @@ SettingsTab {
         title: words.t("settings-data-image-cache")
         helper: words.t("settings-data-image-cache-helper")
         SettingRow {
-            label: tab.storageFailed ? words.t("settings-data-cache-unmeasured") : tab.storage.image_count ? words.t("settings-data-cache-size", { size: Fmt.bytes(tab.storage.image_bytes || 0), count: tab.storage.image_count }) : words.t("settings-data-cache-empty")
+            label: tab.storageFailed ? words.t("settings-data-cache-unmeasured") : tab.storage.image_count ? words.t("settings-data-cache-size", { size: words.bytes(tab.storage.image_bytes || 0), count: tab.storage.image_count }) : words.t("settings-data-cache-empty")
             helper: tab.storageFailed ? words.t("settings-data-cache-unmeasured-helper") : ""
             Item {
                 width: tab.confirmingClear ? confirm.implicitWidth : clearBtn.width

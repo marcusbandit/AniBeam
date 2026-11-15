@@ -8,7 +8,8 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::foundation::magnet::is_hash;
+use crate::net::{Http, HttpRequest};
 use crate::repos::index::JsonMap;
 
 /// The value at a dot path of object keys; the value itself for an empty path.
@@ -63,7 +64,7 @@ fn bytes(v: &Value) -> Option<u64> {
             s.parse()
                 .ok()
                 .or_else(|| s.parse::<f64>().ok().and_then(whole))
-                .or_else(|| crate::downloads::facts::size_bytes(s))
+                .or_else(|| crate::foundation::size::size_bytes(s))
         }
         _ => None,
     }
@@ -89,18 +90,6 @@ fn ready_link(link: &str) -> Option<String> {
                 && is_hash(&v[9..])
         });
     (magnet && hashed).then(|| link.to_string())
-}
-
-/// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
-/// else is left out rather than put in a magnet, where it could add parameters of its own.
-fn is_hash(hash: &str) -> bool {
-    match hash.len() {
-        40 => hash.bytes().all(|b| b.is_ascii_hexdigit()),
-        32 => hash
-            .bytes()
-            .all(|b| b.is_ascii_alphabetic() || (b'2'..=b'7').contains(&b)),
-        _ => false,
-    }
 }
 
 /// The magnet for an info-hash, named after the release.
@@ -177,7 +166,9 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 /// at all, or whose list is something else, does not read, so an API that renames the field
 /// shows an error rather than "no results" forever.
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
-    let reply: Value = serde_json::from_slice(body).map_err(|e| format!("not JSON: {e}"))?;
+    let reply: Value = serde_json::from_slice(body).map_err(|e| {
+        crate::i18n::tr("core-releases-not-json", &[("error", e.to_string().into())])
+    })?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
         && truthy(v)
     {
@@ -187,16 +178,23 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
                 .map(super::fetch::their_message)
                 .filter(|m| !m.is_empty())
             {
-                Some(m) => format!("the search answered with an error: {m}"),
-                None => "the search answered with an error".into(),
+                Some(m) => {
+                    crate::i18n::tr("core-releases-search-error-said", &[("message", m.into())])
+                }
+                None => crate::i18n::tr("core-releases-search-error", &[]),
             },
         );
     }
     let items = match at(&reply, &map.items) {
         Some(Value::Null) => return Ok(Vec::new()),
-        None => return Err(format!("the reply has no results at {:?}", map.items)),
+        None => {
+            return Err(crate::i18n::tr(
+                "core-releases-no-results-field",
+                &[("path", format!("{:?}", map.items).into())],
+            ));
+        }
         Some(Value::Array(items)) => items,
-        Some(_) => return Err("the reply's results are not a list".into()),
+        Some(_) => return Err(crate::i18n::tr("core-releases-results-not-list", &[])),
     };
     Ok(items
         .iter()
@@ -213,37 +211,26 @@ pub async fn fetch(
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".to_string(),
-                    super::fetch::USER_AGENT.to_string(),
-                ),
-                ("Accept".to_string(), "application/json".to_string()),
-            ],
-            body: None,
-            timeout: Some(timeout),
-        })
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", super::fetch::USER_AGENT)
+                .header("Accept", "application/json")
+                .timeout(timeout),
+        )
         .await
-        .map_err(|e| CoreError::Service {
-            service: source.to_string(),
-            code: "unreachable".into(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: source.to_string(),
-            code: format!("http_{}", response.status),
-            message: format!("the search answered {}", response.status),
-        });
+        return Err(CoreError::service(
+            source,
+            format!("http_{}", response.status),
+            crate::i18n::tr(
+                "core-releases-search-answered",
+                &[("status", response.status.to_string().into())],
+            ),
+        ));
     }
-    parse(&response.body, map, source).map_err(|message| CoreError::Service {
-        service: source.to_string(),
-        code: "unreadable".into(),
-        message,
-    })
+    parse(&response.body, map, source)
+        .map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

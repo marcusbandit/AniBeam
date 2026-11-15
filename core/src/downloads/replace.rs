@@ -37,10 +37,14 @@ use std::time::Duration;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
+use super::facts;
 use super::qbt::QbtClient;
-use super::{facts, trash};
 use crate::contract::*;
-use crate::core::Core;
+use crate::downloads::Downloads;
+use crate::foundation::magnet;
+use crate::foundation::names::title_key;
+use crate::foundation::services::Services;
+use crate::library::trash;
 use crate::store::{Store, settings};
 use crate::time::now_secs;
 
@@ -96,67 +100,6 @@ pub struct Source {
 static TICK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 // Reading names -----------------------------------------------------------------
-
-/// The info-hash a magnet link names, as lowercase hex (the base32 form is
-/// converted). None for anything that is not a magnet with a hash.
-pub fn magnet_hash(link: &str) -> Option<String> {
-    let query = link.trim().strip_prefix("magnet:?")?;
-    for part in query.split('&') {
-        let Some(v) = part
-            .get(..3)
-            .filter(|key| key.eq_ignore_ascii_case("xt="))
-            .map(|_| &part[3..])
-        else {
-            continue;
-        };
-        let lower = v.to_ascii_lowercase();
-        let Some(h) = lower
-            .strip_prefix("urn:btih:")
-            .or_else(|| lower.strip_prefix("urn%3abtih%3a"))
-        else {
-            continue;
-        };
-        if h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Some(h.to_string());
-        }
-        if h.len() == 32 {
-            return base32_hex(h);
-        }
-    }
-    None
-}
-
-fn base32_hex(s: &str) -> Option<String> {
-    let mut bits: u64 = 0;
-    let mut n = 0;
-    let mut out = String::new();
-    for c in s.chars() {
-        let v = match c {
-            'a'..='z' => c as u64 - 'a' as u64,
-            '2'..='7' => c as u64 - '2' as u64 + 26,
-            _ => return None,
-        };
-        bits = (bits << 5) | v;
-        n += 5;
-        if n >= 8 {
-            n -= 8;
-            out.push_str(&format!("{:02x}", (bits >> n) & 0xff));
-            bits &= (1 << n) - 1;
-        }
-    }
-    (out.len() == 40).then_some(out)
-}
-
-/// A title or torrent name as letters and digits only, without the file
-/// extension a client adds or drops, so the two compare.
-pub fn title_key(s: &str) -> String {
-    let lower = s.trim().to_lowercase();
-    let stem = [".mkv", ".mp4", ".avi", ".torrent"]
-        .iter()
-        .find_map(|e| lower.strip_suffix(e))
-        .unwrap_or(&lower);
-    stem.chars().filter(|c| c.is_alphanumeric()).collect()
-}
 
 /// The torrent's name is the release's title, give or take an extension or
 /// punctuation. A containment counts only for names long enough to be
@@ -447,8 +390,9 @@ pub fn trash_candidates(
 
 // Storage ----------------------------------------------------------------------
 
-fn load(core: &Core) -> Result<Vec<Followup>, CoreError> {
-    core.store
+fn load(services: &Services) -> Result<Vec<Followup>, CoreError> {
+    services
+        .store
         .read(|c| Ok(settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default()))
 }
 
@@ -481,12 +425,16 @@ fn merge(cur: Vec<Followup>, changes: &HashMap<u64, Option<Followup>>) -> Vec<Fo
         .collect()
 }
 
-fn save_changes(core: &Core, before: &[Followup], after: &[Followup]) -> Result<(), CoreError> {
+fn save_changes(
+    services: &Services,
+    before: &[Followup],
+    after: &[Followup],
+) -> Result<(), CoreError> {
     let changes = diff(before, after);
     if changes.is_empty() {
         return Ok(());
     }
-    core.store.write(move |c| {
+    services.store.write(move |c| {
         let cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
         settings::set(c, FOLLOWUPS, &merge(cur, &changes))
     })
@@ -508,7 +456,10 @@ pub fn prepare(
         if r.item as usize >= items.len() {
             return Err(CoreError::invalid(
                 "options",
-                format!("item {} is not one of the {} releases", r.item, items.len()),
+                crate::i18n::tr(
+                    "core-downloads-replace-bad-item",
+                    &[("item", r.item.into()), ("count", items.len().into())],
+                ),
             ));
         }
         replace
@@ -538,7 +489,7 @@ pub fn prepare(
             id: 0,
             created_at: now,
             title: item.title.clone(),
-            hash: magnet_hash(&item.link).unwrap_or_default(),
+            hash: magnet::hash(&item.link).unwrap_or_default(),
             sequential: options.sequential,
             series: options.series,
             replace: entries,
@@ -572,7 +523,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
 /// for a while so a followup binds without waiting for the page. Failures
 /// are logged; the add already happened and must not read as failed.
 pub async fn after_add(
-    core: &Arc<Core>,
+    downloads: &Arc<Downloads>,
     client: &Arc<QbtClient>,
     items: &[Release],
     options: &DownloadOptions,
@@ -596,7 +547,7 @@ pub async fn after_add(
         .filter(|f| !f.hash.is_empty())
         .map(|f| f.hash.clone())
         .collect();
-    let saved = core.store.write_async(move |c| {
+    let saved = downloads.services.store.write_async(move |c| {
         let mut cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
         let mut next = cur.iter().map(|f| f.id).max().unwrap_or(0);
         for mut f in followups {
@@ -625,21 +576,28 @@ pub async fn after_add(
         .flat_map(|r| r.episodes.iter().copied())
         .collect();
     if !options.cancel.is_empty() && !replacing.is_empty() {
-        cancel_in_flight(core, client, &options.cancel, &replacing, &new_hashes).await;
+        cancel_in_flight(
+            &downloads.services,
+            client,
+            &options.cancel,
+            &replacing,
+            &new_hashes,
+        )
+        .await;
     }
-    let (core, client) = (core.clone(), client.clone());
+    let (downloads, client) = (downloads.clone(), client.clone());
     let wants_ticks = options.sequential || !replacing.is_empty();
     if wants_ticks {
-        let handle = core.handle.clone();
+        let handle = downloads.services.handle.clone();
         handle.spawn(async move {
             // The client may take a moment to list a torrent it was just given
             for _ in 0..15 {
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 match client.torrents().await {
-                    Ok(torrents) => tick(&core, &client, &torrents).await,
+                    Ok(torrents) => tick(&downloads.services, &client, &torrents).await,
                     Err(e) => tracing::debug!("followup read failed: {e}"),
                 }
-                match load(&core) {
+                match load(&downloads.services) {
                     Ok(f) if f.iter().all(|f| !f.hash.is_empty()) => break,
                     Ok(_) => {}
                     Err(_) => break,
@@ -652,7 +610,7 @@ pub async fn after_add(
 /// Stops the unfinished torrents the new ones stand in for, as far as
 /// `cancel_plan` allows.
 async fn cancel_in_flight(
-    core: &Arc<Core>,
+    services: &Services,
     client: &QbtClient,
     hashes: &[String],
     replacing: &BTreeSet<u32>,
@@ -679,11 +637,11 @@ async fn cancel_in_flight(
                 .set_file_priority(&t.hash, ids, 0)
                 .await
                 .map(|_| format!("Skipped {} in {}", plural_files(ids.len()), t.name)),
-            CancelPlan::Whole => cancel_whole(core, client, &t).await,
+            CancelPlan::Whole => cancel_whole(services, client, &t).await,
         };
         match done {
             Ok(msg) => {
-                core.bus.info(Stage::Downloads, msg, EventBody::Notice);
+                services.bus.info(Stage::Downloads, msg, EventBody::Notice);
             }
             Err(e) => tracing::warn!("{} not cancelled: {e}", t.name),
         }
@@ -701,11 +659,11 @@ fn plural_files(n: usize) -> String {
 /// Takes the torrent out of the client and what it wrote to the trash. The
 /// trash targets are checked first; if they are refused the torrent stays.
 async fn cancel_whole(
-    core: &Arc<Core>,
+    services: &Services,
     client: &QbtClient,
     t: &Torrent,
 ) -> Result<String, CoreError> {
-    let sources = core.store.read(library_sources)?;
+    let sources = services.store.read(library_sources)?;
     let home = std::env::home_dir();
     let targets = trash::targets(
         &[trash::Candidate::Torrent {
@@ -738,9 +696,9 @@ async fn cancel_whole(
 // The tick ---------------------------------------------------------------------
 
 /// One pass over the stored followups against a fresh torrent read.
-pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
+pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent]) {
     let _one = TICK.lock().await;
-    let before = match load(core) {
+    let before = match load(services) {
         Ok(f) if !f.is_empty() => f,
         Ok(_) => return,
         Err(e) => {
@@ -794,7 +752,7 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
             // Ready: done with this entry whatever comes of it
             if let Some(series) = f.series
                 && let Err(e) = replace_episode(
-                    core,
+                    services,
                     client,
                     series,
                     &entry,
@@ -805,10 +763,10 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
                 .await
             {
                 tracing::warn!("episode {} not replaced: {e}", entry.episode);
-                core.bus.say(
+                services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    format!("Episode {} was not replaced.", entry.episode),
+                    crate::words!("core-downloads-not-replaced", episode = entry.episode),
                     format!("Episode {} was not replaced: {e}", entry.episode),
                     EventBody::Notice,
                 );
@@ -828,14 +786,14 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
         }
         live.contains(&f.hash.to_lowercase())
     });
-    if let Err(e) = save_changes(core, &before, &fus) {
+    if let Err(e) = save_changes(services, &before, &fus) {
         tracing::warn!("download followups not saved: {e}");
     }
 }
 
 /// Trashes the old files of one episode and tidies the old torrents.
 async fn replace_episode(
-    core: &Arc<Core>,
+    services: &Services,
     client: &QbtClient,
     series: u64,
     entry: &Replacement,
@@ -845,7 +803,7 @@ async fn replace_episode(
 ) -> Result<(), CoreError> {
     let entry_c = entry.clone();
     let written_c = written.to_vec();
-    let (paths, sources) = core
+    let (paths, sources) = services
         .store
         .read(move |c| trash_candidates(c, series, &entry_c, &written_c))?;
     if paths.is_empty() {
@@ -866,10 +824,10 @@ async fn replace_episode(
         .map_err(|e| CoreError::Internal {
             message: format!("trash: {e}"),
         })??;
-    core.bus.say(
+    services.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!("Replaced episode {} with the new download.", entry.episode),
+        crate::words!("core-downloads-replaced", episode = entry.episode),
         format!(
             "Replaced episode {}: {} {}",
             entry.episode,
@@ -906,8 +864,8 @@ async fn replace_episode(
 
 /// Fills what the torrents' names and the saved sources say: the group and
 /// resolution of the release, and the endpoint it was picked on.
-pub fn annotate(core: &Core, torrents: &mut [Torrent]) {
-    let sources: HashMap<String, String> = core
+pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
+    let sources: HashMap<String, String> = services
         .store
         .read(|c| Ok(settings::get::<Vec<Source>>(c, SOURCES)?.unwrap_or_default()))
         .unwrap_or_default()
@@ -960,26 +918,6 @@ mod tests {
             series: Some(1),
             replace: Vec::new(),
         }
-    }
-
-    #[test]
-    fn a_magnet_gives_its_hash_in_hex_or_base32() {
-        let hex = "0123456789abcdef0123456789abcdef01234567";
-        assert_eq!(
-            magnet_hash(&format!("magnet:?xt=urn:btih:{}&dn=x", hex.to_uppercase())).as_deref(),
-            Some(hex)
-        );
-        // 20 bytes of 0x00 .. 0x13 in base32
-        assert_eq!(
-            magnet_hash("magnet:?dn=a&xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&tr=x")
-                .as_deref(),
-            Some("000102030405060708090a0b0c0d0e0f10111213")
-        );
-        assert_eq!(
-            magnet_hash("https://tracker.example/download/1.torrent"),
-            None
-        );
-        assert_eq!(magnet_hash("magnet:?xt=urn:btih:short"), None);
     }
 
     #[test]

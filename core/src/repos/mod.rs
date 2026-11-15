@@ -18,9 +18,11 @@ use std::time::Duration;
 use rusqlite::params;
 
 use crate::contract::*;
-use crate::core::Core;
-use crate::downloads::EndpointSync;
-use crate::net::{HttpRequest, Method};
+use crate::foundation::services::Services;
+use crate::i18n::tr;
+use crate::net::{BoxFuture, HttpRequest};
+use crate::releases::{AnirssView, EndpointSync, Releases};
+use crate::sync::recover;
 use index::{Definition, Index, RepoFault};
 
 pub use pace::{FLOOR, Paced};
@@ -63,7 +65,7 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
     if url.is_empty() {
         return Err(CoreError::invalid(
             "repo url",
-            "paste the address of a repo",
+            tr("core-repos-paste-address", &[]),
         ));
     }
     // A phone keyboard capitalises the first letter: "Http://" is still an address.
@@ -77,7 +79,10 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
     };
     let url = url.as_str();
     if url.starts_with("http://") && !is_local_http(url) {
-        return Err(CoreError::invalid("repo url", "the address must be https"));
+        return Err(CoreError::invalid(
+            "repo url",
+            tr("core-repos-must-be-https", &[]),
+        ));
     }
     Ok(url.to_string())
 }
@@ -91,44 +96,50 @@ fn is_local_http(url: &str) -> bool {
 }
 
 /// Fetches a repo file: over the network for an address, from disk for a local path.
-async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
+async fn fetch_bytes(services: &Services, url: &str) -> Result<Vec<u8>, RepoFault> {
     if url.starts_with("https://") || url.starts_with("http://") {
         // A repo's host has no rate of its own; it waits the floor like any endpoint host.
-        let http = Paced::new(core.http.clone(), Vec::new());
-        let req = HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![("Accept".into(), "application/json".into())],
-            body: None,
-            timeout: Some(FETCH_TIMEOUT),
-        };
+        let http = Paced::new(services.http.clone(), Vec::new());
+        let req = HttpRequest::get(url)
+            .header("Accept", "application/json")
+            .timeout(FETCH_TIMEOUT);
         let res = crate::net::Http::send(&http, req).await.map_err(|e| {
             RepoFault::new(
                 "unreachable",
-                format!("could not reach the repo: {}", e.message),
+                tr(
+                    "core-repos-unreachable",
+                    &[("message", e.message.as_str().into())],
+                ),
             )
         })?;
         if res.status == 404 {
-            return Err(RepoFault::new(
-                "missing",
-                "nothing at that address (a private GitHub repo answers 404 too)",
-            ));
+            return Err(RepoFault::new("missing", tr("core-repos-not-found", &[])));
         }
         if !res.is_success() {
             return Err(RepoFault::new(
                 "unreachable",
-                format!("the repo answered HTTP {}", res.status),
+                tr(
+                    "core-repos-http-status",
+                    &[("status", res.status.to_string().into())],
+                ),
             ));
         }
         return Ok(res.body);
     }
     let path = url.strip_prefix("file://").unwrap_or(url);
-    std::fs::read(path)
-        .map_err(|e| RepoFault::new("missing", format!("could not read {path}: {e}")))
+    std::fs::read(path).map_err(|e| {
+        RepoFault::new(
+            "missing",
+            tr(
+                "core-repos-unreadable",
+                &[("path", path.into()), ("error", e.to_string().into())],
+            ),
+        )
+    })
 }
 
-async fn fetch(core: &Core, url: &str) -> Result<Index, RepoFault> {
-    let bytes = fetch_bytes(core, url).await?;
+async fn fetch(services: &Services, url: &str) -> Result<Index, RepoFault> {
+    let bytes = fetch_bytes(services, url).await?;
     index::parse(&bytes, CORE_VERSION)
 }
 
@@ -204,15 +215,15 @@ fn read_installed(conn: &rusqlite::Connection) -> Result<Vec<InstallRow>, CoreEr
         .collect())
 }
 
-fn find_install(core: &Core, install: &str) -> Result<InstallRow, CoreError> {
-    let all = core.store.read(read_installed)?;
+fn find_install(services: &Services, install: &str) -> Result<InstallRow, CoreError> {
+    let all = services.store.read(read_installed)?;
     all.into_iter()
         .find(|r| r.install_id == install)
-        .ok_or_else(|| CoreError::invalid("endpoint", "no installed endpoint with that id"))
+        .ok_or_else(|| CoreError::invalid("endpoint", tr("core-repos-no-such-endpoint", &[])))
 }
 
 /// Saves a checked index for a repo, the trusted key held to.
-fn save_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
+fn save_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreError> {
     let (url, name, nsfw, key, serial, payload) = (
         url.to_string(),
         idx.name.clone(),
@@ -221,7 +232,7 @@ fn save_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
         idx.serial as i64,
         idx.payload.clone(),
     );
-    core.store.write(move |conn| {
+    services.store.write(move |conn| {
         conn.execute(
             "INSERT INTO endpoint_repos (url, name, nsfw, key, serial, payload, fetched_at, error)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
@@ -242,7 +253,7 @@ fn save_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
 }
 
 /// The same for a repo already saved; nothing when it was removed in the meantime.
-fn update_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
+fn update_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreError> {
     let (url, name, nsfw, key, serial, payload) = (
         url.to_string(),
         idx.name.clone(),
@@ -251,7 +262,7 @@ fn update_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
         idx.serial as i64,
         idx.payload.clone(),
     );
-    core.store.write(move |conn| {
+    services.store.write(move |conn| {
         conn.execute(
             "UPDATE endpoint_repos SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
                  fetched_at = ?7, error = NULL
@@ -270,9 +281,9 @@ fn update_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
     })
 }
 
-fn save_error(core: &Core, url: &str, error: &str) -> Result<(), CoreError> {
+fn save_error(services: &Services, url: &str, error: &str) -> Result<(), CoreError> {
     let (url, error) = (url.to_string(), error.to_string());
-    core.store.write(move |conn| {
+    services.store.write(move |conn| {
         conn.execute(
             "UPDATE endpoint_repos SET error = ?2 WHERE url = ?1",
             params![url, error],
@@ -287,15 +298,18 @@ fn admit(stored: &RepoRow, idx: &Index) -> Result<(), RepoFault> {
     if idx.key != stored.key {
         return Err(RepoFault::new(
             "key_changed",
-            "the repo is now signed by a different key than the one you trusted. Remove it and add it again to accept the new key.",
+            tr("core-repos-key-changed", &[]),
         ));
     }
     if idx.serial < stored.serial {
         return Err(RepoFault::new(
             "stale",
-            format!(
-                "the repo served an older index (serial {} after {}); keeping the newer one",
-                idx.serial, stored.serial
+            tr(
+                "core-repos-stale",
+                &[
+                    ("serial", idx.serial.to_string().into()),
+                    ("kept", stored.serial.to_string().into()),
+                ],
             ),
         ));
     }
@@ -304,8 +318,9 @@ fn admit(stored: &RepoRow, idx: &Index) -> Result<(), RepoFault> {
 
 // The calls ---------------------------------------------------------------------------------
 
-pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
-    let (repos, installed) = core
+pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
+    let (repos, installed) = releases
+        .services
         .store
         .read(|conn| Ok((read_repos(conn)?, read_installed(conn)?)))?;
     let offered_defs: Vec<(String, Definition)> = repos
@@ -335,11 +350,13 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                 .map(|i| i.install_id.clone()),
         })
         .collect();
-    let secrets = core.secrets();
-    let synced = read_synced(core);
-    // One engine and one anirss view for the whole catalog, not a read per row.
-    let engine = crate::downloads::backend::engine(core)?;
-    let view = crate::downloads::anirss_view(core);
+    let secrets = releases.services.secrets();
+    let synced = read_synced(&releases.services);
+    // One engine and one anirss view for the whole catalog, not a read per row. With no
+    // downloads to ask, a core going away, there is nothing to note.
+    let searcher = releases.searcher.get();
+    let engine = searcher.as_ref().map(|s| s.engine()).transpose()?;
+    let view = searcher.and_then(|s| s.anirss_view());
     let installed = installed
         .iter()
         .map(|i| {
@@ -370,7 +387,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                 custom: i.repo_url == CUSTOM,
                 address: (i.repo_url == CUSTOM).then(|| i.def.url.clone()),
                 offered: next.is_some() || i.repo_url == CUSTOM,
-                desktop_note: note_for(engine, view.as_ref(), &i.def, &synced),
+                desktop_note: engine.and_then(|e| note_for(e, view.as_ref(), &i.def, &synced)),
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -398,28 +415,34 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
     })
 }
 
-fn reply(core: &Core) -> Result<Reply, CoreError> {
+fn reply(releases: &Releases) -> Result<Reply, CoreError> {
     Ok(Reply::EndpointCatalog {
-        catalog: catalog(core)?,
+        catalog: catalog(releases)?,
     })
 }
 
 /// The reply after a change to what is installed: the desktop's anirss follows first.
-fn changed(core: &Core) -> Result<Reply, CoreError> {
-    crate::downloads::repo_endpoints_changed(core);
-    reply(core)
+fn changed(releases: &Releases) -> Result<Reply, CoreError> {
+    if let Some(searcher) = releases.searcher.get() {
+        searcher.endpoints_changed();
+    }
+    reply(releases)
 }
 
-fn stored_repo(core: &Core, url: &str) -> Result<Option<RepoRow>, CoreError> {
+fn stored_repo(services: &Services, url: &str) -> Result<Option<RepoRow>, CoreError> {
     let url = url.to_string();
-    core.store
+    services
+        .store
         .read(move |conn| Ok(read_repos(conn)?.into_iter().find(|r| r.url == url)))
 }
 
-pub fn add_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
+pub fn add_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
     let url = normal_url(&url)?;
-    let idx = core.handle.block_on(fetch(core, &url))?;
-    let trusted = stored_repo(core, &url)?.is_some_and(|r| r.key == idx.key);
+    let idx = releases
+        .services
+        .handle
+        .block_on(fetch(&releases.services, &url))?;
+    let trusted = stored_repo(&releases.services, &url)?.is_some_and(|r| r.key == idx.key);
     let preview = EndpointRepoPreview {
         url: url.clone(),
         name: idx.name.clone(),
@@ -447,81 +470,78 @@ pub fn add_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
         trusted,
     };
     // One preview at a time: a shell shows one, so an older one is let go.
-    let mut held = core.repos.indexes.lock().unwrap_or_else(|e| e.into_inner());
+    let mut held = recover(&releases.pending.indexes);
     held.clear();
     held.insert(url, idx);
     Ok(Reply::EndpointRepoPreview { preview })
 }
 
-pub fn trust_repo(core: &Core, url: String, key: String) -> Result<Reply, CoreError> {
+pub fn trust_repo(releases: &Releases, url: String, key: String) -> Result<Reply, CoreError> {
     let url = normal_url(&url)?;
-    let pending = core
-        .repos
-        .indexes
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&url);
+    let pending = recover(&releases.pending.indexes).remove(&url);
     let idx = match pending {
         Some(idx) => idx,
-        None => core.handle.block_on(fetch(core, &url))?,
+        None => releases
+            .services
+            .handle
+            .block_on(fetch(&releases.services, &url))?,
     };
     if idx.key != key {
-        return Err(RepoFault::new(
-            "key_changed",
-            "the repo's key is not the one you were shown. Add it again and compare the fingerprint.",
-        )
-        .into());
+        return Err(RepoFault::new("key_changed", tr("core-repos-key-not-shown", &[])).into());
     }
-    let stored = stored_repo(core, &url)?;
+    let stored = stored_repo(&releases.services, &url)?;
     if let Some(stored) = &stored {
         admit(stored, &idx)?;
     }
-    save_index(core, &url, &idx)?;
+    save_index(&releases.services, &url, &idx)?;
     if stored.is_none() {
-        core.bus.say(
+        releases.services.bus.say(
             Level::Info,
             Stage::Downloads,
-            "Added a list of download sources.",
+            crate::words!("core-repos-repo-added"),
             format!("Added the endpoint repo {}", idx.name),
             EventBody::Notice,
         );
     }
-    reply(core)
+    reply(releases)
 }
 
-pub fn remove_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
+pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
     let url = url.trim().to_string();
-    let Some(stored) = stored_repo(core, &url)? else {
-        return reply(core);
+    let Some(stored) = stored_repo(&releases.services, &url)? else {
+        return reply(releases);
     };
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute("DELETE FROM endpoint_repos WHERE url = ?1", params![url])?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Removed a list of download sources.",
+        crate::words!("core-repos-repo-removed"),
         format!("Removed the endpoint repo {}", stored.name),
         EventBody::Notice,
     );
-    reply(core)
+    reply(releases)
 }
 
 /// Fetches every repo again. A repo that fails keeps its index and gets the reason on its row;
 /// nothing is ever removed by a refresh.
-pub fn refresh(core: &Core) -> Result<Reply, CoreError> {
-    let repos = core.store.read(read_repos)?;
-    let owner = core.owner()?;
+pub fn refresh(releases: &Arc<Releases>) -> Result<Reply, CoreError> {
+    let repos = releases.services.store.read(read_repos)?;
+    let owner = releases.clone();
     // All at once, so a dead repo costs one timeout, not one each.
     let tasks: Vec<_> = repos
         .iter()
         .map(|r| {
             let (owner, url) = (owner.clone(), r.url.clone());
-            core.handle.spawn(async move { fetch(&owner, &url).await })
+            releases
+                .services
+                .handle
+                .spawn(async move { fetch(&owner.services, &url).await })
         })
         .collect();
-    let fetched: Vec<Result<Index, RepoFault>> = core.handle.block_on(async {
+    let fetched: Vec<Result<Index, RepoFault>> = releases.services.handle.block_on(async {
         let mut out = Vec::new();
         for t in tasks {
             out.push(
@@ -534,11 +554,11 @@ pub fn refresh(core: &Core) -> Result<Reply, CoreError> {
     for (stored, got) in repos.iter().zip(fetched) {
         match got.and_then(|idx| admit(stored, &idx).map(|()| idx)) {
             // An update only: a repo removed while its fetch ran stays removed.
-            Ok(idx) => update_index(core, &stored.url, &idx)?,
-            Err(fault) => save_error(core, &stored.url, &fault.message)?,
+            Ok(idx) => update_index(&releases.services, &stored.url, &idx)?,
+            Err(fault) => save_error(&releases.services, &stored.url, &fault.message)?,
         }
     }
-    reply(core)
+    reply(releases)
 }
 
 /// Checks the person's values against an endpoint's fields: one for each, none left empty,
@@ -552,7 +572,13 @@ fn credentials_for(
         if !def.auth.iter().any(|a| a.key == c.key) {
             return Err(CoreError::invalid(
                 "credentials",
-                format!("{} has no field {:?}", def.name, c.key),
+                tr(
+                    "core-repos-no-field",
+                    &[
+                        ("name", def.name.as_str().into()),
+                        ("key", format!("{:?}", c.key).into()),
+                    ],
+                ),
             ));
         }
     }
@@ -567,7 +593,13 @@ fn credentials_for(
             if all {
                 return Err(CoreError::invalid(
                     "credentials",
-                    format!("{} needs its {}", def.name, field.label),
+                    tr(
+                        "core-repos-needs-field",
+                        &[
+                            ("name", def.name.as_str().into()),
+                            ("label", field.label.as_str().into()),
+                        ],
+                    ),
                 ));
             }
             continue;
@@ -575,9 +607,12 @@ fn credentials_for(
         if field.key == index::HOST_KEY && def.host_is_placeholder() && !index::bare_host(&value) {
             return Err(CoreError::invalid(
                 "credentials",
-                format!(
-                    "{}: the {} is a host or host:port only, like 192.168.1.10:9696",
-                    def.name, field.label
+                tr(
+                    "core-repos-host-only",
+                    &[
+                        ("name", def.name.as_str().into()),
+                        ("label", field.label.as_str().into()),
+                    ],
                 ),
             ));
         }
@@ -587,56 +622,60 @@ fn credentials_for(
 }
 
 fn store_credentials(
-    core: &Core,
+    services: &Services,
     install: &str,
     values: &[(String, String)],
 ) -> Result<(), CoreError> {
     for (key, value) in values {
-        core.secrets().set(&secret_key(install, key), value)?;
+        services.secrets().set(&secret_key(install, key), value)?;
     }
     Ok(())
 }
 
-fn offered_def(core: &Core, repo: &str, id: &str) -> Result<Definition, CoreError> {
-    let stored = stored_repo(core, repo)?
-        .ok_or_else(|| CoreError::invalid("repo", "that repo is not added"))?;
+fn offered_def(services: &Services, repo: &str, id: &str) -> Result<Definition, CoreError> {
+    let stored = stored_repo(services, repo)?
+        .ok_or_else(|| CoreError::invalid("repo", tr("core-repos-not-added", &[])))?;
     index::reread(&stored.payload, CORE_VERSION)
         .into_iter()
         .find(|d| d.id == id)
         .ok_or_else(|| {
-            CoreError::invalid("endpoint", format!("{} does not offer {id}", stored.name))
+            CoreError::invalid(
+                "endpoint",
+                tr(
+                    "core-repos-not-offered",
+                    &[("repo", stored.name.as_str().into()), ("id", id.into())],
+                ),
+            )
         })
 }
 
 pub fn install(
-    core: &Core,
+    releases: &Releases,
     repo: String,
     id: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
     let repo = repo.trim().to_string();
-    let def = offered_def(core, &repo, &id)?;
+    let def = offered_def(&releases.services, &repo, &id)?;
     let values = credentials_for(&def, &credentials, true)?;
-    let existing = core.store.read(read_installed)?;
+    let existing = releases.services.store.read(read_installed)?;
     if let Some(other) = existing.iter().find(|i| i.def.id == id) {
         return Err(CoreError::invalid(
             "endpoint",
             if other.repo_url == repo {
-                format!("{} is already installed", def.name)
-            } else {
-                format!(
-                    "an endpoint called {id} is already installed ({}); remove it first",
-                    if other.repo_url == CUSTOM {
-                        "added by you"
-                    } else {
-                        "from another repo"
-                    }
+                tr(
+                    "core-repos-already-installed",
+                    &[("name", def.name.as_str().into())],
                 )
+            } else if other.repo_url == CUSTOM {
+                tr("core-repos-taken-by-you", &[("id", id.as_str().into())])
+            } else {
+                tr("core-repos-taken-by-repo", &[("id", id.as_str().into())])
             },
         ));
     }
     let install_id = new_install_id();
-    store_credentials(core, &install_id, &values)?;
+    store_credentials(&releases.services, &install_id, &values)?;
     let (row_id, row_repo, row_def, version, json) = (
         install_id.clone(),
         repo.clone(),
@@ -644,7 +683,7 @@ pub fn install(
         def.version as i64,
         serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
     );
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute(
             "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
              VALUES (?1, ?2, ?3, ?4, ?5, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
@@ -652,97 +691,107 @@ pub fn install(
         )?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Added a download source.",
+        crate::words!("core-repos-source-added"),
         format!("Installed the endpoint {}", def.name),
         EventBody::Notice,
     );
-    changed(core)
+    changed(releases)
 }
 
 pub fn update(
-    core: &Core,
+    releases: &Releases,
     install: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
-    let row = find_install(core, &install)?;
-    let next = offered_def(core, &row.repo_url, &row.def.id)?;
+    let row = find_install(&releases.services, &install)?;
+    let next = offered_def(&releases.services, &row.repo_url, &row.def.id)?;
     if next.version <= row.version {
-        return reply(core);
+        return reply(releases);
     }
     if row.def.keeps_credentials(&next) {
         // Values given anyway replace the stored ones.
         let values = credentials_for(&next, &credentials, false)?;
-        store_credentials(core, &install, &values)?;
+        store_credentials(&releases.services, &install, &values)?;
     } else {
         let values = credentials_for(&next, &credentials, true)?;
         for field in &row.def.auth {
-            core.secrets().delete(&secret_key(&install, &field.key))?;
+            releases
+                .services
+                .secrets()
+                .delete(&secret_key(&install, &field.key))?;
         }
-        store_credentials(core, &install, &values)?;
+        store_credentials(&releases.services, &install, &values)?;
     }
     let (id, version, json) = (
         install.clone(),
         next.version as i64,
         serde_json::to_string(&next).map_err(|e| CoreError::internal(e.to_string()))?,
     );
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute(
             "UPDATE installed_endpoints SET version = ?2, definition = ?3 WHERE install_id = ?1",
             params![id, version, json],
         )?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Updated a download source.",
+        crate::words!("core-repos-source-updated"),
         format!(
             "Updated the endpoint {} to version {}",
             next.name, next.version
         ),
         EventBody::Notice,
     );
-    changed(core)
+    changed(releases)
 }
 
-pub fn remove(core: &Core, install: String) -> Result<Reply, CoreError> {
-    let row = find_install(core, &install)?;
+pub fn remove(releases: &Releases, install: String) -> Result<Reply, CoreError> {
+    let row = find_install(&releases.services, &install)?;
     for field in &row.def.auth {
-        core.secrets().delete(&secret_key(&install, &field.key))?;
+        releases
+            .services
+            .secrets()
+            .delete(&secret_key(&install, &field.key))?;
     }
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute(
             "DELETE FROM installed_endpoints WHERE install_id = ?1",
             params![install],
         )?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Removed a download source.",
+        crate::words!("core-repos-source-removed"),
         format!("Removed the endpoint {}", row.def.name),
         EventBody::Notice,
     );
-    changed(core)
+    changed(releases)
 }
 
 pub fn set_credentials(
-    core: &Core,
+    releases: &Releases,
     install: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
-    let row = find_install(core, &install)?;
+    let row = find_install(&releases.services, &install)?;
     let values = credentials_for(&row.def, &credentials, false)?;
-    store_credentials(core, &install, &values)?;
-    changed(core)
+    store_credentials(&releases.services, &install, &values)?;
+    changed(releases)
 }
 
-pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply, CoreError> {
-    let rows = core.store.write(move |conn| {
+pub fn set_enabled(
+    releases: &Releases,
+    install: String,
+    enabled: bool,
+) -> Result<Reply, CoreError> {
+    let rows = releases.services.store.write(move |conn| {
         Ok(conn.execute(
             "UPDATE installed_endpoints SET enabled = ?2 WHERE install_id = ?1",
             params![install, enabled],
@@ -751,10 +800,10 @@ pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply,
     if rows == 0 {
         return Err(CoreError::invalid(
             "endpoint",
-            "no installed endpoint with that id",
+            tr("core-repos-no-such-endpoint", &[]),
         ));
     }
-    changed(core)
+    changed(releases)
 }
 
 // Endpoints added by hand ---------------------------------------------------------------
@@ -780,7 +829,7 @@ fn id_of(name: &str) -> String {
 }
 
 /// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
-/// like (`releases::native::SECRET_PARAMS`) becomes a placeholder and an `auth` field, and its
+/// like (`redact::SECRET_PARAMS`) becomes a placeholder and an `auth` field, and its
 /// value a credential, and so does the password of a `user:password@` login. Any other
 /// placeholder the person wrote (`{user}`) becomes a field too, to be filled from `given`.
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
@@ -832,7 +881,7 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let Some(label) = crate::releases::native::secret_param(k) else {
+                let Some(label) = crate::redact::secret_param(k) else {
                     return pair.to_string();
                 };
                 if v.is_empty() || v.starts_with('{') {
@@ -881,7 +930,10 @@ fn custom_definition(
     let name = name.trim().to_string();
     let id = id_of(&name);
     if id.is_empty() {
-        return Err(CoreError::invalid("endpoint name", "give it a name"));
+        return Err(CoreError::invalid(
+            "endpoint name",
+            tr("core-repos-give-name", &[]),
+        ));
     }
     let url = url.trim();
     let url = match url.split_once("://") {
@@ -899,7 +951,7 @@ fn custom_definition(
     } else {
         return Err(CoreError::invalid(
             "endpoint url",
-            "put {query} in the address where the search goes",
+            tr("core-repos-put-query", &[]),
         ));
     };
     let def = Definition {
@@ -928,18 +980,18 @@ fn custom_definition(
 /// site no repo carries (a site behind a search proxy, a private tracker's feed). A secret in the
 /// address goes to the secret store like a repo endpoint's.
 pub fn add_custom(
-    core: &Core,
+    releases: &Releases,
     name: String,
     url: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
     let (def, lifted) = custom_definition(&name, &url, None)?;
     let (id, name) = (def.id.clone(), def.name.clone());
-    let installed = core.store.read(read_installed)?;
+    let installed = releases.services.store.read(read_installed)?;
     if installed.iter().any(|i| i.def.id == id) {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("an endpoint called {id} is already installed"),
+            tr("core-repos-name-taken", &[("id", id.as_str().into())]),
         ));
     }
     let mut given = credentials;
@@ -952,13 +1004,13 @@ pub fn add_custom(
     // says what it needs and is left out of searches.
     let values = credentials_for(&def, &given, false)?;
     let install_id = new_install_id();
-    store_credentials(core, &install_id, &values)?;
+    store_credentials(&releases.services, &install_id, &values)?;
     let (row_id, row_def, json) = (
         install_id.clone(),
         def.id.clone(),
         serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
     );
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute(
             "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
              VALUES (?1, ?2, ?3, 1, ?4, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
@@ -966,29 +1018,29 @@ pub fn add_custom(
         )?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Added a download source.",
+        crate::words!("core-repos-source-added"),
         format!("Added the endpoint {name}"),
         EventBody::Notice,
     );
-    changed(core)
+    changed(releases)
 }
 
 /// Changes a source added by hand: its name and its address. A secret typed into the new
 /// address replaces the stored one; one left out, or left as its `{key}`, is kept.
 pub fn edit_custom(
-    core: &Core,
+    releases: &Releases,
     install: String,
     name: String,
     url: String,
 ) -> Result<Reply, CoreError> {
-    let row = find_install(core, &install)?;
+    let row = find_install(&releases.services, &install)?;
     if row.repo_url != CUSTOM {
         return Err(CoreError::invalid(
             "endpoint",
-            "only a source added by hand can be edited",
+            tr("core-repos-only-by-hand", &[]),
         ));
     }
     let (mut def, lifted) = custom_definition(&name, &url, Some(&row.def.kind))?;
@@ -1000,9 +1052,12 @@ pub fn edit_custom(
         if !kept && !lifted_again && !url.contains(&format!("{{{}}}", old.key)) {
             return Err(CoreError::invalid(
                 "endpoint url",
-                format!(
-                    "keep {{{}}} in the address and change its value with Change its {}, or remove the site and add it again without it",
-                    old.key, old.label
+                tr(
+                    "core-repos-keep-key",
+                    &[
+                        ("key", old.key.as_str().into()),
+                        ("label", old.label.as_str().into()),
+                    ],
                 ),
             ));
         }
@@ -1013,14 +1068,14 @@ pub fn edit_custom(
             *field = old.clone();
         }
     }
-    let installed = core.store.read(read_installed)?;
+    let installed = releases.services.store.read(read_installed)?;
     if installed
         .iter()
         .any(|i| i.install_id != install && i.def.id == def.id)
     {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("an endpoint called {} is already installed", def.id),
+            tr("core-repos-name-taken", &[("id", def.id.as_str().into())]),
         ));
     }
     let given: Vec<EndpointCredential> = lifted
@@ -1028,11 +1083,14 @@ pub fn edit_custom(
         .map(|(key, value)| EndpointCredential { key, value })
         .collect();
     let values = credentials_for(&def, &given, false)?;
-    store_credentials(core, &install, &values)?;
+    store_credentials(&releases.services, &install, &values)?;
     // A secret the new address no longer has is not left behind in the store.
     for old in &row.def.auth {
         if !def.auth.iter().any(|a| a.key == old.key) {
-            core.secrets().delete(&secret_key(&install, &old.key))?;
+            releases
+                .services
+                .secrets()
+                .delete(&secret_key(&install, &old.key))?;
         }
     }
     let (row_id, row_def, json) = (
@@ -1040,31 +1098,31 @@ pub fn edit_custom(
         def.id.clone(),
         serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
     );
-    core.store.write(move |conn| {
+    releases.services.store.write(move |conn| {
         conn.execute(
             "UPDATE installed_endpoints SET endpoint_id = ?2, definition = ?3 WHERE install_id = ?1",
             params![row_id, row_def, json],
         )?;
         Ok(())
     })?;
-    core.bus.say(
+    releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Changed a download source.",
+        crate::words!("core-repos-source-changed"),
         format!("Changed the endpoint {}", def.name),
         EventBody::Notice,
     );
-    changed(core)
+    changed(releases)
 }
 
 /// Installed endpoints saved before #602 can carry their kind under a site's name. This gives
-/// each its shape name in place and changes nothing else about it, and the phone's saved
-/// sources the same. A row already under a shape name is left alone, so after the first open
-/// this does nothing. Returns how many were renamed.
-pub fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
+/// each its shape name in place and changes nothing else about it; `Core::open` does the
+/// phone's saved sources the same beside it. A row already under a shape name is left alone,
+/// so after the first open this does nothing. Returns how many were renamed.
+pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
     // Read first: after the first open nothing is left to rename, and a write would take the
     // store's lock on every open, a CLI's beside a running desktop's.
-    let old = core.store.read(|conn| {
+    let old = services.store.read(|conn| {
         let mut n = 0i64;
         for (old, _) in crate::releases::kinds::RENAMED {
             n += conn.query_row(
@@ -1076,24 +1134,14 @@ pub fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
         }
         Ok(n)
     })?;
-    let mut renamed = if old == 0 {
-        0
-    } else {
-        rewrite_old_kinds(core)?
-    };
-    renamed += crate::phone::rename_old_kinds(core)?;
-    if renamed > 0 {
-        core.bus.info(
-            Stage::Downloads,
-            format!("Gave {renamed} download sources the new name of their kind"),
-            EventBody::Notice,
-        );
+    if old == 0 {
+        return Ok(0);
     }
-    Ok(renamed)
+    rewrite_old_kinds(services)
 }
 
-fn rewrite_old_kinds(core: &Core) -> Result<usize, CoreError> {
-    core.store.write(|conn| {
+fn rewrite_old_kinds(services: &Services) -> Result<usize, CoreError> {
+    services.store.write(|conn| {
         let mut n = 0;
         for (old, now) in crate::releases::kinds::RENAMED {
             n += conn.execute(
@@ -1110,8 +1158,8 @@ fn rewrite_old_kinds(core: &Core) -> Result<usize, CoreError> {
 /// lifts it into the secret store as adding one does now, and the address keeps the
 /// placeholder. An address with nothing left to lift is untouched, so after the first start
 /// this does nothing.
-pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
-    let installed = core.store.read(read_installed)?;
+pub fn lift_stored_secrets(releases: &Releases) -> Result<(), CoreError> {
+    let installed = releases.services.store.read(read_installed)?;
     let mut any = false;
     let mut first_error = None;
     for row in installed.into_iter().filter(|r| r.repo_url == CUSTOM) {
@@ -1135,33 +1183,35 @@ pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
             .collect();
         // The secret is stored before the address loses it, so nothing is lost on a crash.
         // One source that fails does not hold back the rest.
-        match lift_one(core, &row, &def, &lifted) {
+        match lift_one(&releases.services, &row, &def, &lifted) {
             Ok(()) => any = true,
             Err(e) => first_error = first_error.or(Some(e)),
         }
     }
     if any {
-        core.bus.info(
+        releases.services.bus.info(
             Stage::Downloads,
             "Moved a secret in a source added by hand to the secret store",
             EventBody::Notice,
         );
-        crate::downloads::repo_endpoints_changed(core);
+        if let Some(searcher) = releases.searcher.get() {
+            searcher.endpoints_changed();
+        }
     }
     first_error.map_or(Ok(()), Err)
 }
 
 /// Stores one source's lifted secrets, then rewrites its address.
 fn lift_one(
-    core: &Core,
+    services: &Services,
     row: &InstallRow,
     def: &Definition,
     lifted: &[(String, String)],
 ) -> Result<(), CoreError> {
-    store_credentials(core, &row.install_id, lifted)?;
+    store_credentials(services, &row.install_id, lifted)?;
     let row_id = row.install_id.clone();
     let json = serde_json::to_string(def).map_err(|e| CoreError::internal(e.to_string()))?;
-    core.store.write(move |conn| {
+    services.store.write(move |conn| {
         conn.execute(
             "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
             params![row_id, json],
@@ -1173,17 +1223,18 @@ fn lift_one(
 // The desktop's anirss ------------------------------------------------------------------
 
 /// The kinds anirss itself can search, under their shape names; every other kind is
-/// AniBeam's own. `spec_of` sends each under the name anirss knows it by
+/// Anibeam's own. `spec_of` sends each under the name anirss knows it by
 /// (`kinds::anirss_kind`).
 const ANIRSS_KINDS: [&str; 3] = [crate::releases::kinds::FILTERED_RSS, "rss", "torznab"];
 
-/// What AniBeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
+/// What Anibeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
 /// lists its endpoints with their secrets masked, so a listed address can never be compared
-/// with the one AniBeam holds; the hash says whether anything changed since.
+/// with the one Anibeam holds; the hash says whether anything changed since.
 type Synced = std::collections::BTreeMap<String, String>;
 
-fn read_synced(core: &Core) -> Synced {
-    core.store
+fn read_synced(services: &Services) -> Synced {
+    services
+        .store
         .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
         .ok()
         .flatten()
@@ -1191,18 +1242,18 @@ fn read_synced(core: &Core) -> Synced {
 }
 
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
-/// of that name from its config, cannot search the kind, does not list
-/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES), whatever its version says,
-/// or is one the desktop never writes into (a server the person runs, a sandbox run).
+/// of that name from its config, cannot search the kind, does not list `endpoint_writes`,
+/// whatever its version says, or is one the desktop never writes into (a server the person
+/// runs, a sandbox run).
 /// None on the phone, and before the desktop has read its anirss.
 ///
-/// Only the anirss engine has these limits. AniBeam's own engine searches every installed
+/// Only the anirss engine has these limits. Anibeam's own engine searches every installed
 /// endpoint itself (`Native::for_core`), whatever anirss's version, kinds or hand-written
 /// endpoints, so there is nothing to note then. The Downloads page still lists its endpoints
 /// from anirss; that is its own item in #297.
 fn note_for(
     engine: DownloadsEngine,
-    view: Option<&crate::downloads::AnirssView>,
+    view: Option<&AnirssView>,
     def: &Definition,
     synced: &Synced,
 ) -> Option<String> {
@@ -1211,37 +1262,31 @@ fn note_for(
     }
     let view = view?;
     if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
-        return Some(format!(
-            "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
-            def.kind
+        return Some(tr(
+            "core-repos-note-kind",
+            &[("kind", def.kind.as_str().into())],
         ));
     }
     let listed = view.endpoints.contains(&def.id);
-    let by_hand = || {
-        format!(
-            "anirss has its own {}, written by hand; the desktop searches that one",
-            def.id
-        )
-    };
+    let by_hand = || tr("core-repos-note-by-hand", &[("id", def.id.as_str().into())]);
     match view.sync {
         // A server the person runs keeps its own config, and searches what it lists: once
         // they have added the endpoint there, there is nothing to note (#499).
-        EndpointSync::Theirs => (!listed).then(|| {
-            format!(
-                "This anirss is one you run, and the desktop never changes its config: add {} to that anirss's own config for the desktop to search it",
-                def.id
-            )
-        }),
+        EndpointSync::Theirs => {
+            (!listed).then(|| tr("core-repos-note-theirs", &[("id", def.id.as_str().into())]))
+        }
         // A sandbox run reads the owner's anirss as it is, notes and all, and adds nothing.
         EndpointSync::Sandbox if listed => (!synced.contains_key(&def.id)).then(by_hand),
-        EndpointSync::Sandbox => Some(format!(
-            "This run never writes into anirss's config, so the desktop does not search {} here",
-            def.id
+        EndpointSync::Sandbox => Some(tr(
+            "core-repos-note-sandbox",
+            &[("id", def.id.as_str().into())],
         )),
-        EndpointSync::Syncs if !view.endpoint_writes => Some(format!(
-            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
-            view.version,
-            crate::downloads::anirss::MIN_VERSION
+        EndpointSync::Syncs if !view.endpoint_writes => Some(tr(
+            "core-repos-note-old",
+            &[
+                ("version", view.version.to_string().into()),
+                ("min", view.min_version.to_string().into()),
+            ],
         )),
         EndpointSync::Syncs => (listed && !synced.contains_key(&def.id)).then(by_hand),
     }
@@ -1265,30 +1310,38 @@ fn hash_of(spec: &serde_json::Value) -> String {
         .collect()
 }
 
+/// The endpoint API of the anirss the desktop runs, which [`sync_anirss`] writes into. The
+/// downloads' anirss client implements it (#854), so the releases name no client above them.
+pub(crate) trait AnirssEndpoints: Send + Sync {
+    /// Adds the endpoint `spec` describes, or replaces the one of its name.
+    fn put_endpoint(&self, spec: serde_json::Value) -> BoxFuture<'_, Result<(), CoreError>>;
+    /// Removes the endpoint of this name.
+    fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>>;
+}
+
 /// Puts the installed endpoints into the desktop's anirss, which searches only what its own
-/// config lists: each enabled one with its credentials, under its id. Only names AniBeam
+/// config lists: each enabled one with its credentials, under its id. Only names Anibeam
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
-/// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
+/// a hand-written one does today; the secret store stays the record Anibeam reads. A kind
 /// anirss cannot search (`json-feed`) stays out, and an anirss whose `/health` does not list
-/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES) is left alone, whatever
-/// its version says.
+/// `endpoint_writes` (`writes` false) is left alone, whatever its version says.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
-    core: &Core,
-    client: &crate::downloads::anirss::AnirssClient,
-    health: &crate::downloads::anirss::Health,
+    services: &Services,
+    client: &dyn AnirssEndpoints,
+    writes: bool,
     have: &[SearchEndpoint],
 ) -> bool {
-    if !health.has(crate::downloads::anirss::ENDPOINT_WRITES) {
+    if !writes {
         return false;
     }
-    let want: Vec<Runnable> = runnable(core)
+    let want: Vec<Runnable> = runnable(services)
         .into_iter()
         .filter(|r| ANIRSS_KINDS.contains(&r.endpoint.kind.as_str()))
         .collect();
-    let mut synced = read_synced(core);
+    let mut synced = read_synced(services);
     let before = synced.clone();
     let mut changed = false;
     for r in &want {
@@ -1324,7 +1377,7 @@ pub(crate) async fn sync_anirss(
         synced.remove(name);
     }
     if synced != before {
-        let _ = core.store.write(move |c| {
+        let _ = services.store.write(move |c| {
             crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
         });
     }
@@ -1469,8 +1522,8 @@ fn replace_whole(url: &str, value: &str, with: &str) -> String {
 
 /// The subscription `spec` from the installed endpoint it names, as a subscription keeps it
 /// (`Runnable::kept`). A spec from anywhere else stays as it is.
-pub fn kept_spec(core: &Core, spec: &SubscriptionSpec, query: &str) -> SubscriptionSpec {
-    match fillers(core)
+pub fn kept_spec(services: &Services, spec: &SubscriptionSpec, query: &str) -> SubscriptionSpec {
+    match fillers(services)
         .iter()
         .find(|r| r.endpoint.name == spec.endpoint_name)
     {
@@ -1491,20 +1544,20 @@ pub fn kept_spec(core: &Core, spec: &SubscriptionSpec, query: &str) -> Subscript
 /// have its credentials. Otherwise it runs again on the next launch, which rewrites only
 /// what this one could not. How many rules were rewritten.
 pub fn rekeep_old_rules(
-    core: &Core,
+    services: &Services,
     store: &crate::releases::rules::RuleStore,
     lifted: bool,
 ) -> Result<usize, CoreError> {
     use crate::store::settings::{self, PHONE_RULES_REKEPT};
-    if core
+    if services
         .store
         .read(|c| settings::get::<bool>(c, PHONE_RULES_REKEPT))?
         .unwrap_or(false)
     {
         return Ok(0);
     }
-    let installed = core.store.read(read_installed)?;
-    let fillers = fillers(core);
+    let installed = services.store.read(read_installed)?;
+    let fillers = fillers(services);
     let mut ids: Vec<&str> = installed
         .iter()
         .filter(|r| crate::releases::endpoints::VALID_KINDS.contains(&r.def.kind.as_str()))
@@ -1529,7 +1582,8 @@ pub fn rekeep_old_rules(
         (n, n > 0)
     })?;
     if complete {
-        core.store
+        services
+            .store
             .write(|c| settings::set(c, PHONE_RULES_REKEPT, &true))?;
     }
     Ok(rewritten)
@@ -1600,21 +1654,21 @@ pub fn filled_feed(fillers: &[Runnable], endpoint: &str, url: &str) -> Option<St
 
 /// The enabled installed endpoints, in order, with every credential they need. One whose
 /// credentials are missing is left out.
-pub fn runnable(core: &Core) -> Vec<Runnable> {
-    installed_runnable(core, false)
+pub fn runnable(services: &Services) -> Vec<Runnable> {
+    installed_runnable(services, false)
 }
 
 /// Every installed endpoint with its credentials, switched off or not: what fills a kept
 /// subscription feed, which keeps being read while its endpoint is off for search.
-pub fn fillers(core: &Core) -> Vec<Runnable> {
-    installed_runnable(core, true)
+pub fn fillers(services: &Services) -> Vec<Runnable> {
+    installed_runnable(services, true)
 }
 
-fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
-    let Ok(rows) = core.store.read(read_installed) else {
+fn installed_runnable(services: &Services, with_off: bool) -> Vec<Runnable> {
+    let Ok(rows) = services.store.read(read_installed) else {
         return Vec::new();
     };
-    let secrets = core.secrets();
+    let secrets = services.secrets();
     let mut out: Vec<Runnable> = Vec::new();
     for row in rows.into_iter().filter(|r| with_off || r.enabled) {
         if !crate::releases::endpoints::VALID_KINDS.contains(&row.def.kind.as_str()) {
@@ -1662,8 +1716,9 @@ fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
 
 /// Whether the installed endpoint of this name narrows a subscription in its rule, as its
 /// definition says (`Quirks::narrows_in_rule`). Reads the definitions alone, no credentials.
-pub fn installed_narrows(core: &Core, name: &str) -> bool {
-    core.store
+pub fn installed_narrows(services: &Services, name: &str) -> bool {
+    services
+        .store
         .read(read_installed)
         .unwrap_or_default()
         .iter()
@@ -1678,22 +1733,22 @@ fn rate_gap(per_minute: u32) -> Duration {
 
 /// Wraps the core's client so every host waits the floor between requests, and a host with a
 /// slower rate from its definition waits that.
-pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Http> {
-    set_fronts(core);
+pub fn paced_http(services: &Services, runnable: &[Runnable]) -> Arc<dyn crate::net::Http> {
+    set_fronts(services);
     let gaps = runnable
         .iter()
         .filter_map(|r| r.per_minute.map(|n| (r.host.clone(), rate_gap(n))))
         .collect();
-    Arc::new(Paced::new(core.http.clone(), gaps))
+    Arc::new(Paced::new(services.http.clone(), gaps))
 }
 
 /// Hands the client the hosts the installed definitions front, switched off or not, since
 /// the front is the site's: each host's requests then carry its front's name (`net::front`).
 /// Read again before every endpoint fetch, so a definition installed, updated or removed
 /// changes what is fronted from the next request on.
-fn set_fronts(core: &Core) {
+fn set_fronts(services: &Services) {
     // A store that cannot be read keeps the table it had, rather than unfronting every host.
-    let Ok(rows) = core.store.read(read_installed) else {
+    let Ok(rows) = services.store.read(read_installed) else {
         return;
     };
     let fronts = rows
@@ -1701,17 +1756,17 @@ fn set_fronts(core: &Core) {
         .filter_map(|r| Some((r.def.host(), r.def.front.clone()?.to_ascii_lowercase())))
         .filter(|(host, _)| !host.is_empty() && !host.contains('{'))
         .collect();
-    core.http.set_fronts(fronts);
+    services.http.set_fronts(fronts);
 }
 
 /// The core's client for an endpoint fetch outside the search (a feed read again after
 /// anirss's search, a subscription's feed, a `.torrent`): paced like the search, to every
 /// installed definition's rate, switched off or not, since the rate is the site's. Reads no
 /// credentials.
-pub fn endpoint_http(core: &Core) -> Paced {
-    set_fronts(core);
-    let secrets = core.secrets();
-    let gaps = core
+pub fn endpoint_http(services: &Services) -> Paced {
+    set_fronts(services);
+    let secrets = services.secrets();
+    let gaps = services
         .store
         .read(read_installed)
         .unwrap_or_default()
@@ -1731,15 +1786,14 @@ pub fn endpoint_http(core: &Core) -> Paced {
             Some((host, rate_gap(rate.per_minute)))
         })
         .collect();
-    Paced::new(core.http.clone(), gaps)
+    Paced::new(services.http.clone(), gaps)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::downloads::AnirssView;
-    use crate::downloads::anirss::{AnirssClient, Health};
+    use crate::downloads::anirss::{AnirssClient, ENDPOINT_WRITES, Health, MIN_VERSION};
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
@@ -1776,6 +1830,7 @@ mod tests {
             endpoint_writes,
             endpoints: endpoints.iter().map(|e| e.to_string()).collect(),
             sync: EndpointSync::Syncs,
+            min_version: MIN_VERSION,
         }
     }
 
@@ -1880,7 +1935,7 @@ mod tests {
     fn install_raw(core: &Core, def: serde_json::Value, enabled: bool) {
         let id = def["id"].as_str().unwrap().to_string();
         let json = def.to_string();
-        core.store
+        core.services.store
             .write(move |conn| {
                 conn.execute(
                     "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
@@ -1923,13 +1978,14 @@ mod tests {
                 "kind": "rss", "url": "https://feed.example/?q={query}"}),
             true,
         );
-        let _ = endpoint_http(&core);
+        let _ = endpoint_http(&core.services);
         assert_eq!(
             http.fronts(),
             [("tracker.example".to_string(), "edge.example".to_string())]
         );
         // The search's client reads them again too, so a removed definition's front goes.
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute(
                     "DELETE FROM installed_endpoints WHERE endpoint_id = 'tracker'",
@@ -1938,7 +1994,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let _ = paced_http(&core, &runnable(&core));
+        let _ = paced_http(&core.services, &runnable(&core.services));
         assert!(http.fronts().is_empty());
     }
 
@@ -1953,7 +2009,7 @@ mod tests {
         install_raw(&core, def("one", &["GroupA", "GroupB"]), true);
         install_raw(&core, def("two", &["groupb", "GroupC"]), true);
         install_raw(&core, def("off", &["GroupD"]), false);
-        let native = crate::releases::native::Native::for_core(&core, Vec::new(), None);
+        let native = crate::releases::native::Native::for_core(&core.services, Vec::new(), None);
         assert_eq!(
             native.bestfit.preferred_groups,
             ["GroupA", "GroupB", "GroupC"],
@@ -1963,7 +2019,7 @@ mod tests {
         let empty = tempfile::tempdir().unwrap();
         let (bare, _) = fake_core(empty.path());
         assert!(
-            crate::releases::native::Native::for_core(&bare, Vec::new(), None)
+            crate::releases::native::Native::for_core(&bare.services, Vec::new(), None)
                 .bestfit
                 .preferred_groups
                 .is_empty()
@@ -1971,7 +2027,7 @@ mod tests {
     }
 
     fn custom(core: &Core, name: &str, url: &str) {
-        add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
+        add_custom(&core.releases, name.into(), url.into(), Vec::new()).unwrap();
     }
 
     #[test]
@@ -1986,7 +2042,8 @@ mod tests {
         .unwrap();
         custom(&core, "mirror", "https://tracker.example/rss?q={query}");
         // As the rename left a bare address added by hand before #602.
-        core.store
+        core.services
+            .store
             .write(|conn| {
                 let def: String =
                     conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
@@ -2003,19 +2060,20 @@ mod tests {
             })
             .unwrap();
         let install = core
+            .services
             .store
             .read(read_installed)
             .unwrap()
             .remove(0)
             .install_id;
         edit_custom(
-            &core,
+            &core.releases,
             install.clone(),
             "renamed".into(),
             "https://tracker.example/".into(),
         )
         .unwrap();
-        let row = core.store.read(read_installed).unwrap().remove(0);
+        let row = core.services.store.read(read_installed).unwrap().remove(0);
         assert_eq!(
             (row.def.name.as_str(), row.def.kind.as_str()),
             ("renamed", crate::releases::kinds::FILTERED_RSS)
@@ -2023,7 +2081,7 @@ mod tests {
         // A new source by hand still needs its {query}.
         assert!(
             add_custom(
-                &core,
+                &core.releases,
                 "other".into(),
                 "https://other.example/".into(),
                 vec![]
@@ -2045,7 +2103,8 @@ mod tests {
         custom(&core, "old", "https://a.example/rss?q={query}");
         // As a source added before #385 was stored: the key in the address itself.
         let old_url = "https://a.example/rss?q={query}&rsskey=s3cret";
-        core.store
+        core.services
+            .store
             .write(move |conn| {
                 let def: String =
                     conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
@@ -2061,8 +2120,8 @@ mod tests {
             })
             .unwrap();
 
-        lift_stored_secrets(&core).unwrap();
-        let row = core.store.read(read_installed).unwrap().remove(0);
+        lift_stored_secrets(&core.releases).unwrap();
+        let row = core.services.store.read(read_installed).unwrap().remove(0);
         assert_eq!(
             row.def.url,
             "https://a.example/rss?q={query}&rsskey={rsskey}"
@@ -2070,6 +2129,7 @@ mod tests {
         assert_eq!(row.def.auth.len(), 1);
         assert_eq!(row.def.auth[0].key, "rsskey");
         let stored = core
+            .services
             .secrets()
             .get(&secret_key(&row.install_id, "rsskey"), None)
             .unwrap()
@@ -2077,9 +2137,14 @@ mod tests {
         assert_eq!(stored.as_deref(), Some("s3cret"));
 
         // Once lifted, a second start changes nothing.
-        lift_stored_secrets(&core).unwrap();
+        lift_stored_secrets(&core.releases).unwrap();
         assert_eq!(
-            core.store.read(read_installed).unwrap().remove(0).def,
+            core.services
+                .store
+                .read(read_installed)
+                .unwrap()
+                .remove(0)
+                .def,
             row.def
         );
     }
@@ -2108,23 +2173,23 @@ mod tests {
         let feed = "https://a.example/rss?q=Show+1080p&token=t%201secret";
 
         // What a subscription keeps on disk: the placeholder, never the token (#149).
-        let kept = kept_spec(&core, &spec(feed), "Show 1080p").feed_url;
+        let kept = kept_spec(&core.services, &spec(feed), "Show 1080p").feed_url;
         assert_eq!(kept, "https://a.example/rss?q=Show+1080p&token={token}");
         // Read again with the credential from the secret store.
-        let fillers = fillers(&core);
+        let fillers = fillers(&core.services);
         assert_eq!(filled_feed(&fillers, "mine", &kept).as_deref(), Some(feed));
 
         // A feed rebuilt with `urlencode` writes the space as `+`: the token still comes out.
         let rebuilt = "https://a.example/show/feed/?token=t+1secret";
         assert_eq!(
-            kept_spec(&core, &spec(rebuilt), "Show").feed_url,
+            kept_spec(&core.services, &spec(rebuilt), "Show").feed_url,
             "https://a.example/show/feed/?token={token}"
         );
         // A shape the swap does not know keeps the plain search feed instead, from the
         // template, never the token.
         let odd = "https://a.example/rss/t%201secret-feed?q=Show";
         assert_eq!(
-            kept_spec(&core, &spec(odd), "Show").feed_url,
+            kept_spec(&core.services, &spec(odd), "Show").feed_url,
             "https://a.example/rss?q=Show&token={token}"
         );
 
@@ -2187,7 +2252,7 @@ mod tests {
             ])
             .unwrap();
 
-        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core.services, &store, true).unwrap(), 1);
         let rules = store.load();
         assert_eq!(rules.len(), 3);
         let show = &rules[0];
@@ -2199,7 +2264,7 @@ mod tests {
         assert_eq!(show.taken, old_rule("Show", filled).taken);
         // Filled from the secret store, it is the feed it was.
         assert_eq!(
-            filled_feed(&fillers(&core), &show.endpoint, &show.feed_url).as_deref(),
+            filled_feed(&fillers(&core.services), &show.endpoint, &show.feed_url).as_deref(),
             Some(filled)
         );
         // A pasted feed and one whose token was changed since match no endpoint: as they were.
@@ -2210,7 +2275,7 @@ mod tests {
         let mut again = rules.clone();
         again.push(old_rule("Later", filled));
         store.save(&again).unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 0);
+        assert_eq!(rekeep_old_rules(&core.services, &store, true).unwrap(), 0);
         assert_eq!(store.load(), again);
         core.shutdown();
     }
@@ -2224,11 +2289,11 @@ mod tests {
         store.save(&[old_rule("Show", filled)]).unwrap();
         // The lift failed this launch: what could be rewritten is, and the next launch
         // looks again.
-        assert_eq!(rekeep_old_rules(&core, &store, false).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core.services, &store, false).unwrap(), 1);
         store
             .save(&[store.load().remove(0), old_rule("Later", filled)])
             .unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core.services, &store, true).unwrap(), 1);
         assert!(store.load().iter().all(|r| r.endpoint == "mine"));
         core.shutdown();
     }
@@ -2255,7 +2320,7 @@ mod tests {
                 "https://own.example/2/api?t=search&q=Show&apikey=sharedkey1",
             )])
             .unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core.services, &store, true).unwrap(), 1);
         let rule = store.load().remove(0);
         assert_eq!(rule.endpoint, "second");
         assert_eq!(
@@ -2277,11 +2342,11 @@ mod tests {
         // The new file is written beside the old one first; make that impossible.
         std::fs::create_dir(path.with_extension("json.tmp")).unwrap();
 
-        assert!(rekeep_old_rules(&core, &store, true).is_err());
+        assert!(rekeep_old_rules(&core.services, &store, true).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before);
 
         std::fs::remove_dir(path.with_extension("json.tmp")).unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core.services, &store, true).unwrap(), 1);
         assert_eq!(store.load()[0].endpoint, "mine");
         core.shutdown();
     }
@@ -2305,7 +2370,7 @@ mod tests {
         };
         // `f=1` is not the secret: the kept feed is the template's, which only names `uid`.
         assert_eq!(
-            kept_spec(&core, &spec, "Show").feed_url,
+            kept_spec(&core.services, &spec, "Show").feed_url,
             "https://a.example/rss?q=Show&f=1&uid={uid}"
         );
         core.shutdown();
@@ -2326,16 +2391,17 @@ mod tests {
             "mine",
             "https://a.example/rss?q={query}&token=longsecret",
         );
-        core.store
+        core.services
+            .store
             .write(|c| {
                 c.execute("UPDATE installed_endpoints SET enabled = 0", [])?;
                 Ok(())
             })
             .unwrap();
-        assert!(runnable(&core).is_empty());
+        assert!(runnable(&core.services).is_empty());
         assert_eq!(
             filled_feed(
-                &fillers(&core),
+                &fillers(&core.services),
                 "mine",
                 "https://a.example/rss?q=S&token={token}"
             )
@@ -2389,7 +2455,7 @@ mod tests {
         );
         let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
 
-        // anirss has its own search-proxy endpoint from config.toml; AniBeam writes only "mine".
+        // anirss has its own search-proxy endpoint from config.toml; Anibeam writes only "mine".
         let theirs = |name: &str, url: &str| SearchEndpoint {
             name: name.into(),
             kind: "rss".into(),
@@ -2403,20 +2469,23 @@ mod tests {
         // version says: nothing is sent.
         let have = vec![theirs("proxied", "http://elsewhere/")];
         let without = health("0.6.0", &["qbt_env_session"]);
-        assert!(
-            !core
-                .handle
-                .block_on(sync_anirss(&core, &anirss, &without, &have))
-        );
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            without.has(ENDPOINT_WRITES),
+            &have
+        )));
         assert!(http.requests().is_empty());
 
         // One that lists it takes them, even with a version no parser reads.
         let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
         http.push_json(201, serde_json::json!({}));
-        assert!(
-            core.handle
-                .block_on(sync_anirss(&core, &anirss, &writes, &have))
-        );
+        assert!(core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
         let sent = http.requests();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].method, crate::net::Method::Post);
@@ -2431,22 +2500,25 @@ mod tests {
             theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token=***"),
         ];
-        assert!(
-            !core
-                .handle
-                .block_on(sync_anirss(&core, &anirss, &writes, &have))
-        );
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
         assert_eq!(http.requests().len(), 1);
 
         // Switched off: it comes out of anirss again, and the hand-written one stays.
         let mine = core
+            .services
             .store
             .read(read_installed)
             .unwrap()
             .into_iter()
             .find(|r| r.def.id == "mine")
             .unwrap();
-        core.store
+        core.services
+            .store
             .write(move |c| {
                 c.execute(
                     "UPDATE installed_endpoints SET enabled = 0 WHERE install_id = ?1",
@@ -2460,21 +2532,24 @@ mod tests {
             theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token={token}"),
         ];
-        assert!(
-            core.handle
-                .block_on(sync_anirss(&core, &anirss, &writes, &have))
-        );
+        assert!(core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
         let sent = http.requests();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1].method, crate::net::Method::Delete);
         assert!(sent[1].url.ends_with("/endpoints/mine"));
         // Nothing left to do: nothing is sent.
         let have = vec![theirs("proxied", "http://elsewhere/")];
-        assert!(
-            !core
-                .handle
-                .block_on(sync_anirss(&core, &anirss, &writes, &have))
-        );
+        assert!(!core.services.handle.block_on(sync_anirss(
+            &core.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
         assert_eq!(http.requests().len(), 2);
         core.shutdown();
     }

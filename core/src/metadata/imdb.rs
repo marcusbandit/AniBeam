@@ -24,7 +24,7 @@ use std::time::Duration;
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::snapshot::{ImdbPick, imdb_picks};
@@ -68,18 +68,19 @@ enum Step {
 
 /// Starts the RefreshImdb job. The launch is its only caller, and it runs
 /// one at a time besides.
-pub fn start_refresh(core: &Arc<Core>) -> u64 {
-    let owner = core.clone();
-    core.jobs
+pub fn start_refresh(services: &Arc<Services>) -> u64 {
+    let owner = services.clone();
+    services
+        .jobs
         .clone()
         .start(JobKind::RefreshImdb, move |ctx| async move {
             run(&owner, &ctx).await
         })
 }
 
-async fn run(core: &Core, ctx: &Arc<JobCtx>) -> Result<Finished, CoreError> {
+async fn run(services: &Services, ctx: &Arc<JobCtx>) -> Result<Finished, CoreError> {
     let now = time::now_secs();
-    let (links_at, ratings_at, since) = core
+    let (links_at, ratings_at, since) = services
         .store
         .write_async(|c| {
             Ok((
@@ -92,15 +93,23 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>) -> Result<Finished, CoreError> {
 
     let links = if due(links_at, now, LINKS_TTL) {
         ctx.checkpoint()?;
-        ctx.progress(0, None, "Wikidata's IMDb links");
-        refresh_links(core, now).await?
+        ctx.progress(
+            0,
+            None,
+            &crate::i18n::tr("core-metadata-progress-imdb-links", &[]),
+        );
+        refresh_links(services, now).await?
     } else {
         Step::Fresh
     };
     let ratings = if due(ratings_at, now, RATINGS_TTL) {
         ctx.checkpoint()?;
-        ctx.progress(0, None, "IMDb ratings");
-        refresh_ratings(core, since, now).await?
+        ctx.progress(
+            0,
+            None,
+            &crate::i18n::tr("core-metadata-progress-imdb-ratings", &[]),
+        );
+        refresh_ratings(services, since, now).await?
     } else {
         Step::Fresh
     };
@@ -116,9 +125,9 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>) -> Result<Finished, CoreError> {
     changed.sort_unstable();
     changed.dedup();
     if !changed.is_empty() {
-        let dir = core.paths.images_dir();
+        let dir = services.paths.images_dir();
         let ids = changed.clone();
-        let cards = core
+        let cards = services
             .store
             .write_async(move |c| cards::cards_for(c, &dir, &ids))
             .await?;
@@ -175,8 +184,8 @@ fn finished(links: &Step, ratings: &Step, changed: usize) -> Finished {
 }
 
 /// Wikidata's links, replaced whole.
-async fn refresh_links(core: &Core, now: i64) -> Result<Step, CoreError> {
-    let links = match wikidata::imdb_links(core.http.as_ref()).await {
+async fn refresh_links(services: &Services, now: i64) -> Result<Step, CoreError> {
+    let links = match wikidata::imdb_links(services.http.as_ref()).await {
         Ok(links) => links,
         Err(fault) => return Ok(Step::Failed(fault)),
     };
@@ -186,7 +195,8 @@ async fn refresh_links(core: &Core, now: i64) -> Result<Step, CoreError> {
             links.len()
         ))));
     }
-    core.store
+    services
+        .store
         .tx_async(move |tx| replace_links(tx, &links, now))
         .await
 }
@@ -217,18 +227,24 @@ fn replace_links(tx: &Transaction, links: &[ImdbLink], now: i64) -> Result<Step,
 }
 
 /// IMDb's dump, asked for only if it changed since the one stored.
-async fn refresh_ratings(core: &Core, since: Option<String>, now: i64) -> Result<Step, CoreError> {
-    match imdb::fetch(core.http.as_ref(), since.as_deref()).await {
+async fn refresh_ratings(
+    services: &Services,
+    since: Option<String>,
+    now: i64,
+) -> Result<Step, CoreError> {
+    match imdb::fetch(services.http.as_ref(), since.as_deref()).await {
         Err(fault) => Ok(Step::Failed(fault)),
         // Still the dump the table holds, so only the clock moves.
         Ok(Dump::Unchanged) => {
-            core.store
+            services
+                .store
                 .write_async(move |c| settings::set(c, settings::IMDB_RATINGS_FETCHED_AT, &now))
                 .await?;
             Ok(Step::Unchanged)
         }
         Ok(Dump::Fresh { gz, last_modified }) => {
-            core.store
+            services
+                .store
                 .write_async(move |c| replace_ratings(c, &gz, last_modified.as_deref(), now))
                 .await
         }

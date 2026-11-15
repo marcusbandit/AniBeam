@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// The files a `.torrent` lists, path and size; empty when the bytes are
 /// not a torrent.
@@ -44,16 +44,13 @@ pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
 /// The largest `.torrent` read; past this the link is not a torrent file.
 const MAX_TORRENT: usize = 16 * 1024 * 1024;
 
-const VIDEO: [&str; 7] = ["mkv", "mp4", "avi", "m4v", "webm", "ts", "wmv"];
-
 /// The whole episode numbers among the video files, each read as a release
 /// title is.
 pub fn episodes_of(files: &[(String, u64)]) -> Vec<u32> {
     let mut out = BTreeSet::new();
     for (path, _) in files {
         let base = path.rsplit('/').next().unwrap_or(path);
-        let ext = base.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-        if !VIDEO.contains(&ext.as_str()) {
+        if !crate::foundation::names::is_video(base) {
             continue;
         }
         let facts = super::facts::read_name(base);
@@ -74,25 +71,27 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
         return Ok((Vec::new(), 0));
     }
     let r = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: link.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: Some(std::time::Duration::from_secs(20)),
-        })
+        .send(HttpRequest::get(link).timeout(std::time::Duration::from_secs(20)))
         .await
-        .map_err(|e| CoreError::Service {
-            service: "torrent".to_string(),
-            code: "unreachable".to_string(),
-            message: format!("the torrent file did not come: {}", e.message),
+        .map_err(|e| {
+            CoreError::service(
+                "torrent",
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-torrent-file-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
         })?;
     if r.status >= 400 {
-        return Err(CoreError::Service {
-            service: "torrent".to_string(),
-            code: format!("http_{}", r.status),
-            message: format!("the torrent file answered {}", r.status),
-        });
+        return Err(CoreError::service(
+            "torrent",
+            format!("http_{}", r.status),
+            crate::i18n::tr(
+                "core-downloads-torrent-file-answered",
+                &[("status", r.status.to_string().into())],
+            ),
+        ));
     }
     // A torrent file is metadata: a few hundred kilobytes for even a long batch
     if r.body.len() > MAX_TORRENT {

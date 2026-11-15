@@ -69,6 +69,10 @@ pub mod ffi {
         fn install_qml_dir(engine: Pin<&mut QQmlApplicationEngine>, dir: &QString);
         /// A URL opened with the desktop's handler through xdg-open, detached.
         fn open_url(url: &QString) -> bool;
+        /// QLocale::setDefault: the language Qt names months, days and numbers in.
+        fn set_default_locale(tag: &QString);
+        /// QLocale::system().uiLanguages(), most wanted first and comma separated: "de-DE,en".
+        fn system_locale_name() -> QString;
     }
 
     unsafe extern "C++" {

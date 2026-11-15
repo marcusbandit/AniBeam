@@ -31,12 +31,12 @@ pub fn agent() -> ureq::Agent {
 pub enum HostError {
     /// Nothing answered: off, asleep, not sharing, or the tailnet is down.
     Unreachable(String),
-    /// Something answered, but it is not AniBeam. Holds the whole sentence, worded in the
+    /// Something answered, but it is not Anibeam. Holds the whole sentence, worded in the
     /// language the app spoke when it happened.
     NotAniBeam(String),
-    /// An AniBeam that speaks a newer API than this app reads.
+    /// An Anibeam that speaks a newer API than this app reads.
     TooNew(u32),
-    /// AniBeam answered with an error or something unreadable.
+    /// Anibeam answered with an error or something unreadable.
     Bad(String),
 }
 
@@ -234,7 +234,7 @@ impl HostClient {
         let (status, body, _) = self.fetch(api::HELLO, 64 * 1024)?;
         if status != 200 {
             // A refusal is the computer's own word; any other status on the hello route is
-            // a web server that is not AniBeam.
+            // a web server that is not Anibeam.
             return Err(match refusal(status, &body) {
                 Some(why) => HostError::Bad(why),
                 None => HostError::NotAniBeam(tr!(
@@ -284,7 +284,7 @@ impl HostClient {
     }
 
     /// The host's address with the name looked up, for a player that resolves names on
-    /// its own and may not ask the tailnet's DNS: `http://100.94.40.21:8790`.
+    /// its own and may not ask the tailnet's DNS: `http://100.64.0.1:8790`.
     pub fn stream_base(&self) -> Result<String, HostError> {
         use std::net::ToSocketAddrs;
         let host = self
@@ -335,7 +335,7 @@ impl HostClient {
         Ok((status, body))
     }
 
-    /// The other AniBeams the host sees on the tailnet.
+    /// The other Anibeams the host sees on the tailnet.
     pub fn peers(&self) -> Result<Vec<api::PeerHost>, HostError> {
         let (body, _) = self.get(api::PEERS, 256 * 1024)?;
         serde_json::from_slice::<api::Peers>(&body)
@@ -431,7 +431,7 @@ mod proof_tests {
 
     fn hello(features: &[&str], key: &str, now: i64) -> String {
         serde_json::json!({
-            "app": "anibeam", "api": 1, "version": "2.5.0", "host": "banditbox",
+            "app": "anibeam", "api": 1, "version": "2.5.0", "host": "desktop",
             "now": now, "features": features, "key": key,
         })
         .to_string()

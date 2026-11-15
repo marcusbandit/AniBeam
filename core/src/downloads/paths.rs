@@ -8,12 +8,11 @@
 //! being the same, and the tag `Anime`, as anirss's defaults tag.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::store::settings as kv;
 
 use super::home::AnirssHome;
@@ -61,7 +60,7 @@ impl Chosen {
 }
 
 /// anirss's `[downloads] save_base`, `movie_path` and `[qbittorrent] tags`,
-/// with `~` expanded against `home`, as the anirss AniBeam runs expands them.
+/// with `~` expanded against `home`, as the anirss Anibeam runs expands them.
 /// Nothing when the file is missing or does not read.
 pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
     let home = home.dir();
@@ -96,17 +95,20 @@ pub fn from_anirss_config(path: &Path, home: &AnirssHome) -> Chosen {
 
 /// The three settings as they stand: the blob, anirss's config, then
 /// qBittorrent's default folder, asked only when nothing else names one.
-pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
-    let stored: Chosen = core.store.read(|c| kv::get(c, KEY))?.unwrap_or_default();
+pub async fn resolve(services: &Services, qbt: &QbtClient) -> Result<SavePaths, CoreError> {
+    let stored: Chosen = services
+        .store
+        .read(|c| kv::get(c, KEY))?
+        .unwrap_or_default();
     // A sandbox's `~` is its own home, the one the anirss it runs sees (#637)
-    let home = AnirssHome::of(&core.paths);
+    let home = AnirssHome::of(&services.paths);
     let dir = home.dir();
     let stored = Chosen {
         save_base: stored.save_base.map(|p| expand_under(&p, dir.as_deref())),
         movie_path: stored.movie_path.map(|p| expand_under(&p, dir.as_deref())),
         tags: stored.tags,
     };
-    let config = settings::anirss_config_path(core)
+    let config = settings::anirss_config_path(services)
         .map(|p| from_anirss_config(&p, &home))
         .unwrap_or_default();
     let chosen = stored.or(config);
@@ -117,7 +119,7 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
             if base.is_empty() {
                 return Err(CoreError::invalid(
                     "save_path",
-                    "qBittorrent names no default save folder; set one in qBittorrent",
+                    crate::i18n::tr("core-downloads-no-default-folder", &[]),
                 ));
             }
             base
@@ -135,18 +137,24 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
 pub(crate) fn validate_name(name: &str) -> Result<String, CoreError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(CoreError::invalid("name", "the name cannot be empty"));
+        return Err(CoreError::invalid(
+            "name",
+            crate::i18n::tr("core-downloads-name-empty", &[]),
+        ));
     }
     if name.contains(['/', '\\']) {
         return Err(CoreError::invalid(
             "name",
-            "the name must not contain / or \\",
+            crate::i18n::tr("core-downloads-name-slash", &[]),
         ));
     }
     if name == "." || name == ".." || name.chars().any(|c| (c as u32) < 32 || c as u32 == 127) {
         return Err(CoreError::invalid(
             "name",
-            format!("{name:?} is not a folder name"),
+            crate::i18n::tr(
+                "core-downloads-name-not-folder",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     Ok(name.to_string())

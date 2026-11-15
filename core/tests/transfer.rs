@@ -242,6 +242,8 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 episode_notifications: true,
                 home_hide_empty_days: false,
                 home_recommended: RecommendedScope::All,
+                room_name: String::new(),
+                room_relay: ROOM_RELAY.to_string(),
             }
         ),
         other => panic!("{other:?}"),
@@ -321,6 +323,8 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         episode_notifications: true,
         home_hide_empty_days: false,
         home_recommended: RecommendedScope::All,
+        room_name: String::new(),
+        room_relay: ROOM_RELAY.to_string(),
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

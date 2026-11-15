@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Draws every AniBeam icon from glyph.svg: the desktop's SVGs and PNGs, the hicolor sizes,
-the README's PNG, and the Android launcher icons with their picker previews.
+"""Draws every Anibeam icon from glyph.svg: the three logos in this folder, the desktop's SVGs
+and PNGs, the hicolor sizes, and the Android launcher icons with their picker previews.
 
 Run it after glyph.svg or a colour changes, then commit what it wrote. It needs resvg and
-ImageMagick's magick on PATH.
+ImageMagick's magick on PATH, and numpy for the nightly mark.
 
 The icons:
   default    the yellow ground with the dark glyph
@@ -14,6 +14,7 @@ The icons:
 """
 
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -78,7 +79,18 @@ write(linux / "assets/icon.svg", default)
 write(linux / "assets/icon-dark.svg", dark)
 png(default, linux / "assets/icon.png", 512)
 png(dark, linux / "assets/icon-dark.png", 512)
-png(default, root / "assets/icon.png", 512)
+# The three logos every page and README takes, in this folder: release, nightly and dev. The
+# nightly and dev marks are drawn from the release one.
+# The pages size it themselves, so it carries a viewBox and no width or height.
+(here / "logo.svg").write_text(default.replace(' width="1024" height="1024"', ""))
+png(default, here / "logo.png", 512)
+for kind in ("nightly", "dev"):
+    svg = here / f"logo-{kind}.svg"
+    subprocess.run([sys.executable, str(here / f"{kind}.py"), str(here / "logo.svg"), str(svg)], check=True)
+    subprocess.run(["resvg", "-w", "512", "-h", "512", str(svg), str(here / f"logo-{kind}.png")], check=True)
+# The desktop shows the nightly's or dev's mark on those builds (apps/linux/build.rs).
+for kind in ("nightly", "dev"):
+    shutil.copyfile(here / f"logo-{kind}.png", linux / f"assets/icon-{kind}.png")
 # The Mac's icns takes a 1024 for its 512@2x slot.
 png(default, linux / "packaging/macos/icon-1024.png", 1024)
 # Every hicolor size, for the packages to install and for the app to lay the dark set over

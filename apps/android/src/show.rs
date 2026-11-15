@@ -574,11 +574,11 @@ pub fn install(window: &AppWindow) {
         crate::local::touch();
     });
     show.on_pick_person(|id| {
-        crate::android::open_url(&format!("https://anilist.co/character/{id}"));
+        crate::platform::open_url(&format!("https://anilist.co/character/{id}"));
     });
     show.on_open_link(|url| {
         if url.starts_with("https://") {
-            crate::android::open_url(&url);
+            crate::platform::open_url(&url);
         }
     });
     show.on_set_status({

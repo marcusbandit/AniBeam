@@ -42,7 +42,7 @@ impl Syncer {
     }
 
     /// Hello and snapshot, stored before anything else, so the screens can show it while
-    /// the posters are still coming. The list of other AniBeams is carried over from the
+    /// the posters are still coming. The list of other Anibeams is carried over from the
     /// last sync with this host; [`Syncer::fetch_peers`] brings it up to date afterwards.
     pub fn fetch_snapshot(&self, address: &HostAddress, now: i64) -> Result<Cache, HostError> {
         let client = self.client(address);
@@ -57,6 +57,7 @@ impl Syncer {
             peers: carried(self.store.cache(), &address.display(), offers_peers),
             host: hello.host,
             host_version: hello.version,
+            profile: hello.profile,
             synced_at: now,
             snapshot,
         };
@@ -66,7 +67,7 @@ impl Syncer {
         Ok(cache)
     }
 
-    /// Asks the host for the other AniBeams it sees and stores the answer. Returns the
+    /// Asks the host for the other Anibeams it sees and stores the answer. Returns the
     /// cache when the list changed. The list is a bonus: a host that cannot answer it
     /// leaves the last list in place.
     pub fn fetch_peers(&self, address: &HostAddress, cache: &Cache) -> Option<Cache> {
@@ -175,7 +176,7 @@ mod tests {
 
     #[test]
     fn a_failed_list_keeps_the_last_one() {
-        let now = vec![peer("kangaeru")];
+        let now = vec![peer("laptop")];
         let failed = Err(HostError::Bad("500".into()));
         assert_eq!(updated(&now, failed), None);
         assert_eq!(updated(&now, Ok(now.clone())), None, "nothing changed");
@@ -188,16 +189,13 @@ mod tests {
 
     #[test]
     fn a_new_snapshot_keeps_the_list_only_from_the_same_host() {
-        let last = || Some(cache_at("banditbox:8790", vec![peer("kangaeru")]));
-        assert_eq!(
-            carried(last(), "banditbox:8790", true),
-            vec![peer("kangaeru")]
-        );
-        assert!(carried(last(), "nemurenai:8790", true).is_empty());
+        let last = || Some(cache_at("desktop:8790", vec![peer("laptop")]));
+        assert_eq!(carried(last(), "desktop:8790", true), vec![peer("laptop")]);
+        assert!(carried(last(), "study:8790", true).is_empty());
         assert!(
-            carried(last(), "banditbox:8790", false).is_empty(),
+            carried(last(), "desktop:8790", false).is_empty(),
             "a host that stopped offering the list has none"
         );
-        assert!(carried(None, "banditbox:8790", true).is_empty());
+        assert!(carried(None, "desktop:8790", true).is_empty());
     }
 }

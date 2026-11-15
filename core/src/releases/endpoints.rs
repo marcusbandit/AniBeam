@@ -1,9 +1,8 @@
-//! Search endpoints: validation, URL building, fetch dispatch and the fallback probe.
-//! Ported from anirss `endpoints.py`. The configured-list state (`EndpointState`) and the
-//! on-demand start and stop commands stay out: every endpoint counts as usable here, so
-//! the "off" note of `probe_fallback` never appears.
+//! Search endpoints: validation, URL building and fetch dispatch. Ported from anirss
+//! `endpoints.py`. The configured-list state (`EndpointState`) and the on-demand start and
+//! stop commands stay out: every endpoint counts as usable here. The fallback to another
+//! endpoint lives in `native.rs`.
 
-use std::future::Future;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -14,10 +13,10 @@ use super::fetch::{self, DEFAULT_TIMEOUT};
 use super::kinds::{FILTERED_RSS, JSON_FEED};
 use super::quirks;
 use crate::contract::{CoreError, Release, SubscriptionSpec};
-use crate::net::{BoxFuture, Http};
+use crate::net::Http;
 
 /// The kinds an endpoint can be, each named for the shape it reads (`kinds.rs`).
-/// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is AniBeam's
+/// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is Anibeam's
 /// own: a JSON feed in one fixed layout (json_feed.rs). So is `json`: any JSON search API,
 /// read through the field map its repo definition supplies (json.rs). `torznab` is an
 /// indexer's torznab search, read as RSS; it may name the person's own server as `{host}`.
@@ -40,8 +39,9 @@ pub fn answers_rss(kind: &str) -> bool {
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
-pub const JSON_NEEDS_REPO: &str =
-    "a JSON search source comes from an endpoint repo whose definition maps its fields";
+pub fn json_needs_repo() -> String {
+    crate::i18n::tr("core-releases-json-needs-repo", &[])
+}
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -62,7 +62,10 @@ fn seconds(s: f64) -> Duration {
 pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
     if name.is_empty() {
-        return Err(CoreError::invalid("endpoint name", "missing `name`"));
+        return Err(CoreError::invalid(
+            "endpoint name",
+            crate::i18n::tr("core-releases-endpoint-no-name", &[]),
+        ));
     }
     if !name
         .chars()
@@ -70,7 +73,10 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("{name:?}: use only letters, digits, '.', '_', '-'"),
+            crate::i18n::tr(
+                "core-releases-endpoint-bad-name",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     check_shape(name, kind, url)
@@ -85,45 +91,71 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if kind == "json" {
         return Err(CoreError::invalid(
             "endpoint kind",
-            format!("{name:?}: {JSON_NEEDS_REPO}"),
+            crate::i18n::tr(
+                "core-releases-endpoint-json",
+                &[
+                    ("name", format!("{name:?}").into()),
+                    ("why", json_needs_repo().into()),
+                ],
+            ),
         ));
     }
     if !VALID_KINDS.contains(&kind) {
         return Err(CoreError::invalid(
             "endpoint kind",
-            format!(
-                "{name:?}: unknown kind {kind:?} (valid: {})",
-                VALID_KINDS
-                    .iter()
-                    .filter(|k| **k != "json")
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(", ")
+            crate::i18n::tr(
+                "core-releases-endpoint-unknown-kind",
+                &[
+                    ("name", format!("{name:?}").into()),
+                    ("kind", format!("{kind:?}").into()),
+                    (
+                        "valid",
+                        VALID_KINDS
+                            .iter()
+                            .filter(|k| **k != "json")
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                            .into(),
+                    ),
+                ],
             ),
         ));
     }
     if url.is_empty() {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: missing `url`"),
+            crate::i18n::tr(
+                "core-releases-endpoint-no-url",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: the address must start with http:// or https://"),
+            crate::i18n::tr(
+                "core-releases-endpoint-not-http",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     if needs_query(kind) && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
+            crate::i18n::tr(
+                "core-releases-endpoint-needs-query",
+                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
+            ),
         ));
     }
     if !needs_query(kind) && url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: a {kind} url adds the search itself, so it takes no {{query}}"),
+            crate::i18n::tr(
+                "core-releases-endpoint-no-query",
+                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
+            ),
         ));
     }
     Ok(())
@@ -533,11 +565,11 @@ async fn fetch_exact(
         // Which search syntax an API takes is the site's business, so exclusions are applied
         // here rather than sent.
         let Some(map) = &ep.json else {
-            return Err(CoreError::Service {
-                service: ep.name.clone(),
-                code: "unmapped".into(),
-                message: JSON_NEEDS_REPO.into(),
-            });
+            return Err(CoreError::service(
+                ep.name.clone(),
+                "unmapped",
+                json_needs_repo(),
+            ));
         };
         let (positive, excluded) = split_exclusions(query);
         let items =
@@ -560,68 +592,6 @@ async fn fetch_exact(
         items.retain(|it| quirks::matches_all(it, &quality));
     }
     Ok(items)
-}
-
-/// After the active endpoint came up empty or unreachable, try the other endpoints in
-/// priority order. The first hit wins: its items come back tagged with its name in
-/// `source`, so the winner is `items[0].source`. Returns (items, per-endpoint notes); empty
-/// items means nothing anywhere.
-pub async fn probe_fallback(
-    http: &dyn Http,
-    endpoints: &[Endpoint],
-    active: &str,
-    query: &str,
-) -> (Vec<Release>, Vec<String>) {
-    probe_with(
-        endpoints,
-        active,
-        |ep| -> BoxFuture<'_, Result<Vec<Release>, CoreError>> {
-            Box::pin(fetch_items(http, ep, query))
-        },
-    )
-    .await
-}
-
-/// `probe_fallback` with the fetch injected, as anirss's `fetch=` argument is.
-pub(crate) async fn probe_with<'a, F, Fut>(
-    endpoints: &'a [Endpoint],
-    active: &str,
-    fetch: F,
-) -> (Vec<Release>, Vec<String>)
-where
-    F: Fn(&'a Endpoint) -> Fut,
-    Fut: Future<Output = Result<Vec<Release>, CoreError>>,
-{
-    let mut notes = Vec::new();
-    for ep in endpoints {
-        if ep.name == active {
-            continue;
-        }
-        let items = match fetch(ep).await {
-            Ok(items) => items,
-            Err(_) => {
-                notes.push(format!("{}: unreachable", ep.name));
-                continue;
-            }
-        };
-        if !items.is_empty() {
-            notes.push(format!("{}: {}", ep.name, items.len()));
-            // Tag where these came from so the results list can render a source header
-            // above them: the search did not ask for this endpoint, it fell back to it.
-            let tagged = items
-                .into_iter()
-                .map(|mut it| {
-                    if it.source.is_empty() {
-                        it.source = ep.name.clone();
-                    }
-                    it
-                })
-                .collect();
-            return (tagged, notes);
-        }
-        notes.push(format!("{}: 0", ep.name));
-    }
-    (Vec::new(), notes)
 }
 
 /// The configured endpoint whose feed `url` is, if any: of those whose address the feed
@@ -1201,49 +1171,6 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_switches_to_first_hit() {
-        let eps = [tracker(), board()];
-        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            Ok(if ep.name == "board" {
-                vec![rel("t", "l")]
-            } else {
-                vec![]
-            })
-        })
-        .await;
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "board");
-        assert_eq!(notes, strings(&["board: 1"]));
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_all_fail_returns_nothing() {
-        let third = Endpoint::new("feed", "rss", "https://x/?q={query}");
-        let eps = [tracker(), board(), third];
-        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            if ep.name == "board" {
-                Err(CoreError::internal("can't reach board: boom"))
-            } else {
-                Ok(vec![])
-            }
-        })
-        .await;
-        assert!(items.is_empty());
-        assert_eq!(notes, strings(&["board: unreachable", "feed: 0"]));
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_over_http_skips_the_active_endpoint() {
-        let eps = [tracker(), board()];
-        let http = FakeHttp::new();
-        http.push_for("board.example", 200, feed(&[("Show", "l")]));
-        let (items, notes) = probe_fallback(http.as_ref(), &eps, "tracker", "show").await;
-        assert_eq!(items[0].source, "board");
-        assert_eq!(notes, strings(&["board: 1"]));
-        assert_eq!(http.requests().len(), 1);
     }
 
     #[test]

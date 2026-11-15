@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use super::mine::Mine;
 use super::{Display, because, fit, parse, poster, queries, sync, text};
 use crate::contract::*;
-use crate::core::Core;
 use crate::jobs::Finished;
+use crate::metadata::Metadata;
 use crate::prefs;
 use crate::time;
 
@@ -317,14 +317,17 @@ const RETRY_SECS: i64 = 10 * 60;
 /// started when the page's own read is missing or a week old. One read runs
 /// per show; a second opening joins the first one's, and one that failed is
 /// tried again ten minutes on at the soonest.
-pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let images_dir = core.paths.images_dir();
-    let (page, read_at) = core.store.read(|c| read(c, &images_dir, anilist_id))?;
+pub fn get_call(metadata: &Arc<Metadata>, anilist_id: u64) -> Result<Reply, CoreError> {
+    let images_dir = metadata.services.paths.images_dir();
+    let (page, read_at) = metadata
+        .services
+        .store
+        .read(|c| read(c, &images_dir, anilist_id))?;
     let now = time::now_secs();
     let reading = if read_at.is_some_and(|at| now - at < PAGE_TTL) {
         None
     } else {
-        start_read(core, anilist_id, now)?
+        start_read(metadata, anilist_id, now)?
     };
     Ok(Reply::ShowPage {
         page: Box::new(page),
@@ -332,18 +335,28 @@ pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     })
 }
 
-fn start_read(core: &Core, anilist_id: u64, now: i64) -> Result<Option<u64>, CoreError> {
-    let running: std::collections::HashSet<u64> =
-        core.jobs.list().into_iter().map(|j| j.id).collect();
-    let mut reads = core.show_reads.lock().unwrap();
+fn start_read(
+    metadata: &Arc<Metadata>,
+    anilist_id: u64,
+    now: i64,
+) -> Result<Option<u64>, CoreError> {
+    let running: std::collections::HashSet<u64> = metadata
+        .services
+        .jobs
+        .list()
+        .into_iter()
+        .map(|j| j.id)
+        .collect();
+    let mut reads = metadata.show_reads.lock().unwrap();
     // A read that ended and is past the retry gap is forgotten, so the map
     // only ever holds the reads of the last few minutes.
     reads.retain(|_, (job, at)| running.contains(job) || now - *at < RETRY_SECS);
     if let Some((job, _)) = reads.get(&anilist_id) {
         return Ok(running.contains(job).then_some(*job));
     }
-    let owner = core.owner()?;
-    let job = core
+    let owner = metadata.clone();
+    let job = metadata
+        .services
         .jobs
         .clone()
         .start(JobKind::ReadShowPage, move |_| async move {
@@ -353,8 +366,9 @@ fn start_read(core: &Core, anilist_id: u64, now: i64) -> Result<Option<u64>, Cor
     Ok(Some(job))
 }
 
-async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
-    let data = core
+async fn read_page(metadata: Arc<Metadata>, id: u64) -> Result<Finished, CoreError> {
+    let data = metadata
+        .net
         .anilist
         .graphql(&queries::page(), json!({ "id": id }), None)
         .await?;
@@ -362,7 +376,10 @@ async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
     if media.is_null() {
         return Err(CoreError::invalid(
             "anilist_id",
-            format!("AniList has no anime {id}"),
+            crate::i18n::tr(
+                "core-recommended-no-anime",
+                &[("id", id.to_string().into())],
+            ),
         ));
     }
     let mut urls: Vec<String> = Vec::new();
@@ -391,7 +408,9 @@ async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
     }
     let now = time::now_secs();
     let text = media.to_string();
-    core.store
+    metadata
+        .services
+        .store
         .write_async(move |c| {
             sync::put_show(c, id, Some(&text), now)?;
             c.execute(
@@ -402,7 +421,7 @@ async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
         })
         .await?;
     // Every picture before the event, so the page draws local files.
-    for (url, outcome) in core.images.ensure(&urls).await {
+    for (url, outcome) in metadata.net.images.ensure(&urls).await {
         if let Err(e) = outcome {
             tracing::debug!("a show page picture {url} was not fetched: {e}");
         }

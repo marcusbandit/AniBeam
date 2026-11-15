@@ -15,10 +15,12 @@ use std::sync::Arc;
 use rusqlite::{OptionalExtension, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
+use crate::i18n::tr;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
+use crate::metadata::Metadata;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::link::{self, Link};
 use crate::metadata::record;
@@ -28,18 +30,17 @@ use crate::time;
 
 /// What the modal says when the text was a URL the core knows the host of
 /// but cannot follow: a themoviedb.org page, an AniList user profile, an
-/// id with a typo in it.
-const UNREADABLE: &str =
-    "Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.";
+/// id with a typo in it. Each of these three is a message ID in the catalog.
+const UNREADABLE: &str = "core-metadata-link-unreadable";
 
 /// AniList answered, and the answer was that it carries no entry for that
 /// MyAnimeList id. Deliberate rather than silent: `ResolveLink` is how a
 /// pasted link becomes a match, and a link that resolves to nothing has to
 /// say so instead of quietly writing a MAL-only match nobody asked for.
-const NO_MAL_ENTRY: &str = "AniList has no entry for that MyAnimeList id.";
+const NO_MAL_ENTRY: &str = "core-metadata-no-mal-entry";
 
 /// The same for a pasted IMDb link: TVmaze has no show behind that title.
-const NO_IMDB_SHOW: &str = "TVmaze has no show for that IMDb title.";
+const NO_IMDB_SHOW: &str = "core-metadata-no-imdb-show";
 
 /// A shortest sensible query. One character matches most of AniList.
 const MIN_QUERY: usize = 2;
@@ -53,22 +54,31 @@ const MAX_RESULTS: u32 = 50;
 /// Starts the Search job on one match provider: AniList or TVmaze. MAL is
 /// a tracker rather than a matching provider and TMDB has no client at
 /// all, so neither can be searched.
-pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Result<u64, CoreError> {
+pub fn search(
+    metadata: &Arc<Metadata>,
+    provider: Provider,
+    query: &str,
+    limit: u32,
+) -> Result<u64, CoreError> {
     if !MATCH_PROVIDERS.contains(&provider) {
         return Err(CoreError::Unsupported {
-            what: format!("search on {}", provider.as_str()),
+            what: tr(
+                "core-metadata-search-on",
+                &[("provider", provider.as_str().into())],
+            ),
         });
     }
     let query = query.trim().to_string();
     if query.chars().count() < MIN_QUERY {
         return Err(CoreError::invalid(
             "query",
-            "Type at least two characters to search.",
+            tr("core-metadata-query-too-short", &[]),
         ));
     }
     let per_page = limit.clamp(1, MAX_RESULTS);
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::Search, move |_ctx| async move {
@@ -76,6 +86,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
                 // TVmaze has no page size; it answers with its best ten
                 // or so, and the limit is applied here instead.
                 Provider::Tvmaze => owner
+                    .net
                     .tvmaze
                     .search(&query)
                     .await?
@@ -84,6 +95,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
                     .map(show_result)
                     .collect(),
                 _ => owner
+                    .net
                     .anilist
                     .search(&query, per_page)
                     .await?
@@ -115,41 +127,39 @@ enum Pasted {
 /// and needs no request; a MyAnimeList link goes through AniList's
 /// `Media(idMal:)`, because a MAL id alone is not something a series page
 /// can be drawn from, and an IMDb link goes through TVmaze's lookup.
-pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
-    let pasted = match link::parse(url).ok_or_else(|| CoreError::invalid("url", "not a link"))? {
+pub fn resolve_link(metadata: &Arc<Metadata>, url: &str) -> Result<u64, CoreError> {
+    let pasted = match link::parse(url)
+        .ok_or_else(|| CoreError::invalid("url", tr("core-metadata-not-a-link", &[])))?
+    {
         Link::Anilist { id } => Pasted::Anilist(id),
         Link::Mal { id } => Pasted::Mal(id),
         Link::Tvmaze { id } => Pasted::Tvmaze(id),
         Link::Imdb { id } => Pasted::Imdb(id),
-        Link::Unknown => return Err(CoreError::invalid("url", UNREADABLE)),
+        Link::Unknown => return Err(CoreError::invalid("url", tr(UNREADABLE, &[]))),
     };
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ResolveLink, move |_ctx| async move {
             let target = match pasted {
                 Pasted::Anilist(id) => MatchTarget::Anilist { id, season: None },
                 Pasted::Mal(mal_id) => {
-                    let id = owner.anilist.resolve_by_mal(mal_id).await?.ok_or_else(|| {
-                        CoreError::Provider {
-                            provider: Provider::Anilist,
-                            status: Some(404),
-                            message: NO_MAL_ENTRY.to_string(),
-                            retry_after: None,
-                        }
-                    })?;
+                    let id = owner
+                        .net
+                        .anilist
+                        .resolve_by_mal(mal_id)
+                        .await?
+                        .ok_or_else(|| {
+                            CoreError::provider(Provider::Anilist, Some(404), tr(NO_MAL_ENTRY, &[]))
+                        })?;
                     MatchTarget::Anilist { id, season: None }
                 }
                 Pasted::Tvmaze(id) => MatchTarget::Tvmaze { id },
                 Pasted::Imdb(imdb) => {
-                    let id = owner.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
-                        CoreError::Provider {
-                            provider: Provider::Tvmaze,
-                            status: Some(404),
-                            message: NO_IMDB_SHOW.to_string(),
-                            retry_after: None,
-                        }
+                    let id = owner.net.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
+                        CoreError::provider(Provider::Tvmaze, Some(404), tr(NO_IMDB_SHOW, &[]))
                     })?;
                     MatchTarget::Tvmaze { id }
                 }
@@ -176,10 +186,15 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
 /// stored: the titles come from the media row, and the folder already
 /// carries its own season. Electron's ` (Season N)` display suffix leaves
 /// with its `title` field.
-pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64, CoreError> {
-    let folder = folder_name(core, series)?;
-    let owner = core.owner()?;
+pub fn apply_match(
+    metadata: &Arc<Metadata>,
+    series: u64,
+    target: MatchTarget,
+) -> Result<u64, CoreError> {
+    let folder = folder_name(&metadata.services, series)?;
+    let owner = metadata.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ApplyMatch, move |ctx| async move {
@@ -198,21 +213,22 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                 MatchTarget::Tvmaze { id } => {
                     fetch::fetch_and_write_tvmaze(&owner, series, id, true, time::now_secs())
                         .await?;
-                    if let Some(card) = card_for(&owner, series).await? {
+                    if let Some(card) = card_for(&owner.services, series).await? {
                         ctx.changed(card);
                     }
                     return Ok(Finished {
-                        plain: Some(format!("Matched {folder}.")),
+                        plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                         level: Level::Info,
                         message: format!("matched {folder} to TVmaze {id}"),
                         body: EventBody::MatchApplied { series },
                     });
                 }
-                MatchTarget::Mal { id } => match owner.anilist.resolve_by_mal(id).await? {
+                MatchTarget::Mal { id } => match owner.net.anilist.resolve_by_mal(id).await? {
                     Some(anilist_id) => (anilist_id, Some(id)),
                     None => {
                         let now = time::now_secs();
                         owner
+                            .services
                             .store
                             .tx_async(move |tx| {
                                 fetch::write_match_only(
@@ -226,13 +242,13 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                                 )
                             })
                             .await?;
-                        if let Some(card) = card_for(&owner, series).await? {
+                        if let Some(card) = card_for(&owner.services, series).await? {
                             ctx.changed(card);
                         }
                         // A MAL-only match carries no record format.
                         fetch::reread_after_record(&owner, series).await;
                         return Ok(Finished {
-                            plain: Some(format!("Matched {folder}.")),
+                            plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                             level: Level::Info,
                             message: format!("Matched {folder} to MyAnimeList {id}"),
                             body: EventBody::MatchApplied { series },
@@ -247,6 +263,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // exactly what the step exists to avoid.
             let now = time::now_secs();
             owner
+                .services
                 .store
                 .tx_async(move |tx| {
                     // The series row's `anilist_id` is a foreign key, so the
@@ -273,7 +290,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     )
                 })
                 .await?;
-            if let Some(card) = card_for(&owner, series).await? {
+            if let Some(card) = card_for(&owner.services, series).await? {
                 ctx.emit(
                     Level::Debug,
                     "match applied",
@@ -290,6 +307,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // anybody knows and it stays.
             if let Some(mal_id) = pasted_mal {
                 owner
+                    .services
                     .store
                     .write_async(move |c| {
                         c.execute(
@@ -300,12 +318,12 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     })
                     .await?;
             }
-            if let Some(card) = card_for(&owner, series).await? {
+            if let Some(card) = card_for(&owner.services, series).await? {
                 ctx.changed(card);
             }
 
             Ok(Finished {
-                plain: Some(format!("Matched {folder}.")),
+                plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                 level: Level::Info,
                 message: format!("Matched {folder} to AniList {anilist_id}"),
                 body: EventBody::MatchApplied { series },
@@ -315,8 +333,11 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
 
 /// Starts the Refresh job for one series: the same fetch the match ran,
 /// against the id the series already carries.
-pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
-    let target = core.store.read(|c| refresh_target(c, series))?;
+pub fn refresh_series(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreError> {
+    let target = metadata
+        .services
+        .store
+        .read(|c| refresh_target(c, series))?;
     let Some(target) = target else {
         return Err(CoreError::NotFound {
             what: Entity::Series,
@@ -333,18 +354,19 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
     }
     let Some(id) = target.id else {
         return Err(CoreError::Unsupported {
-            what: "refresh of a MAL-only or TMDB match".to_string(),
+            what: tr("core-metadata-refresh-unsupported", &[]),
         });
     };
-    let owner = core.owner()?;
+    let owner = metadata.clone();
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::Refresh, move |ctx| async move {
             let folder = target.folder;
             let (refreshed, failed) = match fetch_id(&owner, series, id, target.confirmed).await {
                 Ok(()) => {
-                    if let Some(card) = card_for(&owner, series).await? {
+                    if let Some(card) = card_for(&owner.services, series).await? {
                         ctx.changed(card);
                     }
                     (1, 0)
@@ -363,12 +385,12 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
                     (0, 1)
                 }
             };
-            images::sweep_after(&owner, "a refresh").await;
+            images::sweep_after(&owner.net, "a refresh").await;
             Ok(Finished {
                 plain: Some(if failed == 0 {
-                    format!("Updated the info for {folder}.")
+                    crate::words!("core-metadata-updated", show = &folder)
                 } else {
-                    format!("Could not update the info for {folder}. Try again later.")
+                    crate::words!("core-metadata-update-failed", show = &folder)
                 }),
                 level: if failed == 0 {
                     Level::Info
@@ -387,8 +409,8 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
 
 /// Starts the RefreshAll job: every series carrying an AniList or a TVmaze
 /// id, one at a time, paced by each provider's limiter.
-pub fn refresh_all(core: &Arc<Core>) -> u64 {
-    start_refresh_walk(core, JobKind::RefreshAll, "refresh", ALL_MATCHED_SQL)
+pub fn refresh_all(metadata: &Arc<Metadata>) -> u64 {
+    start_refresh_walk(metadata, JobKind::RefreshAll, "refresh", ALL_MATCHED_SQL)
 }
 
 /// Starts the stub backfill: every series whose media row was never
@@ -396,8 +418,8 @@ pub fn refresh_all(core: &Arc<Core>) -> u64 {
 /// import. The native form of Electron's `backfillRelationsForLibrary`,
 /// and Task 31 queues it once at launch. A TVmaze match with no show row
 /// behind it, which is what an import leaves, is one of these too.
-pub fn backfill_stubs(core: &Arc<Core>) -> u64 {
-    start_refresh_walk(core, JobKind::Refresh, "backfill", STUBS_SQL)
+pub fn backfill_stubs(metadata: &Arc<Metadata>) -> u64 {
+    start_refresh_walk(metadata, JobKind::Refresh, "backfill", STUBS_SQL)
 }
 
 // The walk ------------------------------------------------------------------
@@ -426,18 +448,26 @@ enum RecordId {
 
 /// The fetch behind either id, writing against `series`.
 async fn fetch_id(
-    core: &Core,
+    metadata: &Metadata,
     series: u64,
     id: RecordId,
     confirmed: bool,
 ) -> Result<(), CoreError> {
     match id {
         RecordId::Anilist(anilist_id) => {
-            fetch::fetch_and_write(core, series, anilist_id, None, confirmed, time::now_secs())
-                .await
+            fetch::fetch_and_write(
+                metadata,
+                series,
+                anilist_id,
+                None,
+                confirmed,
+                time::now_secs(),
+            )
+            .await
         }
         RecordId::Tvmaze(show_id) => {
-            fetch::fetch_and_write_tvmaze(core, series, show_id, confirmed, time::now_secs()).await
+            fetch::fetch_and_write_tvmaze(metadata, series, show_id, confirmed, time::now_secs())
+                .await
         }
     }
 }
@@ -459,68 +489,77 @@ struct Candidate {
 /// The list is read once, up front, so the loop is finite whatever the
 /// fetches write back to the series rows.
 fn start_refresh_walk(
-    core: &Arc<Core>,
+    metadata: &Arc<Metadata>,
     kind: JobKind,
     label: &'static str,
     sql: &'static str,
 ) -> u64 {
-    let owner = core.clone();
-    core.jobs.clone().start(kind, move |ctx| async move {
-        let work = owner.store.write_async(move |c| candidates(c, sql)).await?;
-        let total = work.len() as u64;
-        let (mut refreshed, mut failed) = (0u64, 0u64);
-        for (done, c) in work.into_iter().enumerate() {
-            ctx.checkpoint()?;
-            ctx.progress(done as u64, Some(total), label);
-            match fetch_id(&owner, c.series, c.id, c.confirmed).await {
-                Ok(()) => {
-                    refreshed += 1;
-                    if let Some(card) = card_for(&owner, c.series).await? {
-                        ctx.changed(card);
+    let owner = metadata.clone();
+    metadata
+        .services
+        .jobs
+        .clone()
+        .start(kind, move |ctx| async move {
+            let work = owner
+                .services
+                .store
+                .write_async(move |c| candidates(c, sql))
+                .await?;
+            let progress_label = match label {
+                "refresh" => tr("core-metadata-progress-refresh", &[]),
+                _ => tr("core-metadata-progress-backfill", &[]),
+            };
+            let total = work.len() as u64;
+            let (mut refreshed, mut failed) = (0u64, 0u64);
+            for (done, c) in work.into_iter().enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(done as u64, Some(total), &progress_label);
+                match fetch_id(&owner, c.series, c.id, c.confirmed).await {
+                    Ok(()) => {
+                        refreshed += 1;
+                        if let Some(card) = card_for(&owner.services, c.series).await? {
+                            ctx.changed(card);
+                        }
+                    }
+                    // A provider saying stop, or nothing answering at all, ends
+                    // the walk rather than counting one failed series and
+                    // asking again for the next.
+                    Err(e) if provider_stopped(&e) => return Err(e),
+                    Err(e) => {
+                        failed += 1;
+                        ctx.emit(
+                            Level::Warn,
+                            format!("refresh failed for {}: {}", c.folder, message_of(&e)),
+                            EventBody::Notice,
+                        );
                     }
                 }
-                // A provider saying stop, or nothing answering at all, ends
-                // the walk rather than counting one failed series and
-                // asking again for the next.
-                Err(e) if provider_stopped(&e) => return Err(e),
-                Err(e) => {
-                    failed += 1;
-                    ctx.emit(
-                        Level::Warn,
-                        format!("refresh failed for {}: {}", c.folder, message_of(&e)),
-                        EventBody::Notice,
-                    );
-                }
             }
-        }
-        // Both walks write records, so both bring covers, banners and
-        // portraits in, and both owe the sweep that keeps the directory
-        // from only ever growing.
-        images::sweep_after(&owner, label).await;
-        let shows = |n: u64| crate::words::pick(n, "show", "shows");
-        let said = match (refreshed, failed) {
-            (0, 0) => None,
-            (n, 0) => Some(format!("Updated the info for {n} {}.", shows(n))),
-            (0, f) => Some(format!(
-                "Could not update the info for {f} {}. Try again later.",
-                shows(f)
-            )),
-            (n, f) => Some(format!(
-                "Updated the info for {n} {}; {f} could not be updated.",
-                shows(n)
-            )),
-        };
-        Ok(Finished {
-            plain: said,
-            level: if failed == 0 {
-                Level::Info
-            } else {
-                Level::Warn
-            },
-            message: format!("{label}: {refreshed} refreshed, {failed} failed"),
-            body: EventBody::RefreshFinished { refreshed, failed },
+            // Both walks write records, so both bring covers, banners and
+            // portraits in, and both owe the sweep that keeps the directory
+            // from only ever growing.
+            images::sweep_after(&owner.net, label).await;
+            let said = match (refreshed, failed) {
+                (0, 0) => None,
+                (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),
+                (0, f) => Some(crate::words!("core-metadata-update-failed-many", count = f)),
+                (n, f) => Some(crate::words!(
+                    "core-metadata-updated-some",
+                    count = n,
+                    failed = f
+                )),
+            };
+            Ok(Finished {
+                plain: said,
+                level: if failed == 0 {
+                    Level::Info
+                } else {
+                    Level::Warn
+                },
+                message: format!("{label}: {refreshed} refreshed, {failed} failed"),
+                body: EventBody::RefreshFinished { refreshed, failed },
+            })
         })
-    })
 }
 
 fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, CoreError> {
@@ -651,8 +690,8 @@ fn refresh_target(
         .optional()?)
 }
 
-fn folder_name(core: &Core, series: u64) -> Result<String, CoreError> {
-    let folder: Option<String> = core.store.read(|c| {
+fn folder_name(services: &Services, series: u64) -> Result<String, CoreError> {
+    let folder: Option<String> = services.store.read(|c| {
         Ok(c.query_row(
             "SELECT folder_name FROM series WHERE id = ?1",
             params![series as i64],
@@ -668,9 +707,12 @@ fn folder_name(core: &Core, series: u64) -> Result<String, CoreError> {
 
 /// The one card a single-series job reports. `None` when the series went
 /// away underneath the job, which is not worth failing over.
-pub(crate) async fn card_for(core: &Core, series: u64) -> Result<Option<SeriesCard>, CoreError> {
-    let dir = core.paths.images_dir();
-    let cards = core
+pub(crate) async fn card_for(
+    services: &Services,
+    series: u64,
+) -> Result<Option<SeriesCard>, CoreError> {
+    let dir = services.paths.images_dir();
+    let cards = services
         .store
         .write_async(move |c| cards::cards_for(c, &dir, &[series]))
         .await?;

@@ -114,7 +114,7 @@
   --quick: 0.18s ease;
   --wide: 1200px;
   --gutter: clamp(20px, 5vw, 48px);
-  --space: clamp(150px, 22vh, 260px);
+  --space: clamp(6vh, 7vh, 260px);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -128,7 +128,14 @@ body {
   letter-spacing: 0.005em;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
+  /* A column the height of the window at least, so the footer sits at its bottom on a short page. */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
+body > main { flex: 1 0 auto; width: 100%; }
+body > .foot { width: 100%; }
 img { display: block; max-width: 100%; height: auto; }
 a { color: var(--fg); text-underline-offset: 0.2em; text-decoration-thickness: 1px; transition: color var(--quick); }
 a:hover { color: var(--brand); }
@@ -356,7 +363,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
 }
-.marquee-row { overflow: hidden; }
+.marquee-row { overflow: clip; }
 .marquee-track { display: flex; gap: 20px; width: max-content; animation: marquee var(--dur, 110s) linear infinite; animation-play-state: var(--motion, running); }
 .marquee-row.reverse .marquee-track { animation-direction: reverse; --dur: 120s; }
 .marquee:hover .marquee-track { animation-play-state: paused; }
@@ -365,23 +372,110 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .poster:hover img { filter: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3); }
 @keyframes marquee { to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
+.marquee.holding .marquee-track, .marquee:has(.poster:focus-visible) .marquee-track { animation-play-state: paused; }
+.poster[role="button"], .poster[aria-hidden] { cursor: pointer; border-radius: 12px; }
+.poster[role="button"]:focus-visible { outline-offset: 3px; }
+.marquee.holding .poster:not(.is-open) img { filter: saturate(0.8) brightness(0.62); }
+.poster.is-open img { filter: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3); }
 
-/* Features: a bento of small, real pieces of the app */
+/* The card a poster opens: the nav bar's glass, as tall as the poster, sliding out from behind
+   it. .show-pop starts at the poster's edge and clips, so the card is hidden until it is out. A
+   card opened while another leaves comes later in .show-layer, so it lands on top. */
+.show-pop { position: absolute; z-index: 40; overflow: hidden; pointer-events: none; }
+.show-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  padding: 14px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: rgba(17, 18, 20, 0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: inset 0 1px var(--hi), 0 12px 32px -16px rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(var(--tuck, 0)) scale(0.96);
+  transition: transform 0.56s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.36s ease;
+}
+/* Out: a long, soft glide that settles. Back: quicker, easing in, fading as it goes under. */
+.show-card.in { opacity: 1; transform: none; }
+.show-card.out { pointer-events: none; transition: transform 0.46s cubic-bezier(0.5, 0, 0.75, 0.3), opacity 0.34s ease-in 0.12s; }
+.show-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.show-x:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
+.show-card h3 { display: -webkit-box; overflow: hidden; margin: 0; padding-right: 28px; color: var(--fg); font: 680 16.5px/1.25 var(--sans); letter-spacing: -0.015em; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.show-meta { display: flex; flex-wrap: wrap; gap: 2px 7px; margin: 0; color: var(--fg-3); font-size: 12.5px; font-weight: 500; letter-spacing: 0.01em; line-height: 1.4; }
+.show-meta b { color: var(--fg-4); font-weight: 400; }
+.show-meta .show-score { color: var(--brand); font-family: var(--mono); font-weight: 500; }
+.show-text { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; color: var(--fg-2); font-size: 13.5px; line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--fg-4) transparent; }
+.show-text.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 36px), transparent); mask-image: linear-gradient(#000 calc(100% - 36px), transparent); }
+.show-text p { margin: 0; }
+.show-text p + p { margin-top: 0.7em; }
+.show-links { display: flex; gap: 8px; }
+.show-link {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  border-radius: 9px;
+  color: #fff;
+  font: 650 13.5px/1 var(--sans);
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  transition: background-color var(--quick), box-shadow var(--quick);
+}
+.show-link:hover { color: #fff; }
+.show-link svg { fill: currentColor; }
+.to-anilist { background: #152232; box-shadow: inset 0 0 0 1px rgba(2, 169, 255, 0.22), inset 0 1px rgba(255, 255, 255, 0.06); }
+.to-anilist:hover { background: #1a2c40; box-shadow: inset 0 0 0 1px rgba(2, 169, 255, 0.45), inset 0 1px rgba(255, 255, 255, 0.08); }
+.to-anilist svg { width: 15px; height: 15px; fill: var(--anilist); }
+.to-mal { background: #2e51a2; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px rgba(255, 255, 255, 0.18); }
+.to-mal:hover { background: #3760bd; }
+.to-mal svg { width: 40px; height: 18px; }
+/* A phone or a narrow window gets the card as a sheet along the bottom, sliding up from below */
+@media (max-width: 940px) {
+  .show-pop { position: fixed; inset: auto 0 0 0; overflow: visible; }
+  .show-card { position: relative; width: auto; max-height: 72vh; gap: 12px; padding: 18px 18px max(18px, env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 20px 20px 0 0; background: rgba(17, 18, 20, 0.9); transform: translateY(105%); }
+  .show-card h3 { font-size: 19px; }
+  .show-meta { font-size: 13.5px; }
+  .show-text { font-size: 15px; }
+  .show-link { height: 40px; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .show-card, .show-card.out { transform: none; transition: opacity 0.2s ease; } }
+
+/* Features: small, real pieces of the app. The player runs the full width so its chrome shows near
+   the app's own size; the pieces under it sit on one card each, with no card around the card. */
 .feats h2 { margin-bottom: 64px; text-align: center; }
-.feat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; }
-.feat { display: flex; flex-direction: column; gap: 26px; padding: 32px; overflow: hidden; transition: box-shadow 0.3s ease; }
-.feat:hover { box-shadow: inset 0 1px rgba(255, 255, 255, 0.18); }
-.feat-player { grid-column: span 3; }
-.feat-sync { grid-column: span 2; }
-.feat-resume { grid-column: span 2; }
-.feat-chain { grid-column: span 3; }
+.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; row-gap: 72px; }
+.feat { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.feat h3 { font-size: 24px; letter-spacing: -0.02em; text-align: left; }
+.feat-player, .feat-chain { grid-column: 1 / -1; }
 
 /* The player, as PlayerChrome.qml draws it: the video full bleed, two glass panes (8, 9, 12 at
    55%, a 10% white edge, radius 18, no scrim). Built at the app's own 960 x 540 and scaled to
    the card, so every size matches the app. Only the track menu is new; the app will take it
    over (#785). */
 .player { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); container-type: inline-size; }
-.pl-stage { position: absolute; left: 0; top: 0; width: 960px; height: 540px; transform: scale(var(--k, 0.66)); transform-origin: 0 0; font-family: var(--sans); }
+.pl-stage { position: absolute; left: 0; top: 0; width: 960px; height: 540px; transform: scale(var(--k, 1.2)); transform-origin: 0 0; font-family: var(--sans); }
 .pl-video { position: absolute; inset: 0; background: url("img/art/player.webp") center / cover no-repeat; }
 .pl-glass { position: absolute; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; background: rgba(8, 9, 12, 0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .pl-head { left: 12px; top: 12px; display: flex; align-items: center; gap: 12px; }
@@ -416,6 +510,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .pl-vol::after { content: ""; position: absolute; right: -3px; top: -7px; width: 6px; height: 18px; border-radius: 999px; background: var(--done); }
 .pl-readout { width: 36px; margin-left: 12px; color: #5f6885; font-size: 11.3px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: center; }
 .tracks {
+  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   position: absolute;
   right: 148px;
   bottom: 136px;
@@ -433,7 +528,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .tracks-h { padding: 6px 8px 2px; color: rgba(255, 255, 255, 0.5); font-size: 11.5px; font-weight: 600; }
 .tr { padding: 7px 9px; border-radius: 8px; color: rgba(255, 255, 255, 0.85); font-size: 13.5px; }
 .tr.is-on { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.tr.is-on::after { content: ""; float: right; width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--brand); }
+.tr.is-on::after { content: ""; float: right; width: 14px; height: 14px; margin: 2px 0 0 12px; background: var(--done); -webkit-mask: var(--check) center / contain no-repeat; mask: var(--check) center / contain no-repeat; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-player .pl-fill, .js .feat-player .pl-knob { transition: width 9s linear, left 9s linear, opacity 0.2s ease; }
   .js .feat-player:not(.in) { --played: 33.8%; }
@@ -441,64 +536,52 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .js .feat-player:not(.in) .tracks { opacity: 0; transform: translateY(8px) scale(0.97); }
 }
 
-/* AniList sync: the episode ends here, the entry turns over there */
-.sync { display: grid; gap: 0; margin: auto 0; }
-.sync-watch { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--hair); }
-.sw-label { color: var(--fg); font-size: 14px; font-weight: 600; }
-.sw-bar { position: relative; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
-.sw-bar i { position: absolute; inset: 0; border-radius: inherit; background: var(--done); transform-origin: left; }
-.sw-check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--done); color: #07201b; }
-.sw-check svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.sync-streak { position: relative; display: block; width: 2px; height: 34px; margin: 0 auto; background: linear-gradient(var(--done), var(--anilist)); opacity: 0.6; overflow: hidden; }
-.sync-streak i { position: absolute; left: 0; top: -40%; width: 100%; height: 40%; background: linear-gradient(transparent, #fff, transparent); }
-.al-card { position: relative; padding: 16px; border-radius: 16px; background: linear-gradient(160deg, #152232, #0b1622); box-shadow: inset 0 0 0 1px rgba(61, 180, 242, 0.22), inset 0 1px rgba(255, 255, 255, 0.08); overflow: hidden; }
-.al-head { display: flex; align-items: center; gap: 10px; color: #edf1f5; font-size: 14px; font-weight: 640; }
-.al-head > svg { width: 22px; height: 22px; fill: #02a9ff; }
-.al-synced { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: #3db4f2; font-size: 13px; font-weight: 600; }
-.al-synced svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.al-entry { display: grid; grid-template-columns: 52px 1fr auto; gap: 14px; align-items: center; margin-top: 14px; }
-.al-entry img { width: 52px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; }
-.al-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
-.al-meta b { overflow: hidden; color: #edf1f5; font-size: 14.5px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.al-status { color: #7bd555; font-size: 13px; font-weight: 600; }
-.al-num { display: flex; align-items: baseline; gap: 5px; color: #9fadbd; font: 500 13px/1 var(--mono); }
-.al-num .n { position: relative; display: inline-grid; color: #edf1f5; font-size: 22px; font-weight: 500; }
+/* AniList sync: the episode ends, its cell lights and the AniList entry counts up */
+.sync { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 26px; padding: 32px; }
+.al-entry { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; gap: 20px; align-items: center; }
+.al-entry img { width: 80px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.al-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; text-align: left; }
+.al-meta b { color: var(--fg); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.al-status { color: var(--fg-2); font-size: 15px; }
+.al-num { display: flex; align-items: baseline; gap: 6px; color: var(--fg-4); font: 500 18px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.al-num .n { position: relative; display: inline-grid; overflow: hidden; color: var(--fg); font-size: 44px; font-weight: 700; letter-spacing: -0.03em; }
 .al-num .old, .al-num .new { grid-area: 1 / 1; transition: opacity 0.35s ease, transform 0.35s var(--ease); }
 .al-num .old { opacity: 0; transform: translateY(-100%); }
-.al-track { position: relative; height: 3px; margin-top: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.al-track i { position: absolute; inset: 0; width: calc(13 / 28 * 100%); border-radius: inherit; background: #3db4f2; transition: width 0.5s var(--ease); }
+.al-eps { display: grid; grid-template-columns: repeat(28, minmax(0, 1fr)); gap: 4px; }
+.al-eps i { height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
+.al-eps i.on, .al-eps i.now { background: var(--done); }
+.al-eps i.now { box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 30%, transparent); }
+.al-foot { display: flex; align-items: center; gap: 10px; color: var(--fg-2); font-size: 15px; font-weight: 600; }
+.al-foot > svg { width: 22px; height: 22px; fill: var(--anilist); }
+.al-synced { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--done); font-size: 14px; font-weight: 600; }
+.al-synced svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 @media (prefers-reduced-motion: no-preference) {
-  .js .feat-sync .sw-bar i { transition: transform 1.1s var(--ease); }
-  .js .feat-sync:not(.in) .sw-bar i { transform: scaleX(0.72); }
-  .js .feat-sync .sw-check { transition: transform 0.35s var(--ease) 1s, opacity 0.35s ease 1s; }
-  .js .feat-sync:not(.in) .sw-check { transform: scale(0.4); opacity: 0; }
-  .js .feat-sync.in .sync-streak i { animation: drop 0.8s ease-in 1.2s both; }
-  .js .feat-sync .al-num .old, .js .feat-sync .al-num .new, .js .feat-sync .al-track i, .js .feat-sync .al-synced { transition-delay: 1.9s; }
+  .js .feat-sync .al-eps i.now { transition-delay: 0.6s; }
+  .js .feat-sync:not(.in) .al-eps i.now { background: rgba(255, 255, 255, 0.12); box-shadow: none; }
+  .js .feat-sync .al-num .old, .js .feat-sync .al-num .new { transition-delay: 1.1s; }
   .js .feat-sync:not(.in) .al-num .new { opacity: 0; transform: translateY(100%); }
   .js .feat-sync:not(.in) .al-num .old { opacity: 1; transform: none; }
-  .js .feat-sync:not(.in) .al-track i { width: calc(12 / 28 * 100%); }
-  .js .feat-sync .al-synced { transition: opacity 0.4s ease; }
+  .js .feat-sync .al-synced { transition: opacity 0.4s ease 1.4s; }
   .js .feat-sync:not(.in) .al-synced { opacity: 0; }
 }
-@keyframes drop { from { top: -40%; } to { top: 100%; } }
 
 /* Pick up where you left off: the app's Home card */
-.pickup { position: relative; display: grid; grid-template-columns: 80px 1fr; gap: 18px; align-items: center; margin: auto 0; padding: 20px; overflow: hidden; border-radius: 16px; isolation: isolate; }
-.pickup-art { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(10, 12, 16, 0.92) 30%, rgba(10, 12, 16, 0.55)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); border-radius: inherit; }
-.pickup-poster { width: 80px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 24px -8px #000; }
+.pickup { position: relative; flex: 1; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: center; padding: 32px; overflow: hidden; border-radius: 24px; isolation: isolate; }
+.pickup-art { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(10, 12, 16, 0.94) 35%, rgba(10, 12, 16, 0.72)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); border-radius: inherit; }
+.pickup-poster { width: 120px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 24px -8px #000; }
 .pickup-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; text-align: left; }
 
-.pickup-text b { color: #fff; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; font-variation-settings: "wdth" 86; }
-.pickup-ep { color: var(--fg-2); font-size: 13px; }
-.cubes { display: flex; gap: 3px; margin: 8px 0 4px; }
-.cubes i { width: 7px; height: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
+.pickup-text b { color: #fff; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; font-variation-settings: "wdth" 86; }
+.pickup-ep { color: var(--fg-2); font-size: 15px; }
+.cubes { display: flex; gap: 3px; width: 100%; margin: 12px 0 6px; }
+.cubes i { flex: 0 1 7px; min-width: 3px; height: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
 .cubes i.on { background: var(--done); }
 .cubes i.half { background: linear-gradient(90deg, var(--done) 50%, rgba(255, 255, 255, 0.18) 50%); }
-.pickup-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pickup-btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .pickup-btns > span { white-space: nowrap; }
-.pk-resume { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px; background: #eef2f5; color: #0b0d11; font-size: 13px; font-weight: 640; transition: background-color var(--quick); }
-.pk-resume svg { width: 11px; fill: currentColor; }
-.pk-open { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); color: var(--fg); font-size: 13px; font-weight: 600; }
+.pk-resume { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 18px; border-radius: 999px; background: #eef2f5; color: #0b0d11; font-size: 15px; font-weight: 640; transition: background-color var(--quick); }
+.pk-resume svg { width: 12px; fill: currentColor; }
+.pk-open { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: var(--fg); font-size: 15px; font-weight: 600; }
 .feat-resume:hover .pk-resume { background: #fff; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-resume .pickup-art { transition: transform 6s ease-out; }
@@ -506,18 +589,29 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .js .feat-resume .cubes i { transition: background-color 0.25s ease calc(0.4s + var(--c, 0) * 0.03s); }
 }
 
-/* Related shows, as the series page lists them today (watch order is #784) */
-.related { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: auto 0 0; }
-.stone { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--hair); text-align: left; min-width: 0; }
-.stone img { width: 44px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; }
-.stone div { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
-.stone b { overflow: hidden; color: var(--fg); font-size: 13px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.stone span { color: var(--fg-3); font-size: 12px; }
-.stone em { color: var(--fg-3); font-style: normal; font-size: 12px; }
-.stone.owned em { color: var(--done); }
+/* Sequels in watch order: a rail of six segments, lit where the season is in the library, over
+   one row of the seasons (watch order in the app is #784) */
+.related { padding: 26px 32px 30px; }
+.rel-head { display: block; color: var(--fg); font-size: 18px; font-weight: 600; text-align: left; }
+.rel-rail, .rel-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
+.rel-rail { margin: 18px 0 20px; }
+.rel-rail i { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
+.rel-rail i.on { background: var(--done); }
+.stone { display: flex; gap: 12px; align-items: center; min-width: 0; text-align: left; }
+.stone-art { position: relative; flex: none; }
+.stone img { width: 56px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.stone:not(.owned) img { opacity: 0.4; filter: saturate(0.4); }
+.tick { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--done); color: #07201b; box-shadow: 0 0 0 3px var(--card-a); }
+.tick svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.stone div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stone b { color: var(--fg); font-size: 15px; font-weight: 600; line-height: 1.25; text-wrap: balance; }
+.stone:not(.owned) b { color: var(--fg-2); }
+.stone span { color: var(--fg-3); font-size: 13px; }
 @media (prefers-reduced-motion: no-preference) {
   .js .feat-chain .stone { transition: opacity 0.5s var(--ease) calc(0.1s + var(--i) * 0.07s), transform 0.5s var(--ease) calc(0.1s + var(--i) * 0.07s); }
   .js .feat-chain:not(.in) .stone { opacity: 0; transform: translateY(10px); }
+  .js .feat-chain .rel-rail i { transition: background-color 0.4s ease calc(0.4s + var(--i) * 0.12s); }
+  .js .feat-chain:not(.in) .rel-rail i.on { background: rgba(255, 255, 255, 0.1); }
 }
 
 /* Casting, in Google Cast's own terms: the content full screen on the TV with its title and the
@@ -660,13 +754,13 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 }
 @media (max-width: 1100px) {
   .window { grid-template-columns: 64px 1fr; }
-  .feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .feat-player, .feat-chain { grid-column: span 2; }
-  .feat-sync, .feat-resume { grid-column: span 1; }
+
+  .feat-grid { grid-template-columns: minmax(0, 1fr); row-gap: 56px; }
+  .rel-rail { display: none; }
+  .rel-row { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; margin-top: 20px; }
 
   .trust-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 56px; }
   .tcell:nth-child(3) { border-left: 0; }
-  .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .cast-section { grid-template-columns: minmax(0, 1fr); }
@@ -685,11 +779,20 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
   .rail button { flex: 1; font-size: 11px; }
   .rail button svg { width: 18px; }
   .poster { width: 112px; }
-  .feat-grid { grid-template-columns: minmax(0, 1fr); }
-
-  .feat-player, .feat-chain, .feat-sync, .feat-resume { grid-column: auto; }
-  .feat { padding: 22px; }
-  .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feat h3 { font-size: 21px; }
+  .sync, .pickup { padding: 22px; }
+  .related { padding: 20px 22px 24px; }
+  .al-entry { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; }
+  .al-entry img { width: 56px; }
+  .al-meta b { font-size: 17px; }
+  .al-num .n { font-size: 34px; }
+  .pickup { grid-template-columns: 84px minmax(0, 1fr); gap: 18px; }
+  .pickup-poster { width: 84px; }
+  .pickup-text b { font-size: 21px; }
+  .rel-row { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; }
+  .stone { gap: 10px; }
+  .stone img { width: 44px; }
+  .stone b { font-size: 14px; }
   /* The five promises are five matching cards that zigzag down the screen, left then right.
      Each card's line sits inside it. */
   .trust-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 48px !important; max-width: 420px; }
@@ -702,12 +805,15 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
   .foot nav { margin-left: 0; }
 }
 
-/* The download page. The visitor's system gets the wide tile on top; the rest sit below it.
-   Nightly keeps the same page and changes only what says "not finished": the owner's
-   hand-drawn logo, and the pale paper yellow of that drawing in place of the brand yellow. */
+/* The download page. The hero hands the visitor's own system its file in one button, beside a
+   picture of the app; every platform follows as a card listing its files, and the terminal
+   installs sit in tabs below. Nightly keeps the same page and changes only what says "not
+   finished": the owner's hand-drawn logo, and the pale paper yellow of that drawing in place of
+   the brand yellow. */
 .dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
 .dl-page[data-channel="nightly"] { --paper: #f3e073; --brand: var(--paper); --brand-hi: #fff3b0; --beam-a: rgba(243, 224, 115, 0.4); --beam-b: rgba(243, 224, 115, 0.25); }
-.dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
+
+.dl-hero { position: relative; isolation: isolate; display: flex; justify-content: center; padding: 160px 0 104px; text-align: center; }
 .dl-beams { inset: -40px -40% 0; }
 /* Nightly draws its streaks as bent, dashed vector lines (download.js); the straight ones step
    aside. The dashes crawl along the line. */
@@ -721,20 +827,159 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 /* 100 px a loop: a whole number of dash cycles on every streak (download.js), so it never jumps. */
 @keyframes crawl { to { stroke-dashoffset: -100; } }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
-.dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
-.dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
-/* The switch is a plain crossfade between the two logos. */
-.dl-mark img { transition: opacity 0.35s ease; }
+
+.dl-hero-copy { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.dl-mark { position: relative; width: 72px; height: 72px; margin-bottom: 28px; }
+.dl-mark img { position: absolute; inset: 0; border-radius: 18px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.35s ease; }
 .mark-nightly { opacity: 0; }
 .dl-page[data-channel="nightly"] .mark-stable { opacity: 0; }
 .dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; }
-.dl-head h1 { font-size: clamp(36px, 5.4vw, 64px); letter-spacing: -0.04em; font-weight: 640; }
-.channel { position: relative; display: inline-flex; margin-top: 30px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-hero h1 { font-size: clamp(44px, 5.6vw, 76px); line-height: 0.98; letter-spacing: -0.045em; font-weight: 660; text-wrap: balance; }
+
+/* The version line: the number as a tag, the date, and What's new */
+.dl-meta { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 14px; margin: 20px 0 0; color: var(--fg-3); font-size: 15px; }
+.dl-meta .dl-ver { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--fg); font: 500 13px/1 var(--mono); }
+.dl-meta .dl-ver::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 10px var(--brand); transition: background-color 0.45s ease; }
+.dl-meta a { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-2); text-decoration: none; }
+.dl-meta a::after { content: "\2192"; transition: translate var(--quick); }
+.dl-meta a:hover { color: #fff; }
+.dl-meta a:hover::after { translate: 3px 0; }
+
+.channel { position: relative; display: inline-flex; margin-top: 28px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
 .channel button { position: relative; z-index: 1; width: 104px; padding: 9px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
 .channel button:hover { color: #fff; }
 .channel button[aria-pressed="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
 .dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
+
+/* The one big button: the visitor's system, its icon, its file and size, and the arrow. With no
+   system to pick it leads down to the cards. */
+.dl-mine {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: min(100%, 420px);
+  margin-top: 32px;
+  padding: 14px 14px 14px 16px;
+  text-align: left;
+  border-radius: 18px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  text-decoration: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5), inset 0 -1px 0.4px rgba(0, 0, 0, 0.25), inset 0 1px 0.4px rgba(255, 255, 255, 0.7), 0 24px 60px -24px rgba(253, 201, 1, 0.55);
+  transition: background-color var(--quick), transform 0.25s var(--ease), box-shadow 0.45s ease;
+}
+.dl-mine:hover { color: var(--brand-ink); background: var(--brand-hi); transform: translateY(-2px); }
+.dl-mine:active { transform: translateY(0) scale(0.99); }
+.dl-mine-os { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: rgba(13, 14, 17, 0.12); }
+.dl-mine-os svg { width: 26px; height: 26px; fill: currentColor; }
+.dl-mine-os svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.dl-mine-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dl-mine-text b { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.15; }
+.dl-mine-text small { font: 500 13px/1.2 var(--mono); opacity: 0.68; }
+.dl-mine-text small[hidden] { display: none; }
+.dl-mine-go { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--brand-ink); color: var(--brand); transition: color 0.45s ease; }
+.dl-mine-go svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-mine::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.6) 48%, rgba(255, 255, 255, 0.2) 52%, transparent 60%); background-size: 300% 100%; background-position: 130% 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .dl-mine:hover::after { background-position: -30% 0; transition: background-position 0.8s var(--ease); }
+  .dl-mine:hover .dl-mine-go svg { animation: nudge 0.9s var(--ease) infinite; }
+}
+@keyframes nudge { 50% { transform: translateY(3px); } }
+
+/* The other ways to get it on the same system, as chips under the big button */
+.dl-alt { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.dl-alt:empty { display: none; }
+.dl-alt a { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--fg-2); font: 500 13px/1 var(--mono); text-decoration: none; transition: color var(--quick), background-color var(--quick); }
+.dl-alt a:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.dl-alt svg { width: 15px; height: 15px; }
+.dl-alt svg.ic-b { fill: currentColor; }
+.dl-alt svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-alt .dl-get { display: none; }
+
+
+/* Section headings */
+.dl-platforms h2, .dl-cli h2 { margin-bottom: 36px; font-size: clamp(30px, 3.4vw, 44px); }
+
+/* Every platform: one row each, all the same size. The name on the left, the other ways to get
+   it as chips, and the main file as the button on the right. */
+.dl-grid { display: flex; flex-direction: column; gap: 10px; }
+.dl-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 88px;
+  padding: 16px 16px 16px 20px;
+  border: 1px solid var(--hair);
+  border-radius: 20px;
+  background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
+  box-shadow: inset 0 1px var(--hi);
+}
+.dl-card[hidden] { display: none; }
+/* Desktop above, phones below: Android is the first phone, so the gap opens above it. */
+.dl-card[data-os="android"] { margin-top: 30px; }
+.dl-card [hidden] { display: none; }
+.dl-glyph { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-glyph svg { width: 24px; height: 24px; fill: var(--fg); transition: fill 0.45s ease; }
+.dl-card.is-mine { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.dl-card.is-mine .dl-glyph svg { fill: var(--brand); }
+.dl-card-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dl-card-name h3 { font-size: 20px; letter-spacing: -0.02em; }
+.dl-req { color: var(--fg-3); font-size: 13.5px; }
+.dl-files { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.dl-files li:has([data-main]) { order: 1; }
+.dl-file { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px; border-radius: 999px; color: var(--fg-2); font: 500 13.5px/1 var(--sans); text-decoration: none; white-space: nowrap; transition: color var(--quick), background-color var(--quick), box-shadow var(--quick); }
+.dl-file:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.dl-file svg { width: 15px; height: 15px; }
+.dl-file svg.ic-b { fill: currentColor; }
+.dl-file svg.ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-file[data-main] { height: 44px; min-width: 190px; justify-content: center; padding: 0 18px; border-radius: 12px; background: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08)), #0d0e10; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), inset 0 1px rgba(255, 255, 255, 0.08); color: var(--fg); font-weight: 600; font-size: 15px; }
+.dl-file[data-main]:hover { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 1px rgba(255, 255, 255, 0.12); }
+.dl-size { color: var(--fg-3); font: 500 12.5px/1 var(--mono); }
+.dl-size:empty { display: none; }
+.dl-card.is-mine .dl-file[data-main] { background: var(--brand); box-shadow: inset 0 -1px 0.4px rgba(0, 0, 0, 0.25), inset 0 1px 0.4px rgba(255, 255, 255, 0.7); color: var(--brand-ink); }
+.dl-card.is-mine .dl-file[data-main]:hover { background: var(--brand-hi); }
+.dl-card.is-mine .dl-file[data-main] .dl-size { color: rgba(13, 14, 17, 0.6); }
+
+/* From a terminal: one console, a tab per way in */
+.dl-cli { margin-top: 112px; }
+.dl-console { border: 1px solid var(--hair); border-radius: 22px; background: #050607; box-shadow: inset 0 1px var(--hi); overflow: hidden; }
+.dl-tabs { display: flex; gap: 4px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--hair); background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%); scrollbar-width: none; }
+.dl-tabs::-webkit-scrollbar { display: none; }
+.dl-tabs button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color var(--quick), background-color var(--quick); }
+.dl-tabs button:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+.dl-tabs button[aria-selected="true"] { color: var(--fg); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.dl-tabs svg { width: 16px; height: 16px; fill: currentColor; }
+.dl-tabs button[aria-selected="true"] svg { fill: var(--brand); }
+.dl-tab-icons { display: inline-flex; gap: 4px; }
+.dl-panel { padding: 18px; }
+.dl-panel[hidden] { display: none; }
+.dl-panel .term { background: none; box-shadow: none; padding-left: 6px; }
+.term-lines code { padding-top: 7px; white-space: pre; line-height: 1.9; }
+.term-lines .prompt { padding: 0; }
+
+.dl-more { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 72px; }
+.dl-more svg { width: 18px; height: 18px; }
+.dl-more svg.ic-b { fill: currentColor; }
+.dl-more svg.ic { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.dl-page + .foot { margin-top: 120px; }
+
+@media (max-width: 760px) {
+  .dl-hero { padding: 120px 0 72px; }
+  .dl-card { grid-template-columns: 44px minmax(0, 1fr); gap: 14px 14px; padding: 16px; }
+  .dl-glyph { width: 44px; height: 44px; }
+  .dl-files { grid-column: 1 / -1; justify-content: flex-start; }
+  .dl-files li:has([data-main]) { order: -1; flex-basis: 100%; }
+  .dl-file[data-main] { width: 100%; }
+  .dl-mine { width: 100%; }
+  .dl-cli { margin-top: 80px; }
+  .term-lines code { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
 
 /* Get Anibeam on the home page: the hero's two buttons again, and the install command. */
 .install { text-align: center; }
@@ -743,77 +988,10 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 .get-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 28px !important; }
 .get-term .term { width: min(100%, 560px); text-align: left; }
 
-.dl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.dl-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  padding: 26px;
-  border: 1px solid var(--hair);
-  border-radius: 22px;
-  background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
-  box-shadow: inset 0 1px var(--hi);
-}
-.dl-name { display: flex; align-items: center; gap: 12px; }
-.dl-name svg { width: 26px; height: 26px; fill: var(--fg); transition: fill 0.45s ease; }
-.dl-name :is(h2, h3) { font-size: 22px; letter-spacing: -0.02em; }
-.dl-do { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
-.dl-main { width: 100%; }
-.dl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.dl-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair); color: var(--fg-2); font: 500 13px/1 var(--mono); text-decoration: none; transition: color var(--quick), background-color var(--quick); }
-.dl-chip svg { width: 14px; height: 14px; fill: currentColor; }
-a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
-.dl-chip.is-soon { opacity: 0.6; font-family: var(--sans); }
-
-/* The featured tile: the visitor's system, wide, with its download in the brand colour. */
-.dl-tile.is-featured { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 40px; padding: 34px 38px; }
-.dl-tile.is-featured .dl-name svg { width: 44px; height: 44px; fill: var(--brand); }
-.dl-tile.is-featured .dl-name :is(h2, h3) { font-size: 34px; }
-.dl-tile.is-featured .dl-do { flex-direction: row; align-items: center; gap: 18px; margin: 0 0 0 auto; }
-.dl-tile.is-featured .dl-main { width: auto; min-width: 260px; }
-/* A light runs round the edge of the featured tile, and a sheen crosses its download button
-   every few seconds. */
-@property --edge { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.dl-tile.is-featured::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  padding: 1px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--edge), rgba(255, 255, 255, 0.07) 0 52%, var(--brand) 66%, #fff 70%, var(--brand) 74%, rgba(255, 255, 255, 0.07) 88%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .dl-tile.is-featured::before { animation: edge-run 7s linear infinite; }
-  .dl-tile.is-featured .dl-main::after { animation: sheen 4.8s cubic-bezier(0.45, 0, 0.2, 1) 1.2s infinite; }
-}
-@keyframes edge-run { to { --edge: 360deg; } }
-.dl-tile.is-featured .dl-main::after { background-image: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.85) 47%, rgba(255, 255, 255, 0.95) 49%, rgba(255, 255, 255, 0.3) 52%, transparent 58%); background-size: 300% 100%; }
-@keyframes sheen { 0%, 72% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
-.dl-tile.is-featured .dl-main { transition: background-color var(--quick), box-shadow var(--quick), transform 0.25s var(--ease); }
-.dl-tile.is-featured .dl-main:hover { transform: translateY(-2px) scale(1.02); }
-.dl-tile.is-featured .dl-main:active { transform: translateY(0) scale(0.99); }
-
-.dl-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 56px; }
-.dl-term .term { width: min(100%, 620px); }
-.dl-term .term.nightly-only { width: min(100%, 780px); }
 .dl-term-for { color: var(--fg-3); font-size: 13.5px; }
-.dl-all { margin: 56px 0 0; color: var(--fg-3); font-size: 14.5px; text-align: center; }
-.dl-page + .foot { margin-top: 120px; }
-@media (max-width: 860px) {
-  .dl-grid { grid-template-columns: minmax(0, 1fr); }
-  .dl-tile.is-featured { flex-direction: column; align-items: stretch; gap: 22px; padding: 26px; }
-  .dl-tile.is-featured .dl-do { flex-direction: column; align-items: stretch; margin: 0; }
-  .dl-tile.is-featured .dl-main { min-width: 0; width: 100%; }
-}
 
-/* The nav: the language, GitHub, and the way to the downloads */
-.nav-lang, .nav-gh { display: inline-flex; align-items: center; gap: 7px; }
+/* The nav: the language, Watch together, GitHub, and the way to the downloads */
+.nav-lang, .nav-gh, .nav-rooms { display: inline-flex; align-items: center; gap: 7px; }
 /* The language menu: a native <details>, so it opens with a click or the keyboard and needs no
    script. The panel lists every language in its own name. */
 .nav-lang { position: relative; }
@@ -846,8 +1024,8 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 .lang-menu a[aria-current="true"] { color: #fff; }
 .lang-menu a[aria-current="true"]::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
-.nav-lang svg, .nav-gh svg { width: 15px; height: 15px; }
-.nav-lang svg { fill: none; stroke: currentColor; stroke-width: 2; }
+.nav-lang svg, .nav-gh svg, .nav-rooms svg { width: 15px; height: 15px; }
+.nav-lang svg, .nav-rooms svg { fill: none; stroke: currentColor; stroke-width: 2; }
 .nav-gh svg { fill: currentColor; }
 
 /* What's new: the apps' patch notes, a version per entry, newest first. A version is a row: its
@@ -902,28 +1080,34 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
   .wn-coming { padding: 26px 20px; }
 }
 
-/* The download page's channel and the chips only a release has */
+/* The download page's channel and the rows only a release has */
 .dl-page[data-channel="nightly"] .stable-only { display: none; }
 .dl-page:not([data-channel="nightly"]) .nightly-only { display: none; }
-.dl-chip.is-note { font-family: var(--sans); color: var(--fg-3); background: none; box-shadow: none; padding-inline: 4px; }
+.term[hidden] { display: none; }
 .dl-auto.is-soon { cursor: default; pointer-events: none; }
 .dl-auto.is-soon .os-icon { display: none; }
 
-/* A phone: only the phone's download, no command line, no other systems, no channels. */
-html[data-device="phone"] .dl-tile:not([data-os="android"]),
-html[data-device="phone"] .dl-term,
+/* A phone: its own download only. No picture of the desktop app, no command line, no other
+   systems; an Android phone gets it all from the hero's button, so it has no cards either. */
+html[data-device="phone"] .dl-cli,
+html[data-device="phone"] .dl-more,
+html[data-device="phone"] .dl-card:not([data-os="ios"]),
 html[data-device="phone"] .get-term,
-html[data-device="phone"] .channel,
 html[data-device="phone"] .dl-other,
-html[data-device="phone"] .dl-all { display: none; }
+html[data-os="android"] .dl-platforms { display: none; }
 
-/* An iPhone: no app yet, so the note says it is coming and the Mac's download stands in. */
+/* An Android phone has no channels, but an iPhone does: its IPA is on each of them. */
+html[data-os="android"] .channel { display: none; }
+
+/* An iPhone: its card once there is a build, and until then the note that it is coming, with
+   the Mac's download standing in. */
 .ios-mac, .ios-soon { display: none; }
 html[data-os="ios"] .ios-mac { display: inline-flex; }
 .ios-mac .os-icon { fill: currentColor; stroke: none; }
-html[data-os="ios"] .dl-tile[data-os="mac"] { display: flex; }
-html[data-os="ios"] .dl-tile[data-os="android"] { display: none; }
-html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
+html[data-os="ios"] .dl-grid:has(#dl-iphone[hidden]) .dl-card[data-os="mac"] { display: grid; }
+/* the terminal is not on a phone, so nothing may lead to its tabs */
+html[data-device="phone"] .dl-files li:has([data-tab]) { display: none; }
+html[data-os="ios"] .dl-page:has(#dl-iphone[hidden]) .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
 .ios-soon svg { width: 16px; height: 16px; fill: currentColor; }
 
 /* A narrow screen that is no phone wraps a long command instead of cutting it off. */
@@ -931,9 +1115,10 @@ html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 
   .term code { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
-/* A narrow nav keeps the language menu and the download button; GitHub stays in the footer. */
+/* A narrow nav keeps the language menu and the download button; GitHub and Watch together stay
+   in the footer. */
 @media (max-width: 700px) {
-  .nav-links .nav-gh { display: none; }
+  .nav-links .nav-gh, .nav-links .nav-rooms { display: none; }
   .nav-lang summary, .nav .btn-sm { white-space: nowrap; }
 }
 /* On a phone the menu is the globe alone; its name stays for screen readers. */
@@ -965,3 +1150,5 @@ html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 
   .legal-hero { padding: 120px 0 40px; }
   .legal > section:not(.legal-hero) { grid-template-columns: minmax(0, 1fr); padding: 32px 0; }
 }
+/* An iPhone with a build: the hero's button and chips are its whole card, so the card steps aside. */
+html[data-os="ios"] .dl-page:has(#dl-iphone:not([hidden])) .dl-platforms { display: none; }

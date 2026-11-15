@@ -36,7 +36,18 @@ SettingsTab {
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
-    Component.onCompleted: readPresence()
+    // The people told no when they asked on Discord to join (#966)
+    property var discordBlocked: []
+    function readBlocked() {
+        var r = Door.call("DiscordBlocked", {})
+        if (!r.error) discordBlocked = r.reply.people || []
+    }
+    function clearBlocked() {
+        var r = Door.call("DiscordUnblock", { user_id: null })
+        if (r.error) { frame.fail(r.error); return }
+        discordBlocked = r.reply.people || []
+    }
+    Component.onCompleted: { readPresence(); readBlocked() }
     Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
@@ -64,16 +75,34 @@ SettingsTab {
         title: "Discord"
         SettingRow { label: words.t("settings-playback-discord")
             helper: tab.presenceFailed ? words.t("settings-playback-discord-check-failed")
-                : tab.discordAvailable ? words.t("settings-playback-discord-helper") : words.t("settings-playback-discord-unavailable")
+                : tab.discordAvailable ? "" : words.t("settings-playback-discord-unavailable")
             status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? words.t("settings-playback-discord-connected") : words.t("settings-playback-discord-not-connected")
             Row { spacing: theme.space(2)
                 Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
                 Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
+        SettingRow { label: words.t("settings-playback-discord-blocked")
+            visible: tab.discordAvailable
+            status: tab.discordBlocked.map(function(p) { return p.name }).join(", ")
+            Button { objectName: "settings-discord-unblock"; msg: "action-clear"; flat: true; small: true
+                enabled: tab.discordBlocked.length > 0; opacity: enabled ? 1 : theme.disabledOpacity
+                onClicked: tab.clearBlocked() } }
+    }
+    // Watch together (#846): the name others in a room see. Kept per machine, like the relay.
+    Panel {
+        title: words.t("settings-playback-together")
+        SettingRow { label: words.t("settings-playback-room-name")
+            Field { objectName: "settings-room-name"; text: Door.preferences.room_name || ""; placeholder: frame.room.suggestedName || words.t("settings-playback-room-name-placeholder"); width: theme.space(48)
+                accessibleName: words.t("settings-playback-room-name")
+                onEdited: function(t) { if (t.trim() !== "" && t.trim() !== (Door.preferences.room_name || "") && !frame.room.setName(t)) frame.toast(frame.room.error) } } }
     }
     Panel {
         title: words.t("settings-playback-advanced")
         SettingRow { label: words.t("settings-playback-my-mpv"); helper: words.t("settings-playback-my-mpv-helper")
             status: Player.configLayers.length ? Player.configLayers.join("\n") : words.t("settings-playback-no-mpv-conf")
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
+        SettingRow { label: words.t("settings-playback-room-relay"); helper: words.t("settings-playback-room-relay-helper")
+            Field { objectName: "settings-room-relay"; text: Door.preferences.room_relay || ""; mono: true; width: theme.space(64)
+                accessibleName: words.t("settings-playback-room-relay")
+                onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } } }
     }
 }

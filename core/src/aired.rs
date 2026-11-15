@@ -22,9 +22,10 @@ use std::time::Duration;
 use rusqlite::{Connection, params};
 
 use crate::contract::*;
-use crate::core::Core;
 use crate::events::Subscription;
-use crate::library::titles;
+use crate::foundation::services::Services;
+use crate::foundation::titles;
+use crate::metadata::Metadata;
 use crate::prefs;
 use crate::store::settings;
 use crate::sync::recover;
@@ -116,9 +117,9 @@ const MARK_STEP: i64 = 10 * 60;
 
 /// Says every followed episode out since the mark, moves the mark to now, and
 /// answers the next broadcast to wake for. The caller holds `saying`.
-fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
+fn announce(services: &Services) -> Result<Option<i64>, CoreError> {
     let now = time::now_secs();
-    let (out, next) = core.store.tx(move |tx| {
+    let (out, next) = services.store.tx(move |tx| {
         let mark = settings::get::<i64>(tx, settings::EPISODES_OUT_AT)?;
         let from = match mark {
             Some(mark) => mark.max(now - CATCH_UP_SECS),
@@ -138,12 +139,16 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
         Ok((out, next_at(tx, now)?))
     })?;
     for ep in out {
-        let plain = format!("Episode {} of {} is out.", ep.episode, ep.title);
+        let plain = crate::words!(
+            "core-aired-episode-out",
+            number = ep.episode.to_string(),
+            title = &ep.title,
+        );
         let message = format!(
             "episode out: {} {} (anilist {})",
             ep.title, ep.episode, ep.anilist_id
         );
-        core.bus.say(
+        services.bus.say(
             Level::Info,
             Stage::Metadata,
             plain,
@@ -156,29 +161,31 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
 
 /// Announces what is due, then sets the one alarm for the next broadcast,
 /// replacing any alarm set before.
-pub(crate) fn arm(core: &Arc<Core>) {
+pub(crate) fn arm(metadata: &Arc<Metadata>) {
     // Held until the alarm is set, so a second arm with an older answer for
     // the next broadcast cannot replace a newer alarm.
-    let _one = recover(&core.aired.saying);
-    let next = match announce(core) {
+    let _one = recover(&metadata.aired.saying);
+    let next = match announce(&metadata.services) {
         Ok(next) => next,
         Err(e) => {
             tracing::warn!("episode out: {e}");
             None
         }
     };
-    let mut alarm = recover(&core.aired.alarm);
+    let mut alarm = recover(&metadata.aired.alarm);
     if let Some(old) = alarm.take() {
         old.abort();
     }
     let Some(at) = next else { return };
     let wait = Duration::from_secs((at - time::now_secs()).max(0) as u64 + 1).min(LONGEST_SLEEP);
-    let weak = Arc::downgrade(core);
-    *alarm = Some(core.handle.spawn(async move {
+    let weak = Arc::downgrade(metadata);
+    *alarm = Some(metadata.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
-        let Some(core) = weak.upgrade() else { return };
-        let handle = core.handle.clone();
-        let _ = handle.spawn_blocking(move || arm(&core)).await;
+        let Some(metadata) = weak.upgrade() else {
+            return;
+        };
+        let handle = metadata.services.handle.clone();
+        let _ = handle.spawn_blocking(move || arm(&metadata)).await;
     }));
 }
 
@@ -191,25 +198,26 @@ fn may_change(event: &Event) -> bool {
 
 /// Subscribes the re-arming listener and sets the first alarm. Called once
 /// the core has started, so the launch says what aired while it was closed.
-pub(crate) fn listen(core: &Arc<Core>) {
+pub(crate) fn listen(metadata: &Arc<Metadata>) {
     let listener = Arc::new(AfterChange {
-        core: Arc::downgrade(core),
+        metadata: Arc::downgrade(metadata),
     });
-    *recover(&core.aired.listener) = Some(core.subscribe(listener));
-    let owner = core.clone();
-    core.handle.spawn_blocking(move || arm(&owner));
+    *recover(&metadata.aired.listener) =
+        Some(Subscription::new(metadata.services.bus.clone(), listener));
+    let owner = metadata.clone();
+    metadata.services.handle.spawn_blocking(move || arm(&owner));
 }
 
-pub(crate) fn stop(core: &Core) {
-    let sub = recover(&core.aired.listener).take();
+pub(crate) fn stop(metadata: &Metadata) {
+    let sub = recover(&metadata.aired.listener).take();
     drop(sub);
-    if let Some(alarm) = recover(&core.aired.alarm).take() {
+    if let Some(alarm) = recover(&metadata.aired.alarm).take() {
         alarm.abort();
     }
 }
 
 struct AfterChange {
-    core: Weak<Core>,
+    metadata: Weak<Metadata>,
 }
 
 impl EventListener for AfterChange {
@@ -217,19 +225,21 @@ impl EventListener for AfterChange {
         if !may_change(&event) {
             return;
         }
-        let Some(core) = self.core.upgrade() else {
+        let Some(metadata) = self.metadata.upgrade() else {
             return;
         };
-        if core.aired.queued.swap(true, Ordering::SeqCst) {
+        if metadata.aired.queued.swap(true, Ordering::SeqCst) {
             return;
         }
-        let weak = self.core.clone();
-        core.handle.spawn(async move {
+        let weak = self.metadata.clone();
+        metadata.services.handle.spawn(async move {
             tokio::time::sleep(SETTLE).await;
-            let Some(core) = weak.upgrade() else { return };
-            core.aired.queued.store(false, Ordering::SeqCst);
-            let handle = core.handle.clone();
-            let _ = handle.spawn_blocking(move || arm(&core)).await;
+            let Some(metadata) = weak.upgrade() else {
+                return;
+            };
+            metadata.aired.queued.store(false, Ordering::SeqCst);
+            let handle = metadata.services.handle.clone();
+            let _ = handle.spawn_blocking(move || arm(&metadata)).await;
         });
     }
 }

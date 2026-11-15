@@ -45,7 +45,7 @@ impl Backend {
     pub async fn acquire(&mut self) -> Option<Hold> {
         // kIOPMAssertionTypePreventUserIdleDisplaySleep is this string.
         let kind = c"PreventUserIdleDisplaySleep";
-        let name = c"AniBeam: playing an episode";
+        let name = c"Anibeam: playing an episode";
         let mut id = 0u32;
         // SAFETY: both strings are NUL terminated and outlive the calls, the CFStrings are
         // released once IOKit has taken its own references (CFRelease crashes on null, so a

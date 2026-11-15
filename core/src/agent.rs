@@ -1,6 +1,6 @@
 //! A show's schedule, looked up by the coding agent on this computer (#419).
 //!
-//! AniBeam runs a real session of the agent the person already has, the way
+//! Anibeam runs a real session of the agent the person already has, the way
 //! T3 Code does: Claude Code over its own stream protocol (`--input-format
 //! stream-json --output-format stream-json`), a live session with a message
 //! stream rather than a one-shot `claude -p`. The session runs in an empty
@@ -62,6 +62,11 @@ pub fn available() -> Option<String> {
     find().map(|(_, name)| name.to_string())
 }
 
+/// `ScheduleAgent`: the agent this machine has, if any.
+pub(crate) fn available_call() -> Result<Reply, CoreError> {
+    Ok(Reply::Agent { name: available() })
+}
+
 /// What the first message tells the agent about the show.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Brief {
@@ -78,7 +83,7 @@ pub struct Brief {
 /// The first message: the show, what is known, and the shape of the answer.
 pub fn prompt(b: &Brief, today: &str) -> String {
     let mut out = String::new();
-    out.push_str("You are helping AniBeam, a local anime library app, fill in the release schedule of one show.\n\n");
+    out.push_str("You are helping Anibeam, a local anime library app, fill in the release schedule of one show.\n\n");
     out.push_str(&format!("Show: {}\n", b.title));
     if !b.other_titles.is_empty() {
         out.push_str(&format!("Also known as: {}\n", b.other_titles.join("; ")));
@@ -156,7 +161,7 @@ pub fn read_line(line: &str) -> Vec<Said> {
             let text = v["result"].as_str().unwrap_or("").trim().to_string();
             if v["is_error"].as_bool().unwrap_or(false) || text.is_empty() {
                 let why = if text.is_empty() {
-                    "the agent gave no answer".to_string()
+                    crate::i18n::tr("core-agent-no-answer", &[])
                 } else {
                     text
                 };
@@ -172,12 +177,15 @@ pub fn read_line(line: &str) -> Vec<Said> {
 /// A tool call as a person reads it.
 fn tool_line(name: &str, input: &serde_json::Value) -> String {
     match name {
-        "WebSearch" => format!(
-            "Searching the web for {}",
-            input["query"].as_str().unwrap_or("the schedule")
-        ),
-        "WebFetch" => format!("Reading {}", input["url"].as_str().unwrap_or("a page")),
-        other => format!("Using {other}"),
+        "WebSearch" => match input["query"].as_str() {
+            Some(query) => crate::i18n::tr("core-agent-searching", &[("query", query.into())]),
+            None => crate::i18n::tr("core-agent-searching-schedule", &[]),
+        },
+        "WebFetch" => match input["url"].as_str() {
+            Some(url) => crate::i18n::tr("core-agent-reading", &[("url", url.into())]),
+            None => crate::i18n::tr("core-agent-reading-page", &[]),
+        },
+        other => crate::i18n::tr("core-agent-using", &[("tool", other.into())]),
     }
 }
 
@@ -194,12 +202,12 @@ fn user_message(text: &str) -> String {
 pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
     let Some((path, name)) = find() else {
         return Err(CoreError::Unsupported {
-            what: "a coding agent on this computer".to_string(),
+            what: crate::i18n::tr("core-agent-none", &[]),
         });
     };
     let brief = brief(core, series)?;
-    let owner = core.owner()?;
-    Ok(owner
+    Ok(core
+        .services
         .jobs
         .clone()
         .start(JobKind::ScheduleAgent, move |ctx| async move {
@@ -209,7 +217,7 @@ pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
 
 /// The brief, off the series page's own read.
 fn brief(core: &Core, series: u64) -> Result<Brief, CoreError> {
-    let detail = match crate::library::reads::get_series(core, series)? {
+    let detail = match crate::library::reads::get_series(&core.library, series)? {
         Reply::SeriesDetail { detail } => detail,
         _ => {
             return Err(CoreError::NotFound {
@@ -331,11 +339,14 @@ async fn run(
                 }
             }
         }
-        Outcome::Failed(format!("{name} ended without an answer"))
+        Outcome::Failed(crate::i18n::tr(
+            "core-agent-ended",
+            &[("name", name.into())],
+        ))
     };
     let outcome = tokio::select! {
         done = session => done,
-        _ = tokio::time::sleep(SESSION_TIMEOUT) => Outcome::Failed(format!("{name} took too long")),
+        _ = tokio::time::sleep(SESSION_TIMEOUT) => Outcome::Failed(crate::i18n::tr("core-agent-too-long", &[("name", name.into())])),
         _ = ctx.cancelled() => Outcome::Stopped,
     };
     // One turn is the whole session: closing stdin ends it, and the guard
@@ -354,11 +365,7 @@ async fn run(
             },
         }),
         Outcome::Stopped => Err(CoreError::internal("cancelled")),
-        Outcome::Failed(why) => Err(CoreError::Service {
-            service: name.to_string(),
-            code: "no_answer".to_string(),
-            message: why,
-        }),
+        Outcome::Failed(why) => Err(CoreError::service(name, "no_answer", why)),
     }
 }
 

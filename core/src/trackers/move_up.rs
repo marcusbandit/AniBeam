@@ -12,9 +12,17 @@ use std::sync::Arc;
 use rusqlite::{Connection, params};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::jobs::{Finished, JobCtx};
+use crate::trackers::Trackers;
 use crate::trackers::{accounts, writes};
+
+/// `PreviewListMove`: [`preview`] off the reader connection.
+pub(crate) fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
+    Ok(Reply::ListMove {
+        rows: services.store.read(|c| preview(c, t))?,
+    })
+}
 
 /// What the preview shows for one series: what is kept here, and what the
 /// tracker has now (none for a show not on its list).
@@ -51,7 +59,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
                 (r.get(6)?, r.get(7)?, r.get(8)?);
             Ok(MoveRow {
                 series: r.get::<_, i64>(0)? as u64,
-                title: crate::library::titles::resolve(
+                title: crate::foundation::titles::resolve(
                     lang,
                     romaji.as_deref(),
                     english.as_deref(),
@@ -86,21 +94,23 @@ fn changes_something(row: &MoveRow) -> bool {
 
 /// Starts the move: refused at once when the tracker is not connected, and
 /// when the person picked nothing.
-pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError> {
+pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError> {
     if series.is_empty() {
-        return Err(CoreError::invalid("series", "no series picked to move"));
+        return Err(CoreError::invalid(
+            "series",
+            crate::i18n::tr("core-trackers-move-none-picked", &[]),
+        ));
     }
-    let connected = core
+    let connected = trackers
+        .services
         .store
         .read(|c| accounts::load_row(c, t))?
         .is_some_and(|row| row.connected_at.is_some());
     if !connected {
         return Err(CoreError::NotConnected { tracker: t });
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let jobs = owner.jobs.clone();
+    let owner = trackers.clone();
+    let jobs = owner.services.jobs.clone();
     Ok(jobs.start(JobKind::MoveLists, move |ctx| async move {
         run(owner, ctx, t, series).await
     }))
@@ -112,19 +122,21 @@ pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError
 /// the menus use, to this tracker alone; one the tracker refuses is that
 /// series' failure, never the job's.
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     t: Tracker,
     picked: Vec<u64>,
 ) -> Result<Finished, CoreError> {
-    let rows: Vec<MoveRow> = core
+    let rows: Vec<MoveRow> = trackers
+        .services
         .store
         .write_async(move |c| preview(c, t))
         .await?
         .into_iter()
         .filter(|r| picked.contains(&r.series))
         .collect();
-    let user_id = core
+    let user_id = trackers
+        .services
         .store
         .write_async(move |c| accounts::load_row(c, t))
         .await?
@@ -136,7 +148,8 @@ async fn run(
         ctx.progress(n as u64, Some(total), &row.title);
         let series = row.series;
         // A series gone since the preview is that series' failure alone.
-        let Ok(target) = core
+        let Ok(target) = trackers
+            .services
             .store
             .write_async(move |c| writes::targets(c, series))
             .await
@@ -161,7 +174,7 @@ async fn run(
             .filter(|s| Some(*s) != row.tracker_status && !rewatch)
         {
             let action = writes::Action::Status { status };
-            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
                 true => landed = true,
                 false => refused = true,
             }
@@ -170,7 +183,7 @@ async fn run(
             && !refused
         {
             let action = writes::Action::Score { score };
-            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
                 true => landed = true,
                 false => refused = true,
             }
@@ -179,7 +192,9 @@ async fn run(
             // The tracker now has the newer word, whether or not its reply
             // carried a stamp, so the preview never offers this row again.
             let now = crate::time::now_secs();
-            core.store
+            trackers
+                .services
+                .store
                 .write_async(move |c| {
                     c.execute(
                         "UPDATE tracker_entries SET updated_at = MAX(COALESCE(updated_at, 0), ?3)
@@ -193,18 +208,23 @@ async fn run(
         } else if refused {
             failed += 1;
         }
-        if let Ok(Some(card)) = crate::metadata::apply::card_for(&core, series).await {
+        if let Ok(Some(card)) = crate::metadata::apply::card_for(&trackers.services, series).await {
             ctx.changed(card);
         }
     }
     let site = super::oauth::site_name(t);
     let plain = match (moved, failed) {
         (0, 0) => None,
-        (m, 0) => Some(format!("Moved {} from this computer to {site}.", shows(m))),
-        (m, f) => Some(format!(
-            "Moved {} to {site}; {site} did not take {}.",
-            shows(m),
-            shows(f)
+        (m, 0) => Some(crate::words!(
+            "core-trackers-moved-up",
+            count = m,
+            site = site
+        )),
+        (m, f) => Some(crate::words!(
+            "core-trackers-moved-up-some-refused",
+            moved = m,
+            failed = f,
+            site = site
         )),
     };
     Ok(Finished {
@@ -223,20 +243,11 @@ async fn run(
     })
 }
 
-/// "1 show" or "3 shows".
-fn shows(n: u32) -> String {
-    if n == 1 {
-        "1 show".to_string()
-    } else {
-        format!("{n} shows")
-    }
-}
-
 /// One write to one tracker, true when it landed. A failure says so in the
 /// activity log, the way any tracker write's failure does, with the
 /// tracker's own words sanitised, and the move goes on.
 async fn sent(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     t: Tracker,
     target: &writes::Targets,
@@ -244,16 +255,17 @@ async fn sent(
     user_id: Option<u64>,
     action: writes::Action,
 ) -> bool {
-    match writes::attempt(core, ctx, t, target, media_id, user_id, &action).await {
+    match writes::attempt(trackers, ctx, t, target, media_id, user_id, &action).await {
         Ok(outcome) => outcome.ok,
         Err(e) => {
             let site = super::oauth::site_name(t);
             ctx.say(
                 Level::Error,
-                format!(
-                    "{site} did not take {}: {}",
-                    target.folder_name,
-                    writes::sanitize_error(t, &e)
+                crate::words!(
+                    "core-trackers-move-refused",
+                    site = site,
+                    show = &target.folder_name,
+                    error = writes::sanitize_error(t, &e)
                 ),
                 format!("{} move of {} failed: {e}", t.as_str(), target.folder_name),
                 EventBody::Notice,

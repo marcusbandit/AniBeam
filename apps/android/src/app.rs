@@ -1,7 +1,7 @@
 //! The UI thread: the window, what it shows, and the clock that keeps it current.
 //!
 //! Two sources feed the pages. This phone's own core is the default for everything; another
-//! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
+//! Anibeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
 use anibeam_core::i18n::tr;
@@ -16,8 +16,8 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick,
-    SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
+    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, RollingSettings,
+    SeasonPick, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
@@ -174,6 +174,8 @@ struct App {
     sources: Vec<PhoneSource>,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
+    /// The rolling settings were asked for.
+    rolling_loaded: bool,
     held: Option<bool>,
     service: Option<notify::Ongoing>,
     /// The downloads seen not yet whole, so each one that finishes is told once.
@@ -238,6 +240,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (0, "tracker-mal", "more-words-mal"),
     (1, "more-set-storage-cap", "more-words-storage-cap"),
     (1, "onb-wifi-only", "more-words-wifi"),
+    (1, "more-set-rolling", "more-words-rolling"),
     (1, "onb-notify-title", "more-words-notifications"),
     (2, "more-set-stream-quality", "more-words-stream-quality"),
     (3, REPOS_CHECK, "more-words-check-repos"),
@@ -324,6 +327,19 @@ fn account_line(a: &TrackerAccount) -> String {
     }
 }
 
+/// The name of the person whose watch history the computer shows this phone, from its
+/// hello. None with no name, so a screen says nothing rather than a guess.
+pub(crate) fn person_name(profile: Option<&anibeam_companion::api::Profile>) -> Option<&str> {
+    profile.map(|p| p.name.trim()).filter(|n| !n.is_empty())
+}
+
+/// "Alex Doe's progress", or empty with no name.
+pub(crate) fn progress_of(profile: Option<&anibeam_companion::api::Profile>) -> String {
+    person_name(profile).map_or_else(String::new, |name| {
+        tr("host-progress", &[("name", name.into())])
+    })
+}
+
 impl App {
     fn data(&self) -> AppData<'_> {
         self.window.global::<AppData>()
@@ -349,7 +365,7 @@ impl App {
             }
             Event::Snapshot(cache) => {
                 crate::player::set_remote_numbers(remote_numbers(&cache));
-                self.cache = Some(cache);
+                self.cache = Some(*cache);
             }
             Event::Poster(id, decoded) => {
                 self.remote_art
@@ -499,6 +515,15 @@ impl App {
             .into(),
         );
 
+        // Whose progress the last sync showed, said only beside the address it came from,
+        // so a newly typed address never sits under the last computer's person.
+        let whose = progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+        let synced_here = self
+            .cache
+            .as_ref()
+            .is_some_and(|c| c.address.trim() == data.get_host_address().trim());
+        data.set_host_person(if synced_here { whose.as_str() } else { "" }.into());
+
         // Library: this phone, or the device picked above it.
         let mut devices: Vec<SharedString> = vec![tr!("lib-this-phone").into()];
         if let Some(name) = self.host_name() {
@@ -538,11 +563,19 @@ impl App {
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                tr!(
-                    "lib-note-remote",
-                    device = devices[device].as_str(),
-                    when = at
-                )
+                match person_name(self.cache.as_ref().and_then(|c| c.profile.as_ref())) {
+                    Some(name) => tr!(
+                        "lib-note-remote-for",
+                        device = devices[device].as_str(),
+                        name = name,
+                        when = at
+                    ),
+                    None => tr!(
+                        "lib-note-remote",
+                        device = devices[device].as_str(),
+                        when = at
+                    ),
+                }
             }
             .into(),
         );
@@ -1165,6 +1198,97 @@ impl App {
             });
     }
 
+    /// A rolling download's control: how many stay ahead, more now, or everything.
+    fn roll_action(&mut self, id: i32, what: i32, n: i32) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let (Ok(id), Ok(n)) = (u64::try_from(id), u32::try_from(n)) else {
+            return;
+        };
+        let call = match what {
+            0 => Call::SetRoll {
+                id,
+                ahead: Some(n),
+                on: None,
+                delete_watched: None,
+            },
+            1 => Call::RollMore { id, count: n },
+            _ => Call::SetRoll {
+                id,
+                ahead: None,
+                on: Some(false),
+                delete_watched: None,
+            },
+        };
+        let _ = std::thread::Builder::new()
+            .name("roll".into())
+            .spawn(move || {
+                if let Err(e) = core.call(call) {
+                    crate::local::log(&format!("roll change failed: {e}"));
+                }
+                let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
+            });
+    }
+
+    /// The rolling settings as More shows them.
+    fn show_rolling(&self, r: &RollingSettings) {
+        let data = self.data();
+        data.set_roll_big(r.big);
+        data.set_roll_ahead(r.ahead as i32);
+        data.set_roll_over(r.over as i32);
+        data.set_roll_delete(r.delete_watched);
+        data.set_roll_keep(r.keep_watched as i32);
+    }
+
+    /// Reads the rolling settings once, off the UI thread; More changes them only through
+    /// the app, which shows what it saves.
+    fn load_rolling(&mut self) {
+        if self.rolling_loaded {
+            return;
+        }
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        self.rolling_loaded = true;
+        let _ = std::thread::Builder::new()
+            .name("rolling".into())
+            .spawn(move || {
+                if let Ok(Reply::RollingSettings { rolling }) = core.call(Call::GetRollingSettings)
+                {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        with_app(|app| app.show_rolling(&rolling))
+                    });
+                }
+            });
+    }
+
+    /// Saves off the UI thread, in order: a slider sends a step at a time, and only the
+    /// newest of the steps waiting is written.
+    fn save_rolling(&self, rolling: RollingSettings) {
+        static SAVES: std::sync::OnceLock<Sender<RollingSettings>> = std::sync::OnceLock::new();
+        let tx = SAVES.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<RollingSettings>();
+            let _ = std::thread::Builder::new()
+                .name("rolling".into())
+                .spawn(move || {
+                    while let Ok(mut rolling) = rx.recv() {
+                        while let Ok(newer) = rx.try_recv() {
+                            rolling = newer;
+                        }
+                        let Some(core) = crate::local::core() else {
+                            continue;
+                        };
+                        if let Err(e) = core.call(Call::SetRollingSettings { rolling }) {
+                            crate::local::log(&format!("rolling settings not saved: {e}"));
+                        }
+                    }
+                });
+            tx
+        });
+        let _ = tx.send(rolling);
+    }
+
     fn remove_source(&mut self, index: i32) {
         let Some(core) = crate::local::core() else {
             return;
@@ -1202,7 +1326,7 @@ impl App {
                             return;
                         };
                         app.check_text = std::iter::once(format!(
-                            "AniBeam {} connection check",
+                            "Anibeam {} connection check",
                             env!("ANIBEAM_PHONE_VERSION")
                         ))
                         .chain(checks.iter().map(|c| {
@@ -1252,6 +1376,7 @@ impl App {
         if self.sources.is_empty() {
             self.load_sources();
         }
+        self.load_rolling();
         crate::repos::opened();
         self.polling = true;
         let _ = std::thread::Builder::new()
@@ -1325,7 +1450,7 @@ impl App {
             .collect();
         for hash in notify::finished(&mut self.unfinished, &now) {
             if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
-                crate::android::episode_ready(
+                crate::platform::episode_ready(
                     notify::ready_id(&hash),
                     &notify::ready_title(&row.show, &notify::what_of(t), &t.name),
                     &notify::ready_text(),
@@ -1348,7 +1473,7 @@ impl App {
             .set_rate_down(tr!("dl-speed", rate = format::bytes(down)).into());
         self.data()
             .set_rate_up(tr!("dl-speed", rate = format::bytes(up)).into());
-        let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
+        let finished = torrents.iter().filter(|t| finished(t)).count();
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
@@ -1361,23 +1486,23 @@ impl App {
             let done = match (&text, &self.service) {
                 // Running: the notification changes in place. Starting the service again
                 // on every look would be refused once the app is in the background.
-                (Some(t), Some(_)) => crate::android::update_service(t),
-                (Some(t), None) => crate::android::start_service(t),
+                (Some(t), Some(_)) => crate::platform::update_service(t),
+                (Some(t), None) => crate::platform::start_service(t),
                 (None, _) => {
-                    crate::android::stop_service();
+                    crate::platform::stop_service();
                     true
                 }
             };
             if done {
-                self.service_shown = text.is_some() && crate::android::notifications_allowed();
+                self.service_shown = text.is_some() && crate::platform::notifications_allowed();
                 self.service = text;
             }
         } else if let Some(t) = &self.service
             && !self.service_shown
-            && crate::android::notifications_allowed()
+            && crate::platform::notifications_allowed()
         {
             // Allowed since it went up: post it again, so it shows.
-            self.service_shown = crate::android::start_service(t);
+            self.service_shown = crate::platform::start_service(t);
         }
     }
 
@@ -1387,7 +1512,7 @@ impl App {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
+        let held = self.prefs.wifi_only && crate::platform::unmetered() != Some(true);
         if self.held == Some(held) {
             return;
         }
@@ -1411,8 +1536,8 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("storage".into())
             .spawn(move || {
-                let used = crate::android::used(&library);
-                let space = crate::android::space(&data_dir);
+                let used = crate::platform::used(&library);
+                let space = crate::platform::space(&data_dir);
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| app.show_storage(used, space))
                 });
@@ -1504,8 +1629,8 @@ impl App {
     /// preview.
     fn show_app_icon(&self) {
         let data = self.data();
-        data.set_app_icon(crate::android::app_icon());
-        if let Some((ground, ink)) = crate::android::line_colours() {
+        data.set_app_icon(crate::platform::app_icon());
+        if let Some((ground, ink)) = crate::platform::line_colours() {
             data.set_line_ground(slint::Color::from_argb_encoded(ground));
             data.set_line_ink(slint::Color::from_argb_encoded(ink));
         }
@@ -1513,7 +1638,7 @@ impl App {
 
     fn notify(&self) -> Notify {
         Notify::new(
-            crate::android::notifications_allowed(),
+            crate::platform::notifications_allowed(),
             self.prefs.notify_asked,
         )
     }
@@ -1541,13 +1666,13 @@ impl App {
         match self.notify() {
             Notify::Unasked => {
                 // Noted only once the ask went out, so one that failed is tried again.
-                if crate::android::ask_notifications() {
+                if crate::platform::ask_notifications() {
                     self.asked_at = Some(std::time::Instant::now());
                     self.prefs.notify_asked = true;
                     self.save_prefs();
                 }
             }
-            Notify::Denied => crate::android::notification_settings(),
+            Notify::Denied => crate::platform::notification_settings(),
             Notify::On => {}
         }
         self.show_notify();
@@ -1802,6 +1927,13 @@ impl App {
     }
 
     fn save_host(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            self.data().set_host_address("".into());
+            self.data().set_host_tone(2);
+            self.data().set_host_result(tr!("host-none").into());
+            let _ = self.commands.send(Command::Forget);
+            return;
+        }
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
@@ -2012,7 +2144,7 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         facts: facts.into(),
         progress: t.progress as f32,
         paused,
-        done,
+        done: finished(t),
         percent: format!("{}%", (t.progress * 100.0).floor() as i64).into(),
         what: what.into(),
         amount: amount.into(),
@@ -2031,7 +2163,36 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
             .map(|c| format::initials(&c.title))
             .unwrap_or_default()
             .into(),
+        roll: t
+            .roll
+            .as_ref()
+            .and_then(|r| i32::try_from(r.id).ok())
+            .unwrap_or(-1),
+        roll_line: t.roll.as_ref().map(roll_line).unwrap_or_default().into(),
+        roll_ahead: t.roll.as_ref().map_or(0, |r| r.ahead as i32),
+        roll_left: t
+            .roll
+            .as_ref()
+            .map_or(0, |r| r.total.saturating_sub(r.through) as i32),
     }
+}
+
+/// Where a rolling download's window stands, in the desktop's words.
+fn roll_line(r: &anibeam_core::RollView) -> String {
+    tr!(
+        "dl-roll-line",
+        ahead = r.ahead as i64,
+        next = r.next as i64,
+        through = r.through as i64,
+        total = r.total as i64,
+        watched = r.watched as i64
+    )
+}
+
+/// A finished download that is not rolling: it moves to Finished. A rolling one stays with
+/// what downloads, its controls there, whatever its window holds.
+fn finished(t: &Torrent) -> bool {
+    t.progress >= 1.0 && t.roll.is_none()
 }
 
 /// Reads poster files off the UI thread and hands each decoded one back.
@@ -2096,7 +2257,7 @@ pub fn relocalize() {
     crate::repos::relocalize();
     crate::disk::relocalize();
     crate::feed::relocalize();
-    crate::android::relocalize();
+    crate::platform::relocalize();
 }
 
 pub fn run(
@@ -2107,17 +2268,16 @@ pub fn run(
     // Before anything talks to a computer, so every request can carry the phone's proof.
     match Store::open(&data_dir).and_then(|s| s.device_key()) {
         Ok(key) => anibeam_companion::client::use_device_key(key),
-        Err(e) => eprintln!("AniBeam: no device key, requests go unsigned: {e}"),
+        Err(e) => eprintln!("Anibeam: no device key, requests go unsigned: {e}"),
     }
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
-        HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
-    });
+    let address = store.settings().host();
 
     let window = AppWindow::new()?;
+    crate::platform::window_up(&window);
     // First, so everything below that words a line already speaks the picked language.
     crate::lang::install(&window, &data_dir);
     crate::player::install(&window);
@@ -2129,7 +2289,7 @@ pub fn run(
     crate::show_match::install(&window);
     crate::schedule::install(&window);
     let data = window.global::<AppData>();
-    data.set_host_address(address.display().into());
+    data.set_host_address(address.map(|a| a.display()).unwrap_or_default().into());
 
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());
@@ -2167,7 +2327,7 @@ pub fn run(
     });
     data.on_read_app_icon(|| with_app(|app| app.show_app_icon()));
     data.on_set_app_icon(|i| {
-        crate::android::set_app_icon(i);
+        crate::platform::set_app_icon(i);
         with_app(|app| app.show_app_icon());
     });
     data.on_open_airing(|| with_app(App::open_airing));
@@ -2306,11 +2466,34 @@ pub fn run(
     data.on_torrent_action(|hash, action| {
         with_app(|app| app.torrent_action(hash.to_string(), action))
     });
+    data.on_roll_action(|id, what, n| with_app(|app| app.roll_action(id, what, n)));
+    data.set_roll_max_ahead(anibeam_core::downloads::rolling::MAX_AHEAD as i32);
+    // The core's defaults until its stored values come in.
+    let d = RollingSettings::default();
+    data.set_roll_big(d.big);
+    data.set_roll_ahead(d.ahead as i32);
+    data.set_roll_over(d.over as i32);
+    data.set_roll_delete(d.delete_watched);
+    data.set_roll_keep(d.keep_watched as i32);
+    data.on_set_roll(|big, ahead, over, delete, keep| {
+        with_app(|app| {
+            let d = RollingSettings::default();
+            let rolling = RollingSettings {
+                big,
+                ahead: u32::try_from(ahead).unwrap_or(d.ahead),
+                over: u32::try_from(over).unwrap_or(d.over),
+                delete_watched: delete,
+                keep_watched: u32::try_from(keep).unwrap_or(d.keep_watched),
+            };
+            app.show_rolling(&rolling);
+            app.save_rolling(rolling);
+        })
+    });
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {
         with_app(|app| {
-            let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
+            let copied = crate::platform::copy_text("Anibeam connection check", &app.check_text);
             app.data().set_check_summary(if copied {
                 tr!("more-check-copied").into()
             } else {
@@ -2392,6 +2575,7 @@ pub fn run(
         sources: Vec::new(),
         downloads,
         polling: false,
+        rolling_loaded: false,
         held: None,
         service: None,
         unfinished: HashSet::new(),
@@ -2429,8 +2613,8 @@ pub fn run(
             flat_ticks += 1;
             return;
         }
-        let (angle, rotated) = crate::android::fold();
-        let reading = crate::android::crease();
+        let (angle, rotated) = crate::platform::fold();
+        let reading = crate::platform::crease();
         // No hinge and no window extensions: nothing will ever say, so the timer stops.
         if angle.is_none() && reading == crate::crease::Reading::Silent {
             if let Some(t) = stop.upgrade() {

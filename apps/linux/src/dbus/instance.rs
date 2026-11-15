@@ -15,7 +15,7 @@ use crate::bridge::shell::qobject::Shell;
 
 /// The element a run under --root adds to every well known name it owns (R35). A sandbox
 /// exists so a dev run touches nothing outside itself, and the desktop's idea of which
-/// process is AniBeam is outside itself: without this a sandbox takes the real app's names,
+/// process is Anibeam is outside itself: without this a sandbox takes the real app's names,
 /// because zbus asks for a name with ReplaceExisting set.
 const SANDBOX: &str = "Sandbox";
 
@@ -119,15 +119,16 @@ fn token_of(platform_data: &HashMap<String, OwnedValue>) -> String {
 /// timeout, which would leave a launcher's spinner up for 25 seconds with nothing to show.
 const HAND_OFF_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// The second launch's whole job: raise the running window, then exit 0.
-pub async fn hand_off(action: Option<&str>) -> Result<(), String> {
-    match tokio::time::timeout(HAND_OFF_TIMEOUT, reach(action)).await {
+/// The second launch's whole job: raise the running window, or hand it the link it was
+/// started with, then exit 0.
+pub async fn hand_off(action: Option<&str>, link: Option<&str>) -> Result<(), String> {
+    match tokio::time::timeout(HAND_OFF_TIMEOUT, reach(action, link)).await {
         Ok(result) => result,
         Err(_) => Err("did not answer within two seconds".to_string()),
     }
 }
 
-async fn reach(action: Option<&str>) -> Result<(), String> {
+async fn reach(action: Option<&str>, link: Option<&str>) -> Result<(), String> {
     let conn = zbus::Connection::session()
         .await
         .map_err(|e| format!("no session bus: {e}"))?;
@@ -135,8 +136,18 @@ async fn reach(action: Option<&str>) -> Result<(), String> {
     let data = platform_data(token.as_deref());
     let name = bus_name();
     let path = object_path();
-    let result = match action {
-        Some(action_name) => {
+    let result = match (action, link) {
+        (_, Some(link)) => {
+            conn.call_method(
+                Some(name.as_str()),
+                path.as_str(),
+                Some("org.freedesktop.Application"),
+                "Open",
+                &(vec![link], &data),
+            )
+            .await
+        }
+        (Some(action_name), None) => {
             conn.call_method(
                 Some(name.as_str()),
                 path.as_str(),
@@ -146,7 +157,7 @@ async fn reach(action: Option<&str>) -> Result<(), String> {
             )
             .await
         }
-        None => {
+        (None, None) => {
             conn.call_method(
                 Some(name.as_str()),
                 path.as_str(),
@@ -159,7 +170,7 @@ async fn reach(action: Option<&str>) -> Result<(), String> {
     };
     result
         .map(|_| ())
-        .map_err(|e| format!("could not reach the running AniBeam: {e}"))
+        .map_err(|e| format!("could not reach the running Anibeam: {e}"))
 }
 
 pub struct AppInterface {
@@ -180,8 +191,18 @@ impl AppInterface {
     fn activate(&self, platform_data: HashMap<String, OwnedValue>) {
         self.raise(&platform_data);
     }
-    /// The app opens nothing from the launcher: Open behaves as Activate.
-    fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
+    /// An `anibeam://room/<code>` link joins that room (#846); the window comes up either
+    /// way, and any other link is only a raise.
+    fn open(&self, uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
+        // Discord launching the app for a join it is about to hand over (#966)
+        if uris.iter().any(|u| crate::args::is_discord_link(u)) {
+            let _ = crate::runtime::core().call(anibeam_core::Call::DiscordListen);
+        }
+        if let Some(code) = uris.iter().find_map(|u| crate::args::room_code(u)) {
+            self.shell
+                .queue(move |shell| shell.room_link_opened(QString::from(&code)))
+                .ok();
+        }
         self.raise(&platform_data);
     }
     /// The host service's two actions keep the host on while it waits for this window and

@@ -14,6 +14,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use anibeam_core::events::Subscription;
+use anibeam_core::i18n::tr;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
     EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
@@ -96,7 +97,7 @@ pub mod qobject {
         /// The library page in one read: `{ series, airing, counts: { all, series,
         /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
         /// listSeries, carries `franchise: { id, title, size }` when other library
-        /// series share its franchise, else null (core `franchise::groups`).
+        /// series share its franchise, else null (core `library::franchises`).
         #[qinvokable]
         fn list_library(
             self: &Door,
@@ -349,7 +350,7 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn test_torrent_client(self: &Door) -> QJsonObject;
-        /// Switches to the saved torrent client `id`; an empty id is AniBeam's own.
+        /// Switches to the saved torrent client `id`; an empty id is Anibeam's own.
         #[qinvokable]
         fn use_torrent_client(self: &Door, id: &QString) -> QJsonObject;
         /// Any call by name, the CLI's door.
@@ -466,6 +467,25 @@ pub mod qobject {
         fn crawl_finished(self: Pin<&mut Door>, fetched: f64, deferred: f64);
         #[qsignal]
         fn skip_windows_ready(self: Pin<&mut Door>, session: f64, windows: QJsonArray);
+        // Watch together (#846)
+        /// The room as this member sees it (RoomInfo); an empty object once out of it.
+        #[qsignal]
+        fn room_changed(self: Pin<&mut Door>, room: QJsonObject);
+        /// What the room watches, for this member to open: `file` is this library's copy,
+        /// -1 when it lacks one, and `series` the matching series, -1 when there is none.
+        #[qsignal]
+        fn room_episode(self: Pin<&mut Door>, episode: QJsonObject, series: f64, file: f64);
+        /// What the player of `session` does to keep up: play or pause, a seek to `seek_to`
+        /// when `seek` is true, and the speed. Applied without sending anything back.
+        #[qsignal]
+        fn room_apply(
+            self: Pin<&mut Door>,
+            session: f64,
+            playing: bool,
+            seek: bool,
+            seek_to: f64,
+            speed: f64,
+        );
         #[qsignal]
         fn preferences_changed(self: Pin<&mut Door>, preferences: QJsonObject);
         #[qsignal]
@@ -477,7 +497,7 @@ pub mod qobject {
         #[qsignal]
         fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
         #[qsignal]
-        fn tailnet_devices_changed(self: Pin<&mut Door>, devices: QJsonArray);
+        fn tailnet_devices_changed(self: Pin<&mut Door>, devices: QJsonArray, people: QJsonArray);
         #[qsignal]
         fn presence_changed(self: Pin<&mut Door>, connected: bool);
         // Downloads
@@ -747,10 +767,7 @@ fn parse_season(s: &QString) -> Result<SeasonPick, CoreError> {
     let name = serde_json::from_value::<SeasonName>(Value::String(name.to_string())).ok();
     match (name, year.parse::<i32>().ok()) {
         (Some(name), Some(year)) => Ok(SeasonPick::Season { name, year }),
-        _ => Err(CoreError::invalid(
-            "season",
-            format!("{text} is not a valid choice"),
-        )),
+        _ => Err(CoreError::invalid("season", not_a_choice(&text))),
     }
 }
 
@@ -769,9 +786,15 @@ fn season_text(pick: SeasonPick) -> String {
     }
 }
 
+/// The reason a value QML sent is not one the call takes, in the current language.
+fn not_a_choice(text: &str) -> String {
+    tr("door-not-a-choice", &[("value", text.into())])
+}
+
 fn parse_enum<T: DeserializeOwned>(field: &str, s: &QString) -> Result<T, CoreError> {
-    serde_json::from_value(Value::String(s.to_string()))
-        .map_err(|_| CoreError::invalid(field, format!("{s} is not a valid choice")))
+    let text = s.to_string();
+    serde_json::from_value(Value::String(text.clone()))
+        .map_err(|_| CoreError::invalid(field, not_a_choice(&text)))
 }
 
 fn parse_object<T: DeserializeOwned>(field: &str, o: &QJsonObject) -> Result<T, CoreError> {
@@ -824,7 +847,7 @@ fn refine_op(o: &QJsonObject) -> Result<RefineOp, CoreError> {
                 })
                 .unwrap_or_default();
             if tokens.is_empty() {
-                return Err(CoreError::invalid("op", "a tokens op needs tokens"));
+                return Err(CoreError::invalid("op", tr("door-tokens-op-empty", &[])));
             }
             Ok(RefineOp::Tokens { tokens })
         }
@@ -833,7 +856,7 @@ fn refine_op(o: &QJsonObject) -> Result<RefineOp, CoreError> {
         "best_fit" => Ok(RefineOp::BestFit),
         other => Err(CoreError::invalid(
             "op",
-            format!("{other} is not a refine op"),
+            tr("door-not-a-refine-op", &[("value", other.into())]),
         )),
     }
 }
@@ -855,7 +878,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 fn job_entry(id: &Value, kind: &Value, progress: &Value) -> Value {
     let doing = serde_json::from_value::<anibeam_core::JobKind>(kind.clone())
         .map(|k| k.doing())
-        .unwrap_or("");
+        .unwrap_or_default();
     json!({
         "id": id,
         "kind": kind,
@@ -1347,12 +1370,36 @@ impl qobject::Door {
             | EventBody::CastChanged { .. }
             | EventBody::Notice
             | EventBody::JobStarted { .. }
-            | EventBody::SubscriptionsListed { .. }
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
-            | EventBody::RemovalPlanned { .. }
             | EventBody::RecommendedRefreshed
+            | EventBody::DiscordJoinAsk { .. }
+            | EventBody::DiscordAskGone { .. }
+            | EventBody::DiscordJoin { .. }
             | EventBody::ShowPageRead { .. } => {}
+            EventBody::RoomChanged { room } => {
+                let room = match room {
+                    Some(_) => obj("room"),
+                    None => QJsonObject::default(),
+                };
+                self.as_mut().room_changed(room)
+            }
+            EventBody::RoomEpisode { .. } => {
+                self.as_mut()
+                    .room_episode(obj("episode"), n("series"), n("file"))
+            }
+            EventBody::RoomApply {
+                playing,
+                seek_to,
+                speed,
+                ..
+            } => self.as_mut().room_apply(
+                n("session"),
+                *playing,
+                seek_to.is_some(),
+                seek_to.unwrap_or(0.0),
+                *speed,
+            ),
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
                 .skip_windows_ready(n("session"), arr("windows")),
@@ -1368,9 +1415,9 @@ impl qobject::Door {
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
             EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
-            EventBody::TailnetDevicesChanged { .. } => {
-                self.as_mut().tailnet_devices_changed(arr("devices"))
-            }
+            EventBody::TailnetDevicesChanged { .. } => self
+                .as_mut()
+                .tailnet_devices_changed(arr("devices"), arr("people")),
             EventBody::PresenceChanged { connected } => self.as_mut().presence_changed(*connected),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
@@ -1636,7 +1683,7 @@ impl qobject::Door {
         let call = if limit < 1 {
             Err(CoreError::invalid(
                 "limit",
-                format!("must be at least 1, got {limit}"),
+                tr("door-limit-too-low", &[("limit", limit.to_string().into())]),
             ))
         } else {
             parse_enum::<Provider>("provider", provider).map(|provider| Call::SearchProvider {
@@ -2019,7 +2066,7 @@ impl qobject::Door {
             "UnFirstLast" => Ok(TorrentAction::FirstLastPieces { on: false }),
             other => Err(CoreError::invalid(
                 "action",
-                format!("{other} is not a torrent action"),
+                tr("door-not-a-torrent-action", &[("value", other.into())]),
             )),
         };
         self.dispatch(action.map(|action| Call::ControlTorrents { hashes, action }))

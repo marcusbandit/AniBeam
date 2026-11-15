@@ -1,0 +1,532 @@
+//! The relay end to end: a real listener, raw HTTP for the plain routes and
+//! tokio-tungstenite for the sockets.
+
+use std::time::Duration;
+
+use anibeam_room::proto::{
+    Action, ClientMsg, CreatedRoom, EpisodeRef, ErrorCode, MemberId, PROTO, Ready, ServerMsg,
+};
+use futures_util::{SinkExt, StreamExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::tungstenite::{self, Message};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
+
+type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+const WAIT: Duration = Duration::from_secs(5);
+
+/// A relay on a free port; returns `127.0.0.1:<port>`.
+async fn start() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(anibeam_relay::serve(listener));
+    addr.to_string()
+}
+
+/// One HTTP/1.1 request; returns the status and the body.
+async fn http(addr: &str, method: &str, path: &str, body: &str) -> (u16, String) {
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut raw = Vec::new();
+    tokio::time::timeout(WAIT, stream.read_to_end(&mut raw))
+        .await
+        .unwrap()
+        .unwrap();
+    let raw = String::from_utf8(raw).unwrap();
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+    let status = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (status, body.to_owned())
+}
+
+fn episode(key: &str) -> EpisodeRef {
+    EpisodeRef {
+        anilist_id: Some(1),
+        mal_id: None,
+        tvmaze_id: None,
+        episode_key: key.into(),
+        number: Some(1.0),
+        series_title: "Cowboy Bebop".into(),
+        episode_title: Some("Asteroid Blues".into()),
+        duration: Some(1500.0),
+        opening_start: Some(0.0),
+        film: false,
+    }
+}
+
+async fn create(addr: &str) -> CreatedRoom {
+    let body = serde_json::json!({ "episode": episode("e1") }).to_string();
+    let (status, body) = http(addr, "POST", "/rooms", &body).await;
+    assert_eq!(status, 201, "{body}");
+    serde_json::from_str(&body).unwrap()
+}
+
+async fn connect(addr: &str, code: &str) -> Ws {
+    let (ws, _) = connect_async(format!("ws://{addr}/rooms/{code}/ws"))
+        .await
+        .unwrap();
+    ws
+}
+
+async fn send(ws: &mut Ws, msg: &ClientMsg) {
+    ws.send(Message::text(msg.to_json())).await.unwrap();
+}
+
+/// The next server message, skipping control frames.
+async fn recv(ws: &mut Ws) -> ServerMsg {
+    loop {
+        let frame = tokio::time::timeout(WAIT, ws.next())
+            .await
+            .expect("a message in time")
+            .expect("the socket is open")
+            .unwrap();
+        if let Message::Text(text) = frame {
+            return ServerMsg::parse(text.as_str()).unwrap();
+        }
+    }
+}
+
+/// Skips messages until one matches.
+async fn recv_until(ws: &mut Ws, want: impl Fn(&ServerMsg) -> bool) -> ServerMsg {
+    loop {
+        let msg = recv(ws).await;
+        if want(&msg) {
+            return msg;
+        }
+    }
+}
+
+/// True once the relay has closed the socket.
+async fn closed(ws: &mut Ws) -> bool {
+    loop {
+        match tokio::time::timeout(WAIT, ws.next()).await {
+            Err(_) => return false,
+            Ok(None | Some(Err(_)) | Some(Ok(Message::Close(_)))) => return true,
+            Ok(Some(Ok(_))) => {}
+        }
+    }
+}
+
+fn hello(name: &str, host_key: Option<&str>) -> ClientMsg {
+    ClientMsg::Hello {
+        name: name.into(),
+        proto: PROTO,
+        client: "anibeam/test".into(),
+        host_key: host_key.map(Into::into),
+        rejoin_key: None,
+        key: None,
+        unpicked: true,
+    }
+}
+
+/// Connects and says hello; returns the socket and the member id.
+async fn join(addr: &str, code: &str, name: &str, host_key: Option<&str>) -> (Ws, MemberId) {
+    let mut ws = connect(addr, code).await;
+    send(&mut ws, &hello(name, host_key)).await;
+    match recv(&mut ws).await {
+        ServerMsg::Welcome { you, .. } => (ws, you),
+        other => panic!("expected welcome, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn health_answers_ok() {
+    let addr = start().await;
+    assert_eq!(http(&addr, "GET", "/health", "").await, (200, "ok".into()));
+}
+
+#[tokio::test]
+async fn create_hands_out_a_code_and_a_host_key() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    assert_eq!(
+        anibeam_room::code::normalize(&room.code),
+        Some(room.code.clone())
+    );
+    assert_eq!(room.host_key.len(), 32);
+    assert!(room.host_key.bytes().all(|b| b.is_ascii_hexdigit()));
+    let other = create(&addr).await;
+    assert_ne!(room.code, other.code);
+    assert_ne!(room.host_key, other.host_key);
+}
+
+#[tokio::test]
+async fn create_refuses_a_bad_body() {
+    let addr = start().await;
+    for body in [
+        "{\"nope\":1}",
+        "{\"epsiode\":{\"episode_key\":\"1\",\"series_title\":\"S\"}}",
+        "{\"episode\":1}",
+        "not json",
+    ] {
+        let (status, _) = http(&addr, "POST", "/rooms", body).await;
+        assert_eq!(status, 400, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn a_room_can_start_with_nothing_picked() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "POST", "/rooms", "{}").await;
+    assert_eq!(status, 201, "{body}");
+    let room: CreatedRoom = serde_json::from_str(&body).unwrap();
+    let (status, page) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 200);
+    assert!(page.contains("Nothing picked yet"));
+    let mut host = connect(&addr, &room.code).await;
+    send(&mut host, &hello("Ann", Some(&room.host_key))).await;
+    match recv(&mut host).await {
+        ServerMsg::Welcome { room, .. } => assert_eq!(room.episode, None),
+        other => panic!("expected welcome, got {other:?}"),
+    }
+    // An app from before is turned away, and the room goes on
+    let mut old = connect(&addr, &room.code).await;
+    let before = ClientMsg::Hello {
+        name: "Cid".into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: None,
+        unpicked: false,
+    };
+    send(&mut old, &before).await;
+    match recv(&mut old).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Proto),
+        other => panic!("expected an error, got {other:?}"),
+    }
+    assert!(closed(&mut old).await);
+    let (mut ben, _) = join(&addr, &room.code, "Ben", None).await;
+    send(
+        &mut host,
+        &ClientMsg::Episode {
+            episode: episode("e2"),
+        },
+    )
+    .await;
+    let got = recv_until(&mut ben, |m| matches!(m, ServerMsg::Episode { .. })).await;
+    let ServerMsg::Episode { episode: e, .. } = got else {
+        unreachable!()
+    };
+    assert_eq!(e.episode_key, "e2");
+}
+
+#[tokio::test]
+async fn the_join_page_names_the_episode() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (status, body) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("Watch Cowboy Bebop together"));
+    assert!(body.contains("Episode 1: Asteroid Blues"));
+    assert!(body.contains(&format!("anibeam://room/{}", room.code)));
+    // A code as a person might type it finds the same room.
+    let typed = format!("/{}-{}", &room.code[..3], room.code[3..].to_lowercase());
+    let (status, _) = http(&addr, "GET", &typed, "").await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn the_root_asks_for_a_code_and_sends_a_typed_one_on() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "GET", "/", "").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("Join a room"));
+    assert!(body.contains(r#"name="code""#));
+    let (status, _) = http(&addr, "GET", "/?code=k7q-m2x", "").await;
+    assert_eq!(status, 303);
+    let (status, body) = http(&addr, "GET", "/?code=nope", "").await;
+    assert_eq!(status, 400);
+    assert!(body.contains(r#"value="nope""#));
+}
+
+#[tokio::test]
+async fn an_unknown_code_is_404() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "GET", "/ZZZZZZ", "").await;
+    assert_eq!(status, 404);
+    assert!(body.contains("Room not found"));
+    let (status, _) = http(&addr, "GET", "/not-a-code", "").await;
+    assert_eq!(status, 404);
+    match connect_async(format!("ws://{addr}/rooms/ZZZZZZ/ws")).await {
+        Err(tungstenite::Error::Http(response)) => assert_eq!(response.status(), 404),
+        other => panic!("expected a 404, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn two_members_share_commands() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (mut ann, ann_id) = join(&addr, &room.code, "Ann", Some(&room.host_key)).await;
+    let (mut bea, bea_id) = join(&addr, &room.code, "Bea", None).await;
+
+    let ServerMsg::Members { members } =
+        recv_until(&mut ann, |m| matches!(m, ServerMsg::Members { .. })).await
+    else {
+        unreachable!()
+    };
+    assert_eq!(members.len(), 2);
+    assert!(members.iter().find(|m| m.id == ann_id).unwrap().host);
+
+    send(
+        &mut bea,
+        &ClientMsg::Cmd {
+            action: Action::Play,
+            position: 42.0,
+        },
+    )
+    .await;
+    for ws in [&mut ann, &mut bea] {
+        match recv_until(ws, |m| matches!(m, ServerMsg::State { .. })).await {
+            ServerMsg::State { state, by } => {
+                assert_eq!(by, bea_id);
+                assert!(state.playing);
+                assert_eq!(state.position, 42.0);
+                assert_eq!(state.rev, 1);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    send(
+        &mut ann,
+        &ClientMsg::Cmd {
+            action: Action::Pause,
+            position: 50.0,
+        },
+    )
+    .await;
+    for ws in [&mut ann, &mut bea] {
+        match recv_until(ws, |m| matches!(m, ServerMsg::State { .. })).await {
+            ServerMsg::State { state, by } => {
+                assert_eq!(by, ann_id);
+                assert!(!state.playing);
+                assert_eq!(state.rev, 2);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    send(&mut bea, &ClientMsg::Ping { c: 7 }).await;
+    match recv_until(&mut bea, |m| matches!(m, ServerMsg::Pong { .. })).await {
+        ServerMsg::Pong { c, s } => {
+            assert_eq!(c, 7);
+            assert!(s > 0);
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[tokio::test]
+async fn only_the_host_changes_the_episode() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (mut ann, ann_id) = join(&addr, &room.code, "Ann", Some(&room.host_key)).await;
+    let (mut bea, _) = join(&addr, &room.code, "Bea", None).await;
+
+    send(
+        &mut bea,
+        &ClientMsg::Episode {
+            episode: episode("e2"),
+        },
+    )
+    .await;
+    match recv_until(&mut bea, |m| matches!(m, ServerMsg::Error { .. })).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::NotAllowed),
+        _ => unreachable!(),
+    }
+
+    send(
+        &mut ann,
+        &ClientMsg::Episode {
+            episode: episode("e2"),
+        },
+    )
+    .await;
+    for ws in [&mut ann, &mut bea] {
+        match recv_until(ws, |m| matches!(m, ServerMsg::Episode { .. })).await {
+            ServerMsg::Episode { episode, state, by } => {
+                assert_eq!(episode.episode_key, "e2");
+                assert_eq!(by, ann_id);
+                assert!(!state.playing);
+                assert_eq!(state.position, 0.0);
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[tokio::test]
+async fn status_reaches_everyone() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
+    let (mut bea, bea_id) = join(&addr, &room.code, "Bea", None).await;
+    send(
+        &mut bea,
+        &ClientMsg::Status {
+            ready: Ready::Ready,
+            progress: None,
+        },
+    )
+    .await;
+    let ready = |m: &ServerMsg| match m {
+        ServerMsg::Members { members } => members
+            .iter()
+            .any(|m| m.id == bea_id && m.ready == Ready::Ready),
+        _ => false,
+    };
+    recv_until(&mut ann, ready).await;
+}
+
+#[tokio::test]
+async fn the_eleventh_member_gets_full_and_is_closed() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let mut members = Vec::new();
+    for i in 0..10 {
+        members.push(join(&addr, &room.code, &format!("P{i}"), None).await);
+    }
+    let mut late = connect(&addr, &room.code).await;
+    send(&mut late, &hello("Late", None)).await;
+    match recv(&mut late).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Full),
+        other => panic!("{other:?}"),
+    }
+    assert!(closed(&mut late).await);
+}
+
+#[tokio::test]
+async fn a_bad_message_keeps_the_socket_open() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
+    ann.send(Message::text("not json")).await.unwrap();
+    match recv(&mut ann).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::BadMessage),
+        other => panic!("{other:?}"),
+    }
+    send(&mut ann, &ClientMsg::Ping { c: 1 }).await;
+    assert!(matches!(recv(&mut ann).await, ServerMsg::Pong { c: 1, .. }));
+}
+
+#[tokio::test]
+async fn bye_and_a_dropped_socket_tell_the_others() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
+    let (mut bea, _) = join(&addr, &room.code, "Bea", None).await;
+    let (cid, _) = join(&addr, &room.code, "Cid", None).await;
+    let count = |n: usize| move |m: &ServerMsg| matches!(m, ServerMsg::Members { members } if members.len() == n);
+    recv_until(&mut ann, count(3)).await;
+
+    send(&mut bea, &ClientMsg::Bye).await;
+    recv_until(&mut bea, |m| matches!(m, ServerMsg::Closed { .. })).await;
+    assert!(closed(&mut bea).await);
+    recv_until(&mut ann, count(2)).await;
+
+    drop(cid);
+    recv_until(&mut ann, count(1)).await;
+}
+
+#[tokio::test]
+async fn ten_creations_a_minute_per_address() {
+    let addr = start().await;
+    for _ in 0..anibeam_relay::CREATES_PER_MINUTE {
+        create(&addr).await;
+    }
+    let body = serde_json::json!({ "episode": episode("e1") }).to_string();
+    let (status, _) = http(&addr, "POST", "/rooms", &body).await;
+    assert_eq!(status, 429);
+}
+
+#[tokio::test]
+async fn sixty_join_pages_a_minute_per_address() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    for _ in 0..anibeam_relay::PAGES_PER_MINUTE {
+        let (status, _) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+        assert_eq!(status, 200);
+    }
+    let (status, _) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 429);
+}
+
+/// A relay set up with `options`.
+async fn start_with(options: anibeam_relay::Options) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(anibeam_relay::serve_with(listener, options));
+    addr.to_string()
+}
+
+#[tokio::test]
+async fn a_socket_that_never_says_hello_is_closed() {
+    let addr = start_with(anibeam_relay::Options {
+        hello_wait: Duration::from_millis(300),
+        ..Default::default()
+    })
+    .await;
+    let room = create(&addr).await;
+    let mut silent = connect(&addr, &room.code).await;
+    let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
+    match recv(&mut silent).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Proto),
+        other => panic!("{other:?}"),
+    }
+    assert!(closed(&mut silent).await);
+    // A member who said hello in time stays.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    send(&mut ann, &ClientMsg::Ping { c: 7 }).await;
+    assert!(matches!(recv(&mut ann).await, ServerMsg::Pong { c: 7, .. }));
+}
+
+#[tokio::test]
+async fn a_socket_before_hello_is_held_to_the_rate() {
+    // A stopped clock keeps every frame in one window, however slow the machine.
+    let addr = start_with(anibeam_relay::Options {
+        clock: || 1_000_000,
+        ..Default::default()
+    })
+    .await;
+    let room = create(&addr).await;
+    let mut ws = connect(&addr, &room.code).await;
+    // Junk keeps the socket open with bad_message, twenty times a second.
+    for _ in 0..anibeam_room::limit::RATE_PER_SEC + 5 {
+        ws.send(Message::text("junk")).await.unwrap();
+    }
+    // A bye is never dropped, and its answer queues behind every earlier one,
+    // so it marks the end: anything the dropped junk drew would come first.
+    // The refusal is written straight to the socket, so it may pass queued
+    // bad_messages; only the counts are fixed.
+    send(&mut ws, &ClientMsg::Bye).await;
+    let mut codes = Vec::new();
+    loop {
+        match recv(&mut ws).await {
+            ServerMsg::Error {
+                code: ErrorCode::Proto,
+                ..
+            } => break,
+            ServerMsg::Error { code, .. } => codes.push(code),
+            other => panic!("{other:?}"),
+        }
+    }
+    let count = |want: ErrorCode| codes.iter().filter(|c| **c == want).count();
+    assert_eq!(
+        count(ErrorCode::BadMessage),
+        anibeam_room::limit::RATE_PER_SEC as usize,
+        "{codes:?}"
+    );
+    assert_eq!(count(ErrorCode::RateLimited), 1, "{codes:?}");
+    assert_eq!(
+        codes.len(),
+        anibeam_room::limit::RATE_PER_SEC as usize + 1,
+        "{codes:?}"
+    );
+}

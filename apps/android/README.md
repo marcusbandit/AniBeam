@@ -1,8 +1,8 @@
-# AniBeam for Android
+# Anibeam for Android
 
-AniBeam on the phone, as its own app: it runs the same core as the desktop over its own
+Anibeam on the phone, as its own app: it runs the same core as the desktop over its own
 library, so what you keep on the phone is the phone's, and only tracking is shared through
-AniList and MyAnimeList. It can also show another AniBeam's library over your tailnet, read
+AniList and MyAnimeList. It can also show another Anibeam's library over your tailnet, read
 only.
 
 Everything is Rust: the UI is [Slint](https://slint.dev) on its Android backend, behind
@@ -22,7 +22,7 @@ Four tabs:
 - **Home** is this phone's: the next episode to air, this week with a dot on each day
   something airs, and the recently watched and recently downloaded shelves.
 - **Library** is every show on the phone as a poster with the desktop's episode cubes, with
-  search. When another AniBeam on the tailnet has answered, a switcher above shows its
+  search. When another Anibeam on the tailnet has answered, a switcher above shows its
   library instead. Tap a poster for its series page: the facts, the cubes, the synopsis,
   every episode, Play for the next one up, and Get episodes, which opens the show in
   Downloads. A tap on any whole episode plays it.
@@ -43,7 +43,7 @@ again. Turned down, the notification has a row in More and a line in Downloads w
 something downloads, both opening the app's notification settings.
 
 **The player** is the desktop's, on the same libmpv: the core opens the session, keeps the
-resume point and the history, and marks the trackers; the track pick and AniBeam's mpv
+resume point and the history, and marks the trackers; the track pick and Anibeam's mpv
 options are the core's too, so a file plays the same on both. The screen turns to landscape
 with the system bars hidden. The controls island has the time, the groove with the skip
 windows on it, previous, play and next, Skip intro or outro while inside one, the audio and
@@ -84,7 +84,7 @@ too, so its library still shows when it is off.
 
 1. Install the Tailscale app on the phone, sign in to the same tailnet as the desktop, and
    keep it connected. The host only listens on its Tailscale addresses.
-2. On the desktop, switch on **Share over Tailscale** in AniBeam.
+2. On the desktop, switch on **Share over Tailscale** in Anibeam.
 3. Sideload the APK. Either copy `dist/AniBeam-<version>.apk` to the phone and open it
    (Android asks once to allow installs from that app), or with USB debugging on:
 
@@ -92,10 +92,10 @@ too, so its library still shows when it is off.
    adb install -r dist/AniBeam-0.8.0.apk
    ```
 
-4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
-   If the phone cannot resolve the short name, use the full one in More,
-   `banditbox.tail24c6a9.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
-   says whether AniBeam answered and which version it is.
+4. Open Anibeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
+   such as `my-computer:8790`. If the phone cannot resolve the short name, use the full one,
+   `my-computer.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
+   says whether Anibeam answered and which version it is.
 
 Release APKs are signed with the project's key, so each one installs over the last. An APK
 built in a checkout is signed with that machine's `~/.android/debug.keystore`, and its
@@ -120,8 +120,15 @@ You need:
 scripts/build.sh                 # x86_64 APK for the emulator: build/AniBeam-debug.apk
 scripts/build.sh --abi all       # arm64-v8a and x86_64 in one APK
 scripts/build.sh --dist          # both, copied to dist/AniBeam-<versionName>.apk
+scripts/build.sh --bundle        # App Bundle for Google Play: build/AniBeam-release.aab
 scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same limits
 ```
+
+`--bundle` builds the Play flavor (`ANIBEAM_FLAVOR=play`) with a pinned bundletool
+(`scripts/fetch-bundletool.sh`) and signs it with jarsigner and the APK's key. To try it on the
+emulator: `java -jar "$(scripts/fetch-bundletool.sh)" build-apks --local-testing --bundle
+build/AniBeam-release.aab --output build/AniBeam.apks`, then the same `java -jar` with
+`install-apks --apks build/AniBeam.apks`.
 
 `build.sh` runs inside a systemd scope capped at 6 GB with swap forbidden
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
@@ -141,6 +148,36 @@ and versionCode out of it, or out of `ANIBEAM_RELEASE_VERSION` when CI ships the
 nightly or a release, and stops when the newest heading in `CHANGELOG.md` is not that
 version. Builds for people come from CI, never from a checkout: CONTRIBUTING.md, under
 Releases.
+
+### iOS
+
+The same app builds for the iPhone, without video for now. Slint draws through winit
+there, and `src/main.rs` is the executable that `ios/cargo.sh`, the Xcode project's build
+step, puts in the bundle. You need a Mac with Xcode, xcodegen (`brew install xcodegen`)
+and the simulator target (`rustup target add aarch64-apple-ios-sim`).
+
+```sh
+scripts/build-ios.sh                       # build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
+```
+
+`scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
+LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
+A PR's test build comment carries Add to AltStore, SideStore and LiveContainer links: they open
+`site/install/`, which hands the IPA's release URL to the app's `<app>://install?url=` scheme.
+
+Info.plist asks for the local network (`NSLocalNetworkUsageDescription`), which the host
+and casting need, and declares `_googlecast._tcp` under `NSBonjourServices`. Finding devices
+to cast to still needs more on a sideloaded build: the core's Chromecast search (mDNS) and
+DLNA search (SSDP) send their own multicast, which iOS only allows an app holding the
+`com.apple.developer.networking.multicast` entitlement. Apple grants it on request to a
+paid developer account's provisioning profile, so an AltStore or LiveContainer install
+never carries it, and the plist cannot add it. Until then the iPhone finds no Chromecast or
+DLNA renderer on its own.
+
+`librqbit-dualstack-sockets` 0.7.0 does not build for iOS, so Cargo.toml pins the fix
+from its pull request #7 under `[patch.crates-io]`. Drop the pin once a release has it.
 
 ## The emulator loop
 
@@ -196,10 +233,15 @@ android/            AndroidManifest.xml (package, version, NativeActivity), icon
                     java/ with the one download service
 companion/          the logic, no UI: client, store, AniList, Next up rows, On disk rows,
                     sync. Tests run on the desktop; tests/mock_host.rs syncs with the mock.
-src/                the app: android_main, the UI thread (app.rs), the phone's core
-                    (local.rs, phone.rs), the other device (remote.rs, worker.rs), the
-                    phone's settings (prefs.rs), JNI for the browser, the service and the network
-                    (android.rs)
+src/                the app: the UI thread (app.rs), the phone's core (local.rs, phone.rs),
+                    the other device (remote.rs, worker.rs), the phone's settings (prefs.rs)
+src/platform/       everything that differs by platform: android.rs holds android_main and
+                    the JNI for the browser, the service, the network and the screen;
+                    ios.rs holds ios_main, the hinge, and the language and light or
+                    dark setting; other.rs stands in on every other target
+src/main.rs         the iPhone's executable
+ios/                the iPhone's Xcode project (project.yml for xcodegen), Info.plist
+                    and cargo.sh, the build step that runs cargo
 ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host

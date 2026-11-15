@@ -74,7 +74,7 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding || e.closer === roomSheet })
         escapeStack.clear()
         keep.forEach(function(e) {
             if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
@@ -204,6 +204,9 @@ FocusScope {
             else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
         }
         onVersionClicked: frame.openWhatsNew()
+        inRoom: roomState.inRoom
+        roomOpen: roomSheet.open
+        onRoomClicked: frame.toggleRoom()
     }
 
     Item {
@@ -256,6 +259,9 @@ FocusScope {
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             // A person reads the plain line; with developer options on, the technical one
             readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
+            // The plain line in the language the app speaks now (#792): its message ID and
+            // arguments, else the words the core said it in, for a line from before IDs
+            function plainOf(l) { return l.plain_words ? words.t(l.plain_words.id, l.plain_words.args) : l.plain }
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
             function wordsOf(k) {
@@ -266,7 +272,7 @@ FocusScope {
             stage: frame.devOn ? (job ? wordsOf(job.kind) : (line && line.stage ? wordsOf(line.stage) : words.t("frame-strip-ready"))) : ""
             readonly property string doing: job ? (frame.devOn ? (job.label || wordsOf(job.kind)) : (job.doing || wordsOf(job.kind))) : ""
             message: job ? (job.total > 0 ? words.t("frame-strip-progress", { doing: doing, done: job.done, total: job.total }) : doing)
-                         : (line ? (frame.devOn ? line.message : line.plain) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
+                         : (line ? (frame.devOn ? line.message : plainOf(line)) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), words.t("frame-strip-time-format"))
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
@@ -514,6 +520,47 @@ FocusScope {
     function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
     readonly property alias onboardingPanel: onboarding
 
+    // Watch together (#846): the room outlives the player, so the frame keeps it. The player
+    // opens its own panel from its chrome; anywhere else Ctrl+J and the rail open this one.
+    Room { id: roomState }
+    readonly property alias room: roomState
+    readonly property alias roomSheetPanel: roomSheet
+    function openRoom() {
+        whatsNew.close()
+        if (page.item && page.item.openRoomPanel) page.item.openRoomPanel()
+        else roomSheet.openAt(null)
+    }
+    function toggleRoom() {
+        if (page.item && page.item.toggleRoomPanel) page.item.toggleRoomPanel()
+        else if (roomSheet.open) roomSheet.close()
+        else frame.openRoom()
+    }
+    // A link (anibeam://room/<code>) from the command line or a second launch
+    function joinRoomLink(code) {
+        if (!code) return
+        if (!(page.item && page.item.openRoomPanel)) roomSheet.openAt(null)
+        else page.item.openRoomPanel()
+        roomState.join(code)
+    }
+    Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+    // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
+    // takes the same road as a room link
+    Connections {
+        target: Door
+        function onEvent(envelope) {
+            var b = envelope.body
+            if (envelope.kind === "DiscordJoinAsk") discordAsk.add({ user_id: b.user_id, name: b.name, avatar: b.avatar || "", in_room: b.in_room })
+            else if (envelope.kind === "DiscordAskGone") discordAsk.drop(b.user_id)
+            else if (envelope.kind === "DiscordJoin") frame.takeDiscordJoin()
+        }
+    }
+    // Taken from the core rather than the event, so a join that came before this window
+    // was up (Discord launched the app for it) still lands, and only once
+    function takeDiscordJoin() {
+        var r = Door.call("DiscordTakeJoin", {})
+        if (!r.error && r.reply.code) frame.joinRoomLink(r.reply.code)
+    }
+
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
@@ -530,10 +577,16 @@ FocusScope {
         anchors.fill: parent
         z: 600
         Menu { id: menu }
+        RoomPanel { id: roomSheet }
         RemoveSheet { id: removeSheet }
         MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
+        DiscordAsk {
+            id: discordAsk
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top; anchors.topMargin: theme.space(4)
+        }
         UpdateNotice {
             id: updateNotice
             covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
@@ -633,6 +686,10 @@ FocusScope {
         // gets the first run instead, an older one only has it marked done
         onboarding.start()
         frame.noteSources()
+        roomState.refresh()
+        // Started from a room link: join it once the first page is up
+        if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
+        Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
@@ -908,7 +965,7 @@ FocusScope {
     property var moveOffers: ({})
     // The move sheet for a tracker, from Settings; answers whether there was anything to move
     function openMoveLists(t) { return moveListsSheet.openFor(t) }
-    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // A series Anibeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
         return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
@@ -1090,7 +1147,7 @@ FocusScope {
                 frame.deleteWatchedToken = -1
                 var d = reply.reply || {}
                 frame.toast(reply.error ? frame.errorText(reply.error)
-                    : d.episodes > 0 || d.series > 0 ? words.t("frame-delete-watched-done", { count: d.episodes, size: Fmt.bytes(d.bytes) })
+                    : d.episodes > 0 || d.series > 0 ? words.t("frame-delete-watched-done", { count: d.episodes, size: words.bytes(d.bytes) })
                     : words.t("frame-delete-nothing"))
                 return
             }
@@ -1208,6 +1265,8 @@ FocusScope {
     Shortcut { sequence: "Ctrl+F"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
+    // Watch together: the room panel, the player's own while it is up
+    Shortcut { sequence: "Ctrl+J"; enabled: !onboarding.visible; onActivated: frame.toggleRoom() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     // The mouse's own back and forward buttons, anywhere in the window. No other area takes
     // these two buttons, so a press reaches this one from under whatever it lands on.

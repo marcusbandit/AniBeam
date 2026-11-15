@@ -3,6 +3,7 @@
 //! beats an embedded track, dialogue beats signs), then the first subtitle track and the
 //! file's default audio, so a file never plays unsubbed by accident.
 
+use crate::i18n::tr;
 use crate::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
 use serde_json::Value;
 
@@ -292,10 +293,13 @@ pub fn label(t: &Track) -> String {
         }
         (Some(title), _) => title.clone(),
         (None, Some(lang)) => lang,
-        (None, None) => format!("Track {}", t.id),
+        (None, None) => tr(
+            "core-playback-track-number",
+            &[("number", t.id.to_string().into())],
+        ),
     };
     if t.external {
-        out.push_str(" (file)");
+        out = tr("core-playback-track-file", &[("label", out.into())]);
     }
     out
 }
@@ -309,50 +313,54 @@ fn language_name(tag: &str) -> Option<String> {
     let base = parts.next()?;
     let region = parts.next();
     let name = match base {
-        "en" | "eng" => "English",
-        "ja" | "jpn" => "Japanese",
-        "es" | "spa" => "Spanish",
-        "pt" | "por" => "Portuguese",
-        "fr" | "fre" | "fra" => "French",
-        "de" | "ger" | "deu" => "German",
-        "it" | "ita" => "Italian",
-        "ru" | "rus" => "Russian",
-        "zh" | "chi" | "zho" => "Chinese",
-        "ko" | "kor" => "Korean",
-        "ar" | "ara" => "Arabic",
-        "hi" | "hin" => "Hindi",
-        "id" | "ind" => "Indonesian",
-        "ms" | "may" | "msa" => "Malay",
-        "th" | "tha" => "Thai",
-        "vi" | "vie" => "Vietnamese",
-        "pl" | "pol" => "Polish",
-        "tr" | "tur" => "Turkish",
-        "nl" | "dut" | "nld" => "Dutch",
-        "sv" | "swe" => "Swedish",
-        "no" | "nor" | "nb" | "nob" => "Norwegian",
-        "da" | "dan" => "Danish",
-        "fi" | "fin" => "Finnish",
-        "he" | "heb" => "Hebrew",
-        "uk" | "ukr" => "Ukrainian",
-        "cs" | "cze" | "ces" => "Czech",
-        "hu" | "hun" => "Hungarian",
-        "el" | "gre" | "ell" => "Greek",
-        "ro" | "rum" | "ron" => "Romanian",
-        "fil" | "tl" | "tgl" => "Filipino",
+        "en" | "eng" => "core-playback-lang-english",
+        "ja" | "jpn" => "core-playback-lang-japanese",
+        "es" | "spa" => "core-playback-lang-spanish",
+        "pt" | "por" => "core-playback-lang-portuguese",
+        "fr" | "fre" | "fra" => "core-playback-lang-french",
+        "de" | "ger" | "deu" => "core-playback-lang-german",
+        "it" | "ita" => "core-playback-lang-italian",
+        "ru" | "rus" => "core-playback-lang-russian",
+        "zh" | "chi" | "zho" => "core-playback-lang-chinese",
+        "ko" | "kor" => "core-playback-lang-korean",
+        "ar" | "ara" => "core-playback-lang-arabic",
+        "hi" | "hin" => "core-playback-lang-hindi",
+        "id" | "ind" => "core-playback-lang-indonesian",
+        "ms" | "may" | "msa" => "core-playback-lang-malay",
+        "th" | "tha" => "core-playback-lang-thai",
+        "vi" | "vie" => "core-playback-lang-vietnamese",
+        "pl" | "pol" => "core-playback-lang-polish",
+        "tr" | "tur" => "core-playback-lang-turkish",
+        "nl" | "dut" | "nld" => "core-playback-lang-dutch",
+        "sv" | "swe" => "core-playback-lang-swedish",
+        "no" | "nor" | "nb" | "nob" => "core-playback-lang-norwegian",
+        "da" | "dan" => "core-playback-lang-danish",
+        "fi" | "fin" => "core-playback-lang-finnish",
+        "he" | "heb" => "core-playback-lang-hebrew",
+        "uk" | "ukr" => "core-playback-lang-ukrainian",
+        "cs" | "cze" | "ces" => "core-playback-lang-czech",
+        "hu" | "hun" => "core-playback-lang-hungarian",
+        "el" | "gre" | "ell" => "core-playback-lang-greek",
+        "ro" | "rum" | "ron" => "core-playback-lang-romanian",
+        "fil" | "tl" | "tgl" => "core-playback-lang-filipino",
         _ => return None,
     };
     let region = match region {
-        Some("br") => Some("Brazil"),
-        Some("pt") => Some("Portugal"),
-        Some("419") | Some("la") => Some("Latin America"),
-        Some("es") if base == "es" || base == "spa" => Some("Spain"),
-        Some("hans") | Some("cn") => Some("Simplified"),
-        Some("hant") | Some("tw") | Some("hk") => Some("Traditional"),
+        Some("br") => Some("core-playback-region-brazil"),
+        Some("pt") => Some("core-playback-region-portugal"),
+        Some("419") | Some("la") => Some("core-playback-region-latin-america"),
+        Some("es") if base == "es" || base == "spa" => Some("core-playback-region-spain"),
+        Some("hans") | Some("cn") => Some("core-playback-region-simplified"),
+        Some("hant") | Some("tw") | Some("hk") => Some("core-playback-region-traditional"),
         _ => None,
     };
+    let name = tr(name, &[]);
     Some(match region {
-        Some(r) => format!("{name} ({r})"),
-        None => name.to_string(),
+        Some(r) => tr(
+            "core-playback-lang-region",
+            &[("name", name.into()), ("region", tr(r, &[]).into())],
+        ),
+        None => name,
     })
 }
 

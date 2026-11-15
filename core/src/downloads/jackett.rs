@@ -18,7 +18,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// How long a command with no ready URL to wait for is given to fail
 /// before it counts as started.
@@ -77,29 +77,33 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
     match failure {
         StartFailure::Missing(program) => (
             "missing",
-            format!(
-                "Jackett is not installed: {program} was not found. Install it, or change the command in Settings."
+            crate::i18n::tr(
+                "core-downloads-jackett-missing",
+                &[("program", program.as_str().into())],
             ),
         ),
-        StartFailure::Failed(why) => ("failed", format!("{name} could not start: {why}")),
+        StartFailure::Failed(why) => (
+            "failed",
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-failed",
+                &[("name", name.into()), ("why", why.as_str().into())],
+            ),
+        ),
         StartFailure::Timeout(secs) => (
             "timeout",
-            format!("{name} started but did not answer within {secs} seconds."),
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-timeout",
+                &[("name", name.into()), ("seconds", (*secs).into())],
+            ),
         ),
     }
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(PROBE_TIMEOUT),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url).timeout(PROBE_TIMEOUT))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// The last line of the log that says anything.
@@ -213,8 +217,12 @@ pub async fn start(
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {
-                let why =
-                    last_line(log).unwrap_or_else(|| format!("the command exited with {status}"));
+                let why = last_line(log).unwrap_or_else(|| {
+                    crate::i18n::tr(
+                        "core-downloads-command-exited",
+                        &[("status", status.to_string().into())],
+                    )
+                });
                 return Err(StartFailure::Failed(why));
             }
             exited_clean = true;

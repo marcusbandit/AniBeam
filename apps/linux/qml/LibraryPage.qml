@@ -117,7 +117,7 @@ Item {
     function ratePicked(score) {
         var n = page.pickedCount
         page.act({ Score: { score: score } }, score === null ? words.t("library-clearing-score", { count: n })
-                                                             : words.t("library-rating", { count: n, score: Fmt.score(score) }))
+                                                             : words.t("library-rating", { count: n, score: words.score(score) }))
     }
     function listPicked(anchor) {
         var lists = frame.listStatusItems(-1, "")
@@ -340,10 +340,10 @@ Item {
         // Home's See all names the box it stands for: the page opens on it
         if (props.box) Qt.callLater(page.revealBox, props.box)
     }
-    function revealBox(title) {
+    function revealBox(title) { // title: the box key Home sends ("On hold"), not the shown title
         for (var i = 0; i < boxRepeater.count; i++) {
             var it = boxRepeater.itemAt(i)
-            if (it && it.modelData.title === title) { scroll.contentY = Math.max(0, it.mapToItem(scroll.contentItem, 0, 0).y - theme.space(4)); return }
+            if (it && (it.modelData.box || it.modelData.title) === title) { scroll.contentY = Math.max(0, it.mapToItem(scroll.contentItem, 0, 0).y - theme.space(4)); return }
         }
     }
 

@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// One entry of the JSON feed, as far as a release needs.
 #[derive(serde::Deserialize)]
@@ -35,8 +35,12 @@ struct Entry {
 /// The feed's entries as releases. The torrent's own name is the title: the feed's title adds
 /// an English name and tags after ` | `, which the title parsing would read as part of it.
 pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
-    let entries: Vec<Entry> =
-        serde_json::from_slice(body).map_err(|e| format!("not the feed's JSON: {e}"))?;
+    let entries: Vec<Entry> = serde_json::from_slice(body).map_err(|e| {
+        crate::i18n::tr(
+            "core-releases-not-feed-json",
+            &[("error", e.to_string().into())],
+        )
+    })?;
     Ok(entries
         .into_iter()
         .filter_map(|e| {
@@ -75,37 +79,26 @@ pub async fn fetch(
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".to_string(),
-                    super::fetch::USER_AGENT.to_string(),
-                ),
-                ("Accept".to_string(), "application/json".to_string()),
-            ],
-            body: None,
-            timeout: Some(timeout),
-        })
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", super::fetch::USER_AGENT)
+                .header("Accept", "application/json")
+                .timeout(timeout),
+        )
         .await
-        .map_err(|e| CoreError::Service {
-            service: source.to_string(),
-            code: "unreachable".into(),
-            message: e.message,
-        })?;
+        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
     if !response.is_success() {
-        return Err(CoreError::Service {
-            service: source.to_string(),
-            code: format!("http_{}", response.status),
-            message: format!("the feed answered {}", response.status),
-        });
+        return Err(CoreError::service(
+            source,
+            format!("http_{}", response.status),
+            crate::i18n::tr(
+                "core-releases-feed-answered",
+                &[("status", response.status.to_string().into())],
+            ),
+        ));
     }
-    parse(&response.body, source).map_err(|message| CoreError::Service {
-        service: source.to_string(),
-        code: "unreadable".into(),
-        message,
-    })
+    parse(&response.body, source)
+        .map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

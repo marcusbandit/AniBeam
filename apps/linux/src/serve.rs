@@ -146,7 +146,7 @@ mod unix {
                 super::RELEASE_HOST
             };
             // No window, or no session bus: nobody to tell, which is fine.
-            let _ = runtime::runtime().block_on(instance::hand_off(Some(action)));
+            let _ = runtime::runtime().block_on(instance::hand_off(Some(action), None));
         });
         let service = match Service::bind(paths.lock_path(), paths.service_socket(), tell) {
             Ok(s) => s,
@@ -343,7 +343,7 @@ mod unix {
     }
 
     /// Opens the core, holds the host on and starts it. Downloads that were set up come up
-    /// with it, so AniBeam's own qBittorrent keeps fetching what the subscriptions find; a
+    /// with it, so Anibeam's own qBittorrent keeps fetching what the subscriptions find; a
     /// sandbox root leaves the owner's real clients alone, as the window does.
     fn open(sandbox: bool) -> Result<Arc<Core>, CoreError> {
         let core = runtime::open_core()?;

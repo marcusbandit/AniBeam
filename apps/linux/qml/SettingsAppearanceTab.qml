@@ -31,6 +31,17 @@ SettingsTab {
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
 
     Panel {
+        title: words.t("settings-appearance-language")
+        SettingRow { label: words.t("settings-appearance-language")
+            Dropdown {
+                objectName: "language"
+                options: words.pickNames()
+                index: Math.max(0, words.pickCodes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(words.pickCodes[i]) }
+            }
+        }
+    }
+    Panel {
         title: words.t("settings-appearance-colours")
         SettingRow { label: words.t("settings-appearance-mode")
             Seg { options: [{ text: words.t("settings-appearance-mode-dark"), icon: "moon" }, { text: words.t("settings-appearance-mode-light"), icon: "sun" }, { text: words.t("settings-appearance-mode-system"), icon: "monitor" }]
@@ -58,7 +69,7 @@ SettingsTab {
             Row {
                 spacing: theme.space(3)
                 Repeater {
-                    model: [{ id: "default", msg: "settings-appearance-icon-default", nameMsg: "settings-appearance-icon-default-name", file: "icon.png" }, { id: "dark", msg: "settings-appearance-icon-dark", nameMsg: "settings-appearance-icon-dark-name", file: "icon-dark.png" }]
+                    model: [{ id: "default", msg: "settings-appearance-icon-default", nameMsg: "settings-appearance-icon-default-name", file: Shell.defaultIcon }, { id: "dark", msg: "settings-appearance-icon-dark", nameMsg: "settings-appearance-icon-dark-name", file: "icon-dark.png" }]
                     Column {
                         id: pick
                         required property var modelData

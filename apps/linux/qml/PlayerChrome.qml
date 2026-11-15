@@ -62,6 +62,35 @@ Item {
         }
     }
 
+    // ---- Watch together (#846): the header's mirror at the top right. Its button opens the
+    // room panel, and once in a room it names the room and how many are in it.
+    readonly property Item roomAnchor: roomTile
+    Tile {
+        id: roomTile
+        objectName: "player-room-tile"
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(1.5)
+        anchors.right: parent.right; anchors.top: parent.top
+        anchors.rightMargin: theme.grout; anchors.topMargin: theme.grout
+        width: roomButton.implicitWidth + padding * 2; height: roomButton.implicitHeight + padding * 2
+        opacity: page.chromeVisible ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -roomTile.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
+        Button {
+            id: roomButton
+            objectName: "player-room"
+            anchors.centerIn: parent
+            flat: !frame.room.inRoom
+            icon: "users"
+            text: frame.room.inRoom ? words.t("player-chrome-room", { code: frame.room.info.code, count: frame.room.info.members.length })
+                                    : words.t("player-chrome-watch-together")
+            takesFocus: false
+            onClicked: page.openRoomPanel()
+        }
+    }
+
     // ---- The seek preview: a second mpv core, nothing audible, moved by time-pos. It is
     // its own core rather than a thumbnail file, so it costs nothing on disk and answers
     // any position; it is declared above the video and below the island so it can never
@@ -202,7 +231,7 @@ Item {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             height: elapsed.implicitHeight
             Label { id: elapsed; objectName: "player-elapsed"; anchors.left: parent.left; role: "ledger"; text: Fmt.clock(page.timePos) }
-            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1; text: page.speedLine(page.speed) }
+            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1 && !page.roomed; text: page.speedLine(page.speed) }
             Label { id: total; anchors.right: parent.right; role: "ledger"; color: theme.textDim; text: Fmt.clock(page.duration) }
         }
         // The bar is above the island's own hover MouseArea, so the hover that keeps the

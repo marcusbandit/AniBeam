@@ -1,4 +1,4 @@
-//! What an AniBeam host serves over a tailnet, and what the phone app reads.
+//! What an Anibeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
 //! addresses only. Every device on the tailnet is answered unless the person
@@ -8,8 +8,9 @@
 //! the playback calls below, which keep watch history. Two documents and one
 //! kind of file:
 //!
-//! - [`HELLO`]: who answers ([`Hello`]). Cheap; a client uses it to tell "host
-//!   is up" from "host is down".
+//! - [`HELLO`]: who answers ([`Hello`]), and whose progress it answers the
+//!   asking device with ([`Hello::profile`]). Cheap; a client uses it to tell
+//!   "host is up" from "host is down".
 //! - [`SNAPSHOT`]: everything a client keeps ([`Snapshot`]): the library, the
 //!   subscriptions, the torrents. A client stores the last one it got and shows
 //!   it while the host is away; the airing times in it stay true without the
@@ -40,14 +41,14 @@
 //! put it there. The reply comes once the host's job is done, so it says
 //! whether the torrents went in.
 //!
-//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other Anibeams
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
 //!
 //! A host that lists [`FEATURE_HISTORY`] answers [`HISTORY`]: its watch
 //! history, resume points and matches as an `anibeam-export` document (the
 //! desktop's own export format, without sources, accounts, fixes or
-//! preferences), for another AniBeam computer to merge with its own.
+//! preferences), for another Anibeam computer to merge with its own.
 //!
 //! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
 //! client may sign each request with its own key ([`proof`], with the `proof`
@@ -71,7 +72,7 @@ pub const DEFAULT_PORT: u16 = 8790;
 pub const HELLO: &str = "/api/v1/hello";
 /// `GET`: [`Snapshot`].
 pub const SNAPSHOT: &str = "/api/v1/snapshot";
-/// What [`Hello::app`] says, so a client knows it reached AniBeam and not
+/// What [`Hello::app`] says, so a client knows it reached Anibeam and not
 /// something else on the port.
 pub const APP: &str = "anibeam";
 
@@ -177,9 +178,9 @@ pub struct Hello {
     pub app: String,
     /// The host's [`API_VERSION`].
     pub api: u32,
-    /// The AniBeam version, as its About page shows it.
+    /// The Anibeam version, as its About page shows it.
     pub version: String,
-    /// The machine's name, for a client to show ("banditbox").
+    /// The machine's name, for a client to show ("desk").
     pub host: String,
     /// The host's clock, so a client can tell how far apart they are.
     pub now: i64,
@@ -205,11 +206,33 @@ pub struct Hello {
     /// cannot tell.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub relayed: bool,
+    /// Whose progress the host answers the asking device with: the person the
+    /// device belongs to on the tailnet. Absent from a host older than
+    /// profiles, and when the host cannot name the person, so a client says
+    /// nothing rather than a guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
-/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// The person a host answers a device as ([`Hello::profile`]), named as
+/// Tailscale names them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Profile {
+    /// The name Tailscale shows for them ("Alex Doe").
+    pub name: String,
+    /// Their Tailscale login, "someone@example.com" or a GitHub login. May be
+    /// empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub login: String,
+    /// Set when they are the person the host belongs to, so the device sees the
+    /// host's own history rather than a guest's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub owner: bool,
+}
+
+/// `GET` [`PEERS`]: the other Anibeams the host sees on the tailnet, for a
 /// client that cannot list tailnet devices itself. Only devices the host
-/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// trusts and that answered their hello as Anibeam a moment ago; neither the
 /// host nor the device asking is among them. A host that cannot read its
 /// tailnet answers `503` instead of an empty list, so a client keeps the list
 /// it had.
@@ -219,7 +242,7 @@ pub struct Peers {
     pub hosts: Vec<PeerHost>,
 }
 
-/// One AniBeam on the tailnet.
+/// One Anibeam on the tailnet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerHost {
     /// Its machine name, from its own hello.
@@ -227,7 +250,7 @@ pub struct PeerHost {
     pub name: String,
     /// `http://<tailnet address>:<port>`, where it answered.
     pub url: String,
-    /// Its AniBeam version.
+    /// Its Anibeam version.
     #[serde(default)]
     pub version: String,
 }
@@ -526,6 +549,55 @@ mod tests {
         };
         let back: Episode = serde_json::from_str(&serde_json::to_string(&two).unwrap()).unwrap();
         assert_eq!(back.versions, two.versions);
+    }
+
+    /// The hello as a client from before profiles knew it.
+    #[derive(Deserialize)]
+    struct OldHello {
+        app: String,
+        host: String,
+        #[serde(default)]
+        features: Vec<String>,
+    }
+
+    fn hello(profile: Option<Profile>) -> Hello {
+        Hello {
+            app: APP.into(),
+            api: API_VERSION,
+            version: "2.5.0".into(),
+            host: "desk".into(),
+            now: 1,
+            features: vec![FEATURE_STREAM.into()],
+            key: String::new(),
+            streaming_off: false,
+            relayed: false,
+            profile,
+        }
+    }
+
+    #[test]
+    fn an_older_client_reads_a_hello_that_names_the_profile() {
+        let text = serde_json::to_string(&hello(Some(Profile {
+            name: "Alex Doe".into(),
+            login: "alex@example.com".into(),
+            owner: true,
+        })))
+        .unwrap();
+        assert!(text.contains(r#""profile":{"name":"Alex Doe""#), "{text}");
+        let old: OldHello = serde_json::from_str(&text).unwrap();
+        assert_eq!((old.app.as_str(), old.host.as_str()), (APP, "desk"));
+        assert_eq!(old.features, [FEATURE_STREAM]);
+    }
+
+    #[test]
+    fn a_hello_from_an_older_host_names_no_profile() {
+        let text = r#"{"app": "anibeam", "api": 1, "version": "2.4.0", "host": "desk", "now": 1}"#;
+        let old: Hello = serde_json::from_str(text).unwrap();
+        assert_eq!(old.profile, None);
+        let none = serde_json::to_string(&hello(None)).unwrap();
+        assert!(!none.contains("profile"), "{none}");
+        let guest: Profile = serde_json::from_str(r#"{"name": "Sam"}"#).unwrap();
+        assert_eq!((guest.login.as_str(), guest.owner), ("", false));
     }
 
     #[test]

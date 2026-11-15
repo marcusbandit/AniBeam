@@ -27,11 +27,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::i18n::tr;
 use crate::jobs::{Finished, JobCtx};
 use crate::net::anilist::VIEWER_QUERY;
 use crate::percent::decode;
 use crate::time;
+use crate::trackers::Trackers;
 use crate::trackers::accounts::{self, Tokens};
 use crate::trackers::{TRACKER_TIMEOUT, cache};
 
@@ -66,10 +67,22 @@ const MAX_REQUEST: usize = 8 * 1024;
 /// than allowed to hold the whole flow until it times out.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
-const TIMED_OUT: &str = "Authorization timed out, try again.";
-const STATE_MISMATCH: &str = "state mismatch, possible CSRF, aborted.";
-const NO_CODE: &str = "no code in callback";
-const NO_TOKEN: &str = "no access_token in callback";
+/// The words a failed callback is told in, for the error and the tab alike.
+fn timed_out() -> String {
+    tr("core-trackers-oauth-timed-out", &[])
+}
+
+fn state_mismatch() -> String {
+    tr("core-trackers-oauth-state-mismatch", &[])
+}
+
+fn no_code() -> String {
+    tr("core-trackers-oauth-no-code", &[])
+}
+
+fn no_token() -> String {
+    tr("core-trackers-oauth-no-token", &[])
+}
 
 /// What the pages call each provider. The site's own name, so the tab a
 /// user is looking at says what they just signed in to; `Tracker::label`
@@ -86,20 +99,19 @@ pub(crate) fn site_name(t: Tracker) -> &'static str {
 /// Starts the ConnectTracker job. The credentials are resolved here, on
 /// the calling thread, so a connect with no client id fails the call
 /// rather than a job nobody is watching.
-pub fn connect(core: &Core, t: Tracker) -> Result<u64, CoreError> {
-    let (client_id, client_secret) = accounts::effective_credentials(core, t)?;
+pub fn connect(trackers: &Arc<Trackers>, t: Tracker) -> Result<u64, CoreError> {
+    let (client_id, client_secret) = accounts::effective_credentials(&trackers.services, t)?;
     // A new connect supersedes whatever is in flight: the listener holds
     // one fixed port, so two flows cannot both be waiting on it, and a
     // stalled flow (a closed tab, a provider error page that never
     // redirected) must not lock the user out of trying again.
-    if let Some(running) = core.jobs.running(JobKind::ConnectTracker) {
-        let _ = core.jobs.cancel(running);
+    if let Some(running) = trackers.services.jobs.running(JobKind::ConnectTracker) {
+        let _ = trackers.services.jobs.cancel(running);
     }
-    let owner = core
-        .arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let port = core.oauth_port.load(Ordering::SeqCst);
+    let owner = trackers.clone();
+    let port = trackers.oauth_port.load(Ordering::SeqCst);
     Ok(owner
+        .services
         .jobs
         .clone()
         .start(JobKind::ConnectTracker, move |ctx| async move {
@@ -119,7 +131,7 @@ enum Callback {
 }
 
 async fn run(
-    core: Arc<Core>,
+    trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     t: Tracker,
     client_id: String,
@@ -139,10 +151,7 @@ async fn run(
     // The line the activity log keeps, with no url in it.
     ctx.say(
         Level::Info,
-        format!(
-            "Waiting for you to sign in to {} in your browser.",
-            site_name(t)
-        ),
+        crate::words!("core-trackers-oauth-waiting", site = site_name(t)),
         format!("{} sign-in: waiting for the browser", site_name(t)),
         EventBody::Notice,
     );
@@ -166,7 +175,7 @@ async fn run(
 
     let (callback, stream) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
         .await
-        .map_err(|_| accounts::tracker_error(t, TIMED_OUT))??;
+        .map_err(|_| accounts::tracker_error(t, timed_out()))??;
     let mut tab = HeldTab(Some(stream));
 
     // The browser's request is held while this runs, so the page it gets
@@ -175,10 +184,10 @@ async fn run(
     // then contradicts. Held for so long and no longer: a limiter backing
     // off a run of 429s could outlast the browser's own patience, so past
     // the hold the tab is let go with a page that sends the user back to
-    // AniBeam, and the sign-in carries on to an outcome the app reports.
-    let hold = Duration::from_millis(core.sign_in_hold_ms.load(Ordering::SeqCst));
+    // Anibeam, and the sign-in carries on to an outcome the app reports.
+    let hold = Duration::from_millis(trackers.sign_in_hold_ms.load(Ordering::SeqCst));
     let signing_in = sign_in(
-        &core,
+        &trackers,
         t,
         callback,
         &verifier,
@@ -201,19 +210,23 @@ async fn run(
         }
     };
     let username = signed_in?;
-    let trackers = accounts::state_async(&core).await?;
+    let now = accounts::state_async(&trackers.services).await?;
     ctx.emit(
         Level::Debug,
         "trackers changed",
-        EventBody::TrackersChanged { state: trackers },
+        EventBody::TrackersChanged { state: now },
     );
     // The account has a list and the core has none of it, so the fetch is
     // started here rather than waited for by the first page that wants a
     // number. Forced, because a connection that has just happened cannot
     // be inside anybody's freshness window.
-    cache::start_refresh(&core, Some(t), true);
+    cache::start_refresh(&trackers, Some(t), true);
     Ok(Finished {
-        plain: Some(format!("Connected {} as {username}.", site_name(t))),
+        plain: Some(crate::words!(
+            "core-trackers-oauth-connected",
+            site = site_name(t),
+            username = &username
+        )),
         level: Level::Info,
         message: format!("{} connected as {username}", site_name(t)),
         body: EventBody::TrackerConnected {
@@ -228,7 +241,7 @@ async fn run(
 /// and the profile read, then the tokens and the row saved. The username
 /// is what the finished job reports.
 async fn sign_in(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     t: Tracker,
     callback: Callback,
     verifier: &str,
@@ -241,7 +254,8 @@ async fn sign_in(
             access_token,
             expires_at,
         } => {
-            let profile = core
+            let profile = trackers
+                .net
                 .anilist
                 .graphql_within(
                     VIEWER_QUERY,
@@ -253,7 +267,7 @@ async fn sign_in(
             let username = profile["Viewer"]["name"]
                 .as_str()
                 .filter(|name| !name.is_empty())
-                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
+                .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-oauth-no-name", &[])))?
                 .to_string();
             (
                 profile["Viewer"]["id"].as_u64(),
@@ -267,7 +281,7 @@ async fn sign_in(
         }
         Callback::Mal { code } => {
             let tokens = exchange(
-                core,
+                trackers,
                 &code,
                 verifier,
                 client_id,
@@ -275,31 +289,31 @@ async fn sign_in(
                 redirect_url,
             )
             .await?;
-            let profile = core
+            let profile = trackers
+                .net
                 .mal
                 .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
                 .await?;
             if !profile.is_success() {
-                return Err(CoreError::Provider {
-                    provider: Provider::Mal,
-                    status: Some(u32::from(profile.status)),
-                    message: profile.text(),
-                    retry_after: None,
-                });
+                return Err(CoreError::provider(
+                    Provider::Mal,
+                    Some(u32::from(profile.status)),
+                    profile.text(),
+                ));
             }
             let profile: serde_json::Value = profile.json()?;
             let username = profile["name"]
                 .as_str()
                 .filter(|name| !name.is_empty())
-                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
+                .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-oauth-no-name", &[])))?
                 .to_string();
             (profile["id"].as_u64(), username, tokens)
         }
     };
 
-    let store = accounts::save_tokens(core, t, &tokens).await?;
+    let store = accounts::save_tokens(&trackers.services, t, &tokens).await?;
     accounts::save_connection(
-        core,
+        &trackers.services,
         t,
         user_id,
         &username,
@@ -324,7 +338,7 @@ fn page_message(e: &CoreError) -> String {
 /// started the flow; the secret rides along only for an app registered as
 /// "web", and a refusal for want of one says so in words a user can act on.
 async fn exchange(
-    core: &Arc<Core>,
+    trackers: &Trackers,
     code: &str,
     verifier: &str,
     client_id: &str,
@@ -341,7 +355,8 @@ async fn exchange(
             ("redirect_uri", redirect_url),
         ],
     );
-    let response = core
+    let response = trackers
+        .net
         .mal
         .post_form_within(accounts::MAL_TOKEN_URL, form, TRACKER_TIMEOUT)
         .await?;
@@ -360,27 +375,33 @@ async fn exchange(
 fn bind(port: u16) -> Result<TcpListener, CoreError> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
         tracing::debug!("the loopback listener could not bind {port}: {e}");
-        let service = "Signing in could not start".to_string();
+        let service = tr("core-trackers-oauth-could-not-start", &[]);
         if e.kind() != std::io::ErrorKind::AddrInUse {
-            return CoreError::Service {
+            return CoreError::service(
                 service,
-                code: "listen_failed".to_string(),
-                message: format!("port {port} on this computer could not be opened: {e}"),
-            };
+                "listen_failed",
+                tr(
+                    "core-trackers-oauth-port-failed",
+                    &[
+                        ("port", port.to_string().into()),
+                        ("error", e.to_string().into()),
+                    ],
+                ),
+            );
         }
         // The port sits in the range the system hands out for any program's
         // connections, so a passing one can hold it for a moment, and a
         // program listening there holds it until it stops (#456). The
         // registered redirect pins the port, so waiting or closing the other
         // program is the remedy. Not `Io`, which would call it a file error.
-        CoreError::Service {
+        CoreError::service(
             service,
-            code: "port_busy".to_string(),
-            message: format!(
-                "port {port} on this computer is in use by another program. Wait a moment \
-                 and try again, or close the program using it if it stays busy."
+            "port_busy",
+            tr(
+                "core-trackers-oauth-port-busy",
+                &[("port", port.to_string().into())],
             ),
-        }
+        )
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
     TcpListener::from_std(listener).map_err(io_error)
@@ -448,25 +469,31 @@ async fn serve(
             reply(&mut stream, BAD_REQUEST, &error_page(&error)).await;
             return Err(accounts::tracker_error(
                 t,
-                format!("{} returned an error: {error}", site_name(t)),
+                tr(
+                    "core-trackers-oauth-provider-error",
+                    &[
+                        ("site", site_name(t).into()),
+                        ("error", error.as_str().into()),
+                    ],
+                ),
             ));
         }
         if t == Tracker::Mal {
             // MAL carries the state back; AniList is never sent one, so it
             // is only checked where it was sent.
             if get("state").as_deref() != Some(state) {
-                reply(&mut stream, BAD_REQUEST, &error_page(STATE_MISMATCH)).await;
-                return Err(accounts::tracker_error(t, STATE_MISMATCH));
+                reply(&mut stream, BAD_REQUEST, &error_page(&state_mismatch())).await;
+                return Err(accounts::tracker_error(t, state_mismatch()));
             }
             let Some(code) = get("code") else {
-                reply(&mut stream, BAD_REQUEST, &error_page(NO_CODE)).await;
-                return Err(accounts::tracker_error(t, NO_CODE));
+                reply(&mut stream, BAD_REQUEST, &error_page(&no_code())).await;
+                return Err(accounts::tracker_error(t, no_code()));
             };
             return Ok((Callback::Mal { code }, stream));
         }
         let Some(access_token) = get("access_token") else {
-            reply(&mut stream, BAD_REQUEST, &error_page(NO_TOKEN)).await;
-            return Err(accounts::tracker_error(t, NO_TOKEN));
+            reply(&mut stream, BAD_REQUEST, &error_page(&no_token())).await;
+            return Err(accounts::tracker_error(t, no_token()));
         };
         let expires_at = get("expires_in")
             .and_then(|seconds| seconds.parse::<u64>().ok())
@@ -669,7 +696,7 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 
 // The pages ------------------------------------------------------------------
 
-/// The look every page shares: AniBeam Dark's ground and brand teal, the
+/// The look every page shares: Anibeam Dark's ground and brand teal, the
 /// mono face, one quiet card in the middle of the tab. These pages are the
 /// only interface a user sees in the browser, so they look like the app
 /// rather than like a server default.
@@ -689,30 +716,46 @@ p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
 /// beat later; a browser that refuses a script closing a tab it did not
 /// open leaves the page saying the same thing in words.
 fn success_page(site: &str) -> String {
+    let site = escape(site);
+    let title = page_words("core-trackers-page-connected", &site, "Anibeam");
+    let heading = page_words("core-trackers-page-connected", &site, BRAND);
+    let close = page_words("core-trackers-page-close-tab", &site, BRAND);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>{site} is connected to AniBeam</title>\n\
+         <title>{title}</title>\n\
          <style>{PAGE_STYLE}</style></head>\n\
          <body><main><div class=\"mark\">&#10003;</div>\
-         <h1>{site} is connected to <span class=\"brand\">AniBeam</span></h1>\
-         <p>You can close this tab.</p></main>\n\
-         <script>setTimeout(function(){{window.close()}},1500)</script></body></html>",
-        site = escape(site)
+         <h1>{heading}</h1>\
+         <p>{close}</p></main>\n\
+         <script>setTimeout(function(){{window.close()}},1500)</script></body></html>"
     )
+}
+
+/// Anibeam's name as the pages set it, in the brand colour.
+const BRAND: &str = "<span class=\"brand\">Anibeam</span>";
+
+/// One line of a page from the catalog. The catalog's words are the app's own, so they
+/// go in as they are; `site` is escaped by the caller, and `app` is Anibeam's name,
+/// plain for a title or marked up as [`BRAND`] in the body.
+fn page_words(id: &str, site: &str, app: &str) -> String {
+    tr(id, &[("site", site.into()), ("app", app.into())])
 }
 
 /// The message comes off the query the browser was redirected with, so it
 /// is escaped before it goes into the page: nothing a provider or a
 /// crafted link says should be able to write markup here.
 fn error_page(message: &str) -> String {
+    let title = page_words("core-trackers-page-failed-title", "", "Anibeam");
+    let heading = page_words("core-trackers-page-failed", "", BRAND);
+    let back = page_words("core-trackers-page-go-back", "", BRAND);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, sign-in failed</title>\n\
+         <title>{title}</title>\n\
          <style>{PAGE_STYLE}</style></head>\n\
          <body><main><div class=\"mark bad\">!</div>\
-         <h1>The sign-in did not finish</h1>\
+         <h1>{heading}</h1>\
          <p>{}</p>\
-         <p>Go back to <span class=\"brand\">AniBeam</span> and try again.</p></main></body></html>",
+         <p>{back}</p></main></body></html>",
         escape(message)
     )
 }
@@ -721,28 +764,33 @@ fn error_page(message: &str) -> String {
 /// failure, because neither is known yet; the app is where the outcome
 /// lands.
 fn finishing_page(site: &str) -> String {
+    let site = escape(site);
+    let title = page_words("core-trackers-page-finishing-title", &site, "Anibeam");
+    let heading = page_words("core-trackers-page-finishing", &site, BRAND);
+    let body = page_words("core-trackers-page-finishing-body", &site, BRAND);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, still finishing</title>\n\
+         <title>{title}</title>\n\
          <style>{PAGE_STYLE}</style></head>\n\
          <body><main><div class=\"mark\">&#8230;</div>\
-         <h1>Still finishing</h1>\
-         <p>{site} answered and AniBeam is finishing the sign-in. \
-         Return to <span class=\"brand\">AniBeam</span>, which says when it is done.</p></main></body></html>",
-        site = escape(site)
+         <h1>{heading}</h1>\
+         <p>{body}</p></main></body></html>"
     )
 }
 
 /// The tab of a sign-in that was cancelled, or replaced by a newer one,
 /// while it was being finished.
 fn cancelled_page() -> String {
+    let title = page_words("core-trackers-page-cancelled-title", "", "Anibeam");
+    let heading = page_words("core-trackers-page-cancelled", "", BRAND);
+    let body = page_words("core-trackers-page-cancelled-body", "", BRAND);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, sign-in cancelled</title>\n\
+         <title>{title}</title>\n\
          <style>{PAGE_STYLE}</style></head>\n\
          <body><main><div class=\"mark bad\">&#215;</div>\
-         <h1>This sign-in was cancelled</h1>\
-         <p>You can close this tab. Start again from <span class=\"brand\">AniBeam</span> if you meant to.</p></main></body></html>"
+         <h1>{heading}</h1>\
+         <p>{body}</p></main></body></html>"
     )
 }
 
@@ -772,7 +820,7 @@ mod tests {
 
     /// Any program's loopback connection can sit on the sign-in port, so a
     /// busy port says what to do and never sends anyone looking for a
-    /// second AniBeam.
+    /// second Anibeam.
     #[tokio::test]
     async fn a_busy_port_says_so_and_asks_for_another_try() {
         let holder = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
@@ -781,7 +829,7 @@ mod tests {
         assert!(matches!(&err, CoreError::Service { code, .. } if code == "port_busy"));
         // What the person reads, prefix and all.
         let shown = err.to_string();
-        assert!(!shown.contains("AniBeam"), "{shown}");
+        assert!(!shown.to_lowercase().contains("anibeam"), "{shown}");
         assert!(!shown.contains("file"), "{shown}");
         assert!(shown.starts_with("Signing in could not start: "), "{shown}");
         assert!(shown.contains(&format!("port {port}")), "{shown}");

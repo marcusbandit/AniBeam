@@ -228,7 +228,7 @@ Item {
             var bad = page.failedOutcomes(outcomes)
             if (bad !== "") frame.toast(bad, 8)
         }
-        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(!outcomes.every(function(o) { return o.ok }) ? words.t("series-score-failed") : score < 0 ? words.t("series-rated-cleared") : words.t("series-rated", { score: Fmt.score(score) })) } }
+        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(!outcomes.every(function(o) { return o.ok }) ? words.t("series-score-failed") : score < 0 ? words.t("series-rated-cleared") : words.t("series-rated", { score: words.score(score) })) } }
         function onMarked(series, episode, outcomes) {
             if (series !== page.props.id) return
             reloadDebounce.restart()
@@ -926,15 +926,15 @@ Item {
                         visible: !card.hidden
                         small: true; ghost: true
                         icon: "star"
-                        text: page.hasScore ? words.t("series-your-score", { score: Fmt.score(card.my_score) }) : words.t("series-rate")
+                        text: page.hasScore ? words.t("series-your-score", { score: words.score(card.my_score) }) : words.t("series-rate")
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
-                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-page-average-score", { score: Fmt.score(card.community_score) }) : "" }
+                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-page-average-score", { score: words.score(card.community_score) }) : "" }
                     Fact {
                         objectName: "fact-imdb"
                         visible: page.hasImdb
                         icon: "clapperboard"
-                        text: page.hasImdb ? words.t("series-page-imdb", { score: Fmt.score(card.imdb_score) }) : ""
+                        text: page.hasImdb ? words.t("series-page-imdb", { score: words.score(card.imdb_score) }) : ""
                         Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-page-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
                     }
                     // The list status, and with a tracker connected the menu that changes it

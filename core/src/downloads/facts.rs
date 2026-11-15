@@ -18,6 +18,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::contract::*;
+use crate::foundation::size::size_bytes;
 
 static GROUP_LEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*\[([^\]]+)\]").unwrap());
 /// A scene group at the end: `h264-ETHEL`, `x265-NeoNoir[Uploader.example]`
@@ -55,9 +56,6 @@ static VERSION: LazyLock<Regex> =
 /// The CRC32 a fansub group tags its file with: `[80977B2B]`. An all-digit tag
 /// is read as a date (`[20241005]`), not a CRC.
 static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]").unwrap());
-static SIZE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^\s*([\d.,]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB)\s*$").unwrap()
-});
 
 /// The facts of a bare name, a file's or a torrent's, read as a release
 /// title is; a path counts by its last part.
@@ -178,10 +176,7 @@ pub fn version(title: &str) -> u32 {
 fn plain(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let lower = base.to_lowercase();
-    let stem = [".mkv", ".mp4", ".avi", ".webm", ".m4v", ".ts"]
-        .iter()
-        .find_map(|e| lower.strip_suffix(e))
-        .unwrap_or(&lower);
+    let stem = crate::foundation::names::without_video_extension(&lower);
     stem.replace(['.', '_'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -228,24 +223,6 @@ fn span(title: &str) -> Option<(u32, u32)> {
         );
         (a < b && b < 1900 && b - a < 500).then_some((a, b))
     })
-}
-
-/// "1.4 GiB", "700 MB", "1,234.5 MiB" as bytes; a decimal unit is read as
-/// the binary one, since every feed that writes "GB" means GiB.
-pub fn size_bytes(text: &str) -> Option<u64> {
-    let c = SIZE.captures(text)?;
-    let n: f64 = c[1].replace(',', "").parse().ok()?;
-    let unit = c[2].to_ascii_uppercase();
-    let scale: f64 = match unit.trim_end_matches('B').trim_end_matches('I') {
-        "" => 1.0,
-        "K" => 1024.0,
-        "M" => 1024.0 * 1024.0,
-        "G" => 1024.0 * 1024.0 * 1024.0,
-        "T" => 1024.0_f64.powi(4),
-        _ => return None,
-    };
-    let b = (n * scale).round();
-    (b.is_finite() && b < u64::MAX as f64).then_some(b as u64)
 }
 
 #[cfg(test)]
@@ -341,16 +318,6 @@ mod tests {
         assert_eq!(f.resolution, "1080p");
         let f = read(&release("Some Film 2160p UHD BluRay", ""));
         assert_eq!(f.resolution, "2160p");
-    }
-
-    #[test]
-    fn sizes_read_in_any_unit() {
-        assert_eq!(size_bytes("700 MiB"), Some(734_003_200));
-        assert_eq!(size_bytes("700 MB"), Some(734_003_200));
-        assert_eq!(size_bytes("1,024 KiB"), Some(1_048_576));
-        assert_eq!(size_bytes("12 B"), Some(12));
-        assert_eq!(size_bytes(""), None);
-        assert_eq!(size_bytes("big"), None);
     }
 
     #[test]

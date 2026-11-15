@@ -346,12 +346,16 @@ pub struct SortEntry {
 /// The version check reads the raw value first, so a document from a later
 /// core is refused by version rather than by whichever field it added.
 pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
-    let value: Value = serde_json::from_slice(bytes)
-        .map_err(|e| CoreError::invalid("format", format!("not JSON: {e}")))?;
+    let value: Value = serde_json::from_slice(bytes).map_err(|e| {
+        CoreError::invalid(
+            "format",
+            crate::i18n::tr("core-transfer-not-json", &[("error", e.to_string().into())]),
+        )
+    })?;
     if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
         return Err(CoreError::invalid(
             "format",
-            format!("not an {FORMAT} document"),
+            crate::i18n::tr("core-transfer-wrong-format", &[("format", FORMAT.into())]),
         ));
     }
     let found = value.get("version").and_then(Value::as_u64).unwrap_or(0);

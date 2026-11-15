@@ -92,29 +92,27 @@ global Status {
     out property <string> stats: StatsData.loaded && !StatsData.empty ? Tr.ns2("more-stats-status", "count", StatsData.hours.to-float(), "hours", StatsData.hours, "year", StatsData.years[StatsData.year-index]) : Tr.t("more-stats-status-empty");
 }
 
-// The other device's address, editable in place, with its last test underneath.
-component HostRow inherits Rectangle {
-    height: column.preferred-height;
-    column := VerticalLayout {
-        padding: Theme.pad;
-        spacing: Theme.unit * 3;
-        Text {
-            text: Tr.t("more-set-computer");
-            color: Theme.text;
-            font-family: Theme.strong-face;
-        }
-        Text {
-            text: Tr.t("more-computer-note");
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        Field {
-            text <=> AppData.host-address;
-            figure: true;
-            placeholder: Tr.t("more-computer-placeholder");
-        }
-        if AppData.host-result != "": HorizontalLayout {
+// The computer's address, editable in place, with its last test underneath. More shows it under
+// its heading; onboarding asks for it on a step of its own (#736).
+export component HostField inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    Field {
+        text <=> AppData.host-address;
+        figure: true;
+        placeholder: Tr.t("more-computer-placeholder");
+    }
+    if AppData.host-person != "": Text {
+        text: AppData.host-person;
+        color: Theme.text;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    // Its height is its own row's at the width set outright, so a long result that wraps
+    // onto several lines pushes the buttons down rather than under the card's edge (#935).
+    if AppData.host-result != "": Rectangle {
+        height: result.preferred-height;
+        result := HorizontalLayout {
+            width: parent.width;
             spacing: Theme.unit * 2;
             Rectangle {
                 y: (parent.height - self.height) / 2;
@@ -131,21 +129,41 @@ component HostRow inherits Rectangle {
                 wrap: word-wrap;
             }
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            Button {
-                text: Tr.t("common-test");
-                small: true;
-                clicked => { AppData.test-host(AppData.host-address); }
-            }
-            Button {
-                text: Tr.t("common-save");
-                small: true;
-                primary: true;
-                clicked => { AppData.save-host(AppData.host-address); }
-            }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: Tr.t("common-test");
+            small: true;
+            clicked => { AppData.test-host(AppData.host-address); }
         }
+        Button {
+            text: Tr.t("common-save");
+            small: true;
+            primary: true;
+            clicked => { AppData.save-host(AppData.host-address); }
+        }
+    }
+}
+
+component HostRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 3;
+        Text {
+            text: Tr.t("more-set-computer");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("more-computer-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HostField { }
     }
 }
 
@@ -318,6 +336,47 @@ component IconChoice inherits Rectangle {
 
 // One section as its own page: the pill back to the index, the section's name with how it
 // stands, then its settings. `reveal` scrolls a setting the search landed on into view.
+// A number set with a slider: the row says what it is and where it stands, the slider sits
+// under it, and each whole step is passed on.
+component NumberRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> helper;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <int> at;
+    in property <bool> last;
+    callback moved(int);
+    ListRow {
+        label: root.label;
+        value: root.value;
+        helper: root.helper;
+        last: true;
+    }
+    Rectangle {
+        height: slider-column.preferred-height;
+        slider-column := VerticalLayout {
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-bottom: Theme.unit * 3;
+            Slider {
+                minimum: root.minimum;
+                maximum: root.maximum;
+                value: root.at;
+                moved(v) => {
+                    if (Math.round(v) != root.at) {
+                        root.moved(Math.round(v));
+                    }
+                }
+            }
+        }
+    }
+    if !root.last: Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
 component SectionPage inherits Rectangle {
     in property <string> title;
     in property <string> note;
@@ -326,7 +385,11 @@ component SectionPage inherits Rectangle {
         flick.content-y = Math.max(Math.min(0px, flick.height - flick.content-height), Math.min(0px, -(y - root.absolute-position.y - flick.content-y - 6 * Theme.unit)));
     }
     flick := Flickable {
+        // Only ever as wide as the pane, as a page's Scroll is: a section never scrolls
+        // sideways, and its cards fit the width they are given.
+        content-width: self.width;
         VerticalLayout {
+            width: flick.width;
             alignment: start;
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
@@ -622,6 +685,78 @@ export component MorePage inherits Rectangle {
             }
         }
         SectionHead {
+            title: Tr.t("more-set-rolling");
+            note: AppData.roll-big ? Tr.n("more-roll-note-over", "count", AppData.roll-over) : Tr.t("more-roll-note-asked");
+        }
+        Lit {
+            on: Settings.lit == Tr.t("more-set-rolling");
+            reveal(y) => { downloads.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: Tr.t("more-roll-big");
+                    helper: Tr.n("more-roll-big-help", "count", AppData.roll-over);
+                    switch: true;
+                    on: AppData.roll-big;
+                    toggled => { AppData.set-roll(!AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-ahead");
+                    value: Tr.n("common-episodes", "count", AppData.roll-ahead);
+                    helper: Tr.t("more-roll-ahead-help");
+                    minimum: 1;
+                    maximum: 52;
+                    at: AppData.roll-ahead;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, n, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-over");
+                    value: Tr.n("common-episodes", "count", AppData.roll-over);
+                    helper: Tr.t("more-roll-over-help");
+                    minimum: 12;
+                    maximum: 200;
+                    at: AppData.roll-over;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, n, AppData.roll-delete, AppData.roll-keep); }
+                }
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    padding-left: Theme.pad;
+                    padding-right: Theme.pad;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: Tr.t("more-roll-watched");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Segmented {
+                        options: [Tr.t("more-roll-delete"), Tr.t("more-roll-keep-all")];
+                        picked: AppData.roll-delete ? 0 : 1;
+                        pick(i) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, i == 0, AppData.roll-keep); }
+                    }
+                    Text {
+                        text: AppData.roll-delete ? Tr.t("more-roll-delete-help") : Tr.t("more-roll-keep-all-help");
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                if AppData.roll-delete: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                if AppData.roll-delete: NumberRow {
+                    label: Tr.t("more-roll-behind");
+                    value: Tr.n("common-episodes", "count", AppData.roll-keep);
+                    helper: Tr.n2("more-roll-behind-help", "count", AppData.roll-keep, "episode", AppData.roll-keep + 2);
+                    minimum: 0;
+                    maximum: 12;
+                    at: AppData.roll-keep;
+                    last: true;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, n); }
+                }
+            }
+        }
+        SectionHead {
             title: Tr.t("onb-notify-title");
             note: AppData.notify == 0 ? Tr.t("common-on") : Tr.t("common-off");
         }
@@ -775,7 +910,9 @@ export component MorePage inherits Rectangle {
 
     if root.shown == 5: computer := SectionPage {
         title: Tr.t("more-computer");
-        note: Status.computer;
+        // The card says how the last test went, with its dot; the head says it only before
+        // there is one (#935).
+        note: AppData.host-result != "" ? "" : Status.computer;
         Lit {
             on: Settings.lit == Tr.t("more-set-computer");
             reveal(y) => { computer.reveal(y); }

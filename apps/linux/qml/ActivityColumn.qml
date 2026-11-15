@@ -96,7 +96,11 @@ Item {
 
     // ---- Today's Downloads lines from the log
     property var lines: []
-    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message } }
+    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null } }
+    // A line in a person's words, rendered when it is drawn so a language switch reaches
+    // lines already shown (#792): the message ID and its arguments, else the plain line as
+    // the core said it, else the developer's line for one the core never worded
+    function lineText(l) { return l.plainWords ? words.t(l.plainWords.id, l.plainWords.args) : l.plain || l.msg }
     function keep(e) {
         if (e.stage !== "Downloads" || e.level === "Debug") return false
         var since = new Date(); since.setHours(0, 0, 0, 0)
@@ -161,11 +165,11 @@ Item {
                 spacing: theme.space(4)
                 visible: root.connected
                 Column {
-                    Label { text: Fmt.bytes(root.transfer ? root.transfer.dl_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge }
+                    Label { text: words.bytes(root.transfer ? root.transfer.dl_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge }
                     Label { msg: "activity-column-down"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                 }
                 Column {
-                    Label { text: Fmt.bytes(root.transfer ? root.transfer.up_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim }
+                    Label { text: words.bytes(root.transfer ? root.transfer.up_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim }
                     Label { msg: "activity-column-up"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                 }
             }
@@ -231,7 +235,7 @@ Item {
                             x: theme.space(5)
                             width: parent.width - x
                             Label { text: modelData.time; role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textFaint }
-                            Label { width: parent.width; text: modelData.msg; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
+                            Label { width: parent.width; text: root.lineText(modelData); role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
                         }
                     }
                 }
@@ -331,13 +335,13 @@ Item {
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
-                Label { id: sizeText; text: line.done ? Fmt.bytes(line.t.size || 0) : words.t("activity-column-size-of", { got: Fmt.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))), total: Fmt.bytes(line.t.size || 0) }); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
+                Label { id: sizeText; text: line.done ? words.bytes(line.t.size || 0) : words.t("activity-column-size-of", { got: words.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))), total: words.bytes(line.t.size || 0) }); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
                 // Stopped needs no word: the play button says it
                 Label {
                     id: leftText
                     visible: text !== ""
                     text: line.broken ? words.t("activity-column-files-missing") : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), words.t("activity-column-time-format"))
-                        : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: words.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
+                        : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: words.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? words.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
                     role: line.broken ? "ui" : "figure"
                     font.pointSize: theme.typeSmall * 0.95
                     color: line.broken ? theme.red : theme.textDim

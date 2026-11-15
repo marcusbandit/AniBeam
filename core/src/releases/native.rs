@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use crate::contract::*;
-use crate::core::Core;
+use crate::foundation::services::Services;
 use crate::net::Http;
 
-use super::{BestfitConfig, Endpoint, bestfit, endpoints, refinement, stats};
+use super::{BestfitConfig, Endpoint, endpoints, refinement, stats};
 
 /// The release groups `installed` trust, in their order, each once, told apart without case.
 pub fn trusted_groups(installed: &[crate::repos::Runnable]) -> Vec<String> {
@@ -77,9 +77,13 @@ impl Native {
     /// `bestfit` ranks best fit when given (the desktop passes what anirss's config saved);
     /// None trusts the groups the enabled installed definitions name, in their order, over
     /// anirss's defaults.
-    pub fn for_core(core: &Core, first: Vec<Endpoint>, bestfit: Option<BestfitConfig>) -> Native {
-        let installed = crate::repos::runnable(core);
-        let http = crate::repos::paced_http(core, &installed);
+    pub fn for_core(
+        services: &Services,
+        first: Vec<Endpoint>,
+        bestfit: Option<BestfitConfig>,
+    ) -> Native {
+        let installed = crate::repos::runnable(services);
+        let http = crate::repos::paced_http(services, &installed);
         let groups = trusted_groups(&installed);
         let mut endpoints = first;
         for r in installed {
@@ -100,7 +104,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                "no endpoints yet: add a repo, or one by hand, under Endpoints in More",
+                crate::i18n::tr("core-releases-no-endpoints", &[]),
             ));
         }
         match name {
@@ -109,7 +113,12 @@ impl Native {
                 .endpoints
                 .iter()
                 .find(|e| e.name == name)
-                .ok_or_else(|| CoreError::invalid("endpoint", format!("no source named {name}"))),
+                .ok_or_else(|| {
+                    CoreError::invalid(
+                        "endpoint",
+                        crate::i18n::tr("core-releases-no-source-named", &[("name", name.into())]),
+                    )
+                }),
         }
     }
 
@@ -158,7 +167,10 @@ impl Native {
     ) -> Result<Found, CoreError> {
         let query = query.trim();
         if query.is_empty() {
-            return Err(CoreError::invalid("query", "type something to search for"));
+            return Err(CoreError::invalid(
+                "query",
+                crate::i18n::tr("core-releases-empty-query", &[]),
+            ));
         }
         let active = self.endpoint(endpoint)?;
         let mut order = vec![active];
@@ -217,15 +229,15 @@ impl Native {
                     service,
                     code,
                     message,
-                } => CoreError::Service {
+                } => CoreError::service(
                     service,
                     code,
-                    message: [message]
+                    [message]
                         .into_iter()
                         .chain(rest)
                         .collect::<Vec<_>>()
                         .join("; "),
-                },
+                ),
                 other => other,
             });
         }
@@ -327,53 +339,19 @@ impl Native {
         if !endpoints::answers_rss(&ep.kind) {
             return Err(CoreError::invalid(
                 "endpoint",
-                format!(
-                    "{} cannot be followed: it answers searches, but has no feed to check for new episodes",
-                    ep.name
+                crate::i18n::tr(
+                    "core-releases-cannot-follow",
+                    &[("name", ep.name.as_str().into())],
                 ),
             ));
         }
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
     }
-
-    /// The release best fit would pick.
-    pub fn best_item(&self, items: &[Release]) -> Option<Release> {
-        bestfit::best_item(items, &self.bestfit).cloned()
-    }
 }
 
 /// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    format!("{name} is not available any more: removed, switched off or missing its key")
-}
-
-/// Query parameters that hold a secret, with the label a person reads for each. A source
-/// added by hand has these lifted out of its address, a listed address has them masked, and
-/// the tailnet snapshot leaves them out. Names match case-insensitively.
-pub const SECRET_PARAMS: [(&str, &str); 15] = [
-    ("apikey", "API key"),
-    ("api_key", "API key"),
-    ("jackett_apikey", "API key"),
-    ("token", "Token"),
-    ("passkey", "Passkey"),
-    ("torrent_pass", "Passkey"),
-    ("rsskey", "RSS key"),
-    ("authkey", "Auth key"),
-    ("auth", "Auth key"),
-    ("key", "Key"),
-    ("secret", "Secret"),
-    ("sig", "Signature"),
-    ("pass", "Password"),
-    ("password", "Password"),
-    ("uid", "User id"),
-];
-
-/// The label of a query parameter that holds a secret; None for any other.
-pub fn secret_param(name: &str) -> Option<&'static str> {
-    SECRET_PARAMS
-        .iter()
-        .find(|(p, _)| p.eq_ignore_ascii_case(name))
-        .map(|(_, label)| *label)
+    crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
@@ -400,7 +378,7 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v)) if crate::redact::secret_param(k).is_some() && !v.starts_with('{') => {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),

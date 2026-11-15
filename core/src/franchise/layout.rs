@@ -580,23 +580,23 @@ fn free_column(taken: &HashSet<Cell>, column: i64, row: i64) -> Cell {
 
 /// The words a card reads under its title. Electron's `RELATION_LABEL`.
 fn label_of(relation: &str) -> String {
-    match relation {
-        "SEQUEL" => "Sequel",
-        "PREQUEL" => "Prequel",
-        "PARENT" => "Parent story",
-        "SIDE_STORY" => "Side story",
-        "SUMMARY" => "Summary",
-        "ALTERNATIVE" => "Alternative",
-        "SPIN_OFF" => "Spin-off",
-        "COMPILATION" => "Compilation",
-        "SOURCE" => "Source",
-        "ADAPTATION" => "Adaptation",
-        "CHARACTER" => "Shared characters",
-        "CONTAINS" => "Contains",
-        "OTHER" => "Other",
+    let id = match relation {
+        "SEQUEL" => "anilist-relation-sequel",
+        "PREQUEL" => "anilist-relation-prequel",
+        "PARENT" => "anilist-relation-parent",
+        "SIDE_STORY" => "anilist-relation-side-story",
+        "SUMMARY" => "anilist-relation-summary",
+        "ALTERNATIVE" => "anilist-relation-alternative",
+        "SPIN_OFF" => "anilist-relation-spin-off",
+        "COMPILATION" => "anilist-relation-compilation",
+        "SOURCE" => "anilist-relation-source",
+        "ADAPTATION" => "anilist-relation-adaptation",
+        "CHARACTER" => "core-franchise-relation-character",
+        "CONTAINS" => "anilist-relation-contains",
+        "OTHER" => "anilist-relation-other",
         other => return other.replace('_', " ").to_lowercase(),
-    }
-    .to_string()
+    };
+    crate::i18n::tr(id, &[])
 }
 
 /// The same relation seen from the other end.
