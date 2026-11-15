@@ -353,6 +353,7 @@ home-week = Esta semana
 home-week-show-empty = Mostrar días vacíos
 home-week-hide-empty = Ocultar días vacíos
 home-week-airing = En emisión
+home-week-feed = Feed
 home-week-out = Disponibles
 home-week-coming-up = Próximamente
 home-recommended = Recomendadas para ti
@@ -503,9 +504,6 @@ onboarding-ready-set-up = Configurar ahora
 rail-home = Inicio
 rail-library = Biblioteca
 rail-airing = En emisión
-rail-feed = Feed
-rail-stats = Estadísticas
-rail-show-info = Info de la serie
 rail-downloads = Descargas
 rail-settings = Ajustes
 rail-downloads-complete =
@@ -513,11 +511,6 @@ rail-downloads-complete =
         [one] Descargas: { $count } suscripción completa
        *[other] Descargas: { $count } suscripciones completas
     }
-rail-title-language-name = Idioma de los títulos: { $language }. Pulsa para el siguiente
-rail-title-language-english = Inglés
-rail-title-language-tip = Idioma de los títulos: romaji, inglés o japonés
-rail-whats-new-in = Novedades de { $release }
-rail-whats-new = Novedades
 rail-settings-note = Ajustes: { $note }
 
 ## FixSheet.qml
@@ -712,6 +705,9 @@ library-tab-series = Series
 library-tab-movies = Películas
 library-tab-watched = Vistas
 library-tab-hidden = Ocultas
+library-tab-on-my-list = En mi lista
+library-tab-stats = Estadísticas
+library-tab-fix-matches = Corregir coincidencias
 library-count-movies =
     { $count ->
         [one] { $count } película
@@ -2439,12 +2435,6 @@ settings-find-files =
     .words = base de datos datos configuración caché carpeta ruta
 settings-find-help-folders =
     .words = ayuda carpeta estructura nombres episodios temporadas películas archivos
-settings-find-help-recognised =
-    .words = ayuda reconocer serie equivocada no encontrada sin reconocer
-settings-find-help-anilist =
-    .words = ayuda anilist myanimelist mal iniciar sesión conectar tracker
-settings-find-help-downloads =
-    .words = ayuda descargas vacío fuentes nada torrent qbittorrent
 settings-find-help-else =
     .words = ayuda configuración bienvenida guía notificar fallo problema incidencia
 settings-find-version =
@@ -2787,38 +2777,12 @@ settings-phone-address-copied = Dirección copiada
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Ayuda
 settings-help-folders = ¿Cómo deben ser mis carpetas?
-settings-help-for-example = Por ejemplo
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Aún no hay ninguna carpeta
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam lee una carpeta
-       *[other] Anibeam lee { $count } carpetas
-    }
-settings-help-add-folder = Añadir una carpeta
-settings-help-open-folders = Abrir tus carpetas
-settings-help-match = ¿Por qué no se reconoció mi serie?
-settings-help-all-recognised = Todas las series están reconocidas
-settings-help-unrecognised =
-    { $count ->
-        [one] Una serie no está reconocida
-       *[other] { $count } series no están reconocidas
-    }
-settings-help-open-show-info = Abrir Info de la serie
-settings-help-connect = ¿Cómo conecto AniList?
-settings-help-both-connected = Los dos están conectados
-settings-help-anilist-connected = AniList está conectado
-settings-help-mal-connected = MyAnimeList está conectado
-settings-help-none-connected = Ninguno conectado aún
-settings-help-connect-anilist = Conectar AniList
-settings-help-connect-mal = Conectar MyAnimeList
-settings-help-downloads = ¿Por qué está vacío Descargas?
-settings-help-sources = Fuentes y cliente de torrents
-settings-help-open-downloads = Abrir ajustes de Descargas
 settings-help-more = ¿Otra cosa?
 settings-help-report = Notificar un fallo
 
@@ -2903,7 +2867,7 @@ settings-data-back-up-library = Hacer copia de la biblioteca
 settings-data-last-written = Última copia en { $path }
 settings-data-open-folder = Abrir carpeta
 settings-data-back-up = Hacer copia
-settings-data-private = Incluir datos privados
+settings-data-private = Incluir inicios de sesión, guardados como texto plano
 settings-data-restore-from = Restaurar una copia
 settings-data-restore = Restaurar
 settings-data-image-cache = Caché de imágenes
@@ -2975,6 +2939,8 @@ settings-library-folder-added = Carpeta añadida, revisando
 ## SettingsAppearanceTab
 
 settings-appearance-language = Idioma
+settings-appearance-title-language = Mostrar títulos en
+settings-appearance-title-language-english = Inglés
 settings-appearance-language-system = Igual que el sistema ({ $language })
 settings-appearance-text-smaller = Menor
 settings-appearance-text-normal = Normal

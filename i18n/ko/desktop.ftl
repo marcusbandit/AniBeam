@@ -305,6 +305,7 @@ home-week = 이번 주
 home-week-show-empty = 빈 날 보기
 home-week-hide-empty = 빈 날 숨기기
 home-week-airing = 방영 중
+home-week-feed = 피드
 home-week-out = 공개됨
 home-week-coming-up = 방영 예정
 home-recommended = 추천 작품
@@ -449,20 +450,12 @@ onboarding-ready-set-up = 지금 설정
 rail-home = 홈
 rail-library = 라이브러리
 rail-airing = 방영 중
-rail-feed = 피드
-rail-stats = 통계
-rail-show-info = 작품 정보
 rail-downloads = 다운로드
 rail-settings = 설정
 rail-downloads-complete =
     { $count ->
        *[other] 다운로드: 구독 { $count }개 완료
     }
-rail-title-language-name = 제목 언어: { $language }. 누르면 다음 언어로
-rail-title-language-english = 영어
-rail-title-language-tip = 제목 언어: 로마자, 영어, 일본어
-rail-whats-new-in = { $release }의 새로운 기능
-rail-whats-new = 새로운 기능
 rail-settings-note = 설정: { $note }
 
 ## FixSheet.qml
@@ -644,6 +637,9 @@ library-tab-series = 시리즈
 library-tab-movies = 영화
 library-tab-watched = 시청함
 library-tab-hidden = 숨김
+library-tab-on-my-list = 내 목록
+library-tab-stats = 통계
+library-tab-fix-matches = 매칭 수정
 library-count-movies =
     { $count ->
        *[other] 영화 { $count }개
@@ -2247,12 +2243,6 @@ settings-find-files =
     .words = 데이터베이스 데이터 설정 캐시 폴더 경로 파일
 settings-find-help-folders =
     .words = 도움말 폴더 구조 이름 규칙 에피소드 시즌 영화 파일
-settings-find-help-recognised =
-    .words = 도움말 매칭 잘못된 작품 찾을 수 없음 인식 안 됨
-settings-find-help-anilist =
-    .words = 도움말 anilist myanimelist mal 로그인 연결 트래커
-settings-find-help-downloads =
-    .words = 도움말 다운로드 비어 있음 소스 없음 토렌트 qbittorrent
 settings-find-help-else =
     .words = 도움말 설정 온보딩 안내 신고 버그 문제 이슈
 settings-find-version =
@@ -2589,36 +2579,12 @@ settings-phone-address-copied = 주소 복사됨
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = 도움말
 settings-help-folders = 폴더는 어떻게 구성해야 하나요?
-settings-help-for-example = 예시
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = 아직 추가한 폴더가 없어요
-settings-help-reads-folders =
-    { $count ->
-       *[other] Anibeam이 폴더 { $count }개를 읽어요
-    }
-settings-help-add-folder = 폴더 추가
-settings-help-open-folders = 폴더 열기
-settings-help-match = 작품이 왜 인식되지 않았나요?
-settings-help-all-recognised = 모든 작품이 인식됐어요
-settings-help-unrecognised =
-    { $count ->
-       *[other] 작품 { $count }개가 인식되지 않았어요
-    }
-settings-help-open-show-info = 작품 정보 열기
-settings-help-connect = AniList는 어떻게 연결하나요?
-settings-help-both-connected = 둘 다 연결됨
-settings-help-anilist-connected = AniList 연결됨
-settings-help-mal-connected = MyAnimeList 연결됨
-settings-help-none-connected = 아직 둘 다 연결 안 됨
-settings-help-connect-anilist = AniList 연결
-settings-help-connect-mal = MyAnimeList 연결
-settings-help-downloads = 다운로드가 왜 비어 있나요?
-settings-help-sources = 소스와 토렌트 클라이언트
-settings-help-open-downloads = 다운로드 설정 열기
 settings-help-more = 다른 문제가 있나요?
 settings-help-report = 문제 신고
 
@@ -2689,7 +2655,7 @@ settings-data-back-up-library = 라이브러리 백업
 settings-data-last-written = 마지막 저장 위치: { $path }
 settings-data-open-folder = 폴더 열기
 settings-data-back-up = 백업
-settings-data-private = 비공개 데이터 포함
+settings-data-private = 로그인 정보 포함, 일반 텍스트로 저장
 settings-data-restore-from = 백업에서 복원
 settings-data-restore = 복원
 settings-data-image-cache = 이미지 캐시
@@ -2759,6 +2725,8 @@ settings-library-folder-added = 폴더 추가됨, 스캔 중
 ## SettingsAppearanceTab
 
 settings-appearance-language = 언어
+settings-appearance-title-language = 제목 표시 언어
+settings-appearance-title-language-english = 영어
 settings-appearance-language-system = 시스템과 동일({ $language })
 settings-appearance-text-smaller = 작게
 settings-appearance-text-normal = 보통

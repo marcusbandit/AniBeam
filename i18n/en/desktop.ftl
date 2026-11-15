@@ -355,6 +355,7 @@ home-week = This week
 home-week-show-empty = Show empty days
 home-week-hide-empty = Hide empty days
 home-week-airing = Airing now
+home-week-feed = Feed
 home-week-out = Out now
 home-week-coming-up = Coming up
 home-recommended = Recommended for you
@@ -517,9 +518,6 @@ onboarding-ready-set-up = Set up now
 rail-home = Home
 rail-library = Library
 rail-airing = Airing
-rail-feed = Feed
-rail-stats = Stats
-rail-show-info = Show info
 rail-downloads = Downloads
 rail-settings = Settings
 rail-downloads-complete =
@@ -527,11 +525,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } subscription is complete
        *[other] Downloads: { $count } subscriptions are complete
     }
-rail-title-language-name = Title language: { $language }. Press for the next one
-rail-title-language-english = English
-rail-title-language-tip = Title language: Romaji, English or Japanese
-rail-whats-new-in = What's new in { $release }
-rail-whats-new = What's new
 rail-settings-note = Settings: { $note }
 rail-room = Watch together (Ctrl+J)
 rail-room-in = In a watch together room (Ctrl+J)
@@ -738,6 +731,9 @@ library-tab-series = Series
 library-tab-movies = Movies
 library-tab-watched = Watched
 library-tab-hidden = Hidden
+library-tab-on-my-list = On my list
+library-tab-stats = Stats
+library-tab-fix-matches = Fix matches
 library-count-movies =
     { $count ->
         [one] { $count } movie
@@ -2575,12 +2571,6 @@ settings-find-files =
     .words = database data config cache folder path
 settings-find-help-folders =
     .words = help folder layout naming episodes seasons movies files structure
-settings-find-help-recognised =
-    .words = help match wrong show not found unmatched recognised
-settings-find-help-anilist =
-    .words = help anilist myanimelist mal sign in connect login tracker
-settings-find-help-downloads =
-    .words = help downloads empty sources nothing torrent qbittorrent
 settings-find-help-else =
     .words = help setup onboarding walkthrough report bug problem issue
 settings-find-version =
@@ -2938,38 +2928,12 @@ settings-phone-address-copied = Address copied
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Help
 settings-help-folders = How should my folders look?
-settings-help-for-example = For example
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = No folder added yet
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam reads one folder
-       *[other] Anibeam reads { $count } folders
-    }
-settings-help-add-folder = Add a folder
-settings-help-open-folders = Open your folders
-settings-help-match = Why didn't my show get recognised?
-settings-help-all-recognised = Every show is recognised
-settings-help-unrecognised =
-    { $count ->
-        [one] One show is not recognised
-       *[other] { $count } shows are not recognised
-    }
-settings-help-open-show-info = Open Show info
-settings-help-connect = How do I connect AniList?
-settings-help-both-connected = Both are connected
-settings-help-anilist-connected = AniList is connected
-settings-help-mal-connected = MyAnimeList is connected
-settings-help-none-connected = Neither is connected yet
-settings-help-connect-anilist = Connect AniList
-settings-help-connect-mal = Connect MyAnimeList
-settings-help-downloads = Why is Downloads empty?
-settings-help-sources = Sources and the torrent client
-settings-help-open-downloads = Open Downloads settings
 settings-help-more = Something else?
 settings-help-report = Report a problem
 
@@ -3055,7 +3019,7 @@ settings-data-back-up-library = Back up the library
 settings-data-last-written = Last written to { $path }
 settings-data-open-folder = Open folder
 settings-data-back-up = Back up
-settings-data-private = Include private data
+settings-data-private = Include sign-ins, saved as plain text
 settings-data-restore-from = Restore from a backup
 settings-data-restore = Restore
 settings-data-image-cache = Image cache

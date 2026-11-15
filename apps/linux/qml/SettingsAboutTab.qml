@@ -4,10 +4,9 @@
 // the last restore did, the image cache with its size and a clear, and where Anibeam keeps
 // its files; export, import and the clear are jobs whose results come back as
 // exportFinished, importFinished and imagesCleared. Then developer options (the switch,
-// hidden only when ANIBEAM_DEV=1 forces them on), then the questions people ask most, each
-// with a live line about this install (how many folders, how many shows are not recognised,
-// which list is connected) and the button that goes to the fix. Last the credits, IMDb's
-// among them, which its terms ask for wherever its data is used.
+// hidden only when ANIBEAM_DEV=1 forces them on), then Help: how the folders should look and
+// where to report a problem. Last the credits, IMDb's among them, which its terms ask for
+// wherever its data is used.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -27,7 +26,7 @@ SettingsTab {
         : upd.how === "source" ? words.t("settings-about-update-source", { version: upd.version })
         : words.t("settings-about-update-elsewhere", { version: upd.version })
     readonly property var about: Door.about || ({})
-    Component.onCompleted: { loadStorage(); readLibrary() }
+    Component.onCompleted: loadStorage()
 
     // ---- Storage and backup
     property bool includePrivate: false
@@ -67,42 +66,6 @@ SettingsTab {
         return out.join(" ")
     }
 
-    // ---- The questions people ask most
-    // Folders Anibeam could not put a name to, from the library as it is now
-    property int unrecognised: 0
-    property int folders: 0
-    // Counted the way Show info sections them, hidden shows included when they are revealed
-    function readLibrary() {
-        var r = Door.listMetadata("All", "", Door.revealHidden)
-        if (!r.error) {
-            var n = 0, rows = r.reply.rows || []
-            for (var i = 0; i < rows.length; i++) {
-                var card = rows[i].series || {}
-                if (card.missing !== true && !frame.hasMatch(card)) n++
-            }
-            tab.unrecognised = n
-        }
-        var s = Door.listSources()
-        tab.folders = s.error ? 0 : s.reply.sources.length
-    }
-    Timer { id: readDebounce; interval: 400; onTriggered: tab.readLibrary() }
-    Connections {
-        target: Door
-        function onSourceChanged(s) { readDebounce.restart() }
-        function onSourceRemoved(s) { readDebounce.restart() }
-        function onScanFinished(s, a, c, r) { readDebounce.restart() }
-        function onSeriesChanged(cards) { readDebounce.restart() }
-        function onRevealHiddenChanged() { readDebounce.restart() }
-    }
-    // A jump to another section of Settings is a visit of its own, and this one is kept as
-    // About, so Back from there comes back here rather than to whichever section Settings
-    // opened on
-    function visit(page, props) {
-        var n = frame.nav
-        n.current = { page: n.current.page, props: Object.assign({}, n.current.props, { tab: "about" }), label: n.current.label }
-        frame.go(page, props)
-    }
-    function openSection(id, focus) { visit("settings", { tab: id, focus: focus || "" }) }
 
     Panel {
         title: words.t("settings-about-version")
@@ -179,50 +142,16 @@ SettingsTab {
         SettingRow { label: words.t("settings-about-developer")
             Switch { objectName: "data-developer"; checked: frame.devKept.enabled; onToggled: function(on) { frame.devKept.enabled = on; frame.devApply(); if (on) frame.go("settings", { tab: "developer" }) } } }
     }
+    // Help: how the folders should look, and where to report what is wrong
     Panel {
-        objectName: "help-folders"
-        title: words.t("settings-help-folders")
+        objectName: "help"
+        title: words.t("settings-about-help")
         SettingRow {
-            label: words.t("settings-help-for-example")
+            label: words.t("settings-help-folders")
             line: words.t("settings-help-folders-example")
         }
         SettingRow {
-            label: tab.folders === 0 ? words.t("settings-help-no-folder") : words.t("settings-help-reads-folders", { count: tab.folders })
-            Button { objectName: "help-open-folders"; text: tab.folders === 0 ? words.t("settings-help-add-folder") : words.t("settings-help-open-folders"); icon: "folder"; flat: true; onClicked: tab.openSection("library", words.t("settings-library-folders")) }
-        }
-    }
-    Panel {
-        objectName: "help-match"
-        title: words.t("settings-help-match")
-        SettingRow {
-            label: tab.unrecognised === 0 ? words.t("settings-help-all-recognised") : words.t("settings-help-unrecognised", { count: tab.unrecognised })
-            Button { objectName: "help-open-show-info"; msg: "settings-help-open-show-info"; icon: "database"; flat: true; onClicked: tab.visit("metadata", {}) }
-        }
-    }
-    Panel {
-        objectName: "help-connect"
-        title: words.t("settings-help-connect")
-        SettingRow {
-            label: frame.trackerOn("anilist") && frame.trackerOn("mal") ? words.t("settings-help-both-connected")
-                 : frame.trackerOn("anilist") ? words.t("settings-help-anilist-connected") : frame.trackerOn("mal") ? words.t("settings-help-mal-connected") : words.t("settings-help-none-connected")
-            Row { spacing: theme.space(2)
-                ConnectButton { objectName: "help-connect-anilist"; visible: !frame.trackerOn("anilist"); tracker: "Anilist"; text: words.t("settings-help-connect-anilist"); icon: "log-in"; flat: true; onClicked: frame.openConnect("Anilist") }
-                ConnectButton { objectName: "help-connect-mal"; visible: !frame.trackerOn("mal"); tracker: "Mal"; text: words.t("settings-help-connect-mal"); icon: "log-in"; flat: true; onClicked: frame.openConnect("Mal") } }
-        }
-    }
-    Panel {
-        objectName: "help-downloads"
-        title: words.t("settings-help-downloads")
-        SettingRow {
-            label: words.t("settings-help-sources")
-            Button { objectName: "help-open-downloads"; msg: "settings-help-open-downloads"; icon: "download"; flat: true; onClicked: tab.openSection("downloads", words.t("endpoint-repos-panel-title")) }
-        }
-    }
-    Panel {
-        objectName: "help-more"
-        title: words.t("settings-help-more")
-        SettingRow {
-            label: words.t("settings-help-report")
+            label: words.t("settings-help-more")
             Button { objectName: "help-report"; msg: "settings-help-report"; icon: "external-link"; flat: true
                      onClicked: frame.openLink("https://github.com/marcusbandit/AniBeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
         }

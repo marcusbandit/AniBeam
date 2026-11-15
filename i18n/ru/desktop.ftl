@@ -393,6 +393,7 @@ home-week = Эта неделя
 home-week-show-empty = Показать пустые дни
 home-week-hide-empty = Скрыть пустые дни
 home-week-airing = В эфире
+home-week-feed = Лента
 home-week-out = Уже вышло
 home-week-coming-up = Скоро
 home-recommended = Рекомендуем вам
@@ -555,9 +556,6 @@ onboarding-ready-set-up = Настроить сейчас
 rail-home = Главная
 rail-library = Библиотека
 rail-airing = Эфир
-rail-feed = Лента
-rail-stats = Статистика
-rail-show-info = О сериале
 rail-downloads = Загрузки
 rail-settings = Настройки
 rail-downloads-complete =
@@ -567,11 +565,6 @@ rail-downloads-complete =
         [many] Загрузки: { $count } подписок завершены
        *[other] Загрузки: { $count } подписки завершены
     }
-rail-title-language-name = Язык названий: { $language }. Нажмите, чтобы сменить
-rail-title-language-english = Английский
-rail-title-language-tip = Язык названий: ромадзи, английский или японский
-rail-whats-new-in = Что нового в { $release }
-rail-whats-new = Что нового
 rail-settings-note = Настройки: { $note }
 
 ## FixSheet.qml
@@ -786,6 +779,9 @@ library-tab-series = Сериалы
 library-tab-movies = Фильмы
 library-tab-watched = Просмотрено
 library-tab-hidden = Скрытые
+library-tab-on-my-list = В моём списке
+library-tab-stats = Статистика
+library-tab-fix-matches = Исправить совпадения
 library-count-movies =
     { $count ->
         [one] { $count } фильм
@@ -2692,12 +2688,6 @@ settings-find-files =
     .words = база данных данные конфиг кэш папка путь файлы
 settings-find-help-folders =
     .words = справка папка структура имена серии сезоны фильмы файлы
-settings-find-help-recognised =
-    .words = справка привязка неверный сериал не найден не распознан
-settings-find-help-anilist =
-    .words = справка anilist myanimelist mal вход подключить логин трекер
-settings-find-help-downloads =
-    .words = справка загрузки пусто источники ничего торрент qbittorrent
 settings-find-help-else =
     .words = справка настройка первый запуск обзор сообщить ошибка баг проблема issue
 settings-find-version =
@@ -3053,42 +3043,12 @@ settings-phone-address-copied = Адрес скопирован
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Справка
 settings-help-folders = Как должны выглядеть папки?
-settings-help-for-example = Например
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Папка ещё не добавлена
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam читает { $count } папку
-        [few] Anibeam читает { $count } папки
-        [many] Anibeam читает { $count } папок
-       *[other] Anibeam читает { $count } папки
-    }
-settings-help-add-folder = Добавить папку
-settings-help-open-folders = Открыть папки
-settings-help-match = Почему сериал не распознался?
-settings-help-all-recognised = Все сериалы распознаны
-settings-help-unrecognised =
-    { $count ->
-        [one] Не распознан { $count } сериал
-        [few] Не распознано { $count } сериала
-        [many] Не распознано { $count } сериалов
-       *[other] Не распознано { $count } сериала
-    }
-settings-help-open-show-info = Открыть «О сериалах»
-settings-help-connect = Как подключить AniList?
-settings-help-both-connected = Оба подключены
-settings-help-anilist-connected = AniList подключён
-settings-help-mal-connected = MyAnimeList подключён
-settings-help-none-connected = Пока ничего не подключено
-settings-help-connect-anilist = Подключить AniList
-settings-help-connect-mal = Подключить MyAnimeList
-settings-help-downloads = Почему в загрузках пусто?
-settings-help-sources = Источники и торренты
-settings-help-open-downloads = Открыть настройки загрузок
 settings-help-more = Что-то другое?
 settings-help-report = Сообщить о проблеме
 
@@ -3192,7 +3152,7 @@ settings-data-back-up-library = Сохранить бэкап библиотек
 settings-data-last-written = Последний сохранён в { $path }
 settings-data-open-folder = Открыть папку
 settings-data-back-up = Сохранить
-settings-data-private = Включить личные данные
+settings-data-private = Включить данные входа, сохраняются открытым текстом
 settings-data-restore-from = Восстановить из бэкапа
 settings-data-restore = Восстановить
 settings-data-image-cache = Кэш изображений
@@ -3267,6 +3227,8 @@ settings-library-folder-added = Папка добавлена, сканиров�
 ## SettingsAppearanceTab
 
 settings-appearance-language = Язык
+settings-appearance-title-language = Показывать названия на
+settings-appearance-title-language-english = Английский
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = Как в системе ({ $language })
 settings-appearance-text-smaller = Мельче

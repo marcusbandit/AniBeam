@@ -405,6 +405,7 @@ home-week = Ten tydzień
 home-week-show-empty = Pokaż puste dni
 home-week-hide-empty = Ukryj puste dni
 home-week-airing = Teraz w emisji
+home-week-feed = Kanał
 home-week-out = Już wyszło
 home-week-coming-up = Wkrótce
 home-recommended = Polecane dla Ciebie
@@ -567,9 +568,6 @@ onboarding-ready-set-up = Skonfiguruj teraz
 rail-home = Start
 rail-library = Biblioteka
 rail-airing = Emisja
-rail-feed = Aktualności
-rail-stats = Statystyki
-rail-show-info = Informacje
 rail-downloads = Pobrane
 rail-settings = Ustawienia
 rail-downloads-complete =
@@ -579,11 +577,6 @@ rail-downloads-complete =
         [many] Pobrane: { $count } subskrypcji jest kompletnych
        *[other] Pobrane: { $count } subskrypcji jest kompletnych
     }
-rail-title-language-name = Język tytułów: { $language }. Kliknij, aby zmienić na następny
-rail-title-language-english = Angielski
-rail-title-language-tip = Język tytułów: romaji, angielski lub japoński
-rail-whats-new-in = Co nowego w { $release }
-rail-whats-new = Co nowego
 rail-settings-note = Ustawienia: { $note }
 
 ## FixSheet.qml
@@ -812,6 +805,9 @@ library-tab-series = Seriale
 library-tab-movies = Filmy
 library-tab-watched = Obejrzane
 library-tab-hidden = Ukryte
+library-tab-on-my-list = Na mojej liście
+library-tab-stats = Statystyki
+library-tab-fix-matches = Popraw dopasowania
 library-count-movies =
     { $count ->
         [one] { $count } film
@@ -2754,12 +2750,6 @@ settings-find-files =
     .words = baza danych dane konfiguracja cache folder ścieżka pliki
 settings-find-help-folders =
     .words = pomoc folder układ nazwy odcinki sezony filmy pliki struktura
-settings-find-help-recognised =
-    .words = pomoc dopasowanie zły serial nie znaleziono niedopasowany rozpoznany
-settings-find-help-anilist =
-    .words = pomoc anilist myanimelist mal zaloguj połącz logowanie serwis
-settings-find-help-downloads =
-    .words = pomoc pobieranie puste źródła nic torrent qbittorrent
 settings-find-help-else =
     .words = pomoc konfiguracja wprowadzenie przewodnik zgłoś błąd problem zgłoszenie
 settings-find-version =
@@ -3117,42 +3107,12 @@ settings-phone-address-copied = Skopiowano adres
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Pomoc
 settings-help-folders = Jak powinny wyglądać moje foldery?
-settings-help-for-example = Na przykład
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Jeszcze nie dodano folderu
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam czyta jeden folder
-        [few] Anibeam czyta { $count } foldery
-        [many] Anibeam czyta { $count } folderów
-       *[other] Anibeam czyta { $count } folderu
-    }
-settings-help-add-folder = Dodaj folder
-settings-help-open-folders = Otwórz foldery
-settings-help-match = Dlaczego mój serial nie został rozpoznany?
-settings-help-all-recognised = Każdy serial jest rozpoznany
-settings-help-unrecognised =
-    { $count ->
-        [one] Jeden serial nie jest rozpoznany
-        [few] { $count } seriale nie są rozpoznane
-        [many] { $count } seriali nie jest rozpoznanych
-       *[other] { $count } seriali nie jest rozpoznanych
-    }
-settings-help-open-show-info = Otwórz Informacje
-settings-help-connect = Jak połączyć AniList?
-settings-help-both-connected = Oba są połączone
-settings-help-anilist-connected = AniList jest połączony
-settings-help-mal-connected = MyAnimeList jest połączony
-settings-help-none-connected = Żaden nie jest jeszcze połączony
-settings-help-connect-anilist = Połącz AniList
-settings-help-connect-mal = Połącz MyAnimeList
-settings-help-downloads = Dlaczego Pobrane są puste?
-settings-help-sources = Źródła i klient torrentów
-settings-help-open-downloads = Otwórz ustawienia Pobierania
 settings-help-more = Coś innego?
 settings-help-report = Zgłoś problem
 
@@ -3256,7 +3216,7 @@ settings-data-back-up-library = Zrób kopię biblioteki
 settings-data-last-written = Ostatnio zapisano w { $path }
 settings-data-open-folder = Otwórz folder
 settings-data-back-up = Zrób kopię
-settings-data-private = Dołącz dane prywatne
+settings-data-private = Dołącz dane logowania, zapisane jako zwykły tekst
 settings-data-restore-from = Przywróć z kopii
 settings-data-restore = Przywróć
 settings-data-image-cache = Pamięć obrazów
@@ -3333,6 +3293,8 @@ settings-library-folder-added = Dodano folder, skanowanie
 ## SettingsAppearanceTab
 
 settings-appearance-language = Język
+settings-appearance-title-language = Pokazuj tytuły w
+settings-appearance-title-language-english = Angielski
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = Jak w systemie ({ $language })
 settings-appearance-text-smaller = Mniejszy

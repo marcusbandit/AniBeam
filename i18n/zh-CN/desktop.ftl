@@ -281,6 +281,7 @@ home-week = 本周
 home-week-show-empty = 显示空白日
 home-week-hide-empty = 隐藏空白日
 home-week-airing = 正在播出
+home-week-feed = 动态
 home-week-out = 已播出
 home-week-coming-up = 即将播出
 home-recommended = 为你推荐
@@ -415,17 +416,9 @@ onboarding-ready-set-up = 立即设置
 rail-home = 首页
 rail-library = 媒体库
 rail-airing = 播出
-rail-feed = 动态
-rail-stats = 统计
-rail-show-info = 番剧信息
 rail-downloads = 下载
 rail-settings = 设置
 rail-downloads-complete = 下载：{ $count } 个订阅已完成
-rail-title-language-name = 标题语言：{ $language }。点按切换到下一个
-rail-title-language-english = 英语
-rail-title-language-tip = 标题语言：罗马音、英语或日语
-rail-whats-new-in = { $release } 更新内容
-rail-whats-new = 更新内容
 rail-settings-note = 设置：{ $note }
 
 ## FixSheet.qml
@@ -568,6 +561,9 @@ library-tab-series = 番剧
 library-tab-movies = 剧场版
 library-tab-watched = 已看
 library-tab-hidden = 已隐藏
+library-tab-on-my-list = 我的列表
+library-tab-stats = 统计
+library-tab-fix-matches = 修正匹配
 library-count-movies = { $count } 部剧场版
 library-count-watched = 已看 { $count }
 library-count-hidden = 已隐藏 { $count }
@@ -1936,12 +1932,6 @@ settings-find-files =
     .words = 数据库 数据 配置 缓存 文件夹 路径
 settings-find-help-folders =
     .words = 帮助 文件夹 结构 命名 剧集 季 电影 文件
-settings-find-help-recognised =
-    .words = 帮助 匹配 错误 番剧 找不到 未匹配 识别
-settings-find-help-anilist =
-    .words = 帮助 anilist myanimelist mal 登录 连接 追踪
-settings-find-help-downloads =
-    .words = 帮助 下载 空 来源 没有 种子 qbittorrent
 settings-find-help-else =
     .words = 帮助 设置 新手引导 向导 报告 bug 问题 反馈
 settings-find-version =
@@ -2275,30 +2265,12 @@ settings-phone-address-copied = 已复制地址
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = 帮助
 settings-help-folders = 文件夹应该怎么组织？
-settings-help-for-example = 例如
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = 还没有添加文件夹
-settings-help-reads-folders = Anibeam 读取 { $count } 个文件夹
-settings-help-add-folder = 添加文件夹
-settings-help-open-folders = 打开你的文件夹
-settings-help-match = 为什么我的番剧没有被识别？
-settings-help-all-recognised = 所有番剧都已识别
-settings-help-unrecognised = 有 { $count } 部番剧未被识别
-settings-help-open-show-info = 打开“番剧信息”
-settings-help-connect = 如何连接 AniList？
-settings-help-both-connected = 两者都已连接
-settings-help-anilist-connected = AniList 已连接
-settings-help-mal-connected = MyAnimeList 已连接
-settings-help-none-connected = 两者都还没有连接
-settings-help-connect-anilist = 连接 AniList
-settings-help-connect-mal = 连接 MyAnimeList
-settings-help-downloads = 为什么“下载”是空的？
-settings-help-sources = 来源和种子客户端
-settings-help-open-downloads = 打开下载设置
 settings-help-more = 还有其他问题？
 settings-help-report = 反馈问题
 
@@ -2348,7 +2320,7 @@ settings-data-back-up-library = 备份媒体库
 settings-data-last-written = 上次写入 { $path }
 settings-data-open-folder = 打开文件夹
 settings-data-back-up = 备份
-settings-data-private = 包含私人数据
+settings-data-private = 包含登录信息，以明文保存
 settings-data-restore-from = 从备份恢复
 settings-data-restore = 恢复
 settings-data-image-cache = 图片缓存
@@ -2412,6 +2384,8 @@ settings-library-folder-added = 已添加文件夹，正在扫描
 ## SettingsAppearanceTab
 
 settings-appearance-language = 语言
+settings-appearance-title-language = 标题显示为
+settings-appearance-title-language-english = 英语
 settings-appearance-language-system = 跟随系统（{ $language }）
 settings-appearance-text-smaller = 较小
 settings-appearance-text-normal = 标准

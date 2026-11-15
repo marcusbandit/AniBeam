@@ -353,6 +353,7 @@ home-week = Deze week
 home-week-show-empty = Lege dagen tonen
 home-week-hide-empty = Lege dagen verbergen
 home-week-airing = Nu uitgezonden
+home-week-feed = Feed
 home-week-out = Nu uit
 home-week-coming-up = Binnenkort
 home-recommended = Aanbevolen voor jou
@@ -503,9 +504,6 @@ onboarding-ready-set-up = Nu instellen
 rail-home = Start
 rail-library = Bibliotheek
 rail-airing = Uitzending
-rail-feed = Feed
-rail-stats = Stats
-rail-show-info = Serie-info
 rail-downloads = Downloads
 rail-settings = Instellingen
 rail-downloads-complete =
@@ -513,11 +511,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } abonnement is compleet
        *[other] Downloads: { $count } abonnementen zijn compleet
     }
-rail-title-language-name = Titeltaal: { $language }. Druk voor de volgende
-rail-title-language-english = Engels
-rail-title-language-tip = Titeltaal: romaji, Engels of Japans
-rail-whats-new-in = Wat is nieuw in { $release }
-rail-whats-new = Wat is nieuw
 rail-settings-note = Instellingen: { $note }
 
 ## FixSheet.qml
@@ -712,6 +705,9 @@ library-tab-series = Series
 library-tab-movies = Films
 library-tab-watched = Gekeken
 library-tab-hidden = Verborgen
+library-tab-on-my-list = Op mijn lijst
+library-tab-stats = Statistieken
+library-tab-fix-matches = Koppelingen herstellen
 library-count-movies =
     { $count ->
         [one] { $count } film
@@ -2438,12 +2434,6 @@ settings-find-files =
     .words = database gegevens config cache map pad
 settings-find-help-folders =
     .words = help map indeling namen afleveringen seizoenen films bestanden structuur
-settings-find-help-recognised =
-    .words = help koppelen verkeerde serie niet gevonden ongekoppeld herkend
-settings-find-help-anilist =
-    .words = help anilist myanimelist mal inloggen koppelen login tracker
-settings-find-help-downloads =
-    .words = help downloads leeg bronnen niets torrent qbittorrent
 settings-find-help-else =
     .words = help instellen introductie rondleiding melden bug probleem issue
 settings-find-version =
@@ -2786,38 +2776,12 @@ settings-phone-address-copied = Adres gekopieerd
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Hulp
 settings-help-folders = Hoe moeten mijn mappen eruitzien?
-settings-help-for-example = Bijvoorbeeld
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Nog geen map toegevoegd
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam leest één map
-       *[other] Anibeam leest { $count } mappen
-    }
-settings-help-add-folder = Map toevoegen
-settings-help-open-folders = Je mappen openen
-settings-help-match = Waarom is mijn serie niet herkend?
-settings-help-all-recognised = Elke serie is herkend
-settings-help-unrecognised =
-    { $count ->
-        [one] Eén serie is niet herkend
-       *[other] { $count } series zijn niet herkend
-    }
-settings-help-open-show-info = Serie-info openen
-settings-help-connect = Hoe koppel ik AniList?
-settings-help-both-connected = Beide zijn gekoppeld
-settings-help-anilist-connected = AniList is gekoppeld
-settings-help-mal-connected = MyAnimeList is gekoppeld
-settings-help-none-connected = Nog geen van beide gekoppeld
-settings-help-connect-anilist = AniList koppelen
-settings-help-connect-mal = MyAnimeList koppelen
-settings-help-downloads = Waarom is Downloads leeg?
-settings-help-sources = Bronnen en de torrentclient
-settings-help-open-downloads = Downloads-instellingen openen
 settings-help-more = Iets anders?
 settings-help-report = Probleem melden
 
@@ -2902,7 +2866,7 @@ settings-data-back-up-library = Back-up van de bibliotheek
 settings-data-last-written = Laatst geschreven naar { $path }
 settings-data-open-folder = Map openen
 settings-data-back-up = Back-up maken
-settings-data-private = Privégegevens meenemen
+settings-data-private = Aanmeldingen meenemen, opgeslagen als platte tekst
 settings-data-restore-from = Herstellen uit een back-up
 settings-data-restore = Herstellen
 settings-data-image-cache = Afbeeldingscache
@@ -2974,6 +2938,8 @@ settings-library-folder-added = Map toegevoegd, scannen
 ## SettingsAppearanceTab
 
 settings-appearance-language = Taal
+settings-appearance-title-language = Titels tonen in
+settings-appearance-title-language-english = Engels
 settings-appearance-language-system = Zoals het systeem ({ $language })
 settings-appearance-text-smaller = Kleiner
 settings-appearance-text-normal = Normaal

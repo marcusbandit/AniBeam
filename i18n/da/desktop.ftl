@@ -353,6 +353,7 @@ home-week = Denne uge
 home-week-show-empty = Vis tomme dage
 home-week-hide-empty = Skjul tomme dage
 home-week-airing = Sendes nu
+home-week-feed = Feed
 home-week-out = Udkommet nu
 home-week-coming-up = Kommer snart
 home-recommended = Anbefalet til dig
@@ -503,9 +504,6 @@ onboarding-ready-set-up = Opsæt nu
 rail-home = Hjem
 rail-library = Bibliotek
 rail-airing = Sendes
-rail-feed = Feed
-rail-stats = Statistik
-rail-show-info = Serieinfo
 rail-downloads = Downloads
 rail-settings = Indstillinger
 rail-downloads-complete =
@@ -513,11 +511,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } abonnement er færdigt
        *[other] Downloads: { $count } abonnementer er færdige
     }
-rail-title-language-name = Titelsprog: { $language }. Tryk for det næste
-rail-title-language-english = Engelsk
-rail-title-language-tip = Titelsprog: romaji, engelsk eller japansk
-rail-whats-new-in = Nyheder i { $release }
-rail-whats-new = Nyheder
 rail-settings-note = Indstillinger: { $note }
 
 ## FixSheet.qml
@@ -712,6 +705,9 @@ library-tab-series = Serier
 library-tab-movies = Film
 library-tab-watched = Set
 library-tab-hidden = Skjulte
+library-tab-on-my-list = På min liste
+library-tab-stats = Statistik
+library-tab-fix-matches = Ret match
 library-count-movies =
     { $count ->
         [one] { $count } film
@@ -2439,12 +2435,6 @@ settings-find-files =
     .words = database data konfiguration cache mappe sti filer
 settings-find-help-folders =
     .words = hjælp mappe opbygning navngivning afsnit sæsoner film filer struktur
-settings-find-help-recognised =
-    .words = hjælp match forkert serie ikke fundet umatchet genkendt
-settings-find-help-anilist =
-    .words = hjælp anilist myanimelist mal log ind forbind login tracker
-settings-find-help-downloads =
-    .words = hjælp downloads tom kilder intet torrent qbittorrent
 settings-find-help-else =
     .words = hjælp opsætning introduktion gennemgang rapporter fejl problem
 settings-find-version =
@@ -2787,38 +2777,12 @@ settings-phone-address-copied = Adresse kopieret
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = Hjælp
 settings-help-folders = Hvordan skal mine mapper se ud?
-settings-help-for-example = For eksempel
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Ingen mappe tilføjet endnu
-settings-help-reads-folders =
-    { $count ->
-        [one] Anibeam læser én mappe
-       *[other] Anibeam læser { $count } mapper
-    }
-settings-help-add-folder = Tilføj en mappe
-settings-help-open-folders = Åbn dine mapper
-settings-help-match = Hvorfor blev min serie ikke genkendt?
-settings-help-all-recognised = Alle serier er genkendt
-settings-help-unrecognised =
-    { $count ->
-        [one] Én serie er ikke genkendt
-       *[other] { $count } serier er ikke genkendt
-    }
-settings-help-open-show-info = Åbn Serieinfo
-settings-help-connect = Hvordan forbinder jeg AniList?
-settings-help-both-connected = Begge er forbundet
-settings-help-anilist-connected = AniList er forbundet
-settings-help-mal-connected = MyAnimeList er forbundet
-settings-help-none-connected = Ingen af dem er forbundet endnu
-settings-help-connect-anilist = Forbind AniList
-settings-help-connect-mal = Forbind MyAnimeList
-settings-help-downloads = Hvorfor er Downloads tom?
-settings-help-sources = Kilder og torrentprogrammet
-settings-help-open-downloads = Åbn indstillinger for Downloads
 settings-help-more = Noget andet?
 settings-help-report = Meld en fejl
 
@@ -2903,7 +2867,7 @@ settings-data-back-up-library = Tag backup af biblioteket
 settings-data-last-written = Sidst gemt i { $path }
 settings-data-open-folder = Åbn mappe
 settings-data-back-up = Tag backup
-settings-data-private = Medtag private data
+settings-data-private = Medtag log-ins, gemt som ren tekst
 settings-data-restore-from = Gendan fra en backup
 settings-data-restore = Gendan
 settings-data-image-cache = Billedcache
@@ -2975,6 +2939,8 @@ settings-library-folder-added = Mappe tilføjet, scanner
 ## SettingsAppearanceTab
 
 settings-appearance-language = Sprog
+settings-appearance-title-language = Vis titler på
+settings-appearance-title-language-english = Engelsk
 settings-appearance-language-system = Samme som systemet ({ $language })
 settings-appearance-text-smaller = Mindre
 settings-appearance-text-normal = Normal

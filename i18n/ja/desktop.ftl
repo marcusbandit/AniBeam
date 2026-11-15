@@ -287,6 +287,7 @@ home-week = 今週
 home-week-show-empty = 空の日を表示
 home-week-hide-empty = 空の日を隠す
 home-week-airing = 放送中
+home-week-feed = フィード
 home-week-out = 公開中
 home-week-coming-up = 近日放送
 home-recommended = あなたへのおすすめ
@@ -421,17 +422,9 @@ onboarding-ready-set-up = 今すぐ設定
 rail-home = ホーム
 rail-library = ライブラリ
 rail-airing = 放送中
-rail-feed = フィード
-rail-stats = 統計
-rail-show-info = 作品情報
 rail-downloads = ダウンロード
 rail-settings = 設定
 rail-downloads-complete = ダウンロード: { $count }件の購読が完了しています
-rail-title-language-name = タイトルの言語: { $language }。押すと切り替わります
-rail-title-language-english = 英語
-rail-title-language-tip = タイトルの言語: ローマ字、英語、日本語
-rail-whats-new-in = { $release }の更新内容
-rail-whats-new = 更新内容
 rail-settings-note = 設定: { $note }
 
 ## FixSheet.qml
@@ -582,6 +575,9 @@ library-tab-series = シリーズ
 library-tab-movies = 映画
 library-tab-watched = 視聴済み
 library-tab-hidden = 非表示
+library-tab-on-my-list = マイリスト
+library-tab-stats = 統計
+library-tab-fix-matches = マッチを修正
 library-count-movies = 映画{ $count }本
 library-count-watched = 視聴済み{ $count }
 library-count-hidden = 非表示{ $count }
@@ -1997,12 +1993,6 @@ settings-find-files =
     .words = データベース データ 設定 キャッシュ フォルダ パス
 settings-find-help-folders =
     .words = ヘルプ フォルダ 構成 名前 エピソード シーズン 映画 ファイル
-settings-find-help-recognised =
-    .words = ヘルプ 照合 間違い 作品 見つからない 未照合 認識
-settings-find-help-anilist =
-    .words = ヘルプ anilist myanimelist mal ログイン 連携 トラッカー
-settings-find-help-downloads =
-    .words = ヘルプ ダウンロード 空 ソース 何もない トレント qbittorrent
 settings-find-help-else =
     .words = ヘルプ 初期設定 オンボーディング ガイド 報告 バグ 問題 issue
 settings-find-version =
@@ -2345,30 +2335,12 @@ settings-phone-address-copied = アドレスをコピーしました
 
 ## SettingsAboutTab: the questions people ask most
 
+settings-about-help = ヘルプ
 settings-help-folders = フォルダはどう構成すればいいですか?
-settings-help-for-example = 例
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = フォルダはまだ追加されていません
-settings-help-reads-folders = 読み込むフォルダ: { $count }個
-settings-help-add-folder = フォルダを追加
-settings-help-open-folders = フォルダを開く
-settings-help-match = 作品が認識されないのはなぜですか?
-settings-help-all-recognised = すべての作品を認識しています
-settings-help-unrecognised = { $count }作品が認識されていません
-settings-help-open-show-info = 作品情報を開く
-settings-help-connect = AniListと連携するには?
-settings-help-both-connected = 両方とも連携済みです
-settings-help-anilist-connected = AniListは連携済みです
-settings-help-mal-connected = MyAnimeListは連携済みです
-settings-help-none-connected = まだどちらも連携していません
-settings-help-connect-anilist = AniListを連携
-settings-help-connect-mal = MyAnimeListを連携
-settings-help-downloads = ダウンロードが空なのはなぜですか?
-settings-help-sources = ソースとトレントクライアント
-settings-help-open-downloads = ダウンロード設定を開く
 settings-help-more = ほかにお困りですか?
 settings-help-report = 問題を報告
 
@@ -2419,7 +2391,7 @@ settings-data-back-up-library = ライブラリをバックアップ
 settings-data-last-written = 前回の保存先: { $path }
 settings-data-open-folder = フォルダを開く
 settings-data-back-up = バックアップ
-settings-data-private = 個人データを含める
+settings-data-private = ログイン情報を含める（平文で保存）
 settings-data-restore-from = バックアップから復元
 settings-data-restore = 復元
 settings-data-image-cache = 画像キャッシュ
@@ -2484,6 +2456,8 @@ settings-library-folder-added = フォルダを追加しました。スキャン
 ## SettingsAppearanceTab
 
 settings-appearance-language = 言語
+settings-appearance-title-language = タイトルの表示
+settings-appearance-title-language-english = 英語
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = システムと同じ（{ $language }）
 settings-appearance-text-smaller = 小さめ
