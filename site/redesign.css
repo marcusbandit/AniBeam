@@ -497,16 +497,47 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 .stone:not(.owned) em { color: var(--fg-3); }
 
 /* Casting: the TV plays the episode; the computer shows the app's own "Playing on" tile. */
-.laptop { position: absolute; z-index: 3; left: 0; bottom: 2%; width: 50%; }
-.lp-screen { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border: 7px solid #141518; border-radius: 12px 12px 4px 4px; background: radial-gradient(80% 80% at 50% 40%, #1a1c22, #0b0c0f); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 30px 60px -20px #000; }
-.lp-tile { position: absolute; left: 50%; top: 44%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-.lp-tile svg { width: 30px; height: 30px; fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.lp-tile b { color: var(--fg); font-size: 14px; font-weight: 640; white-space: nowrap; }
-.lp-tile span { color: var(--fg-2); font: 400 11.5px/1 var(--mono); }
+/* The TV stands on its own two feet, a thin bezel round the picture and a shadow on the floor. */
+.feat-cast .tv { top: 0; width: 80%; }
+.feat-cast .tv-screen { border-width: 5px; border-radius: 10px; background: #000; }
+.feat-cast .tv-stand { position: relative; display: block; width: 100%; height: 34px; margin: 0; border-radius: 0; background: none; }
+.feat-cast .tv-stand i { position: absolute; top: 0; width: 6%; height: 30px; background: linear-gradient(#4a4d55, #1c1d21); box-shadow: inset 0 1px rgba(255, 255, 255, 0.2); clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%); }
+.feat-cast .tv-stand i:first-child { left: 9%; transform: skewX(14deg); }
+.feat-cast .tv-stand i:last-child { right: 9%; transform: skewX(-14deg); }
+.feat-cast .tv-stand::after { content: ""; position: absolute; left: 4%; right: 4%; top: 24px; height: 16px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.75), transparent); z-index: -1; }
+
+/* What casts: a laptop, a phone and a tablet take turns, each showing the app's own
+   "Playing on" tile. */
+.senders { position: absolute; z-index: 3; left: 0; bottom: 0; width: 46%; aspect-ratio: 1 / 0.78; }
+.dev { position: absolute; bottom: 0; container-type: inline-size; }
+.dev .lp-screen { position: relative; overflow: hidden; background: radial-gradient(80% 80% at 50% 40%, #1a1c22, #0b0c0f); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 30px 60px -20px #000; }
+.dev-laptop { left: 0; width: 100%; }
+.dev-laptop .lp-screen { aspect-ratio: 16 / 10; border: 7px solid #141518; border-radius: 12px 12px 4px 4px; }
+.dev-phone { left: 26%; width: 34%; }
+.dev-phone .lp-screen { aspect-ratio: 9 / 18.5; border: 6px solid #141518; border-radius: 26px; }
+.dev-phone .lp-screen::before { content: ""; position: absolute; left: 50%; top: 7px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.dev-tablet { left: 4%; width: 84%; }
+.dev-tablet .lp-screen { aspect-ratio: 4 / 3; border: 10px solid #141518; border-radius: 22px; }
+.lp-tile { position: absolute; left: 50%; top: 44%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 90%; text-align: center; }
+.lp-tile svg { width: clamp(18px, 11cqi, 30px); height: auto; fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lp-tile b { color: var(--fg); font-size: clamp(10px, 5cqi, 15px); font-weight: 640; line-height: 1.25; }
+.lp-tile span { color: var(--fg-2); font: 400 clamp(9px, 3.8cqi, 12px)/1 var(--mono); }
 .lp-bar { position: absolute; left: 8%; right: 8%; bottom: 10%; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); }
 .lp-bar i { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--done); }
+.dev-phone .lp-bar { bottom: 7%; }
 .lp-base { display: block; width: 116%; height: 9px; margin-left: -8%; border-radius: 0 0 10px 10px; background: linear-gradient(#26282d, #141518); }
-.feat-cast .cast-arc { left: 30%; bottom: 30%; width: 34%; height: 28%; }
+.dev-phone, .dev-tablet { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .dev { animation: dev-turn 9s var(--ease) infinite; animation-play-state: var(--motion, running); }
+  .dev-phone { animation-delay: -6s; }
+  .dev-tablet { animation-delay: -3s; }
+}
+@keyframes dev-turn {
+  0%, 27.8% { opacity: 1; transform: none; }
+  33.3%, 94.4% { opacity: 0; transform: translateY(14px) scale(0.97); }
+  100% { opacity: 1; transform: none; }
+}
+.feat-cast .cast-arc { left: 26%; bottom: 36%; width: 30%; height: 18%; }
 
 /* Watch together: the app's room panel, with the last friend's copy opening and then ready. */
 .room2 { display: grid; gap: 16px; padding: 22px 24px; }
@@ -535,6 +566,35 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
 @media (max-width: 760px) {
   .scan { grid-template-columns: minmax(0, 1fr); }
   .scan-files { border-right: 0; border-bottom: 1px solid var(--hair); }
-  .laptop { width: 56%; }
-  .lp-tile b { font-size: 11px; }
+}
+
+/* Phones: one column that reads top to bottom, buttons as wide as the column, the tabs as one
+   row, the tour cropped so the app can be read, and less air between sections. */
+@media (max-width: 760px) {
+  body.rd { --space: 88px; }
+  .rows { gap: 80px; }
+  .bhero .hero-actions, .endcard .hero-actions { flex-direction: column; align-items: stretch; width: 100%; gap: 10px; }
+  .bhero .hero-actions .btn, .endcard .hero-actions .btn { width: 100%; }
+  .bhero-copy { width: 100%; }
+  .tour-stage { margin-top: 32px; gap: 16px; }
+  .tour-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair); }
+  .tour-tabs button { justify-content: center; gap: 7px; padding: 10px 4px; border-radius: 10px; font-size: 15px; letter-spacing: -0.01em; font-variation-settings: "wdth" 100; }
+  .tour-tabs button svg { width: 15px; height: 15px; }
+  .tour-tabs button[aria-selected="true"] { background: rgba(255, 255, 255, 0.1); }
+  .tour-tabs button::after { display: none; }
+  .tw-screen { aspect-ratio: 4 / 3.4; }
+  .tw-screen img { object-position: left top; }
+  .feat-room .row-text { display: contents; }
+  .feat-room h3 { order: 0; }
+  .feat-room .row-vis { order: 1; }
+  .feat-room .room-open { order: 2; justify-self: start; }
+  .endcard { padding: 88px var(--gutter) 88px; }
+  .endcard .get-term { width: 100%; }
+  .endcard .term-big { font-size: 12.5px; padding-left: 12px; }
+  .endcard .term code { white-space: nowrap; overflow-x: auto; }
+  .feat-cast .cast-scene { aspect-ratio: auto; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .feat-cast .tv { position: relative; top: 0; right: auto; width: 100%; }
+  .senders { position: relative; left: auto; bottom: auto; width: 78%; }
+  .feat-cast .cast-arc { display: none; }
+  .credits { padding: 72px var(--gutter) 48px; }
 }
