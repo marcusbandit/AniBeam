@@ -1,0 +1,90 @@
+<section>
+  <h2 id="activity">See what went wrong</h2>
+  <p>The line along the bottom of the window shows the last thing Anibeam did. Click it to open <b class="ui">Activity</b>, and pick <b class="ui">Problems</b> to see only what failed. Click a line to copy it.</p>
+</section>
+
+<section>
+  <h2 id="library-empty">The library stays empty</h2>
+  <ul>
+    <li>Check that you added the folder above your shows, not a show's own folder. <span class="where"><b>Settings</b><b>Library</b></span> lists what Anibeam reads.</li>
+    <li>Each show needs a folder of its own with video files in it. <a href="../library/#naming">Name folders and files</a> has an example.</li>
+    <li>A folder that says <b class="ui">Unavailable</b> is on a drive Anibeam cannot reach. Plug it in and press <b class="ui">Rescan</b>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="not-recognised">A show is not recognised, or has the wrong poster</h2>
+  <p>Anibeam looks a show up by its folder name. Extra words, a typo or a name in another language can miss. Open the show, press <b class="ui">Fixes</b> and pick the right one. <a href="../library/#match">Your library</a> has the steps.</p>
+</section>
+
+<section>
+  <h2 id="episodes">Episodes are missing, doubled or in the wrong order</h2>
+  <p>A file name without a clear episode number reads wrong. Open the show, press <b class="ui">Fixes</b>, then <b class="ui">Files</b>, and say what each file is. <a href="../library/#files">Your library</a> has the steps.</p>
+  <p>A show with more files than episodes says so under <b class="ui">Extra files</b>: misnamed files, duplicates or specials.</p>
+</section>
+
+<section>
+  <h2 id="no-sources">A search finds nothing</h2>
+  <ul>
+    <li><b class="ui">There are no sources to search yet</b> means no source is installed. Add a source list: <a href="../sources/#add">Sources</a> has the steps.</li>
+    <li><b class="ui">Every source is switched off</b> means each one is paused. Press a source under <b class="ui">Sources</b> on the Downloads page to switch it on.</li>
+    <li>A source that asks for a key and has none shows what it needs. Press <b class="ui">Add its value</b> next to it in <span class="where"><b>Settings</b><b>Downloads</b></span>.</li>
+    <li>No releases for a title can mean the source spells it another way. Try fewer words, or the title in romaji.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="client">The torrent client is not connected</h2>
+  <ul>
+    <li>With your own qBittorrent: check it is running and its Web UI is on, then press <b class="ui">Test</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>. <b class="ui">Details</b> shows what qBittorrent answered.</li>
+    <li>A wrong address or password says so after the test. Fix it and press <b class="ui">Save and test</b>.</li>
+    <li>To stop running your own, set <b class="ui">Which client</b> to <b class="ui">Built-in</b>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="helper">Downloads could not start</h2>
+  <p>Searching runs through a small helper program that Anibeam starts itself. When it stops, the Downloads page says so: press <b class="ui">Start again</b>. When Settings point at a helper of your own that does not answer, <b class="ui">Use Anibeam's own</b> switches back.</p>
+</section>
+
+<section>
+  <h2 id="not-arriving">A download finished and is not in the library</h2>
+  <p>It saved into a folder Anibeam does not read. <a href="../downloads/#where">Where downloads go</a> explains how to line the two up. Once the folder is in <span class="where"><b>Settings</b><b>Library</b></span>, the episode shows up on the next scan.</p>
+</section>
+
+<section>
+  <h2 id="sign-in">The AniList or MyAnimeList sign-in did not finish</h2>
+  <ul>
+    <li>The redirect address on AniList or MyAnimeList must match Anibeam's exactly. Press <b class="ui">Copy the address</b> again and paste it over the old one.</li>
+    <li>The Client ID must be the one from the same app.</li>
+    <li>Press <b class="ui">Open the sign-in page again</b> and approve Anibeam in the browser.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="rooms">A room will not open</h2>
+  <dl class="fixes">
+    <dt>No room has that code</dt>
+    <dd>Check the code with whoever sent it. The room may have closed.</dd>
+    <dt>That room is full</dt>
+    <dd>A room takes 10 people.</dd>
+    <dt>That room runs on a newer version of rooms</dt>
+    <dd>Update Anibeam from <span class="where"><b>Settings</b><b>About</b></span>.</dd>
+    <dt>Could not reach the room server</dt>
+    <dd>Check your connection, and that <b class="ui">Room server</b> in <span class="where"><b>Settings</b><b>Playback</b></span> was not changed by mistake.</dd>
+  </dl>
+</section>
+
+<section>
+  <h2 id="data">Where your data is</h2>
+  <p>Your library, history and settings stay on your computer. <span class="where"><b>Settings</b><b>Help</b></span> has <b class="ui">Show the folder</b>. <span class="where"><b>Settings</b><b>Storage and backup</b></span> saves everything to one file and restores it on another computer.</p>
+</section>
+
+<section>
+  <h2 id="report">Report a problem</h2>
+  <ol class="steps">
+    <li>Open <span class="where"><b>Settings</b><b>Help</b></span> and press <b class="ui">Report a problem</b>.</li>
+    <li>A bug report opens on GitHub in your browser, with your version filled in. Say what you did and what happened. A screenshot helps a lot.</li>
+  </ol>
+  <p>For a show that reads wrong, <b class="ui">File an issue on GitHub</b> in its file fixes fills in the show and its file names. The issue is public, and you see everything in it before you send it.</p>
+</section>

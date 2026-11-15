@@ -1,0 +1,63 @@
+<section>
+  <h2 id="how">What downloading needs</h2>
+  <ul>
+    <li>At least one source to search, from a source list you add. <a href="../sources/">Sources</a> covers it.</li>
+    <li>A torrent client, the qBittorrent that does the downloading. Anibeam brings its own, or uses one you already run.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="client">Pick a torrent client</h2>
+  <ol class="steps">
+    <li>Open <span class="where"><b>Settings</b><b>Downloads</b></span>.</li>
+    <li>Under <b class="ui">Torrent client</b>, set <b class="ui">Which client</b>.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">Built-in</b> runs a qBittorrent of Anibeam's own, quietly in the background. Nothing to install and nothing to fill in. Only this computer can reach it. It keeps going after Anibeam quits, so new episodes still arrive.</li>
+    <li><b class="ui">My own</b> uses a qBittorrent you run yourself, on this computer, another one or a seedbox.</li>
+    <li><b class="ui">Pick for me</b> uses a qBittorrent that answers at the address you give, and runs the built-in one when none does.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="own-client">Use your own qBittorrent</h2>
+  <ol class="steps">
+    <li>In qBittorrent, open <span class="where"><b>Tools</b><b>Options</b><b>Web UI</b></span>.</li>
+    <li>Tick <b class="ui">Web User Interface (Remote control)</b>, and set a username and a password.</li>
+    <li>In Anibeam, set <b class="ui">Which client</b> to <b class="ui">My own</b>.</li>
+    <li>Fill in <b class="ui">Address</b> with the Web UI's address, such as <code>http://localhost:8080</code>, then <b class="ui">Username</b> and <b class="ui">Password</b>.</li>
+    <li>Press <b class="ui">Save and test</b>. It says which qBittorrent version answered.</li>
+  </ol>
+  <p>The password goes in your system's password store. <b class="ui">Saved clients</b> keeps more than one, such as a seedbox and the one on this computer; the client chip on the Downloads page switches between them.</p>
+</section>
+
+<section>
+  <h2 id="where">Where downloads go</h2>
+  <p>The built-in client saves into your library folder, each show in a folder of its own, so a finished episode shows up in the library by itself. <span class="where"><b>Settings</b><b>Downloads</b></span> shows the folder and lets you change it.</p>
+  <p>Your own qBittorrent saves where it is told to. Make sure that folder is inside a folder Anibeam reads, or add it in <span class="where"><b>Settings</b><b>Library</b></span>. An episode saved anywhere else downloads fine and never reaches the library.</p>
+</section>
+
+<section>
+  <h2 id="get">Get episodes of a show</h2>
+  <ol class="steps">
+    <li>Open the show, from the Library, Airing or a search, and press <b class="ui">Get episodes</b>.</li>
+    <li>Pick the episodes you want. Episodes already on disk are left out unless you turn on replacing them.</li>
+    <li>Press the button that counts them, such as <b class="ui">Get 12 episodes</b>.</li>
+  </ol>
+  <p>To find a release by name instead, open <b>Downloads</b> in the sidebar and type into <b class="ui">Search for a show, or a release name</b>. Pick the show, then press a source under <b class="ui">Found on</b> to see what it found. Tick the releases you want and press <b class="ui">Download</b>.</p>
+</section>
+
+<section>
+  <h2 id="follow">Follow a show as it airs</h2>
+  <ol class="steps">
+    <li>On <b class="ui">Get episodes</b>, turn on <b class="ui">Subscribe for new episodes</b>, or press <b class="ui">Subscribe</b> after a search on Downloads.</li>
+    <li>Each new episode downloads as it comes out, into the same folder.</li>
+  </ol>
+  <p><b class="ui">Following</b> on the Downloads page lists every show you follow. <b class="ui">Unsubscribe</b> stops one. A show is dropped by itself 16 days after its last episode airs, while <b class="ui">Unsubscribe from finished shows</b> is on.</p>
+</section>
+
+<section>
+  <h2 id="long">Long shows and disk space</h2>
+  <p>A long show downloads a few episodes at a time, and each one you finish starts the next. Set it under <b class="ui">Keep the next few ready</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>: how many episodes stay ahead, what counts as long, and whether watched episodes are deleted or kept.</p>
+  <p><b class="ui">Gaps in your library</b> on the Downloads page lists aired episodes that are not on disk. <b class="ui">Downloaded</b> lists what is on disk, the biggest first, with <b class="ui">Delete watched</b> to free space. Deleted files go to the trash.</p>
+</section>

@@ -990,8 +990,9 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 
 .dl-term-for { color: var(--fg-3); font-size: 13.5px; }
 
-/* The nav: the language, Watch together, GitHub, and the way to the downloads */
-.nav-lang, .nav-gh, .nav-rooms { display: inline-flex; align-items: center; gap: 7px; }
+/* The nav: the language, the wiki, Watch together, GitHub, and the way to the downloads */
+.nav-lang, .nav-gh, .nav-rooms, .nav-wiki { display: inline-flex; align-items: center; gap: 7px; }
+.nav-links a[aria-current="page"] { color: #fff; }
 /* The language menu: a native <details>, so it opens with a click or the keyboard and needs no
    script. The panel lists every language in its own name. */
 .nav-lang { position: relative; }
@@ -1024,8 +1025,8 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 .lang-menu a[aria-current="true"] { color: #fff; }
 .lang-menu a[aria-current="true"]::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
-.nav-lang svg, .nav-gh svg, .nav-rooms svg { width: 15px; height: 15px; }
-.nav-lang svg, .nav-rooms svg { fill: none; stroke: currentColor; stroke-width: 2; }
+.nav-lang svg, .nav-gh svg, .nav-rooms svg, .nav-wiki svg { width: 15px; height: 15px; }
+.nav-lang svg, .nav-rooms svg, .nav-wiki svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nav-gh svg { fill: currentColor; }
 
 /* What's new: the apps' patch notes, a version per entry, newest first. A version is a row: its
@@ -1115,10 +1116,10 @@ html[data-os="ios"] .dl-page:has(#dl-iphone[hidden]) .ios-soon { display: inline
   .term code { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
-/* A narrow nav keeps the language menu and the download button; GitHub and Watch together stay
-   in the footer. */
+/* A narrow nav keeps the language menu and the download button; GitHub, Watch together and the
+   wiki stay in the footer. */
 @media (max-width: 700px) {
-  .nav-links .nav-gh, .nav-links .nav-rooms { display: none; }
+  .nav-links .nav-gh, .nav-links .nav-rooms, .nav-links .nav-wiki { display: none; }
   .nav-lang summary, .nav .btn-sm { white-space: nowrap; }
 }
 /* On a phone the menu is the globe alone; its name stays for screen readers. */
@@ -1152,3 +1153,80 @@ html[data-os="ios"] .dl-page:has(#dl-iphone[hidden]) .ios-soon { display: inline
 }
 /* An iPhone with a build: the hero's button and chips are its whole card, so the card steps aside. */
 html[data-os="ios"] .dl-page:has(#dl-iphone:not([hidden])) .dl-platforms { display: none; }
+
+/* The wiki: task pages the app links to. The index is a card per page, its title alone; a page is
+   its sections beside the list of pages, each section a heading and short numbered steps. App
+   buttons read as small chips, and a place in Settings as its path. */
+.wiki { max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter); }
+.wiki-hero { padding: 168px 0 48px; }
+.wiki-hero h1 { font-size: clamp(40px, 6vw, 72px); letter-spacing: -0.045em; font-weight: 640; text-wrap: balance; }
+.wiki-hero .wn-back { display: inline-block; margin-bottom: 18px; }
+.wiki-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.wiki-card {
+  display: flex; flex-direction: column; justify-content: space-between; gap: 40px; min-width: 0; min-height: 168px; padding: 22px;
+  border: 1px solid var(--hair); border-radius: 20px; background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
+  box-shadow: inset 0 1px var(--hi); color: var(--fg); text-decoration: none;
+  transition: transform var(--quick), border-color var(--quick);
+}
+.wiki-card svg { width: 22px; height: 22px; fill: none; stroke: var(--fg-3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--quick); }
+.wiki-card span { font-size: 21px; font-weight: 620; line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.wiki-card:hover { transform: translateY(-1px); border-color: var(--hair-2); color: #fff; }
+.wiki-card:hover svg { stroke: var(--brand); }
+.wiki-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 0 48px; align-items: start; }
+.wiki-toc { grid-column: 1; grid-row: 1; position: sticky; top: 96px; display: flex; flex-direction: column; gap: 2px; padding-top: 34px; }
+.wiki-toc a { padding: 7px 12px; border-radius: 8px; color: var(--fg-3); font-size: 15px; line-height: 1.35; text-decoration: none; transition: color var(--quick), background-color var(--quick); }
+.wiki-toc a:hover { color: #fff; }
+.wiki-toc a[aria-current="page"] { color: var(--fg); background: rgba(255, 255, 255, 0.05); font-weight: 600; }
+.wiki-text { grid-column: 2; grid-row: 1; min-width: 0; }
+.wiki-text section { padding: 36px 0; border-top: 1px solid var(--hair); }
+.wiki-text h2 { margin-bottom: 16px; font-size: 26px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 620; scroll-margin-top: 96px; }
+.wiki-text p, .wiki-text li, .wiki-text dd { color: var(--fg-2); font-size: 16.5px; line-height: 1.65; }
+.wiki-text p { max-width: 70ch; margin: 0 0 14px; }
+.wiki-text p:last-child, .wiki-text section > :last-child { margin-bottom: 0; }
+.wiki-text ul { max-width: 70ch; margin: 0 0 18px; padding-left: 20px; }
+.wiki-text ul li { padding: 3px 0; }
+.wiki-text ul li::marker { color: var(--fg-4); }
+.wiki-text b { color: var(--fg); font-weight: 600; }
+.wiki-text a { color: var(--fg); }
+.wiki-text a:hover { color: var(--brand); }
+.wiki-text code, .wiki-text kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.06); color: var(--fg); font: 0.86em var(--mono); overflow-wrap: anywhere; }
+.wiki-text kbd { box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.1); }
+.steps { max-width: 70ch; margin: 0 0 18px; padding: 0; list-style: none; counter-reset: step; }
+.steps li { position: relative; padding: 6px 0 6px 44px; counter-increment: step; }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: 6px; display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: 50%; background: #16171b; box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--fg); font: 500 13px/1 var(--mono);
+}
+.wiki-text .ui {
+  padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px var(--hair-2);
+  color: var(--fg); font-size: 0.92em; font-weight: 600; white-space: nowrap;
+}
+.where { white-space: nowrap; }
+.where b { color: var(--fg); font-weight: 600; }
+.where b + b::before { content: "\203A"; margin: 0 0.45em; color: var(--fg-3); font-weight: 400; }
+.wiki-text .tree {
+  max-width: 70ch; margin: 0 0 18px; padding: 18px 20px; overflow-x: auto; border: 1px solid var(--hair); border-radius: 14px;
+  background: var(--card-b); color: var(--fg-2); font: 14px/1.6 var(--mono);
+}
+.fixes { max-width: 70ch; margin: 0 0 18px; }
+.fixes dt { color: var(--fg); font-weight: 600; font-size: 16.5px; }
+.fixes dd { margin: 2px 0 16px; }
+.fixes dd:last-child { margin-bottom: 0; }
+.wiki-pager { margin-top: 8px; }
+.wiki-prev::before { content: "\2190  "; }
+.wiki-next::after { content: "  \2192"; }
+.wiki + .foot { margin-top: 120px; }
+@media (max-width: 860px) {
+  .wiki-hero { padding: 120px 0 32px; }
+  .wiki-body { grid-template-columns: minmax(0, 1fr); }
+  .wiki-text, .wiki-toc { grid-column: 1; grid-row: auto; }
+  .wiki-toc { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 28px 0 36px; border-top: 1px solid var(--hair); }
+  .wiki-toc a { box-shadow: inset 0 0 0 1px var(--hair-2); }
+  .wiki-text section { padding: 30px 0; }
+  .wiki-text h2 { font-size: 23px; }
+  .wiki-card { min-height: 0; flex-direction: row; align-items: center; justify-content: flex-start; gap: 16px; padding: 18px 20px; }
+  .wiki-card span { font-size: 18px; }
+  .wiki-pager { gap: 16px; }
+  .wiki-pager a { min-width: 0; overflow-wrap: anywhere; }
+  .wiki-next { text-align: right; }
+}
