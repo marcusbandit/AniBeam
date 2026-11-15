@@ -746,7 +746,7 @@ core-transfer-wrong-format = 不是 { $format } 文档
 
 core-transfer-imported = 已从文件载入媒体库。
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 媒体库中没有文件 { $id }
 core-library-file-elsewhere-not-removed = 文件 { $id } 属于另一部番剧，未移除任何内容
@@ -767,7 +767,7 @@ core-library-watched-removed =
        *[trash] 已移到回收站
     }。
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     这里唯一的文件被识别为{ $read ->
@@ -782,7 +782,7 @@ core-library-fix-numbered-on = 第 { $from } 集看起来是此条目的第 { $t
 core-library-runs-span = { $first } 至 { $last }
 core-library-runs-list = { $init } 和 { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 集数范围为 0 到 10000
 core-library-fix-season-range = 季数最多为 200
@@ -791,7 +791,7 @@ core-library-file-elsewhere-not-fixed = 文件 { $id } 属于另一部番剧，�
 core-library-fix-undone = 已恢复按文件名识别《{ $title }》的 { $count } 个文件。
 core-library-fixed = 已修正《{ $title }》中 { $count } 个文件的识别方式。
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = 已隐藏《{ $title }》。
 core-library-back-one = 《{ $title }》已恢复显示。
@@ -800,12 +800,12 @@ core-library-back-many = { $count } 部番剧已恢复显示。
 core-library-episode-count-set = 《{ $title }》现在共 { $count } 集。
 core-library-episode-count-cleared = 已清除《{ $title }》的集数。
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = 已清除《{ $title }》的排期备注。
 core-library-schedule-saved = 已为《{ $title }》保存 { $count } 条排期备注。
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 来源路径必须是绝对路径
 core-library-source-exists = 已是来源
@@ -837,7 +837,7 @@ core-library-scan-done =
         }{ $removed } 部缺失
     }。
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 内没有响应
 core-library-agent-stopped-code = 它以代码 { $code } 停止
@@ -971,7 +971,7 @@ core-downloads-name-not-folder = { $name } 不是文件夹名称
 core-downloads-pruned = 《{ $title }》已完结，已取消订阅。
 core-downloads-prune-failed = 无法取消订阅《{ $title }》。请检查设置中的“下载”。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } 不是普通的绝对路径，未移除任何内容
 core-downloads-refuse-root = { $path } 是文件系统根目录，未移除任何内容

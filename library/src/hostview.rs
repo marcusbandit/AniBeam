@@ -7,18 +7,18 @@ use std::collections::HashSet;
 
 use anibeam_host_api as wire;
 
-use crate::contract::*;
-use crate::library::classifier::format_number;
-use crate::library::detail::{episode_versions, version_key};
-use crate::library::snapshot::{FileRow, SeriesRow, Snapshot};
-use crate::time;
+use crate::classifier::format_number;
+use crate::detail::{episode_versions, version_key};
+use crate::snapshot::{FileRow, SeriesRow, Snapshot};
+use anibeam_contract::*;
+use anibeam_foundation::time;
 
 /// How many future airings one series carries. A long-running show has
 /// hundreds scheduled; a phone counting down needs the next few months.
 pub(crate) const UPCOMING_CAP: usize = 26;
 
 /// One series on the wire, and the poster file behind its `poster` tag.
-pub(crate) struct HostSeries {
+pub struct HostSeries {
     pub series: wire::Series,
     /// The local file the card's poster is. `host` stats it for the tag and
     /// serves it; nothing about it reaches the wire but the tag.
@@ -29,7 +29,7 @@ impl Snapshot {
     /// Every series that is in the library and not hidden, in id order.
     /// A missing series (its folder is gone) is out: nothing on disk to
     /// show for it.
-    pub(crate) fn host_series(&self) -> Vec<HostSeries> {
+    pub fn host_series(&self) -> Vec<HostSeries> {
         self.series
             .iter()
             .filter(|row| !row.hidden && !row.missing)
@@ -176,8 +176,8 @@ fn episode_code(season: Option<u32>, number: f64) -> String {
 
 /// The status as the host contract spells it. Named here, not taken from
 /// the enum's Debug, so renaming a variant cannot change the wire.
-fn wire_status(s: crate::contract::AiringStatus) -> &'static str {
-    use crate::contract::AiringStatus as A;
+fn wire_status(s: anibeam_contract::AiringStatus) -> &'static str {
+    use anibeam_contract::AiringStatus as A;
     match s {
         A::Releasing => "Releasing",
         A::Finished => "Finished",

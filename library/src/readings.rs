@@ -14,10 +14,10 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::library::classifier::{self, Classified};
-use crate::library::labels;
-use crate::library::walk::ScannedFile;
+use crate::classifier::{self, Classified};
+use crate::labels;
+use crate::walk::ScannedFile;
+use anibeam_contract::*;
 
 /// The record formats whose numbered specials are the series' own episodes.
 fn specials_are_episodes(format: Option<&str>) -> bool {
@@ -184,7 +184,7 @@ pub(crate) fn record_format(conn: &Connection, series: u64) -> Result<Option<Str
 /// record rule would read its numbered specials as episodes and the rows do
 /// not, or the other way round. A match that changed is worth a scan only
 /// then, so a TV series with an `SP1` beside its episodes never queues one.
-pub(crate) fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError> {
+pub fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError> {
     let format = record_format(conn, series)?;
     let mut stmt = conn.prepare(
         "SELECT f.path, f.kind, EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = f.path)
@@ -220,10 +220,7 @@ pub(crate) fn record_matters(conn: &Connection, series: u64) -> Result<bool, Cor
 
 /// Rescans `series` when its rows disagree with its record (`record_matters`).
 /// For the places a match changes outside a job: clearing one, say.
-pub(crate) fn reread_if_record_matters(
-    library: &std::sync::Arc<crate::library::Library>,
-    series: u64,
-) {
+pub fn reread_if_record_matters(library: &std::sync::Arc<crate::Library>, series: u64) {
     if library
         .services
         .store
@@ -238,7 +235,7 @@ pub(crate) fn reread_if_record_matters(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::classifier::classify;
+    use crate::classifier::classify;
 
     fn walked(path: &str) -> ScannedFile {
         let name = file_name(path);

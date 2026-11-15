@@ -860,7 +860,7 @@ core-transfer-wrong-format = geen { $format }-document
 
 core-transfer-imported = Je bibliotheek is uit het bestand geladen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = geen bestand { $id } in de bibliotheek
 core-library-file-elsewhere-not-removed = bestand { $id } hoort bij een andere serie, dus er is niets weggehaald
@@ -890,7 +890,7 @@ core-library-watched-removed =
        *[trash] naar de prullenbak verplaatst
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Het enige bestand hier wordt gelezen als { $read ->
@@ -912,7 +912,7 @@ core-library-fix-numbered-on = Afleveringen { $from } lijken de afleveringen { $
 core-library-runs-span = { $first } t/m { $last }
 core-library-runs-list = { $init } en { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = een afleveringsnummer loopt van 0 tot 10000
 core-library-fix-season-range = een seizoen loopt tot 200
@@ -929,7 +929,7 @@ core-library-fixed =
        *[other] Hersteld hoe { $count } bestanden van { $title } worden gelezen.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } verborgen.
 core-library-back-one = { $title } is terug.
@@ -938,12 +938,12 @@ core-library-back-many = { $count } series zijn terug.
 core-library-episode-count-set = { $title } heeft nu { $count } afleveringen.
 core-library-episode-count-cleared = Het aantal afleveringen van { $title } gewist.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = De schemanotities van { $title } gewist.
 core-library-schedule-saved = { $count } schemanotities voor { $title } opgeslagen.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = een bronpad moet absoluut zijn
 core-library-source-exists = is al een bron
@@ -985,7 +985,7 @@ core-library-scan-done =
         }{ $removed } ontbreken
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = geen antwoord binnen { $span }
 core-library-agent-stopped-code = gestopt met code { $code }
@@ -1151,7 +1151,7 @@ core-downloads-name-not-folder = { $name } is geen mapnaam
 core-downloads-pruned = Abonnement op { $title } opgezegd, de uitzending is afgelopen.
 core-downloads-prune-failed = Kon het abonnement op { $title } niet opzeggen. Controleer Downloads in Instellingen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } is geen gewoon absoluut pad, dus er is niets weggehaald
 core-downloads-refuse-root = { $path } is de root van het bestandssysteem, dus er is niets weggehaald

@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use rusqlite::params;
 
-use crate::contract::*;
-use crate::i18n::tr;
-use crate::library::Incoming;
-use crate::library::Library;
+use crate::Incoming;
+use crate::Library;
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
 
 /// One file row as the delete needs it.
 struct Row {
@@ -157,7 +157,7 @@ pub fn delete_episodes(
         let line = format!(
             "{} {} of {title} {}",
             n,
-            crate::words::pick(n, "episode", "episodes"),
+            anibeam_foundation::words::pick(n, "episode", "episodes"),
             if super::trash::WHERE == "deleted" {
                 "deleted"
             } else {
@@ -167,7 +167,7 @@ pub fn delete_episodes(
         library.services.bus.say(
             Level::Info,
             Stage::Library,
-            crate::words!(
+            anibeam_contract::words!(
                 "core-library-episodes-removed",
                 count = n,
                 title = &title,
@@ -208,7 +208,7 @@ type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
 /// that fails refuses the lot. Each series it touched is scanned again.
 pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Reply, CoreError> {
     let images_dir = library.services.paths.images_dir();
-    let now = crate::time::now();
+    let now = anibeam_foundation::time::now();
     let downloads = downloads_of(library)?;
     let (picked, sources) = library.services.store.read(|c| {
         let snap = super::snapshot::Snapshot::load(c, &images_dir, now, None)?;
@@ -280,13 +280,13 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
             format!(
                 "{} finished {}",
                 picked.len(),
-                crate::words::pick(picked.len(), "show", "shows")
+                anibeam_foundation::words::pick(picked.len(), "show", "shows")
             )
         } else {
             format!(
                 "{} watched {} of {} {}",
                 episodes,
-                crate::words::pick(episodes, "episode", "episodes"),
+                anibeam_foundation::words::pick(episodes, "episode", "episodes"),
                 picked.len(),
                 "series"
             )
@@ -300,13 +300,13 @@ pub fn delete_watched(library: &Arc<Library>, finished_shows: bool) -> Result<Re
             }
         );
         let plain = if finished_shows {
-            crate::words!(
+            anibeam_contract::words!(
                 "core-library-finished-removed",
                 count = picked.len(),
                 place = trash_where()
             )
         } else {
-            crate::words!(
+            anibeam_contract::words!(
                 "core-library-watched-removed",
                 count = episodes,
                 series = picked.len(),

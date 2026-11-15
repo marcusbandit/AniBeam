@@ -857,7 +857,7 @@ core-transfer-wrong-format = non è un documento { $format }
 
 core-transfer-imported = Libreria caricata dal file.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = nessun file { $id } nella libreria
 core-library-file-elsewhere-not-removed = il file { $id } appartiene a un'altra serie, quindi non è stato rimosso nulla
@@ -899,7 +899,7 @@ core-library-watched-removed =
         }
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     L'unico file qui viene letto come { $read ->
@@ -921,7 +921,7 @@ core-library-fix-numbered-on = Gli episodi { $from } sembrano i { $to } di quest
 core-library-runs-span = da { $first } a { $last }
 core-library-runs-list = { $init } e { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = il numero di un episodio va da 0 a 10000
 core-library-fix-season-range = una stagione arriva fino a 200
@@ -938,7 +938,7 @@ core-library-fixed =
        *[other] Corretto come si leggono { $count } file di { $title }.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } nascosta.
 core-library-back-one = { $title } è tornata.
@@ -947,12 +947,12 @@ core-library-back-many = { $count } serie sono tornate.
 core-library-episode-count-set = { $title } ora ha { $count } episodi.
 core-library-episode-count-cleared = Numero di episodi di { $title } cancellato.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Note sul calendario di { $title } cancellate.
 core-library-schedule-saved = { $count } note sul calendario salvate per { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = il percorso di una fonte deve essere assoluto
 core-library-source-exists = è già una fonte
@@ -994,7 +994,7 @@ core-library-scan-done =
         }{ $removed } mancanti
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = nessuna risposta entro { $span }
 core-library-agent-stopped-code = si è fermato con codice { $code }
@@ -1160,7 +1160,7 @@ core-downloads-name-not-folder = { $name } non è un nome di cartella
 core-downloads-pruned = Iscrizione a { $title } annullata, ha finito di andare in onda.
 core-downloads-prune-failed = Impossibile annullare l'iscrizione a { $title }. Controlla Download nelle Impostazioni.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } non è un semplice percorso assoluto, quindi non è stato rimosso nulla
 core-downloads-refuse-root = { $path } è la radice del filesystem, quindi non è stato rimosso nulla

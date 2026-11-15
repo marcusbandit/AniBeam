@@ -10,19 +10,19 @@ use std::time::Duration;
 
 use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, params_from_iter};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::i18n::tr;
-use crate::jobs::{Finished, JobCtx};
-use crate::library::Library;
-use crate::library::cards;
-use crate::library::history;
-use crate::library::readings;
-use crate::library::walk::{self, ScannedSeries};
-use crate::paths::{normalise, under};
-use crate::store::sql::placeholders;
-use crate::sync::recover;
-use crate::time;
+use crate::Library;
+use crate::cards;
+use crate::history;
+use crate::readings;
+use crate::walk::{self, ScannedSeries};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::paths::{normalise, under};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
 
 /// How long a folder has to sit still before the core believes the copying
 /// into it has finished and a match is worth attempting.
@@ -145,7 +145,7 @@ impl LibraryState {
         }
     }
 
-    pub(crate) fn is_matching(&self, series: u64) -> bool {
+    pub fn is_matching(&self, series: u64) -> bool {
         recover(&self.match_in_flight).contains(&series)
     }
 }
@@ -787,7 +787,7 @@ pub fn add_source(library: &Arc<Library>, path: &str) -> Result<Reply, CoreError
     library.services.bus.say(
         Level::Info,
         Stage::Library,
-        crate::words!("core-library-source-added", folder = folder_of(&path)),
+        anibeam_contract::words!("core-library-source-added", folder = folder_of(&path)),
         format!("source added: {path}"),
         EventBody::SourceChanged {
             source: source.clone(),
@@ -948,9 +948,9 @@ pub fn remove_source(library: &Library, source: u64) -> Result<Reply, CoreError>
         Level::Info,
         Stage::Library,
         if shows == 0 {
-            crate::words!("core-library-source-removed", folder = &folder)
+            anibeam_contract::words!("core-library-source-removed", folder = &folder)
         } else {
-            crate::words!(
+            anibeam_contract::words!(
                 "core-library-source-removed-with-shows",
                 folder = &folder,
                 count = shows
@@ -988,7 +988,7 @@ pub fn forget_series(services: &Services, series: u64) -> Result<Reply, CoreErro
     services.bus.say(
         Level::Info,
         Stage::Library,
-        crate::words!("core-library-series-forgotten", name = &name),
+        anibeam_contract::words!("core-library-series-forgotten", name = &name),
         format!("forgot {name}"),
         EventBody::SeriesRemoved { ids: vec![series] },
     );
@@ -1121,9 +1121,9 @@ async fn set_available(
     };
     let folder = folder_of(path);
     let said = if available {
-        crate::words!("core-library-source-back", folder = &folder)
+        anibeam_contract::words!("core-library-source-back", folder = &folder)
     } else {
-        crate::words!("core-library-source-unavailable", folder = &folder)
+        anibeam_contract::words!("core-library-source-unavailable", folder = &folder)
     };
     ctx.say(
         if available { Level::Info } else { Level::Warn },
@@ -1135,7 +1135,7 @@ async fn set_available(
 }
 
 /// The last part of a folder's path, which is how a person knows it.
-pub(crate) fn folder_of(path: &str) -> String {
+pub fn folder_of(path: &str) -> String {
     Path::new(path)
         .file_name()
         .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned())
@@ -1149,7 +1149,7 @@ fn scan_words(added: u64, changed: u64, removed: u64) -> Option<Words> {
         .into_iter()
         .find(|(_, n)| *n > 0)?
         .0;
-    Some(crate::words!(
+    Some(anibeam_contract::words!(
         "core-library-scan-done",
         first = first,
         added = added,
@@ -1286,7 +1286,7 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                         Err(e) => {
                             ctx.say(
                                 Level::Warn,
-                                crate::words!(
+                                anibeam_contract::words!(
                                     "core-library-source-unreadable",
                                     folder = folder_of(&path)
                                 ),
@@ -1314,7 +1314,7 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                         if held > 0 {
                             ctx.say(
                                 Level::Warn,
-                                crate::words!(
+                                anibeam_contract::words!(
                                     "core-library-source-looks-empty",
                                     folder = folder_of(&path)
                                 ),
@@ -1356,7 +1356,7 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                         Err(e) => {
                             ctx.say(
                                 Level::Warn,
-                                crate::words!(
+                                anibeam_contract::words!(
                                     "core-library-source-reconcile-failed",
                                     folder = folder_of(&path)
                                 ),
@@ -1532,8 +1532,8 @@ async fn resolve(services: &Services, scope: &ScanScope) -> Result<Plan, CoreErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::classifier::Classified;
-    use crate::store::Store;
+    use crate::classifier::Classified;
+    use anibeam_foundation::store::Store;
 
     fn scanned(kind: SeriesKind, path: &str, name: &str, files: &[&str]) -> ScannedSeries {
         let files = files
@@ -2105,12 +2105,12 @@ mod tests {
         let files = (1..=2)
             .map(|n| {
                 let name = format!("Girls und Panzer - OVA {n} [BD 1080p].mkv");
-                let classified = crate::library::classifier::classify(&name);
+                let classified = crate::classifier::classify(&name);
                 walk::ScannedFile {
                     path: format!("/lib/GuP/{name}"),
                     size: 1,
                     mtime: 1,
-                    episode_key: crate::library::classifier::episode_key(&classified, &name),
+                    episode_key: crate::classifier::episode_key(&classified, &name),
                     label: "Special".to_string(),
                     classified,
                     sidecars: Vec::new(),
@@ -2132,7 +2132,7 @@ mod tests {
         let files = ["Show - SP01.mkv", "Show - SP01v2.mkv"]
             .iter()
             .map(|name| {
-                let classified = crate::library::classifier::classify(name);
+                let classified = crate::classifier::classify(name);
                 walk::ScannedFile {
                     path: format!("/lib/Show/{name}"),
                     size: 1,
@@ -2140,7 +2140,7 @@ mod tests {
                     episode_key: if old {
                         name.to_string()
                     } else {
-                        crate::library::classifier::episode_key(&classified, name)
+                        crate::classifier::episode_key(&classified, name)
                     },
                     label: "Special 1".to_string(),
                     classified,

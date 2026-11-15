@@ -19,10 +19,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rusqlite::{Connection, params_from_iter};
 
-use crate::contract::{CoreError, FranchiseTag, TitleLanguage};
-use crate::foundation::relations::TRAVERSABLE;
-use crate::foundation::titles;
-use crate::store::sql::as_u64;
+use anibeam_contract::{CoreError, FranchiseTag, TitleLanguage};
+use anibeam_foundation::relations::TRAVERSABLE;
+use anibeam_foundation::store::sql::as_u64;
+use anibeam_foundation::titles;
 
 /// One library series as the grouping sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -299,7 +299,7 @@ pub fn strip_season(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::franchise::testing::*;
+    use anibeam_foundation::store::testing::*;
     use rusqlite::params;
 
     fn member(series: u64, anilist_id: u64, title: &str, released: &str) -> Member {

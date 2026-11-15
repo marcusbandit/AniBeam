@@ -21,12 +21,12 @@ use std::time::{Duration, Instant};
 use rusqlite::{Connection, params, params_from_iter};
 use serde_json::json;
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::i18n::tr;
-use crate::library::{cards, readings};
-use crate::percent;
-use crate::store::sql::placeholders;
+use crate::{cards, readings};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::percent;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::sql::placeholders;
 
 const NEW_ISSUE: &str = "https://github.com/marcusbandit/AniBeam/issues/new";
 /// What the triage process looks for in a quick fix's issue.
@@ -116,7 +116,7 @@ fn facts(
         }
     }
     Ok(Facts {
-        app: crate::VERSION.to_string(),
+        app: anibeam_net::VERSION.to_string(),
         title,
         folder,
         anilist,
@@ -158,18 +158,18 @@ fn folder_of(kind: &str, path: &str) -> String {
 // The agents --------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum AgentKind {
+pub enum AgentKind {
     Claude,
     Codex,
 }
 
-pub(crate) struct Agent {
-    pub(crate) kind: AgentKind,
-    pub(crate) path: PathBuf,
+pub struct Agent {
+    pub kind: AgentKind,
+    pub path: PathBuf,
 }
 
 impl Agent {
-    pub(crate) fn name(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self.kind {
             AgentKind::Claude => "Claude Code",
             AgentKind::Codex => "Codex",
@@ -239,7 +239,7 @@ pub(crate) fn find_agent() -> Option<Agent> {
 
 /// The agents installed on this machine, Claude Code first, with no stand
 /// in: what a caller with its own override looks for.
-pub(crate) fn find_installed() -> Option<Agent> {
+pub fn find_installed() -> Option<Agent> {
     let dirs = search_dirs();
     [(AgentKind::Claude, "claude"), (AgentKind::Codex, "codex")]
         .into_iter()
@@ -280,7 +280,7 @@ fn end_group(child: &mut std::process::Child) {
 
 /// Kills a process group by its leader's pid: the agent and everything it
 /// started, an npm shim's real agent included.
-pub(crate) fn kill_group(pid: u32) {
+pub fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
         let _ = Command::new("kill")
@@ -294,7 +294,7 @@ pub(crate) fn kill_group(pid: u32) {
 }
 
 /// A fresh empty folder in the temp dir for one agent run, named `stem`.
-pub(crate) fn fresh_dir(stem: &str) -> std::io::Result<PathBuf> {
+pub fn fresh_dir(stem: &str) -> std::io::Result<PathBuf> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -306,7 +306,7 @@ pub(crate) fn fresh_dir(stem: &str) -> std::io::Result<PathBuf> {
 
 /// The PATH an agent runs with: its own folder first, so a script-installed
 /// agent finds the runtime installed beside it, then the usual places.
-pub(crate) fn agent_path_env(agent: &Path) -> Option<std::ffi::OsString> {
+pub fn agent_path_env(agent: &Path) -> Option<std::ffi::OsString> {
     let mut path = Vec::new();
     if let Some(own) = agent.parent() {
         path.push(own.to_path_buf());
@@ -490,7 +490,7 @@ fn prompt(f: &Facts) -> String {
         String::new(),
         "Past the name, Anibeam applies one rule: a series whose record is format SPECIAL or OVA and that holds no regular episode reads its numbered specials as its episodes.".to_string(),
         String::new(),
-        "The name reader, core/src/library/classifier.rs:".to_string(),
+        "The name reader, library/src/classifier.rs:".to_string(),
         String::new(),
         "```rust".to_string(),
         CLASSIFIER.to_string(),

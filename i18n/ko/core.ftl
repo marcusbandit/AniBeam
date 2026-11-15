@@ -800,7 +800,7 @@ core-transfer-wrong-format = { $format } 문서가 아니에요
 
 core-transfer-imported = 파일에서 라이브러리를 불러왔어요.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 라이브러리에 파일 { $id }이(가) 없어요
 core-library-file-elsewhere-not-removed = 파일 { $id }은(는) 다른 작품의 파일이라 아무것도 제거하지 않았어요
@@ -821,7 +821,7 @@ core-library-watched-removed =
        *[trash] 휴지통으로 옮겼어요
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     여기 있는 파일 하나가 { $read ->
@@ -836,7 +836,7 @@ core-library-fix-numbered-on = { $from }화는 이전 시즌에서 이어 매긴
 core-library-runs-span = { $first }~{ $last }
 core-library-runs-list = { $init }, { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 에피소드 번호는 0부터 10000까지예요
 core-library-fix-season-range = 시즌은 200까지예요
@@ -851,7 +851,7 @@ core-library-fixed =
        *[other] { $title } 파일 { $count }개를 읽는 방식을 수정했어요.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title }을(를) 숨겼어요.
 core-library-back-one = { $title }이(가) 다시 보여요.
@@ -860,12 +860,12 @@ core-library-back-many = 작품 { $count }개가 다시 보여요.
 core-library-episode-count-set = 이제 { $title }은(는) 에피소드 { $count }개예요.
 core-library-episode-count-cleared = { $title }의 에피소드 수를 지웠어요.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = { $title }의 방영 일정 메모를 지웠어요.
 core-library-schedule-saved = { $title }의 방영 일정 메모 { $count }개를 저장했어요.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 소스 경로는 절대 경로여야 해요
 core-library-source-exists = 이미 추가된 소스예요
@@ -900,7 +900,7 @@ core-library-scan-done =
         }누락 { $removed }개
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 안에 응답 없음
 core-library-agent-stopped-code = 코드 { $code }(으)로 멈췄어요
@@ -1058,7 +1058,7 @@ core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
 core-downloads-pruned = { $title } 방영이 끝나서 구독을 해지했어요.
 core-downloads-prune-failed = { $title } 구독을 해지하지 못했어요. 설정의 다운로드를 확인하세요.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path }은(는) 일반 절대 경로가 아니라서 아무것도 제거하지 않았어요
 core-downloads-refuse-root = { $path }은(는) 파일 시스템 루트라서 아무것도 제거하지 않았어요

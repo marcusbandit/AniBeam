@@ -16,11 +16,11 @@ use notify_debouncer_full::{
     DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer_opt,
 };
 
-use crate::contract::*;
-use crate::foundation::names::is_video;
-use crate::library::Library;
-use crate::library::walk::is_ignored_name;
-use crate::sync::recover;
+use crate::Library;
+use crate::walk::is_ignored_name;
+use anibeam_contract::*;
+use anibeam_foundation::names::is_video;
+use anibeam_foundation::sync::recover;
 
 /// How long the debouncer waits for a path to go quiet before it reports.
 /// notify ticks at a quarter of this on its own.
