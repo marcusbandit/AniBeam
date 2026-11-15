@@ -598,3 +598,10 @@ a.pr-pill:hover { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0
   .feat-cast .cast-arc { display: none; }
   .credits { padding: 72px var(--gutter) 48px; }
 }
+
+/* Phones: every promise puts its pill on the line under it, so the five read alike whether or
+   not a short word left room beside it. */
+@media (max-width: 760px) {
+  .promises li { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 14px; padding: 22px 0; }
+  .pr-word { font-size: clamp(36px, 11vw, 48px); }
+}
