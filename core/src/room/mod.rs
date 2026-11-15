@@ -1180,7 +1180,7 @@ fn on_welcome(
         a.connected = true;
         // Anything sent before this welcome was dropped with the connection.
         a.settle(room.state);
-        if room.state.playing {
+        if played(&room.state) {
             a.started = true;
         }
         let same = |a: Option<&proto::EpisodeRef>, b: Option<&proto::EpisodeRef>| match (a, b) {
@@ -1213,7 +1213,7 @@ fn on_welcome(
                 a.detach();
                 a.timeline = None;
                 a.fresh_episode();
-                if room.state.playing {
+                if played(&room.state) {
                     a.started = true;
                 }
             }
@@ -1247,6 +1247,13 @@ fn on_welcome(
         find(playback, serial, e);
     }
     true
+}
+
+/// Whether a room's state shows its episode has played: playing now, or
+/// paused past the start. A core that joins late, comes back after a restart
+/// or takes over as host learns it from here, having seen no play itself.
+fn played(state: &PlayState) -> bool {
+    state.playing || state.position > 0.0
 }
 
 /// Looks for the room's episode in this library and says what it found.
@@ -1366,11 +1373,12 @@ fn on_message(playback: &Playback, serial: u64, msg: ServerMsg) -> bool {
             ServerMsg::State { state, by } => out.extend(take_state(a, state, by)),
             ServerMsg::Members { members } => {
                 let before = std::mem::replace(&mut a.members, members);
-                // The gate ends with the host role, and opens once everyone is ready
+                // The gate ends with the host role. Waiting for everyone opens it
+                // once everyone is ready; asking still waits for the host's choice.
                 if a.gate != RoomGate::Off {
                     if !a.is_host() {
                         a.gate = RoomGate::Off;
-                    } else if a.all_ready() {
+                    } else if a.gate == RoomGate::Waiting && a.all_ready() {
                         out.extend(a.open_gate());
                     }
                 }

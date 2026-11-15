@@ -53,14 +53,20 @@ pub fn same(a: &proto::EpisodeRef, b: &proto::EpisodeRef) -> bool {
 
 /// Whether a member's session plays the room's episode: a show id in common, and
 /// the same key or, when the keys differ, the same number, as a copy filed under
-/// its season ("S03E06" for "6") is.
+/// its season ("S03E06" for "6") is. Keys that both name a season must name the
+/// same one: a TVmaze show shares its id across seasons, so S01E06 is not S02E06.
 pub fn plays(mine: &proto::EpisodeRef, room: &proto::EpisodeRef) -> bool {
     let shared = |a: Option<i64>, b: Option<i64>| a.is_some() && a == b;
     let show = shared(mine.anilist_id, room.anilist_id)
         || shared(mine.mal_id, room.mal_id)
         || shared(mine.tvmaze_id, room.tvmaze_id);
+    let season = match (season_of(&mine.episode_key), season_of(&room.episode_key)) {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
     let episode = mine.episode_key == room.episode_key
-        || matches!((mine.number, room.number), (Some(a), Some(b)) if (a - b).abs() < 0.001);
+        || (season
+            && matches!((mine.number, room.number), (Some(a), Some(b)) if (a - b).abs() < 0.001));
     show && episode
 }
 
@@ -352,6 +358,25 @@ mod tests {
         .unwrap();
         let found = find_local(&c, &episode(Some(21), None, "1")).unwrap();
         assert_eq!(found.opening, Some(92.5));
+    }
+
+    #[test]
+    fn a_session_plays_the_room_s_episode_only_in_the_same_season() {
+        let at = |key: &str, number: f64| proto::EpisodeRef {
+            number: Some(number),
+            ..episode(None, Some(5), key)
+        };
+        assert!(plays(&at("S02E06", 6.0), &at("S02E06", 6.0)));
+        // A copy filed under its season, or with a key that names none
+        assert!(plays(&at("S03E06", 6.0), &at("6", 6.0)));
+        assert!(plays(&at("6", 6.0), &at("S3E6", 6.0)));
+        // The same number in another season is another episode
+        assert!(!plays(&at("S01E06", 6.0), &at("S02E06", 6.0)));
+        assert!(!plays(&at("S02E05", 5.0), &at("S02E06", 6.0)));
+        // Another show altogether
+        let mut other = at("S02E06", 6.0);
+        other.tvmaze_id = Some(6);
+        assert!(!plays(&other, &at("S02E06", 6.0)));
     }
 
     #[test]

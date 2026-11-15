@@ -1056,7 +1056,11 @@ async fn rest_of_show(
         }
     }
     if found.is_empty() {
-        no_rest(playback, serial, "no more of the host's release in the sources");
+        no_rest(
+            playback,
+            serial,
+            "no more of the host's release in the sources",
+        );
         return;
     }
     let count = found.len();
@@ -1620,7 +1624,10 @@ mod tests {
         };
         // A TVmaze show keeps its seasons in one series: season one is here,
         // the room is on season two, and none of it counts
-        let tv = library("tvmaze", &[(1, Some(1)), (2, Some(1)), (3, None), (1, Some(2))]);
+        let tv = library(
+            "tvmaze",
+            &[(1, Some(1)), (2, Some(1)), (3, None), (1, Some(2))],
+        );
         assert_eq!(have(&tv, "S02E05"), vec![1.0]);
         assert_eq!(have(&tv, "S01E05"), vec![1.0, 2.0, 3.0]);
         assert_eq!(have(&tv, "5"), vec![1.0, 2.0, 3.0]);
