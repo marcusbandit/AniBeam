@@ -13,13 +13,13 @@ use std::time::SystemTime;
 use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
-use crate::contract::*;
-use crate::library::cards::aired_and_scheduled;
-use crate::library::schedule::{self, NoteRow};
-use crate::library::sidecar::sidecars_of;
-use crate::net::tvmaze;
-use crate::prefs;
-use crate::store::sql::placeholders;
+use crate::cards::aired_and_scheduled;
+use crate::schedule::{self, NoteRow};
+use crate::sidecar::sidecars_of;
+use anibeam_contract::*;
+use anibeam_foundation::prefs;
+use anibeam_foundation::store::sql::placeholders;
+use anibeam_net::tvmaze;
 
 // ---------------------------------------------------------------------------
 // The rows one read loads
@@ -278,7 +278,7 @@ const IMDB_SQL: &str = "WITH scoped AS (
 /// `IMDB_SQL` over the whole library with `scope` None, or over exactly
 /// the named series. The cards read it, and the IMDb refresh reads it
 /// either side of a replace to learn which cards it changed.
-pub(crate) fn imdb_picks(
+pub fn imdb_picks(
     conn: &Connection,
     scope: Option<&[u64]>,
 ) -> Result<HashMap<u64, ImdbPick>, CoreError> {
@@ -314,7 +314,7 @@ impl Snapshot {
     ) -> Result<Snapshot, CoreError> {
         Self::load_for(
             conn,
-            crate::foundation::trust::OWNER,
+            anibeam_foundation::trust::OWNER,
             images_dir,
             now,
             scope,
@@ -381,7 +381,7 @@ impl Snapshot {
         snap.load_tracker_entries(conn, profile, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, profile, scoped_series)?;
         // The list kept on this device is the owner's until it gets a profile (#632).
-        if profile == crate::foundation::trust::OWNER {
+        if profile == anibeam_foundation::trust::OWNER {
             snap.load_local_entries(conn, scoped_series)?;
         }
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
@@ -663,7 +663,7 @@ impl Snapshot {
     /// seasons on disk before it plus that. The schedule itself is never
     /// edited, since other folders may share it: `clip` cuts it on read.
     fn apply_episodes_set(&mut self) {
-        let now = crate::time::to_secs(self.now);
+        let now = anibeam_foundation::time::to_secs(self.now);
         let mut applied: Vec<(usize, u32)> = Vec::new();
         for (i, row) in self.series.iter().enumerate() {
             let Some(set) = row.episodes_set else {
@@ -996,7 +996,7 @@ impl Snapshot {
     /// AniList match that is the media's schedule; for a TVmaze match it is
     /// one season of the show, the one `card_season` names, since TVmaze
     /// numbers its episodes within a season.
-    pub(crate) fn airing_of(&self, row: &SeriesRow) -> &[AiringRow] {
+    pub fn airing_of(&self, row: &SeriesRow) -> &[AiringRow] {
         if let Some(season) = self.card_season(row) {
             return self.tv_season(row, season).unwrap_or(&[]);
         }
@@ -1025,7 +1025,7 @@ impl Snapshot {
     /// that is the one being watched, with a file that names no season
     /// read as season 1, and season 1 for a folder with no episodes yet.
     /// None for every other provider, whose numbers carry no season.
-    pub(crate) fn card_season(&self, row: &SeriesRow) -> Option<u32> {
+    pub fn card_season(&self, row: &SeriesRow) -> Option<u32> {
         (row.provider == Some(Provider::Tvmaze))
             .then(|| self.seasons_on_disk(row).last().copied().unwrap_or(1))
     }
@@ -1040,7 +1040,7 @@ impl Snapshot {
     }
 
     /// Every season of a TVmaze match's show, each as `tv_season` reads it.
-    pub(crate) fn tv_seasons_of<'a>(
+    pub fn tv_seasons_of<'a>(
         &'a self,
         row: &'a SeriesRow,
     ) -> impl Iterator<Item = (u32, &'a [AiringRow])> + 'a {
@@ -1086,7 +1086,7 @@ impl Snapshot {
     /// season on disk, which is the number the folder's count is measured
     /// in, and the earliest episode still to come in any season, so an
     /// announced next season is what is next.
-    pub(crate) fn aired_and_next(&self, row: &SeriesRow, now: i64) -> (u32, Option<NextEpisode>) {
+    pub fn aired_and_next(&self, row: &SeriesRow, now: i64) -> (u32, Option<NextEpisode>) {
         if row.provider != Some(Provider::Tvmaze) {
             return aired_and_scheduled(self.airing_of(row), now);
         }

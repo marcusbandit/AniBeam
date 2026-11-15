@@ -8,12 +8,12 @@ use std::path::Path;
 
 use rusqlite::Connection;
 
-use crate::contract::*;
-use crate::foundation::titles;
-use crate::library::labels;
-use crate::library::schedule::{NoteRow, When};
-use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
-use crate::time;
+use crate::labels;
+use crate::schedule::{NoteRow, When};
+use crate::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
+use anibeam_contract::*;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
 
 // ---------------------------------------------------------------------------
 // The pure rules
@@ -31,7 +31,7 @@ pub const CUBES_MAX: u32 = 400;
 /// marks its episodes: within the tracker's progress, or played to the end here. The
 /// tracker's progress counts one season, so it only applies to a folder holding one, and
 /// never past the provider's own count. A film once watched in either. An extra never is.
-pub(crate) struct Watched<'a> {
+pub struct Watched<'a> {
     done: HashSet<&'a str>,
     progress: Option<u32>,
     film: bool,
@@ -593,7 +593,7 @@ impl Snapshot {
     }
 
     /// What decides whether a file of `row` is watched (#266), read once per series.
-    pub(crate) fn watched_of(&self, row: &SeriesRow) -> Watched<'_> {
+    pub fn watched_of(&self, row: &SeriesRow) -> Watched<'_> {
         let files = self.files_of(row.id);
         let seasons: BTreeSet<u32> = files
             .iter()
@@ -634,7 +634,7 @@ impl Snapshot {
     /// Confirmed done with: the provider says Finished, and every episode of the provider's
     /// own count is watched. A guessed or hand-set count never counts, nor does a show still
     /// airing, on hiatus or with no status at all.
-    pub(crate) fn finished_watched(&self, row: &SeriesRow, w: &Watched) -> bool {
+    pub fn finished_watched(&self, row: &SeriesRow, w: &Watched) -> bool {
         let finished = row
             .media
             .as_ref()

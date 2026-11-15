@@ -520,6 +520,9 @@ core-first-run-not-absolute = le dossier des vidéos doit être un chemin absolu
 ## core/src/presence/mod.rs
 
 core-presence-extra = Bonus
+core-presence-room = Regarder ensemble
+core-presence-in-room = Dans un salon
+core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demandez-lui d'en ouvrir un.
 
 ## core/src/trackers/accounts.rs
 
@@ -859,7 +862,7 @@ core-transfer-wrong-format = ce n'est pas un document { $format }
 
 core-transfer-imported = Bibliothèque chargée depuis le fichier.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = aucun fichier { $id } dans la bibliothèque
 core-library-file-elsewhere-not-removed = le fichier { $id } appartient à une autre série, donc rien n'a été retiré
@@ -898,7 +901,7 @@ core-library-watched-removed =
         }.
     }
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Le seul fichier ici se lit comme { $read ->
@@ -920,7 +923,7 @@ core-library-fix-numbered-on = Les épisodes { $from } semblent être les { $to 
 core-library-runs-span = { $first } à { $last }
 core-library-runs-list = { $init } et { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = un numéro d'épisode va de 0 à 10000
 core-library-fix-season-range = une saison va jusqu'à 200
@@ -937,7 +940,7 @@ core-library-fixed =
        *[other] Lecture de { $count } fichiers de { $title } corrigée.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } masquée.
 core-library-back-one = { $title } est de retour.
@@ -946,12 +949,12 @@ core-library-back-many = { $count } séries sont de retour.
 core-library-episode-count-set = { $title } compte maintenant { $count } épisodes.
 core-library-episode-count-cleared = Nombre d'épisodes de { $title } effacé.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Notes de planning de { $title } effacées.
 core-library-schedule-saved = { $count } notes de planning enregistrées pour { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = le chemin d'une source doit être absolu
 core-library-source-exists = c'est déjà une source
@@ -996,7 +999,7 @@ core-library-scan-done =
         }
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = pas de réponse en { $span }
 core-library-agent-stopped-code = il s'est arrêté avec le code { $code }
@@ -1166,7 +1169,7 @@ core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
 core-downloads-pruned = Désabonné de { $title }, sa diffusion est terminée.
 core-downloads-prune-failed = Impossible de se désabonner de { $title }. Vérifiez Téléchargements dans les réglages.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } n'est pas un simple chemin absolu, donc rien n'a été retiré
 core-downloads-refuse-root = { $path } est la racine du système de fichiers, donc rien n'a été retiré

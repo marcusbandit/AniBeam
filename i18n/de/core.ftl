@@ -520,6 +520,9 @@ core-first-run-not-absolute = der Videoordner muss ein absoluter Pfad sein
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Gemeinsam schauen
+core-presence-in-room = In einem Raum
+core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
 
 ## core/src/trackers/accounts.rs
 
@@ -859,7 +862,7 @@ core-transfer-wrong-format = kein { $format }-Dokument
 
 core-transfer-imported = Deine Bibliothek wurde aus der Datei geladen.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = keine Datei { $id } in der Bibliothek
 core-library-file-elsewhere-not-removed = Datei { $id } gehört zu einer anderen Serie, also wurde nichts entfernt
@@ -889,7 +892,7 @@ core-library-watched-removed =
        *[trash] in den Papierkorb verschoben
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Die einzige Datei hier wird gelesen als { $read ->
@@ -911,7 +914,7 @@ core-library-fix-numbered-on = Die Folgen { $from } sehen aus wie { $to } dieses
 core-library-runs-span = { $first } bis { $last }
 core-library-runs-list = { $init } und { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = eine Folgennummer liegt zwischen 0 und 10000
 core-library-fix-season-range = eine Staffel geht bis 200
@@ -928,7 +931,7 @@ core-library-fixed =
        *[other] Lesart von { $count } Dateien von { $title } korrigiert.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } ausgeblendet.
 core-library-back-one = { $title } ist wieder da.
@@ -937,12 +940,12 @@ core-library-back-many = { $count } Serien sind wieder da.
 core-library-episode-count-set = { $title } hat jetzt { $count } Folgen.
 core-library-episode-count-cleared = Folgenzahl von { $title } gelöscht.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Sendeplan-Notizen von { $title } gelöscht.
 core-library-schedule-saved = { $count } Sendeplan-Notizen für { $title } gespeichert.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = ein Quellpfad muss absolut sein
 core-library-source-exists = schon eine Quelle
@@ -984,7 +987,7 @@ core-library-scan-done =
         }{ $removed } fehlen
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = keine Antwort innerhalb von { $span }
 core-library-agent-stopped-code = er hat mit Code { $code } aufgehört
@@ -1154,7 +1157,7 @@ core-downloads-name-not-folder = { $name } ist kein Ordnername
 core-downloads-pruned = Abo von { $title } beendet, die Serie ist zu Ende gelaufen.
 core-downloads-prune-failed = Abo von { $title } konnte nicht beendet werden. Prüfe Downloads in den Einstellungen.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } ist kein einfacher absoluter Pfad, also wurde nichts entfernt
 core-downloads-refuse-root = { $path } ist die Wurzel des Dateisystems, also wurde nichts entfernt

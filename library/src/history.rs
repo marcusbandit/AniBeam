@@ -16,10 +16,10 @@ use std::collections::HashSet;
 
 use rusqlite::{Transaction, params};
 
-use crate::contract::CoreError;
+use anibeam_contract::CoreError;
 
 /// One file whose key changed.
-pub(crate) struct Move {
+pub struct Move {
     pub file: u64,
     pub from: String,
     pub to: String,
@@ -36,7 +36,7 @@ const LOOSE: [&str; 2] = ["views", "watch_log"];
 /// Where a finish in the watch log came from (#593). The migration that made
 /// the log writes a fourth, `copied`, for the history from before it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum How {
+pub enum How {
     /// The player reached the end of the episode here.
     Played,
     /// Progress set by hand. Stats leaves it out.
@@ -46,7 +46,7 @@ pub(crate) enum How {
 }
 
 impl How {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             How::Played => "played",
             How::Marked => "marked",
@@ -57,7 +57,7 @@ impl How {
 
 /// Appends one finish of an episode to the watch log. `completed` keeps the
 /// latest finish on its own; the log keeps every one.
-pub(crate) fn log_finish(
+pub fn log_finish(
     conn: &rusqlite::Connection,
     profile: u64,
     series: u64,
@@ -78,7 +78,7 @@ pub(crate) fn log_finish(
 /// that lands on a key holding history of its own merges into it: the newer
 /// completion, the resume point further in, and the skip windows already
 /// there.
-pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<(), CoreError> {
+pub fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<(), CoreError> {
     if moves.iter().all(|m| m.from == m.to) {
         return Ok(());
     }
@@ -170,7 +170,7 @@ pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::Store;
+    use anibeam_foundation::store::Store;
 
     fn setup(
         keys: &[&str],

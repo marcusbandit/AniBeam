@@ -5,9 +5,9 @@
 
 use std::cmp::Ordering;
 
-use crate::contract::*;
-use crate::library::cards;
-use crate::time;
+use crate::cards;
+use anibeam_contract::*;
+use anibeam_foundation::time;
 
 /// The title a card sorts by. A native title sorts by its romaji: kanji
 /// carry no reading, so code point order would scatter them.

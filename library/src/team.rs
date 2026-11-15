@@ -4,20 +4,20 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::contract::{CoreError, SeriesCard, SeriesDetail};
-use crate::events::Signal;
-use crate::foundation::above::Above;
-use crate::foundation::services::Services;
-use crate::library::reads::KeptLoad;
-use crate::library::scan::{self, LibraryState, ScanScope};
-use crate::library::watcher::{self, Trigger, Watcher};
-use crate::net::Net;
-use crate::sync::recover;
+use crate::reads::KeptLoad;
+use crate::scan::{self, LibraryState, ScanScope};
+use crate::watcher::{self, Trigger, Watcher};
+use anibeam_contract::{CoreError, SeriesCard, SeriesDetail};
+use anibeam_foundation::above::Above;
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_net::Net;
 
 /// What the library asks of the team that brings files into it, the
 /// downloads above it (#854). The downloads implement it and `Core::open`
 /// links them to `Library::incoming`, so the library names no team above it.
-pub(crate) trait Incoming: Send + Sync {
+pub trait Incoming: Send + Sync {
     /// Lays what a torrent is still writing over these cards.
     fn overlay(self: Arc<Self>, cards: &mut [SeriesCard]);
     /// The same over one series' detail, its episodes marked as well.
@@ -36,7 +36,7 @@ pub struct Library {
     pub(crate) net: Arc<Net>,
     /// The library's in-memory state: the movie folders each source's walk
     /// found, the watcher's queue of paths, and the settle timers.
-    pub(crate) state: LibraryState,
+    pub state: LibraryState,
     /// Built by `Core::start` and dropped first by `Core::shutdown`. `None`
     /// before `start` and after `shutdown`, so a call that arrives on either
     /// side of the core's life finds nothing to watch with rather than
@@ -49,15 +49,15 @@ pub struct Library {
     /// the rest of its state generation (`library::reads`). Off by default
     /// because a test that writes rows behind the core's back emits no
     /// event and would read its own stale load.
-    pub(crate) snapshot_cache: AtomicBool,
-    pub(crate) kept_load: Mutex<Option<KeptLoad>>,
+    pub snapshot_cache: AtomicBool,
+    pub kept_load: Mutex<Option<KeptLoad>>,
     /// What is still downloading, for the cards, and the torrents a delete
     /// takes with it: the downloads, through the library's own trait.
-    pub(crate) incoming: Above<dyn Incoming>,
+    pub incoming: Above<dyn Incoming>,
 }
 
 impl Library {
-    pub(crate) fn new(services: Arc<Services>, net: Arc<Net>, closed: Arc<AtomicBool>) -> Library {
+    pub fn new(services: Arc<Services>, net: Arc<Net>, closed: Arc<AtomicBool>) -> Library {
         Library {
             services,
             net,
@@ -77,14 +77,14 @@ impl Library {
     /// Puts the watcher in its slot, empty. Installing a watch means walking
     /// every directory under a root, which is disk work at library scale, so
     /// it belongs to the scans rather than to the caller.
-    pub(crate) fn set_watcher(&self, watcher: Watcher) {
+    pub fn set_watcher(&self, watcher: Watcher) {
         *self.watcher() = Some(Arc::new(watcher));
     }
 
     /// Takes the watcher out of its slot and stops it. Taken out of the mutex
     /// before it is stopped: the debouncer's thread dispatches into this
     /// team, so it has to be gone before the runtime and the store are.
-    pub(crate) fn stop_watcher(&self) {
+    pub fn stop_watcher(&self) {
         let watcher = self.watcher().take();
         if let Some(watcher) = watcher {
             watcher.stop();

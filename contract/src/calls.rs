@@ -364,6 +364,30 @@ pub enum Call {
     /// Whether this build can show what plays on Discord, and whether it is
     /// talking to a Discord client right now. Never touches the socket.
     GetPresence,
+    /// The answer to a `DiscordJoinAsk`. Yes lets them in: into the room open now, or a
+    /// room started for what plays (none, when nothing does). No closes the ask and
+    /// never shows that person again on this machine. Answers `Room`.
+    DiscordAnswer {
+        user_id: String,
+        allow: bool,
+    },
+    /// The people who were told no on Discord, newest first.
+    DiscordBlocked,
+    /// Lets one person, or with `None` everyone, ask again. Answers `DiscordBlocked`.
+    DiscordUnblock {
+        user_id: Option<String>,
+    },
+    /// Whether anyone on Discord may join the room this person is in without asking.
+    /// Each room starts invite only. Answers `Presence`.
+    DiscordSetRoomOpen {
+        open: bool,
+    },
+    /// Discord launched the app to hand over a join: stay connected for a moment with
+    /// nothing to show so it can. Answers `Presence`.
+    DiscordListen,
+    /// The room Discord last asked this app to join, once: a window that opens after the
+    /// join came (Discord launched the app for it) takes it here. Answers `DiscordJoin`.
+    DiscordTakeJoin,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -960,6 +984,15 @@ pub enum Reply {
     Presence {
         available: bool,
         connected: bool,
+        /// The room this person is in can be joined from Discord without asking.
+        #[serde(default)]
+        room_open: bool,
+    },
+    DiscordBlocked {
+        people: Vec<DiscordPerson>,
+    },
+    DiscordJoin {
+        code: Option<String>,
     },
     Settings {
         settings: Settings,
