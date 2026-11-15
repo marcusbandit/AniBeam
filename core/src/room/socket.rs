@@ -62,12 +62,17 @@ pub enum Fail {
     Refused(String),
     /// The relay did not answer.
     Unreachable(String),
+    /// The relay is from before rooms could start with nothing picked (#922).
+    NeedsEpisode,
 }
 
 impl Fail {
     pub fn to_error(&self) -> CoreError {
         match self {
             Fail::NotFound => super::error("not_found", crate::words!("core-room-not-found")),
+            Fail::NeedsEpisode => {
+                super::error("needs_episode", crate::words!("core-room-needs-episode"))
+            }
             Fail::Refused(m) => {
                 super::error("refused", crate::words!("core-room-refused", message = m))
             }
@@ -79,21 +84,26 @@ impl Fail {
     }
 }
 
-/// Makes a room on the relay: its code and the host key.
+/// Makes a room on the relay: its code and the host key. With no episode the
+/// room starts with nothing picked (#922).
 pub async fn create(
     client: &reqwest::Client,
     relay: &str,
-    episode: &EpisodeRef,
+    episode: Option<&EpisodeRef>,
 ) -> Result<CreatedRoom, Fail> {
     let response = client
         .post(format!("{relay}/rooms"))
         .json(&CreateRoom {
-            episode: episode.clone(),
+            episode: episode.cloned(),
         })
         .send()
         .await
         .map_err(|e| Fail::Unreachable(crate::net::url_shown(relay) + ": " + &plain(&e)))?;
     let status = response.status();
+    // A relay from before #922 wants an episode in every new room
+    if episode.is_none() && status == StatusCode::BAD_REQUEST {
+        return Err(Fail::NeedsEpisode);
+    }
     if status != StatusCode::CREATED {
         let body = response.text().await.unwrap_or_default();
         return Err(Fail::Refused(refusal(status, &body)));
@@ -313,6 +323,7 @@ impl Link<'_> {
             host_key: self.host_key.map(str::to_string),
             rejoin_key: rejoin.clone(),
             key: Some(self.key.to_string()),
+            unpicked: true,
         };
         if sink.send(text(&hello)).await.is_err() {
             return End::Dropped { welcomed: false };

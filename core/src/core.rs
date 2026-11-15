@@ -1006,7 +1006,8 @@ impl Core {
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
             | Call::RoomStatus
-            | Call::RoomGetMedia) => room::call(&self.playback, c),
+            | Call::RoomGetMedia { .. }
+            | Call::RoomStart { .. }) => room::call(&self.playback, c),
         }
     }
 

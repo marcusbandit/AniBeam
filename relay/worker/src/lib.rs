@@ -2,7 +2,8 @@
 //!
 //! The same routes as the native relay in `apps/relay`:
 //!
-//! - `POST /rooms` with `{"episode": EpisodeRef}` makes a room: `201` with
+//! - `POST /rooms` with `{"episode": EpisodeRef}`, or `{}` for a room with
+//!   nothing picked yet (#922), makes a room: `201` with
 //!   `{"code", "host_key"}`.
 //! - `GET /rooms/{code}/ws` joins one over WebSocket; `404` when it does not exist.
 //! - `GET /` is the find page, where a code is typed; `/?code=...` goes to
@@ -155,7 +156,9 @@ async fn allowed(env: &Env, binding: &str, req: &Request) -> bool {
 #[derive(Serialize, Deserialize)]
 struct Init {
     code: String,
-    episode: EpisodeRef,
+    /// None for a room that has not picked an episode yet (#922).
+    #[serde(default)]
+    episode: Option<EpisodeRef>,
 }
 
 async fn create(mut req: Request, env: &Env) -> Result<Response> {
@@ -176,7 +179,7 @@ async fn create(mut req: Request, env: &Env) -> Result<Response> {
         return text(413, "length limit exceeded");
     }
     let Ok(request) = serde_json::from_slice::<CreateRoom>(&body) else {
-        return text(400, "expected {\"episode\": ...}");
+        return text(400, "expected {} or {\"episode\": ...}");
     };
     let namespace = env.durable_object(ROOMS)?;
     for _ in 0..CODE_TRIES {
