@@ -17,8 +17,8 @@ use axum::routing::get;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::media::Prepared;
-use crate::foundation::range::{Range, byte_range};
-use crate::sync::recover;
+use anibeam_foundation::range::{Range, byte_range};
+use anibeam_foundation::sync::recover;
 
 /// What one token serves.
 pub struct Served {
@@ -267,8 +267,8 @@ async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
         url.push(sep);
         url.push_str(&format!(
             "{}={}",
-            crate::percent::encode(k),
-            crate::percent::encode(v)
+            anibeam_foundation::percent::encode(k),
+            anibeam_foundation::percent::encode(v)
         ));
         sep = '&';
     }

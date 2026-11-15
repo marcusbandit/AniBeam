@@ -44,15 +44,15 @@ use tokio::sync::{Notify, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use self::sync::{Clock, Drift, LocalTick};
-use crate::contract::*;
-use crate::downloads::Downloads;
-use crate::foundation::services::Services;
-use crate::library::Library;
-use crate::metadata::Metadata;
-use crate::playback::{Follower, Playback};
-use crate::prefs;
 use crate::presence::JoinRooms;
-use crate::store::settings;
+use crate::{Follower, Playback};
+use anibeam_contract::*;
+use anibeam_downloads::Downloads;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_library::Library;
+use anibeam_metadata::Metadata;
 
 /// The largest offset a member may set, in seconds either way.
 pub const MAX_OFFSET: f64 = 600.0;
@@ -95,7 +95,7 @@ pub struct Rooms {
 }
 
 impl Rooms {
-    pub(crate) fn new(
+    pub fn new(
         services: Arc<Services>,
         playback: Arc<Playback>,
         downloads: Arc<Downloads>,
@@ -115,7 +115,7 @@ impl Rooms {
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Active>> {
-        crate::sync::recover(&self.active)
+        anibeam_foundation::sync::recover(&self.active)
     }
 
     /// The least time between two corrections, in place of a second. Not part of
@@ -496,31 +496,34 @@ pub(crate) fn local_ms() -> u64 {
 /// `unreachable`, `refused`, `proto`, `not_in_room`), the words are for people.
 pub(crate) fn error(code: &str, words: Words) -> CoreError {
     CoreError::service(
-        crate::i18n::tr("core-room-service", &[]),
+        anibeam_contract::i18n::tr("core-room-service", &[]),
         code.to_string(),
         words.render(),
     )
 }
 
 fn not_in_room() -> CoreError {
-    error("not_in_room", crate::words!("core-room-not-in"))
+    error("not_in_room", anibeam_contract::words!("core-room-not-in"))
 }
 
 // A name as the relay takes it, and whether a relay address can be used: the
 // relay crate's rule, and the one the preferences check on a save (#854).
-use crate::prefs::relay_ok;
+use anibeam_foundation::prefs::relay_ok;
 use anibeam_room::room::clean_name;
 
 /// The name and the relay from the preferences, or why they cannot be used.
 fn who(services: &Services) -> Result<(String, String), CoreError> {
     let p = services.store.read(prefs::load_preferences)?;
     let name = clean_name(&p.room_name).ok_or_else(|| {
-        CoreError::invalid("room_name", crate::i18n::tr("core-room-no-name", &[]))
+        CoreError::invalid(
+            "room_name",
+            anibeam_contract::i18n::tr("core-room-no-name", &[]),
+        )
     })?;
     if !relay_ok(&p.room_relay) {
         return Err(CoreError::invalid(
             "room_relay",
-            crate::i18n::tr("core-prefs-room-relay", &[]),
+            anibeam_contract::i18n::tr("core-prefs-room-relay", &[]),
         ));
     }
     Ok((name, p.room_relay.trim().trim_end_matches('/').to_string()))
@@ -545,7 +548,7 @@ fn save_offset(conn: &Connection, file: u64, offset: f64) -> Result<(), CoreErro
 // The calls
 // ---------------------------------------------------------------------------
 
-pub(crate) fn call(rooms: &Arc<Rooms>, call: Call) -> Result<Reply, CoreError> {
+pub fn call(rooms: &Arc<Rooms>, call: Call) -> Result<Reply, CoreError> {
     let room = match call {
         Call::RoomCreate { session } => Some(create(rooms, session)?),
         Call::RoomStart { wait } => start_room(rooms, wait)?,
@@ -562,7 +565,7 @@ pub(crate) fn call(rooms: &Arc<Rooms>, call: Call) -> Result<Reply, CoreError> {
         other => {
             return Err(CoreError::internal(format!(
                 "{} is not a room call",
-                crate::contract::call_name(&other)
+                anibeam_contract::call_name(&other)
             )));
         }
     };
@@ -590,7 +593,7 @@ fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreErro
         None => None,
     };
     let (name, relay) = who(&rooms.services)?;
-    let client = crate::net::room_client(socket::CONNECT_WAIT)?;
+    let client = anibeam_net::room_client(socket::CONNECT_WAIT)?;
     let episode = s.as_ref().map(episode::of_session);
     leave(rooms);
     let created = rooms
@@ -620,11 +623,14 @@ fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreErro
     rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
-        Some(crate::words!("core-room-created", code = &info.code)),
+        Some(anibeam_contract::words!(
+            "core-room-created",
+            code = &info.code
+        )),
         format!(
             "Room {} created on {} {what}",
             info.code,
-            crate::net::url_shown(&relay),
+            anibeam_net::url_shown(&relay),
         ),
         None,
         EventBody::RoomChanged {
@@ -635,10 +641,14 @@ fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreErro
 }
 
 fn join(rooms: &Arc<Rooms>, code: &str) -> Result<RoomInfo, CoreError> {
-    let code = anibeam_room::code::normalize(code)
-        .ok_or_else(|| CoreError::invalid("code", crate::i18n::tr("core-room-bad-code", &[])))?;
+    let code = anibeam_room::code::normalize(code).ok_or_else(|| {
+        CoreError::invalid(
+            "code",
+            anibeam_contract::i18n::tr("core-room-bad-code", &[]),
+        )
+    })?;
     let (name, relay) = who(&rooms.services)?;
-    let client = crate::net::room_client(socket::CONNECT_WAIT)?;
+    let client = anibeam_net::room_client(socket::CONNECT_WAIT)?;
     leave(rooms);
     let info = start(
         rooms,
@@ -655,11 +665,14 @@ fn join(rooms: &Arc<Rooms>, code: &str) -> Result<RoomInfo, CoreError> {
     rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
-        Some(crate::words!("core-room-joined", code = &info.code)),
+        Some(anibeam_contract::words!(
+            "core-room-joined",
+            code = &info.code
+        )),
         format!(
             "Joined room {} on {}",
             info.code,
-            crate::net::url_shown(&relay)
+            anibeam_net::url_shown(&relay)
         ),
         None,
         EventBody::RoomChanged {
@@ -875,7 +888,7 @@ fn command(
     if !position.is_finite() || !(0.0..=proto::MAX_POSITION).contains(&position) {
         return Err(CoreError::invalid(
             "position",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-outside",
                 &[
                     ("value", position.to_string().into()),
@@ -1023,7 +1036,7 @@ fn set_offset(rooms: &Rooms, offset: f64) -> Result<Option<RoomInfo>, CoreError>
     if !offset.is_finite() || offset.abs() > MAX_OFFSET {
         return Err(CoreError::invalid(
             "offset",
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-prefs-outside",
                 &[
                     ("value", offset.to_string().into()),
@@ -1077,7 +1090,7 @@ fn leave(rooms: &Rooms) {
     rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
-        Some(crate::words!("core-room-left")),
+        Some(anibeam_contract::words!("core-room-left")),
         format!("Left room {}", a.code),
         None,
         EventBody::RoomChanged { room: None },
@@ -1085,7 +1098,7 @@ fn leave(rooms: &Rooms) {
 }
 
 /// The core is closing: say goodbye, quietly.
-pub(crate) fn shutdown(rooms: &Rooms) {
+pub fn shutdown(rooms: &Rooms) {
     if let Some(mut a) = rooms.lock().take() {
         a.stop_fetch();
         a.send(ClientMsg::Bye);
@@ -1281,7 +1294,7 @@ fn on_welcome(rooms: &Rooms, serial: u64, you: MemberId, room: RoomView, server_
         if was_down {
             out.push(Say::said(
                 Level::Info,
-                crate::words!("core-room-back"),
+                anibeam_contract::words!("core-room-back"),
                 format!("Back in room {}", a.code),
                 a.changed(),
             ));
@@ -1435,7 +1448,7 @@ fn on_message(rooms: &Rooms, serial: u64, msg: ServerMsg) -> bool {
                         said = true;
                         out.push(Say::said(
                             Level::Info,
-                            crate::words!("core-room-member-joined", name = &m.name),
+                            anibeam_contract::words!("core-room-member-joined", name = &m.name),
                             format!("Room {}: {} joined", a.code, m.name),
                             EventBody::RoomChanged { room: info.clone() },
                         ));
@@ -1446,7 +1459,7 @@ fn on_message(rooms: &Rooms, serial: u64, msg: ServerMsg) -> bool {
                         said = true;
                         out.push(Say::said(
                             Level::Info,
-                            crate::words!("core-room-member-left", name = &m.name),
+                            anibeam_contract::words!("core-room-member-left", name = &m.name),
                             format!("Room {}: {} left", a.code, m.name),
                             EventBody::RoomChanged { room: info.clone() },
                         ));
@@ -1536,7 +1549,7 @@ fn on_lost(rooms: &Rooms, serial: u64) -> bool {
         a.connected = false;
         Say::said(
             Level::Warn,
-            crate::words!("core-room-lost"),
+            anibeam_contract::words!("core-room-lost"),
             format!("Room {}: the connection dropped, trying again", a.code),
             a.changed(),
         )
@@ -1564,7 +1577,7 @@ fn finish(rooms: &Rooms, serial: u64) {
     rooms.services.bus.emit_said(
         Level::Warn,
         Stage::Playback,
-        Some(crate::words!("core-room-closed")),
+        Some(anibeam_contract::words!("core-room-closed")),
         format!("Room {} closed", a.code),
         None,
         EventBody::RoomChanged { room: None },

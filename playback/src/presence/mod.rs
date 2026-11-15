@@ -24,12 +24,12 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use crate::contract::*;
-use crate::events::EventBus;
-use crate::foundation::above::Above;
-use crate::playback::Playback;
-use crate::prefs;
-use crate::sync::recover;
+use crate::Playback;
+use anibeam_contract::*;
+use anibeam_foundation::above::Above;
+use anibeam_foundation::events::EventBus;
+use anibeam_foundation::prefs;
+use anibeam_foundation::sync::recover;
 
 /// How long a pause may stand before the activity is cleared.
 pub const PAUSE_CLEAR: Duration = Duration::from_secs(5 * 60);
@@ -138,7 +138,7 @@ impl Activity {
         poster: Option<String>,
     ) -> Activity {
         let state = if is_extra {
-            Some(crate::i18n::tr("core-presence-extra", &[]))
+            Some(anibeam_contract::i18n::tr("core-presence-extra", &[]))
         } else if is_film {
             None
         } else {
@@ -481,7 +481,7 @@ pub struct Presence {
     bus: Arc<EventBus>,
     /// The watch together room Discord's join opens and reads, linked by
     /// `Core::open`.
-    pub(crate) rooms: Above<dyn JoinRooms>,
+    pub rooms: Above<dyn JoinRooms>,
 }
 
 /// What Discord's join asks of the watch together room, which sits above
@@ -659,7 +659,7 @@ impl Drop for Presence {
 }
 
 /// One tick of a session, after the sessions lock is let go.
-pub(crate) fn tick(
+pub fn tick(
     playback: &Arc<Playback>,
     session: u64,
     activity: &Activity,
@@ -686,12 +686,12 @@ pub(crate) fn tick(
             position,
             paused,
         },
-        crate::time::now_secs() as u64,
+        anibeam_foundation::time::now_secs() as u64,
     );
     run(playback, &inner, actions);
 }
 
-pub(crate) fn close(playback: &Arc<Playback>, session: u64) {
+pub fn close(playback: &Arc<Playback>, session: u64) {
     if !playback.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
@@ -699,7 +699,7 @@ pub(crate) fn close(playback: &Arc<Playback>, session: u64) {
 }
 
 /// The switch at launch, from the stored preference.
-pub(crate) fn sync(playback: &Arc<Playback>) {
+pub fn sync(playback: &Arc<Playback>) {
     let on = playback
         .services
         .store
@@ -711,7 +711,7 @@ pub(crate) fn sync(playback: &Arc<Playback>) {
 
 /// `GetPresence`: whether this build can show what plays on Discord, and
 /// whether it is talking to a Discord client right now.
-pub(crate) fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
+pub fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
     Ok(Reply::Presence {
         available: playback.presence.available(),
         connected: playback.presence.connected(),
@@ -722,7 +722,7 @@ pub(crate) fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
 /// The switch. On shows the session playing now, if there is one; off
 /// clears and lets the connection go. A build that cannot reach Discord
 /// stays off whatever is asked.
-pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
+pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     let p = &playback.presence;
     if on && !p.available() {
         return;
@@ -765,7 +765,11 @@ pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
             handler,
         );
     }
-    let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
+    let actions = decide(
+        &mut inner.state,
+        input,
+        anibeam_foundation::time::now_secs() as u64,
+    );
     run(playback, &inner, actions);
     if on {
         join::post_party(&inner);
@@ -782,7 +786,7 @@ pub(crate) fn set_enabled(playback: &Arc<Playback>, on: bool) {
 }
 
 /// Clears what Discord shows and ends the worker, waiting a moment for it.
-pub(crate) fn shutdown(playback: &Playback) {
+pub fn shutdown(playback: &Playback) {
     let p = &playback.presence;
     p.enabled.store(false, Ordering::Relaxed);
     let worker = {
@@ -798,7 +802,11 @@ pub(crate) fn shutdown(playback: &Playback) {
 
 fn feed(playback: &Arc<Playback>, input: Input) {
     let mut inner = recover(&playback.presence.inner);
-    let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
+    let actions = decide(
+        &mut inner.state,
+        input,
+        anibeam_foundation::time::now_secs() as u64,
+    );
     run(playback, &inner, actions);
 }
 

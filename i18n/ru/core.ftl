@@ -186,7 +186,7 @@ core-repos-check-auth-key = { $id }: неверный ключ авториза�
 core-repos-check-host-torznab = { $id }: только адрес torznab может указывать хост как {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: подстановка в имени хоста
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Дорожка { $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -344,7 +344,7 @@ core-airing-now-plan-failed = Не удалось добавить «{ $title }�
 
 core-aired-episode-out = Вышла серия { $number } сериала «{ $title }».
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Трансляция на { $device }.
 core-cast-ended = Трансляция на { $device } завершена.
@@ -365,7 +365,7 @@ core-cast-refused-both = { $error }; исходный файл он тоже н�
 core-cast-chromecast-stopped = Chromecast остановился
 core-cast-hevc = { $error }. Эта серия в HEVC, который декодируют только новые Chromecast (с Google TV или Ultra)
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = не удалось связаться с Chromecast: { $error }
 core-cast-chromecast-broke = соединение с Chromecast оборвалось: { $error }
@@ -377,14 +377,14 @@ core-cast-no-reason = без причины
 core-cast-chromecast-cannot-play = Chromecast не может это воспроизвести ({ $kind })
 core-cast-chromecast-error = Chromecast остановился с ошибкой воспроизведения
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = телевизор не ответил: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = телевизор отклонил { $action }
 core-cast-tv-refused-code = телевизор отклонил { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = В этом файле нет видео.
 core-cast-hi10p = Эта серия в 10-битном H.264 (Hi10P), который не декодирует ни один телевизор или Chromecast. Для трансляции нужно перекодирование, а его пока нет.
@@ -431,13 +431,13 @@ core-phone-check-reaching = { $label }: соединение с { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } байт
 core-phone-check-setup = настройка
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Прогресс по «{ $folder }» не сохранён. Сначала привяжите сериал.
 # $done is a whole percentage.
 core-playback-still-downloading = серия { $number } ещё скачивается, готово { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = длительность должна быть положительным числом секунд
 
@@ -557,7 +557,7 @@ core-paths-no-home = нет домашней папки
 
 core-first-run-not-absolute = папка с видео должна быть указана абсолютным путём
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал

@@ -41,11 +41,11 @@ use tokio::sync::{Notify, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use super::{Active, Rooms, Say, emit, episode, error, not_in_room};
-use crate::contract::*;
-use crate::downloads::{self, backend::DownloadsBackend, origins, replace};
-use crate::events::Listening;
-use crate::library::scan::ScanScope;
-use crate::releases::{facts, titles};
+use anibeam_contract::*;
+use anibeam_downloads::{self as downloads, backend::DownloadsBackend, origins, replace};
+use anibeam_foundation::events::Listening;
+use anibeam_library::scan::ScanScope;
+use anibeam_releases::{facts, titles};
 
 /// How long the host's app has to answer before Get media stops waiting.
 const ASK_WAIT: Duration = Duration::from_secs(30);
@@ -134,16 +134,16 @@ enum Why {
 impl Why {
     fn words(&self) -> Words {
         match self {
-            Why::Nothing => crate::words!("core-room-media-nothing"),
-            Why::NoAnswer => crate::words!("core-room-media-no-answer"),
-            Why::NotFound => crate::words!("core-room-media-not-found"),
-            Why::NoSources => crate::words!("core-room-media-no-sources"),
+            Why::Nothing => anibeam_contract::words!("core-room-media-nothing"),
+            Why::NoAnswer => anibeam_contract::words!("core-room-media-no-answer"),
+            Why::NotFound => anibeam_contract::words!("core-room-media-not-found"),
+            Why::NoSources => anibeam_contract::words!("core-room-media-no-sources"),
             Why::Start(message) => {
-                crate::words!("core-room-media-no-start", message = message.as_str())
+                anibeam_contract::words!("core-room-media-no-start", message = message.as_str())
             }
-            Why::Lost => crate::words!("core-room-media-lost"),
-            Why::Stalled => crate::words!("core-room-media-stalled"),
-            Why::NotInLibrary => crate::words!("core-room-media-not-in-library"),
+            Why::Lost => anibeam_contract::words!("core-room-media-lost"),
+            Why::Stalled => anibeam_contract::words!("core-room-media-stalled"),
+            Why::NotInLibrary => anibeam_contract::words!("core-room-media-not-in-library"),
         }
     }
 }
@@ -161,7 +161,7 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
         if !a.can_fetch() {
             return Err(error(
                 "cannot_fetch",
-                crate::words!("core-room-media-cannot"),
+                anibeam_contract::words!("core-room-media-cannot"),
             ));
         }
         let (host, theirs) = a.host_key().ok_or_else(not_in_room)?;
@@ -170,10 +170,12 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
             episode_key: e.episode_key.clone(),
         };
         let plain = serde_json::to_vec(&ask).map_err(|e| CoreError::internal(e.to_string()))?;
-        let data = a
-            .keys
-            .seal(&a.code, &theirs, &plain)
-            .ok_or_else(|| error("cannot_fetch", crate::words!("core-room-media-cannot")))?;
+        let data = a.keys.seal(&a.code, &theirs, &plain).ok_or_else(|| {
+            error(
+                "cannot_fetch",
+                anibeam_contract::words!("core-room-media-cannot"),
+            )
+        })?;
         a.send(ClientMsg::Seal { to: host, data });
         let id = begin(a, RoomFetch::Asking);
         a.whole_show = whole_show && !e.film;
@@ -188,7 +190,7 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
         });
         out.push(Say::said(
             Level::Info,
-            crate::words!("core-room-media-asked"),
+            anibeam_contract::words!("core-room-media-asked"),
             format!(
                 "Room {}: asked the host for {} {}",
                 a.code, e.series_title, e.episode_key
@@ -297,7 +299,7 @@ fn take_offer(rooms: &Rooms, serial: u64, from: MemberId, mut offer: Offer) {
     // fetch an address of the sender's choosing. Without one the release's name
     // is still searched for on this member's own sources.
     if let Some(link) = offer.magnet.take() {
-        offer.magnet = crate::foundation::magnet::public_only(&link);
+        offer.magnet = anibeam_foundation::magnet::public_only(&link);
         if offer.magnet.is_none() {
             tracing::warn!("room: an offer's link is not a magnet; its name is searched for");
         }
@@ -305,7 +307,7 @@ fn take_offer(rooms: &Rooms, serial: u64, from: MemberId, mut offer: Offer) {
     offer.hash = offer
         .hash
         .take()
-        .filter(|h| crate::foundation::magnet::is_hash(h));
+        .filter(|h| anibeam_foundation::magnet::is_hash(h));
     let started = {
         let mut slot = rooms.lock();
         let Some(a) = slot.as_mut().filter(|a| a.serial == serial) else {
@@ -329,14 +331,14 @@ fn take_offer(rooms: &Rooms, serial: u64, from: MemberId, mut offer: Offer) {
         let say = if offer.magnet.is_some() {
             Say::said(
                 Level::Info,
-                crate::words!("core-room-media-torrent"),
+                anibeam_contract::words!("core-room-media-torrent"),
                 format!("Room {}: downloading the host's torrent", a.code),
                 a.changed(),
             )
         } else {
             Say::said(
                 Level::Info,
-                crate::words!("core-room-media-searching"),
+                anibeam_contract::words!("core-room-media-searching"),
                 format!(
                     "Room {}: searching the sources for the host's release",
                     a.code
@@ -414,7 +416,7 @@ fn arrived(rooms: &Rooms, serial: u64, id: u64, e: proto::EpisodeRef) {
         a.stop_fetch();
         Say::said(
             Level::Info,
-            crate::words!("core-room-media-here"),
+            anibeam_contract::words!("core-room-media-here"),
             format!("Room {}: the episode is in the library", a.code),
             a.changed(),
         )
@@ -449,11 +451,11 @@ async fn fetch(
             found
         }
     };
-    let known = crate::foundation::magnet::hash(&release.link);
+    let known = anibeam_foundation::magnet::hash(&release.link);
     let title = release.title.clone();
     // A batch brings the rest of the show with it
     let rest = whole_show && !facts::read(&release).batch;
-    let since = crate::time::now_secs();
+    let since = anibeam_foundation::time::now_secs();
     update(rooms, serial, id, |a| {
         a.progress = Some(Progress {
             percent: 0.0,
@@ -494,7 +496,7 @@ async fn fetch(
         .map_err(|err| Why::Start(err.to_string()))?;
         let added = told
             .await
-            .map_err(|_| Why::Start(crate::i18n::tr("core-room-media-client", &[])))?;
+            .map_err(|_| Why::Start(anibeam_contract::i18n::tr("core-room-media-client", &[])))?;
         // A link the client fetches itself names no hash up front: the torrent is
         // then found by its name among those added since
         known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
@@ -594,7 +596,7 @@ async fn follow(
         }
         let followed = match (unit, &files) {
             (Some(Unit::File(i)), Some(files)) => files.get(i).map(|f| {
-                let path = crate::downloads::rolling::file_path(&t.save_path, &f.name)
+                let path = anibeam_downloads::rolling::file_path(&t.save_path, &f.name)
                     .map(|p| p.to_string_lossy().into_owned());
                 (f.progress, path)
             }),
@@ -729,7 +731,7 @@ async fn settle_in(
             && let Some(target) = target(offer, e)
         {
             matched = true;
-            match crate::metadata::apply::apply_match(&rooms.metadata, series, target) {
+            match anibeam_metadata::apply::apply_match(&rooms.metadata, series, target) {
                 Ok(_) => tracing::info!("room: matched series {series} to the room's show"),
                 Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
             }
@@ -744,7 +746,7 @@ async fn settle_in(
                 if !scanned {
                     scanned = true;
                     let scope = ScanScope::Paths(vec![content.to_string()]);
-                    crate::library::scan::start(&rooms.library, scope);
+                    anibeam_library::scan::start(&rooms.library, scope);
                 }
             }
         }
@@ -965,7 +967,7 @@ pub fn pick(items: &[Release], offer: &Offer, e: &proto::EpisodeRef) -> Option<R
 }
 
 fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
-    if let (Some(hash), Some(theirs)) = (&offer.hash, crate::foundation::magnet::hash(&r.link))
+    if let (Some(hash), Some(theirs)) = (&offer.hash, anibeam_foundation::magnet::hash(&r.link))
         && hash.eq_ignore_ascii_case(&theirs)
     {
         return Some(100_000);
@@ -1082,7 +1084,7 @@ fn no_rest(rooms: &Rooms, serial: u64, why: &str) {
         };
         Say::said(
             Level::Warn,
-            crate::words!("core-room-media-rest-missing"),
+            anibeam_contract::words!("core-room-media-rest-missing"),
             format!("Room {}: the rest of the show: {why}", a.code),
             a.changed(),
         )
@@ -1266,9 +1268,9 @@ async fn answer(rooms: Arc<Rooms>, serial: u64, to: MemberId, episode_key: Strin
         Say::said(
             Level::Info,
             if torrent {
-                crate::words!("core-room-media-sent", name = name.as_str())
+                anibeam_contract::words!("core-room-media-sent", name = name.as_str())
             } else {
-                crate::words!("core-room-media-sent-name", name = name.as_str())
+                anibeam_contract::words!("core-room-media-sent-name", name = name.as_str())
             },
             format!(
                 "Room {code}: answered {name}'s ask for {} {}",
@@ -1357,7 +1359,7 @@ async fn offer_for(rooms: &Arc<Rooms>, file: u64, e: &proto::EpisodeRef) -> Opti
                 .await
                 .ok()
                 .flatten()
-                .and_then(|m| crate::foundation::magnet::public_only(&m)),
+                .and_then(|m| anibeam_foundation::magnet::public_only(&m)),
             Err(err) => {
                 tracing::debug!("room: the torrent client was not reached: {err}");
                 None
@@ -1575,7 +1577,7 @@ mod tests {
     fn library(provider: &str, files: &[(i64, Option<i64>)]) -> rusqlite::Connection {
         let mut c = rusqlite::Connection::open_in_memory().unwrap();
         c.pragma_update(None, "foreign_keys", "ON").unwrap();
-        crate::store::migrations::apply(&mut c).unwrap();
+        anibeam_foundation::store::migrations::apply(&mut c).unwrap();
         c.execute(
             "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0)",
             [],
@@ -1630,7 +1632,7 @@ mod tests {
 
     #[test]
     fn progress_reads_the_client_s_numbers() {
-        let mut t = crate::downloads::qbt::tests_torrent();
+        let mut t = anibeam_downloads::qbt::tests_torrent();
         t.progress = 0.4237;
         t.eta = 95;
         assert_eq!(

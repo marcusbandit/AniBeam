@@ -169,7 +169,7 @@ core-repos-check-auth-key = { $id }: 잘못된 인증 키 { $key }
 core-repos-check-host-torznab = { $id }: torznab 주소만 호스트를 {"{"}{ $key }{"}"}(으)로 쓸 수 있어요
 core-repos-check-host-placeholder = { $id }: 호스트에 자리표시자가 있어요
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = 트랙 { $number }
 core-playback-track-file = { $label } (파일)
@@ -322,7 +322,7 @@ core-airing-now-plan-failed = { $title }을(를) 시청 예정 목록에 추가�
 
 core-aired-episode-out = { $title } { $number }화가 공개됐어요.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = { $device }(으)로 캐스트 중.
 core-cast-ended = { $device } 캐스트를 마쳤어요.
@@ -342,7 +342,7 @@ core-cast-refused-both = { $error }. 원본 파일도 거부했어요({ $first }
 core-cast-chromecast-stopped = Chromecast가 멈췄어요
 core-cast-hevc = { $error }. 이 에피소드는 HEVC라서 최신 Chromecast(Google TV 또는 Ultra)에서만 디코딩돼요
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecast에 연결하지 못했어요: { $error }
 core-cast-chromecast-broke = Chromecast 연결이 끊겼어요: { $error }
@@ -352,13 +352,13 @@ core-cast-no-reason = 이유 없음
 core-cast-chromecast-cannot-play = Chromecast에서 재생할 수 없어요({ $kind })
 core-cast-chromecast-error = Chromecast가 재생 중 오류로 멈췄어요
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = TV가 응답하지 않았어요: { $error }
 core-cast-tv-refused = TV가 { $action } 명령을 거부했어요
 core-cast-tv-refused-code = TV가 { $action } 명령을 거부했어요({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = 이 파일에는 영상이 없어요.
 core-cast-hi10p = 이 에피소드는 10비트 H.264(Hi10P)라서 TV나 Chromecast에서 디코딩할 수 없어요. 캐스트하려면 변환이 필요한데, 아직 지원하지 않아요.
@@ -398,12 +398,12 @@ core-phone-check-reaching = { $label }: { $ip }에 연결 중
 core-phone-check-http = HTTP { $status }, { $bytes }바이트
 core-phone-check-setup = 설정
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = { $folder }의 진행 상황이 저장되지 않았어요. 먼저 작품을 매칭하세요.
 core-playback-still-downloading = { $number }화는 아직 다운로드 중이에요, { $done }% 완료
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 길이는 0보다 큰 초 단위 숫자여야 해요
 
@@ -512,7 +512,7 @@ core-paths-no-home = 홈 디렉터리가 없어요
 
 core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = 번외
 core-presence-room = 함께 보는 중

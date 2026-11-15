@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "foundation", "net", "library", "releases", "metadata", "trackers", "downloads", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
+members = ["contract", "foundation", "net", "library", "releases", "metadata", "trackers", "downloads", "playback", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
 
 [workspace.package]
 version = "2.5.0"
@@ -18,6 +18,7 @@ anibeam-host-api = { path = "host-api" }
 anibeam-library = { path = "library" }
 anibeam-metadata = { path = "metadata" }
 anibeam-net = { path = "net" }
+anibeam-playback = { path = "playback" }
 anibeam-recs = { path = "recs" }
 anibeam-releases = { path = "releases" }
 anibeam-room = { path = "room" }

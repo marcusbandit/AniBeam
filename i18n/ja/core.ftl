@@ -174,7 +174,7 @@ core-repos-check-auth-key = { $id }: 認証キー{ $key }が不正です
 core-repos-check-host-torznab = { $id }: ホストを{"{"}{ $key }{"}"}と書けるのはtorznabのアドレスだけです
 core-repos-check-host-placeholder = { $id }: ホストにプレースホルダーがあります
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = トラック{ $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -332,7 +332,7 @@ core-airing-now-plan-failed = { $title }を視聴予定リストに追加でき�
 
 core-aired-episode-out = { $title }の第{ $number }話が公開されました。
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = { $device }にキャスト中です。
 core-cast-ended = { $device }へのキャストが終わりました。
@@ -353,7 +353,7 @@ core-cast-refused-both = { $error }。元のファイルも受け付けません
 core-cast-chromecast-stopped = Chromecastが停止しました
 core-cast-hevc = { $error }。このエピソードはHEVCで、デコードできるのは新しいChromecast（Google TV搭載またはUltra）だけです
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecastに接続できませんでした: { $error }
 core-cast-chromecast-broke = Chromecastとの接続が切れました: { $error }
@@ -365,14 +365,14 @@ core-cast-no-reason = 理由なし
 core-cast-chromecast-cannot-play = Chromecastはこれを再生できませんでした（{ $kind }）
 core-cast-chromecast-error = Chromecastがこれの再生中にエラーで停止しました
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = テレビが応答しませんでした: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = テレビが{ $action }を拒否しました
 core-cast-tv-refused-code = テレビが{ $action }を拒否しました（{ $code }）
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = このファイルには映像がありません。
 core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テレビやChromecastではデコードできません。キャストするには変換が必要ですが、まだ実装されていません。
@@ -413,13 +413,13 @@ core-phone-check-reaching = { $label }: { $ip }に接続中
 core-phone-check-http = HTTP { $status }、{ $bytes }バイト
 core-phone-check-setup = 準備
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = { $folder }の進捗は保存されませんでした。先に作品を照合してください。
 # $done is a whole percentage.
 core-playback-still-downloading = 第{ $number }話はまだダウンロード中です（{ $done }%完了）
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 長さは正の秒数で指定してください
 
@@ -539,7 +539,7 @@ core-paths-no-home = ホームディレクトリがありません
 
 core-first-run-not-absolute = 動画フォルダは絶対パスで指定してください
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = 特典映像

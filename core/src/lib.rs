@@ -2,14 +2,13 @@
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
 //! plumbing every team shares is the `anibeam-foundation` crate, the network
 //! team is `anibeam-net`, the library team `anibeam-library`, and the releases,
-//! metadata, trackers and downloads teams `anibeam-releases`, `anibeam-metadata`,
-//! `anibeam-trackers` and `anibeam-downloads`, each handed on here under the name
-//! it had in the core.
+//! metadata, trackers, downloads and playback teams `anibeam-releases`,
+//! `anibeam-metadata`, `anibeam-trackers`, `anibeam-downloads` and
+//! `anibeam-playback`, each handed on here under the name it had in the core.
 
 pub(crate) mod act;
 pub mod agent;
 pub(crate) mod app;
-pub mod cast;
 pub mod changelog;
 pub mod contract;
 pub mod core;
@@ -19,17 +18,11 @@ pub mod foundation;
 pub mod host;
 pub mod launch;
 pub mod paths;
-pub mod playback;
-pub mod presence;
 pub(crate) mod process;
-pub mod room;
 pub mod stats;
 pub mod transfer;
 pub mod update;
 
-/// Only casting's server reads it now that the downloads left (#854).
-#[cfg(feature = "cast")]
-pub(crate) use anibeam_foundation::percent;
 pub(crate) use anibeam_foundation::sync;
 pub use anibeam_foundation::{
     atomic_file, html, jobs, prefs, profiles, redact, store, time, words,
@@ -65,6 +58,12 @@ pub use anibeam_trackers as trackers;
 /// torrent engine behind its `phone` feature.
 pub use anibeam_downloads as downloads;
 pub use anibeam_downloads::phone;
+
+/// The playback team, in its own crate above downloads: the session rules,
+/// Discord presence, casting behind its `cast` feature, and the watch
+/// together room.
+pub use anibeam_playback as playback;
+pub use anibeam_playback::{cast, presence, room};
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

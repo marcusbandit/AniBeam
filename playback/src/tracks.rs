@@ -3,8 +3,8 @@
 //! beats an embedded track, dialogue beats signs), then the first subtitle track and the
 //! file's default audio, so a file never plays unsubbed by accident.
 
-use crate::i18n::tr;
-use crate::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
 use serde_json::Value;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -367,7 +367,7 @@ fn language_name(tag: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
+    use anibeam_contract::{SubtitleChoice, SubtitleDefaults, TrackChoice, TrackKind, TrackRef};
     use serde_json::json;
 
     fn list() -> Vec<Track> {

@@ -134,7 +134,10 @@ impl Client {
             .send()
             .await
             .map_err(|e| {
-                crate::i18n::tr("core-cast-tv-no-answer", &[("error", e.to_string().into())])
+                anibeam_contract::i18n::tr(
+                    "core-cast-tv-no-answer",
+                    &[("error", e.to_string().into())],
+                )
             })?;
         let ok = r.status().is_success();
         let text = r.text().await.unwrap_or_default();
@@ -145,11 +148,13 @@ impl Client {
                     .and_then(|n| n.text().map(str::to_string))
             });
             return Err(match code {
-                Some(code) => crate::i18n::tr(
+                Some(code) => anibeam_contract::i18n::tr(
                     "core-cast-tv-refused-code",
                     &[("action", action.into()), ("code", code.into())],
                 ),
-                None => crate::i18n::tr("core-cast-tv-refused", &[("action", action.into())]),
+                None => {
+                    anibeam_contract::i18n::tr("core-cast-tv-refused", &[("action", action.into())])
+                }
             });
         }
         Ok(text)

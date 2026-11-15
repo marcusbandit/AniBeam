@@ -1,13 +1,8 @@
-include!("../trackers/env_local.rs");
-
-/// The Discord application id a build bundles, for `option_env!` in `presence/mod.rs`,
-/// read the way trackers/build.rs reads the tracker apps.
-const CREDENTIALS: [&str; 1] = ["ANIBEAM_DISCORD_CLIENT_ID"];
-
 fn main() {
     // `phone_os`, the switch for a phone's target, is made in net/build.rs and
     // library/build.rs, beside the code that reads it; nothing left in the core does.
-    bundle(&CREDENTIALS);
+    // The bundled credentials are read in trackers/build.rs and playback/build.rs, beside
+    // the code that reads them.
     // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
     // That string names the build and decides which updates it is offered; a build without
     // it (a checkout, the AUR) counts as the workspace version. `VERSION`, the describe

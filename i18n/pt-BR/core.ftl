@@ -171,7 +171,7 @@ core-repos-check-auth-key = { $id }: chave de autenticação inválida { $key }
 core-repos-check-host-torznab = { $id }: só um endereço torznab pode dar o host como {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: um marcador no host
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Faixa { $number }
 core-playback-track-file = { $label } (arquivo)
@@ -324,7 +324,7 @@ core-airing-now-plan-failed = Não foi possível incluir { $title } na sua lista
 
 core-aired-episode-out = Saiu o episódio { $number } de { $title }.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Transmitindo para { $device }.
 core-cast-ended = Transmissão para { $device } concluída.
@@ -344,7 +344,7 @@ core-cast-refused-both = { $error }; ela também recusou o arquivo como está ({
 core-cast-chromecast-stopped = o Chromecast parou
 core-cast-hevc = { $error }. Este episódio é HEVC, que só Chromecasts mais novos (com Google TV, ou Ultra) decodificam
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = não foi possível acessar o Chromecast: { $error }
 core-cast-chromecast-broke = a conexão com o Chromecast caiu: { $error }
@@ -354,13 +354,13 @@ core-cast-no-reason = sem motivo
 core-cast-chromecast-cannot-play = o Chromecast não conseguiu reproduzir isto ({ $kind })
 core-cast-chromecast-error = o Chromecast parou com um erro ao reproduzir isto
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = a TV não respondeu: { $error }
 core-cast-tv-refused = a TV recusou { $action }
 core-cast-tv-refused-code = a TV recusou { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Este arquivo não tem vídeo.
 core-cast-hi10p = Este episódio é H.264 de 10 bits (Hi10P), que nenhuma TV ou Chromecast decodifica. Transmiti-lo exige converter o vídeo, o que ainda não existe.
@@ -401,12 +401,12 @@ core-phone-check-reaching = { $label }: acessando { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = configuração
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Seu progresso em { $folder } não foi salvo. Vincule a série primeiro.
 core-playback-still-downloading = o episódio { $number } ainda está baixando, { $done }% concluído
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = uma duração é um número positivo de segundos
 
@@ -515,7 +515,7 @@ core-paths-no-home = sem pasta pessoal
 
 core-first-run-not-absolute = a pasta de vídeos precisa ser um caminho absoluto
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Extra
 core-presence-room = Assistindo juntos

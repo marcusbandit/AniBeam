@@ -26,19 +26,19 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::titles;
-use crate::foundation::watch::MARK_FRACTION;
-use crate::library::cards;
-use crate::library::sidecar::sidecars_of;
-use crate::library::{classifier, labels};
-use crate::playback::Playback;
-use crate::prefs;
+use crate::Playback;
 use crate::presence::Activity;
-use crate::sync::recover;
-use crate::time;
-use crate::trackers::{on_hold, writes};
+use anibeam_contract::*;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
+use anibeam_foundation::watch::MARK_FRACTION;
+use anibeam_library::cards;
+use anibeam_library::sidecar::sidecars_of;
+use anibeam_library::{classifier, labels};
+use anibeam_trackers::{on_hold, writes};
 
 /// Seconds of forward playback before the series counts as viewed.
 pub const VIEW_SECS: f64 = 30.0;
@@ -122,7 +122,7 @@ impl Sessions {
     }
 
     /// Whose history an open session writes (#631), None when it is not open.
-    pub(crate) fn profile_of(&self, id: u64) -> Option<u64> {
+    pub fn profile_of(&self, id: u64) -> Option<u64> {
         self.lock().get(&id).map(|s| s.profile)
     }
 
@@ -144,7 +144,7 @@ impl Sessions {
     pub(crate) fn playing(&self) -> Option<Session> {
         self.lock()
             .values()
-            .filter(|s| s.profile == crate::foundation::trust::OWNER)
+            .filter(|s| s.profile == anibeam_foundation::trust::OWNER)
             .filter(|s| s.last_position.is_some() && !s.paused)
             .max_by_key(|s| s.id)
             .cloned()
@@ -477,11 +477,11 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 /// Everything the player needs before the first frame, and the session the
 /// ticks that follow belong to.
 pub fn open(playback: &Playback, file: u64) -> Result<PlaybackSession, CoreError> {
-    open_for(playback, file, crate::foundation::trust::OWNER)
+    open_for(playback, file, anibeam_foundation::trust::OWNER)
 }
 
 /// `OpenPlayback`: [`open`] as the call's reply.
-pub(crate) fn open_call(playback: &Playback, file: u64) -> Result<Reply, CoreError> {
+pub fn open_call(playback: &Playback, file: u64) -> Result<Reply, CoreError> {
     Ok(Reply::Playback {
         session: Box::new(open(playback, file)?),
     })
@@ -500,12 +500,12 @@ pub fn open_for(
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
             // torrent is still writing does not open.
-            if !f.is_extra && crate::downloads::is_writing(&playback.downloads, &f.path) {
-                let done = crate::downloads::episode_progress(&playback.downloads, f.series, f.number).unwrap_or(0.0);
+            if !f.is_extra && anibeam_downloads::is_writing(&playback.downloads, &f.path) {
+                let done = anibeam_downloads::episode_progress(&playback.downloads, f.series, f.number).unwrap_or(0.0);
                 return Err(CoreError::service(
-                    crate::downloads::qbt::SERVICE,
+                    anibeam_downloads::qbt::SERVICE,
                     "downloading",
-                    crate::i18n::tr(
+                    anibeam_contract::i18n::tr(
                         "core-playback-still-downloading",
                         &[
                             ("number", (f.number as u32).to_string().into()),
@@ -528,7 +528,7 @@ pub fn open_for(
             let neighbours = match (f.is_extra, s.kind) {
                 (false, SeriesKind::Show) => {
                     neighbours(c, f.series, f.season.unwrap_or(1), f.number, &|path| {
-                        crate::downloads::is_writing(&playback.downloads, path)
+                        anibeam_downloads::is_writing(&playback.downloads, path)
                     })?
                 }
                 _ => Neighbours::default(),
@@ -746,7 +746,7 @@ pub fn tick(
         (s.clone(), fired)
     };
     // Discord shows the owner's own playing, never a guest's.
-    if s.profile == crate::foundation::trust::OWNER {
+    if s.profile == anibeam_foundation::trust::OWNER {
         crate::presence::tick(playback, s.id, &s.presence, position, paused);
     }
     if let Some(follower) = playback.follower.get() {
@@ -812,7 +812,7 @@ fn record_view(playback: &Playback, s: &Session) -> Result<(), CoreError> {
         )?;
         Ok(())
     })?;
-    if s.profile != crate::foundation::trust::OWNER {
+    if s.profile != anibeam_foundation::trust::OWNER {
         return Ok(());
     }
     let (folder, code) = playback.services.store.read(|c| line_labels(c, s))?;
@@ -834,7 +834,7 @@ fn record_view(playback: &Playback, s: &Session) -> Result<(), CoreError> {
 /// write answers is the outcome and none of it is a failure of the tick.
 fn mark(playback: &Playback, s: &Session) {
     // The tracker accounts are the owner's; a guest's own come with #632.
-    if s.profile != crate::foundation::trust::OWNER {
+    if s.profile != anibeam_foundation::trust::OWNER {
         return;
     }
     let Some(number) = s.number else { return };
@@ -848,7 +848,7 @@ fn mark(playback: &Playback, s: &Session) {
         playback.services.bus.say(
             Level::Warn,
             Stage::Playback,
-            crate::words!("core-playback-not-saved", folder = &folder),
+            anibeam_contract::words!("core-playback-not-saved", folder = &folder),
             format!("watched to the end but {folder} has no AniList or MAL id"),
             EventBody::Notice,
         );
@@ -907,20 +907,20 @@ fn complete(playback: &Playback, s: &Session) -> Result<(), CoreError> {
             )?;
         }
         if record && watched {
-            crate::library::history::log_finish(
+            anibeam_library::history::log_finish(
                 tx,
                 profile,
                 series,
                 &key,
                 now,
-                crate::library::history::How::Played,
+                anibeam_library::history::How::Played,
             )?;
         }
         Ok(())
     })?;
     // The bus is the owner's shell and log: a guest's playing writes their
     // rows and says nothing there.
-    if s.profile != crate::foundation::trust::OWNER {
+    if s.profile != anibeam_foundation::trust::OWNER {
         return Ok(());
     }
     playback.services.bus.debug(
@@ -934,7 +934,7 @@ fn complete(playback: &Playback, s: &Session) -> Result<(), CoreError> {
     if s.is_extra {
         return Ok(());
     }
-    crate::downloads::rolling::nudge(&playback.downloads);
+    anibeam_downloads::rolling::nudge(&playback.downloads);
     let images_dir = playback.services.paths.images_dir();
     let cards = playback
         .services
@@ -971,7 +971,7 @@ fn write_resume(services: &Services, s: &Session, position: f64) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");
         }
     });
-    if s.profile != crate::foundation::trust::OWNER {
+    if s.profile != anibeam_foundation::trust::OWNER {
         return;
     }
     services.bus.debug(
@@ -1076,7 +1076,7 @@ mod tests {
             presence: Arc::new(Activity::describe(
                 "Bebop", "EP 3", None, is_extra, false, None,
             )),
-            profile: crate::foundation::trust::OWNER,
+            profile: anibeam_foundation::trust::OWNER,
         }
     }
 

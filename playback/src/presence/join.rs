@@ -23,10 +23,10 @@ use super::{
     ASK_SECRET, ASK_STANDS, Activity, Ask, Incoming, Inner, LISTEN, Party, ROOM_SECRET, RoomShow,
     field,
 };
-use crate::contract::*;
-use crate::playback::Playback;
-use crate::store::settings;
-use crate::sync::recover;
+use crate::Playback;
+use anibeam_contract::*;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::sync::recover;
 
 /// Who was told no, kept beside the other settings.
 const BLOCKED: &str = settings::DISCORD_BLOCKED;
@@ -55,10 +55,13 @@ fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
                 .title
                 .clone()
                 .filter(|t| !t.trim().is_empty())
-                .unwrap_or_else(|| crate::i18n::tr("core-presence-room", &[]));
+                .unwrap_or_else(|| anibeam_contract::i18n::tr("core-presence-room", &[]));
             let idle = Activity {
                 details: field(&title),
-                state: Some(field(&crate::i18n::tr("core-presence-in-room", &[]))),
+                state: Some(field(&anibeam_contract::i18n::tr(
+                    "core-presence-in-room",
+                    &[],
+                ))),
                 poster: None,
                 large_text: field(&title),
                 start: None,
@@ -172,7 +175,7 @@ fn joined(playback: &Arc<Playback>, secret: &str) {
             );
         }
         None => {
-            let words = crate::words!("core-presence-no-room");
+            let words = anibeam_contract::words!("core-presence-no-room");
             bus.emit_said(
                 Level::Info,
                 Stage::Playback,
@@ -263,7 +266,7 @@ fn post_answer(playback: &Playback, user_id: String, invite: bool) {
 }
 
 /// `DiscordAnswer`.
-pub(crate) fn answer_call(
+pub fn answer_call(
     playback: &Arc<Playback>,
     user_id: String,
     allow: bool,
@@ -304,7 +307,7 @@ pub(crate) fn answer_call(
 }
 
 /// `DiscordSetRoomOpen`.
-pub(crate) fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Reply, CoreError> {
+pub fn set_open_call(playback: &Arc<Playback>, open: bool) -> Result<Reply, CoreError> {
     {
         let mut inner = recover(&playback.presence.inner);
         if inner.room.is_none() {
@@ -340,9 +343,9 @@ fn room_create(playback: &Playback, session: Option<u64>) -> Result<RoomInfo, Co
 /// as the room team's own; a room test holds the two the same.
 pub(crate) fn not_in_room() -> CoreError {
     CoreError::service(
-        crate::i18n::tr("core-room-service", &[]),
+        anibeam_contract::i18n::tr("core-room-service", &[]),
         "not_in_room".to_string(),
-        crate::words!("core-room-not-in").render(),
+        anibeam_contract::words!("core-room-not-in").render(),
     )
 }
 
@@ -350,7 +353,7 @@ pub(crate) fn not_in_room() -> CoreError {
 const JOIN_KEEPS: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// `DiscordTakeJoin`.
-pub(crate) fn take_join_call(playback: &Playback) -> Result<Reply, CoreError> {
+pub fn take_join_call(playback: &Playback) -> Result<Reply, CoreError> {
     let code = recover(&playback.presence.inner)
         .pending_join
         .take()
@@ -362,7 +365,7 @@ pub(crate) fn take_join_call(playback: &Playback) -> Result<Reply, CoreError> {
 /// `DiscordListen`.
 /// A launch asks before the switch has come on from the stored setting, so
 /// the ask is kept until then.
-pub(crate) fn listen_call(playback: &Arc<Playback>) -> Result<Reply, CoreError> {
+pub fn listen_call(playback: &Arc<Playback>) -> Result<Reply, CoreError> {
     let until = Instant::now() + LISTEN;
     {
         let mut inner = recover(&playback.presence.inner);
@@ -406,17 +409,14 @@ fn block(playback: &Playback, user_id: &str, name: &str) -> Result<(), CoreError
 }
 
 /// `DiscordBlocked`.
-pub(crate) fn blocked_call(playback: &Playback) -> Result<Reply, CoreError> {
+pub fn blocked_call(playback: &Playback) -> Result<Reply, CoreError> {
     Ok(Reply::DiscordBlocked {
         people: blocked(playback),
     })
 }
 
 /// `DiscordUnblock`.
-pub(crate) fn unblock_call(
-    playback: &Playback,
-    user_id: Option<String>,
-) -> Result<Reply, CoreError> {
+pub fn unblock_call(playback: &Playback, user_id: Option<String>) -> Result<Reply, CoreError> {
     let mut people = blocked(playback);
     match &user_id {
         Some(id) => people.retain(|p| &p.id != id),

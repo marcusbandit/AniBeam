@@ -30,8 +30,8 @@ pub mod server;
 #[cfg(feature = "cast")]
 pub mod vtt;
 
-use crate::contract::*;
-use crate::playback::Playback;
+use crate::Playback;
+use anibeam_contract::*;
 
 #[derive(Default)]
 pub struct Cast {
@@ -55,7 +55,7 @@ pub fn call(playback: &std::sync::Arc<Playback>, call: Call) -> Result<Reply, Co
             Call::CastStatus => Ok(Reply::CastState { state: None }),
             _ => Err(CoreError::invalid(
                 "cast",
-                crate::i18n::tr("core-cast-not-built", &[]),
+                anibeam_contract::i18n::tr("core-cast-not-built", &[]),
             )),
         }
     }
@@ -73,10 +73,10 @@ mod imp {
     use super::media::{Prepared, Receiver, Subs};
     use super::server::{self as served, Piece, Registry, Relay, Served};
     use super::{castv2, dlna};
-    use crate::contract::*;
-    use crate::foundation::services::Services;
-    use crate::playback::Playback;
-    use crate::sync::recover;
+    use crate::Playback;
+    use anibeam_contract::*;
+    use anibeam_foundation::services::Services;
+    use anibeam_foundation::sync::recover;
 
     #[derive(Default)]
     pub struct Inner {
@@ -235,12 +235,21 @@ mod imp {
         } else {
             let device = &state.device;
             let said = match state.state {
-                CastPlayState::Connecting => {
-                    Some(crate::words!("core-cast-connecting", device = device))
+                CastPlayState::Connecting => Some(anibeam_contract::words!(
+                    "core-cast-connecting",
+                    device = device
+                )),
+                CastPlayState::Ended => {
+                    Some(anibeam_contract::words!("core-cast-ended", device = device))
                 }
-                CastPlayState::Ended => Some(crate::words!("core-cast-ended", device = device)),
-                CastPlayState::Stopped => Some(crate::words!("core-cast-stopped", device = device)),
-                CastPlayState::Failed => Some(crate::words!("core-cast-failed", device = device)),
+                CastPlayState::Stopped => Some(anibeam_contract::words!(
+                    "core-cast-stopped",
+                    device = device
+                )),
+                CastPlayState::Failed => Some(anibeam_contract::words!(
+                    "core-cast-failed",
+                    device = device
+                )),
                 CastPlayState::Playing | CastPlayState::Paused | CastPlayState::Buffering => None,
             };
             let what = match state.state {
@@ -292,15 +301,15 @@ mod imp {
     }
 
     fn no_route() -> String {
-        crate::i18n::tr("core-cast-no-route", &[])
+        anibeam_contract::i18n::tr("core-cast-no-route", &[])
     }
 
     fn no_control() -> String {
-        crate::i18n::tr("core-cast-no-control", &[])
+        anibeam_contract::i18n::tr("core-cast-no-control", &[])
     }
 
     fn not_handed(e: reqwest::Error) -> String {
-        crate::i18n::tr("core-cast-not-handed", &[("error", e.to_string().into())])
+        anibeam_contract::i18n::tr("core-cast-not-handed", &[("error", e.to_string().into())])
     }
 
     fn fail(playback: &Playback, id: u64, error: String) {
@@ -320,7 +329,10 @@ mod imp {
             .await
             .copied()
             .map_err(|e| {
-                crate::i18n::tr("core-cast-serve-failed", &[("error", e.to_string().into())])
+                anibeam_contract::i18n::tr(
+                    "core-cast-serve-failed",
+                    &[("error", e.to_string().into())],
+                )
             })
     }
 
@@ -351,7 +363,10 @@ mod imp {
                     .find(|f| f.device.id == device)
                     .cloned()
                     .ok_or_else(|| {
-                        CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
+                        CoreError::invalid(
+                            "device",
+                            anibeam_contract::i18n::tr("core-cast-device-gone", &[]),
+                        )
                     })?;
                 let path = file_path(&playback.services, file)?;
                 stop(playback);
@@ -424,13 +439,16 @@ mod imp {
                     .find(|f| f.device.id == device)
                     .cloned()
                     .ok_or_else(|| {
-                        CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
+                        CoreError::invalid(
+                            "device",
+                            anibeam_contract::i18n::tr("core-cast-device-gone", &[]),
+                        )
                     })?;
                 let Some((dir, name)) = url.split('?').next().and_then(|u| u.rsplit_once('/'))
                 else {
                     return Err(CoreError::invalid(
                         "url",
-                        crate::i18n::tr("core-cast-not-a-playlist", &[]),
+                        anibeam_contract::i18n::tr("core-cast-not-a-playlist", &[]),
                     ));
                 };
                 let dir = format!("{dir}/");
@@ -521,7 +539,7 @@ mod imp {
         let Some(session) = s.as_ref() else {
             return Err(CoreError::invalid(
                 "cast",
-                crate::i18n::tr("core-cast-nothing", &[]),
+                anibeam_contract::i18n::tr("core-cast-nothing", &[]),
             ));
         };
         match &session.control {
@@ -530,7 +548,7 @@ mod imp {
             Control::Starting => {
                 return Err(CoreError::invalid(
                     "cast",
-                    crate::i18n::tr("core-cast-still-starting", &[]),
+                    anibeam_contract::i18n::tr("core-cast-still-starting", &[]),
                 ));
             }
         }
@@ -557,7 +575,7 @@ mod imp {
             let Some(s) = s.as_mut() else {
                 return Err(CoreError::invalid(
                     "cast",
-                    crate::i18n::tr("core-cast-nothing", &[]),
+                    anibeam_contract::i18n::tr("core-cast-nothing", &[]),
                 ));
             };
             s.state.position = to;
@@ -717,7 +735,7 @@ mod imp {
         }
         let pieces = Arc::new(served::read_pieces(&list));
         if pieces.is_empty() {
-            return Err(crate::i18n::tr("core-cast-empty-playlist", &[]));
+            return Err(anibeam_contract::i18n::tr("core-cast-empty-playlist", &[]));
         }
         let port = server(&inner).await?.port();
         let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
@@ -919,7 +937,7 @@ mod imp {
                         let url = format!("{base}/stream.mp4?t={start:.3}");
                         let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
                         client.set_uri(&url, &meta).await.map_err(|e| {
-                            crate::i18n::tr(
+                            anibeam_contract::i18n::tr(
                                 "core-cast-refused-both",
                                 &[("error", e.into()), ("first", first.into())],
                             )
@@ -962,12 +980,11 @@ mod imp {
                 _ => s.state.state,
             };
             if next == CastPlayState::Failed {
-                let mut e = st
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| crate::i18n::tr("core-cast-chromecast-stopped", &[]));
+                let mut e = st.error.clone().unwrap_or_else(|| {
+                    anibeam_contract::i18n::tr("core-cast-chromecast-stopped", &[])
+                });
                 if s.hevc_doubt {
-                    e = crate::i18n::tr("core-cast-hevc", &[("error", e.into())]);
+                    e = anibeam_contract::i18n::tr("core-cast-hevc", &[("error", e.into())]);
                 }
                 s.state.error = Some(e);
             }
@@ -1076,17 +1093,17 @@ mod imp {
 
         impl Teams {
             fn open(dir: &std::path::Path) -> Teams {
-                let running = Running::open(dir, crate::net::FakeHttp::new());
+                let running = Running::open(dir, anibeam_net::FakeHttp::new());
                 let services = running.services.clone();
-                let net = Arc::new(crate::net::Net::new(
+                let net = Arc::new(anibeam_net::Net::new(
                     services.clone(),
-                    crate::library::cards::cards_for,
+                    anibeam_library::cards::cards_for,
                 ));
-                let trackers = Arc::new(crate::trackers::Trackers::new(
+                let trackers = Arc::new(anibeam_trackers::Trackers::new(
                     services.clone(),
                     net.clone(),
                 ));
-                let downloads = Arc::new(crate::downloads::Downloads::new(
+                let downloads = Arc::new(anibeam_downloads::Downloads::new(
                     services.clone(),
                     net.clone(),
                 ));
