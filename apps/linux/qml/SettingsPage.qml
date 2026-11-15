@@ -1,7 +1,7 @@
 // Settings: the index at the left with the settings search on top of it, and the open
 // section beside it. The index is a plain menu: each entry is a glyph and the section's
-// name, with a red dot at its right when the section wants attention (a folder gone, no
-// list connected, an update waiting). Typing in the search swaps the section for the
+// name, with a red dot at its right when the section wants attention (a folder gone, an
+// update waiting). Typing in the search swaps the section for the
 // settings whose names or words match; picking one opens its section, scrolls the row into
 // view and lights it for a moment. The section and each one's scroll are session state
 // kept on the frame, by section id. Section ids that have since moved into another
@@ -75,11 +75,10 @@ FocusScope {
         function onScanFinished(s, a, c, r) { sourcesDebounce.restart() }
     }
     Timer { interval: 0; running: true; onTriggered: page.readSources() }
-    function tracked(k) { return !!(Door.trackers[k] && Door.trackers[k].connected) }
-    // An entry that wants attention: a folder gone, no list connected, an update waiting
+    // An entry that wants attention: a folder gone, an update waiting. A step the person
+    // skipped (no list connected) is not one: the dot would never clear
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
-        if (id === "accounts") return !tracked("anilist") && !tracked("mal")
         if (id === "about") return frame.updatePanel.pending
         return false
     }

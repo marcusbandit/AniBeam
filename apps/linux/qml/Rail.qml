@@ -1,11 +1,12 @@
 // The sidebar (#1012): one flat column a step up from the ground, holding four places and two
-// round buttons, nothing else. The brand at the top, then Home, Library, Airing and Downloads,
-// each a glyph over its name. At the foot, Join room and Settings as round glyph buttons,
-// named by their tips. The pages that used to have glyphs of their own live inside a place:
-// the feed opens from Home's week, and Watching, Stats and Show info are tabs of Library, so
-// the rail lights Library while one of them is open. The title language is a row in
-// Settings, Appearance, and the version with What's new is in Settings, About. The active
-// place takes the soft accent; nothing else is lit.
+// round buttons, glyphs only, each named by its tip. The brand at the top, then Home, Library,
+// Airing and Downloads as square tiles, and at the foot Join room and Settings. The column is
+// one tile wide plus the same gap on each side as between the tiles, so a lit tile sits with
+// an even margin all round. The pages that used to have glyphs of their own live inside a
+// place: the feed opens from Home's week, and Watching, Stats and Show info are tabs of
+// Library, so the rail lights Library while one of them is open. The title language is a
+// row in Settings, Appearance, and the version with What's new is in Settings, About. The
+// active place takes the soft accent; nothing else is lit.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -33,23 +34,18 @@ Item {
         { key: "airing", msg: "rail-airing", icon: "radio" },
         { key: "downloads", msg: "rail-downloads", icon: "download" }
     ]
-    // Which place holds each page that is not a place itself
+    // Which place holds each page that is not a place itself. Library's three must match the
+    // pages in LibraryTabs.qml
     readonly property var holders: ({ feed: "home", watching: "library", stats: "library", metadata: "library" })
     readonly property string lit: holders[page] || page
 
+    // One gap everywhere: beside the tiles, between them and above the brand
     readonly property real pad: theme.space(2)
-    readonly property real itemWidth: Math.max(theme.space(18), labels.implicitWidth + pad * 2)
+    readonly property real itemWidth: theme.space(12)
     width: itemWidth + pad * 2
     // The frame cuts its status strip to this, so the two share one band along the foot
     readonly property real footHeight: theme.space(9)
-    readonly property real roundSize: theme.space(11)
-
-    // The labels at the size the items set them, never shown: their widest sets the column
-    Column {
-        id: labels
-        visible: false
-        Repeater { model: root.places; Label { required property var modelData; role: "title"; font.pointSize: theme.typeSmall; msg: modelData.msg } }
-    }
+    readonly property real roundSize: itemWidth
 
     Rectangle { anchors.fill: parent; color: theme.tile }
     Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
@@ -57,19 +53,20 @@ Item {
     Column {
         id: upper
         x: root.pad
-        y: theme.space(4)
-        spacing: theme.space(2)
+        // The brand sits as far from the top as from the sides
+        y: root.pad + theme.space(1)
+        spacing: root.pad
 
         Image {
             x: (root.itemWidth - width) / 2
-            width: theme.space(10); height: width
+            width: root.itemWidth - theme.space(2); height: width
             source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : "icon.png")
             sourceSize: Qt.size(96, 96)
             // Decoded off the Qt thread, not inside the frame's first build
             asynchronous: true
             smooth: true
         }
-        Item { width: 1; height: theme.space(3) }
+        Item { width: 1; height: root.pad }
 
         Repeater {
             model: root.places
@@ -84,7 +81,7 @@ Item {
                 Accessible.selected: on
                 Accessible.onPressAction: root.picked(modelData.key)
                 width: root.itemWidth
-                height: theme.space(17)
+                height: width
                 radius: theme.radiusTile
                 color: on ? theme.accentSoft : m.containsMouse ? theme.raised : "transparent"
                 border.color: entry.activeFocus ? theme.focusRing : "transparent"
@@ -93,25 +90,14 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(modelData.key)
                 Keys.onSpacePressed: root.picked(modelData.key)
-                Column {
+                Icon {
                     anchors.centerIn: parent
-                    spacing: theme.space(1.5)
-                    Icon {
-                        id: glyph
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        glyph: entry.modelData.icon
-                        size: theme.space(6)
-                        color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
-                    }
-                    Label {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        msg: entry.modelData.msg
-                        role: "title"
-                        font.pointSize: theme.typeSmall
-                        color: entry.on || m.containsMouse ? theme.text : theme.textDim
-                    }
+                    glyph: entry.modelData.icon
+                    size: theme.space(6)
+                    color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
                 }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.modelData.key) }
+                Tooltip { text: entry.Accessible.name }
                 // Complete subscriptions on Downloads: a red count over the glyph's top right
                 Rectangle {
                     objectName: "rail-downloads-badge"
@@ -119,8 +105,8 @@ Item {
                     height: theme.space(4.5)
                     width: Math.max(height, badgeText.implicitWidth + theme.space(2))
                     radius: height / 2
-                    x: entry.width / 2 + theme.space(1)
-                    y: theme.space(2)
+                    x: entry.width - width * 0.8
+                    y: -height * 0.2
                     color: theme.red
                     border.color: theme.tile
                     border.width: 2
@@ -143,8 +129,8 @@ Item {
         id: lower
         x: root.pad
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: theme.space(4)
-        spacing: theme.space(2)
+        anchors.bottomMargin: root.pad
+        spacing: root.pad
 
         // Watch together (#888): not a page, a panel; Ctrl+J opens it too
         Rectangle {

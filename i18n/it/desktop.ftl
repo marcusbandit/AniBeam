@@ -2341,6 +2341,8 @@ settings-find-on-hold =
     .words = in pausa sospese inattive ferme giorni
 settings-find-language =
     .words = lingua traduzione locale inglese italiano
+settings-find-title-language =
+    .words = titolo romaji inglese giapponese nome
 settings-find-mode =
     .words = scuro chiaro sistema tema notte
 settings-find-colours-from =
@@ -2734,7 +2736,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] Una serie ha
        *[other] { $count } serie hanno
-    } uno stato o un voto solo qui. Spostale su { $tracker } per vederle sul telefono e sul tuo profilo.
+    } uno stato o un voto solo qui.
 settings-accounts-review-move = Controlla e sposta
 settings-accounts-nothing-to-move = Niente da spostare
 settings-accounts-sync-now = Sincronizza ora

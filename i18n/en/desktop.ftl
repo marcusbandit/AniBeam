@@ -2880,7 +2880,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] One show has
        *[other] { $count } shows have
-    } a status or a score only here. Move them to { $tracker } to see them on your phone and your profile.
+    } a status or a score only here.
 settings-accounts-review-move = Review and move
 settings-accounts-nothing-to-move = Nothing left to move
 settings-accounts-sync-now = Sync now

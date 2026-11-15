@@ -2341,6 +2341,8 @@ settings-find-on-hold =
     .words = på pause pause inaktiv urørt dage
 settings-find-language =
     .words = sprog oversættelse locale engelsk dansk
+settings-find-title-language =
+    .words = titel romaji engelsk japansk navn
 settings-find-mode =
     .words = mørk lys system tema nat
 settings-find-colours-from =
@@ -2734,7 +2736,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] Én serie har
        *[other] { $count } serier har
-    } en status eller karakter kun her. Flyt dem til { $tracker } for at se dem på din telefon og din profil.
+    } en status eller karakter kun her.
 settings-accounts-review-move = Gennemse og flyt
 settings-accounts-nothing-to-move = Intet tilbage at flytte
 settings-accounts-sync-now = Synkroniser nu

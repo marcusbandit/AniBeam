@@ -87,7 +87,18 @@ SettingsTab {
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
-    Component.onCompleted: { readPresence(); pickPreview() }
+    // The subtitle preview reads the library and starts an mpv frame, so it waits until its
+    // panel comes near the view: opening Playback for a switch at the top costs neither
+    property bool previewWanted: false
+    function checkPreview() {
+        if (!previewWanted && subtitlesPanel.parent && contentY + height > subtitlesPanel.parent.y + subtitlesPanel.y - theme.space(20)) {
+            previewWanted = true
+            pickPreview()
+        }
+    }
+    onContentYChanged: checkPreview()
+    onHeightChanged: checkPreview()
+    Component.onCompleted: { readPresence(); Qt.callLater(checkPreview) }
     Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
@@ -110,6 +121,7 @@ SettingsTab {
             Field { text: (tab.defaults.audio_languages || []).join(", "); placeholder: "ja, en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.audio_languages = tab.codes(t) }) } } } // i18n: none
     }
     Panel {
+        id: subtitlesPanel
         objectName: "settings-subtitles"
         title: words.t("settings-subtitles-title")
         bare: true
@@ -121,9 +133,12 @@ SettingsTab {
                 radius: theme.radiusTile
                 color: "#000000"
                 clip: true
-                SubtitlePreview {
+                Loader {
                     anchors.fill: parent
-                    defaults: tab.defaults; path: tab.preview.path; subtitle: tab.preview.subtitle; startAt: tab.preview.startAt
+                    active: tab.previewWanted
+                    sourceComponent: SubtitlePreview {
+                        defaults: tab.defaults; path: tab.preview.path; subtitle: tab.preview.subtitle; startAt: tab.preview.startAt
+                    }
                 }
             }
         }

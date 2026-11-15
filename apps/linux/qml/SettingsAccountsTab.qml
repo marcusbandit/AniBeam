@@ -54,7 +54,10 @@ SettingsTab {
         }
         tab.waiting = out
     }
-    Component.onCompleted: { readWaiting(); reloadHost(); reloadDevices(); service = Shell.hostService() }
+    // The phone app's reads (the host, the tailnet's devices, the host service) wait a turn,
+    // so the lists at the top paint before they run
+    Component.onCompleted: { readWaiting(); Qt.callLater(tab.readPhone) }
+    function readPhone() { reloadHost(); reloadDevices(); service = Shell.hostService() }
     onAnilistChanged: readWaiting()
     onMalChanged: readWaiting()
     Connections {

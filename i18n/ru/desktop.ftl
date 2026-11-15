@@ -2594,6 +2594,8 @@ settings-find-on-hold =
     .words = отложено пауза неактивные заброшенные дни
 settings-find-language =
     .words = язык перевод локаль английский русский
+settings-find-title-language =
+    .words = название ромадзи английский японский
 settings-find-mode =
     .words = тёмная светлая система тема ночь режим
 settings-find-colours-from =
@@ -2991,7 +2993,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] У { $count } сериала
        *[other] У { $count } сериалов
-    } статус или оценка есть только здесь. Перенесите их в { $tracker }, чтобы видеть на телефоне и в профиле.
+    } статус или оценка есть только здесь.
 settings-accounts-review-move = Проверить и перенести
 settings-accounts-nothing-to-move = Переносить больше нечего
 settings-accounts-sync-now = Синхронизировать сейчас

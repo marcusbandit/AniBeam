@@ -2341,6 +2341,8 @@ settings-find-on-hold =
     .words = pausiert pause inaktiv unberührt tage
 settings-find-language =
     .words = sprache übersetzung locale deutsch englisch
+settings-find-title-language =
+    .words = titel romaji englisch japanisch name
 settings-find-mode =
     .words = dunkel hell system design nacht modus
 settings-find-colours-from =
@@ -2734,7 +2736,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] Eine Serie hat
        *[other] { $count } Serien haben
-    } Status oder Wertung nur hier. Verschiebe sie zu { $tracker }, um sie auf deinem Handy und in deinem Profil zu sehen.
+    } Status oder Wertung nur hier.
 settings-accounts-review-move = Prüfen und verschieben
 settings-accounts-nothing-to-move = Nichts mehr zu verschieben
 settings-accounts-sync-now = Jetzt syncen

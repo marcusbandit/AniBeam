@@ -2340,6 +2340,8 @@ settings-find-on-hold =
     .words = in de wacht gepauzeerd inactief stil dagen
 settings-find-language =
     .words = taal vertaling locale nederlands engels
+settings-find-title-language =
+    .words = titel romaji engels japans naam
 settings-find-mode =
     .words = donker licht systeem thema nacht
 settings-find-colours-from =
@@ -2733,7 +2735,7 @@ settings-accounts-local-lists-helper =
     { $count ->
         [one] Eén serie heeft
        *[other] { $count } series hebben
-    } alleen hier een status of score. Verhuis ze naar { $tracker } om ze op je telefoon en profiel te zien.
+    } alleen hier een status of score.
 settings-accounts-review-move = Bekijken en verhuizen
 settings-accounts-nothing-to-move = Niets meer te verhuizen
 settings-accounts-sync-now = Nu syncen
