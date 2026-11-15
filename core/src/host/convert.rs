@@ -1,7 +1,9 @@
 //! Episodes converted as they play, for a client that cannot take the file as
 //! it is: too big for its link, or a codec its decoder or a TV it casts to
 //! cannot read. ffmpeg writes 8-bit H.264 and stereo AAC as HLS, in pieces of
-//! [`PIECE`] seconds, into a directory under the cache.
+//! [`wire::HLS_PIECE`] seconds, the length the playlist lists, into a
+//! directory under the cache. Every piece starts on a keyframe forced at its
+//! start.
 //!
 //! The playlist lists every piece of the whole episode up front, so a player
 //! seeks it like a file. One ffmpeg runs per conversion and writes pieces in
@@ -32,9 +34,6 @@ use crate::sync::recover;
 
 /// ffmpeg's own words, in the job's directory.
 const LOG: &str = "ffmpeg.log";
-/// Seconds per piece, the length the playlist the host serves lists
-/// (`wire::HLS_PIECE`). Every piece starts on a keyframe forced at its start.
-pub const PIECE: f64 = wire::HLS_PIECE;
 /// A request this many pieces past what ffmpeg has written still waits for it
 /// instead of starting over there.
 const NEAR: u32 = 4;
@@ -686,7 +685,7 @@ fn input_name(path: &Path) -> String {
 }
 
 fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) -> Vec<String> {
-    let start = f64::from(from) * PIECE;
+    let start = f64::from(from) * wire::HLS_PIECE;
     let height = height_for(key.height).min(source.probe.height.unwrap_or(u32::MAX).max(144));
     let mut a: Vec<String> = Vec::new();
     let mut push = |v: &[&str]| a.extend(v.iter().map(|s| s.to_string()));
@@ -758,14 +757,14 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
     enc.args(height, &mut enc_args);
     a.extend(enc_args);
     // A keyframe at every piece's start: this run starts at one.
-    let gop = format!("expr:gte(t,n_forced*{PIECE})");
+    let gop = format!("expr:gte(t,n_forced*{})", wire::HLS_PIECE);
     let mut push = |v: &[&str]| a.extend(v.iter().map(|s| s.to_string()));
     push(&["-force_key_frames", &gop, "-sc_threshold", "0"]);
     push(&[
         "-f",
         "hls",
         "-hls_time",
-        &format!("{PIECE}"),
+        &wire::HLS_PIECE.to_string(),
         "-hls_list_size",
         "0",
         "-hls_playlist_type",
