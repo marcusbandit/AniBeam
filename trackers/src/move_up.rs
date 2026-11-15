@@ -11,14 +11,14 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::jobs::{Finished, JobCtx};
-use crate::trackers::Trackers;
-use crate::trackers::{accounts, writes};
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use crate::Trackers;
+use crate::{accounts, writes};
 
 /// `PreviewListMove`: [`preview`] off the reader connection.
-pub(crate) fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
+pub fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
     Ok(Reply::ListMove {
         rows: services.store.read(|c| preview(c, t))?,
     })
@@ -37,7 +37,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
         Tracker::Anilist => ("s.anilist_id", "anilist_id"),
         Tracker::Mal => ("s.mal_id", "mal_id"),
     };
-    let lang = crate::prefs::load_preferences(conn)?.title_language;
+    let lang = anibeam_foundation::prefs::load_preferences(conn)?.title_language;
     let sql = format!(
         "SELECT s.id, s.folder_name, l.status, l.score, e.status, e.score,
                 m.title_romaji, m.title_english, m.title_native
@@ -59,7 +59,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
                 (r.get(6)?, r.get(7)?, r.get(8)?);
             Ok(MoveRow {
                 series: r.get::<_, i64>(0)? as u64,
-                title: crate::foundation::titles::resolve(
+                title: anibeam_foundation::titles::resolve(
                     lang,
                     romaji.as_deref(),
                     english.as_deref(),
@@ -98,7 +98,7 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
     if series.is_empty() {
         return Err(CoreError::invalid(
             "series",
-            crate::i18n::tr("core-trackers-move-none-picked", &[]),
+            anibeam_contract::i18n::tr("core-trackers-move-none-picked", &[]),
         ));
     }
     let connected = trackers
@@ -191,7 +191,7 @@ async fn run(
         if landed {
             // The tracker now has the newer word, whether or not its reply
             // carried a stamp, so the preview never offers this row again.
-            let now = crate::time::now_secs();
+            let now = anibeam_foundation::time::now_secs();
             trackers
                 .services
                 .store
@@ -208,19 +208,19 @@ async fn run(
         } else if refused {
             failed += 1;
         }
-        if let Ok(Some(card)) = crate::metadata::apply::card_for(&trackers.services, series).await {
+        if let Ok(Some(card)) = anibeam_metadata::apply::card_for(&trackers.services, series).await {
             ctx.changed(card);
         }
     }
     let site = super::oauth::site_name(t);
     let plain = match (moved, failed) {
         (0, 0) => None,
-        (m, 0) => Some(crate::words!(
+        (m, 0) => Some(anibeam_contract::words!(
             "core-trackers-moved-up",
             count = m,
             site = site
         )),
-        (m, f) => Some(crate::words!(
+        (m, f) => Some(anibeam_contract::words!(
             "core-trackers-moved-up-some-refused",
             moved = m,
             failed = f,
@@ -261,7 +261,7 @@ async fn sent(
             let site = super::oauth::site_name(t);
             ctx.say(
                 Level::Error,
-                crate::words!(
+                anibeam_contract::words!(
                     "core-trackers-move-refused",
                     site = site,
                     show = &target.folder_name,

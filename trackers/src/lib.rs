@@ -1,5 +1,10 @@
 //! The trackers: AniList and MAL, where their credentials live and what
 //! the core does with them.
+//!
+//! The trackers team (#854) is this crate. It reads the metadata team below
+//! it for a card after a write and the stub record a watched show gets, and
+//! says a list was read again on the bus. The core hands it on as
+//! `anibeam_core::trackers`.
 
 pub mod accounts;
 pub mod cache;
@@ -16,11 +21,11 @@ pub use team::Trackers;
 
 /// Where the tokens live moved down to the foundation with `Services`, which
 /// holds it (#854); the shells and tests still name it here.
-pub use crate::foundation::secrets::{Secrets, StoreKind};
+pub use anibeam_foundation::secrets::{Secrets, StoreKind};
 
 /// The tracker timeout and the number readers moved down to the network team,
 /// whose MAL client and Airing now read them too (#854).
-pub(crate) use crate::net::{TRACKER_TIMEOUT, as_count, as_u32};
+pub(crate) use anibeam_net::{TRACKER_TIMEOUT, as_count, as_u32};
 
 /// The account says it is connected but there is no token behind it: an
 /// AniList keyring entry the store lost, or a MAL session whose refresh has
@@ -29,5 +34,5 @@ pub(crate) const NO_TOKEN: &str = "no access token stored, reconnect in Settings
 
 /// [`NO_TOKEN`] in the current language, for an error a person reads.
 pub(crate) fn no_token() -> String {
-    crate::i18n::tr("core-trackers-no-token", &[])
+    anibeam_contract::i18n::tr("core-trackers-no-token", &[])
 }

@@ -521,7 +521,7 @@ core-first-run-not-absolute = der Videoordner muss ein absoluter Pfad sein
 
 core-presence-extra = Extra
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Keine Client-ID für { $tracker } gesetzt.
 core-trackers-mal-reconnect = Verbinde MyAnimeList in den Einstellungen neu.
@@ -529,15 +529,15 @@ core-trackers-mal-wants-secret = MyAnimeList verlangt das Client-Secret dieser A
 core-trackers-token-reply-unreadable = unlesbare Token-Antwort: { $error }
 core-trackers-token-reply-no-token = die Token-Antwort enthielt kein Access-Token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = kein Access-Token gespeichert, verbinde in den Einstellungen neu
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = das Konto hat keine Nutzer-ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = keine Serie zum Verschieben gewählt
 core-trackers-moved-up =
@@ -555,7 +555,7 @@ core-trackers-moved-up-some-refused =
     } nicht übernommen.
 core-trackers-move-refused = { $site } hat { $show } nicht übernommen: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Anmeldung abgelaufen, versuch es nochmal.
 core-trackers-oauth-state-mismatch = State passt nicht, mögliches CSRF, abgebrochen.
@@ -580,7 +580,7 @@ core-trackers-page-cancelled-title = { $app }, Anmeldung abgebrochen
 core-trackers-page-cancelled = Diese Anmeldung wurde abgebrochen
 core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du das wolltest.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Setze auf Pausiert bei { $tracker }
 core-trackers-on-hold-moved =
@@ -619,7 +619,7 @@ core-trackers-back-on-watching = { $name } steht bei { $site } wieder auf Schaue
 core-trackers-back-on-watching-two = { $name } steht bei { $site } und { $secondSite } wieder auf Schaue ich.
 core-trackers-back-on-watching-failed = { $name } konnte nicht zurück auf Schaue ich. Versuch es später nochmal.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } drosselt die Anfragen, versuch es in einer Minute nochmal.
 core-trackers-auth-expired = Anmeldung bei { $tracker } abgelaufen, verbinde in den Einstellungen neu.

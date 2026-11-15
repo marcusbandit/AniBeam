@@ -519,7 +519,7 @@ core-first-run-not-absolute = la carpeta de vídeos debe ser una ruta absoluta
 
 core-presence-extra = Extra
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = No hay ID de cliente para { $tracker }.
 core-trackers-mal-reconnect = Vuelve a conectar MyAnimeList en Ajustes.
@@ -527,15 +527,15 @@ core-trackers-mal-wants-secret = MyAnimeList pide el secreto de cliente de esta 
 core-trackers-token-reply-unreadable = respuesta de token ilegible: { $error }
 core-trackers-token-reply-no-token = la respuesta de token no traía token de acceso
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = no hay token de acceso guardado, vuelve a conectar en Ajustes
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = la cuenta no trae id de usuario
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = no se eligió ninguna serie para pasar
 core-trackers-moved-up =
@@ -553,7 +553,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } no aceptó { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Se agotó el tiempo de autorización, inténtalo de nuevo.
 core-trackers-oauth-state-mismatch = el estado no coincide, posible CSRF, cancelado.
@@ -578,7 +578,7 @@ core-trackers-page-cancelled-title = { $app }, inicio de sesión cancelado
 core-trackers-page-cancelled = Se canceló este inicio de sesión
 core-trackers-page-cancelled-body = Puedes cerrar esta pestaña. Empieza de nuevo desde { $app } si querías hacerlo.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Pasando a En espera en { $tracker }
 core-trackers-on-hold-moved =
@@ -617,7 +617,7 @@ core-trackers-back-on-watching = { $name } vuelve a estar en Viendo en { $site }
 core-trackers-back-on-watching-two = { $name } vuelve a estar en Viendo en { $site } y { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } no pudo volver a Viendo. Inténtalo más tarde.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } limitó las peticiones, inténtalo dentro de un minuto.
 core-trackers-auth-expired = La sesión de { $tracker } caducó, vuelve a conectar en Ajustes.

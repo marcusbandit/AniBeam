@@ -19,18 +19,18 @@ use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, Transaction, params};
 
-use crate::contract::*;
-use crate::events::Signal;
-use crate::foundation::services::Services;
-use crate::jobs::{Finished, JobCtx};
-use crate::library::cards;
-use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
-use crate::time;
-use crate::trackers::Trackers;
-use crate::trackers::accounts;
-use crate::trackers::on_hold;
-use crate::trackers::writes;
-use crate::trackers::{TRACKER_TIMEOUT, as_count, no_token};
+use anibeam_contract::*;
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_library::cards;
+use anibeam_net::anilist::MEDIA_LIST_COLLECTION_QUERY;
+use anibeam_foundation::time;
+use crate::Trackers;
+use crate::accounts;
+use crate::on_hold;
+use crate::writes;
+use crate::{TRACKER_TIMEOUT, as_count, no_token};
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
@@ -533,7 +533,7 @@ async fn fetch_and_replace(
             // AniList's collection is asked for by user id, so an account
             // whose profile never carried one cannot be read at all.
             let user_id = user_id.ok_or_else(|| {
-                accounts::tracker_error(t, crate::i18n::tr("core-trackers-no-user-id", &[]))
+                accounts::tracker_error(t, anibeam_contract::i18n::tr("core-trackers-no-user-id", &[]))
             })?;
             fetch_anilist(trackers, user_id, &token).await?
         }

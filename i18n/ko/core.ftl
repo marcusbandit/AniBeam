@@ -516,7 +516,7 @@ core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 
 core-presence-extra = 번외
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = { $tracker } 클라이언트 ID가 설정되지 않았어요.
 core-trackers-mal-reconnect = 설정에서 MyAnimeList를 다시 연결하세요.
@@ -524,15 +524,15 @@ core-trackers-mal-wants-secret = MyAnimeList가 이 앱의 클라이언트 시�
 core-trackers-token-reply-unreadable = 토큰 응답을 읽을 수 없어요: { $error }
 core-trackers-token-reply-no-token = 토큰 응답에 액세스 토큰이 없어요
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 저장된 액세스 토큰이 없어요. 설정에서 다시 연결하세요
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 계정에 사용자 ID가 없어요
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 옮길 작품을 선택하지 않았어요
 core-trackers-moved-up =
@@ -547,7 +547,7 @@ core-trackers-moved-up-some-refused =
     }는 받지 않았어요.
 core-trackers-move-refused = { $site }이(가) { $show }을(를) 받지 않았어요: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 인증 시간이 초과됐어요. 다시 시도하세요.
 core-trackers-oauth-state-mismatch = state가 일치하지 않아요. CSRF일 수 있어 중단했어요.
@@ -572,7 +572,7 @@ core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = { $tracker }에서 보류로 옮기는 중
 core-trackers-on-hold-moved =
@@ -604,7 +604,7 @@ core-trackers-back-on-watching = { $name }이(가) { $site }에서 다시 시청
 core-trackers-back-on-watching-two = { $name }이(가) { $site }와(과) { $secondSite }에서 다시 시청 중으로 돌아왔어요.
 core-trackers-back-on-watching-failed = { $name }을(를) 시청 중으로 되돌리지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 요청 한도 초과. 1분 뒤 다시 시도하세요.
 core-trackers-auth-expired = { $tracker } 인증이 만료됐어요. 설정에서 다시 연결하세요.

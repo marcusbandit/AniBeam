@@ -522,7 +522,7 @@ core-first-run-not-absolute = de videomap moet een absoluut pad zijn
 
 core-presence-extra = Extra
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Geen client-ID ingesteld voor { $tracker }.
 core-trackers-mal-reconnect = Koppel MyAnimeList opnieuw in Instellingen.
@@ -530,15 +530,15 @@ core-trackers-mal-wants-secret = MyAnimeList wil het client secret van deze app.
 core-trackers-token-reply-unreadable = onleesbaar tokenantwoord: { $error }
 core-trackers-token-reply-no-token = het tokenantwoord bevatte geen access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = geen access token bewaard, koppel opnieuw in Instellingen
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = het account heeft geen gebruikers-ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = geen series gekozen om te verhuizen
 core-trackers-moved-up =
@@ -556,7 +556,7 @@ core-trackers-moved-up-some-refused =
     } niet aan.
 core-trackers-move-refused = { $site } nam { $show } niet aan: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Autorisatie verlopen, probeer het opnieuw.
 core-trackers-oauth-state-mismatch = state komt niet overeen, mogelijk CSRF, afgebroken.
@@ -581,7 +581,7 @@ core-trackers-page-cancelled-title = { $app }, inloggen geannuleerd
 core-trackers-page-cancelled = Dit inloggen is geannuleerd
 core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } als je dat wilde.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Naar In de wacht zetten op { $tracker }
 core-trackers-on-hold-moved =
@@ -620,7 +620,7 @@ core-trackers-back-on-watching = { $name } staat weer op Kijken op { $site }.
 core-trackers-back-on-watching-two = { $name } staat weer op Kijken op { $site } en { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } kon niet terug naar Kijken. Probeer het later opnieuw.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } remt verzoeken af, probeer het over een minuut opnieuw.
 core-trackers-auth-expired = { $tracker }-login verlopen, koppel opnieuw in Instellingen.

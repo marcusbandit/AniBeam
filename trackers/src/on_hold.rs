@@ -29,16 +29,16 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
-use crate::jobs::{Finished, JobCtx};
-use crate::library::cards;
-use crate::metadata::apply::card_for;
-use crate::metadata::fetch::message_of;
-use crate::prefs;
-use crate::time;
-use crate::trackers::Trackers;
-use crate::trackers::{NO_TOKEN, accounts, cache, no_token, writes};
+use anibeam_contract::*;
+use anibeam_foundation::watch::{ON_HOLD_MAX_DAYS, ON_HOLD_MIN_DAYS};
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_library::cards;
+use anibeam_metadata::apply::card_for;
+use anibeam_metadata::fetch::message_of;
+use anibeam_foundation::prefs;
+use anibeam_foundation::time;
+use crate::Trackers;
+use crate::{NO_TOKEN, accounts, cache, no_token, writes};
 
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
@@ -378,7 +378,7 @@ pub(crate) async fn after_refresh(trackers: &Arc<Trackers>) {
 /// cover is left for the next refresh (a launch or a Sync). The
 /// preferences are saved by then, so a failed read here is a warning and a
 /// sweep that waits for the next refresh, never a failed call.
-pub(crate) fn kick(trackers: &Arc<Trackers>) {
+pub fn kick(trackers: &Arc<Trackers>) {
     if !RUNS_HERE {
         return;
     }
@@ -509,7 +509,7 @@ async fn run(trackers: Arc<Trackers>, ctx: Arc<JobCtx>) -> Result<Finished, Core
                 continue;
             }
         };
-        let label = crate::i18n::tr(
+        let label = anibeam_contract::i18n::tr(
             "core-trackers-on-hold-moving",
             &[("tracker", t.label().into())],
         );
@@ -719,22 +719,22 @@ fn finished(tally: &Tally, days: u32) -> Finished {
     let site = |t: &Tracker| super::oauth::site_name(*t);
     let failed = tally.failed;
     let said = match (tally.moved.as_slice(), failed) {
-        ([], _) => crate::words!("core-trackers-on-hold-failed", failed = failed),
-        ([(t, n)], 0) => crate::words!("core-trackers-on-hold-moved", count = *n, site = site(t)),
-        ([(t, n)], _) => crate::words!(
+        ([], _) => anibeam_contract::words!("core-trackers-on-hold-failed", failed = failed),
+        ([(t, n)], 0) => anibeam_contract::words!("core-trackers-on-hold-moved", count = *n, site = site(t)),
+        ([(t, n)], _) => anibeam_contract::words!(
             "core-trackers-on-hold-moved-failed",
             count = *n,
             site = site(t),
             failed = failed
         ),
-        ([(t, n), (t2, n2), ..], 0) => crate::words!(
+        ([(t, n), (t2, n2), ..], 0) => anibeam_contract::words!(
             "core-trackers-on-hold-moved-two",
             count = *n,
             site = site(t),
             second = *n2,
             secondSite = site(t2)
         ),
-        ([(t, n), (t2, n2), ..], _) => crate::words!(
+        ([(t, n), (t2, n2), ..], _) => anibeam_contract::words!(
             "core-trackers-on-hold-moved-two-failed",
             count = *n,
             site = site(t),
@@ -790,7 +790,7 @@ fn finished(tally: &Tally, days: u32) -> Finished {
 /// On hold switched on only. Called by the playback session once a play
 /// counts as a view; whatever goes wrong is a debug line, never the
 /// session's failure.
-pub(crate) fn played(trackers: &Arc<Trackers>, series: u64) {
+pub fn played(trackers: &Arc<Trackers>, series: u64) {
     if !RUNS_HERE {
         return;
     }
@@ -916,7 +916,7 @@ async fn back_to_watching(
         })
         .await?
         .unwrap_or_else(|| {
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-trackers-series-fallback",
                 &[("id", series.to_string().into())],
             )
@@ -925,12 +925,12 @@ async fn back_to_watching(
     Ok(match (moved.is_empty(), failure) {
         (false, _) => Finished {
             plain: Some(match moved.as_slice() {
-                [t] => crate::words!(
+                [t] => anibeam_contract::words!(
                     "core-trackers-back-on-watching",
                     name = &name,
                     site = site(t)
                 ),
-                [t, t2, ..] => crate::words!(
+                [t, t2, ..] => anibeam_contract::words!(
                     "core-trackers-back-on-watching-two",
                     name = &name,
                     site = site(t),
@@ -950,7 +950,7 @@ async fn back_to_watching(
             body: EventBody::Notice,
         },
         (true, Some(why)) => Finished {
-            plain: Some(crate::words!(
+            plain: Some(anibeam_contract::words!(
                 "core-trackers-back-on-watching-failed",
                 name = &name
             )),

@@ -25,20 +25,20 @@ use std::time::UNIX_EPOCH;
 use rusqlite::types::Value;
 use rusqlite::{Connection, Transaction, params, params_from_iter};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::titles::{self, fallback_title};
-use crate::jobs::Finished;
-use crate::metadata::record::{self, StubWrite};
-use crate::net::anilist::WATCHING_LIST_QUERY;
-use crate::prefs;
-use crate::store::settings;
-use crate::time;
-use crate::trackers::Trackers;
-use crate::trackers::accounts;
-use crate::trackers::cache::normalize_status;
-use crate::trackers::writes;
-use crate::trackers::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::titles::{self, fallback_title};
+use anibeam_foundation::jobs::Finished;
+use anibeam_metadata::record::{self, StubWrite};
+use anibeam_net::anilist::WATCHING_LIST_QUERY;
+use anibeam_foundation::prefs;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::time;
+use crate::Trackers;
+use crate::accounts;
+use crate::cache::normalize_status;
+use crate::writes;
+use crate::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
 
 // The read -------------------------------------------------------------------
 
@@ -303,7 +303,7 @@ async fn refresh(trackers: &Arc<Trackers>) -> Result<Finished, CoreError> {
     // never carried one cannot be read at all.
     let user_id = account
         .user_id
-        .ok_or_else(|| tracker_error(crate::i18n::tr("core-trackers-no-user-id", &[])))?;
+        .ok_or_else(|| tracker_error(anibeam_contract::i18n::tr("core-trackers-no-user-id", &[])))?;
     let token = accounts::access_token(trackers, Tracker::Anilist)
         .await?
         .ok_or_else(|| tracker_error(no_token()))?;

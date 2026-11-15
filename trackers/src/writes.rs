@@ -22,23 +22,23 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::i18n::{Arg, tr};
-use crate::jobs::{Finished, JobCtx};
-use crate::library::history::How;
-use crate::metadata::apply::card_for;
-use crate::metadata::fetch::message_of;
-use crate::net::HttpResponse;
-use crate::net::anilist::{
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_contract::i18n::{Arg, tr};
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_library::history::How;
+use anibeam_metadata::apply::card_for;
+use anibeam_metadata::fetch::message_of;
+use anibeam_net::HttpResponse;
+use anibeam_net::anilist::{
     MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_LIST_STATUS_MUTATION, SAVE_NOTES_MUTATION,
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
 };
-use crate::prefs;
-use crate::sync::recover;
-use crate::time;
-use crate::trackers::Trackers;
-use crate::trackers::{
+use anibeam_foundation::prefs;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use crate::Trackers;
+use crate::{
     TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
 };
 
@@ -420,7 +420,7 @@ fn mark_here(
     let images_dir = services.paths.images_dir();
     let cards = services
         .store
-        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))?;
+        .read(|c| anibeam_library::cards::cards_for(c, &images_dir, &[series]))?;
     services.bus.debug(
         Stage::Library,
         "watched episodes set here",
@@ -536,7 +536,7 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
     let m = media.unwrap_or_default();
     let (lib_mal, lib_eps, romaji, english, native) = library.unwrap_or_default();
     let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
-    let folder_name = crate::foundation::titles::resolve(
+    let folder_name = anibeam_foundation::titles::resolve(
         lang,
         text(&m["title"]["romaji"]).or(romaji).as_deref(),
         text(&m["title"]["english"]).or(english).as_deref(),
@@ -662,7 +662,7 @@ fn push_card(services: &Services, series: u64, line: &str) {
     let images_dir = services.paths.images_dir();
     match services
         .store
-        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))
+        .read(|c| anibeam_library::cards::cards_for(c, &images_dir, &[series]))
     {
         Ok(cards) => {
             services.bus.debug(
@@ -842,7 +842,7 @@ async fn run_many(
         }
     };
     let reason = reason.map(|r| r.trim_end_matches('.').to_string());
-    let said = crate::words!(
+    let said = anibeam_contract::words!(
         "core-trackers-written",
         done = done,
         failed = failed,
@@ -1109,7 +1109,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
     match action {
         Action::Mark { episode, .. } => Finished {
             plain: sites.map(|s| {
-                crate::words!(
+                anibeam_contract::words!(
                     "core-trackers-marked",
                     episode = episode,
                     show = folder,
@@ -1126,7 +1126,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         },
         Action::Progress { progress } => Finished {
             plain: sites.map(|s| {
-                crate::words!(
+                anibeam_contract::words!(
                     "core-trackers-progress-set",
                     progress = progress,
                     show = folder,
@@ -1147,13 +1147,13 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             let rated = (score > 0.0).then_some(score);
             Finished {
                 plain: sites.map(|s| match rated {
-                    Some(score) => crate::words!(
+                    Some(score) => anibeam_contract::words!(
                         "core-trackers-scored",
                         score = score.to_string(),
                         show = folder,
                         sites = s
                     ),
-                    None => crate::words!("core-trackers-score-cleared", show = folder, sites = s),
+                    None => anibeam_contract::words!("core-trackers-score-cleared", show = folder, sites = s),
                 }),
                 level,
                 message: match rated {
@@ -1169,7 +1169,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         }
         Action::Status { status } => Finished {
             plain: sites.map(|s| {
-                crate::words!(
+                anibeam_contract::words!(
                     "core-trackers-status-set",
                     status = status.as_str(),
                     show = folder,
@@ -1188,8 +1188,8 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             let cleared = notes.is_none();
             Finished {
                 plain: sites.map(|s| match cleared {
-                    false => crate::words!("core-trackers-notes-saved", show = folder, sites = s),
-                    true => crate::words!("core-trackers-notes-cleared", show = folder, sites = s),
+                    false => anibeam_contract::words!("core-trackers-notes-saved", show = folder, sites = s),
+                    true => anibeam_contract::words!("core-trackers-notes-cleared", show = folder, sites = s),
                 }),
                 level,
                 message: match cleared {
@@ -1246,7 +1246,7 @@ async fn write_one(
         Err(e) => {
             ctx.say(
                 Level::Error,
-                crate::words!(
+                anibeam_contract::words!(
                     "core-trackers-update-failed",
                     site = super::oauth::site_name(t)
                 ),

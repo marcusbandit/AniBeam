@@ -521,7 +521,7 @@ core-first-run-not-absolute = videomappen skal være en absolut sti
 
 core-presence-extra = Ekstra
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Intet klient-id sat for { $tracker }.
 core-trackers-mal-reconnect = Forbind MyAnimeList igen i Indstillinger.
@@ -529,15 +529,15 @@ core-trackers-mal-wants-secret = MyAnimeList vil have denne apps klienthemmeligh
 core-trackers-token-reply-unreadable = svaret med token kunne ikke læses: { $error }
 core-trackers-token-reply-no-token = svaret indeholdt ingen adgangstoken
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = ingen adgangstoken gemt, forbind igen i Indstillinger
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = kontoen har intet bruger-id
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = ingen serier valgt at flytte
 core-trackers-moved-up =
@@ -555,7 +555,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } tog ikke imod { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Godkendelsen fik timeout, prøv igen.
 core-trackers-oauth-state-mismatch = state passer ikke, mulig CSRF, afbrudt.
@@ -580,7 +580,7 @@ core-trackers-page-cancelled-title = { $app }, login annulleret
 core-trackers-page-cancelled = Dette login blev annulleret
 core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis det var meningen.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Flytter til På pause på { $tracker }
 core-trackers-on-hold-moved =
@@ -619,7 +619,7 @@ core-trackers-back-on-watching = { $name } er tilbage på Ser nu på { $site }.
 core-trackers-back-on-watching-two = { $name } er tilbage på Ser nu på { $site } og { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } kunne ikke komme tilbage på Ser nu. Prøv igen senere.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } begrænser forespørgsler, prøv igen om et minut.
 core-trackers-auth-expired = { $tracker }-login er udløbet, forbind igen i Indstillinger.

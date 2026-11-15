@@ -507,7 +507,7 @@ core-first-run-not-absolute = 视频文件夹必须是绝对路径
 
 core-presence-extra = 附加内容
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = 没有为 { $tracker } 设置客户端 ID。
 core-trackers-mal-reconnect = 请在设置中重新连接 MyAnimeList。
@@ -515,22 +515,22 @@ core-trackers-mal-wants-secret = MyAnimeList 需要此应用的客户端密钥�
 core-trackers-token-reply-unreadable = 无法读取令牌响应：{ $error }
 core-trackers-token-reply-no-token = 令牌响应中没有访问令牌
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 没有保存访问令牌，请在设置中重新连接
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 账号中没有用户 ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 没有选择要移动的番剧
 core-trackers-moved-up = 已把 { $count } 部番剧从这台电脑移到 { $site }。
 core-trackers-moved-up-some-refused = 已把 { $moved } 部番剧移到 { $site }；{ $site } 没有接受 { $failed } 部。
 core-trackers-move-refused = { $site } 没有接受《{ $show }》：{ $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 授权超时，请重试。
 core-trackers-oauth-state-mismatch = state 不匹配，可能是 CSRF 攻击，已中止。
@@ -555,7 +555,7 @@ core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 此次登录已取消
 core-trackers-page-cancelled-body = 你可以关闭此标签页。如有需要，请从 { $app } 重新开始。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = 正在 { $tracker } 上移到“搁置”
 core-trackers-on-hold-moved = 已在 { $site } 上把 { $count } 部番剧移到“搁置”。
@@ -568,7 +568,7 @@ core-trackers-back-on-watching = 《{ $name }》已在 { $site } 上回到“在
 core-trackers-back-on-watching-two = 《{ $name }》已在 { $site } 和 { $secondSite } 上回到“在看”。
 core-trackers-back-on-watching-failed = 《{ $name }》无法回到“在看”，请稍后再试。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 限制了请求频率，请一分钟后重试。
 core-trackers-auth-expired = { $tracker } 授权已过期，请在设置中重新连接。

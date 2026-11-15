@@ -8,7 +8,7 @@
 
 use rusqlite::{Connection, params};
 
-use crate::contract::*;
+use anibeam_contract::*;
 
 /// A status on the list kept here. The score stays as it was.
 pub fn set_status(

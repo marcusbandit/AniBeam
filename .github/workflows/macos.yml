@@ -16,6 +16,7 @@ on:
       - 'library/**'
       - 'releases/**'
       - 'metadata/**'
+      - 'trackers/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'
@@ -143,7 +144,7 @@ jobs:
           PY
 
       - name: Test the core and the shell
-        run: cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-core -p anibeam
+        run: cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-core -p anibeam
 
       - name: Bundle
         run: apps/linux/packaging/macos/bundle.sh dist

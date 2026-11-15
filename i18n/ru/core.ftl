@@ -565,7 +565,7 @@ core-presence-extra = Доп. материал
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = Для { $tracker } не задан Client ID.
@@ -575,15 +575,15 @@ core-trackers-mal-wants-secret = MyAnimeList требует Client Secret это
 core-trackers-token-reply-unreadable = ответ с токеном не читается: { $error }
 core-trackers-token-reply-no-token = в ответе нет токена доступа
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = токен доступа не сохранён, переподключитесь в настройках
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = у аккаунта нет id пользователя
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = не выбраны сериалы для переноса
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -609,7 +609,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } не принял «{ $show }»: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Время авторизации истекло, попробуйте снова.
 core-trackers-oauth-state-mismatch = не совпал state, возможна CSRF-атака, вход прерван.
@@ -640,7 +640,7 @@ core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Перенос в «Отложено» на { $tracker }
@@ -697,7 +697,7 @@ core-trackers-back-on-watching = «{ $name }» снова в «Смотрю» н
 core-trackers-back-on-watching-two = «{ $name }» снова в «Смотрю» на { $site } и { $secondSite }.
 core-trackers-back-on-watching-failed = Не удалось вернуть «{ $name }» в «Смотрю». Попробуйте позже.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } ограничил частоту запросов, попробуйте через минуту.

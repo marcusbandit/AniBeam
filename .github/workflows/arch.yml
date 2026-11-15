@@ -16,6 +16,7 @@ on:
       - 'library/**'
       - 'releases/**'
       - 'metadata/**'
+      - 'trackers/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'

@@ -20,6 +20,7 @@ anibeam-net.workspace = true
 anibeam-library.workspace = true
 anibeam-releases.workspace = true
 anibeam-metadata.workspace = true
+anibeam-trackers.workspace = true
 anibeam-room.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -57,7 +58,7 @@ librqbit = { version = "9", default-features = false, features = ["rust-tls"], o
 anyhow = { version = "1", optional = true }
 
 [features]
-phone = ["dep:librqbit", "dep:anyhow"]
+phone = ["dep:librqbit", "dep:anyhow", "anibeam-trackers/phone"]
 cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
 
 # Pausing and resuming a host conversion with STOP and CONT.
