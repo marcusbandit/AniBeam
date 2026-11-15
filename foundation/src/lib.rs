@@ -32,6 +32,7 @@ pub mod services;
 pub mod size;
 pub mod store;
 pub mod sync;
+pub mod testing;
 pub mod time;
 pub mod titles;
 pub mod trust;

@@ -35,6 +35,8 @@ pub mod replace;
 pub mod rewire;
 pub mod rolling;
 pub mod settings;
+#[cfg(test)]
+pub(crate) mod testing;
 pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -3606,14 +3608,8 @@ mod tests {
     #[test]
     fn the_features_anirss_lists_reach_the_view_and_go_with_a_failure() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
         let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let teams = Teams::open(dir.path(), http.clone());
         let client = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
         http.push_for(
             "/health",
@@ -3632,25 +3628,26 @@ mod tests {
         );
         let reached = Reached {
             client,
-            generation: core.downloads.state().generation,
+            generation: teams.downloads.state().generation,
             own: true,
         };
         assert_eq!(
-            core.services
+            teams
+                .services
                 .handle
-                .block_on(read_anirss(&core.downloads, &reached))
+                .block_on(read_anirss(&teams.downloads, &reached))
                 .unwrap(),
             Read::Kept
         );
-        let view = anirss_view(&core.downloads).unwrap();
+        let view = anirss_view(&teams.downloads).unwrap();
         assert_eq!((view.version.as_str(), view.endpoint_writes), ("dev", true));
 
-        write_anirss_failure(&mut core.downloads.state(), AnirssState::Failed, "gone");
-        assert!(anirss_view(&core.downloads).is_none());
+        write_anirss_failure(&mut teams.downloads.state(), AnirssState::Failed, "gone");
+        assert!(anirss_view(&teams.downloads).is_none());
         // Ready again by a path that reads no health: the old features are not carried.
-        core.downloads.state().anirss.state = AnirssState::Ready;
-        assert!(!anirss_view(&core.downloads).unwrap().endpoint_writes);
-        core.shutdown();
+        teams.downloads.state().anirss.state = AnirssState::Ready;
+        assert!(!anirss_view(&teams.downloads).unwrap().endpoint_writes);
+        teams.shutdown();
     }
 
     /// Reads an anirss with one endpoint installed, under settings saved with `saved` and a
@@ -3658,14 +3655,8 @@ mod tests {
     /// anything was written into that anirss.
     fn read_endpoint_sync(saved: AnirssMode, own: bool) -> (EndpointSync, bool) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
         let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let teams = Teams::open(dir.path(), http.clone());
         // Saved straight into the store: the settings change, the generation does not, as
         // in the gap of a save that has not bumped it yet.
         let settings = DownloadSettings {
@@ -3673,12 +3664,13 @@ mod tests {
             anirss_url: "http://anirss.test".to_string(),
             ..settings::defaults()
         };
-        core.services
+        teams
+            .services
             .store
             .write(move |c| settings::save(c, &settings))
             .unwrap();
         crate::repos::add_custom(
-            &core.releases,
+            &teams.releases,
             "mine".into(),
             "https://a.example/rss?q={query}".into(),
             Vec::new(),
@@ -3704,22 +3696,23 @@ mod tests {
         );
         let reached = Reached {
             client: AnirssClient::new("http://anirss.test", "tok", http.clone()),
-            generation: core.downloads.state().generation,
+            generation: teams.downloads.state().generation,
             own,
         };
         assert_eq!(
-            core.services
+            teams
+                .services
                 .handle
-                .block_on(read_anirss(&core.downloads, &reached))
+                .block_on(read_anirss(&teams.downloads, &reached))
                 .unwrap(),
             Read::Kept
         );
-        let sync = anirss_view(&core.downloads).unwrap().sync;
+        let sync = anirss_view(&teams.downloads).unwrap().sync;
         let wrote = http
             .requests()
             .iter()
             .any(|r| r.url.contains("/endpoints") && !matches!(r.method, crate::net::Method::Get));
-        core.shutdown();
+        teams.shutdown();
         (sync, wrote)
     }
 
@@ -3783,14 +3776,8 @@ mod tests {
     #[test]
     fn a_settings_switch_while_anirss_is_read_leaves_the_old_view_out_of_the_state() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
         let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let teams = Teams::open(dir.path(), http.clone());
         http.push_for(
             "/health",
             200,
@@ -3807,7 +3794,7 @@ mod tests {
             200,
             serde_json::json!({"url": "http://127.0.0.1:2", "reachable": true}).to_string(),
         );
-        let switcher = core.clone();
+        let switcher = teams.downloads.clone();
         let wrapped = Arc::new(SwitchMidRead {
             inner: http.clone(),
             at: "/qbt/status",
@@ -3815,24 +3802,25 @@ mod tests {
                 let mut s = settings::read(&switcher.services).unwrap();
                 s.anirss_mode = AnirssMode::Remote;
                 s.anirss_url = "http://127.0.0.1:3".to_string();
-                restart(&switcher.downloads, s).unwrap();
+                restart(&switcher, s).unwrap();
             }))),
         });
         let client = AnirssClient::new("http://127.0.0.1:1", "tok", wrapped);
         let reached = Reached {
             client,
-            generation: core.downloads.state().generation,
+            generation: teams.downloads.state().generation,
             own: true,
         };
         assert_eq!(
-            core.services
+            teams
+                .services
                 .handle
-                .block_on(read_anirss(&core.downloads, &reached))
+                .block_on(read_anirss(&teams.downloads, &reached))
                 .unwrap(),
             Read::Dropped
         );
 
-        let st = core.downloads.state();
+        let st = teams.downloads.state();
         assert_ne!(
             st.anirss.state,
             AnirssState::Ready,
@@ -3847,8 +3835,8 @@ mod tests {
             "the old anirss's endpoints stay out"
         );
         drop(st);
-        assert!(anirss_view(&core.downloads).is_none());
-        core.shutdown();
+        assert!(anirss_view(&teams.downloads).is_none());
+        teams.shutdown();
     }
 
     /// Repo endpoints go into an anirss by how its client was built, never by the settings
@@ -3857,46 +3845,41 @@ mod tests {
     #[test]
     fn endpoints_sync_only_into_our_own_anirss_under_the_settings_it_came_from() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
         let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let teams = Teams::open(dir.path(), http.clone());
         let reached = |own: bool| Reached {
             client: AnirssClient::new("http://127.0.0.1:1", "tok", http.clone()),
-            generation: core.downloads.state().generation,
+            generation: teams.downloads.state().generation,
             own,
         };
         let own = reached(true);
         let remote = reached(false);
-        assert!(syncs_into(&core.downloads, &own));
-        assert!(!syncs_into(&core.downloads, &remote));
+        assert!(syncs_into(&teams.downloads, &own));
+        assert!(!syncs_into(&teams.downloads, &remote));
 
         // Half a save: the settings already say Anibeam's own, the bump has not landed.
-        let mut s = settings::read(&core.services).unwrap();
+        let mut s = settings::read(&teams.services).unwrap();
         s.anirss_mode = AnirssMode::Sidecar;
-        core.services
+        teams
+            .services
             .store
             .write(move |c| settings::save(c, &s))
             .unwrap();
         assert!(
-            !syncs_into(&core.downloads, &remote),
+            !syncs_into(&teams.downloads, &remote),
             "a remote server is never written to"
         );
 
         // The bump: the old sidecar's client is not synced into either.
-        core.downloads.state().generation += 1;
-        assert!(!syncs_into(&core.downloads, &own));
+        teams.downloads.state().generation += 1;
+        assert!(!syncs_into(&teams.downloads, &own));
 
-        core.downloads.disable_unattended();
+        teams.downloads.disable_unattended();
         assert!(
-            !syncs_into(&core.downloads, &reached(true)),
+            !syncs_into(&teams.downloads, &reached(true)),
             "a sandbox never writes"
         );
-        core.shutdown();
+        teams.shutdown();
     }
 
     /// A read that fails after a switch says nothing about the new anirss, so its failure
@@ -3904,38 +3887,32 @@ mod tests {
     #[test]
     fn a_failure_is_kept_only_under_the_settings_it_was_read_under() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
         let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        let old = core.downloads.state().generation;
-        let s = settings::read(&core.services).unwrap();
-        restart(&core.downloads, s).unwrap();
+        let teams = Teams::open(dir.path(), http.clone());
+        let old = teams.downloads.state().generation;
+        let s = settings::read(&teams.services).unwrap();
+        restart(&teams.downloads, s).unwrap();
         assert!(!set_anirss_failure_at(
-            &core.downloads,
+            &teams.downloads,
             old,
             AnirssState::Failed,
             "gone"
         ));
         assert_eq!(
-            core.downloads.state().anirss.state,
+            teams.downloads.state().anirss.state,
             AnirssStatus::default().state
         );
-        assert!(core.downloads.state().anirss.message.is_empty());
+        assert!(teams.downloads.state().anirss.message.is_empty());
 
-        let now = core.downloads.state().generation;
+        let now = teams.downloads.state().generation;
         assert!(set_anirss_failure_at(
-            &core.downloads,
+            &teams.downloads,
             now,
             AnirssState::Failed,
             "gone"
         ));
-        assert_eq!(core.downloads.state().anirss.state, AnirssState::Failed);
-        core.shutdown();
+        assert_eq!(teams.downloads.state().anirss.state, AnirssState::Failed);
+        teams.shutdown();
     }
 
     #[test]
@@ -4106,8 +4083,8 @@ mod tests {
         mark_downloading(&mut d, &|_| true);
         assert!(d.episodes.iter().all(|e| e.downloading.is_none()) && d.next_up == Some(102));
     }
+    use super::testing::Teams;
     use super::*;
-    use crate::core::Core;
 
     #[test]
     fn describe_names_both_halves() {

@@ -9,14 +9,14 @@ use crate::app;
 use crate::cast;
 use crate::contract::*;
 use crate::downloads::{self, Downloads};
-use crate::events::{EventBus, Subscription};
+use crate::events::Subscription;
 use crate::feed;
 use crate::foundation::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::foundation::services::Services;
 use crate::franchise;
 use crate::host::{self, Host};
 use crate::images;
-use crate::jobs::{Jobs, started, started_or_ok};
+use crate::jobs::{started, started_or_ok};
 use crate::launch;
 use crate::library::scan;
 use crate::library::watcher::Watcher;
@@ -119,31 +119,7 @@ impl Core {
         http: Arc<dyn Http>,
         secrets: Arc<Secrets>,
     ) -> Result<Arc<Core>, CoreError> {
-        let store = Store::open(&paths.db_path())?;
-        let bus = EventBus::new(store.clone())?;
-        // Creating the cache directory is opening, the same as creating the
-        // data directory the database file lives in. Before the runtime, so
-        // that nothing after it can fail and drop a live runtime here.
-        let images_dir = paths.images_dir();
-        std::fs::create_dir_all(&images_dir)
-            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("anibeam-core")
-            .enable_all()
-            .build()
-            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
-        let handle = runtime.handle().clone();
-        let jobs = Jobs::new(handle.clone(), bus.clone());
-        let services = Arc::new(Services {
-            paths,
-            store,
-            bus,
-            jobs,
-            handle,
-            http,
-            secrets,
-        });
+        let (services, runtime) = Services::open(paths, http, secrets)?;
         // Each team over the ones below it, bottom up.
         let closed = Arc::new(AtomicBool::new(false));
         let net = Arc::new(Net::new(services.clone(), crate::library::cards::cards_for));

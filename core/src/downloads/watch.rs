@@ -375,7 +375,7 @@ pub fn missed_line(title: &str, episode: u32) -> crate::contract::Words {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Core;
+    use crate::downloads::testing::Teams;
 
     const H: i64 = 3600;
 
@@ -412,22 +412,16 @@ mod tests {
         assert_eq!(steps_ahead(aired, late), vec![(late, Step::GiveUp)]);
     }
 
-    fn core() -> (tempfile::TempDir, Arc<Core>) {
+    fn teams() -> (tempfile::TempDir, Teams) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            crate::net::FakeHttp::new(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        (dir, core)
+        let teams = Teams::open(dir.path(), crate::net::FakeHttp::new());
+        (dir, teams)
     }
 
     /// A followed show with episodes 1 to 3 out (1 here, 2 a day ago and
     /// missing, 3 a week ago and missing) and 4 due tomorrow.
-    fn followed(core: &Core, now: i64) {
-        core.services.store
+    fn followed(teams: &Teams, now: i64) {
+        teams.services.store
             .write(move |c| {
                 c.execute_batch(
                     "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0);
@@ -461,10 +455,10 @@ mod tests {
     /// not one past the next.
     #[test]
     fn the_watch_takes_the_next_episode_and_a_recent_miss() {
-        let (_dir, core) = core();
+        let (_dir, teams) = teams();
         let now = 2_000_000_000;
-        followed(&core, now);
-        let found: Vec<u32> = core
+        followed(&teams, now);
+        let found: Vec<u32> = teams
             .services
             .store
             .read(|c| due(c, now))
@@ -476,7 +470,8 @@ mod tests {
 
         // Given up on once, the recent miss is not watched again after a
         // restart; and an episode that arrives is not missing.
-        core.services
+        teams
+            .services
             .store
             .write(move |c| {
                 c.execute(
@@ -486,7 +481,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let found: Vec<u32> = core
+        let found: Vec<u32> = teams
             .services
             .store
             .read(|c| due(c, now))
@@ -504,7 +499,7 @@ mod tests {
             aired_at: now + 86_400,
         };
         assert_eq!(
-            core.services.store.read(|c| standing(c, &due4)).unwrap(),
+            teams.services.store.read(|c| standing(c, &due4)).unwrap(),
             Standing::Missing
         );
         let due1 = Due {
@@ -513,7 +508,7 @@ mod tests {
             ..due4.clone()
         };
         assert_eq!(
-            core.services.store.read(|c| standing(c, &due1)).unwrap(),
+            teams.services.store.read(|c| standing(c, &due1)).unwrap(),
             Standing::Arrived
         );
         let moved = Due {
@@ -521,10 +516,10 @@ mod tests {
             ..due4.clone()
         };
         assert_eq!(
-            core.services.store.read(|c| standing(c, &moved)).unwrap(),
+            teams.services.store.read(|c| standing(c, &moved)).unwrap(),
             Standing::Stale
         );
-        core.shutdown();
+        teams.shutdown();
     }
 
     /// An airing refresh that moved a schedule says so on the bus, and the
@@ -532,28 +527,29 @@ mod tests {
     /// call `arm` itself (#854).
     #[test]
     fn a_moved_schedule_arms_the_followed_episodes() {
-        let (_dir, core) = core();
+        let (_dir, teams) = teams();
         let now = crate::time::now_secs();
-        followed(&core, now);
+        followed(&teams, now);
         let next = (1, 4, now + 86_400);
         let missed = (1, 2, now - 86_400);
         assert!(!armed().contains(&next));
-        core.services.bus.signal(Signal::SchedulesMoved);
+        teams.services.bus.signal(Signal::SchedulesMoved);
         {
             let armed = armed();
             assert!(armed.contains(&next) && armed.contains(&missed));
         }
-        core.shutdown();
+        teams.shutdown();
     }
 
     /// A show the rules no longer follow, or that the person hid, has no
     /// timer.
     #[test]
     fn an_unfollowed_or_hidden_show_is_not_watched() {
-        let (_dir, core) = core();
+        let (_dir, teams) = teams();
         let now = 2_000_000_000;
-        followed(&core, now);
-        core.services
+        followed(&teams, now);
+        teams
+            .services
             .store
             .write(|c| {
                 c.execute("UPDATE series SET hidden = 1", [])?;
@@ -561,29 +557,33 @@ mod tests {
             })
             .unwrap();
         assert!(
-            core.services
+            teams
+                .services
                 .store
                 .read(|c| due(c, now))
                 .unwrap()
                 .is_empty()
         );
-        core.services
+        teams
+            .services
             .store
             .write(|c| {
                 c.execute("UPDATE series SET hidden = 0", [])?;
                 Ok(())
             })
             .unwrap();
-        core.services
+        teams
+            .services
             .handle
-            .block_on(remember(&core.downloads, &[]));
+            .block_on(remember(&teams.downloads, &[]));
         assert!(
-            core.services
+            teams
+                .services
                 .store
                 .read(|c| due(c, now))
                 .unwrap()
                 .is_empty()
         );
-        core.shutdown();
+        teams.shutdown();
     }
 }

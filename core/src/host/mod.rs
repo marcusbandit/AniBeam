@@ -814,7 +814,52 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Core;
+    use anibeam_foundation::testing::Running;
+
+    /// The host over the teams below it, as `Core::open` builds it, and the
+    /// services they run on. Nothing above the host.
+    struct Teams {
+        host: Arc<Host>,
+        _running: Running,
+    }
+
+    impl Teams {
+        fn open(dir: &std::path::Path) -> Teams {
+            let running = Running::open(dir, crate::net::FakeHttp::new());
+            let services = running.services.clone();
+            let net = Arc::new(crate::net::Net::new(
+                services.clone(),
+                crate::library::cards::cards_for,
+            ));
+            let library = Arc::new(crate::library::Library::new(
+                services.clone(),
+                net.clone(),
+                Arc::new(AtomicBool::new(false)),
+            ));
+            let downloads = Arc::new(crate::downloads::Downloads::new(
+                services.clone(),
+                net.clone(),
+            ));
+            let host = Arc::new(Host::new(services, net, library, downloads));
+            Teams {
+                host,
+                _running: running,
+            }
+        }
+    }
+
+    /// What `SetPreferences` does for the host (`app::set_preferences`): the
+    /// preferences saved, then handed to it.
+    fn set_preferences(host: &Arc<Host>, p: Preferences) {
+        let saved = p.clone();
+        host.services
+            .store
+            .write(move |c| prefs::save_preferences(c, &saved))
+            .unwrap();
+        host.set_streaming(p.stream_over_tailscale);
+        host.set_switched_off(p.tailnet_switched_off.clone());
+        host.follow(p.share_over_tailscale);
+    }
 
     /// The owner has this machine, a phone and a tagged server's worth of trust; Sam has
     /// a tablet and a laptop, Alex a phone with no name in Tailscale, and one device
@@ -911,14 +956,13 @@ mod tests {
     #[test]
     fn preferences_that_cannot_be_read_leave_streaming_as_it_was() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
-        let core = Core::open_with_secrets(paths, secrets).unwrap();
-        let mut p = core.services.store.read(prefs::load_preferences).unwrap();
+        let teams = Teams::open(dir.path());
+        let host = &teams.host;
+        let mut p = host.services.store.read(prefs::load_preferences).unwrap();
         p.stream_over_tailscale = false;
-        core.call(Call::SetPreferences { preferences: p }).unwrap();
-        assert!(!core.host.streaming());
-        core.services
+        set_preferences(host, p);
+        assert!(!host.streaming());
+        host.services
             .store
             .write(|c| {
                 c.execute(
@@ -928,25 +972,17 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        sync(&core.host);
-        assert!(
-            !core.host.streaming(),
-            "a failed read turned streaming back on"
-        );
+        sync(host);
+        assert!(!host.streaming(), "a failed read turned streaming back on");
     }
 
     #[test]
     fn preferences_that_cannot_be_read_leave_the_switched_off_list_alone() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
-        let core = Core::open_with_secrets(paths, secrets).unwrap();
-        core.call(Call::SetTailnetDeviceTrust {
-            device: "nPhone".into(),
-            trusted: false,
-        })
-        .unwrap();
-        core.services
+        let teams = Teams::open(dir.path());
+        let host = &teams.host;
+        set_device_trust(host, "nPhone".into(), false).unwrap();
+        host.services
             .store
             .write(|c| {
                 c.execute(
@@ -956,10 +992,10 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        sync(&core.host);
+        sync(host);
         // A held host keeps serving through a failed read, so the list it
         // had must still stand: never fall back to trusting everyone.
-        assert_eq!(*recover(&core.host.off), ["nPhone"]);
+        assert_eq!(*recover(&host.off), ["nPhone"]);
     }
 
     #[test]

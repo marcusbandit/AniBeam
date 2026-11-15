@@ -1146,30 +1146,24 @@ pub fn set_held(_: &Downloads, _: bool) -> Result<Reply, CoreError> {
 
 #[cfg(all(test, feature = "phone"))]
 mod origin_tests {
-    use crate::core::Core;
+    use crate::downloads::testing::Teams;
 
     /// A scan reads origins only through an engine already open (#620): it never opens one.
     #[test]
     fn a_scan_does_not_open_the_engine() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            crate::net::FakeHttp::new(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        crate::downloads::origins::after_scan(&core.downloads);
-        assert!(core.downloads.phone.engine.get().is_none());
-        core.shutdown();
+        let teams = Teams::open(dir.path(), crate::net::FakeHttp::new());
+        crate::downloads::origins::after_scan(&teams.downloads);
+        assert!(teams.downloads.phone.engine.get().is_none());
+        teams.shutdown();
     }
 }
 
 #[cfg(test)]
 mod feed_tests {
     use super::*;
-    use crate::core::Core;
     use crate::releases::Endpoint;
+    use anibeam_foundation::testing::Running;
 
     #[test]
     fn a_feed_is_read_the_way_its_sources_kind_answers() {
@@ -1200,18 +1194,12 @@ mod feed_tests {
     #[test]
     fn a_source_saved_before_repos_still_says_how_its_feed_reads() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            crate::net::FakeHttp::new(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let running = Running::open(dir.path(), crate::net::FakeHttp::new());
         let saved = serde_json::json!([{"name": "old", "kind": "json-feed",
             "url": "https://feed.example/json?q={query}", "enabled": true}]);
-        std::fs::create_dir_all(&core.services.paths.config_dir).unwrap();
-        std::fs::write(sources_path(&core.services), saved.to_string()).unwrap();
-        let from = feed_sources(&core.services, &[]);
+        std::fs::create_dir_all(&running.services.paths.config_dir).unwrap();
+        std::fs::write(sources_path(&running.services), saved.to_string()).unwrap();
+        let from = feed_sources(&running.services, &[]);
         assert!(is_json_feed(
             &from,
             "https://feed.example/json?q=Show",

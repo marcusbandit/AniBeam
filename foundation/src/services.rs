@@ -1,7 +1,8 @@
 //! The plumbing every team shares (#854): the store, the event bus, the jobs
 //! registry, the paths, the runtime handle, the one transport and the
-//! secrets. `Core::open` builds it once and keeps it as an `Arc`, and a
-//! function that needs nothing more takes this instead of the whole core.
+//! secrets. `Core::open` builds it once through [`Services::open`] and keeps
+//! it as an `Arc`, and a function that needs nothing more takes this instead
+//! of the whole core. A team's tests open it the same way (`testing`).
 
 use std::sync::Arc;
 
@@ -11,7 +12,10 @@ use crate::jobs::Jobs;
 use crate::paths::CorePaths;
 use crate::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::store::Store;
-use anibeam_contract::{EventBody, Stage};
+use anibeam_contract::{CoreError, EventBody, Stage};
+
+/// The runtime's worker threads.
+const WORKERS: usize = 4;
 
 pub struct Services {
     pub paths: CorePaths,
@@ -34,6 +38,43 @@ pub struct Services {
 }
 
 impl Services {
+    /// Opens what every team shares over `paths`, in this order: the store,
+    /// the bus, the image cache's directory, the runtime and the jobs over
+    /// it (#997). The runtime comes back beside the services: its owner keeps
+    /// it, and shuts it down once the jobs are cancelled.
+    pub fn open(
+        paths: CorePaths,
+        http: Arc<dyn Http>,
+        secrets: Arc<Secrets>,
+    ) -> Result<(Arc<Services>, tokio::runtime::Runtime), CoreError> {
+        let store = Store::open(&paths.db_path())?;
+        let bus = EventBus::new(store.clone())?;
+        // Creating the cache directory is opening, the same as creating the
+        // data directory the database file lives in. Before the runtime, so
+        // that nothing after it can fail and drop a live runtime here.
+        let images_dir = paths.images_dir();
+        std::fs::create_dir_all(&images_dir)
+            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(WORKERS)
+            .thread_name("anibeam-core")
+            .enable_all()
+            .build()
+            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
+        let handle = runtime.handle().clone();
+        let jobs = Jobs::new(handle.clone(), bus.clone());
+        let services = Arc::new(Services {
+            paths,
+            store,
+            bus,
+            jobs,
+            handle,
+            http,
+            secrets,
+        });
+        Ok((services, runtime))
+    }
+
     /// The secrets facade, with the store choice settled. `start` warms
     /// that choice on a blocking thread, so a call arriving after launch
     /// finds it made; a call that beats the warm-up makes it here, on the
