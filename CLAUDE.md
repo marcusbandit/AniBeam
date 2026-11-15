@@ -26,7 +26,17 @@ cargo fmt --all --check
 
 **Build only the crate you changed.** The core is splitting into one crate per team (#854), and each of `contract/`, `foundation/`, `net/` and `library/` builds and tests on its own. Iterate with `cargo test -p anibeam-library` (or `check`/`clippy -p`), not `--workspace` and not the shell; run the whole workspace once before the PR.
 
-The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld. The owner's launcher entry (`com.marcusrosado.AniBeam.desktop`) runs `target/release/anibeam` with `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF` pointed at `apps/linux/`, so rebuild the release binary when a feature is done; source edits are invisible to the launcher until then.
+The shell needs `qmake6` on PATH, Qt 6.11+, MpvQt, libmpv and lld.
+
+**A QML-only change needs no cargo build.** The owner tries branches in AniBeam Dev: `~/.local/opt/anibeam-dev`, launched by `anibeam-dev` and the `com.marcusrosado.AniBeam.Dev.desktop` entry. It is a `--profile tester` build with the `dev-qml` feature (#927) and reads its QML and themes from that folder through `ANIBEAM_QML_DIR` and `ANIBEAM_THEMES_DIR`. When a branch changes nothing outside `apps/linux/qml/` and `apps/linux/themes/`, copy them in and restart it. That takes seconds:
+
+```bash
+rsync -a --delete apps/linux/qml/ ~/.local/opt/anibeam-dev/qml/
+rsync -a --delete apps/linux/themes/ ~/.local/opt/anibeam-dev/themes/
+pkill -f "$HOME/.local/opt/anibeam-dev/anibeam"; setsid -f anibeam-dev >/dev/null 2>&1
+```
+
+QML that reads a bridge property the installed binary lacks fails at load with an error on stderr. Then the change needs Rust after all. A branch that touches Rust needs `cargo build --profile tester -p anibeam --features dev-qml` and the binary copied in from `target/tester/anibeam`. Never run a release build just to look at a change.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
