@@ -429,7 +429,7 @@ core-core-guest-not-interested = Non mi interessa su quel computer è la lista d
 core-core-guest-recommended = i consigli su quel computer sono basati sulla lista del suo proprietario
 core-core-nothing-picked = niente di scelto
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } non è un provider di abbinamento
 core-prefs-provider-count = { $provider } compare { $count } volte; ogni provider compare una volta
@@ -469,16 +469,16 @@ core-host-not-an-address = { $text } non è un indirizzo con porta
 
 core-host-not-a-key = { $key } non è una chiave di dispositivo
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = tempo scaduto dopo { $ms } ms
 core-net-rate-limited = { $provider } ha limitato le richieste
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: tempo scaduto poco fa; { -app-name } aspetta { $seconds } s prima di richiedere
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = nessun dato
 
@@ -507,7 +507,7 @@ core-update-cannot-copy = Impossibile copiare la nuova app accanto a questa: { $
 core-calendar-season-episode = { $title } - Stagione { $season } Episodio { $number }
 core-calendar-episode = { $title } - Episodio { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = nessuna cartella home
 
@@ -836,7 +836,7 @@ core-metadata-progress-imdb-ratings = voti IMDb
 
 core-franchise-relation-character = Personaggi in comune
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = download delle immagini
 

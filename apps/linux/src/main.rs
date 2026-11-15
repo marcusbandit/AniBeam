@@ -33,11 +33,11 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 pub const APP_ID: &str = "com.marcusrosado.AniBeam";
 pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
 
-/// Debug builds only: ANIBEAM_QML_DIR=qml (relative to where it runs; shoot.sh and drive.sh make
-/// it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
+/// Debug builds and the `dev-qml` feature only: ANIBEAM_QML_DIR=qml (relative to where it runs;
+/// shoot.sh and drive.sh make it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
 /// cargo build. A directory without Main.qml is almost certainly a mistyped or wrongly
 /// relative path, so it warns and keeps the compiled QML instead of claiming a disk load.
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "dev-qml"))]
 fn install_dev_qml_dir(
     mut engine: std::pin::Pin<&mut QQmlApplicationEngine>,
 ) -> std::pin::Pin<&mut QQmlApplicationEngine> {
@@ -210,7 +210,7 @@ fn main() {
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
         bridge::helpers::ffi::install_dev_tools(engine.as_mut());
-        #[cfg(debug_assertions)]
+        #[cfg(any(debug_assertions, feature = "dev-qml"))]
         let engine = install_dev_qml_dir(engine);
         engine.load(&QUrl::from(MAIN_QML));
         devstats::startup_mark("Main.qml loaded");

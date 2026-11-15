@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'

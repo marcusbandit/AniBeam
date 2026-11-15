@@ -426,7 +426,7 @@ core-core-guest-not-interested = 그 컴퓨터의 관심 없음 목록은 소유
 core-core-guest-recommended = 그 컴퓨터의 추천은 소유자의 목록을 바탕으로 해요
 core-core-nothing-picked = 선택한 항목 없음
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }은(는) 매칭 제공처가 아니에요
 core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제공처는 한 번씩만 넣어야 해요
@@ -466,16 +466,16 @@ core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 후 시간 초과
 core-net-rate-limited = { $provider } 요청 한도 초과
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 방금 시간이 초과됐어요. { -app-name }이(가) { $seconds }초 기다린 뒤 다시 요청해요
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 데이터 없음
 
@@ -504,7 +504,7 @@ core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: {
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 홈 디렉터리가 없어요
 
@@ -780,7 +780,7 @@ core-metadata-progress-imdb-ratings = IMDb 평점
 
 core-franchise-relation-character = 같은 캐릭터
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 이미지 가져오는 중
 

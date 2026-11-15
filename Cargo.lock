@@ -121,26 +121,22 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-contract",
+ "anibeam-foundation",
  "anibeam-host-api",
+ "anibeam-net",
  "anibeam-recs",
  "anibeam-relay",
  "anibeam-room",
  "anyhow",
- "apple-native-keyring-store",
  "axum",
- "backon",
  "base64 0.23.1",
  "chacha20poly1305",
- "directories",
  "ed25519-dalek",
  "fancy-regex",
  "flate2",
  "futures-core",
  "futures-util",
- "governor",
  "hkdf",
- "if-addrs 0.13.4",
- "keyring-core",
  "librqbit",
  "matroska-demuxer",
  "mdns-sd",
@@ -151,14 +147,12 @@ dependencies = [
  "reqwest",
  "roxmltree",
  "rusqlite",
- "rusqlite_migration",
  "rustix",
  "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
- "thiserror 2.0.20",
  "time",
  "tokio",
  "tokio-tungstenite",
@@ -168,9 +162,33 @@ dependencies = [
  "trash",
  "uniffi",
  "walkdir",
- "webpki-root-certs",
- "windows-native-keyring-store",
  "x25519-dalek",
+]
+
+[[package]]
+name = "anibeam-foundation"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-host-api",
+ "anibeam-room",
+ "apple-native-keyring-store",
+ "directories",
+ "if-addrs 0.13.4",
+ "keyring-core",
+ "regex",
+ "rusqlite",
+ "rusqlite_migration",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
 ]
 
@@ -181,6 +199,29 @@ dependencies = [
  "ed25519-dalek",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-net"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "backon",
+ "flate2",
+ "governor",
+ "rand 0.10.2",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
+ "walkdir",
+ "webpki-root-certs",
 ]
 
 [[package]]

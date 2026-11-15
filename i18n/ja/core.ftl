@@ -447,7 +447,7 @@ core-core-guest-not-interested = そのパソコンの「興味なし」は持�
 core-core-guest-recommended = そのパソコンのおすすめは、持ち主のリストから作られています
 core-core-nothing-picked = 何も選ばれていません
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }は照合元ではありません
 core-prefs-provider-count = { $provider }が{ $count }回出てきます。各照合元は1回だけにしてください
@@ -491,16 +491,16 @@ core-host-not-an-address = { $text }はアドレスとポートではありま�
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key }はデバイスキーではありません
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }msでタイムアウトしました
 core-net-rate-limited = { $provider }のレート制限中です
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 先ほどタイムアウトしました。{ -app-name }は{ $seconds }秒待ってから再度問い合わせます
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = データなし
 
@@ -531,7 +531,7 @@ core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピー
 core-calendar-season-episode = { $title } - シーズン{ $season } 第{ $number }話
 core-calendar-episode = { $title } - 第{ $number }話
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = ホームディレクトリがありません
 
@@ -796,7 +796,7 @@ core-metadata-progress-imdb-ratings = IMDbの評価
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = 共通キャラクター
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = 画像を取得中

@@ -52,8 +52,9 @@ class Client {
       this.ws = new WebSocket(`${wsBase}/rooms/${code}/ws`);
       this.ws.addEventListener("open", () => resolve(this));
       this.ws.addEventListener("error", (e) => reject(new Error(`${this.name}: ${e.message ?? "socket error"}`)));
-      this.ws.addEventListener("close", () => {
+      this.ws.addEventListener("close", (e) => {
         this.closed = true;
+        this.closeCode = e.code;
         this.flush();
       });
       this.ws.addEventListener("message", (e) => {
@@ -96,14 +97,20 @@ class Client {
     });
   }
 
-  waitClosed(ms = 5000) {
-    if (this.closed) return Promise.resolve(true);
+  /**
+   * True once the socket has closed within `ms`. With `frame`, once the relay's Close frame
+   * has arrived, which leaves the socket CLOSING before the connection itself ends.
+   */
+  waitClosed(ms = 5000, { frame = false } = {}) {
+    const shut = () => this.closed || (frame && this.ws.readyState !== WebSocket.OPEN);
     return new Promise((resolve) => {
-      const t = setTimeout(() => resolve(false), ms);
-      this.ws.addEventListener("close", () => {
-        clearTimeout(t);
-        resolve(true);
-      });
+      const started = Date.now();
+      const poll = setInterval(() => {
+        if (shut() || Date.now() - started >= ms) {
+          clearInterval(poll);
+          resolve(shut());
+        }
+      }, 20);
     });
   }
 
@@ -285,13 +292,20 @@ async function limits() {
   check(!!limited && !junk.closed, "a socket before hello gets rate_limited past 20 a second, and stays");
   junk.close();
 
-  // One that never says hello is closed after 10 s.
+  // One that never says hello is closed after 10 s: the relay sends proto and
+  // its Close frame then, so the check waits for that frame. The TCP
+  // connection itself ends only when the room object leaves memory, about
+  // 10 s later, because workerd holds a hibernatable socket open after a
+  // server close when the client never sent a frame (cloudflare/workerd#7566).
+  // The check still waits for the connection to end, and for the policy close code.
   const silent = await new Client("silent").open(code);
   const started = Date.now();
   const late = await silent.next((f) => f.t === "error" && f.code === "proto", 15_000);
-  const shut = await silent.waitClosed(5_000);
+  const shut = await silent.waitClosed(2_000, { frame: true });
   const secs = Math.round((Date.now() - started) / 1000);
-  check(!!late && shut && secs >= 9, `a socket that never says hello is closed (${secs} s)`);
+  check(!!late && shut && secs >= 9 && secs <= 12, `a socket that never says hello is closed (${secs} s)`);
+  const ended = await silent.waitClosed(20_000);
+  check(ended && silent.closeCode === 1008, `its connection ends with 1008 (${silent.closeCode ?? "open"})`);
 
   const pages = [];
   for (let i = 0; i < 62; i++) pages.push((await fetch(`${base}/${code}`)).status);
