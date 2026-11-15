@@ -1042,7 +1042,6 @@ get-show-kind-indexer-search = 索引器搜索
 get-show-ready = 就绪
 get-show-running = 运行中
 get-show-not-running = 未运行
-get-show-not-running-start = 未运行。点击上方的来源即可启动。
 get-show-switched-off = 已关闭
 get-show-show-releases = 查看资源
 get-show-show-releases-on = 查看 { $name } 上的资源

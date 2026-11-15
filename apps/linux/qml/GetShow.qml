@@ -500,7 +500,8 @@ Item {
         return e.running === true ? words.t("get-show-running") : words.t("get-show-not-running")
     }
     function resultWords(e) {
-        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? words.t("get-show-not-running-start") : words.t("get-show-switched-off")
+        // A source that is not running says so in its state column; the row adds no hint
+        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? "" : words.t("get-show-switched-off")
         var r = ofShow(results[e.name])
         if (!r || r.state === "idle") return ""
         if (r.state === "searching") return words.t("get-show-searching-elapsed", { label: r.label || words.t("get-show-searching"), seconds: Math.floor(r.elapsed || 0) })

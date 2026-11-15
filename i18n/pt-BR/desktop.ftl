@@ -1389,7 +1389,6 @@ get-show-kind-indexer-search = Busca em indexador
 get-show-ready = Pronta
 get-show-running = Rodando
 get-show-not-running = Parada
-get-show-not-running-start = Parada. Clique na fonte acima para iniciá-la.
 get-show-switched-off = Desativada
 get-show-show-releases = Ver releases
 get-show-show-releases-on = Ver releases em { $name }

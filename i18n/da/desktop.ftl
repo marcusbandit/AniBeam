@@ -1387,7 +1387,6 @@ get-show-kind-indexer-search = Indekssøgning
 get-show-ready = Klar
 get-show-running = Kører
 get-show-not-running = Kører ikke
-get-show-not-running-start = Kører ikke. Klik på kilden ovenfor for at starte den.
 get-show-switched-off = Slået fra
 get-show-show-releases = Vis udgivelser
 get-show-show-releases-on = Vis udgivelser på { $name }

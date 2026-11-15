@@ -1232,7 +1232,6 @@ get-show-kind-indexer-search = 인덱서 검색
 get-show-ready = 준비됨
 get-show-running = 실행 중
 get-show-not-running = 실행 안 됨
-get-show-not-running-start = 실행 중이 아니에요. 위의 소스를 클릭해서 시작하세요.
 get-show-switched-off = 꺼짐
 get-show-show-releases = 릴리스 보기
 get-show-show-releases-on = { $name } 릴리스 보기

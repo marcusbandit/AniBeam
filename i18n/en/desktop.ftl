@@ -1435,7 +1435,6 @@ get-show-kind-indexer-search = Indexer search
 get-show-ready = Ready
 get-show-running = Running
 get-show-not-running = Not running
-get-show-not-running-start = Not running. Click its source above to start it.
 get-show-switched-off = Switched off
 get-show-show-releases = Show releases
 get-show-show-releases-on = Show releases on { $name }

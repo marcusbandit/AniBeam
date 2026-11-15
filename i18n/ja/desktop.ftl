@@ -1082,7 +1082,6 @@ get-show-kind-indexer-search = インデクサー検索
 get-show-ready = 準備完了
 get-show-running = 動作中
 get-show-not-running = 停止中
-get-show-not-running-start = 停止中。上のソースをクリックすると起動します。
 get-show-switched-off = オフ
 get-show-show-releases = リリースを表示
 get-show-show-releases-on = { $name }のリリースを表示

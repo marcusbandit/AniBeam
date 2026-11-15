@@ -1387,7 +1387,6 @@ get-show-kind-indexer-search = Indexer-Suche
 get-show-ready = Bereit
 get-show-running = Läuft
 get-show-not-running = Läuft nicht
-get-show-not-running-start = Läuft nicht. Klicke oben auf die Quelle, um sie zu starten.
 get-show-switched-off = Ausgeschaltet
 get-show-show-releases = Releases anzeigen
 get-show-show-releases-on = Releases auf { $name } anzeigen

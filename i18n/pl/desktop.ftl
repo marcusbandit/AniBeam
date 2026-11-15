@@ -1605,7 +1605,6 @@ get-show-kind-indexer-search = Wyszukiwanie w indekserze
 get-show-ready = Gotowe
 get-show-running = Działa
 get-show-not-running = Nie działa
-get-show-not-running-start = Nie działa. Kliknij jego źródło powyżej, aby je uruchomić.
 get-show-switched-off = Wyłączone
 get-show-show-releases = Pokaż wydania
 get-show-show-releases-on = Pokaż wydania z { $name }

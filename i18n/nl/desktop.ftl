@@ -1387,7 +1387,6 @@ get-show-kind-indexer-search = Indexer-zoeken
 get-show-ready = Klaar
 get-show-running = Draait
 get-show-not-running = Draait niet
-get-show-not-running-start = Draait niet. Klik hierboven op de bron om hem te starten.
 get-show-switched-off = Uitgezet
 get-show-show-releases = Releases tonen
 get-show-show-releases-on = Releases op { $name } tonen

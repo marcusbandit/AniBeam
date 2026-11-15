@@ -1559,7 +1559,6 @@ get-show-kind-indexer-search = Поиск индексатора
 get-show-ready = Готов
 get-show-running = Работает
 get-show-not-running = Не запущен
-get-show-not-running-start = Не запущен. Нажмите на его источник выше, чтобы запустить.
 get-show-switched-off = Выключен
 get-show-show-releases = Показать релизы
 get-show-show-releases-on = Показать релизы: { $name }
