@@ -1082,16 +1082,6 @@ mod imp {
                     services.clone(),
                     crate::library::cards::cards_for,
                 ));
-                let library = Arc::new(crate::library::Library::new(
-                    services.clone(),
-                    net.clone(),
-                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                ));
-                let metadata = Arc::new(crate::metadata::Metadata::new(
-                    services.clone(),
-                    net.clone(),
-                    library.clone(),
-                ));
                 let trackers = Arc::new(crate::trackers::Trackers::new(
                     services.clone(),
                     net.clone(),
@@ -1100,9 +1090,7 @@ mod imp {
                     services.clone(),
                     net.clone(),
                 ));
-                let playback = Arc::new(Playback::new(
-                    services, net, trackers, downloads, library, metadata,
-                ));
+                let playback = Arc::new(Playback::new(services, net, trackers, downloads));
                 Teams {
                     playback,
                     _running: running,

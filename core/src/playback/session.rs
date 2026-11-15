@@ -691,7 +691,9 @@ pub fn report_opening(playback: &Playback, session: u64, start: f64) {
         };
         s.opening_start = Some(start);
     }
-    crate::room::opening_known(playback, session, start);
+    if let Some(follower) = playback.follower.get() {
+        follower.opening_known(session, start);
+    }
 }
 
 /// What the shell learned when the file loaded. Called twice by the skip
@@ -747,7 +749,9 @@ pub fn tick(
     if s.profile == crate::foundation::trust::OWNER {
         crate::presence::tick(playback, s.id, &s.presence, position, paused);
     }
-    crate::room::tick(playback, s.id, position, paused);
+    if let Some(follower) = playback.follower.get() {
+        follower.tick(s.id, position, paused);
+    }
     apply(playback, &s, &fired)
 }
 
@@ -766,7 +770,9 @@ pub fn close(
         return Ok(());
     };
     crate::presence::close(playback, session);
-    crate::room::closed(playback, session);
+    if let Some(follower) = playback.follower.get() {
+        follower.closed(session);
+    }
     let mut fired = effects(&mut s, position, TickKind::Closing);
     if reason == CloseReason::Ended
         && let Some(effect) = ended(&mut s)
