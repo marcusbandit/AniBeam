@@ -1,8 +1,8 @@
 //! Anibeam's core: every rule, used by every shell through the contract in
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
-//! plumbing every team shares is the `anibeam-foundation` crate and the
-//! network team is `anibeam-net`, both handed on here under the names they
-//! had in the core.
+//! plumbing every team shares is the `anibeam-foundation` crate, the network
+//! team is `anibeam-net` and the library team `anibeam-library`, each handed
+//! on here under the name it had in the core.
 
 pub(crate) mod act;
 pub mod agent;
@@ -22,7 +22,6 @@ pub mod foundation;
 pub mod franchise;
 pub mod host;
 pub mod launch;
-pub mod library;
 pub mod metadata;
 pub mod paths;
 pub mod phone;
@@ -49,6 +48,9 @@ pub(crate) use anibeam_foundation::{percent, sync};
 #[doc(hidden)]
 pub use anibeam_net as net;
 pub use anibeam_net::{VERSION, images};
+
+/// The library team, in its own crate above net.
+pub use anibeam_library as library;
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

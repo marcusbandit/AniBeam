@@ -2163,6 +2163,7 @@ room-error-not-in-room = You are no longer in that room. Start or join one again
 room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
 room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
 room-error-cannot-fetch = The host can't share this episode right now. Try again once they are back in the room.
+room-error-needs-episode = That room server needs an episode to start a room. Start it from the player instead.
 
 ## RoomPanel.qml
 
@@ -2208,6 +2209,14 @@ room-panel-searching = Searching
 room-panel-failed = Couldn't get it
 room-panel-percent = { $percent }%
 room-panel-left = { $time } left
+room-panel-nothing-picked = Nothing picked yet
+room-panel-this-episode = This episode
+room-panel-whole-show = Whole show
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } of { $total } ready · { $percent }%
+room-gate-start = Start anyway
+room-gate-wait = Wait for everyone
+room-gate-waiting = Waiting for everyone
 
 ## PlayerPage.qml
 
@@ -2690,7 +2699,7 @@ settings-downloads-torrent-answered = { $client } { $version } answered.
 settings-downloads-torrent-failed = { $client } did not connect. Check the address and password above, then test again.
 settings-downloads-torrent-untried = Not tried yet.
 settings-downloads-mode-existing = A qBittorrent you run yourself, with its Web UI turned on.
-settings-downloads-mode-managed = Anibeam runs a qBittorrent of its own into ~/Downloads/Anime. It keeps going after Anibeam quits, so subscriptions keep downloading.
+settings-downloads-mode-managed = Anibeam runs a qBittorrent of its own. It keeps going after Anibeam quits, so subscriptions keep downloading.
 settings-downloads-mode-auto = Uses a qBittorrent that answers at the address below, else runs one of its own.
 settings-downloads-password-saved = A password is saved here for this client.
 settings-downloads-password-anirss = Using the password the search helper saved; save one here to stop depending on it.
@@ -2714,6 +2723,11 @@ settings-downloads-username = Username
 settings-downloads-password = Password
 settings-downloads-secret-saved = Saved
 settings-downloads-secret-unset = Not set
+settings-downloads-save-to = Save to
+settings-downloads-save-to-client = qBittorrent's own folder
+settings-downloads-save-to-choose = Choose folder
+settings-downloads-save-to-reset = Reset
+settings-downloads-save-to-pick = Save downloads to
 settings-downloads-connection = Connection
 settings-downloads-open-config = Open its config
 settings-downloads-details = Details
@@ -2980,10 +2994,17 @@ settings-playback-subtitle-languages = Subtitle languages
 settings-playback-audio-languages = Audio languages
 settings-playback-discord = Show what you watch on Discord
 settings-playback-discord-check-failed = Anibeam could not check Discord just now. Try again in a moment.
-settings-playback-discord-helper = The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed.
 settings-playback-discord-unavailable = This build has no Discord application.
 settings-playback-discord-connected = Connected to Discord
 settings-playback-discord-not-connected = Not connected. Anibeam connects while an episode plays and Discord is open
+discord-ask-wants = { $name } wants to join you
+discord-ask-start-room = Start room
+discord-ask-let-in = Let in
+discord-ask-no = No
+settings-playback-discord-blocked = Told no on Discord
+room-panel-discord = On Discord
+room-panel-discord-open = Open
+room-panel-discord-invite = Invite only
 settings-playback-advanced = Advanced
 settings-playback-together = Watch together
 settings-playback-room-name = Your name in watch together rooms

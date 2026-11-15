@@ -67,6 +67,9 @@ hands off to the running one and exits. Without `--root <dir>` it opens that mac
 and a migration in the tester moves the database the installed build reads next. After a QML-only
 change, copy the folder again and restart. It is never shipped.
 
+A capture is a build from source, so its sidebar shows the dev icon. Set `ANIBEAM_ICON=release`
+for a shot of the release look, such as one for the website.
+
 `shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
 a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:
 cargo keys each workspace member by its path inside the workspace, so a worktree can take another

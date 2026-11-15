@@ -873,6 +873,7 @@ impl Core {
                 torrent_password.as_deref(),
             ),
             Call::UseTorrentClient { id } => downloads::use_client(&self.downloads, id),
+            Call::SetSaveFolder { folder } => downloads::set_save_folder(&self.downloads, folder),
             Call::TestTorrentClient => downloads::test_torrent_client(&self.downloads).map(started),
             Call::CheckEndpoints => downloads::check_endpoints(&self.downloads).map(started),
             Call::StartEndpoint { name } => {
@@ -991,6 +992,18 @@ impl Core {
                 subtitle,
             } => session::set_track_choice(&self.services, series, audio, subtitle),
             Call::GetPresence => presence::status_call(&self.playback),
+            Call::DiscordAnswer { user_id, allow } => {
+                presence::join::answer_call(&self.playback, user_id, allow)
+            }
+            Call::DiscordBlocked => presence::join::blocked_call(&self.playback),
+            Call::DiscordUnblock { user_id } => {
+                presence::join::unblock_call(&self.playback, user_id)
+            }
+            Call::DiscordSetRoomOpen { open } => {
+                presence::join::set_open_call(&self.playback, open)
+            }
+            Call::DiscordListen => presence::join::listen_call(&self.playback),
+            Call::DiscordTakeJoin => presence::join::take_join_call(&self.playback),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }
@@ -1006,7 +1019,8 @@ impl Core {
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
             | Call::RoomStatus
-            | Call::RoomGetMedia) => room::call(&self.playback, c),
+            | Call::RoomGetMedia { .. }
+            | Call::RoomStart { .. }) => room::call(&self.playback, c),
         }
     }
 

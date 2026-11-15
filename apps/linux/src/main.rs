@@ -6,6 +6,7 @@ mod args;
 mod bridge;
 mod dbus;
 mod devstats;
+mod discord_link;
 mod format;
 mod inhibit;
 #[cfg(target_os = "macos")]
@@ -168,6 +169,7 @@ fn main() {
     // anibeam:// links come here even on an install from before rooms (#888). A thread,
     // so after the setenvs above.
     scheme::ensure();
+    discord_link::ensure();
 
     // The core is open before the engine, so the Door singleton the first QML file names
     // finds it already there.
@@ -198,6 +200,10 @@ fn main() {
     let args = runtime::args();
     if args.drive.is_some() || args.shoot.is_some() {
         core.disable_unattended_changes();
+    }
+    // Discord launched the app to hand over a join (#966): listen for it
+    if args.link.as_deref().is_some_and(args::is_discord_link) {
+        let _ = core.call(anibeam_core::Call::DiscordListen);
     }
     devstats::startup_mark("core open");
     runtime::install_core(core);
