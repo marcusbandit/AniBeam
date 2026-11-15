@@ -217,7 +217,6 @@ frame-downloads-not-read = 未读取。
 ## HomePage
 
 home-title = 首页
-home-scan-started = 已开始扫描
 home-ago-minutes = { $count } 分钟前
 home-ago-hours = { $count } 小时前
 home-ago-days = { $count } 天前
@@ -260,7 +259,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } 集待看
 home-day-nothing = 无
 home-now = 现在 { $time }
-home-card-aired = { $episode }，{ $ago }播出
 home-continue = 继续观看
 home-continue-fact = { $count } 部番剧可以接着看
 home-on-hold = 搁置
@@ -299,18 +297,6 @@ home-genres = 类型
 home-open-library = 打开媒体库
 home-dropped = 抛弃
 home-dropped-fact = 磁盘上还有 { $count } 个文件
-home-out-now = 已播出
-home-out-now-fact = 本周新剧集，来自 AniList
-home-popular = 本季热门
-home-add-folder-title = 你自己的番剧也会显示在这里
-home-add-folder-body = 添加存放动漫的文件夹，首页就会填满你在看的番剧。
-home-add-folder-button = 添加文件夹
-home-empty-scanned-title = 文件夹里还没找到内容
-home-empty-title = 还没有番剧
-home-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-home-empty-body = 添加存放动漫的文件夹，媒体库会自动填满。
-home-scan-all = 全部扫描
-home-library-settings = 媒体库设置
 home-failed-title = 首页没有加载
 home-failed-body = Anibeam 刚才无法读取媒体库。请稍后再试。
 
@@ -562,7 +548,20 @@ library-group-season = 季度
 library-group-type = 类型
 library-group-genre = 题材
 library-group-watch-state = 观看状态
-library-scan-started = 已开始扫描
+library-empty-none = 媒体库是空的
+library-empty-scanning = { $count ->
+   *[other] 正在文件夹中查找视频
+}
+library-empty-nothing = { $count ->
+   *[other] 文件夹里还没有视频
+}
+library-empty-more-folders = { $count ->
+   *[other] 还有 { $count } 个文件夹
+}
+library-empty-add-folder = 添加文件夹
+library-empty-get = 找点东西看
+library-empty-scan-again = 重新扫描
+library-empty-pick-folder = 为媒体库选择文件夹
 library-tab-all = 全部
 library-tab-series = 番剧
 library-tab-movies = 剧场版
@@ -617,18 +616,6 @@ library-rescan = 重新扫描
 library-find-match = 查找匹配
 library-find-match-tip = 为每个没有匹配的选中项搜索
 library-all-matched = 所有选中项都已匹配
-library-empty-scanned-title = 文件夹里还没找到内容
-library-empty-title = 媒体库是空的
-library-empty-scanned-body = Anibeam 在它监视的文件夹里没有找到番剧或剧场版。请重新扫描，或在设置中检查文件夹。
-library-empty-body = 添加存放动漫的文件夹，媒体库会自动填满；也可以导入 Anibeam 导出文件。
-library-scan-all = 全部扫描
-library-add-folder = 添加文件夹
-library-settings = 媒体库设置
-library-import = 导入
-library-import-title = 导入 Anibeam 导出文件
-library-import-filter-export = Anibeam 导出文件 (*.json)
-library-import-filter-all = 所有文件 (*)
-library-import-started = 已开始导入
 
 ## MetadataPage.qml
 

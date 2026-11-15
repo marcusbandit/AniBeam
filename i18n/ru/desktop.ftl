@@ -304,7 +304,6 @@ frame-downloads-not-read = Не прочитано.
 ## HomePage
 
 home-title = Главная
-home-scan-started = Сканирование запущено
 home-ago-minutes = { $count } мин назад
 home-ago-hours = { $count } ч назад
 home-ago-days = { $count } дн. назад
@@ -367,7 +366,6 @@ home-tile-season-span = С{ $season } { $span }
 home-tile-to-watch = { $count } к просмотру
 home-day-nothing = Пусто
 home-now = Сейчас { $time }
-home-card-aired = { $episode } вышла { $ago }
 home-continue = Продолжить
 home-continue-fact = Можно продолжить: { $count }
 home-on-hold = Отложено
@@ -416,18 +414,6 @@ home-dropped-fact = { $count ->
     [many] { $count } файлов ещё на диске
    *[other] { $count } файла ещё на диске
 }
-home-out-now = Уже вышло
-home-out-now-fact = Новые серии этой недели, по данным AniList
-home-popular = Популярное в этом сезоне
-home-add-folder-title = Сюда попадут и ваши сериалы
-home-add-folder-body = Добавьте папку с аниме, и на главной появится то, что вы смотрите.
-home-add-folder-button = Добавить папку
-home-empty-scanned-title = В папках пока ничего не найдено
-home-empty-title = Сериалов пока нет
-home-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-home-empty-body = Добавьте папку с аниме, и библиотека заполнится сама.
-home-scan-all = Сканировать всё
-home-library-settings = Настройки библиотеки
 home-failed-title = Главная не загрузилась
 home-failed-body = Anibeam не смог прочитать библиотеку. Попробуйте ещё раз через минуту.
 
@@ -780,7 +766,25 @@ library-group-season = Сезон
 library-group-type = Тип
 library-group-genre = Жанр
 library-group-watch-state = Статус просмотра
-library-scan-started = Сканирование запущено
+library-empty-none = Библиотека пуста
+library-empty-scanning = { $count ->
+    [1] Ищем видео в папке
+   *[other] Ищем видео в папках
+}
+library-empty-nothing = { $count ->
+    [1] В этой папке пока нет видео
+   *[other] В этих папках пока нет видео
+}
+library-empty-more-folders = { $count ->
+    [one] и ещё { $count } папка
+    [few] и ещё { $count } папки
+    [many] и ещё { $count } папок
+   *[other] и ещё { $count } папки
+}
+library-empty-add-folder = Добавить папку
+library-empty-get = Найти, что посмотреть
+library-empty-scan-again = Сканировать снова
+library-empty-pick-folder = Выберите папку для библиотеки
 library-tab-all = Все
 library-tab-series = Сериалы
 library-tab-movies = Фильмы
@@ -848,18 +852,6 @@ library-rescan = Пересканировать
 library-find-match = Найти совпадение
 library-find-match-tip = Искать каждый выбранный сериал без привязки
 library-all-matched = У всех выбранных есть привязка
-library-empty-scanned-title = В папках пока ничего не найдено
-library-empty-title = Библиотека пуста
-library-empty-scanned-body = Anibeam не нашёл ни сериалов, ни фильмов в отслеживаемых папках. Просканируйте их снова или проверьте папки в настройках.
-library-empty-body = Добавьте папку с аниме, и библиотека заполнится сама, или импортируйте экспорт Anibeam.
-library-scan-all = Сканировать всё
-library-add-folder = Добавить папку
-library-settings = Настройки библиотеки
-library-import = Импорт
-library-import-title = Импорт экспорта Anibeam
-library-import-filter-export = Экспорт Anibeam (*.json)
-library-import-filter-all = Все файлы (*)
-library-import-started = Импорт запущен
 
 ## MetadataPage.qml
 
