@@ -15,17 +15,17 @@ use rusqlite::{Connection, params};
 
 use super::closure::{self, Closure};
 use super::{as_i64, as_u64};
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::images;
-use crate::jobs::{Finished, JobCtx};
-use crate::metadata::Metadata;
-use crate::metadata::apply::{is_rate_limited, provider_unreachable};
-use crate::metadata::fetch::message_of;
-use crate::metadata::record::{self, StubWrite};
-use crate::net::anilist::{Enrichment, RelatedNode};
-use crate::sync::recover;
-use crate::time;
+use crate::Metadata;
+use crate::apply::{is_rate_limited, provider_unreachable};
+use crate::fetch::message_of;
+use crate::record::{self, StubWrite};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_net::anilist::{Enrichment, RelatedNode};
+use anibeam_net::images;
 
 /// How long a rate-limited node sits out, and the floor under whatever
 /// AniList asked for: a `Retry-After: 0` still costs a full minute, so a
@@ -417,8 +417,8 @@ fn progress(conn: &mut Connection) -> Result<(u64, u64), CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::Provider;
     use crate::franchise::closure::Node;
+    use anibeam_contract::Provider;
 
     fn owing(id: u64) -> Node {
         Node {

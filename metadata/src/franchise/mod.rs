@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::contract::*;
-use crate::metadata::Metadata;
-pub(crate) use crate::store::sql::{as_i64, as_u64};
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+pub(crate) use anibeam_foundation::store::sql::{as_i64, as_u64};
+use anibeam_foundation::time;
 
 pub mod closure;
 pub mod crawl;
@@ -27,7 +27,7 @@ use closure::{Closure, Node};
 
 /// `GetFranchiseGraph`: the graph is drawn off the tables as they stand, and
 /// the crawl behind it fills in whatever the walk found missing.
-pub(crate) fn graph_call(metadata: &Arc<Metadata>, series: u64) -> Result<Reply, CoreError> {
+pub fn graph_call(metadata: &Arc<Metadata>, series: u64) -> Result<Reply, CoreError> {
     Ok(Reply::Graph {
         layout: graph(metadata, series)?,
     })
@@ -183,6 +183,3 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
         .optional()?;
     Ok(found.flatten().as_deref().and_then(ListStatus::from_column))
 }
-
-#[cfg(test)]
-pub(crate) use crate::store::testing;

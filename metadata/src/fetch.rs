@@ -12,13 +12,13 @@
 
 use rusqlite::{Transaction, params};
 
-use crate::contract::{CoreError, Provider};
-use crate::metadata::Metadata;
-use crate::metadata::automatch::AUTO_MATCH_VERSION;
-use crate::metadata::record;
-use crate::net::anilist::{Enrichment, Media};
-use crate::net::tvmaze::Show;
-use crate::store::sql::as_i64;
+use crate::Metadata;
+use crate::automatch::AUTO_MATCH_VERSION;
+use crate::record;
+use anibeam_contract::{CoreError, Provider};
+use anibeam_foundation::store::sql::as_i64;
+use anibeam_net::anilist::{Enrichment, Media};
+use anibeam_net::tvmaze::Show;
 
 /// The whole record behind `anilist_id`, written against `series`.
 ///
@@ -121,12 +121,12 @@ pub(crate) async fn reread_after_record(metadata: &Metadata, series: u64) {
     let reread = metadata
         .services
         .store
-        .write_async(move |c| crate::library::readings::record_matters(c, series))
+        .write_async(move |c| anibeam_library::readings::record_matters(c, series))
         .await
         .unwrap_or(false);
     if reread {
         // A source that is away right now gets its scan when it is back.
-        let _ = crate::library::scan::rescan_series(&metadata.library, series);
+        let _ = anibeam_library::scan::rescan_series(&metadata.library, series);
     }
 }
 
@@ -220,7 +220,7 @@ pub fn write_show(tx: &Transaction, show: &Show, now: i64) -> Result<(), CoreErr
     let summary = show
         .summary
         .as_deref()
-        .map(crate::html::plain_text)
+        .map(anibeam_foundation::html::plain_text)
         .filter(|s| !s.is_empty());
     tx.execute(
         "INSERT INTO tvmaze_shows (id, name, url, type, language, genres, status, premiered, ended, average_runtime,
@@ -308,7 +308,7 @@ fn no_such_show(show_id: u64) -> CoreError {
     CoreError::provider(
         Provider::Tvmaze,
         Some(404),
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-metadata-no-such-show",
             &[("id", show_id.to_string().into())],
         ),
@@ -322,7 +322,7 @@ fn no_such_media(anilist_id: u64) -> CoreError {
     CoreError::provider(
         Provider::Anilist,
         Some(404),
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-metadata-no-such-media",
             &[("id", anilist_id.to_string().into())],
         ),

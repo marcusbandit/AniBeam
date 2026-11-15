@@ -298,7 +298,7 @@ core-jobs-start-endpoint = 다운로드 소스 시작 중
 core-jobs-schedule-agent = 코딩 에이전트에게 방영 일정 요청 중
     .stopped = 코딩 에이전트에게 방영 일정을 요청하다가 문제가 생겨 멈췄어요.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 지금 방영 중
 core-airing-now-winter = { $year }년 겨울
@@ -318,7 +318,7 @@ core-airing-now-already-on =
     }(으)로 있어요.
 core-airing-now-plan-failed = { $title }을(를) 시청 예정 목록에 추가하지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title } { $number }화가 공개됐어요.
 
@@ -433,18 +433,18 @@ core-prefs-provider-count = { $provider }이(가) { $count }번 나와요. 제�
 core-prefs-outside = { $value }은(는) { $low }~{ $high } 범위를 벗어나요
 core-prefs-empty = 비어 있음
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 추천 작품 순위 정하는 중
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 취향이 비슷한 사람 찾는 중
 core-recommended-reading-lists = 그 사람들의 목록 읽는 중
 core-recommended-reading-yours = 내 작품 읽는 중
 core-recommended-reading-suggestions = 추천할 작품 읽는 중
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }에 애니 { $id }이(가) 없어요
 
@@ -499,7 +499,7 @@ core-update-cannot-read-dmg = dmg를 읽지 못했어요: { $error }
 core-update-no-app = dmg에 앱이 없어요
 core-update-cannot-copy = 새 앱을 이 앱 옆에 복사하지 못했어요: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 시즌 { $season } { $number }화
 core-calendar-episode = { $title } - { $number }화
@@ -687,7 +687,7 @@ core-trackers-left-out =
        *[other] {" "}작품 { $kept }개는 보낼 트래커가 없어 이 컴퓨터에 보관돼요.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show }을(를) { $title }에 매칭했어요.
 core-metadata-auto-matched =
@@ -742,7 +742,7 @@ core-metadata-find-failed = 작품 { $failed }개를 검색하지 못했어요. 
 core-metadata-find-had = 작품 { $had }개는 이미 매칭돼 있었어요.
 core-metadata-find-busy = 작품 { $busy }개는 이미 매칭 중이에요.
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 그 링크를 읽지 못했어요. AniList, MyAnimeList, TVmaze 또는 IMDb 페이지 주소를 붙여넣으세요.
 core-metadata-no-mal-entry = AniList에 그 MyAnimeList ID의 항목이 없어요.
@@ -769,17 +769,17 @@ core-metadata-updated-some =
        *[other] 작품 { $count }개의 정보를 업데이트했어요. { $failed }개는 업데이트하지 못했어요.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze에 작품 { $id }이(가) 없어요
 core-metadata-no-such-media = AniList에 미디어 { $id }이(가) 없어요
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata의 IMDb 링크
 core-metadata-progress-imdb-ratings = IMDb 평점
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 같은 캐릭터
 

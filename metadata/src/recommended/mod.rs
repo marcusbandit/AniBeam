@@ -29,13 +29,13 @@ use anibeam_recs::signal::signals;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::titles;
-use crate::jobs::{Finished, JobCtx};
-use crate::metadata::Metadata;
-use crate::prefs;
-use crate::time;
+use crate::Metadata;
+use anibeam_contract::*;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
 use mine::Mine;
 
 /// The recommender's own least gap between two AniList requests, in
@@ -436,7 +436,11 @@ async fn refresh(metadata: Arc<Metadata>, ctx: Arc<JobCtx>) -> Result<Finished, 
         Err(sync::Halt::Fail(e)) => return Err(e),
     };
     ctx.checkpoint()?;
-    ctx.progress(0, None, &crate::i18n::tr("core-recommended-ranking", &[]));
+    ctx.progress(
+        0,
+        None,
+        &anibeam_contract::i18n::tr("core-recommended-ranking", &[]),
+    );
 
     let (catalog, neighbours) = {
         let people = found.people.clone();
@@ -519,58 +523,5 @@ pub fn after_tracker_refresh(metadata: &Arc<Metadata>) {
         }
         Ok((_, None)) => {}
         Err(e) => tracing::debug!("Recommended for you was not refitted: {e}"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::Core;
-    use crate::events::{Collector, Signal};
-
-    /// A tracker list read again refits Recommended once a fit exists: the
-    /// trackers say so on the bus rather than calling here, and the refit has
-    /// started by the time `signal` returns (#854). Before the first fit it
-    /// waits for Home to ask.
-    #[test]
-    fn a_tracker_refresh_refits_a_fit_that_exists() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            crate::net::FakeHttp::new(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        let c = Arc::new(Collector::default());
-        core.services.bus.subscribe(c.clone());
-        let refits = |c: &Collector| {
-            c.bodies()
-                .iter()
-                .filter(|b| {
-                    matches!(
-                        b,
-                        EventBody::JobStarted {
-                            kind: JobKind::RefreshRecommended
-                        }
-                    )
-                })
-                .count()
-        };
-        core.services.bus.signal(Signal::TrackersChanged);
-        assert_eq!(refits(&c), 0);
-        core.services
-            .store
-            .write(|c| {
-                c.execute(
-                    "INSERT INTO rec_state (id, fitted_at, state) VALUES (1, 1, 'Ready')",
-                    [],
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        core.services.bus.signal(Signal::TrackersChanged);
-        assert_eq!(refits(&c), 1);
-        core.shutdown();
     }
 }
