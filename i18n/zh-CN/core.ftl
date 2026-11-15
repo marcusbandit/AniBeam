@@ -965,6 +965,10 @@ core-downloads-refuse-library-folder = { $path } 是媒体库文件夹或包含�
 ## core/src/downloads/paths.rs
 
 core-downloads-no-default-folder = qBittorrent 没有默认保存文件夹，请在 qBittorrent 中设置
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } 不是文件夹的完整路径
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } 无法保存下载：请选择一个存在且不是主文件夹的文件夹
 core-downloads-name-empty = 名称不能为空
 core-downloads-name-slash = 名称不能包含 / 或 \
 core-downloads-name-not-folder = { $name } 不是文件夹名称

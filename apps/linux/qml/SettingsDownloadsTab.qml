@@ -8,6 +8,7 @@
 // with Discard and Save, so the way to keep a change is never a scroll away from it.
 // The password row says under it whether one is saved; no row explains itself further.
 import QtQuick
+import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
 
 SettingsTab {
@@ -27,12 +28,20 @@ SettingsTab {
     readonly property var settings: status ? status.settings : null
     readonly property var anirss: status ? status.anirss : null
     readonly property var torrent: status ? status.torrent : null
+    // Where a show not in the library yet downloads to (#1005): applied at once, not drafted
+    readonly property var saveFolder: status && status.save_folder ? status.save_folder : ({ path: "", from: "Client", here: false })
+    function setSaveFolder(folder) {
+        var r = Door.call("SetSaveFolder", { folder: folder })
+        if (r.error) frame.fail(r.error, function() { tab.setSaveFolder(folder) })
+    }
     readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true, keep_watched: 1 })
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     // The engine the draft picks. A stored engine this build does not know comes in as
     // Anibeam itself, the default (#552), and the core keeps it stored until the search
     // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
+    // The saved engine, as the Save to row applies at once and reads the saved client's folder
+    readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
@@ -200,6 +209,11 @@ SettingsTab {
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); status: tab.passwordLine
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
+        SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
+            status: tab.saveFolder.path || words.t("settings-downloads-save-to-client")
+            Row { spacing: theme.space(2)
+                Button { visible: tab.saveFolder.from === "Chosen"; msg: "settings-downloads-save-to-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.setSaveFolder(null) }
+                Button { objectName: "downloads-save-to-choose"; msg: "settings-downloads-save-to-choose"; icon: "folder-open"; flat: true; onClicked: saveFolderDialog.open() } } }
         SettingRow { label: words.t("settings-downloads-connection"); line: tab.torrentLine; status: tab.mismatch
             Row { spacing: theme.space(2)
                 Button { visible: tab.mismatch !== "" && !!(tab.anirss && tab.anirss.config_path); msg: "settings-downloads-open-config"; icon: "external-link"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) }
@@ -270,6 +284,12 @@ SettingsTab {
             Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
     EndpointReposPanel { grows: false }
+    FolderDialog {
+        id: saveFolderDialog
+        title: words.t("settings-downloads-save-to-pick")
+        currentFolder: tab.saveFolder.path ? Fmt.fileUrl(tab.saveFolder.path) : ""
+        onAccepted: tab.setSaveFolder(Fmt.localPath(String(selectedFolder)))
+    }
 
     // The save bar: floats over the section's foot while the draft differs from what is saved
     Rectangle {
