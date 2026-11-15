@@ -204,11 +204,11 @@ pub fn set_save_folder(services: &Services, folder: Option<&str>) -> Result<(), 
         ));
     }
     if let Some(f) = folder {
-        let real = real(f);
+        let at = real(f);
         let home = std::env::home_dir().map(|h| real(&h.to_string_lossy()));
         // The folder's own subfolders are what removing a subscription with its files
         // trashes, so the root and the home folder are never one
-        if !Path::new(f).is_dir() || real.parent().is_none() || home.as_ref() == Some(&real) {
+        if !Path::new(f).is_dir() || at.parent().is_none() || home.as_ref() == Some(&at) {
             return Err(CoreError::invalid(
                 "folder",
                 crate::i18n::tr(
