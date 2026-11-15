@@ -26,6 +26,8 @@ pub struct Trackers {
     /// open for the sign-in to finish before the tab is let go. A test
     /// shortens it.
     pub sign_in_hold_ms: AtomicU64,
+    /// The series whose rewatch a mark is writing right now (#776).
+    pub(crate) rewatching: super::writes::Rewatching,
 }
 
 impl Trackers {
@@ -35,6 +37,7 @@ impl Trackers {
             net,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
+            rewatching: Default::default(),
         }
     }
 }
