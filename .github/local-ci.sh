@@ -7,18 +7,25 @@
 #
 #   .github/local-ci.sh              every check, then a tester build to try by hand
 #   .github/local-ci.sh --no-build   the checks only
+#   .github/local-ci.sh --quick      the checks that need git and no compiler, in seconds
+#   .github/local-ci.sh --cargo      clippy, the tests and the build; needs no .git, so a
+#                                    build box can run it on a copy of the files
 #
 # Each step prints a "== <step>" line first, so a wrapper can show where it is. The exit
 # status is the first failing step's; the steps after a failure still run, so one pass lists
 # everything that is wrong.
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 
 build=1
+quick=1
+cargo=1
 for arg in "$@"; do
   case "$arg" in
     --no-build) build=0 ;;
-    -h | --help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --quick) cargo=0 ;;
+    --cargo) quick=0 ;;
+    -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "local-ci: unknown option $arg" >&2; exit 2 ;;
   esac
 done
@@ -39,21 +46,24 @@ step() {
   fi
 }
 
-base="$(git merge-base HEAD origin/main 2>/dev/null || echo origin/main)"
-
-step fmt cargo fmt --all --check
-step changelog .github/changelog-newest.sh "$base"
-step strings python3 .github/strings-check.py
-step "no sites" .github/no-site-names.sh
-step clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-# The leaf crates on their own: one cargo call with the core merges their features and would
-# hide a use the crate does not turn on itself (ci.yml says more).
-for crate in anibeam-contract anibeam-foundation anibeam-net; do
-  step "clippy $crate alone" cargo clippy --locked -p "$crate" --all-targets -- -D warnings
-done
-step "clippy phone features" cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
-step test cargo test --locked --workspace
-[ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
+if [ $quick -eq 1 ]; then
+  base="$(git merge-base HEAD origin/main 2>/dev/null || echo origin/main)"
+  step fmt cargo fmt --all --check
+  step changelog .github/changelog-newest.sh "$base"
+  step strings python3 .github/strings-check.py
+  step "no sites" .github/no-site-names.sh
+fi
+if [ $cargo -eq 1 ]; then
+  step clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+  # The leaf crates on their own: one cargo call with the core merges their features and
+  # would hide a use the crate does not turn on itself (ci.yml says more).
+  for crate in anibeam-contract anibeam-foundation anibeam-net; do
+    step "clippy $crate alone" cargo clippy --locked -p "$crate" --all-targets -- -D warnings
+  done
+  step "clippy phone features" cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
+  step test cargo test --locked --workspace
+  [ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
+fi
 
 if [ $status -eq 0 ]; then echo "== passed"; else echo "== failed"; fi
 exit $status
