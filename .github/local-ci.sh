@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # The Linux checks a pull request has to pass, run on your own machine instead of a runner
 # (#986). A push to a PR runs only the fast checks on GitHub; this is the full Linux pass:
-# what CI, Strings, No sites and the Linux workflow check, minus the AppImage and its distro
-# smoke tests, which the `full ci` label runs once before merge. It needs what building the
-# shell needs (docs/build-from-source.md) and runs from anywhere in the checkout:
+# what CI, Strings, No sites and the Linux workflow check, over the whole workspace, minus
+# the AppImage and its distro smoke tests, which the `full ci` label runs before merge. It
+# needs what building the shell needs (docs/build-from-source.md) and runs from anywhere:
 #
 #   .github/local-ci.sh              every check, then a tester build to try by hand
 #   .github/local-ci.sh --no-build   the checks only
@@ -18,17 +18,20 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 build=1
-quick=1
-cargo=1
+quick=0
+cargo=0
 for arg in "$@"; do
   case "$arg" in
     --no-build) build=0 ;;
-    --quick) cargo=0 ;;
-    --cargo) quick=0 ;;
-    -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --quick) quick=1 ;;
+    --cargo) cargo=1 ;;
+    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "local-ci: unknown option $arg" >&2; exit 2 ;;
   esac
 done
+
+# Neither half named means both.
+[ $quick -eq 0 ] && [ $cargo -eq 0 ] && quick=1 && cargo=1
 
 status=0
 step() {
@@ -47,7 +50,9 @@ step() {
 }
 
 if [ $quick -eq 1 ]; then
-  base="$(git merge-base HEAD origin/main 2>/dev/null || echo origin/main)"
+  # The patch note check compares with main as it is now, not as it was at the last fetch.
+  git fetch -q origin main 2>/dev/null || echo "local-ci: could not fetch origin/main; comparing with the last fetch"
+  base="$(git merge-base HEAD origin/main)"
   step fmt cargo fmt --all --check
   step changelog .github/changelog-newest.sh "$base"
   step strings python3 .github/strings-check.py

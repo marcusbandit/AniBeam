@@ -276,10 +276,10 @@ Strings, No sites, the PR checks and the Android check when the phone or the cor
 about seven minutes. Work on one platform at a time and check it locally with
 `.github/local-ci.sh`.
 
-The platform builds run once, before merge: put the `full ci` label on the PR when it works on
-Linux. That builds and tests Linux with its AppImage and distro smoke tests, Windows, macOS
-and Arch. A push after the label does not rebuild them; take the label off and put it back to
-build the newest commit. Merge when the full run on the head commit is green.
+When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
+and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
+Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
+last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
 
 ## Releases
 

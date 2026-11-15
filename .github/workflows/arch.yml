@@ -5,26 +5,9 @@ name: Arch
 # libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
 # carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256, and nightly.yml calls it so
 # a rolling Arch update that breaks the container build shows up on the next nightly rather
-# than on a release. A pull request builds it under the `full ci` label, once before merge.
-# Its pull request paths are linux.yml's: whatever can break the shell's build in the
-# container breaks it here too.
+# than on a release. A pull request does not run it on a push (#993); the `full ci` label builds
+# it through full-ci.yml (#986), and the Actions tab (Run workflow) runs it by hand.
 on:
-  # A pull request runs it once, when it gets the `full ci` label, never on each push (#986).
-  # The fast checks in ci.yml run on every push; take the label off and put it back to build
-  # the newest push again.
-  pull_request:
-    types: [labeled]
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/arch.yml'
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -41,7 +24,7 @@ permissions:
 # A newer push to the same pull request cancels the older run, as in linux.yml (#529); any
 # other run, a release's among them, has a group of its own.
 concurrency:
-  group: ${{ github.workflow }}-arch-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.label.name }}
+  group: ${{ github.workflow }}-arch-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -54,9 +37,6 @@ env:
 
 jobs:
   tarball:
-    # Any label fires the pull_request event; only `full ci` builds. A run another workflow
-    # calls (nightly, release, a PR test build) always builds.
-    if: github.event_name != 'pull_request' || inputs.version != '' || github.event.label.name == 'full ci'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container: archlinux:base-devel

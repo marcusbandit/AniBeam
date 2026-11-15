@@ -5,29 +5,10 @@ name: Linux
 # containers, so a library the bundle forgot shows up as a failure on a distro that lacks it.
 # The image carries anirss on its own Python and a static qbittorrent-nox; the smoke run
 # checks both start. nightly.yml, release.yml and pr-build.yml call it and put the AppImage
-# on their release. A pull request that touches the core, the Qt shell or the workspace runs it
-# when it gets the `full ci` label. Run it from the Actions tab (Run workflow) for a build
-# without a release.
+# on their release. A pull request runs it through full-ci.yml, under the `full ci` label, once
+# it works locally (#986). Run it from the Actions tab (Run workflow) for a build without a
+# release.
 on:
-  # A pull request runs it once, when it gets the `full ci` label, never on each push (#986).
-  # The fast checks in ci.yml run on every push; take the label off and put it back to build
-  # the newest push again.
-  pull_request:
-    types: [labeled]
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'clippy.toml'
-      - '.cargo/**'
-      - 'rust-toolchain*'
-      - '.github/workflows/linux.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
@@ -40,11 +21,13 @@ on:
         type: string
         default: ''
 
-# Putting `full ci` back on a PR cancels that PR's older run of this build (#529). The label's
-# name is in the group, so a different label landing never cancels it (#986). Nightly and
-# release runs have no PR number, so each gets its own group and none cancels another.
+# A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
+# one build per PR instead of queueing behind the runners. The group starts with the calling
+# workflow's name, so a full run and a test build of one PR never cancel each other. Nightly
+# and release runs have no PR number, so each gets its own group and none cancels another
+# (#529).
 concurrency:
-  group: ${{ github.workflow }}-linux-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.label.name }}
+  group: ${{ github.workflow }}-linux-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -63,9 +46,6 @@ env:
 
 jobs:
   build-linux:
-    # Any label fires the pull_request event; only `full ci` builds. A run another workflow
-    # calls (nightly, release, a PR test build) always builds.
-    if: github.event_name != 'pull_request' || inputs.version != '' || github.event.label.name == 'full ci'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:

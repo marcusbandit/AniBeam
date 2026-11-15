@@ -4,27 +4,10 @@ name: Windows
 # zip, each carrying Qt, libmpv, MpvQt, qbittorrent-nox and anirss on its own Python. Runs
 # the core and shell tests there, then smoke-tests the bundled app, the two helpers and the
 # Downloads page starting them on a fresh install. nightly.yml, release.yml and pr-build.yml
-# call it and put the installer and the zip on their release. A pull request runs it once,
-# under the `full ci` label before merge (#986), and the `test build` label builds it too. Run it
+# call it and put the installer and the zip on their release. A pull request does not run it
+# on a push (#993); the `full ci` label (full-ci.yml) and the `test build` label build it. Run it
 # from the Actions tab (Run workflow) for a build without a release.
 on:
-  # A pull request runs it once, when it gets the `full ci` label, never on each push (#986).
-  # The fast checks in ci.yml run on every push; take the label off and put it back to build
-  # the newest push again.
-  pull_request:
-    types: [labeled]
-    paths:
-      - 'contract/**'
-      - 'foundation/**'
-      - 'net/**'
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/windows.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
@@ -37,11 +20,11 @@ on:
         type: string
         default: ''
 
-# Putting `full ci` back on a PR cancels that PR's older run of this build (#529). The label's
-# name is in the group, so a different label landing never cancels it (#986). Nightly and
-# release runs have no PR number, so each gets its own group and none cancels another.
+# A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
+# one build per PR instead of queueing behind the runners. Nightly and release runs have no
+# PR number, so each gets its own group and none cancels another (#529).
 concurrency:
-  group: ${{ github.workflow }}-windows-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.label.name }}
+  group: ${{ github.workflow }}-windows-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -62,9 +45,6 @@ env:
 
 jobs:
   build-windows:
-    # Any label fires the pull_request event; only `full ci` builds. A run another workflow
-    # calls (nightly, release, a PR test build) always builds.
-    if: github.event_name != 'pull_request' || inputs.version != '' || github.event.label.name == 'full ci'
     runs-on: windows-2025
     timeout-minutes: 150
     defaults:
