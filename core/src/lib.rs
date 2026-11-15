@@ -1,8 +1,9 @@
 //! Anibeam's core: every rule, used by every shell through the contract in
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
 //! plumbing every team shares is the `anibeam-foundation` crate, the network
-//! team is `anibeam-net` and the library team `anibeam-library`, each handed
-//! on here under the name it had in the core.
+//! team is `anibeam-net`, the library team `anibeam-library` and the releases
+//! team `anibeam-releases`, each handed on here under the name it had in the
+//! core.
 
 pub(crate) mod act;
 pub mod agent;
@@ -16,7 +17,6 @@ pub mod contract;
 pub mod core;
 pub mod downloads;
 pub mod events;
-pub mod feed;
 pub mod first_run;
 pub mod foundation;
 pub mod franchise;
@@ -29,8 +29,6 @@ pub mod playback;
 pub mod presence;
 pub(crate) mod process;
 pub mod recommended;
-pub mod releases;
-pub mod repos;
 pub mod room;
 pub mod stats;
 pub mod trackers;
@@ -51,6 +49,11 @@ pub use anibeam_net::{VERSION, images};
 
 /// The library team, in its own crate above net.
 pub use anibeam_library as library;
+
+/// The releases team, in its own crate above library: the release logic, the
+/// endpoint repos and the Feed page's reads.
+pub use anibeam_releases as releases;
+pub use anibeam_releases::{feed, repos};
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

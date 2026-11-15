@@ -17,8 +17,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::contract::*;
-use crate::foundation::size::size_bytes;
+use anibeam_contract::*;
+use anibeam_foundation::size::size_bytes;
 
 static GROUP_LEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*\[([^\]]+)\]").unwrap());
 /// A scene group at the end: `h264-ETHEL`, `x265-NeoNoir[Uploader.example]`
@@ -176,7 +176,7 @@ pub fn version(title: &str) -> u32 {
 fn plain(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let lower = base.to_lowercase();
-    let stem = crate::foundation::names::without_video_extension(&lower);
+    let stem = anibeam_foundation::names::without_video_extension(&lower);
     stem.replace(['.', '_'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()

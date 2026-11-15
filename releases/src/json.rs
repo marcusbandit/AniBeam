@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::contract::*;
-use crate::foundation::magnet::is_hash;
-use crate::net::{Http, HttpRequest};
 use crate::repos::index::JsonMap;
+use anibeam_contract::*;
+use anibeam_foundation::magnet::is_hash;
+use anibeam_net::{Http, HttpRequest};
 
 /// The value at a dot path of object keys; the value itself for an empty path.
 fn at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
@@ -64,7 +64,7 @@ fn bytes(v: &Value) -> Option<u64> {
             s.parse()
                 .ok()
                 .or_else(|| s.parse::<f64>().ok().and_then(whole))
-                .or_else(|| crate::foundation::size::size_bytes(s))
+                .or_else(|| anibeam_foundation::size::size_bytes(s))
         }
         _ => None,
     }
@@ -167,7 +167,7 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 /// shows an error rather than "no results" forever.
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
     let reply: Value = serde_json::from_slice(body).map_err(|e| {
-        crate::i18n::tr("core-releases-not-json", &[("error", e.to_string().into())])
+        anibeam_contract::i18n::tr("core-releases-not-json", &[("error", e.to_string().into())])
     })?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
         && truthy(v)
@@ -178,23 +178,29 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
                 .map(super::fetch::their_message)
                 .filter(|m| !m.is_empty())
             {
-                Some(m) => {
-                    crate::i18n::tr("core-releases-search-error-said", &[("message", m.into())])
-                }
-                None => crate::i18n::tr("core-releases-search-error", &[]),
+                Some(m) => anibeam_contract::i18n::tr(
+                    "core-releases-search-error-said",
+                    &[("message", m.into())],
+                ),
+                None => anibeam_contract::i18n::tr("core-releases-search-error", &[]),
             },
         );
     }
     let items = match at(&reply, &map.items) {
         Some(Value::Null) => return Ok(Vec::new()),
         None => {
-            return Err(crate::i18n::tr(
+            return Err(anibeam_contract::i18n::tr(
                 "core-releases-no-results-field",
                 &[("path", format!("{:?}", map.items).into())],
             ));
         }
         Some(Value::Array(items)) => items,
-        Some(_) => return Err(crate::i18n::tr("core-releases-results-not-list", &[])),
+        Some(_) => {
+            return Err(anibeam_contract::i18n::tr(
+                "core-releases-results-not-list",
+                &[],
+            ));
+        }
     };
     Ok(items
         .iter()
@@ -223,7 +229,7 @@ pub async fn fetch(
         return Err(CoreError::service(
             source,
             format!("http_{}", response.status),
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-search-answered",
                 &[("status", response.status.to_string().into())],
             ),

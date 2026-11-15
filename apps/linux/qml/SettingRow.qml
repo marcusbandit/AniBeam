@@ -1,7 +1,8 @@
-// One setting: a label, an optional status line in the fixed face, an optional helper
-// under it and an optional result line (`status`, a fact in the fixed face) under that,
-// and a control slot on the right. When the control would leave the words less than
-// theme.space(60) the control drops under them instead, right-aligned, so a helper is
+// One setting: a label, an optional line in the fixed face under it (`line`, what the row
+// is), an optional result line under that (`status`, a fact in the fixed face: a path, a
+// state, what went wrong), and a control slot on the right. Nothing explains a row under its
+// label: the label says what it is. When the control would leave the words less than
+// theme.space(60) the control drops under them instead, right-aligned, so the words are
 // never crushed into a ribbon. Never shorter than theme.space(12). Sized through
 // implicitHeight so it sits in a Column and a ColumnLayout alike; the two blocks are
 // placed by x and y rather than anchors, so the switch between the two arrangements is
@@ -16,7 +17,6 @@ Item {
     id: root
     property string label: ""
     property string line: ""
-    property string helper: ""
     property string status: ""
     property bool hairline: true
     readonly property bool settingTarget: true
@@ -32,7 +32,7 @@ Item {
 
     readonly property real pad: theme.space(2.5)
     readonly property real gutter: theme.space(6)
-    readonly property bool wordy: line !== "" || helper !== "" || status !== ""
+    readonly property bool wordy: line !== "" || status !== ""
     readonly property bool stacked: wordy && width - slot.width - gutter < theme.space(60)
     width: parent ? parent.width : theme.space(100)
     implicitHeight: stacked ? textColumn.implicitHeight + pad + slot.height + pad * 2
@@ -70,15 +70,6 @@ Item {
             color: theme.textDim
             wrapMode: Text.Wrap
             font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
-        }
-        Text {
-            visible: root.helper !== ""
-            width: parent.width
-            text: root.helper
-            color: theme.textDim
-            wrapMode: Text.Wrap
-            font.family: theme.fontSans
             font.pointSize: theme.typeSmall
         }
         Text {

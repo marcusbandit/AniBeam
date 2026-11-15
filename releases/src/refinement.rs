@@ -7,7 +7,7 @@
 use super::bestfit;
 use super::titles::{RES_RE, poster_of, title_tokens};
 use super::{BestfitConfig, Endpoint};
-use crate::contract::{BestFit, CoreError, RefineOp, Release, ReleaseGroup};
+use anibeam_contract::{BestFit, CoreError, RefineOp, Release, ReleaseGroup};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
@@ -389,7 +389,7 @@ pub async fn apply(
             if tokens.is_empty() {
                 return Err(CoreError::invalid(
                     "tokens",
-                    crate::i18n::tr("core-releases-refine-no-tokens", &[]),
+                    anibeam_contract::i18n::tr("core-releases-refine-no-tokens", &[]),
                 ));
             }
             let new_query = build_refined_query(query, &tokens, items);
@@ -534,7 +534,7 @@ mod tests {
     fn tracker() -> Endpoint {
         Endpoint::new(
             "tracker",
-            crate::releases::kinds::FILTERED_RSS,
+            crate::kinds::FILTERED_RSS,
             "https://tracker.example/",
         )
     }

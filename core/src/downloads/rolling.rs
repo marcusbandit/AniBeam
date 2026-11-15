@@ -50,12 +50,13 @@ use serde::{Deserialize, Serialize};
 
 use super::qbt::QbtClient;
 use super::replace::names_match;
-use super::{facts, settings};
+use super::settings;
 use crate::contract::*;
 use crate::downloads::Downloads;
 use crate::foundation::magnet;
 use crate::foundation::names::{is_video, title_key};
 use crate::foundation::services::Services;
+use crate::releases::facts;
 use crate::store::settings as kv;
 use crate::time::now_secs;
 

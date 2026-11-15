@@ -6,6 +6,7 @@
 // once, and saving stops a running sidecar (its environment carries the password), so a save
 // is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
 // foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
+// The password row says under it whether one is saved; no row explains itself further.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -13,7 +14,6 @@ import com.marcusrosado.AniBeam
 SettingsTab {
     id: tab
     title: words.t("settings-downloads-title")
-    lead: words.t("settings-downloads-lead")
     footInset: theme.space(36)
     property var status: null
     property var draft: null
@@ -35,12 +35,6 @@ SettingsTab {
         if (r.error) frame.fail(r.error, function() { tab.setSaveFolder(folder) })
     }
     readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true, keep_watched: 1 })
-    // "Finishing episode 3 deletes episode 1" for the count kept behind
-    readonly property string keepLine: {
-        var k = roll.keep_watched === undefined ? 1 : roll.keep_watched
-        if (k === 0) return words.t("settings-downloads-keep-none")
-        return words.t("settings-downloads-keep-line", { count: k, finishing: k + 2 })
-    }
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     // The engine the draft picks. A stored engine this build does not know comes in as
     // Anibeam itself, the default (#552), and the core keeps it stored until the search
@@ -170,12 +164,6 @@ SettingsTab {
         return torrent.message ? words.t("settings-downloads-torrent-failed", { client: clientName }) : words.t("settings-downloads-torrent-untried")
     }
     readonly property bool managed: !!draft && draft.torrent_mode === "Managed"
-    readonly property string modeLine: {
-        if (!draft) return ""
-        if (draft.torrent_mode === "Existing") return words.t("settings-downloads-mode-existing")
-        if (draft.torrent_mode === "Managed") return words.t("settings-downloads-mode-managed")
-        return words.t("settings-downloads-mode-auto")
-    }
     readonly property string passwordLine: {
         if (!settings) return ""
         if (tab.hasPassword) return words.t("settings-downloads-password-saved")
@@ -194,8 +182,7 @@ SettingsTab {
     EndpointReposPanel { grows: false }
     Panel {
         title: words.t("settings-downloads-torrent-title")
-        helper: words.t("settings-downloads-torrent-helper")
-        SettingRow { label: words.t("settings-downloads-which-client"); helper: tab.modeLine
+        SettingRow { label: words.t("settings-downloads-which-client")
             Seg { objectName: "downloads-client-mode"; options: [{ text: words.t("settings-downloads-pick-for-me"), icon: "sparkles" }, { text: words.t("settings-downloads-my-own"), icon: "user-check" }, { text: words.t("settings-downloads-built-in"), icon: "play" }]
                   index: !tab.draft ? 0 : tab.draft.torrent_mode === "Existing" ? 1 : tab.draft.torrent_mode === "Managed" ? 2 : 0
                   onPicked: function(i) {
@@ -207,7 +194,7 @@ SettingsTab {
                       })
                       tab.forgetPassword()
                   } } }
-        SettingRow { visible: tab.mine; label: words.t("settings-downloads-saved-clients"); helper: words.t("settings-downloads-saved-clients-helper")
+        SettingRow { visible: tab.mine; label: words.t("settings-downloads-saved-clients")
             Row { spacing: theme.space(2)
                 Dropdown { objectName: "downloads-client"; options: tab.savedClients.map(function(c) { return c.name || c.url }); minWidth: theme.space(36)
                            visible: tab.savedClients.length > 0; index: Math.max(0, tab.activeIndex)
@@ -217,11 +204,11 @@ SettingsTab {
         SettingRow { visible: tab.mine; label: words.t("settings-downloads-name")
             Field { objectName: "downloads-client-name"; text: tab.activeEntry ? tab.activeEntry.name : ""; width: theme.space(48); placeholder: words.t("settings-downloads-name-placeholder")
                     onEdited: function(t) { tab.edit(function(d) { tab.setActive(d, "name", t) }) } } }
-        SettingRow { label: words.t("settings-downloads-address"); helper: tab.managed ? words.t("settings-downloads-address-managed-helper") : words.t("settings-downloads-address-helper")
+        SettingRow { label: words.t("settings-downloads-address")
             Field { objectName: "downloads-client-url"; text: tab.draft ? tab.draft.torrent_url : ""; mono: true; width: theme.space(48); placeholder: "http://localhost:8080"; onEdited: function(t) { tab.edit(function(d) { d.torrent_url = t; tab.setActive(d, "url", t) }) } } }
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-username")
             Field { text: tab.draft ? tab.draft.torrent_username : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.torrent_username = t; tab.setActive(d, "username", t) }) } } }
-        SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); helper: tab.passwordLine
+        SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); status: tab.passwordLine
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
         SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
@@ -237,18 +224,17 @@ SettingsTab {
     }
     Panel {
         title: tab.nativeEngine ? words.t("settings-downloads-searching") : words.t("settings-downloads-search-helper")
-        helper: tab.nativeEngine ? words.t("settings-downloads-searching-helper") : words.t("settings-downloads-search-helper-helper")
-        SettingRow { label: words.t("settings-downloads-runs-in"); helper: tab.nativeEngine ? words.t("settings-downloads-runs-in-native-helper") : words.t("settings-downloads-runs-in-helper")
+        SettingRow { label: words.t("settings-downloads-runs-in")
             Seg { objectName: "downloads-engine"; options: [{ text: words.t("settings-downloads-search-helper"), icon: "wrench", name: "helper" }, { text: words.t("settings-downloads-engine-native"), icon: "sparkles", name: "anibeam" }]; index: tab.nativeEngine ? 1 : 0
                   onPicked: function(i) { tab.edit(function(d) { d.engine = i === 1 ? "Native" : "Anirss" }) } } }
-        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-how-runs"); helper: tab.sidecar ? words.t("settings-downloads-how-runs-sidecar") : words.t("settings-downloads-how-runs-remote")
+        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-how-runs")
             Seg { options: [{ text: words.t("settings-downloads-runs-sidecar"), icon: "play" }, { text: words.t("settings-downloads-runs-remote"), icon: "radio" }]; index: tab.sidecar ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { d.anirss_mode = i === 0 ? "Sidecar" : "Remote" }) } } }
-        SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: words.t("settings-downloads-command"); helper: words.t("settings-downloads-command-helper")
+        SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: words.t("settings-downloads-command")
             Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
-        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-address"); helper: words.t("settings-downloads-server-address-helper")
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-address")
             Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
-        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-key"); helper: tab.settings && tab.settings.has_anirss_token ? words.t("settings-downloads-key-saved-helper") : words.t("settings-downloads-key-helper")
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-key")
             Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
         SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-connection"); line: tab.anirssLine
@@ -259,33 +245,30 @@ SettingsTab {
     }
     Panel {
         title: words.t("settings-downloads-roll-title")
-        helper: words.t("settings-downloads-roll-helper")
-        SettingRow { label: words.t("settings-downloads-roll-big"); helper: words.t("settings-downloads-roll-big-helper", { count: tab.roll.over })
+        SettingRow { label: words.t("settings-downloads-roll-big")
             Switch { objectName: "downloads-roll-big"; checked: tab.roll.big !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).big = on }) } } }
-        SettingRow { label: words.t("settings-downloads-roll-ahead"); helper: words.t("settings-downloads-roll-ahead-helper")
+        SettingRow { label: words.t("settings-downloads-roll-ahead")
             SliderRow { objectName: "downloads-roll-ahead"; unit: words.t("settings-downloads-unit-episodes"); from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).ahead = Math.round(v) }) } } }
-        SettingRow { label: words.t("settings-downloads-roll-over"); helper: words.t("settings-downloads-roll-over-helper")
+        SettingRow { label: words.t("settings-downloads-roll-over")
             SliderRow { objectName: "downloads-roll-over"; unit: words.t("settings-downloads-unit-episodes"); from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).over = Math.round(v) }) } } }
-        SettingRow { label: words.t("settings-downloads-roll-watched"); helper: tab.roll.delete_watched !== false ? words.t("settings-downloads-roll-watched-delete-helper") : words.t("settings-downloads-roll-watched-keep-helper")
+        SettingRow { label: words.t("settings-downloads-roll-watched")
             Seg { objectName: "downloads-roll-watched"; options: [{ text: words.t("action-delete"), icon: "trash-2" }, { text: words.t("settings-downloads-keep-all"), icon: "archive" }]; index: tab.roll.delete_watched !== false ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { tab.rolling(d).delete_watched = i === 0 }) } } }
         SettingRow { visible: tab.roll.delete_watched !== false; label: words.t("settings-downloads-keep-behind")
-            helper: tab.keepLine
             SliderRow { objectName: "downloads-roll-keep"; unit: words.t("settings-downloads-unit-episodes"); from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
     }
     Panel {
         title: words.t("settings-downloads-subscriptions-title")
-        SettingRow { label: words.t("settings-downloads-last-search"); helper: words.t("settings-downloads-last-search-helper")
+        SettingRow { label: words.t("settings-downloads-last-search")
             Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
-        SettingRow { label: words.t("settings-downloads-prune"); helper: words.t("settings-downloads-prune-helper")
+        SettingRow { label: words.t("settings-downloads-prune")
             Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
     }
     Panel {
         title: words.t("settings-downloads-sources-title")
-        helper: words.t("settings-downloads-sources-helper")
         SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
             Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
         Repeater {
@@ -298,7 +281,7 @@ SettingsTab {
                 Chip { text: String(modelData.kind); small: true; color: theme.raised }
             }
         }
-        SettingRow { label: words.t("settings-downloads-config-file"); helper: tab.nativeEngine ? words.t("settings-downloads-config-native-helper") : words.t("settings-downloads-config-helper")
+        SettingRow { label: words.t("settings-downloads-config-file")
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
             Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
@@ -324,13 +307,12 @@ SettingsTab {
         color: theme.glassFloat
         border.width: 1
         border.color: theme.accentEdge
-        Column {
+        Label {
             anchors.left: parent.left; anchors.leftMargin: theme.space(6)
             anchors.right: saveRow.left; anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(0.5)
-            Label { msg: "settings-downloads-unsaved"; role: "title"; font.pointSize: theme.typeNormal }
-            Label { width: parent.width; msg: "settings-downloads-unsaved-helper"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+            msg: "settings-downloads-unsaved"; role: "title"; font.pointSize: theme.typeNormal
+            elide: Text.ElideRight
         }
         Row {
             id: saveRow

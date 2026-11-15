@@ -28,7 +28,8 @@ QtObject {
     readonly property int railIndex: {
         var i = railPages.indexOf(current.page)
         if (i >= 0) return i
-        for (var k = 0; k < trail.length; k++) { var j = railPages.indexOf(trail[k].page); if (j >= 0) return j }
+        // The newest rail page on the trail: the place this page was opened from
+        for (var k = trail.length - 1; k >= 0; k--) { var j = railPages.indexOf(trail[k].page); if (j >= 0) return j }
         return 0
     }
 
@@ -71,6 +72,15 @@ QtObject {
         trail = t.slice(-12)
         current = entry(page, props, label)
         pendingScroll = 0
+        changed()
+    }
+    // Sideways between rail pages (Library's tabs, #1012): the trail stays, and the page opens
+    // as it was left, its props and its scroll, the way openRail does
+    function sideways(page, leavingScroll) {
+        remember(leavingScroll)
+        var m = remembered[page]
+        current = entry(page, m ? m.props : {}, "")
+        pendingScroll = m ? m.scrollY : 0
         changed()
     }
     // Sideways: the trail stays, so Back leaves the level rather than the episode.
