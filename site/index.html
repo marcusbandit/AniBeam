@@ -41,10 +41,12 @@
 </script>
 
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="redesign.css">
 <script src="common.js" defer></script>
 <script src="app.js" defer></script>
+<script src="redesign.js" defer></script>
 </head>
-<body>
+<body class="rd">
 
 <header class="nav">
   <a class="brand" href="./" aria-label="Anibeam home">
@@ -52,89 +54,72 @@
     <span>Anibeam</span>
   </a>
   <nav class="nav-links" aria-label="Main">
+    <a class="nav-wiki" href="wiki/">Wiki</a>
+    <a href="https://rooms.anibeam.app/">Watch together</a>
+    <a class="nav-gh" href="https://github.com/marcusbandit/Anibeam" aria-label="GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>
     <span class="nav-lang"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>English</span>
-    <a class="nav-wiki" href="wiki/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>Wiki</a>
-    <a class="nav-rooms" href="https://rooms.anibeam.app/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Watch together</a>
-    <a class="nav-gh" href="https://github.com/marcusbandit/Anibeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub</a>
   </nav>
   <a class="btn btn-primary btn-sm" href="download/">Download</a>
 </header>
 
 <main>
 
-<section class="hero" id="top">
+<section class="bhero" id="top">
   <div class="hero-grid" aria-hidden="true"></div>
-  <div class="beams" aria-hidden="true">
-    <i style="--i:0;--x:4%;--y:820px;--w:78%;--h:30px;--a:.42;--b:14px;--g:7.5s;--gd:1.2s"></i>
-    <i style="--i:1;--x:24%;--y:870px;--w:70%;--h:9px;--a:.55;--b:4px;--g:6s;--gd:2.6s"></i>
-    <i style="--i:2;--x:-4%;--y:790px;--w:62%;--h:60px;--a:.16;--b:30px;--g:9s;--gd:0s"></i>
-    <i style="--i:3;--x:44%;--y:890px;--w:62%;--h:2.5px;--a:.85;--b:.6px;--g:5.2s;--gd:.4s"></i>
-    <i style="--i:4;--x:8%;--y:900px;--w:46%;--h:14px;--a:.3;--b:8px;--g:8s;--gd:3.4s"></i>
-    <i style="--i:5;--x:54%;--y:860px;--w:50%;--h:2px;--a:.7;--b:.5px;--g:4.6s;--gd:1.9s"></i>
-    <i style="--i:6;--x:64%;--y:910px;--w:40%;--h:2px;--a:.55;--b:.5px;--g:6.4s;--gd:3s"></i>
+  <div class="bhero-haze" aria-hidden="true"></div>
+  <div class="lanes marquee" id="lanes" aria-hidden="true">
+    <div class="lane" style="--cx:67%;--cy:8%;--s:86px;--dur:120s;--depth:0.35;--op:0.42;--i:0"><span class="lane-beam"></span><div class="marquee-track"><span class="poster"><img src="img/posters/eva.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/violet.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/eva.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/violet.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" width="160" height="240" loading="lazy"></span></div></div>
+    <div class="lane" style="--cx:71%;--cy:30%;--s:118px;--dur:95s;--depth:0.6;--op:0.7;--i:1"><span class="lane-beam"></span><div class="marquee-track"><span class="poster"><img src="img/posters/gits.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/deathnote.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/deathnote.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" width="160" height="240"></span></div></div>
+    <div class="lane" style="--cx:77%;--cy:56%;--s:168px;--dur:70s;--depth:1.0;--op:1;--i:2"><span class="lane-beam"></span><div class="marquee-track"><span class="poster"><img src="img/posters/spirited.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/frieren.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/frieren.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" width="160" height="240"></span></div></div>
+    <div class="lane" style="--cx:85%;--cy:84%;--s:124px;--dur:90s;--depth:0.7;--op:0.72;--i:3"><span class="lane-beam"></span><div class="marquee-track"><span class="poster"><img src="img/posters/dbz.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" width="160" height="240"></span></div></div>
+    <div class="lane" style="--cx:95%;--cy:108%;--s:92px;--dur:115s;--depth:0.4;--op:0.45;--i:4"><span class="lane-beam"></span><div class="marquee-track"><span class="poster"><img src="img/posters/haikyuu.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/mha.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/gits.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/akira.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/mha.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/gits.webp" alt="" width="160" height="240" loading="lazy"></span><span class="poster"><img src="img/posters/akira.webp" alt="" width="160" height="240" loading="lazy"></span></div></div>
   </div>
-
-  <div class="floats" id="floats" aria-hidden="true">
-    <span class="float" style="--x:max(-600px,-46vw);--y:150px;--w:132px;--rot:-7deg;--fx:-180px;--fy:-40px;--d:.38s;--depth:1.2"><img src="img/posters/frieren.webp" alt=""></span>
-    <span class="float" style="--x:min(436px,34vw);--y:150px;--w:132px;--rot:6deg;--fx:180px;--fy:-60px;--d:.46s;--depth:1.2"><img src="img/posters/csm.webp" alt=""></span>
-    <span class="float" style="--x:max(-560px,-47vw);--y:-10px;--w:96px;--rot:5deg;--fx:-90px;--fy:-80px;--d:.54s;--depth:.6"><img src="img/posters/gits.webp" alt=""></span>
-    <span class="float" style="--x:min(500px,39vw);--y:-10px;--w:96px;--rot:-5deg;--fx:100px;--fy:-90px;--d:.58s;--depth:.6"><img src="img/posters/spirited.webp" alt=""></span>
-  </div>
-
-  <div class="hero-copy">
-    <h1>
-      <span class="rise" style="--d:0s">Anibeam</span>
-    </h1>
-    <div class="hero-actions rise" style="--d:.15s">
-      <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="download/">
-        <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
-        <span>Download Anibeam</span>
-      </a>
+  <div class="bhero-copy">
+    <h1><span class="bh-name rise" style="--d:.05s">Anibeam</span> <span class="bh-tag rise" style="--d:.18s">Your anime.<br>Your computer.</span></h1>
+    <div class="rise" style="--d:.34s"><div class="hero-actions">
+      <a class="btn btn-primary btn-lg dl-auto" href="download/"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>Download Anibeam</span></a>
       <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
       <a class="btn btn-ghost btn-lg ios-mac" href="download/"><svg viewBox="0 0 24 24" class="os-icon" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg><span>Get it for Mac</span></a>
-    </div>
+    </div></div>
   </div>
+</section>
 
-  <div class="window-wrap rise" style="--d:.52s">
-    <div class="window">
-      <nav class="rail" aria-label="Screens of the app">
-        <img class="rail-logo" src="img/logo.svg" alt="" width="36" height="36">
-        <button type="button" data-screen="home" aria-pressed="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-          <span>Home</span>
-        </button>
-        <button type="button" data-screen="library" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-          <span>Library</span>
-        </button>
-        <span class="rail-gap" aria-hidden="true"></span>
-        <button type="button" data-screen="series" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
-          <span>A show</span>
-        </button>
-      </nav>
-      <div class="screen">
-        <img id="tour-img" src="img/tour/home.webp" srcset="img/tour/home-1134.webp 1134w, img/tour/home.webp 2268w" sizes="(min-width: 1240px) 1100px, 92vw" width="2268" height="1500" alt="Anibeam's Home: shows to continue and shows not started yet, as poster cards">
+<section class="tour" id="tour" aria-labelledby="tour-h">
+  <h2 id="tour-h">Every show you own,<br>in one place.</h2>
+  <div class="tour-stage">
+    <div class="cone-wrap" aria-hidden="true"><div class="cone" id="cone"></div></div>
+    <div class="tour-tabs" role="tablist" aria-label="Screens of the app">
+      <button type="button" role="tab" data-screen="home" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Home</span></button>
+      <button type="button" role="tab" data-screen="library" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg><span>Library</span></button>
+      <button type="button" role="tab" data-screen="series" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg><span>A show</span></button>
+    </div>
+    <div class="tour-window">
+      <div class="tw-rail" aria-hidden="true">
+        <img src="img/logo.svg" alt="" width="30" height="30">
+        <i data-for="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></i><i data-for="library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></i><i><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></i>
+      </div>
+      <div class="tw-screen">
+        <img id="tour-shot" src="img/tour/home.webp" srcset="img/tour/home-1134.webp 1134w, img/tour/home.webp 2268w" sizes="(min-width: 1240px) 900px, 92vw" width="2268" height="1500" alt="Anibeam's Home: shows to continue and shows not started yet, as poster cards">
       </div>
     </div>
   </div>
 </section>
 
-<section class="section library" aria-labelledby="library-h">
-  <h2 id="library-h">Drop files in.<br>Get a library.</h2>
+<section class="rows" id="features" aria-label="What it does">
 
-  <div class="marquee" id="marquee" aria-hidden="true">
-    <div class="marquee-row"><div class="marquee-track"><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
-    <div class="marquee-row reverse"><div class="marquee-track"><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
-  </div>
-</section>
+  <article class="feat row feat-scan">
+    <div class="row-text"><h3>Finds the show in every file</h3></div>
+    <div class="row-vis">
+      <div class="scan card" aria-hidden="true">
+        <div class="scan-files"><span class="sf-head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Anime</span><span class="sf" style="--n:0"><span class="sf-name">Cowboy.Bebop.S01E05.1080p.BluRay.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:1"><span class="sf-name">Ghost in the Shell (1995) 1080p.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:2"><span class="sf-name">steins_gate_12_bd.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:3"><span class="sf-name">Akira.1988.REMASTER.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:4"><span class="sf-name">FMA Brotherhood - 03 [1080p].mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span><span class="sf" style="--n:5"><span class="sf-name">Mononoke-hime.2160p.mkv</span><i class="sf-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i></span></div>
+        <div class="scan-shelf"><span class="sp" style="--n:0"><img src="img/posters/bebop.webp" alt="" loading="lazy"><b>Cowboy Bebop</b></span><span class="sp" style="--n:1"><img src="img/posters/gits.webp" alt="" loading="lazy"><b>Ghost in the Shell</b></span><span class="sp" style="--n:2"><img src="img/posters/steinsgate.webp" alt="" loading="lazy"><b>Steins;Gate</b></span><span class="sp" style="--n:3"><img src="img/posters/akira.webp" alt="" loading="lazy"><b>Akira</b></span><span class="sp" style="--n:4"><img src="img/posters/fmab.webp" alt="" loading="lazy"><b>Fullmetal Alchemist: Brotherhood</b></span><span class="sp" style="--n:5"><img src="img/posters/mononoke.webp" alt="" loading="lazy"><b>Princess Mononoke</b></span></div>
+      </div>
+    </div>
+  </article>
 
-<section class="section feats" id="features" aria-labelledby="feats-h">
-  <h2 id="feats-h">Built for watching.</h2>
-  <div class="feat-grid">
-
-    <article class="feat feat-player">
-      <h3>Plays your own files</h3>
+  <article class="feat row feat-player flip">
+    <div class="row-text"><h3>Plays every track you have</h3></div>
+    <div class="row-vis">
       <div class="player" aria-hidden="true">
         <div class="pl-stage">
           <div class="pl-video"></div>
@@ -168,66 +153,57 @@
           </div>
         </div>
       </div>
-    </article>
+    </div>
+  </article>
 
-    <article class="feat feat-sync">
-      <h3>Syncs with AniList</h3>
-      <div class="sync card" aria-hidden="true">
-        <div class="al-entry">
-          <img src="img/posters/frieren.webp" alt="" loading="lazy">
-          <div class="al-meta">
-            <b>Sousou no Frieren</b>
-            <span class="al-status">Watching</span>
-          </div>
-          <div class="al-num"><span class="n"><span class="old">12</span><span class="new">13</span></span><span class="of">/ 28</span></div>
+  <article class="feat row feat-sync">
+    <div class="row-text"><h3>Keeps AniList up to date</h3></div>
+    <div class="row-vis">
+      <div class="mark card" aria-hidden="true">
+        <div class="mk-ep">
+          <img src="img/posters/steinsgate.webp" alt="" loading="lazy">
+          <div class="mk-ep-text"><b>Steins;Gate</b><span>Episode 12</span></div>
+          <span class="mk-watched"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Watched</span>
+          <span class="mk-seek"><i></i></span>
         </div>
-        <span class="al-eps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-        <div class="al-foot">
-          <svg viewBox="0 0 24 24"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>
-          <span>AniList</span>
-          <span class="al-synced"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Synced</span>
+        <div class="mk-lists">
+          <div class="mk-row al"><svg class="mk-al" viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg><b>AniList</b><span class="al-num"><span class="n"><span class="old">11</span><span class="new">12</span></span><span class="of">/ 24</span></span></div>
         </div>
       </div>
-    </article>
+    </div>
+  </article>
 
-    <article class="feat feat-resume">
-      <h3>Pick up where you left off</h3>
+  <article class="feat row feat-resume flip">
+    <div class="row-text"><h3>Remembers where you stopped</h3></div>
+    <div class="row-vis">
       <div class="pickup" aria-hidden="true">
         <div class="pickup-art"></div>
         <img class="pickup-poster" src="img/posters/frieren.webp" alt="" loading="lazy">
         <div class="pickup-text">
+          <span class="pickup-kicker">Pick up where you stopped</span>
           <b>Sousou no Frieren</b>
-          <span class="pickup-ep">Episode 13</span>
+          <span class="pickup-ep">Episode 13, 9 min left</span>
           <span class="cubes"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
           <span class="pickup-btns"><span class="pk-resume"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg>Resume episode 13</span><span class="pk-open">Open series</span></span>
         </div>
       </div>
-    </article>
+    </div>
+  </article>
 
-    <article class="feat feat-chain">
-      <h3>Finds every sequel</h3>
-      <div class="related card" aria-hidden="true">
-        <b class="rel-head">Attack on Titan</b>
-        <span class="rel-rail"><i class="on" style="--i:0"></i><i class="on" style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i></span>
-        <div class="rel-row">
-          <div class="stone owned" style="--i:0"><span class="stone-art"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><b>Season 2</b><span>2017</span></div></div>
-          <div class="stone owned" style="--i:1"><span class="stone-art"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><div><b>Season 3</b><span>2018</span></div></div>
-          <div class="stone" style="--i:2"><span class="stone-art"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"></span><div><b>Season 3 Part 2</b><span>2019</span></div></div>
-          <div class="stone" style="--i:3"><span class="stone-art"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"></span><div><b>The Final Season</b><span>2021</span></div></div>
-          <div class="stone" style="--i:4"><span class="stone-art"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"></span><div><b>Final Season Part 2</b><span>2022</span></div></div>
-          <div class="stone" style="--i:5"><span class="stone-art"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"></span><div><b>The Final Chapters</b><span>2023</span></div></div>
-        </div>
+  <article class="feat row feat-chain stack">
+    <div class="row-text"><h3>Finds every sequel</h3></div>
+    <div class="row-vis">
+      <div class="bl-card" aria-hidden="true">
+        <div class="bl-head"><b>Attack on Titan</b><span>3 of 7 in your library</span></div>
+        <div class="bl"><i class="bl-glint"></i><div class="bl-stop" data-year="2013"><img src="img/posters/aot.webp" alt="" loading="lazy"><span>Season 1</span></div><div class="bl-stop" data-year="2017"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><span>Season 2</span></div><div class="bl-stop" data-year="2018"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><span>Season 3</span></div><div class="bl-stop missing" data-year="2019" style="--n:0"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"><span>Season 3 Part 2</span></div><div class="bl-stop missing" data-year="2021" style="--n:1"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"><span>The Final Season</span></div><div class="bl-stop missing" data-year="2022" style="--n:2"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"><span>Final Season Part 2</span></div><div class="bl-stop missing" data-year="2023" style="--n:3"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"><span>The Final Chapters</span></div></div>
       </div>
-    </article>
+    </div>
+  </article>
 
-  </div>
-</section>
-
-<section class="section cast-section" id="cast" aria-labelledby="cast-h">
-  <div class="cast-copy">
-    <h2 id="cast-h">Throw it on<br>the big screen.</h2>
-  </div>
-  <div class="cast-scene" aria-hidden="true">
+  <article class="feat row feat-cast">
+    <div class="row-text"><h3>Casts to your TV</h3></div>
+    <div class="row-vis">
+      <div class="cast-scene" aria-hidden="true">
     <div class="tv">
       <div class="tv-screen">
         <img src="img/art/tv.webp" alt="" loading="lazy">
@@ -239,92 +215,89 @@
           <span class="rx-time">23:40</span>
         </div>
       </div>
-      <span class="tv-stand"></span>
+      <span class="tv-stand"><i></i><i></i></span>
     </div>
-    <svg class="cast-arc" viewBox="0 0 400 220" preserveAspectRatio="none">
-      <path id="arc" d="M10 210 C 120 60, 260 40, 390 20" fill="none"/>
-      <path class="arc-line" d="M10 210 C 120 60, 260 40, 390 20" fill="none"/>
-      <circle class="arc-dot" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto"><mpath href="#arc"/></animateMotion></circle>
-    </svg>
-    <div class="remote card">
-      <div class="remote-head">
-        <svg class="cast-on" viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="6" y="7.5" width="12.5" height="9" rx="1" fill="currentColor"/><path d="M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="2.6" cy="20" r="1.2" fill="currentColor"/></svg>
-        <span>Living room TV</span>
+    <svg class="cast-lines" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M9 20 C 9 9, 46 11, 47 0"/><path d="M42 20 C 42 10, 50 10, 50 0"/><path d="M83 20 C 83 9, 54 11, 53 0"/>
+      </svg>
+      <div class="senders">
+        <div class="dev dev-phone">
+          <div class="lp-screen"><div class="lp-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg><b>Playing on<br>Living room TV</b><span>8:12 / 23:40</span></div><span class="lp-bar"><i></i></span></div>
+        </div>
+        <div class="dev dev-laptop">
+          <div class="lp-screen"><div class="lp-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg><b>Playing on Living room TV</b><span>8:12 / 23:40</span></div><span class="lp-bar"><i></i></span></div>
+          <span class="lp-base"></span>
+        </div>
+        <div class="dev dev-tablet">
+          <div class="lp-screen"><div class="lp-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg><b>Playing on Living room TV</b><span>8:12 / 23:40</span></div><span class="lp-bar"><i></i></span></div>
+        </div>
       </div>
-      <div class="remote-now">
-        <img src="img/art/tv-thumb.webp" alt="" loading="lazy">
-        <div class="remote-text"><b>City the Animation</b><span>Episode 1</span></div>
-        <span class="remote-play"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></span>
-      </div>
-      <span class="remote-bar"><i></i></span>
     </div>
-  </div>
+    </div>
+  </article>
+
+  <article class="feat row feat-room flip">
+    <div class="row-text"><h3>Plays in sync with friends</h3>
+      <a class="btn btn-ghost room-open" href="https://rooms.anibeam.app/">Open a room</a>
+    </div>
+    <div class="row-vis">
+      <div class="room2 card" aria-hidden="true">
+        <div class="r2-head"><b>Watch together</b><span class="room-live"><i></i>Connected</span></div>
+        <div class="r2-code"><span class="room-code">K7QM2X</span><span class="r2-copy">Copy link</span></div>
+        <div class="r2-show"><img src="img/posters/bebop.webp" alt="" loading="lazy"><span>Cowboy Bebop · Episode 5</span></div>
+        <ul class="r2-people"><li><i style="--c:#fdc901">A</i><b>Alex</b><em>Host</em><span class="r2-state"><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li><li><i style="--c:#46e0c4">S</i><b>Sam</b><em>You</em><span class="r2-state"><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li><li class="late"><i style="--c:#02a9ff">K</i><b>Kai</b><span class="r2-state"><span class="r2-wait">Opening</span><span class="r2-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Ready</span></span></li></ul>
+      </div>
+    </div>
+  </article>
+
 </section>
 
-<section class="section trust" aria-labelledby="trust-h">
-  <div class="trust-inner">
-    <h2 id="trust-h">Your files stay yours.</h2>
-    <div class="trust-grid">
-      <div class="tcell">
-        <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/><path d="M3 3l18 18"/></svg>
-        <h3>Free</h3>
-        <a class="gh" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Unless you want to donate</a>
-      </div>
-      <div class="tcell">
-        <svg viewBox="0 0 24 24"><path d="M5 12H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h12M22 8v3a1 1 0 0 1-1 1h-7M7 8h.01M3 16v3a1 1 0 0 0 1 1h12m4-4a1 1 0 0 1 1 1v2M7 16h.01M2 2l20 20"/></svg>
-        <h3>No server</h3>
-        <a class="gh" href="https://tailscale.com"><svg class="ts-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#1f1e1e" d="M28.8 0C35.5206 0 38.881 0 41.4479 1.30792C43.7058 2.4584 45.5416 4.29417 46.6921 6.55211C48 9.11905 48 12.4794 48 19.2V28.8C48 35.5206 48 38.881 46.6921 41.4479C45.5416 43.7058 43.7058 45.5416 41.4479 46.6921C38.881 48 35.5206 48 28.8 48H19.2C12.4794 48 9.11905 48 6.55211 46.6921C4.29417 45.5416 2.4584 43.7058 1.30792 41.4479C0 38.881 0 35.5206 0 28.8L0 19.2C0 12.4794 0 9.11905 1.30792 6.55211C2.4584 4.29417 4.29417 2.4584 6.55211 1.30792C9.11905 0 12.4794 0 19.2 0L28.8 0Z"/><g fill="#fff"><circle cx="15" cy="24" r="3"/><circle cx="24" cy="24" r="3"/><circle cx="33" cy="24" r="3"/><circle cx="24" cy="33" r="3"/></g><g fill="#fff" opacity="0.4"><circle cx="15" cy="15" r="3"/><circle cx="24" cy="15" r="3"/><circle cx="33" cy="15" r="3"/><circle cx="15" cy="33" r="3"/><circle cx="33" cy="33" r="3"/></g></svg>But we support Tailscale</a>
-      </div>
-      <div class="tcell">
-        <svg viewBox="0 0 24 24"><path d="M2 21a8 8 0 0 1 10.82-7.48M10 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM17 17l5 5M22 17l-5 5"/></svg>
-        <h3>No account</h3>
-        <span class="gh hint-anilist"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>But you can connect to AniList</span>
-      </div>
-      <div class="tcell">
-        <svg viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20"/></svg>
-        <h3>No telemetry</h3>
-        <a class="gh" href="https://github.com/marcusbandit/Anibeam/issues/new/choose"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>But feedback would be lovely</a>
-      </div>
-      <div class="tcell">
-        <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
-        <h3>Open source</h3>
-        <a class="gh" href="https://github.com/marcusbandit/Anibeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>marcusbandit/Anibeam</a>
-      </div>
-    </div>
-  </div>
+<section class="promises" aria-labelledby="prom-h">
+  <h2 id="prom-h">Your files stay yours.</h2>
+  <ul>
+    <li><span class="pr-word">Free</span><a class="pr-pill gh" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Unless you want to donate</a></li>
+    <li><span class="pr-word">No server</span><a class="pr-pill gh" href="https://tailscale.com"><svg class="ts-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#1f1e1e" d="M28.8 0C35.5206 0 38.881 0 41.4479 1.30792C43.7058 2.4584 45.5416 4.29417 46.6921 6.55211C48 9.11905 48 12.4794 48 19.2V28.8C48 35.5206 48 38.881 46.6921 41.4479C45.5416 43.7058 43.7058 45.5416 41.4479 46.6921C38.881 48 35.5206 48 28.8 48H19.2C12.4794 48 9.11905 48 6.55211 46.6921C4.29417 45.5416 2.4584 43.7058 1.30792 41.4479C0 38.881 0 35.5206 0 28.8L0 19.2C0 12.4794 0 9.11905 1.30792 6.55211C2.4584 4.29417 4.29417 2.4584 6.55211 1.30792C9.11905 0 12.4794 0 19.2 0L28.8 0Z"/><g fill="#fff"><circle cx="15" cy="24" r="3"/><circle cx="24" cy="24" r="3"/><circle cx="33" cy="24" r="3"/><circle cx="24" cy="33" r="3"/></g><g fill="#fff" opacity="0.4"><circle cx="15" cy="15" r="3"/><circle cx="24" cy="15" r="3"/><circle cx="33" cy="15" r="3"/><circle cx="15" cy="33" r="3"/><circle cx="33" cy="33" r="3"/></g></svg>But we support Tailscale</a></li>
+    <li><span class="pr-word">No account</span><span class="pr-pill gh hint-anilist"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>But you can connect to AniList</span></li>
+    <li><span class="pr-word">No telemetry</span><a class="pr-pill gh" href="https://github.com/marcusbandit/Anibeam/issues/new/choose"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>But feedback would be lovely</a></li>
+    <li><span class="pr-word">Open source</span><a class="pr-pill gh" href="https://github.com/marcusbandit/Anibeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>marcusbandit/Anibeam</a></li>
+  </ul>
 </section>
 
-<section class="section install" id="install" aria-labelledby="install-h">
+<section class="endcard" id="install" aria-labelledby="install-h">
+  <div class="beams end-beams" aria-hidden="true">
+    <i style="--i:0;--x:-6%;--y:520px;--w:72%;--h:26px;--a:.4;--b:12px;--g:7.5s;--gd:1.2s"></i>
+    <i style="--i:1;--x:16%;--y:560px;--w:64%;--h:8px;--a:.55;--b:4px;--g:6s;--gd:2.6s"></i>
+    <i style="--i:2;--x:38%;--y:590px;--w:54%;--h:2.5px;--a:.85;--b:.6px;--g:5.2s;--gd:.4s"></i>
+    <i style="--i:3;--x:54%;--y:570px;--w:46%;--h:2px;--a:.6;--b:.5px;--g:6.4s;--gd:3s"></i>
+  </div>
+  <img class="end-mark" src="img/logo.svg" alt="" width="96" height="96">
   <h2 id="install-h">Get Anibeam.</h2>
   <div class="hero-actions get-actions">
-    <a class="btn btn-primary btn-lg dl-auto" href="download/">
-      <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
-      <span>Download Anibeam</span>
-    </a>
-    <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
+      <a class="btn btn-primary btn-lg dl-auto" href="download/"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>Download Anibeam</span></a>
+      <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
       <a class="btn btn-ghost btn-lg ios-mac" href="download/"><svg viewBox="0 0 24 24" class="os-icon" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg><span>Get it for Mac</span></a>
-  </div>
+    </div>
   <div class="get-term">
     <div class="term term-big"><span class="prompt">$</span><code><span class="sh-cmd">curl</span> <span class="sh-flag">-fsSL</span> <span class="sh-url">https://anibeam.app/install.sh</span> <span class="sh-op">|</span> <span class="sh-cmd">sh</span></code><button type="button" class="copy" data-copy="curl -fsSL https://anibeam.app/install.sh | sh">Copy</button></div>
-    <span class="dl-term-for">For Linux and Mac</span>
   </div>
 </section>
 
 </main>
 
-<footer class="foot">
-  <span class="foot-brand"><img src="img/logo.svg" alt="" width="20" height="20">Anibeam, GPL 3.0</span>
-  <nav aria-label="Elsewhere">
-    <a href="download/">Download</a>
-    <a href="whats-new/">What's new</a>
-    <a href="wiki/">Wiki</a>
-    <a href="https://rooms.anibeam.app/">Watch together</a>
-    <a href="https://github.com/marcusbandit/Anibeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub</a>
-    <a href="https://github.com/marcusbandit/Anibeam/issues/new/choose">Report a problem</a>
-    <a href="privacy/">Privacy</a>
-    <a href="terms/">Terms</a>
-    <a class="kofi" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Ko-fi</a>
-  </nav>
+<footer class="credits">
+  <dl>
+    <div><dt>Player</dt><dd><a href="download/">Linux, Windows, Mac, Android</a></dd></div>
+    <div><dt>Patch notes</dt><dd><a href="whats-new/">What's new</a></dd></div>
+    <div><dt>Help</dt><dd><a href="wiki/">Wiki</a> <a href="https://github.com/marcusbandit/Anibeam/issues/new/choose">Report a problem</a></dd></div>
+    <div><dt>Together</dt><dd><a href="https://rooms.anibeam.app/">Watch together</a></dd></div>
+    <div><dt>Source</dt><dd><a href="https://github.com/marcusbandit/Anibeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub</a></dd></div>
+    <div><dt>Support</dt><dd><a class="kofi" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Ko-fi</a></dd></div>
+    <div><dt>Small print</dt><dd><a href="privacy/">Privacy</a> <a href="terms/">Terms</a> <span>GPL 3.0</span></dd></div>
+  </dl>
+  <div class="credits-end">
+    <img src="img/logo.svg" alt="" width="40" height="40">
+    <span class="owari" lang="ja">おわり</span>
+  </div>
 </footer>
 
 </body>
