@@ -378,8 +378,7 @@ pub fn mask(url: &str) -> String {
         out.push_str(sep);
         match pair.split_once('=') {
             Some((k, v))
-                if anibeam_foundation::redact::secret_param(k).is_some()
-                    && !v.starts_with('{') =>
+                if anibeam_foundation::redact::secret_param(k).is_some() && !v.starts_with('{') =>
             {
                 out.push_str(k);
                 out.push_str("=...");

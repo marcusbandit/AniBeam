@@ -82,8 +82,8 @@ pub fn split_params(url: &str) -> (&str, Vec<(&'static str, &str)>) {
             }
             _ => {
                 let name = pair.split('=').next().unwrap_or("");
-                secret_from = (pair.contains('=') && secret_param(name).is_some())
-                    .then_some(at + sep.len());
+                secret_from =
+                    (pair.contains('=') && secret_param(name).is_some()).then_some(at + sep.len());
                 params.push((sep, pair));
             }
         }
@@ -211,7 +211,10 @@ mod tests {
         // Any other pair ends at a ; or ?.
         assert_eq!(
             split_params("https://h/f?q=x;c=1?d=2"),
-            ("https://h/f", vec![("?", "q=x"), (";", "c=1"), ("?", "d=2")])
+            (
+                "https://h/f",
+                vec![("?", "q=x"), (";", "c=1"), ("?", "d=2")]
+            )
         );
         let joined: String = std::iter::once(base.to_string())
             .chain(params.iter().map(|(sep, pair)| format!("{sep}{pair}")))
