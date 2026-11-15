@@ -27,8 +27,8 @@ use anibeam_room::proto::{
 };
 use anibeam_room::room::{CLOSED_BYE, CLOSED_REPLACED};
 
+use super::Rooms;
 use crate::contract::CoreError;
-use crate::playback::Playback;
 
 /// How long a connection to the relay may take to open.
 pub const CONNECT_WAIT: Duration = Duration::from_secs(10);
@@ -205,7 +205,7 @@ enum End {
 
 /// The room's task: connects, and connects again with backoff for `GIVE_UP` after
 /// a drop, until the member leaves or the room is gone.
-pub async fn run(playback: Weak<Playback>, st: Start) {
+pub async fn run(rooms: Weak<Rooms>, st: Start) {
     let Start {
         serial,
         relay,
@@ -233,7 +233,7 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
         let end = match opened {
             Ok(ws) => {
                 let link = Link {
-                    playback: &playback,
+                    rooms: &rooms,
                     serial,
                     name: &name,
                     host_key: host_key.as_deref(),
@@ -264,8 +264,8 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
         match end {
             End::Left => return,
             End::Closed => {
-                if let Some(playback) = playback.upgrade() {
-                    super::finish(&playback, serial);
+                if let Some(rooms) = rooms.upgrade() {
+                    super::finish(&rooms, serial);
                 }
                 return;
             }
@@ -275,7 +275,7 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
                     wait = BACKOFF_FIRST;
                 }
                 let since = *lost.get_or_insert_with(Instant::now);
-                let Some(strong) = playback.upgrade() else {
+                let Some(strong) = rooms.upgrade() else {
                     return;
                 };
                 if !super::on_lost(&strong, serial) {
@@ -298,7 +298,7 @@ pub async fn run(playback: Weak<Playback>, st: Start) {
 
 /// One connection's view of the room it serves.
 struct Link<'a> {
-    playback: &'a Weak<Playback>,
+    rooms: &'a Weak<Rooms>,
     serial: u64,
     name: &'a str,
     host_key: Option<&'a str>,
@@ -388,14 +388,14 @@ impl Link<'_> {
                             continue;
                         }
                     };
-                    let Some(playback) = self.playback.upgrade() else {
+                    let Some(rooms) = self.rooms.upgrade() else {
                         return End::Left;
                     };
                     match msg {
                         ServerMsg::Welcome { you, rejoin_key, room, server_ms } => {
                             *rejoin = Some(rejoin_key);
                             welcomed = true;
-                            if !super::on_welcome(&playback, self.serial, you, room, server_ms) {
+                            if !super::on_welcome(&rooms, self.serial, you, room, server_ms) {
                                 return End::Left;
                             }
                             if let Some(tx) = first.take() {
@@ -407,7 +407,7 @@ impl Link<'_> {
                             }
                         }
                         ServerMsg::Pong { c, s } => {
-                            super::on_pong(&playback, self.serial, c, s);
+                            super::on_pong(&rooms, self.serial, c, s);
                             if pings_left > 0 {
                                 pings_left -= 1;
                                 if sink.send(text(&ping())).await.is_err() {
@@ -420,7 +420,7 @@ impl Link<'_> {
                             if !fatal {
                                 tracing::debug!("room: the relay said {code:?}: {message}");
                                 if code == ErrorCode::NotAllowed && message == SEAL_NOBODY {
-                                    super::media::seal_refused(&playback, self.serial);
+                                    super::media::seal_refused(&rooms, self.serial);
                                 }
                                 continue;
                             }
@@ -441,7 +441,7 @@ impl Link<'_> {
                             return End::Closed;
                         }
                         other => {
-                            if !super::on_message(&playback, self.serial, other) {
+                            if !super::on_message(&rooms, self.serial, other) {
                                 // The room was left while this frame was on
                                 // its way: the bye queued behind it must still
                                 // go out, or the seat and the host role wait

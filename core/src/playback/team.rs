@@ -1,28 +1,35 @@
-//! The playback team (#854): the player's sessions, Discord presence,
-//! casting and watch together rooms.
+//! The playback team (#854): the player's sessions, Discord presence and
+//! casting. The watch together room sits above it and hears about a session
+//! through [`Follower`].
 
 use std::sync::Arc;
 
 use crate::cast::Cast;
 use crate::downloads::Downloads;
+use crate::foundation::above::Above;
 use crate::foundation::services::Services;
-use crate::library::Library;
-use crate::metadata::Metadata;
 use crate::net::Net;
 use crate::playback::session::Sessions;
 use crate::presence::Presence;
-use crate::room::Rooms;
 use crate::trackers::Trackers;
+
+/// What a team above hears about a session as it plays: the watch together
+/// room, which drives the session it is attached to. Each runs where the
+/// session rules once called the room, inline, before the rule returns.
+pub trait Follower: Send + Sync {
+    /// One tick of `session` from the player.
+    fn tick(&self, session: u64, position: f64, paused: bool);
+    /// `session` closed.
+    fn closed(&self, session: u64);
+    /// The skip windows job found where `session`'s opening starts.
+    fn opening_known(&self, session: u64, start: f64);
+}
 
 pub struct Playback {
     pub(crate) services: Arc<Services>,
     pub(crate) net: Arc<Net>,
     pub(crate) trackers: Arc<Trackers>,
     pub(crate) downloads: Arc<Downloads>,
-    /// The library a room's Get media brings a file into, and the matching
-    /// that points it at the room's show (#889).
-    pub(crate) library: Arc<Library>,
-    pub(crate) metadata: Arc<Metadata>,
     /// Every open playback session, and the counter that names the next
     /// one. A session lives in memory for one run of the player: the rows
     /// its rules write are the record, and none of it survives a restart.
@@ -33,8 +40,9 @@ pub struct Playback {
     /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
     #[cfg_attr(not(feature = "cast"), allow(dead_code))]
     pub(crate) cast: Cast,
-    /// The watch together room this core is in, if any (`Room*` calls).
-    pub(crate) rooms: Rooms,
+    /// The watch together room, linked by `Core::open`; nothing to tell
+    /// before that or once it is gone.
+    pub(crate) follower: Above<dyn Follower>,
 }
 
 impl Playback {
@@ -43,8 +51,6 @@ impl Playback {
         net: Arc<Net>,
         trackers: Arc<Trackers>,
         downloads: Arc<Downloads>,
-        library: Arc<Library>,
-        metadata: Arc<Metadata>,
     ) -> Playback {
         let presence = Presence::new(services.bus.clone());
         Playback {
@@ -52,12 +58,10 @@ impl Playback {
             net,
             trackers,
             downloads,
-            library,
-            metadata,
             sessions: Arc::new(Sessions::default()),
             presence,
             cast: Cast::default(),
-            rooms: Rooms::default(),
+            follower: Above::default(),
         }
     }
 }
