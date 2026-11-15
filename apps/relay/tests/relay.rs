@@ -118,6 +118,7 @@ fn hello(name: &str, host_key: Option<&str>) -> ClientMsg {
         client: "anibeam/test".into(),
         host_key: host_key.map(Into::into),
         rejoin_key: None,
+        key: None,
     }
 }
 
@@ -172,6 +173,20 @@ async fn the_join_page_names_the_episode() {
     let typed = format!("/{}-{}", &room.code[..3], room.code[3..].to_lowercase());
     let (status, _) = http(&addr, "GET", &typed, "").await;
     assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn the_root_asks_for_a_code_and_sends_a_typed_one_on() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "GET", "/", "").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("Join a room"));
+    assert!(body.contains(r#"name="code""#));
+    let (status, _) = http(&addr, "GET", "/?code=k7q-m2x", "").await;
+    assert_eq!(status, 303);
+    let (status, body) = http(&addr, "GET", "/?code=nope", "").await;
+    assert_eq!(status, 400);
+    assert!(body.contains(r#"value="nope""#));
 }
 
 #[tokio::test]
@@ -301,6 +316,7 @@ async fn status_reaches_everyone() {
         &mut bea,
         &ClientMsg::Status {
             ready: Ready::Ready,
+            progress: None,
         },
     )
     .await;

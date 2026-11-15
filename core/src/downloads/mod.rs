@@ -485,7 +485,12 @@ async fn resolve_password(
 }
 
 /// The torrent client, built on first use and kept with its session.
-async fn qbt_client(downloads: &Downloads) -> Result<Arc<QbtClient>, CoreError> {
+/// The torrent client already reached, if any: never starts or logs into one.
+pub(crate) fn running_qbt(downloads: &Downloads) -> Option<Arc<QbtClient>> {
+    downloads.state().qbt.clone()
+}
+
+pub(crate) async fn qbt_client(downloads: &Downloads) -> Result<Arc<QbtClient>, CoreError> {
     let generation = {
         let st = downloads.state();
         if let Some(c) = st.qbt.clone() {
@@ -1977,6 +1982,19 @@ pub fn download_with(
     name: Option<String>,
     options: DownloadOptions,
 ) -> Result<u64, CoreError> {
+    download_telling(downloads, items, name, options, None)
+}
+
+/// `download_with`, and `tell` hears what the client was handed once it was:
+/// the info hashes a caller follows the torrents by (a room member's Get
+/// media, #889). A failed add drops `tell` unanswered.
+pub(crate) fn download_telling(
+    downloads: &Arc<Downloads>,
+    items: Vec<Release>,
+    name: Option<String>,
+    options: DownloadOptions,
+    tell: Option<tokio::sync::oneshot::Sender<AddedTorrents>>,
+) -> Result<u64, CoreError> {
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
@@ -2014,6 +2032,9 @@ pub fn download_with(
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
             rolling::after_add(&owner, plan.rolls, &plan.now, &result.hashes).await;
+            if let Some(tell) = tell {
+                let _ = tell.send(result.clone());
+            }
             if options != DownloadOptions::default() || !followups.is_empty() {
                 match qbt_client(&owner).await {
                     Ok(qbt) => replace::after_add(&owner, &qbt, &items, &options, followups).await,

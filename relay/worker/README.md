@@ -9,6 +9,7 @@ machine. The design is `docs/superpowers/specs/2026-11-13-watch-together-rooms.m
 |---|---|
 | `POST /rooms` `{"episode": EpisodeRef}` | `201 {"code", "host_key"}`, `400` bad body, `413` over 16 KiB, `429` over the limit |
 | `GET /rooms/{code}/ws` | WebSocket upgrade, `404` no such room, `426` not an upgrade, `429` over the limit |
+| `GET /` | the find page, where a code is typed, `200`; `/?code=...` answers `303` to that room's page, or `400` with the page again when it is not a code |
 | `GET /{code}` | the join page, `200`, or `404` with a "Room not found" page |
 | `GET /health` | `200 ok` |
 

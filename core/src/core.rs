@@ -161,6 +161,8 @@ impl Core {
             net.clone(),
             trackers.clone(),
             downloads.clone(),
+            library.clone(),
+            metadata.clone(),
         ));
         let host = Arc::new(Host::new(
             services.clone(),
@@ -1003,7 +1005,8 @@ impl Core {
             | Call::RoomCommand { .. }
             | Call::RoomSetOffset { .. }
             | Call::RoomLeave
-            | Call::RoomStatus) => room::call(&self.playback, c),
+            | Call::RoomStatus
+            | Call::RoomGetMedia) => room::call(&self.playback, c),
         }
     }
 

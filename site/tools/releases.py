@@ -5,7 +5,8 @@ and every nightly, so the file is current without each visitor asking GitHub's A
 60 unauthenticated calls an hour per address).
 
   {
-    "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"}},
+    "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"},
+                "sizes": the same keys, each file's size in bytes, for the download page},
     "nightly": the same, or null when no nightly is newer than the stable release,
     "phone":   {"tag", "version", "published", "url", "assets": {"apk", "ipa"}},
     "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
@@ -51,13 +52,14 @@ def fetch():
 def shape(r, keys):
     if not r:
         return None
-    assets = {}
+    assets, sizes = {}, {}
     for k in keys:
         a = next((a for a in r["assets"] if MATCH[k](a["name"])), None)
         if a:
             assets[k] = a["browser_download_url"]
+            sizes[k] = a["size"]
     return {"tag": r["tag_name"], "version": re.sub(r"^(android-)?v", "", r["tag_name"]),
-            "published": r["published_at"], "url": r["html_url"], "assets": assets}
+            "published": r["published_at"], "url": r["html_url"], "assets": assets, "sizes": sizes}
 
 
 def semver(tag):
