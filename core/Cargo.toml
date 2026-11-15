@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Anibeam's core: every rule in one crate, used by every shell"
+description = "Anibeam's app team: the Core every shell opens, its call router, launch and update, and the uniffi export, over the team crates"
 build = "build.rs"
 
 [lib]
@@ -31,11 +31,6 @@ rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
-base64 = "0.23"
-# Endpoint repos (#143): the ed25519 check on a repo's signed index.
-ed25519-dalek = "2"
-flate2 = "1"
-anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 
 [features]
@@ -46,6 +41,12 @@ cast = ["anibeam-playback/cast"]
 tempfile = "3"
 # The native relay, run in-process by the rooms tests.
 anibeam-relay = { path = "../apps/relay" }
+# What the integration tests make their inputs with: a signed endpoint repo and its base64 key
+# (#143), a signed host request (#555), and the gzipped IMDb data.
+base64 = "0.23"
+ed25519-dalek = "2"
+flate2 = "1"
+anibeam-host-api = { workspace = true, features = ["proof"] }
 
 [[example]]
 name = "cast_hls"
