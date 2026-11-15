@@ -19,12 +19,23 @@
 //! library to take the file in, points the show at the room's match when it
 //! arrived as a show the library did not know, and says `RoomEpisode` with the
 //! file, so the shell opens it and the member is ready.
+//!
+//! A member can ask for the whole show with the episode (#922). The episode
+//! goes first as above; once its torrent is in the client, the member's sources
+//! are searched for the rest of the host's release, the same group and
+//! resolution, and every episode of the room's season this library lacks goes
+//! to the downloads engine in one pick, which rolls a long show the way any
+//! pick does. That search runs once an episode, and stops with the room or when
+//! the host moves on; when it finds nothing, the member is told. A film has no
+//! rest to fetch, and an episode that came as a batch keeps the batch's other
+//! files, with the episode's own file first.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anibeam_room::proto::{self, ClientMsg, MemberId, Progress};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -59,6 +70,10 @@ const ARRIVE_WAIT: Duration = Duration::from_secs(300);
 /// scanned once, this long after it finished: the watcher usually brings it
 /// sooner.
 const SCAN_AFTER: Duration = Duration::from_secs(10);
+
+/// qBittorrent's highest file priority: the room's episode in a batch kept
+/// whole, so the member's ready state waits on that file and not the batch.
+const FIRST: i64 = 7;
 
 /// What two members seal to each other.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -139,7 +154,7 @@ impl Why {
 // ---------------------------------------------------------------------------
 
 /// `RoomGetMedia`: seals an ask to the host's app and waits for its answer.
-pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
+pub(super) fn get(playback: &Playback, whole_show: bool) -> Result<Option<RoomInfo>, CoreError> {
     let mut out = Vec::new();
     let info = {
         let mut slot = playback.rooms.lock();
@@ -162,6 +177,7 @@ pub(super) fn get(playback: &Playback) -> Result<Option<RoomInfo>, CoreError> {
             .ok_or_else(|| error("cannot_fetch", crate::words!("core-room-media-cannot")))?;
         a.send(ClientMsg::Seal { to: host, data });
         let id = begin(a, RoomFetch::Asking);
+        a.whole_show = whole_show && !e.film;
         // An app from before Get media, or one gone quiet, never answers
         let (owner, serial) = (a.playback.clone(), a.serial);
         playback.services.handle.spawn(async move {
@@ -309,6 +325,7 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer
         let Some((id, token)) = a.fetching.clone() else {
             return;
         };
+        let whole_show = a.whole_show;
         a.fetch = if offer.magnet.is_some() {
             RoomFetch::Downloading
         } else {
@@ -332,14 +349,14 @@ fn take_offer(playback: &Playback, serial: u64, from: MemberId, mut offer: Offer
                 a.changed(),
             )
         };
-        Some((id, token, e, say))
+        Some((id, token, e, say, whole_show))
     };
-    let Some((id, token, e, say)) = started else {
+    let Some((id, token, e, say, whole_show)) = started else {
         return;
     };
     emit(&playback.services, vec![say]);
     playback.services.handle.spawn(async move {
-        let run = fetch(&owner, serial, id, &offer, &e);
+        let run = fetch(&owner, serial, id, &offer, &e, whole_show);
         let result = tokio::select! {
             _ = token.cancelled() => return,
             r = run => r,
@@ -419,6 +436,7 @@ async fn fetch(
     id: u64,
     offer: &Offer,
     e: &proto::EpisodeRef,
+    whole_show: bool,
 ) -> Result<(), Why> {
     let local = playback
         .services
@@ -438,6 +456,8 @@ async fn fetch(
     };
     let known = crate::foundation::magnet::hash(&release.link);
     let title = release.title.clone();
+    // A batch brings the rest of the show with it
+    let rest = whole_show && !facts::read(&release).batch;
     let since = crate::time::now_secs();
     update(playback, serial, id, |a| {
         a.progress = Some(Progress {
@@ -484,6 +504,15 @@ async fn fetch(
         // then found by its name among those added since
         known.or_else(|| added.hashes.first().map(|h| h.to_ascii_lowercase()))
     };
+    if rest && let Some(token) = start_rest(playback, serial, id) {
+        let (owner, offer, e) = (playback.clone(), offer.clone(), e.clone());
+        playback.services.handle.spawn(async move {
+            tokio::select! {
+                _ = token.cancelled() => {}
+                _ = rest_of_show(&owner, serial, &offer, &e, local.series) => {}
+            }
+        });
+    }
     let content = follow(
         playback,
         serial,
@@ -493,6 +522,7 @@ async fn fetch(
         since,
         offer,
         e,
+        whole_show,
     )
     .await?;
     settle_in(playback, e, offer, &content).await
@@ -501,7 +531,8 @@ async fn fetch(
 /// Reads the download's progress until it is done; the path of the episode's
 /// file then. A torrent of several files (the host's batch) downloads the
 /// episode's file alone, once the client knows the files: the rest are set to
-/// skip, and that file's progress is the one followed.
+/// skip, and that file's progress is the one followed. With the whole show the
+/// rest stay, and the episode's file goes first (`FIRST`).
 #[allow(clippy::too_many_arguments)]
 async fn follow(
     playback: &Arc<Playback>,
@@ -512,6 +543,7 @@ async fn follow(
     since: i64,
     offer: &Offer,
     e: &proto::EpisodeRef,
+    whole: bool,
 ) -> Result<String, Why> {
     let mut last_seen = Instant::now();
     let mut stall = Stall::new(Instant::now());
@@ -549,9 +581,18 @@ async fn follow(
         {
             let one = episode_file(files, offer, e);
             if let Some(i) = one {
-                let others: Vec<usize> = (0..files.len()).filter(|j| *j != i).collect();
-                if let Err(err) = qbt.set_file_priority(&t.hash, &others, 0).await {
-                    tracing::warn!("room: the other files of the torrent were not skipped: {err}");
+                // Whole show keeps the batch's other episodes, behind the room's
+                if whole {
+                    if let Err(err) = qbt.set_file_priority(&t.hash, &[i], FIRST).await {
+                        tracing::warn!("room: the episode's file was not put first: {err}");
+                    }
+                } else {
+                    let others: Vec<usize> = (0..files.len()).filter(|j| *j != i).collect();
+                    if let Err(err) = qbt.set_file_priority(&t.hash, &others, 0).await {
+                        tracing::warn!(
+                            "room: the other files of the torrent were not skipped: {err}"
+                        );
+                    }
                 }
             }
             unit = Some(one.map_or(Unit::Whole, Unit::File));
@@ -875,10 +916,7 @@ pub fn queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
         .number
         .filter(|n| *n >= 0.0 && n.fract() == 0.0)
         .map(|n| format!("{:02}", n as u64));
-    let mut show = titles::show_name(&offer.name);
-    if show.is_empty() {
-        show = titles::show_name(&offer.file);
-    }
+    let show = offer_show(offer);
     let join = |parts: &[&str]| {
         parts
             .iter()
@@ -960,6 +998,214 @@ fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
             + i64::from(resolution) * 1_000
             + seeders,
     )
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the show (#922)
+// ---------------------------------------------------------------------------
+
+/// Marks the search for the rest of the show as started for the fetch `id`:
+/// the token that stops it, a child of the room's, or None when the fetch is
+/// gone or the rest was already asked for with this episode.
+fn start_rest(playback: &Playback, serial: u64, id: u64) -> Option<CancellationToken> {
+    let mut slot = playback.rooms.lock();
+    let a = slot.as_mut().filter(|a| a.is_fetch(serial, id))?;
+    if a.rest.is_some() {
+        return None;
+    }
+    let token = a.cancel.child_token();
+    a.rest = Some(token.clone());
+    Some(token)
+}
+
+/// Searches the member's sources for the rest of the host's release and hands
+/// every episode this library lacks of the room's season to the downloads
+/// engine. When nothing turns up or it cannot start, the member is told: the
+/// room's episode still comes.
+async fn rest_of_show(
+    playback: &Arc<Playback>,
+    serial: u64,
+    offer: &Offer,
+    e: &proto::EpisodeRef,
+    series: Option<u64>,
+) {
+    let have = series
+        .and_then(|s| {
+            let e = e.clone();
+            playback.services.store.read(move |c| held(c, s, &e)).ok()
+        })
+        .unwrap_or_default();
+    let backend = match DownloadsBackend::open(&playback.downloads).await {
+        Ok(b) => b,
+        Err(err) => {
+            no_rest(playback, serial, &format!("no sources: {err}"));
+            return;
+        }
+    };
+    let mut found = Vec::new();
+    for query in show_queries(offer, e) {
+        match backend.search(&query, None, true).await {
+            Ok(raw) => {
+                found = rest(&raw.items, offer, e, &have);
+                if !found.is_empty() {
+                    tracing::info!("room: the rest of the show with {query:?}");
+                    break;
+                }
+            }
+            Err(err) => tracing::debug!("room: search {query:?} failed: {err}"),
+        }
+    }
+    if found.is_empty() {
+        no_rest(
+            playback,
+            serial,
+            "no more of the host's release in the sources",
+        );
+        return;
+    }
+    let count = found.len();
+    let options = DownloadOptions {
+        series,
+        provider: found[0].source.clone(),
+        ..Default::default()
+    };
+    match downloads::download_telling(
+        &playback.downloads,
+        found,
+        folder(&e.series_title),
+        options,
+        None,
+    ) {
+        Ok(_) => tracing::info!("room: {count} more episodes of the show handed on"),
+        Err(err) => no_rest(playback, serial, &format!("did not start: {err}")),
+    }
+}
+
+/// Tells the member the rest of the show is not coming, while the room is
+/// still the one it was asked in.
+fn no_rest(playback: &Playback, serial: u64, why: &str) {
+    let say = {
+        let slot = playback.rooms.lock();
+        let Some(a) = slot.as_ref().filter(|a| a.serial == serial) else {
+            return;
+        };
+        Say::said(
+            Level::Warn,
+            crate::words!("core-room-media-rest-missing"),
+            format!("Room {}: the rest of the show: {why}", a.code),
+            a.changed(),
+        )
+    };
+    emit(&playback.services, vec![say]);
+}
+
+/// The episode numbers a library series holds of the room's season. A key
+/// such as `S02E05` names the season; a bare number names none, and is the
+/// first season of a TVmaze show, which keeps every season in one series. An
+/// AniList or MAL match is one season already, so a file there that names no
+/// season counts whatever the room's key.
+fn held(
+    c: &rusqlite::Connection,
+    series: u64,
+    e: &proto::EpisodeRef,
+) -> Result<Vec<f64>, CoreError> {
+    let tvmaze = c
+        .query_row(
+            "SELECT provider = 'tvmaze' FROM series WHERE id = ?1",
+            [series as i64],
+            |r| r.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    let want = episode::season_of(&e.episode_key);
+    let mut stmt = c.prepare(
+        "SELECT number, season FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL",
+    )?;
+    let rows = stmt
+        .query_map([series as i64], |r| {
+            Ok((r.get::<_, f64>(0)?, r.get::<_, Option<i64>>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let of_room = |season: Option<i64>| match (want, season) {
+        (Some(w), Some(s)) => w == s,
+        (Some(w), None) => w == 1 || !tvmaze,
+        (None, Some(s)) => s == 1 || !tvmaze,
+        (None, None) => true,
+    };
+    Ok(rows
+        .into_iter()
+        .filter(|(_, season)| of_room(*season))
+        .map(|(n, _)| n)
+        .collect())
+}
+
+/// The show as the host's release names it, else as its file does.
+fn offer_show(offer: &Offer) -> String {
+    let show = titles::show_name(&offer.name);
+    if show.is_empty() {
+        titles::show_name(&offer.file)
+    } else {
+        show
+    }
+}
+
+/// What to search for the whole show: the group and the show as the release
+/// names it, then the show alone, then the room's title. No episode number.
+pub fn show_queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
+    let show = offer_show(offer);
+    let mut out = Vec::new();
+    if !show.is_empty() {
+        if !offer.group.is_empty() {
+            out.push(format!("{} {show}", offer.group.trim()));
+        }
+        out.push(show);
+    }
+    out.push(e.series_title.trim().to_string());
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|q| !q.trim().is_empty() && seen.insert(q.to_lowercase()));
+    out
+}
+
+/// The other episodes of the host's release among search results: single
+/// episodes of the same show, group and resolution (each where the host's
+/// release names one), the room's episode and those already `have` left out,
+/// one release per episode, the best seeded, in episode order.
+pub fn rest(items: &[Release], offer: &Offer, e: &proto::EpisodeRef, have: &[f64]) -> Vec<Release> {
+    let show = offer_show(offer);
+    let season = facts::read_name(&offer.name).season;
+    let near = |a: f64, b: f64| (a - b).abs() < 0.01;
+    let mut best: std::collections::BTreeMap<i64, &Release> = std::collections::BTreeMap::new();
+    for r in items {
+        let f = facts::read(r);
+        let Some(n) = f.episode.filter(|_| !f.batch) else {
+            continue;
+        };
+        if e.number.is_some_and(|w| near(w, n)) || have.iter().any(|h| near(*h, n)) {
+            continue;
+        }
+        if !offer.group.is_empty() && !f.group.eq_ignore_ascii_case(&offer.group) {
+            continue;
+        }
+        if !offer.resolution.is_empty() && !f.resolution.eq_ignore_ascii_case(&offer.resolution) {
+            continue;
+        }
+        if !show.is_empty() && !titles::show_name(&r.title).eq_ignore_ascii_case(&show) {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (season, f.season)
+            && a != b
+        {
+            continue;
+        }
+        let key = (n * 100.0).round() as i64;
+        let better = best
+            .get(&key)
+            .is_none_or(|old| r.seeders.unwrap_or(0) > old.seeders.unwrap_or(0));
+        if better {
+            best.insert(key, r);
+        }
+    }
+    best.into_values().cloned().collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1168,6 +1414,7 @@ mod tests {
             episode_title: None,
             duration: None,
             opening_start: None,
+            film: false,
         }
     }
 
@@ -1298,6 +1545,96 @@ mod tests {
             release("[Lantern] Cowboy Bebop - 05 (480p)", &magnet(2)),
         ];
         assert_eq!(pick(&items, &host, &ep(5.0)), None);
+    }
+
+    #[test]
+    fn the_rest_of_the_show_is_the_host_s_release_without_what_is_here() {
+        let host = offer("[Lantern] Cowboy Bebop - 05 (1080p)");
+        let items = vec![
+            release("[Lantern] Cowboy Bebop - 01 (1080p)", &magnet(1)),
+            Release {
+                seeders: Some(40),
+                ..release("[Lantern] Cowboy Bebop - 02 (1080p)", &magnet(2))
+            },
+            Release {
+                seeders: Some(3),
+                ..release("[Lantern] Cowboy Bebop - 02 (1080p) [v2]", &magnet(3))
+            },
+            release("[Lantern] Cowboy Bebop - 03 (1080p)", &magnet(4)),
+            release("[Lantern] Cowboy Bebop - 05 (1080p)", &magnet(5)),
+            release("[Lantern] Cowboy Bebop - 06 (720p)", &magnet(6)),
+            release("[Other] Cowboy Bebop - 07 (1080p)", &magnet(7)),
+            release("[Lantern] Cowboy Bebop (01-26) (1080p) [Batch]", &magnet(8)),
+            release("[Lantern] Trigun - 08 (1080p)", &magnet(9)),
+            release("[Lantern] Cowboy Bebop - 09 (1080p)", &magnet(10)),
+        ];
+        let got: Vec<String> = rest(&items, &host, &ep(5.0), &[3.0])
+            .into_iter()
+            .map(|r| r.link)
+            .collect();
+        assert_eq!(got, vec![magnet(1), magnet(2), magnet(10)]);
+        assert_eq!(
+            show_queries(&host, &ep(5.0)),
+            vec!["Lantern Cowboy Bebop", "Cowboy Bebop"]
+        );
+    }
+
+    /// A library with series 1, matched by `provider`, holding `files` as
+    /// (number, season) pairs.
+    fn library(provider: &str, files: &[(i64, Option<i64>)]) -> rusqlite::Connection {
+        let mut c = rusqlite::Connection::open_in_memory().unwrap();
+        c.pragma_update(None, "foreign_keys", "ON").unwrap();
+        crate::store::migrations::apply(&mut c).unwrap();
+        c.execute(
+            "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0)",
+            [],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO series (id, source_id, kind, path, folder_name, added_at, provider)
+             VALUES (1, 1, 'show', '/lib/1', 'Show', 0, ?1)",
+            [provider],
+        )
+        .unwrap();
+        for (i, (number, season)) in files.iter().enumerate() {
+            let key = match season {
+                Some(s) => format!("S{s:02}E{number:02}"),
+                None => number.to_string(),
+            };
+            c.execute(
+                "INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at)
+                 VALUES (?1, 1, ?2, 0, 0, 'episode', ?3, ?4, 'EP', ?5, '[]', 0)",
+                rusqlite::params![i as i64 + 10, format!("/lib/1/{i}.mkv"), number, season, key],
+            )
+            .unwrap();
+        }
+        c
+    }
+
+    #[test]
+    fn the_rest_counts_only_what_is_here_of_the_room_s_season() {
+        let key = |k: &str| proto::EpisodeRef {
+            episode_key: k.into(),
+            ..ep(5.0)
+        };
+        let have = |c: &rusqlite::Connection, k: &str| {
+            let mut got = held(c, 1, &key(k)).unwrap();
+            got.sort_by(f64::total_cmp);
+            got
+        };
+        // A TVmaze show keeps its seasons in one series: season one is here,
+        // the room is on season two, and none of it counts
+        let tv = library(
+            "tvmaze",
+            &[(1, Some(1)), (2, Some(1)), (3, None), (1, Some(2))],
+        );
+        assert_eq!(have(&tv, "S02E05"), vec![1.0]);
+        assert_eq!(have(&tv, "S01E05"), vec![1.0, 2.0, 3.0]);
+        assert_eq!(have(&tv, "5"), vec![1.0, 2.0, 3.0]);
+        // An AniList match is one season: a file that names none is of it
+        let one = library("anilist", &[(1, None), (2, None), (4, Some(3))]);
+        assert_eq!(have(&one, "S02E05"), vec![1.0, 2.0]);
+        assert_eq!(have(&one, "5"), vec![1.0, 2.0, 4.0]);
     }
 
     #[test]

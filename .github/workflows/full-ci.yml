@@ -1,0 +1,85 @@
+name: Full CI
+
+# Every platform's build and tests for a pull request, run once it works on Linux (#986). A push
+# to a PR runs only the fast checks (ci.yml and the small ones); the Linux checks run locally
+# with .github/local-ci.sh. When the PR is ready, put the `full ci` label on it: this builds
+# its head on Linux (AppImage and distro smoke tests), Windows, macOS, the Arch tarball and the
+# iPhone IPA. A push while the label is on builds the new head again; take it off to push
+# without a rebuild. The Android check runs on a push already (android.yml), and the signed
+# APK stays with nightly.yml, so PR code never runs next to the phone's key. Nothing is
+# published: the builds' files stay on the workflow run.
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+# A new push or the label landing again replaces the PR's running build. Any other label
+# landing runs on its own, so it never cancels a build it has nothing to do with.
+concurrency:
+  group: >-
+    ${{ github.event.action == 'labeled' && github.event.label.name != 'full ci'
+    && format('full-ci-other-{0}', github.run_id) || format('full-ci-{0}', github.event.pull_request.number) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+    steps:
+      - name: Build or not
+        id: gate
+        env:
+          ACTION: ${{ github.event.action }}
+          CHANGED: ${{ github.event.label.name }}
+          LABELLED: ${{ contains(github.event.pull_request.labels.*.name, 'full ci') }}
+        run: |
+          build=false
+          case "$ACTION" in
+            labeled) [ "$CHANGED" = "full ci" ] && build=true ;;
+            synchronize|reopened) [ "$LABELLED" = true ] && build=true ;;
+          esac
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "build=$build"
+
+  linux:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/linux.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  windows:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  arch:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/arch.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  ios:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/ios-ipa.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}

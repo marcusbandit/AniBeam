@@ -276,7 +276,6 @@ frame-downloads-not-read = Not read.
 ## HomePage
 
 home-title = Home
-home-scan-started = Scan started
 home-ago-minutes = { $count }m ago
 home-ago-hours = { $count }h ago
 home-ago-days = { $count }d ago
@@ -331,7 +330,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } to watch
 home-day-nothing = Nothing
 home-now = Now { $time }
-home-card-aired = { $episode } out { $ago }
 home-continue = Continue
 home-continue-fact = { $count } series to go on with
 home-on-hold = On hold
@@ -376,18 +374,6 @@ home-dropped-fact = { $count ->
     [one] { $count } file still on disk
    *[other] { $count } files still on disk
 }
-home-out-now = Out now
-home-out-now-fact = New episodes this week, from AniList
-home-popular = Popular this season
-home-add-folder-title = Your own shows go here too
-home-add-folder-body = Add the folder your anime lives in and Home fills with what you are watching.
-home-add-folder-button = Add a folder
-home-empty-scanned-title = Nothing found in your folders yet
-home-empty-title = No series yet
-home-empty-scanned-body = Anibeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings.
-home-empty-body = Add the folder your anime lives in and the library fills itself.
-home-scan-all = Scan all
-home-library-settings = Library settings
 home-failed-title = Home did not load
 home-failed-body = Anibeam could not read the library just now. Try again in a moment.
 
@@ -461,9 +447,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } source ready to search.
    *[other] { $count } sources ready to search.
 }
-onboarding-search-none = Anibeam comes with no sources of its own. You add them from a source repo: a link someone shares with you, which you paste in Settings, Downloads.
-onboarding-sources-after = Opens after setup
-onboarding-sources-add = Add a repo after setup
 onboarding-fetch-title = Who fetches
 onboarding-fetch-auto = Let Anibeam handle it
 onboarding-fetch-recommended = Recommended
@@ -488,7 +471,7 @@ onboarding-ready-lists = Your list
 onboarding-ready-lists-as = { $tracker }, as { $user }
 onboarding-ready-lists-none = Not connected yet. It lives in Settings, Accounts when you want it.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] No sources yet
     [one] { $sources } source
    *[other] { $sources } sources
@@ -498,7 +481,7 @@ onboarding-ready-downloads-line = { $sources ->
 } { $next ->
     [ready] All set.
     [opens] Settings, Downloads opens next.
-   *[both] Both live in Settings, Downloads.
+   *[sources] Add a source list to search.
 }
 onboarding-ready-together = Watch together
 onboarding-ready-together-as = Rooms show you as { $name }.
@@ -509,7 +492,6 @@ onboarding-together-episode = Frieren · Episode 3
 onboarding-together-friend-1 = Sam
 onboarding-together-friend-2 = Robin
 onboarding-together-name = Your name in rooms
-onboarding-ready-open-downloads = Open Settings, Downloads
 onboarding-ready-set-up = Set up now
 
 ## Rail.qml
@@ -732,7 +714,28 @@ library-group-season = Season
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Watch state
-library-scan-started = Scan started
+library-empty-none = Your library is empty
+library-empty-scanning = { $count ->
+    [1] Looking for videos in your folder
+   *[other] Looking for videos in your folders
+}
+library-empty-nothing = { $count ->
+    [1] No videos in this folder yet
+   *[other] No videos in these folders yet
+}
+library-empty-missing = { $count ->
+    [1] This folder is not there
+   *[other] These folders are not there
+}
+library-empty-more-folders = { $count ->
+    [one] and { $count } more folder
+   *[other] and { $count } more folders
+}
+library-empty-add-folder = Add a folder
+library-empty-get = Get something to watch
+library-empty-scan-again = Scan again
+library-empty-settings = Library settings
+library-empty-pick-folder = Pick a folder for your library
 library-tab-all = All
 library-tab-series = Series
 library-tab-movies = Movies
@@ -796,18 +799,6 @@ library-rescan = Rescan
 library-find-match = Find a match
 library-find-match-tip = Search for each pick without a match
 library-all-matched = Every pick has a match
-library-empty-scanned-title = Nothing found in your folders yet
-library-empty-title = Your library is empty
-library-empty-scanned-body = Anibeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings.
-library-empty-body = Add the folder your anime lives in and the library fills itself, or import an Anibeam export.
-library-scan-all = Scan all
-library-add-folder = Add a folder
-library-settings = Library settings
-library-import = Import
-library-import-title = Import an Anibeam export
-library-import-filter-export = Anibeam export (*.json)
-library-import-filter-all = All files (*)
-library-import-started = Import started
 
 ## MetadataPage.qml
 
@@ -1730,6 +1721,7 @@ downloads-error-unknown = Something went wrong. Try again.
 downloads-search-all-off = Every source is switched off. Switch one on to search.
 downloads-turn-on = Turn on { $name }
 downloads-search-no-sources = There are no sources to search yet. Add a source list in Settings, under Downloads.
+downloads-no-sources = No sources to search yet
 downloads-search-none-started = No source could start the search. Try again in a moment.
 downloads-auto-resolution = Narrowed to { $resolution }, the sharpest on offer
 downloads-search-one-failed = The search on { $name } did not work. Try again, or search another source.
@@ -2159,6 +2151,7 @@ room-error-not-in-room = You are no longer in that room. Start or join one again
 room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
 room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
 room-error-cannot-fetch = The host can't share this episode right now. Try again once they are back in the room.
+room-error-needs-episode = That room server needs an episode to start a room. Start it from the player instead.
 
 ## RoomPanel.qml
 
@@ -2204,6 +2197,14 @@ room-panel-searching = Searching
 room-panel-failed = Couldn't get it
 room-panel-percent = { $percent }%
 room-panel-left = { $time } left
+room-panel-nothing-picked = Nothing picked yet
+room-panel-this-episode = This episode
+room-panel-whole-show = Whole show
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } of { $total } ready · { $percent }%
+room-gate-start = Start anyway
+room-gate-wait = Wait for everyone
+room-gate-waiting = Waiting for everyone
 
 ## PlayerPage.qml
 
@@ -2280,7 +2281,6 @@ player-not-now = Not now
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Source lists
-endpoint-repos-panel-helper = A source list is a signed set of places to search, added by its address. Anibeam checks the signature and shows you the key before anything is saved, then you install the sources you want. Installed ones join Search sources above.
 endpoint-repos-panel-could-not-start = Anibeam could not start that. Try again in a moment.
 endpoint-repos-panel-needs-value = { $name } needs a value
 endpoint-repos-panel-values-of = { $name }'s values
@@ -2294,19 +2294,9 @@ endpoint-repos-panel-needs-fields = Needs its { $fields } before it searches.
 endpoint-repos-panel-no-longer-offered = No longer offered by its source list.
 endpoint-repos-panel-update-requests-to = The update sends requests to { $host }.
 endpoint-repos-panel-unreadable = This list could not be read. Refresh lists tries it again.
-endpoint-repos-panel-add-list = Add a source list
-endpoint-repos-panel-add-list-helper = The address of its index file, or a path to one on this machine.
 endpoint-repos-panel-checking = Checking
 endpoint-repos-panel-add = Add
-endpoint-repos-panel-trust-question = Trust { $name }?
 endpoint-repos-panel-fingerprint = Key fingerprint  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } sources, signed. Its sources decide where your searches go; trust a list only from someone you trust.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } sources, signed, already trusted. Its sources decide where your searches go; trust a list only from someone you trust.
-endpoint-repos-panel-trust = Trust
 endpoint-repos-panel-saving = Saving
 endpoint-repos-panel-install = Install
 endpoint-repos-panel-update = Update
@@ -2321,6 +2311,22 @@ endpoint-repos-panel-by-hand-helper = For a site no list carries: any feed with 
 endpoint-repos-panel-name = Name
 endpoint-repos-panel-refreshing = Refreshing
 endpoint-repos-panel-refresh = Refresh lists
+
+## SourceAttach.qml
+
+source-attach-placeholder = Paste the address of a source list
+source-attach-what = What is a source list?
+source-attach-recent = Used before
+source-attach-added = { $count ->
+    [one] Added { $name }: { $count } source is on.
+   *[other] Added { $name }: { $count } sources are on.
+}
+source-attach-added-none = Added { $name }. No new source to turn on.
+source-attach-waiting = { $count ->
+    [one] { $names } asks for a value first.
+   *[other] { $names } ask for a value first.
+}
+source-attach-fill-in = Fill in
 
 ## ScheduleSheet.qml
 
@@ -2509,6 +2515,7 @@ settings-status-subtitles =
     }
 settings-status-keys = Every key Anibeam answers to
 settings-status-downloads-unread = Not read yet
+settings-status-downloads-no-sources = No sources yet
 settings-status-downloads-answered = qBittorrent answered
 settings-status-downloads-missing = Search helper not installed
 settings-status-downloads-unconnected = Not connected yet
@@ -2686,7 +2693,7 @@ settings-downloads-torrent-answered = { $client } { $version } answered.
 settings-downloads-torrent-failed = { $client } did not connect. Check the address and password above, then test again.
 settings-downloads-torrent-untried = Not tried yet.
 settings-downloads-mode-existing = A qBittorrent you run yourself, with its Web UI turned on.
-settings-downloads-mode-managed = Anibeam runs a qBittorrent of its own into ~/Downloads/Anime. It keeps going after Anibeam quits, so subscriptions keep downloading.
+settings-downloads-mode-managed = Anibeam runs a qBittorrent of its own. It keeps going after Anibeam quits, so subscriptions keep downloading.
 settings-downloads-mode-auto = Uses a qBittorrent that answers at the address below, else runs one of its own.
 settings-downloads-password-saved = A password is saved here for this client.
 settings-downloads-password-anirss = Using the password the search helper saved; save one here to stop depending on it.
@@ -2710,6 +2717,11 @@ settings-downloads-username = Username
 settings-downloads-password = Password
 settings-downloads-secret-saved = Saved
 settings-downloads-secret-unset = Not set
+settings-downloads-save-to = Save to
+settings-downloads-save-to-client = qBittorrent's own folder
+settings-downloads-save-to-choose = Choose folder
+settings-downloads-save-to-reset = Reset
+settings-downloads-save-to-pick = Save downloads to
 settings-downloads-connection = Connection
 settings-downloads-open-config = Open its config
 settings-downloads-details = Details
@@ -2764,7 +2776,6 @@ settings-downloads-sources-title = Search sources
 settings-downloads-sources-helper = Where a search goes, in the order they are tried. One that finds nothing falls through to the next.
 settings-downloads-sources-empty = No sources set up yet
 settings-downloads-sources-connect = Connect the search helper to list them
-settings-downloads-sources-empty-helper = Add a source list below and its sources show up here.
 settings-downloads-config-file = Search helper's settings file
 settings-downloads-config-native-helper = Holds the save folders, the tags and the best match rules, which Anibeam itself follows when it runs the helper. Its own sources are the helper's alone.
 settings-downloads-config-helper = Holds the sources, the save folders, the tags and the best match rules.
@@ -2976,10 +2987,17 @@ settings-playback-subtitle-languages = Subtitle languages
 settings-playback-audio-languages = Audio languages
 settings-playback-discord = Show what you watch on Discord
 settings-playback-discord-check-failed = Anibeam could not check Discord just now. Try again in a moment.
-settings-playback-discord-helper = The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed.
 settings-playback-discord-unavailable = This build has no Discord application.
 settings-playback-discord-connected = Connected to Discord
 settings-playback-discord-not-connected = Not connected. Anibeam connects while an episode plays and Discord is open
+discord-ask-wants = { $name } wants to join you
+discord-ask-start-room = Start room
+discord-ask-let-in = Let in
+discord-ask-no = No
+settings-playback-discord-blocked = Told no on Discord
+room-panel-discord = On Discord
+room-panel-discord-open = Open
+room-panel-discord-invite = Invite only
 settings-playback-advanced = Advanced
 settings-playback-together = Watch together
 settings-playback-room-name = Your name in watch together rooms

@@ -55,6 +55,7 @@ fn episode(key: &str) -> EpisodeRef {
         episode_title: Some("Asteroid Blues".into()),
         duration: Some(1500.0),
         opening_start: Some(0.0),
+        film: false,
     }
 }
 
@@ -119,6 +120,7 @@ fn hello(name: &str, host_key: Option<&str>) -> ClientMsg {
         host_key: host_key.map(Into::into),
         rejoin_key: None,
         key: None,
+        unpicked: true,
     }
 }
 
@@ -156,8 +158,62 @@ async fn create_hands_out_a_code_and_a_host_key() {
 #[tokio::test]
 async fn create_refuses_a_bad_body() {
     let addr = start().await;
-    let (status, _) = http(&addr, "POST", "/rooms", "{\"nope\":1}").await;
-    assert_eq!(status, 400);
+    for body in [
+        "{\"nope\":1}",
+        "{\"epsiode\":{\"episode_key\":\"1\",\"series_title\":\"S\"}}",
+        "{\"episode\":1}",
+        "not json",
+    ] {
+        let (status, _) = http(&addr, "POST", "/rooms", body).await;
+        assert_eq!(status, 400, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn a_room_can_start_with_nothing_picked() {
+    let addr = start().await;
+    let (status, body) = http(&addr, "POST", "/rooms", "{}").await;
+    assert_eq!(status, 201, "{body}");
+    let room: CreatedRoom = serde_json::from_str(&body).unwrap();
+    let (status, page) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 200);
+    assert!(page.contains("Nothing picked yet"));
+    let mut host = connect(&addr, &room.code).await;
+    send(&mut host, &hello("Ann", Some(&room.host_key))).await;
+    match recv(&mut host).await {
+        ServerMsg::Welcome { room, .. } => assert_eq!(room.episode, None),
+        other => panic!("expected welcome, got {other:?}"),
+    }
+    // An app from before is turned away, and the room goes on
+    let mut old = connect(&addr, &room.code).await;
+    let before = ClientMsg::Hello {
+        name: "Cid".into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: None,
+        unpicked: false,
+    };
+    send(&mut old, &before).await;
+    match recv(&mut old).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Proto),
+        other => panic!("expected an error, got {other:?}"),
+    }
+    assert!(closed(&mut old).await);
+    let (mut ben, _) = join(&addr, &room.code, "Ben", None).await;
+    send(
+        &mut host,
+        &ClientMsg::Episode {
+            episode: episode("e2"),
+        },
+    )
+    .await;
+    let got = recv_until(&mut ben, |m| matches!(m, ServerMsg::Episode { .. })).await;
+    let ServerMsg::Episode { episode: e, .. } = got else {
+        unreachable!()
+    };
+    assert_eq!(e.episode_key, "e2");
 }
 
 #[tokio::test]
@@ -402,20 +458,21 @@ async fn sixty_join_pages_a_minute_per_address() {
     assert_eq!(status, 429);
 }
 
-/// A relay that waits `hello_wait` for a hello.
-async fn start_with(hello_wait: Duration) -> String {
+/// A relay set up with `options`.
+async fn start_with(options: anibeam_relay::Options) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(anibeam_relay::serve_with(
-        listener,
-        anibeam_relay::Options { hello_wait },
-    ));
+    tokio::spawn(anibeam_relay::serve_with(listener, options));
     addr.to_string()
 }
 
 #[tokio::test]
 async fn a_socket_that_never_says_hello_is_closed() {
-    let addr = start_with(Duration::from_millis(300)).await;
+    let addr = start_with(anibeam_relay::Options {
+        hello_wait: Duration::from_millis(300),
+        ..Default::default()
+    })
+    .await;
     let room = create(&addr).await;
     let mut silent = connect(&addr, &room.code).await;
     let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
@@ -432,27 +489,44 @@ async fn a_socket_that_never_says_hello_is_closed() {
 
 #[tokio::test]
 async fn a_socket_before_hello_is_held_to_the_rate() {
-    let addr = start().await;
+    // A stopped clock keeps every frame in one window, however slow the machine.
+    let addr = start_with(anibeam_relay::Options {
+        clock: || 1_000_000,
+        ..Default::default()
+    })
+    .await;
     let room = create(&addr).await;
     let mut ws = connect(&addr, &room.code).await;
     // Junk keeps the socket open with bad_message, twenty times a second.
     for _ in 0..anibeam_room::limit::RATE_PER_SEC + 5 {
         ws.send(Message::text("junk")).await.unwrap();
     }
+    // A bye is never dropped, and its answer queues behind every earlier one,
+    // so it marks the end: anything the dropped junk drew would come first.
+    // The refusal is written straight to the socket, so it may pass queued
+    // bad_messages; only the counts are fixed.
+    send(&mut ws, &ClientMsg::Bye).await;
     let mut codes = Vec::new();
-    for _ in 0..=anibeam_room::limit::RATE_PER_SEC {
+    loop {
         match recv(&mut ws).await {
+            ServerMsg::Error {
+                code: ErrorCode::Proto,
+                ..
+            } => break,
             ServerMsg::Error { code, .. } => codes.push(code),
             other => panic!("{other:?}"),
         }
     }
-    let bad = codes
-        .iter()
-        .filter(|c| **c == ErrorCode::BadMessage)
-        .count();
-    assert_eq!(bad, anibeam_room::limit::RATE_PER_SEC as usize, "{codes:?}");
-    assert_eq!(codes.last(), Some(&ErrorCode::RateLimited));
-    // Past the refusal, nothing more comes back this second.
-    let more = tokio::time::timeout(Duration::from_millis(300), ws.next()).await;
-    assert!(more.is_err(), "{more:?}");
+    let count = |want: ErrorCode| codes.iter().filter(|c| **c == want).count();
+    assert_eq!(
+        count(ErrorCode::BadMessage),
+        anibeam_room::limit::RATE_PER_SEC as usize,
+        "{codes:?}"
+    );
+    assert_eq!(count(ErrorCode::RateLimited), 1, "{codes:?}");
+    assert_eq!(
+        codes.len(),
+        anibeam_room::limit::RATE_PER_SEC as usize + 1,
+        "{codes:?}"
+    );
 }
