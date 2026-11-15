@@ -224,16 +224,13 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     let episode = episode.floor() as u32;
     let main = guard(&trackers.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
-    // the list may already cover.
-    let again = trackers
+    // the list may already cover. A second mark of the same finish finds
+    // the slot taken and is judged as a plain mark.
+    let finished = trackers
         .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?;
-    let slot = if again {
-        trackers.rewatching.hold(series)
-    } else {
-        None
-    };
+    let slot = finished.then(|| trackers.rewatching.hold(series)).flatten();
     let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
@@ -312,8 +309,8 @@ fn finished_again(
 /// The series whose rewatch is being written right now, one set per trackers
 /// team, so two cores in one process never share a slot (#776). Two marks of
 /// one finish (the rule at the end and the player's button, say) both read the
-/// list before either has written, so the second waits its turn out here
-/// rather than counting the same rewatch twice.
+/// list before either has written, so the second finds the series held here
+/// and is not counted as a rewatch at all.
 #[derive(Clone, Default)]
 pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
 
@@ -2156,6 +2153,20 @@ fn mal_status(status: ListStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rewatch_slot_is_held_once_and_freed_when_dropped() {
+        let set = Rewatching::default();
+        let slot = set.hold(7).expect("a free series gives its slot");
+        assert!(set.hold(7).is_none(), "a held series refuses a second hold");
+        assert!(set.hold(8).is_some(), "another series is free");
+        assert!(
+            Rewatching::default().hold(7).is_some(),
+            "another team's set never shares the slot"
+        );
+        drop(slot);
+        assert!(set.hold(7).is_some(), "a dropped slot frees the series");
+    }
 
     /// The status is read first, whatever the provider said, because a 429
     /// or a 401 is something the user can act on and "Too Many Requests."
