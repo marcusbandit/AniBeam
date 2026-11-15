@@ -3,22 +3,22 @@
 
 use std::sync::Arc;
 
-use crate::contract::{CoreError, DownloadsEngine};
-use crate::foundation::above::Above;
-use crate::foundation::services::Services;
 use crate::repos::Pending;
+use anibeam_contract::{CoreError, DownloadsEngine};
+use anibeam_foundation::above::Above;
+use anibeam_foundation::services::Services;
 
 pub struct Releases {
-    pub(crate) services: Arc<Services>,
+    pub services: Arc<Services>,
     /// Repo indexes fetched for a preview and not trusted yet.
     pub(crate) pending: Pending,
     /// The engine an endpoint change goes to, and what anirss lists: the
     /// downloads, through the releases' own trait.
-    pub(crate) searcher: Above<dyn Searcher>,
+    pub searcher: Above<dyn Searcher>,
 }
 
 impl Releases {
-    pub(crate) fn new(services: Arc<Services>) -> Releases {
+    pub fn new(services: Arc<Services>) -> Releases {
         Releases {
             services,
             pending: Pending::default(),
@@ -31,7 +31,7 @@ impl Releases {
 /// downloads above them (#854). The downloads implement it and `Core::open`
 /// links them to `Releases::searcher`, so the releases name no team above
 /// them.
-pub(crate) trait Searcher: Send + Sync {
+pub trait Searcher: Send + Sync {
     /// The engine the downloads settings pick. A store that cannot be read
     /// is an error, not a quiet fall back to one or the other.
     fn engine(&self) -> Result<DownloadsEngine, CoreError>;
@@ -47,7 +47,7 @@ pub(crate) trait Searcher: Send + Sync {
 /// `endpoint_writes`, the names of its endpoints, whether the desktop puts
 /// the installed endpoints into it at all, and the oldest version that takes
 /// them.
-pub(crate) struct AnirssView {
+pub struct AnirssView {
     pub version: String,
     pub endpoint_writes: bool,
     pub endpoints: Vec<String>,
@@ -58,7 +58,7 @@ pub(crate) struct AnirssView {
 /// Whether the endpoints installed from repos go into the anirss the desktop reads, and
 /// why not when they do not (#499).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EndpointSync {
+pub enum EndpointSync {
     /// Anibeam's own sidecar, in a run that may change the owner's setup.
     #[default]
     Syncs,

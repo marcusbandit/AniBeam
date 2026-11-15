@@ -119,7 +119,7 @@ core-error-version = Deze export komt van een nieuwere Anibeam (formaat { $found
 core-error-internal = Anibeam liep tegen een interne fout aan: { $message }
 core-error-service = { $service }: { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = plak het adres van een repo
 core-repos-must-be-https = het adres moet https zijn
@@ -156,7 +156,7 @@ core-repos-note-theirs = Deze anirss draai je zelf, en de desktop wijzigt nooit 
 core-repos-note-sandbox = Deze sessie schrijft nooit in de config van anirss, dus de desktop doorzoekt { $id } hier niet
 core-repos-note-old = anirss { $version } kan geen endpoints van { -app-name } aannemen; werk het bij naar { $min } of nieuwer zodat de desktop dit doorzoekt
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = de sleutel van de index is geen ed25519-sleutel
 core-repos-key-not-base64 = de sleutel van de index is geen 32 bytes base64
@@ -1204,7 +1204,7 @@ core-downloads-rolled = { $title }: nu op afleveringen { $from } t/m { $to } van
 core-downloads-roll-ahead = houd minstens één aflevering voorsprong
 core-downloads-roll-nothing = niets op te halen
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = een JSON-zoekbron komt uit een endpoint-repo waarvan de definitie de velden koppelt
 core-releases-endpoint-no-name = `name` ontbreekt
@@ -1216,17 +1216,17 @@ core-releases-endpoint-not-http = { $name }: het adres moet beginnen met http://
 core-releases-endpoint-needs-query = { $name }: een { $kind }-url moet een placeholder {"{"}query{"}"} bevatten
 core-releases-endpoint-no-query = { $name }: een { $kind }-url voegt de zoekterm zelf toe, dus hij neemt geen {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = de indexer antwoordde met fout { $code }
 core-releases-bad-feed = ongeldige feed: { $error }
 core-releases-feed-answered = de feed antwoordde { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = niet de JSON van de feed: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = geen JSON: { $error }
 core-releases-search-error-said = de zoekopdracht antwoordde met een fout: { $message }
@@ -1235,7 +1235,7 @@ core-releases-no-results-field = het antwoord heeft geen resultaten op { $path }
 core-releases-results-not-list = de resultaten in het antwoord zijn geen lijst
 core-releases-search-answered = de zoekopdracht antwoordde { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = nog geen endpoints: voeg een repo toe, of een met de hand, onder Endpoints in Meer
 core-releases-no-source-named = geen bron met de naam { $name }
@@ -1243,7 +1243,7 @@ core-releases-empty-query = typ iets om te zoeken
 core-releases-cannot-follow = { $name } kan niet worden gevolgd: het beantwoordt zoekopdrachten, maar heeft geen feed om op nieuwe afleveringen te controleren
 core-releases-endpoint-gone = { $name } is niet meer beschikbaar: weggehaald, uitgezet of de sleutel ontbreekt
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } moet één kort woord zijn
 core-releases-quirks-pattern-count = show_feed neemt 1 tot { $most } paginapatronen
@@ -1254,11 +1254,11 @@ core-releases-quirks-url-https = de url van show_feed moet https zijn
 core-releases-quirks-url-host = de url van show_feed moet op de eigen host van het endpoint staan
 core-releases-quirks-url-slug = de url van show_feed neemt {"{"}slug{"}"} één keer en geen andere placeholder
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = op 'tokens' heeft een niet-lege lijst `tokens` nodig
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = Batch van { $group }
 core-releases-episodes-phrase =

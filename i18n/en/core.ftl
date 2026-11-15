@@ -132,7 +132,7 @@ core-error-service = { $service }: { $message }
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = paste the address of a repo
 core-repos-must-be-https = the address must be https
@@ -171,7 +171,7 @@ core-repos-note-theirs = This anirss is one you run, and the desktop never chang
 core-repos-note-sandbox = This run never writes into anirss's config, so the desktop does not search { $id } here
 core-repos-note-old = anirss { $version } cannot take endpoints from { -app-name }; update it to { $min } or newer for the desktop to search this
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = the index's key is not an ed25519 key
 core-repos-key-not-base64 = the index's key is not 32 bytes of base64
@@ -1400,7 +1400,7 @@ core-downloads-rolled = { $title }: now on episodes { $from } to { $to } of { $t
 core-downloads-roll-ahead = keep at least one episode ahead
 core-downloads-roll-nothing = nothing to fetch
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = a JSON search source comes from an endpoint repo whose definition maps its fields
 core-releases-endpoint-no-name = missing `name`
@@ -1416,7 +1416,7 @@ core-releases-endpoint-not-http = { $name }: the address must start with http://
 core-releases-endpoint-needs-query = { $name }: { $kind } url must contain a {"{"}query{"}"} placeholder
 core-releases-endpoint-no-query = { $name }: a { $kind } url adds the search itself, so it takes no {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = the indexer answered error { $code }
@@ -1424,11 +1424,11 @@ core-releases-bad-feed = bad feed: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = the feed answered { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = not the feed's JSON: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = not JSON: { $error }
 # $message is what the search said about itself
@@ -1439,7 +1439,7 @@ core-releases-no-results-field = the reply has no results at { $path }
 core-releases-results-not-list = the reply's results are not a list
 core-releases-search-answered = the search answered { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = no endpoints yet: add a repo, or one by hand, under Endpoints in More
 core-releases-no-source-named = no source named { $name }
@@ -1447,7 +1447,7 @@ core-releases-empty-query = type something to search for
 core-releases-cannot-follow = { $name } cannot be followed: it answers searches, but has no feed to check for new episodes
 core-releases-endpoint-gone = { $name } is not available any more: removed, switched off or missing its key
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1461,12 +1461,12 @@ core-releases-quirks-url-https = show_feed url must be https
 core-releases-quirks-url-host = show_feed url must be on the endpoint's own host
 core-releases-quirks-url-slug = show_feed url takes {"{"}slug{"}"} once and no other placeholder
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = op 'tokens' needs a non-empty `tokens` list
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = { $group }'s batch

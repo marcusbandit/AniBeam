@@ -17,12 +17,12 @@ use std::time::Duration;
 
 use rusqlite::params;
 
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::i18n::tr;
-use crate::net::{BoxFuture, HttpRequest};
-use crate::releases::{AnirssView, EndpointSync, Releases};
-use crate::sync::recover;
+use crate::{AnirssView, EndpointSync, Releases};
+use anibeam_contract::i18n::tr;
+use anibeam_contract::*;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_net::{BoxFuture, HttpRequest};
 use index::{Definition, Index, RepoFault};
 
 pub use pace::{FLOOR, Paced};
@@ -103,7 +103,7 @@ async fn fetch_bytes(services: &Services, url: &str) -> Result<Vec<u8>, RepoFaul
         let req = HttpRequest::get(url)
             .header("Accept", "application/json")
             .timeout(FETCH_TIMEOUT);
-        let res = crate::net::Http::send(&http, req).await.map_err(|e| {
+        let res = anibeam_net::Http::send(&http, req).await.map_err(|e| {
             RepoFault::new(
                 "unreachable",
                 tr(
@@ -245,7 +245,7 @@ fn save_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreErr
                 key,
                 serial,
                 payload,
-                crate::time::now_secs()
+                anibeam_foundation::time::now_secs()
             ],
         )?;
         Ok(())
@@ -274,7 +274,7 @@ fn update_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreE
                 key,
                 serial,
                 payload,
-                crate::time::now_secs()
+                anibeam_foundation::time::now_secs()
             ],
         )?;
         Ok(())
@@ -507,7 +507,7 @@ fn pin_index(releases: &Releases, url: &str, idx: &Index) -> Result<Option<RepoR
         releases.services.bus.say(
             Level::Info,
             Stage::Downloads,
-            crate::words!("core-repos-repo-added"),
+            anibeam_contract::words!("core-repos-repo-added"),
             format!("Added the endpoint repo {}", idx.name),
             EventBody::Notice,
         );
@@ -577,7 +577,7 @@ pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError>
     releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-repos-repo-removed"),
+        anibeam_contract::words!("core-repos-repo-removed"),
         format!("Removed the endpoint repo {}", stored.name),
         EventBody::Notice,
     );
@@ -767,7 +767,7 @@ fn insert_install(
         releases.services.bus.say(
             Level::Info,
             Stage::Downloads,
-            crate::words!("core-repos-source-added"),
+            anibeam_contract::words!("core-repos-source-added"),
             format!("Installed the endpoint {}", def.name),
             EventBody::Notice,
         );
@@ -814,7 +814,7 @@ pub fn update(
     releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-repos-source-updated"),
+        anibeam_contract::words!("core-repos-source-updated"),
         format!(
             "Updated the endpoint {} to version {}",
             next.name, next.version
@@ -842,7 +842,7 @@ pub fn remove(releases: &Releases, install: String) -> Result<Reply, CoreError> 
     releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-repos-source-removed"),
+        anibeam_contract::words!("core-repos-source-removed"),
         format!("Removed the endpoint {}", row.def.name),
         EventBody::Notice,
     );
@@ -955,14 +955,14 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let Some(label) = crate::redact::secret_param(k) else {
+                let Some(label) = anibeam_foundation::redact::secret_param(k) else {
                     return pair.to_string();
                 };
                 if v.is_empty() || v.starts_with('{') {
                     return pair.to_string();
                 }
                 let lower = k.to_lowercase();
-                lift(&lower, label, &crate::releases::endpoints::unquote_plus(v));
+                lift(&lower, label, &crate::endpoints::unquote_plus(v));
                 format!("{k}={{{lower}}}")
             })
             .collect();
@@ -990,7 +990,7 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
 
 /// A login's percent escapes undone; unlike a query value, its `+` is a plus.
 fn percent_decode(s: &str) -> String {
-    crate::releases::endpoints::unquote_plus(&s.replace('+', "%2B"))
+    crate::endpoints::unquote_plus(&s.replace('+', "%2B"))
 }
 
 /// The definition of a source added by hand, and the secrets lifted out of its address.
@@ -1020,7 +1020,7 @@ fn custom_definition(
     // #602 and is being edited.
     let kind = if template.contains("{query}") {
         "rss"
-    } else if let Some(kind) = kept.filter(|k| *k == crate::releases::kinds::FILTERED_RSS) {
+    } else if let Some(kind) = kept.filter(|k| *k == crate::kinds::FILTERED_RSS) {
         kind
     } else {
         return Err(CoreError::invalid(
@@ -1095,7 +1095,7 @@ pub fn add_custom(
     releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-repos-source-added"),
+        anibeam_contract::words!("core-repos-source-added"),
         format!("Added the endpoint {name}"),
         EventBody::Notice,
     );
@@ -1182,7 +1182,7 @@ pub fn edit_custom(
     releases.services.bus.say(
         Level::Info,
         Stage::Downloads,
-        crate::words!("core-repos-source-changed"),
+        anibeam_contract::words!("core-repos-source-changed"),
         format!("Changed the endpoint {}", def.name),
         EventBody::Notice,
     );
@@ -1198,7 +1198,7 @@ pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
     // store's lock on every open, a CLI's beside a running desktop's.
     let old = services.store.read(|conn| {
         let mut n = 0i64;
-        for (old, _) in crate::releases::kinds::RENAMED {
+        for (old, _) in crate::kinds::RENAMED {
             n += conn.query_row(
                 "SELECT COUNT(*) FROM installed_endpoints
                  WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
@@ -1217,7 +1217,7 @@ pub fn rename_old_kinds(services: &Services) -> Result<usize, CoreError> {
 fn rewrite_old_kinds(services: &Services) -> Result<usize, CoreError> {
     services.store.write(|conn| {
         let mut n = 0;
-        for (old, now) in crate::releases::kinds::RENAMED {
+        for (old, now) in crate::kinds::RENAMED {
             n += conn.execute(
                 "UPDATE installed_endpoints SET definition = json_set(definition, '$.kind', ?2)
                  WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
@@ -1299,7 +1299,7 @@ fn lift_one(
 /// The kinds anirss itself can search, under their shape names; every other kind is
 /// Anibeam's own. `spec_of` sends each under the name anirss knows it by
 /// (`kinds::anirss_kind`).
-const ANIRSS_KINDS: [&str; 3] = [crate::releases::kinds::FILTERED_RSS, "rss", "torznab"];
+const ANIRSS_KINDS: [&str; 3] = [crate::kinds::FILTERED_RSS, "rss", "torznab"];
 
 /// What Anibeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
 /// lists its endpoints with their secrets masked, so a listed address can never be compared
@@ -1309,7 +1309,12 @@ type Synced = std::collections::BTreeMap<String, String>;
 fn read_synced(services: &Services) -> Synced {
     services
         .store
-        .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
+        .read(|c| {
+            anibeam_foundation::store::settings::get(
+                c,
+                anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS,
+            )
+        })
         .ok()
         .flatten()
         .unwrap_or_default()
@@ -1366,10 +1371,10 @@ fn note_for(
     }
 }
 
-fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
-    let kind = crate::releases::kinds::anirss_kind(&e.kind);
+fn spec_of(e: &crate::Endpoint) -> serde_json::Value {
+    let kind = crate::kinds::anirss_kind(&e.kind);
     let mut spec = serde_json::json!({"name": e.name, "kind": kind, "url": e.url});
-    if e.kind == crate::releases::kinds::FILTERED_RSS {
+    if e.kind == crate::kinds::FILTERED_RSS {
         spec["category"] = e.category.clone().into();
         spec["filter"] = e.filter.clone().into();
     }
@@ -1386,7 +1391,7 @@ fn hash_of(spec: &serde_json::Value) -> String {
 
 /// The endpoint API of the anirss the desktop runs, which [`sync_anirss`] writes into. The
 /// downloads' anirss client implements it (#854), so the releases name no client above them.
-pub(crate) trait AnirssEndpoints: Send + Sync {
+pub trait AnirssEndpoints: Send + Sync {
     /// Adds the endpoint `spec` describes, or replaces the one of its name.
     fn put_endpoint(&self, spec: serde_json::Value) -> BoxFuture<'_, Result<(), CoreError>>;
     /// Removes the endpoint of this name.
@@ -1402,7 +1407,7 @@ pub(crate) trait AnirssEndpoints: Send + Sync {
 /// `endpoint_writes` (`writes` false) is left alone, whatever its version says.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
-pub(crate) async fn sync_anirss(
+pub async fn sync_anirss(
     services: &Services,
     client: &dyn AnirssEndpoints,
     writes: bool,
@@ -1452,7 +1457,11 @@ pub(crate) async fn sync_anirss(
     }
     if synced != before {
         let _ = services.store.write(move |c| {
-            crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
+            anibeam_foundation::store::settings::set(
+                c,
+                anibeam_foundation::store::settings::ANIRSS_SYNCED_ENDPOINTS,
+                &synced,
+            )
         });
     }
     changed
@@ -1463,7 +1472,7 @@ pub(crate) async fn sync_anirss(
 /// One installed endpoint ready to search: the runnable endpoint with its credentials filled,
 /// the address as it may be shown, and the pace its definition asks for.
 pub struct Runnable {
-    pub endpoint: crate::releases::Endpoint,
+    pub endpoint: crate::Endpoint,
     /// The template, no secrets in it.
     pub shown_url: String,
     pub host: String,
@@ -1505,7 +1514,7 @@ impl Runnable {
         let mut plain = self.endpoint.clone();
         plain.url = self.template.clone();
         let (feed_url, must_contain, excluded) =
-            crate::releases::endpoints::subscription_feed_resolved(&plain, query, None);
+            crate::endpoints::subscription_feed_resolved(&plain, query, None);
         SubscriptionSpec {
             feed_url,
             must_contain,
@@ -1611,7 +1620,7 @@ pub fn kept_spec(services: &Services, spec: &SubscriptionSpec, query: &str) -> S
 /// endpoint whose secrets its feed holds ([`Runnable::rekept_feed`]), the one whose template
 /// it fits best when two would do, and keeps its name and what it has taken. One that
 /// matches no endpoint (a pasted feed, a rotated key, a removed endpoint) stays as it is.
-/// `store` is changed in one atomic write ([`RuleStore::edit`](crate::releases::rules::RuleStore::edit)).
+/// `store` is changed in one atomic write ([`RuleStore::edit`](crate::rules::RuleStore::edit)).
 ///
 /// The run is marked done only when it could see every secret: `lifted` says this launch's
 /// lift of hand-added sources' secrets went through, and every installed endpoint has to
@@ -1619,10 +1628,10 @@ pub fn kept_spec(services: &Services, spec: &SubscriptionSpec, query: &str) -> S
 /// what this one could not. How many rules were rewritten.
 pub fn rekeep_old_rules(
     services: &Services,
-    store: &crate::releases::rules::RuleStore,
+    store: &crate::rules::RuleStore,
     lifted: bool,
 ) -> Result<usize, CoreError> {
-    use crate::store::settings::{self, PHONE_RULES_REKEPT};
+    use anibeam_foundation::store::settings::{self, PHONE_RULES_REKEPT};
     if services
         .store
         .read(|c| settings::get::<bool>(c, PHONE_RULES_REKEPT))?
@@ -1634,7 +1643,7 @@ pub fn rekeep_old_rules(
     let fillers = fillers(services);
     let mut ids: Vec<&str> = installed
         .iter()
-        .filter(|r| crate::releases::endpoints::VALID_KINDS.contains(&r.def.kind.as_str()))
+        .filter(|r| crate::endpoints::VALID_KINDS.contains(&r.def.kind.as_str()))
         .map(|r| r.def.id.as_str())
         .collect();
     ids.sort_unstable();
@@ -1666,8 +1675,8 @@ pub fn rekeep_old_rules(
 /// The endpoint a definition runs as at `url`, its address filled in. A category or filter
 /// the definition leaves out or leaves empty is anirss's default, as anirss reads it
 /// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
-fn endpoint_for(def: &Definition, url: &str) -> crate::releases::Endpoint {
-    let mut endpoint = crate::releases::Endpoint::new(&def.id, &def.kind, url);
+fn endpoint_for(def: &Definition, url: &str) -> crate::Endpoint {
+    let mut endpoint = crate::Endpoint::new(&def.id, &def.kind, url);
     if let Some(c) = def
         .category
         .as_deref()
@@ -1745,7 +1754,7 @@ fn installed_runnable(services: &Services, with_off: bool) -> Vec<Runnable> {
     let secrets = services.secrets();
     let mut out: Vec<Runnable> = Vec::new();
     for row in rows.into_iter().filter(|r| with_off || r.enabled) {
-        if !crate::releases::endpoints::VALID_KINDS.contains(&row.def.kind.as_str()) {
+        if !crate::endpoints::VALID_KINDS.contains(&row.def.kind.as_str()) {
             continue;
         }
         // Two repos offering the same id: the first installed wins the name.
@@ -1807,7 +1816,7 @@ fn rate_gap(per_minute: u32) -> Duration {
 
 /// Wraps the core's client so every host waits the floor between requests, and a host with a
 /// slower rate from its definition waits that.
-pub fn paced_http(services: &Services, runnable: &[Runnable]) -> Arc<dyn crate::net::Http> {
+pub fn paced_http(services: &Services, runnable: &[Runnable]) -> Arc<dyn anibeam_net::Http> {
     set_fronts(services);
     let gaps = runnable
         .iter()
@@ -1867,10 +1876,87 @@ pub fn endpoint_http(services: &Services) -> Paced {
 mod tests {
     use super::*;
 
-    use crate::downloads::anirss::{AnirssClient, ENDPOINT_WRITES, Health, MIN_VERSION};
-    use crate::net::FakeHttp;
-    use crate::trackers::Secrets;
-    use crate::{CorePaths, core::Core};
+    use anibeam_foundation::events::EventBus;
+    use anibeam_foundation::jobs::Jobs;
+    use anibeam_foundation::paths::CorePaths;
+    use anibeam_foundation::secrets::Secrets;
+    use anibeam_foundation::store::Store;
+    use anibeam_net::FakeHttp;
+
+    use crate::Searcher;
+
+    /// The oldest anirss the views below take endpoints from. A note reads it off the view,
+    /// so this is the tests' own number, not a copy of the downloads' threshold.
+    const MIN_VERSION: &str = "0.6.0";
+
+    /// What these tests need of a running core: the services over a store in a temporary
+    /// directory, with the fake transport, and the releases team over them, linked to a
+    /// searcher that answers as a fresh core's downloads do. The runtime lives as long as
+    /// it does.
+    struct Fake {
+        services: Arc<Services>,
+        releases: Arc<Releases>,
+        _searcher: Arc<FreshDownloads>,
+        runtime: Option<tokio::runtime::Runtime>,
+    }
+
+    /// The downloads of a core that has just opened: the native engine, the default, and
+    /// no anirss read yet. Told that the endpoints changed, it has nothing to tell.
+    struct FreshDownloads;
+
+    impl Searcher for FreshDownloads {
+        fn engine(&self) -> Result<DownloadsEngine, CoreError> {
+            Ok(DownloadsEngine::Native)
+        }
+
+        fn anirss_view(&self) -> Option<AnirssView> {
+            None
+        }
+
+        fn endpoints_changed(self: Arc<Self>) {}
+    }
+
+    impl Fake {
+        fn open(dir: &std::path::Path, http: Arc<FakeHttp>) -> Fake {
+            let paths = CorePaths::under(dir);
+            let store = Store::open(&paths.db_path()).unwrap();
+            let bus = EventBus::new(store.clone()).unwrap();
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap();
+            let handle = runtime.handle().clone();
+            let services = Arc::new(Services {
+                secrets: Secrets::file_only(paths.secrets_path()),
+                paths,
+                store,
+                jobs: Jobs::new(handle.clone(), bus.clone()),
+                bus,
+                handle,
+                http,
+            });
+            let releases = Arc::new(Releases::new(services.clone()));
+            let searcher = Arc::new(FreshDownloads);
+            releases
+                .searcher
+                .set(Arc::downgrade(&searcher) as std::sync::Weak<dyn Searcher>);
+            Fake {
+                services,
+                releases,
+                _searcher: searcher,
+                runtime: Some(runtime),
+            }
+        }
+
+        /// As `Core::shutdown` does: the jobs are cancelled before the runtime goes.
+        fn shutdown(mut self) {
+            self.services.jobs.cancel_all();
+            if let Some(runtime) = self.runtime.take() {
+                runtime.shutdown_background();
+            }
+        }
+    }
 
     #[test]
     fn the_native_engine_leaves_no_endpoint_out() {
@@ -1960,13 +2046,6 @@ mod tests {
         assert!(n.contains("cannot search the json-feed kind"), "{n}");
     }
 
-    fn health(version: &str, features: &[&str]) -> Health {
-        Health {
-            version: version.to_string(),
-            features: features.iter().map(|f| f.to_string()).collect(),
-        }
-    }
-
     /// Whether anirss takes endpoints is what it lists, not its version: a checkout that
     /// reports `dev`, or a version no parser reads, gets them when it lists
     /// `endpoint_writes`, and a 0.6 that does not list it gets none (#476).
@@ -2006,7 +2085,7 @@ mod tests {
     }
 
     /// Installs `def` as a repo's endpoint would be, straight into the store.
-    fn install_raw(core: &Core, def: serde_json::Value, enabled: bool) {
+    fn install_raw(core: &Fake, def: serde_json::Value, enabled: bool) {
         let id = def["id"].as_str().unwrap().to_string();
         let json = def.to_string();
         core.services.store
@@ -2022,16 +2101,9 @@ mod tests {
             .unwrap();
     }
 
-    fn fake_core(dir: &std::path::Path) -> (Arc<Core>, Arc<FakeHttp>) {
-        let paths = CorePaths::under(dir);
+    fn fake_core(dir: &std::path::Path) -> (Fake, Arc<FakeHttp>) {
         let http = FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        (core, http)
+        (Fake::open(dir, http.clone()), http)
     }
 
     #[test]
@@ -2083,7 +2155,7 @@ mod tests {
         install_raw(&core, def("one", &["GroupA", "GroupB"]), true);
         install_raw(&core, def("two", &["groupb", "GroupC"]), true);
         install_raw(&core, def("off", &["GroupD"]), false);
-        let native = crate::releases::native::Native::for_core(&core.services, Vec::new(), None);
+        let native = crate::native::Native::for_core(&core.services, Vec::new(), None);
         assert_eq!(
             native.bestfit.preferred_groups,
             ["GroupA", "GroupB", "GroupC"],
@@ -2093,27 +2165,21 @@ mod tests {
         let empty = tempfile::tempdir().unwrap();
         let (bare, _) = fake_core(empty.path());
         assert!(
-            crate::releases::native::Native::for_core(&bare.services, Vec::new(), None)
+            crate::native::Native::for_core(&bare.services, Vec::new(), None)
                 .bestfit
                 .preferred_groups
                 .is_empty()
         );
     }
 
-    fn custom(core: &Core, name: &str, url: &str) {
+    fn custom(core: &Fake, name: &str, url: &str) {
         add_custom(&core.releases, name.into(), url.into(), Vec::new()).unwrap();
     }
 
     #[test]
     fn a_bare_source_added_by_hand_before_the_rename_can_still_be_edited() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
         custom(&core, "mirror", "https://tracker.example/rss?q={query}");
         // As the rename left a bare address added by hand before #602.
         core.services
@@ -2124,7 +2190,7 @@ mod tests {
                         r.get(0)
                     })?;
                 let mut def: Definition = serde_json::from_str(&def).unwrap();
-                def.kind = crate::releases::kinds::FILTERED_RSS.into();
+                def.kind = crate::kinds::FILTERED_RSS.into();
                 def.url = "https://tracker.example/".into();
                 conn.execute(
                     "UPDATE installed_endpoints SET definition = ?1",
@@ -2150,7 +2216,7 @@ mod tests {
         let row = core.services.store.read(read_installed).unwrap().remove(0);
         assert_eq!(
             (row.def.name.as_str(), row.def.kind.as_str()),
-            ("renamed", crate::releases::kinds::FILTERED_RSS)
+            ("renamed", crate::kinds::FILTERED_RSS)
         );
         // A new source by hand still needs its {query}.
         assert!(
@@ -2167,13 +2233,7 @@ mod tests {
     #[test]
     fn a_secret_stored_in_an_old_address_moves_to_the_secret_store() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
         custom(&core, "old", "https://a.example/rss?q={query}");
         // As a source added before #385 was stored: the key in the address itself.
         let old_url = "https://a.example/rss?q={query}&rsskey=s3cret";
@@ -2226,13 +2286,7 @@ mod tests {
     #[test]
     fn a_stored_feed_keeps_the_placeholder_and_is_filled_when_read() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
         custom(
             &core,
             "mine",
@@ -2281,8 +2335,8 @@ mod tests {
     }
 
     /// A phone subscription as it was kept before #149: the filled feed, no endpoint.
-    fn old_rule(name: &str, feed: &str) -> crate::releases::rules::Rule {
-        crate::releases::rules::Rule {
+    fn old_rule(name: &str, feed: &str) -> crate::rules::Rule {
+        crate::rules::Rule {
             name: name.into(),
             feed_url: feed.into(),
             endpoint: String::new(),
@@ -2294,14 +2348,8 @@ mod tests {
         }
     }
 
-    fn core_with_keyed_endpoint(dir: &std::path::Path) -> Arc<Core> {
-        let paths = CorePaths::under(dir);
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+    fn core_with_keyed_endpoint(dir: &std::path::Path) -> Fake {
+        let core = Fake::open(dir, FakeHttp::new());
         custom(
             &core,
             "mine",
@@ -2314,7 +2362,7 @@ mod tests {
     fn old_phone_rules_lose_their_secret_once_and_unmatched_ones_stay() {
         let dir = tempfile::tempdir().unwrap();
         let core = core_with_keyed_endpoint(dir.path());
-        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let store = crate::rules::RuleStore::new(dir.path().join("phone-rules.json"));
         let filled = "https://a.example/rss?q=Show+1080p&token=longsecret1";
         let pasted = "https://b.example/rss?q=Other&key=pastedsecret";
         let rotated = "https://a.example/rss?q=Old&token=oldsecret99";
@@ -2358,7 +2406,7 @@ mod tests {
     fn a_launch_that_could_not_see_every_secret_runs_again() {
         let dir = tempfile::tempdir().unwrap();
         let core = core_with_keyed_endpoint(dir.path());
-        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let store = crate::rules::RuleStore::new(dir.path().join("phone-rules.json"));
         let filled = "https://a.example/rss?q=Show&token=longsecret1";
         store.save(&[old_rule("Show", filled)]).unwrap();
         // The lift failed this launch: what could be rewritten is, and the next launch
@@ -2387,7 +2435,7 @@ mod tests {
             "second",
             "https://own.example/2/api?t=search&q={query}&apikey=sharedkey1",
         );
-        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let store = crate::rules::RuleStore::new(dir.path().join("phone-rules.json"));
         store
             .save(&[old_rule(
                 "Show",
@@ -2409,7 +2457,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let core = core_with_keyed_endpoint(dir.path());
         let path = dir.path().join("phone-rules.json");
-        let store = crate::releases::rules::RuleStore::new(path.clone());
+        let store = crate::rules::RuleStore::new(path.clone());
         let filled = "https://a.example/rss?q=Show&token=longsecret1";
         store.save(&[old_rule("Show", filled)]).unwrap();
         let before = std::fs::read(&path).unwrap();
@@ -2428,13 +2476,7 @@ mod tests {
     #[test]
     fn a_short_secret_keeps_the_plain_search_feed() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
         custom(&core, "short", "https://a.example/rss?q={query}&f=1&uid=1");
         let spec = SubscriptionSpec {
             feed_url: "https://a.example/rss?q=Show&f=1&uid=1".into(),
@@ -2453,13 +2495,7 @@ mod tests {
     #[test]
     fn a_switched_off_endpoint_still_fills_its_subscriptions() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            FakeHttp::new(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
         custom(
             &core,
             "mine",
@@ -2511,144 +2547,26 @@ mod tests {
     }
 
     #[test]
-    fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = CorePaths::under(dir.path());
-        let http = FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        custom(&core, "mine", "https://a.example/rss?q={query}&token=t1");
-        custom(
-            &core,
-            "proxied",
-            "http://127.0.0.1:9117/x?apikey=k&q={query}",
-        );
-        let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
-
-        // anirss has its own search-proxy endpoint from config.toml; Anibeam writes only "mine".
-        let theirs = |name: &str, url: &str| SearchEndpoint {
-            name: name.into(),
-            kind: "rss".into(),
-            url: url.into(),
-            client_side_refine: false,
-            on_demand: None,
-            running: None,
-            followable: true,
-        };
-        // An anirss that does not list endpoint writes has no endpoint API, whatever its
-        // version says: nothing is sent.
-        let have = vec![theirs("proxied", "http://elsewhere/")];
-        let without = health("0.6.0", &["qbt_env_session"]);
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
-            &anirss,
-            without.has(ENDPOINT_WRITES),
-            &have
-        )));
-        assert!(http.requests().is_empty());
-
-        // One that lists it takes them, even with a version no parser reads.
-        let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
-        http.push_json(201, serde_json::json!({}));
-        assert!(core.services.handle.block_on(sync_anirss(
-            &core.services,
-            &anirss,
-            writes.has(ENDPOINT_WRITES),
-            &have
-        )));
-        let sent = http.requests();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].method, crate::net::Method::Post);
-        let body = format!("{:?}", sent[0].body);
-        assert!(
-            body.contains("\"mine\"") && body.contains("token=t1"),
-            "{body}"
-        );
-
-        // Listed back with its token masked, as anirss lists it: unchanged, so not sent again.
-        let have = vec![
-            theirs("proxied", "http://elsewhere/"),
-            theirs("mine", "https://a.example/rss?q={query}&token=***"),
-        ];
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
-            &anirss,
-            writes.has(ENDPOINT_WRITES),
-            &have
-        )));
-        assert_eq!(http.requests().len(), 1);
-
-        // Switched off: it comes out of anirss again, and the hand-written one stays.
-        let mine = core
-            .services
-            .store
-            .read(read_installed)
-            .unwrap()
-            .into_iter()
-            .find(|r| r.def.id == "mine")
-            .unwrap();
-        core.services
-            .store
-            .write(move |c| {
-                c.execute(
-                    "UPDATE installed_endpoints SET enabled = 0 WHERE install_id = ?1",
-                    params![mine.install_id],
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        http.push_json(200, serde_json::json!({}));
-        let have = vec![
-            theirs("proxied", "http://elsewhere/"),
-            theirs("mine", "https://a.example/rss?q={query}&token={token}"),
-        ];
-        assert!(core.services.handle.block_on(sync_anirss(
-            &core.services,
-            &anirss,
-            writes.has(ENDPOINT_WRITES),
-            &have
-        )));
-        let sent = http.requests();
-        assert_eq!(sent.len(), 2);
-        assert_eq!(sent[1].method, crate::net::Method::Delete);
-        assert!(sent[1].url.ends_with("/endpoints/mine"));
-        // Nothing left to do: nothing is sent.
-        let have = vec![theirs("proxied", "http://elsewhere/")];
-        assert!(!core.services.handle.block_on(sync_anirss(
-            &core.services,
-            &anirss,
-            writes.has(ENDPOINT_WRITES),
-            &have
-        )));
-        assert_eq!(http.requests().len(), 2);
-        core.shutdown();
-    }
-
-    #[test]
     fn a_torznab_endpoint_goes_to_anirss_as_rss() {
         let url = "http://10.0.0.2:9696/1/api?t=search&q={query}&apikey=k";
-        let spec = spec_of(&crate::releases::Endpoint::new("indexer", "torznab", url));
+        let spec = spec_of(&crate::Endpoint::new("indexer", "torznab", url));
         assert_eq!(
             spec,
             serde_json::json!({"name": "indexer", "kind": "rss", "url": url})
         );
         // filtered-rss goes over under anirss's own name for it, with its category and
         // filter; every other kind goes over as itself.
-        let filtered = spec_of(&crate::releases::Endpoint::new(
+        let filtered = spec_of(&crate::Endpoint::new(
             "example",
-            crate::releases::kinds::FILTERED_RSS,
+            crate::kinds::FILTERED_RSS,
             "https://example.org/",
         ));
         assert_eq!(
             filtered,
-            serde_json::json!({"name": "example", "kind": crate::releases::kinds::RENAMED[0].0,
+            serde_json::json!({"name": "example", "kind": crate::kinds::RENAMED[0].0,
                 "url": "https://example.org/", "category": "1_0", "filter": "0"})
         );
-        let feed = spec_of(&crate::releases::Endpoint::new(
+        let feed = spec_of(&crate::Endpoint::new(
             "feed",
             "rss",
             "https://example.org/?q={query}",
@@ -2663,7 +2581,7 @@ mod tests {
             name: "site".to_string(),
             version: 1,
             lang: String::new(),
-            kind: crate::releases::kinds::FILTERED_RSS.to_string(),
+            kind: crate::kinds::FILTERED_RSS.to_string(),
             url: "https://tracker.example/".to_string(),
             auth: Vec::new(),
             front: None,

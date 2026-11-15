@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::contract::*;
+use anibeam_contract::*;
 
 /// The longest grid drawn, as the desktop's.
 const MAX_EPISODES: u32 = 2000;
@@ -454,7 +454,7 @@ pub fn plan(
             f.group.as_str()
         };
         let g = if f.batch {
-            crate::i18n::tr("core-releases-group-batch", &[("group", group.into())])
+            anibeam_contract::i18n::tr("core-releases-group-batch", &[("group", group.into())])
         } else {
             group.to_string()
         };
@@ -510,7 +510,7 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
         b = n;
     }
     parts.push(if a == b { a.to_string() } else { range(a, b) });
-    crate::i18n::tr(
+    anibeam_contract::i18n::tr(
         "core-releases-episodes-phrase",
         &[
             ("count", ns.len().into()),
@@ -521,7 +521,7 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
 
 /// "3 to 5": a run of episode numbers.
 fn range(a: u32, b: u32) -> String {
-    crate::i18n::tr(
+    anibeam_contract::i18n::tr(
         "core-releases-episode-range",
         &[("from", a.to_string().into()), ("to", b.to_string().into())],
     )
@@ -530,7 +530,7 @@ fn range(a: u32, b: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::downloads::facts;
+    use crate::facts;
 
     fn rel(title: &str, seeders: i64) -> Release {
         Release {

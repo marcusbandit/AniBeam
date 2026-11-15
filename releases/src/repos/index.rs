@@ -8,9 +8,9 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::contract::{CoreError, EndpointField};
-use crate::i18n::tr;
-use crate::releases::endpoints::VALID_KINDS;
+use crate::endpoints::VALID_KINDS;
+use anibeam_contract::i18n::tr;
+use anibeam_contract::{CoreError, EndpointField};
 
 /// The envelope's `format`.
 pub const FORMAT: &str = "anibeam-endpoint-repo";
@@ -109,7 +109,7 @@ pub struct Definition {
     pub json: Option<JsonMap>,
     /// `rss` only: how its search and feed differ from a plain feed (`releases::quirks`).
     #[serde(default, flatten)]
-    pub quirks: crate::releases::quirks::Quirks,
+    pub quirks: crate::quirks::Quirks,
     /// Release groups this source's own definition trusts out of the box. Best fit prefers
     /// the groups every enabled endpoint names, the core itself trusting none.
     #[serde(default)]
@@ -130,7 +130,7 @@ pub struct AuthField {
 
 fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let kind = String::deserialize(d)?;
-    Ok(crate::releases::kinds::shape_of(&kind).to_string())
+    Ok(crate::kinds::shape_of(&kind).to_string())
 }
 
 /// A host name as DNS writes it: lower-case labels of letters, digits and hyphens, joined by
@@ -270,9 +270,9 @@ impl Definition {
                 if !bare_host(&v) {
                     return None;
                 }
-                crate::releases::endpoints::quote(v.as_bytes(), ":")
+                crate::endpoints::quote(v.as_bytes(), ":")
             } else {
-                crate::releases::endpoints::quote(v.as_bytes(), "")
+                crate::endpoints::quote(v.as_bytes(), "")
             };
             out.push((field, filled));
         }
@@ -545,10 +545,10 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
         ));
     }
     let has_query = def.url.contains("{query}");
-    if def.kind == crate::releases::kinds::FILTERED_RSS && has_query {
+    if def.kind == crate::kinds::FILTERED_RSS && has_query {
         return Err(format!("{}: filtered-rss adds the query itself", def.id));
     }
-    if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
+    if crate::endpoints::needs_query(&def.kind) && !has_query {
         return Err(format!("{}: the address needs {{query}}", def.id));
     }
     if let Some(front) = &def.front {
@@ -570,7 +570,7 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
     }
-    if def.quirks != crate::releases::quirks::Quirks::default() {
+    if def.quirks != crate::quirks::Quirks::default() {
         if def.kind != "rss" {
             return Err(format!(
                 "{}: only an rss endpoint takes quality_local, one_variant or show_feed",
@@ -755,10 +755,10 @@ pub(crate) mod tests {
     #[test]
     fn an_index_from_before_the_shape_kinds_reads_with_them() {
         let k = signing_key(1);
-        let old: Vec<serde_json::Value> = crate::releases::kinds::RENAMED
+        let old: Vec<serde_json::Value> = crate::kinds::RENAMED
             .iter()
             .map(|(old, _)| {
-                let url = if *old == crate::releases::kinds::RENAMED[0].0 {
+                let url = if *old == crate::kinds::RENAMED[0].0 {
                     "https://tracker.example/"
                 } else {
                     "https://feed.example/json?q={query}"

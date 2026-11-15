@@ -10,8 +10,8 @@ use std::time::Duration;
 use regex::Regex;
 use roxmltree::Node;
 
-use crate::contract::{CoreError, Release};
-use crate::net::{Http, HttpRequest};
+use anibeam_contract::{CoreError, Release};
+use anibeam_net::{Http, HttpRequest};
 
 /// anirss `fetch_rss` default: a blackholed endpoint must fail fast so the fallback probe
 /// can move on instead of feeling like a hang.
@@ -261,7 +261,7 @@ pub(super) fn their_message(text: &str) -> String {
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
-    crate::words::cut(clean.trim(), MAX)
+    anibeam_foundation::words::cut(clean.trim(), MAX)
 }
 
 /// Jackett and Prowlarr answer a bad key or a broken indexer with a whole document of
@@ -273,7 +273,7 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
     }
     let message = match root.attribute("description").map(str::trim) {
         Some(d) if !d.is_empty() => their_message(d),
-        _ => crate::i18n::tr(
+        _ => anibeam_contract::i18n::tr(
             "core-releases-indexer-error",
             &[(
                 "code",
@@ -292,7 +292,10 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         CoreError::service(
             endpoint_name,
             "unreadable",
-            crate::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
+            anibeam_contract::i18n::tr(
+                "core-releases-bad-feed",
+                &[("error", e.to_string().into())],
+            ),
         )
     })?;
     if let Some(e) = indexer_error(&doc, endpoint_name) {
@@ -366,7 +369,7 @@ pub async fn fetch_rss(
     source_name: &str,
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
-    tracing::debug!("GET {}", crate::net::url_shown(url));
+    tracing::debug!("GET {}", anibeam_net::url_shown(url));
     let response = http
         .send(
             HttpRequest::get(url)
@@ -392,7 +395,7 @@ pub async fn fetch_rss(
         return Err(CoreError::service(
             source_name,
             format!("http_{}", response.status),
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),
@@ -461,7 +464,7 @@ fn named(body: &str) -> Option<char> {
     // The legacy names first, with the values Python gives them (`nbsp` is U+00A0 here,
     // where the shared table reads it as a plain space); then the core's one table.
     if let Some(name) = body.strip_suffix(';') {
-        return named_legacy(name).or_else(|| crate::html::entity(name));
+        return named_legacy(name).or_else(|| anibeam_foundation::html::entity(name));
     }
     named_legacy(body)
 }
@@ -495,7 +498,7 @@ fn charref(num: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::net::FakeHttp;
+    use anibeam_net::FakeHttp;
 
     const TRACKER_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:t="https://tracker.example/xmlns/tracker">
