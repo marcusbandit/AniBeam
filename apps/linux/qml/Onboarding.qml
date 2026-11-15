@@ -1,7 +1,7 @@
 // The first run: a fresh install opens here instead of on an empty library. Six steps, one
-// idea each: what Anibeam is, the folder the anime lives in, the tracker, how Downloads gets
-// its torrent client, watch together and the name a room shows (#846), and a closing screen
-// that says what got set up and offers each skipped step again. It takes the whole window, the rail included, as two panes of the mosaic: the
+// idea each: what Anibeam is, the folder the anime lives in, the tracker, where Downloads
+// searches (a source list, added right on that step, #1003) and how it gets its torrent
+// client, watch together and the name a room shows (#846), and a closing screen that says what got set up and offers each skipped step again. It takes the whole window, the rail included, as two panes of the mosaic: the
 // steps at the left, the step itself at the right.
 //
 // Every step can be skipped, and so can the whole thing. It shows once: `done` lives in
@@ -67,8 +67,6 @@ Item {
     // "Auto" lets Anibeam pick (a qBittorrent that answers, else its own); "Existing" is the
     // user's own, finished in Settings, Downloads once this closes
     property string torrentMode: "Auto"
-    // "Add a repo after setup": finishing opens Settings, Downloads at the repo field
-    property bool wantsSources: false
 
     readonly property var anilist: Door.trackers.anilist || ({})
     readonly property var mal: Door.trackers.mal || ({})
@@ -110,7 +108,6 @@ Item {
     function open(at) {
         step = at || 0
         skipped = ({})
-        wantsSources = false
         reload()
         var d = Door.getDownloads()
         if (!d.error) torrentMode = d.reply.status.settings.torrent_mode === "Existing" ? "Existing" : "Auto"
@@ -125,7 +122,7 @@ Item {
         kept.done = true
         frame.escapeStack.pop(root)
         visible = false
-        if (torrentMode === "Existing" || wantsSources) frame.go("settings", { tab: "downloads" })
+        if (torrentMode === "Existing") frame.go("settings", { tab: "downloads" })
         else if (sources.length > 0 && !starterOnly) frame.go("library")
         frame.focusPage(root)
     }
@@ -137,7 +134,7 @@ Item {
     // Watch together: the name a room shows, as it stands and as typed on the step
     readonly property string roomName: String(Door.preferences.room_name || "").trim()
     property string typedName: ""
-    onStepChanged: if (step === 4) typedName = roomName !== "" ? roomName : frame.room.suggestedName
+    onStepChanged: { stage.contentY = 0; if (step === 4) typedName = roomName !== "" ? roomName : frame.room.suggestedName }
     function skip() {
         // A skipped name stays unset: the room panel asks for it the first time
         if (steps[step].key === "together") typedName = ""
@@ -326,11 +323,19 @@ Item {
             // block, head over pane, centred in it, so a short step is not a heading with a
             // hole under it
             readonly property bool fills: root.step === 1
-            Item {
+            // A step taller than a small window scrolls rather than running under the buttons
+            Flickable {
                 id: stage
                 width: parent.width
                 anchors.top: parent.top
                 anchors.bottom: foot.top; anchors.bottomMargin: theme.space(8)
+                clip: true
+                contentWidth: width
+                contentHeight: body.fills ? height : Math.max(height, block.height)
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                onContentHeightChanged: if (contentY > contentHeight - height) contentY = Math.max(0, contentHeight - height)
+                WheelStep { flick: stage }
 
                 Column {
                     id: block
@@ -756,7 +761,8 @@ Item {
         id: downloadsPane
         Column {
           spacing: theme.space(6)
-          // Where to search. The app carries no sources: a repo someone gives the user does
+          // Where to search. The app carries no sources: a list someone gives the user does,
+          // and it is added right here, in the one step Settings and Downloads use too (#1003)
           Tile {
             id: where
             objectName: "onboarding-sources"
@@ -767,26 +773,24 @@ Item {
             Column {
                 id: whereWords
                 anchors.left: whereMark.right; anchors.leftMargin: theme.space(5)
-                anchors.right: whereButton.left; anchors.rightMargin: theme.space(5)
+                anchors.right: parent.right
                 spacing: theme.space(2)
                 Label { msg: "onboarding-search-title"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
                 Label {
+                    visible: !attach.result && root.endpointCount > 0
                     width: parent.width
-                    text: root.endpointCount > 0
-                        ? words.t("onboarding-search-ready", { count: root.endpointCount })
-                        : words.t("onboarding-search-none")
+                    text: words.t("onboarding-search-ready", { count: root.endpointCount })
                     color: theme.textDim; wrapMode: Text.Wrap; lineHeight: 1.1
                 }
-            }
-            Button {
-                id: whereButton
-                objectName: "onboarding-add-sources"
-                anchors.right: parent.right
-                anchors.verticalCenter: whereWords.verticalCenter
-                visible: root.endpointCount === 0
-                text: root.wantsSources ? words.t("onboarding-sources-after") : words.t("onboarding-sources-add")
-                icon: root.wantsSources ? "check" : "plus"
-                onClicked: root.wantsSources = !root.wantsSources
+                Item { visible: attach.visible; width: 1; height: theme.space(2) }
+                SourceAttach {
+                    id: attach
+                    objectName: "onboarding-attach"
+                    visible: root.endpointCount === 0 || !!result
+                    width: parent.width
+                    onAttached: root.reload()
+                    onSettingsAsked: root.finishAt("downloads")
+                }
             }
           }
           Label { msg: "onboarding-fetch-title"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
@@ -965,8 +969,8 @@ Item {
                           : root.mal.connected === true ? words.t("onboarding-ready-lists-as", { tracker: "MyAnimeList", user: root.mal.username || "?" })
                           : words.t("onboarding-ready-lists-none") },
                     { ok: root.downloadsReady, icon: "download", title: words.t("onboarding-ready-downloads"), step: 3,
-                      line: words.t("onboarding-ready-downloads-line", { sources: root.endpointCount, client: root.torrentMode === "Existing" ? "own" : "bundled",
-                          next: root.downloadsReady ? "ready" : root.wantsSources || root.torrentMode === "Existing" ? "opens" : "both" }) },
+                      line: words.t("onboarding-ready-downloads-state", { sources: root.endpointCount, client: root.torrentMode === "Existing" ? "own" : "bundled",
+                          next: root.downloadsReady ? "ready" : root.torrentMode === "Existing" ? "opens" : "sources" }) },
                     { ok: root.roomName !== "", icon: "users", title: words.t("onboarding-ready-together"), step: 4,
                       line: root.roomName !== "" ? words.t("onboarding-ready-together-as", { name: root.roomName }) : words.t("onboarding-ready-together-none") }
                 ]
@@ -977,8 +981,8 @@ Item {
                     // Two by two, the mark sits beside the words, so the four fit the stage's height
                     readonly property bool beside: summary.columns < 4
                     readonly property real contentH: beside ? Math.max(mark.height, rc.height) : rc.y + rc.height
-                    // Downloads opens Settings next by itself when asked to; no button then
-                    readonly property bool offers: !modelData.ok && (modelData.step !== 3 || !(root.wantsSources || root.torrentMode === "Existing"))
+                    // Downloads opens Settings next by itself for someone's own client; no button then
+                    readonly property bool offers: !modelData.ok && (modelData.step !== 3 || root.torrentMode !== "Existing")
                     width: summary.cell
                     height: summary.tallest + padding * 2
                     padding: beside ? theme.space(6) : theme.space(7)
@@ -996,8 +1000,8 @@ Item {
                         Button {
                             visible: tile.offers
                             objectName: "onboarding-later-" + modelData.step
-                            text: modelData.step === 3 ? words.t("onboarding-ready-open-downloads") : words.t("onboarding-ready-set-up"); icon: "arrow-right"; small: true
-                            onClicked: if (modelData.step === 3) root.finishAt("downloads"); else root.step = modelData.step
+                            msg: "onboarding-ready-set-up"; icon: "arrow-right"; small: true
+                            onClicked: root.step = modelData.step
                         }
                     }
                 }

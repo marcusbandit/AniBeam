@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use crate::contract::*;
-use crate::net::{Http, HttpRequest};
+use anibeam_contract::*;
+use anibeam_net::{Http, HttpRequest};
 
 /// One entry of the JSON feed, as far as a release needs.
 #[derive(serde::Deserialize)]
@@ -36,7 +36,7 @@ struct Entry {
 /// an English name and tags after ` | `, which the title parsing would read as part of it.
 pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
     let entries: Vec<Entry> = serde_json::from_slice(body).map_err(|e| {
-        crate::i18n::tr(
+        anibeam_contract::i18n::tr(
             "core-releases-not-feed-json",
             &[("error", e.to_string().into())],
         )
@@ -91,7 +91,7 @@ pub async fn fetch(
         return Err(CoreError::service(
             source,
             format!("http_{}", response.status),
-            crate::i18n::tr(
+            anibeam_contract::i18n::tr(
                 "core-releases-feed-answered",
                 &[("status", response.status.to_string().into())],
             ),

@@ -7,7 +7,6 @@ import com.marcusrosado.Anibeam
 SettingsTab {
     id: tab
     title: words.t("settings-keys-title")
-    lead: words.t("settings-keys-lead")
     property Item keyMap: KeyHelp { visible: false; open: false }
     // The player's own keys first, then the ones that work on every page
     readonly property var groups: [

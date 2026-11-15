@@ -454,7 +454,7 @@ Item {
                 flat: true
                 icon: "eye-off"
                 text: page.listed ? words.t("airing-not-interested-count", { count: page.listed.not_interested }) : ""
-                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" })
+                onClicked: frame.go("settings", { tab: "hidden" })
                 Tooltip { msg: "airing-not-interested-tip" }
             }
             Button {

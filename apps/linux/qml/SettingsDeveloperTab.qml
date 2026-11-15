@@ -12,7 +12,6 @@ import com.marcusrosado.Anibeam
 SettingsTab {
     id: tab
     title: words.t("settings-developer-title")
-    lead: words.t("settings-developer-lead")
     wide: true
     readonly property var rec: frame.devRecorder
     readonly property var kept: frame.devKept
@@ -67,15 +66,15 @@ SettingsTab {
         id: switchesPanel
         Panel {
             title: words.t("settings-developer-switches"); icon: "toggle-right"
-            SettingRow { label: words.t("settings-developer-load-images"); helper: words.t("settings-developer-load-images-helper")
+            SettingRow { label: words.t("settings-developer-load-images")
                 Switch { objectName: "dev-images"; checked: tab.kept.images; onToggled: function(on) { frame.devSetImages(on); frame.loadPage() } } }
-            SettingRow { label: words.t("settings-developer-overlay"); helper: words.t("settings-developer-overlay-helper")
+            SettingRow { label: words.t("settings-developer-overlay")
                 Switch { objectName: "dev-hud"; checked: tab.kept.hud; onToggled: function(on) { tab.kept.hud = on } } }
-            SettingRow { label: words.t("settings-developer-read-cache"); helper: words.t("settings-developer-read-cache-helper")
+            SettingRow { label: words.t("settings-developer-read-cache")
                 Switch { checked: tab.kept.readCache; onToggled: function(on) { tab.kept.readCache = on; frame.devApply() } } }
-            SettingRow { label: words.t("settings-developer-poster-pool"); helper: words.t("settings-developer-poster-pool-helper")
+            SettingRow { label: words.t("settings-developer-poster-pool")
                 Switch { checked: tab.kept.posterPool; onToggled: function(on) { tab.kept.posterPool = on } } }
-            SettingRow { visible: !Dev.forced; label: words.t("settings-developer-options"); helper: words.t("settings-developer-options-helper")
+            SettingRow { visible: !Dev.forced; label: words.t("settings-developer-options")
                 Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "about" }) } } } }
         }
     }
@@ -83,14 +82,14 @@ SettingsTab {
         id: memoryPanel
         Panel {
             title: words.t("settings-developer-memory"); icon: "memory-stick"
-            helper: tab.mem.VmRSS ? words.t("settings-developer-memory-helper") : words.t("settings-developer-memory-unknown")
+            SettingRow { visible: !tab.mem.VmRSS; label: words.t("settings-developer-memory-unknown") }
             Tiles { tiles: tab.mem.VmRSS ? [
                 { value: tab.mbWhole(tab.mem.VmRSS), caption: words.t("settings-developer-in-use") },
                 { value: tab.mbWhole(tab.mem.VmHWM), caption: words.t("settings-developer-peak") },
                 { value: tab.mbWhole(tab.mem.RssAnon), caption: words.t("settings-developer-heap") },
                 { value: tab.mbWhole(tab.mem.RssFile), caption: words.t("settings-developer-files-mapped") },
                 { value: String(tab.mem.Threads || 0), caption: words.t("settings-developer-threads") }] : [] }
-            SettingRow { label: words.t("settings-developer-give-back"); helper: words.t("settings-developer-give-back-helper")
+            SettingRow { label: words.t("settings-developer-give-back")
                 line: tab.released ? words.t("settings-developer-released", { before: tab.mb(tab.released.before, true), after: tab.mb(tab.released.after, true) }) : ""
                 Button { msg: "settings-developer-free-now"; icon: "recycle"; small: true
                     onClicked: { var b = JSON.parse(Dev.memory()).VmRSS || 0; Dev.release(frame.hostWindow); var a = JSON.parse(Dev.memory()).VmRSS || 0; tab.released = { before: b, after: a }; tab.memRead() } } }
@@ -102,7 +101,6 @@ SettingsTab {
         id: loadsPanel
         Panel {
             title: words.t("settings-developer-loads"); icon: "timer"
-            helper: words.t("settings-developer-loads-helper")
             Row {
                 spacing: theme.space(2)
                 Button { objectName: "dev-tour"; text: tab.rec.tourState ? words.t("settings-developer-touring", { at: tab.rec.tourState.at, steps: tab.rec.tourState.steps.length }) : words.t("settings-developer-tour"); icon: "gauge"; primary: true; enabled: !tab.rec.tourState; onClicked: tab.rec.tour(3) }
@@ -155,11 +153,13 @@ SettingsTab {
         Panel {
             readonly property var l: tab.picked
             title: l.images ? l.label : words.t("settings-developer-load-images-off", { page: l.label }); icon: "scan-search"
-            helper: words.t(l.timedOut ? "settings-developer-load-frames-timed-out" : "settings-developer-load-frames", { frames: l.frames, gap: tab.ms(l.maxGap) })
             Tiles { tiles: [
                 { value: tab.ms(l.built), caption: words.t("settings-developer-built") }, { value: tab.ms(l.settled), caption: words.t("settings-developer-settled") },
                 { value: tab.rec.kb(l.calls.bytes), caption: words.t("settings-developer-core-data") }, { value: tab.rec.mb(l.decodes.bytes), caption: words.t("settings-developer-pixels") },
                 { value: tab.n(l.scene.items), caption: words.t("settings-developer-page-items") }, { value: String(l.decodes.cached), caption: words.t("settings-developer-cached-images") }] }
+            // How the load painted: a fact about this load, in the ledger face under its figures
+            Label { width: parent.width; topPadding: theme.space(2); bottomPadding: theme.space(2); role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap
+                    text: words.t(l.timedOut ? "settings-developer-load-frames-timed-out" : "settings-developer-load-frames", { frames: l.frames, gap: tab.ms(l.maxGap) }) }
             Row {
                 id: detailCols
                 width: parent.width
@@ -211,7 +211,6 @@ SettingsTab {
         id: tourPanel
         Panel {
             title: words.t("settings-developer-tour-title"); icon: "gauge"
-            helper: words.t("settings-developer-tour-helper")
             Column {
                 width: parent.width
                 Row {
@@ -247,7 +246,6 @@ SettingsTab {
         id: eventsPanel
         Panel {
             title: words.t("settings-developer-events"); icon: "activity"
-            helper: words.t("settings-developer-events-helper")
             Flow {
                 width: parent.width
                 spacing: theme.space(2)

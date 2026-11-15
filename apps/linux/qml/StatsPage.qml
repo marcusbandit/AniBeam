@@ -135,6 +135,9 @@ Item {
             }
         }
 
+        // Library's tabs (#1012): this page is one of them
+        LibraryTabs { here: "stats" }
+
         // ---- Nothing watched yet
         Item {
             visible: !!page.stats && page.stats.years.length === 0

@@ -23,6 +23,20 @@ Item {
     signal cancelAll(Item anchor, var torrents)
     // What a torrent's buttons wait on ("Stop", "Start", "Cancel", or ""), from the page
     property var busyOf: function(hash) { return "" }
+    // The line under the pointer, for the page's right-click menu (#1004)
+    property var hoverTorrent: null
+    property Item hoverTorrentItem: null
+    function hoverLine(item, t, on) {
+        if (on) { hoverTorrentItem = item; hoverTorrent = t }
+        else if (hoverTorrentItem === item) { hoverTorrentItem = null; hoverTorrent = null }
+    }
+    // The folder a line's torrent saves into: its own, or for a show's group its first one's
+    function saveFolderOf(t) {
+        if (!t) return ""
+        var m = t.grouped ? t.members[0] : t
+        if (m.save_path) return m.save_path
+        return m.content_path ? String(m.content_path).replace(/[\\/][^\\/]*$/, "") : ""
+    }
 
     // Moving or waiting to: not finished, not stopped; broken ones stay so they get seen
     function moving(t) {
@@ -246,6 +260,7 @@ Item {
     // One torrent: the show's poster, what it is, bytes as step cubes, time left
     component TorrentLine: Item {
         id: line
+        objectName: "activity-line"
         property var t: ({})
         readonly property var show: root.showOf(t)
         readonly property bool broken: t.state === "error" || t.state === "missingFiles"
@@ -257,7 +272,8 @@ Item {
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
         MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t.grouped ? line.t.members[0] : line.t); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
             Accessible.onPressAction: root.openShow(line.t.grouped ? line.t.members[0] : line.t) }
-        HoverHandler { id: lineHover }
+        HoverHandler { id: lineHover; onHoveredChanged: root.hoverLine(line, line.t, hovered) }
+        Component.onDestruction: root.hoverLine(line, null, false)
         // Stop or start, and cancel (the torrent goes, and what it wrote so far, asked
         // first); each spins until the client has done it. A show's group does all of its
         // torrents: Stop takes the ones still moving, Start the stopped ones.
@@ -360,6 +376,8 @@ Item {
                 height: implicitHeight
                 codes: line.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
                 fills: line.eps.map(function(e) { return e.p })
+                numbered: true
+                numbers: line.eps.map(function(e) { return e.n })
                 cubeSize: theme.space(5.25)
                 minSize: theme.space(2)
                 maxRows: 4

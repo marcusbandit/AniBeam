@@ -290,6 +290,9 @@ Item {
             }
         }
 
+        // Library's tabs (#1012): this page is one of them
+        LibraryTabs { here: "watching" }
+
         // ---- The sections: a heading in the display cut with its count and one fact,
         // over a grid of uniform cards
         Repeater {

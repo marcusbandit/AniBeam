@@ -571,7 +571,7 @@ impl Core {
                 ));
             }
             Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
-            Call::SetNotInterested { .. } => {
+            Call::SetNotInterested { .. } | Call::PruneNotInterested => {
                 return Err(CoreError::invalid(
                     "not_interested",
                     crate::i18n::tr("core-core-guest-not-interested", &[]),
@@ -716,6 +716,7 @@ impl Core {
                 not_interested,
             } => airing_now::set_not_interested(&self.services, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(&self.services),
+            Call::PruneNotInterested => airing_now::prune_and_list(&self.services),
             Call::PlanToWatch { anilist_id } => {
                 plan_to_watch::plan_to_watch(&self.trackers, anilist_id)
             }
@@ -893,6 +894,7 @@ impl Core {
             }
             Call::AddEndpointRepo { url } => repos::add_repo(&self.releases, url),
             Call::TrustEndpointRepo { url, key } => repos::trust_repo(&self.releases, url, key),
+            Call::AttachEndpointRepo { url } => repos::attach_repo(&self.releases, url),
             Call::RemoveEndpointRepo { url } => repos::remove_repo(&self.releases, url),
             Call::RefreshEndpointRepos => repos::refresh(&self.releases),
             Call::InstallEndpoint {

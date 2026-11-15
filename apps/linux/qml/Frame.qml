@@ -193,17 +193,19 @@ FocusScope {
         id: rail
         visible: !frame.fullWindow
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-        active: nav.railIndex
+        page: nav.railPages[nav.railIndex]
         downloadsBadge: frame.downloadsAttention
         settingsBadge: updateNotice.pending
         settingsNote: updateNotice.pending ? updateNotice.headline : ""
         // A rail page opens as it was left; the icon of the page already open takes it back
         // to its top
-        onPicked: function(i) {
-            if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) nav.openRail(nav.railPages[i], frame.leavingScroll())
+        onPicked: function(p) {
+            // From a page the place holds (Stats under Library) it is a sideways move, as the
+            // place's own tabs make, so Back still leaves the place
+            if (rail.holders[nav.current.page] === p) nav.sideways(p, frame.leavingScroll())
+            else if (nav.current.page !== p) nav.openRail(p, frame.leavingScroll())
             else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
         }
-        onVersionClicked: frame.openWhatsNew()
         inRoom: roomState.inRoom
         roomOpen: roomSheet.open
         onRoomClicked: frame.toggleRoom()
@@ -248,9 +250,16 @@ FocusScope {
 
         // The drawer is a floating panel over the page: it lives outside content, above it
         // in z, and rises from the strip's top edge, which is content's bottom edge.
+        // Seen only while there is something to say (#1012): a job running, an error not yet
+        // seen, the drawer open, or developer options on. Idle it keeps its height, so a job
+        // starting or ending never moves the page, and fades out; a click on the empty band and
+        // Ctrl+L still open the drawer.
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
+            readonly property bool speaking: job !== null || Door.unseenErrors > 0 || frame.devOn || drawer.openness > 0.001
+            opacity: speaking ? 1 : 0
+            Behavior on opacity { enabled: !theme.reducedMotion; NumberAnimation { duration: 160 } }
             // One band with the rail's foot tile: the same height, the same bottom joint
             height: visible ? rail.footHeight + theme.grout : 0
             x: content.columnX

@@ -1,5 +1,6 @@
 // One library source: a folder glyph (crossed when the folder is missing), the path, its
-// counts, then Open, Rescan and Remove. Remove asks first: the tab owns the decision to
+// counts, then Open, Rescan and Remove. A missing folder carries an Unavailable chip whose
+// tip says why and what fixes it; the row itself only states the counts. Remove asks first: the tab owns the decision to
 // show the question (it sets `confirming` from `onRemove`), and the row answers back with
 // `removeAccepted` once the question is answered yes. When the row is too narrow for the
 // path and the three buttons side by side (a stacked settings tab at a narrow window), the
@@ -20,9 +21,7 @@ Item {
     signal removeAccepted()
 
     readonly property bool available: source.available !== false
-    // An unreachable folder says what to do in the row itself, not only in its tip
-    readonly property string meta: !available ? words.t("source-row-unavailable-fix")
-        : (source.movie_folders || []).length
+    readonly property string meta: (source.movie_folders || []).length
             ? words.t("source-row-counts-movies", { count: source.series_count || 0, movies: source.movie_folders.length })
             : words.t("source-row-counts", { count: source.series_count || 0 })
     readonly property real gutter: theme.space(6)

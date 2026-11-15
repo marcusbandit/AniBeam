@@ -393,6 +393,9 @@ Item {
             }
         }
 
+        // Library's tabs (#1012): this page is one of them
+        LibraryTabs { here: "metadata" }
+
         // ---- The tools: one line of pills, wrapping on a narrow window
         Flow {
             width: parent.width

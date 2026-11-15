@@ -41,7 +41,14 @@ setsid -f anibeam-dev >"$XDG_RUNTIME_DIR/anibeam-dev.log" 2>&1
 
 Only one Anibeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
 
-A branch that touches Rust takes `cargo build --profile tester -p anibeam --features dev-qml`: copy `target/tester/anibeam` into the install along with the three steps above, then restart. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
+A branch that touches Rust needs the tester build, installed before the copy and restart steps above:
+
+```bash
+buildq --pull target/tester/anibeam -- cargo build --profile tester -p anibeam --features dev-qml
+install -m755 target/tester/anibeam ~/.local/opt/anibeam-dev/anibeam
+```
+
+`--pull` brings the binary back when buildq builds on another box. `install` replaces the file, so it works while the old one runs; `cp` over a running binary fails with "Text file busy". When nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf` changed since the checkout's last tester build, buildq answers at once and compiles nothing: the binary already in `target/tester/` is current, so install it anyway, since Dev may be running another branch's. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
@@ -53,6 +60,7 @@ A Cargo workspace. The members most work touches:
 - **`foundation/`** (`anibeam-foundation`): what every team shares: the store (SQLite, migrations in `src/store/sql/`), the event bus, jobs, paths, prefs, profiles, secrets, redact, `Services`, and small helpers more than one team reads. It depends on the contract and the two leaf crates `host-api` and `room`; the core hands each module on under its old path, so `anibeam_core::store` and `crate::foundation::services` still resolve.
 - **`net/`** (`anibeam-net`): the net team: one client per provider behind `src/limiter.rs`, the fronted and DoH clients, the fake transport the tests use, the image cache, and the build's version, which its user agents send. It depends on foundation and the contract only; the core hands it on as `anibeam_core::net`, `anibeam_core::images` and `anibeam_core::VERSION`.
 - **`library/`** (`anibeam-library`): the library team: the sources, the scans, the folder walk and the watcher, the classifier, and the reads that turn the tables into cards, details and the snapshot, plus history, delete and the trash. It depends on net, foundation, the contract and the leaf `host-api` (the host's wire records) only, and reaches the downloads above it through its own `Incoming` trait; the core hands it on as `anibeam_core::library`.
+- **`releases/`** (`anibeam-releases`): the releases team: anirss's release logic (endpoints, quirks, the feed readers, title parsing, best fit, refinement, the grid, rules and stats), what a release title says (`facts`), the endpoint repos and their pacing (`repos`), and the Feed page's reads (`feed`). It depends on library, net, foundation and the contract only, and reaches the downloads above it through its own `Searcher` and `AnirssEndpoints` traits; the core hands it on as `anibeam_core::releases`, `anibeam_core::repos` and `anibeam_core::feed`.
 - **`core/`** (`anibeam-core`): everything that is not drawing. `metadata/` matches and fetches, `trackers/` does AniList and MAL, `franchise/` crawls and closes the relation graph, `playback/`, `downloads/` and `subscriptions.rs` cover the rest. Integration tests live in `core/tests/`.
 - **`apps/linux/`** (`anibeam`): the QML shell, bridged to the core through cxx-qt 0.10. Rust bridges in `src/bridge/`, QML in `qml/`, the libmpv item in `cpp/`, themes in `themes/`, the bundled `mpv.conf`.
 - **`apps/cli/`** (`anibeam-cli`): a terminal shell, and the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`, `import`, `export`, `events --follow`, `call <Name> --json '{...}'`.

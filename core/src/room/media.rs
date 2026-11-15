@@ -42,11 +42,11 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Active, Say, emit, episode, error, not_in_room};
 use crate::contract::*;
-use crate::downloads::{self, backend::DownloadsBackend, facts, origins, replace};
+use crate::downloads::{self, backend::DownloadsBackend, origins, replace};
 use crate::events::Subscription;
 use crate::library::scan::ScanScope;
 use crate::playback::Playback;
-use crate::releases::titles;
+use crate::releases::{facts, titles};
 
 /// How long the host's app has to answer before Get media stops waiting.
 const ASK_WAIT: Duration = Duration::from_secs(30);

@@ -271,6 +271,11 @@ pub enum Call {
         not_interested: bool,
     },
     ListNotInterested,
+    /// Drops the marks of shows that no season read the Airing page still
+    /// holds carries any more, checked against the cached reads only, then
+    /// lists what is left the way `ListNotInterested` does. Nothing goes to
+    /// AniList. With no cached read of what is on air it drops nothing (#1012).
+    PruneNotInterested,
     /// Puts a show on Airing now on Planning, on every connected tracker
     /// that does not list it yet. `Started` with the job.
     PlanToWatch {
@@ -729,6 +734,13 @@ pub enum Call {
     /// Fetches and checks a repo's index and replies with it, unsaved, for the person to
     /// compare its fingerprint. `url` is an https address, or a local path to the file.
     AddEndpointRepo {
+        url: String,
+    },
+    /// Adds a repo in one step (#1003): fetches and checks its index, pins its key, and
+    /// installs every endpoint it offers that asks for no value and is not NSFW in a repo
+    /// that is not. A repo already saved under another key is refused, as on a refresh.
+    /// Replies with the catalog; the endpoints that ask for a value stay offered.
+    AttachEndpointRepo {
         url: String,
     },
     /// Saves a repo, pinning `key`, the one the preview showed.
