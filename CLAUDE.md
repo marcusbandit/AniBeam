@@ -41,7 +41,14 @@ setsid -f anibeam-dev >"$XDG_RUNTIME_DIR/anibeam-dev.log" 2>&1
 
 Only one AniBeam GUI runs at a time: a second start hands off to the one already running and exits. So wait for the old one to exit, as above, and if another build is open (an installed Nightly, say), ask before closing it. Read the log afterwards: QML that uses a bridge property the installed binary lacks fails at load there, and then the change needs Rust after all.
 
-A branch that touches Rust takes `buildq -- cargo build --profile tester -p anibeam --features dev-qml`. buildq answers at once, with nothing compiled, when only those three paths changed since the checkout's last such build. Install the binary with `install -m755 target/tester/anibeam "$dev/anibeam"` along with the copy steps above, then restart. `install` replaces the file, so it works while the old one runs; `cp` over a running binary fails with "Text file busy". The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
+A branch that touches Rust needs the tester build, installed before the copy and restart steps above:
+
+```bash
+buildq --pull target/tester/anibeam -- cargo build --profile tester -p anibeam --features dev-qml
+install -m755 target/tester/anibeam ~/.local/opt/anibeam-dev/anibeam
+```
+
+`--pull` brings the binary back when buildq builds on another box. `install` replaces the file, so it works while the old one runs; `cp` over a running binary fails with "Text file busy". When nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf` changed since the checkout's last tester build, buildq answers at once and compiles nothing: the binary already in `target/tester/` is current, so install it anyway, since Dev may be running another branch's. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
