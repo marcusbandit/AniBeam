@@ -46,9 +46,17 @@ _dl = (out / "download/index.html").read_text()
 NAV = re.search(r'<header class="nav">.*?</header>', _dl, re.S).group(0)
 FOOT = re.search(r'<footer class="foot">.*?</footer>', _dl, re.S).group(0)
 # The language menu leads to each language's home page, since the wiki is English only.
+# English, the language the visitor is in, stays on the page (page() points it at its own
+# address): lang.js sees the same page and the current language and does nothing, rather
+# than leaving for the home page.
+NAV = re.sub(r'(<a href=")\.\./download/(" hreflang="en"[^>]*aria-current="true")', r'\1../wiki/\2', NAV)
 NAV = re.sub(r'(<a href=")\.\./(?:([\w-]+)/)?download/(" hreflang=)', lambda m: f'{m.group(1)}../{m.group(2) + "/" if m.group(2) else ""}{m.group(3)}', NAV)
-# The nav's own Wiki link marks where the visitor is.
-NAV = NAV.replace('<a class="nav-wiki" href="../wiki/">', '<a class="nav-wiki" href="../wiki/" aria-current="page">', 1)
+# The nav's own Wiki link marks where the visitor is. A change to its markup fails the build
+# here rather than shipping a nav with no current page.
+WIKI_LINK = '<a class="nav-wiki" href="../wiki/">'
+if WIKI_LINK not in NAV:
+    sys.exit("wiki: the download page's nav has no Wiki link to mark as current")
+NAV = NAV.replace(WIKI_LINK, '<a class="nav-wiki" href="../wiki/" aria-current="page">', 1)
 
 
 def chrome(fragment, prefix):
@@ -86,7 +94,7 @@ def page(title, prefix, body, canonical, description):
 <script src="{prefix}lang.js" defer></script>
 </head>
 <body>
-{chrome(NAV, prefix)}
+{chrome(NAV, prefix).replace(f'href="{prefix}wiki/" hreflang="en"', f'href="{prefix}{canonical}" hreflang="en"', 1)}
 <main class="wiki">
 {body}
 </main>
@@ -97,10 +105,15 @@ def page(title, prefix, body, canonical, description):
 
 
 def check(slug, text):
-    """A fragment's sections each need an id, since the app links to them."""
+    """A fragment's sections each need an id of their own, since the app links to them."""
+    seen = set()
     for m in re.finditer(r"<h2\b([^>]*)>", text):
-        if "id=" not in m.group(1):
+        found = re.search(r'(?:^|\s)id="([\w-]+)"', m.group(1))
+        if not found:
             sys.exit(f"wiki: site/wiki/{slug}.html has an <h2> without an id")
+        if found.group(1) in seen:
+            sys.exit(f"wiki: site/wiki/{slug}.html has two sections with the id {found.group(1)}")
+        seen.add(found.group(1))
     if re.search("[\\u2013\\u2014]", text):
         sys.exit(f"wiki: site/wiki/{slug}.html has an en or em dash")
 
