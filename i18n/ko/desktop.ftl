@@ -406,7 +406,6 @@ onboarding-search-title = 검색할 곳
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-search-paste = Anibeam에는 자체 소스가 없습니다. 누군가 공유해 준 소스 목록의 주소를 붙여 넣으세요.
 onboarding-fetch-title = 받아 오는 곳
 onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천

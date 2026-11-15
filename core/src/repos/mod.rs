@@ -489,11 +489,20 @@ pub fn trust_repo(releases: &Releases, url: String, key: String) -> Result<Reply
     if idx.key != key {
         return Err(RepoFault::new("key_changed", tr("core-repos-key-not-shown", &[])).into());
     }
-    let stored = stored_repo(&releases.services, &url)?;
+    pin_index(releases, &url, &idx)?;
+    reply(releases)
+}
+
+/// Saves a fetched index, pinning its key on first use and refusing one saved before under
+/// another key (`admit`), and says once that a repo was added. Hands back the repo as it was
+/// stored before, `None` for a new one. Trusting and attaching both go through here, so the
+/// key rule lives in one place.
+fn pin_index(releases: &Releases, url: &str, idx: &Index) -> Result<Option<RepoRow>, CoreError> {
+    let stored = stored_repo(&releases.services, url)?;
     if let Some(stored) = &stored {
-        admit(stored, &idx)?;
+        admit(stored, idx)?;
     }
-    save_index(&releases.services, &url, &idx)?;
+    save_index(&releases.services, url, idx)?;
     if stored.is_none() {
         releases.services.bus.say(
             Level::Info,
@@ -503,7 +512,7 @@ pub fn trust_repo(releases: &Releases, url: String, key: String) -> Result<Reply
             EventBody::Notice,
         );
     }
-    reply(releases)
+    Ok(stored)
 }
 
 /// Adds a repo and turns on what it offers, in one step (#1003). The key is pinned on first
@@ -516,32 +525,44 @@ pub fn attach_repo(releases: &Releases, url: String) -> Result<Reply, CoreError>
         .services
         .handle
         .block_on(fetch(&releases.services, &url))?;
-    let stored = stored_repo(&releases.services, &url)?;
-    if let Some(stored) = &stored {
-        admit(stored, &idx)?;
-    }
     recover(&releases.pending.indexes).remove(&url);
-    save_index(&releases.services, &url, &idx)?;
-    if stored.is_none() {
-        releases.services.bus.say(
-            Level::Info,
-            Stage::Downloads,
-            crate::words!("core-repos-repo-added"),
-            format!("Added the endpoint repo {}", idx.name),
-            EventBody::Notice,
-        );
-    }
+    let stored = pin_index(releases, &url, &idx)?;
     let installed = releases.services.store.read(read_installed)?;
-    for def in idx
-        .endpoints
-        .iter()
-        .filter(|d| d.auth.is_empty() && (idx.nsfw || !d.nsfw))
-        .filter(|d| !installed.iter().any(|i| i.def.id == d.id))
-    {
-        // A list just added says so once; a source added to a list already there says so itself.
-        insert_install(releases, &url, def, &[], stored.is_some())?;
+    // A list attached again turns on only what is new in it since it was saved, so a source
+    // the person removed stays removed. A list saved before with nothing on from it (the old
+    // Add then Trust) gets everything, as a new one does.
+    let before: Option<Vec<String>> = stored
+        .as_ref()
+        .filter(|r| installed.iter().any(|i| i.repo_url == r.url))
+        .map(|r| {
+            index::reread(&r.payload, CORE_VERSION)
+                .into_iter()
+                .map(|d| d.id)
+                .collect()
+        });
+    let turned_on = (|| {
+        for def in idx
+            .endpoints
+            .iter()
+            .filter(|d| d.auth.is_empty() && (idx.nsfw || !d.nsfw))
+            .filter(|d| !installed.iter().any(|i| i.def.id == d.id))
+            .filter(|d| before.as_ref().is_none_or(|ids| !ids.contains(&d.id)))
+        {
+            // A list just added says so once; a source new to a list already there says so itself.
+            insert_install(releases, &url, def, &[], stored.is_some())?;
+        }
+        Ok::<(), CoreError>(())
+    })();
+    // What did land reaches the search helper even when a later one failed
+    match turned_on {
+        Ok(()) => changed(releases),
+        Err(e) => {
+            if let Some(searcher) = releases.searcher.get() {
+                searcher.endpoints_changed();
+            }
+            Err(e)
+        }
     }
-    changed(releases)
 }
 
 pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {

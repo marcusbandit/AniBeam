@@ -45,7 +45,8 @@ Item {
         if (page.state !== null || page.searchError !== "") { page.clearSearch(); return true }
         return false
     }
-    function focusSearch() { scroll.contentY = 0; search.focusInput() }
+    // With no source yet the search field is hidden, and the field that adds a list stands in
+    function focusSearch() { scroll.contentY = 0; if (page.noSources) noSourcesAttach.focusInput(); else search.focusInput() }
 
     // ---- The connection
     property var status: null
@@ -2055,6 +2056,7 @@ Item {
                 spacing: theme.space(5)
                 Label { width: parent.width; msg: "downloads-no-sources"; role: "title"; font.pointSize: theme.typeLarge * 1.2; wrapMode: Text.Wrap }
                 SourceAttach {
+                    id: noSourcesAttach
                     width: parent.width
                     onAttached: page.reload()
                     onSettingsAsked: frame.go("settings", { tab: "downloads" })
@@ -2810,7 +2812,7 @@ Item {
                 height: visible ? theme.space(30) : 0
                 EmptyState {
                     icon: "rss"; title: words.t("downloads-no-rules"); body: words.t("downloads-no-rules-body")
-                    Button { objectName: "downloads-no-rules-search"; msg: "downloads-search"; icon: "search"; primary: true; onClicked: search.focusInput() }
+                    Button { objectName: "downloads-no-rules-search"; msg: "downloads-search"; icon: "search"; primary: true; onClicked: page.focusSearch() }
                 }
             }
         }

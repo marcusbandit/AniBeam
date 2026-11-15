@@ -206,6 +206,26 @@ fn attaching_again_installs_nothing_twice() {
 }
 
 #[test]
+fn attaching_again_keeps_a_removed_source_off_and_turns_on_one_new_to_the_list() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    let a = || endpoint("a", 1, "https://a.example/?q={query}", false);
+    let b = || endpoint("b", 1, "https://b.example/?q={query}", false);
+    write_repo(&path, &key(1), 1, vec![a(), b()]);
+    let c = attach(&core, &url).unwrap();
+    let gone = c.installed.iter().find(|i| i.id == "b").unwrap();
+    core.call(Call::RemoveEndpoint {
+        install: gone.install_id.clone(),
+    })
+    .unwrap();
+    let c = endpoint("c", 1, "https://c.example/?q={query}", false);
+    write_repo(&path, &key(1), 2, vec![a(), b(), c]);
+    let after = attach(&core, &url).unwrap();
+    assert_eq!(installed_ids(&after), ["a", "c"]);
+}
+
+#[test]
 fn attaching_leaves_an_nsfw_endpoint_alone_unless_the_repo_is_nsfw() {
     let (dir, core, _) = common::open_core();
     let path = dir.path().join("mixed.json");

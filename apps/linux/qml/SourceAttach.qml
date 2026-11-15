@@ -25,12 +25,14 @@ Column {
         var r = Door.call("ListRepoEndpoints", {})
         if (r && r.kind === "EndpointCatalog") seen = r.reply.catalog
     }
-    Component.onCompleted: reread()
+    // Only once it shows: the Downloads page builds one it keeps hidden while sources exist
+    Component.onCompleted: if (visible) reread()
     onVisibleChanged: if (visible) reread()
     // Names the sources that wait for a value and offers Settings for them. Settings lists
     // them itself, so it turns this off.
     property bool showWaiting: true
-    property string url: ""
+    // The address the last Add tried, for Try again; the field itself decides whether Add can run
+    property string tried: ""
     property bool busy: false
     property string error: ""
     // The core's own words for the error, under the line's Details
@@ -65,8 +67,13 @@ Column {
         for (var i = 0; i < repos.length; i++) if (repos[i].url === attachedUrl) return repos[i]
         return null
     }
-    readonly property var added: result ? known.installed.filter(function(e) { return e.repo_url === root.attachedUrl }) : []
-    readonly property var waiting: result ? known.offered.filter(function(o) { return o.repo_url === root.attachedUrl && !o.installed }) : []
+    // The sources this Add turned on, not every one the list ever had: the install ids from
+    // before the call are left out
+    property var before: ({})
+    readonly property var added: result ? known.installed.filter(function(e) { return e.repo_url === root.attachedUrl && !root.before[e.install_id] }) : []
+    // The ones that wait for a value. An NSFW source in a list that is not NSFW, or one whose
+    // id is on already, asks for nothing and is left out
+    readonly property var waiting: result ? known.offered.filter(function(o) { return o.repo_url === root.attachedUrl && !o.installed && o.auth.length > 0 && (root.result.nsfw || !o.nsfw) }) : []
 
     property var pending: ({})
     Connections {
@@ -86,7 +93,6 @@ Column {
                     if (r === u || r.toLowerCase() === u.toLowerCase()) hit = r
                 }
                 root.attachedUrl = hit
-                root.url = ""
                 field.text = ""
                 if (hit !== "") root.remember(hit)
                 root.attached(c)
@@ -101,7 +107,11 @@ Column {
     function attach(given) {
         var u = String(given === undefined ? field.text : given).trim()
         if (u === "" || busy) return
-        root.url = u
+        root.tried = u
+        var had = ({})
+        var ins = known ? known.installed : []
+        for (var i = 0; i < ins.length; i++) had[ins[i].install_id] = true
+        root.before = had
         root.error = ""
         root.errorDetail = ""
         root.busy = true
@@ -130,7 +140,6 @@ Column {
             mono: text !== ""
             placeholder: words.t("source-attach-placeholder")
             accessibleName: words.t("source-attach-placeholder")
-            onTextChanged: root.url = text
             Keys.onReturnPressed: root.attach()
             Keys.onEnterPressed: root.attach()
         }
@@ -141,7 +150,7 @@ Column {
             icon: "plus"
             text: root.busy ? words.t("endpoint-repos-panel-checking") : words.t("endpoint-repos-panel-add")
             busy: root.busy
-            enabled: !root.busy && root.url.trim() !== ""
+            enabled: !root.busy && field.text.trim() !== ""
             onClicked: root.attach()
         }
         Button {
@@ -181,8 +190,10 @@ Column {
         width: parent.width
         text: root.error
         detail: root.errorDetail
-        actionText: root.errorFix === undefined || root.errorFix === "retry" ? words.t("action-try-again") : ""
-        action: function() { root.attach(root.url) }
+        // Every failure here is tried again from here: the fix a list error names points at
+        // this very step, and a host that was down is the case trying again helps
+        actionText: words.t("action-try-again")
+        action: function() { root.attach(root.tried) }
     }
 
     // What the Add just did: the list, the sources it turned on, the ones that wait

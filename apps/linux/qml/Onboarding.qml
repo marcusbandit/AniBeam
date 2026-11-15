@@ -777,11 +777,9 @@ Item {
                 spacing: theme.space(2)
                 Label { msg: "onboarding-search-title"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
                 Label {
-                    visible: !attach.result
+                    visible: !attach.result && root.endpointCount > 0
                     width: parent.width
-                    text: root.endpointCount > 0
-                        ? words.t("onboarding-search-ready", { count: root.endpointCount })
-                        : words.t("onboarding-search-paste")
+                    text: words.t("onboarding-search-ready", { count: root.endpointCount })
                     color: theme.textDim; wrapMode: Text.Wrap; lineHeight: 1.1
                 }
                 Item { visible: attach.visible; width: 1; height: theme.space(2) }

@@ -456,7 +456,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } Quelle bereit zum Suchen.
    *[other] { $count } Quellen bereit zum Suchen.
 }
-onboarding-search-paste = Anibeam bringt keine eigenen Quellen mit. Füge die Adresse einer Quellenliste ein, die dir jemand geschickt hat.
 onboarding-fetch-title = Wer lädt
 onboarding-fetch-auto = Anibeam kümmert sich
 onboarding-fetch-recommended = Empfohlen

@@ -512,7 +512,6 @@ onboarding-search-ready = { $count ->
     [many] { $count } źródeł gotowych do wyszukiwania.
    *[other] { $count } źródła gotowego do wyszukiwania.
 }
-onboarding-search-paste = Anibeam nie ma własnych źródeł. Wklej adres listy źródeł, którą ktoś ci udostępnił.
 onboarding-fetch-title = Kto pobiera
 onboarding-fetch-auto = Niech zajmie się tym Anibeam
 onboarding-fetch-recommended = Zalecane

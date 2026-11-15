@@ -378,7 +378,6 @@ onboarding-lists-connected = 已连接。你在这里看的内容现在会计入
 onboarding-lists-no-account = 还没有账号？两个都免费，有一个就够了。随时可以在设置的“账号”中断开连接。
 onboarding-search-title = 可以搜索的地方
 onboarding-search-ready = 有 { $count } 个来源可供搜索。
-onboarding-search-paste = Anibeam 不自带任何来源。粘贴别人分享给你的来源列表地址。
 onboarding-fetch-title = 由谁下载
 onboarding-fetch-auto = 交给 Anibeam
 onboarding-fetch-recommended = 推荐

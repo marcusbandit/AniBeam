@@ -456,7 +456,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } bron klaar om te doorzoeken.
    *[other] { $count } bronnen klaar om te doorzoeken.
 }
-onboarding-search-paste = Anibeam heeft geen eigen bronnen. Plak het adres van een bronlijst die iemand met je heeft gedeeld.
 onboarding-fetch-title = Wie haalt op
 onboarding-fetch-auto = Laat Anibeam het regelen
 onboarding-fetch-recommended = Aanbevolen

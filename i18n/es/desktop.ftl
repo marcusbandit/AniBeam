@@ -456,7 +456,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } fuente lista para buscar.
    *[other] { $count } fuentes listas para buscar.
 }
-onboarding-search-paste = Anibeam no trae fuentes propias. Pega la dirección de una lista de fuentes que alguien haya compartido contigo.
 onboarding-fetch-title = Quién descarga
 onboarding-fetch-auto = Que se encargue Anibeam
 onboarding-fetch-recommended = Recomendado

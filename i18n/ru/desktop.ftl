@@ -500,7 +500,6 @@ onboarding-search-ready = { $count ->
     [many] { $count } источников готовы к поиску.
    *[other] { $count } источника готовы к поиску.
 }
-onboarding-search-paste = В Anibeam нет своих источников. Вставьте адрес списка источников, которым с вами поделились.
 onboarding-fetch-title = Кто скачивает
 onboarding-fetch-auto = Пусть Anibeam всё сделает
 onboarding-fetch-recommended = Рекомендуется

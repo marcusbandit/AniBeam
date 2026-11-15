@@ -384,7 +384,6 @@ onboarding-lists-connected = 連携しました。ここで視聴したものが
 onboarding-lists-no-account = アカウントがない場合は? どちらも無料で、1つあれば十分です。連携は設定の「アカウント」でいつでも解除できます。
 onboarding-search-title = 検索先
 onboarding-search-ready = { $count }件のソースで検索できます。
-onboarding-search-paste = Anibeam には独自のソースがありません。誰かに共有されたソースリストのアドレスを貼り付けてください。
 onboarding-fetch-title = 取得の方法
 onboarding-fetch-auto = Anibeamに任せる
 onboarding-fetch-recommended = おすすめ

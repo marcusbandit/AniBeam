@@ -456,7 +456,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } kilde klar til søgning.
    *[other] { $count } kilder klar til søgning.
 }
-onboarding-search-paste = Anibeam kommer uden egne kilder. Indsæt adressen på en kildeliste, som nogen har delt med dig.
 onboarding-fetch-title = Hvem henter
 onboarding-fetch-auto = Lad Anibeam klare det
 onboarding-fetch-recommended = Anbefalet

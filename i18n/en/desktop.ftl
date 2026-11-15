@@ -461,7 +461,6 @@ onboarding-search-ready = { $count ->
     [one] { $count } source ready to search.
    *[other] { $count } sources ready to search.
 }
-onboarding-search-paste = Anibeam comes with no sources of its own. Paste the address of a source list someone shared with you.
 onboarding-fetch-title = Who fetches
 onboarding-fetch-auto = Let Anibeam handle it
 onboarding-fetch-recommended = Recommended
