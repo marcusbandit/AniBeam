@@ -291,7 +291,7 @@ update track from that version:
 | Build | Version | Comes from | Who gets it |
 | --- | --- | --- | --- |
 | Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
-| Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, run on demand | the Nightly track in Settings |
+| Nightly | `2.5.0-nightly.20261102.40` | a merge to main builds it, `nightly.yml` publishes it | the Nightly track in Settings |
 | PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
 | Phone stable | `android-v2.4.3` | Release workflow with app `phone`, promoting a phone nightly | everyone with the phone app |
 | Phone nightly | `android-v2.4.3-nightly.20261113.41` | `nightly.yml`, the same run | whoever installs it |
