@@ -5,7 +5,8 @@
   {"click": "rail-library"},
   {"until": "driver.item.pageReady('library')"},
   {"until": "frame.item.pageItem.cardIds().length >= 150", "timeout": 60000},
-  {"eval": "frame.item.pageItem.cardIds()", "as": "ids"},
+  {"log": "the cards in page order: section by section, as the focus chain runs"},
+  {"eval": "[].concat.apply([], frame.item.pageItem.sections.map(function(s) { return s.ids }))", "as": "ids"},
   {"eval": "'tile-' + vars.ids[vars.ids.length - 1]", "as": "last"},
   {"eval": "vars.inView = function() { var c = window.activeFocusItem, f = c.parent.parent.flick, p = c.mapToItem(f, 0, 0); return p.y >= 0 && p.y + c.height <= f.height }; 1"},
 
