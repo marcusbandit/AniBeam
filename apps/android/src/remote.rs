@@ -137,19 +137,23 @@ pub fn series(
         }
     };
 
-    // Aired, listed by the rule as missing, and not on disk.
+    // Aired, listed by the rule as missing, and not on disk. The rule counts bare
+    // numbers, so they belong to the season airing now (#1087).
     let on_disk: Vec<(u32, u32)> = page
         .episodes
         .iter()
         .filter(|e| e.number.fract() == 0.0)
         .map(|e| (e.season.unwrap_or(1), e.number as u32))
         .collect();
+    let missing_season = missing_season(&page.episodes, page.upcoming.first());
     let next_number = page.upcoming.first().map(|a| a.episode);
     let missing: Vec<u32> = page
         .subscription
         .iter()
         .flat_map(|s| s.missing.iter().copied())
-        .filter(|n| !on_disk.contains(&(1, *n)) && next_number.is_none_or(|next| *n < next))
+        .filter(|n| {
+            !on_disk.contains(&(missing_season, *n)) && next_number.is_none_or(|next| *n < next)
+        })
         .collect();
 
     let head = SeriesHead {
@@ -252,7 +256,7 @@ pub fn series(
         .collect();
     for n in &missing {
         let line = EpisodeLine {
-            code: format::episode_code(None, *n).into(),
+            code: format::episode_code(Some(missing_season), *n).into(),
             title: tr!("common-episode-n", n = n.to_string()).into(),
             date: tr!("remote-aired").into(),
             note: tr!("remote-missing").into(),
@@ -264,7 +268,7 @@ pub fn series(
             versions: Default::default(),
             ..Default::default()
         };
-        lines.push(((1, f64::from(*n)), line));
+        lines.push(((missing_season, f64::from(*n)), line));
     }
     lines.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut lines: Vec<EpisodeLine> = lines.into_iter().map(|(_, l)| l).collect();
@@ -290,6 +294,14 @@ pub fn series(
         });
     }
     Some((head, lines))
+}
+
+/// The season the rule's missing numbers belong to: the one airing next, else the
+/// latest on disk, else the first.
+fn missing_season(episodes: &[library::DiskEpisode], next: Option<&Airing>) -> u32 {
+    next.and_then(|a| a.season)
+        .or_else(|| episodes.iter().filter_map(|e| e.season).max())
+        .unwrap_or(1)
 }
 
 /// The versions the other device keeps of an episode, streamed from there at a tap.
@@ -355,4 +367,36 @@ pub fn calendar(
         })
         .collect();
     crate::phone::days_of(timed, now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on_disk(season: Option<u32>, number: f64) -> library::DiskEpisode {
+        library::DiskEpisode {
+            season,
+            number,
+            code: format::episode_code(season, number as u32),
+            watched: false,
+            title: None,
+            aired_at: None,
+            file: Some(1),
+            versions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn missing_episodes_belong_to_the_season_airing_now() {
+        let files = [on_disk(Some(3), 1.0), on_disk(Some(3), 7.0)];
+        let next = Airing {
+            episode: 16,
+            season: Some(3),
+            at: 0,
+        };
+        assert_eq!(missing_season(&files, Some(&next)), 3);
+        assert_eq!(missing_season(&files, None), 3);
+        assert_eq!(missing_season(&[on_disk(None, 1.0)], None), 1);
+        assert_eq!(missing_season(&[], None), 1);
+    }
 }
