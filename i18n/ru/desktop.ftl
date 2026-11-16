@@ -68,6 +68,7 @@ update-notice-downloading = Загрузка Anibeam { $version }
 update-notice-ready = Anibeam { $version } готов
 update-notice-failed = Обновление не удалось
 update-notice-on-aur = Anibeam { $version } есть в AUR
+update-notice-in-repo = Anibeam { $version } есть в репозитории { $manager }
 update-notice-out = Вышел Anibeam { $version }
 update-notice-out-titled = Вышел Anibeam { $version } «{ $title }»
 update-notice-progress = { $percent }%  ·  { $got } из { $total } МБ

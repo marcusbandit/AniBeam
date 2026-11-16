@@ -63,6 +63,18 @@ pub enum Manager {
     Dnf,
 }
 
+impl Manager {
+    /// Where this manager's updates come from, as the update notice names it: `aur`, `apt`
+    /// or `dnf`.
+    pub fn source(self) -> &'static str {
+        match self {
+            Manager::Pacman => "aur",
+            Manager::Apt => "apt",
+            Manager::Dnf => "dnf",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Os {
     Linux,
@@ -1018,5 +1030,12 @@ mod tests {
             Some("sudo dnf upgrade --refresh anibeam")
         );
         assert_eq!(repo_command(Manager::Pacman, "anibeam-bin"), None);
+    }
+
+    #[test]
+    fn each_manager_names_its_own_source() {
+        assert_eq!(Manager::Pacman.source(), "aur");
+        assert_eq!(Manager::Apt.source(), "apt");
+        assert_eq!(Manager::Dnf.source(), "dnf");
     }
 }

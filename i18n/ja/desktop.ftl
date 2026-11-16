@@ -43,6 +43,7 @@ update-notice-downloading = Anibeam { $version }をダウンロード中
 update-notice-ready = Anibeam { $version }の準備ができました
 update-notice-failed = アップデートに失敗しました
 update-notice-on-aur = Anibeam { $version }がAURに公開されました
+update-notice-in-repo = Anibeam { $version }が{ $manager }リポジトリに公開されました
 update-notice-out = Anibeam { $version }が公開されました
 update-notice-out-titled = Anibeam { $version }「{ $title }」が公開されました
 update-notice-progress = { $percent }%  ·  { $got } / { $total } MB
