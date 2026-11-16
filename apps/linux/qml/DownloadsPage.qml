@@ -563,6 +563,14 @@ Item {
     function sayOnSearch(text, detail, label, act) {
         page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null }
         page.searchError = text
+        page.searchErrorAllOff = false
+    }
+    // Set while the error says no source is on: whichever control switches one on clears it
+    property bool searchErrorAllOff: false
+    onEnabledEndpointsChanged: {
+        if (!page.searchErrorAllOff || page.enabledEndpoints.length === 0) return
+        page.searchErrorAllOff = false
+        if (page.searchError !== "") { page.searchError = ""; page.searchFix = ({}) }
     }
     property var selected: ({})
     property int hoveredGroup: -1
@@ -775,6 +783,7 @@ Item {
                     if (page.sourceOn(first)) page.runSearch()
                 })
             } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) })
+            page.searchErrorAllOff = true
             return
         }
         page.closeGet()
