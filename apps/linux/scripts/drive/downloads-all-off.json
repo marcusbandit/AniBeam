@@ -3,7 +3,7 @@
  {"click": "rail-downloads"},
  {"until": "driver.item.pageReady('downloads')", "timeout": 15000},
  {"wait": 1500},
- {"eval": "var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status || {})); st.settings = Object.assign({}, st.settings || {}, { engine: 'Native' }); st.endpoints = [{ name: 'alpha', kind: 'filtered-rss', on_demand: false, followable: true, url: 'https://alpha.example/rss' }, { name: 'beta', kind: 'torznab', on_demand: false, followable: true, url: 'https://beta.example/api' }]; p.status = st; frame.downloadsSources = { alpha: false, beta: false }; p.enabledEndpoints.length", "expect": 0},
+ {"eval": "var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status || {})); st.settings = Object.assign({}, st.settings || {}, { engine: 'Native' }); st.endpoints = [{ name: 'alpha', kind: 'filtered-rss', on_demand: false, followable: true, url: 'https://alpha.example/rss' }, { name: 'beta', kind: 'torznab', on_demand: false, followable: true, url: 'https://beta.example/api' }]; p.status = st; frame.item.downloadsSources = { alpha: false, beta: false }; p.enabledEndpoints.length", "expect": 0},
  {"click": "downloads-search"},
  {"type": "Example Show"},
  {"key": "Return"},
