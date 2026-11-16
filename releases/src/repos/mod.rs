@@ -12,6 +12,7 @@ pub mod index;
 mod pace;
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -909,17 +910,21 @@ fn id_of(name: &str) -> String {
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
     let mut fields: Vec<index::AuthField> = Vec::new();
     let mut lifted: Vec<(String, String)> = Vec::new();
+    // Whether `key` now holds `value`: a key lifted already with another value keeps the
+    // second one written out, so it is not filled with the first.
     let mut lift = |key: &str, label: &str, value: &str| {
-        if !fields.iter().any(|f| f.key == key) {
-            fields.push(index::AuthField {
-                key: key.to_string(),
-                label: label.to_string(),
-                secret: true,
-                help: String::new(),
-                help_url: None,
-            });
-            lifted.push((key.to_string(), value.to_string()));
+        if let Some((_, held)) = lifted.iter().find(|(k, _)| k == key) {
+            return held == value;
         }
+        fields.push(index::AuthField {
+            key: key.to_string(),
+            label: label.to_string(),
+            secret: true,
+            help: String::new(),
+            help_url: None,
+        });
+        lifted.push((key.to_string(), value.to_string()));
+        true
     };
     // Cut the way `mask` and `without_secrets` read an address, so a key after a `#` or a
     // `;` is lifted too, not only one after `?` or `&` (#1046).
@@ -954,11 +959,23 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
             let label = anibeam_foundation::redact::secret_param(k)?;
             (!v.is_empty() && !v.starts_with('{')).then_some((k, v, label))
         });
+        // A key's value runs on over a `;` or `?` (a password can hold them), but never over
+        // a placeholder: `passkey=P;q={query}` is the key `P` and then the search.
+        let secret = secret.and_then(|(k, v, label)| match v.find('{') {
+            None => Some((k, v, "", label)),
+            Some(open) => {
+                let cut = v[..open].rfind([';', '?']).filter(|&i| i > 0)?;
+                Some((k, &v[..cut], &v[cut..], label))
+            }
+        });
         match secret {
-            Some((k, v, label)) => {
+            Some((k, v, tail, label)) => {
                 let lower = k.to_lowercase();
-                lift(&lower, label, &crate::endpoints::unquote_plus(v));
-                template.push_str(&format!("{k}={{{lower}}}"));
+                if lift(&lower, label, &crate::endpoints::unquote_plus(v)) {
+                    let _ = write!(template, "{k}={{{lower}}}{tail}");
+                } else {
+                    template.push_str(pair);
+                }
             }
             None => template.push_str(pair),
         }
@@ -1233,7 +1250,9 @@ pub fn lift_stored_secrets(releases: &Releases) -> Result<(), CoreError> {
     let mut first_error = None;
     for row in installed.into_iter().filter(|r| r.repo_url == CUSTOM) {
         let (template, auth, lifted) = lift_secrets(&row.def.url);
-        if lifted.is_empty() {
+        // A rewrite that would cost a source its search is left for the person to fix.
+        let loses_search = row.def.url.contains("{query}") && !template.contains("{query}");
+        if lifted.is_empty() || loses_search {
             continue;
         }
         let mut def = row.def.clone();
@@ -2255,6 +2274,44 @@ mod tests {
     }
 
     #[test]
+    fn a_key_stored_after_a_hash_moves_out_and_the_search_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = Fake::open(dir.path(), FakeHttp::new());
+        custom(&core, "old", "https://h.example/feed?q={query}");
+        let old_url = "https://h.example/feed?q={query}#token=K";
+        core.services
+            .store
+            .write(move |conn| {
+                let def: String =
+                    conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
+                        r.get(0)
+                    })?;
+                let mut def: Definition = serde_json::from_str(&def).unwrap();
+                def.url = old_url.to_string();
+                conn.execute(
+                    "UPDATE installed_endpoints SET definition = ?1",
+                    params![serde_json::to_string(&def).unwrap()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        lift_stored_secrets(&core.releases).unwrap();
+        let row = core.services.store.read(read_installed).unwrap().remove(0);
+        assert_eq!(
+            row.def.url,
+            "https://h.example/feed?q={query}#token={token}"
+        );
+        let stored = core
+            .services
+            .secrets()
+            .get(&secret_key(&row.install_id, "token"), None)
+            .unwrap()
+            .map(|(v, _)| v);
+        assert_eq!(stored.as_deref(), Some("K"));
+    }
+
+    #[test]
     fn a_stored_feed_keeps_the_placeholder_and_is_filled_when_read() {
         let dir = tempfile::tempdir().unwrap();
         let core = Fake::open(dir.path(), FakeHttp::new());
@@ -2629,6 +2686,17 @@ mod tests {
         let (template, _, lifted) = lift_secrets("https://h.example/feed#apikey=a;b&q={query}");
         assert_eq!(template, "https://h.example/feed#apikey={apikey}&q={query}");
         assert_eq!(lifted, vec![("apikey".to_string(), "a;b".to_string())]);
+        // A key never takes the search with it.
+        let (template, _, lifted) = lift_secrets("https://h.example/feed#token=K;q={query}");
+        assert_eq!(template, "https://h.example/feed#token={token};q={query}");
+        assert_eq!(lifted, vec![("token".to_string(), "K".to_string())]);
+        let (template, _, lifted) = lift_secrets("https://h.example/feed?passkey={query}");
+        assert_eq!(template, "https://h.example/feed?passkey={query}");
+        assert!(lifted.is_empty());
+        // The same key written twice with two values: the second stays as written.
+        let (template, _, lifted) = lift_secrets("https://h.example/feed?apikey=A#apikey=B");
+        assert_eq!(template, "https://h.example/feed?apikey={apikey}#apikey=B");
+        assert_eq!(lifted, vec![("apikey".to_string(), "A".to_string())]);
     }
 
     #[test]
