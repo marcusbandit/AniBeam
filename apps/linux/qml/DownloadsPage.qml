@@ -282,6 +282,9 @@ Item {
     // ---- The suggestions under the field: library shows, then AniList's
     property var aniHits: []
     property real aniJob: -1
+    // Index 0 is the release search row, there only while a source is on; the shows start at 1
+    readonly property bool canSearchReleases: enabledEndpoints.length > 0
+    readonly property int suggestFirst: canSearchReleases ? 0 : 1
     property int suggestIndex: 0
     property bool suggestClosed: false
     readonly property string query: search.text.trim()
@@ -763,6 +766,7 @@ Item {
         if (q === "") { search.focusInput(); return }
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
         if (!names.length) {
+            page.suggestClosed = true
             if (page.endpoints.length) {
                 var first = page.endpoints[0].name
                 page.sayOnSearch(words.t("downloads-search-all-off"), "", words.t("downloads-turn-on", { name: first }), function() {
@@ -1920,8 +1924,8 @@ Item {
                 if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
                 else page.runSearch()
             }
-            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
-            onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(page.suggestFirst, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+            onTextChanged: { page.suggestClosed = false; page.suggestIndex = page.suggestFirst; aniDebounce.restart() }
             onCleared: { page.aniHits = [] }
         }
 
@@ -1929,7 +1933,8 @@ Item {
         Tile {
             id: suggestTile
             objectName: "downloads-suggestions"
-            visible: page.suggesting
+            // With no source on and no show matched yet there is nothing to offer
+            visible: page.suggesting && (page.suggestRows.length > 0 || page.canSearchReleases)
             width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
@@ -2034,14 +2039,18 @@ Item {
                         }
                     }
                 }
+                // Searching release names needs a source that is on; without one, Return
+                // closes the box and says which source to turn on
                 Item {
+                    objectName: "suggest-release-search"
+                    visible: page.canSearchReleases
                     width: parent.width
                     height: theme.space(14)
                     Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 || releaseRowMouse.containsMouse ? theme.glassFloat : "transparent" }
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.enabledEndpoints.length ? words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") }) : words.t("downloads-suggest-release-search-none", { query: page.query })
+                        text: words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") })
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
