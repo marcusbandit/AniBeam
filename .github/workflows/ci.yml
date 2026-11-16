@@ -2,7 +2,8 @@ name: CI
 
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the crates the pull request changed and every crate that builds on them
-# (.github/affected-crates.py, #1075). The Qt shell (apps/linux, package
+# (.github/affected-crates.py, #1075). A file only one test target reads, such as a patch
+# note, runs that target alone (#1086). The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
 # tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
 # (#986), which sets those up for the AppImage. Runs on main
@@ -100,7 +101,7 @@ jobs:
           python3 .github/affected-crates.py "${pick[@]}" --skip anibeam --github-output
 
       - uses: Swatinem/rust-cache@v2
-        if: steps.affected.outputs.crates != ''
+        if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
         with:
           # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
           # longer push the repo past its 10 GB and evict the ones every PR needs.
@@ -148,8 +149,41 @@ jobs:
         if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-playback ')
         run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
 
+      # cargo-nextest runs every test binary at once, where cargo test runs them one after
+      # another (#1086). .config/nextest.toml holds its ci profile.
+      - uses: taiki-e/install-action@v2
+        if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
+        with:
+          tool: cargo-nextest@0.9.151
+
       - name: Test
         if: steps.affected.outputs.crates != ''
         env:
           CRATES: ${{ steps.affected.outputs.crates }}
-        run: cargo test --locked $(printf -- '-p %s ' $CRATES)
+        run: cargo nextest run --locked --profile ci $(printf -- '-p %s ' $CRATES)
+
+      # nextest skips doctests. Only a crate with a library has any.
+      - name: Doctests
+        if: steps.affected.outputs.doc != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.doc }}
+        run: cargo test --locked --doc $(printf -- '-p %s ' $CRATES)
+
+      # A test target picked by itself, such as the core's changelog test for a patch note: no
+      # clippy, since no Rust changed, and none of the crate's other tests (#1086).
+      - name: Test (single targets)
+        if: steps.affected.outputs.tests != ''
+        env:
+          TESTS: ${{ steps.affected.outputs.tests }}
+        run: |
+          status=0
+          for t in $TESTS; do
+            cargo nextest run --locked --profile ci -p "${t%%:*}" --test "${t#*:}" || { status=1; echo "::error::$t failed"; }
+          done
+          exit $status
+
+      # A lock change that reaches no crate runs no cargo step above, so --locked never checks
+      # it against the manifests. This does, without building anything.
+      - name: Lock is current
+        if: steps.affected.outputs.lock == 'true'
+        run: cargo metadata --locked --format-version 1 >/dev/null
