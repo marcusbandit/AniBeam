@@ -1434,3 +1434,14 @@ pub struct DiscordPerson {
     pub id: String,
     pub name: String,
 }
+
+/// Why Discord shows nothing while the presence switch is on (#1029), which
+/// Settings names under the switch.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum PresenceProblem {
+    /// No Discord client answered on any socket Anibeam looks for.
+    NoDiscord,
+    /// A Discord client answered and would not take the handshake or what
+    /// plays, in its own words.
+    Refused { message: String },
+}

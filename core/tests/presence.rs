@@ -27,6 +27,8 @@ enum Sent {
 struct Fake {
     log: Arc<(Mutex<Vec<Sent>>, Condvar)>,
     fail: bool,
+    /// Every connect finds a Discord that refuses the handshake.
+    refuse: bool,
     reject_posters: bool,
     /// Set by a test: Discord has quit, so every send finds it gone.
     gone: Arc<std::sync::atomic::AtomicBool>,
@@ -92,6 +94,8 @@ impl Transport for Fake {
         self.push(Sent::Connect);
         if self.fail {
             Err(SendError::Gone("no Discord".to_string()))
+        } else if self.refuse {
+            Err(SendError::Rejected("Invalid Client ID".to_string()))
         } else {
             Ok(())
         }
@@ -508,7 +512,7 @@ fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
     c.events()
         .into_iter()
         .filter_map(|e| match e.body {
-            EventBody::PresenceChanged { connected } => Some(connected),
+            EventBody::PresenceChanged { connected, .. } => Some(connected),
             _ => None,
         })
         .collect()
@@ -526,22 +530,55 @@ fn the_connection_coming_and_going_is_an_event() {
     core.presence_flush();
     common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: true }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::PresenceChanged {
+                    connected: true,
+                    ..
+                }
+            )
+        },
         Duration::from_secs(5),
     );
     // Switching off lets the connection go, and says so.
     switch(&core, false);
     common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: false }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::PresenceChanged {
+                    connected: false,
+                    ..
+                }
+            )
+        },
         Duration::from_secs(5),
     );
     assert_eq!(presence_events(&c), vec![true, false]);
     assert_eq!(presence_reply(&core), (true, false));
 }
 
+fn problem_reply(core: &Core) -> Option<PresenceProblem> {
+    match core.call(Call::GetPresence).unwrap() {
+        Reply::Presence { problem, .. } => problem,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn problem_events(c: &anibeam_core::events::Collector) -> Vec<Option<PresenceProblem>> {
+    c.events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::PresenceChanged { problem, .. } => Some(problem),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn a_discord_that_never_answers_sends_no_change() {
+fn a_discord_that_never_answers_is_named_once_and_never_connects() {
     let (_dir, core, c) = common::open_core();
     let lib = library(&core);
     let fake = Fake {
@@ -551,17 +588,85 @@ fn a_discord_that_never_answers_sends_no_change() {
     core.set_presence_transport(Box::new(fake.clone()));
     switch(&core, true);
     let s = open(&core, lib.ep2);
-    tick(&core, s, 1.0, false);
-    core.presence_flush();
+    for i in 0..5 {
+        tick(&core, s, f64::from(i), i % 2 == 1);
+        core.presence_flush();
+    }
+    // Settings says why nothing shows (#1029), and the shells hear it once.
+    assert_eq!(problem_reply(&core), Some(PresenceProblem::NoDiscord));
+    assert_eq!(problem_events(&c), vec![Some(PresenceProblem::NoDiscord)]);
+    // Switching off takes the reason with it.
     switch(&core, false);
     core.presence_flush();
-    assert!(presence_events(&c).is_empty(), "{:?}", presence_events(&c));
+    assert_eq!(problem_reply(&core), None);
+    assert_eq!(
+        problem_events(&c),
+        vec![Some(PresenceProblem::NoDiscord), None]
+    );
+    assert!(presence_events(&c).iter().all(|on| !on));
+}
+
+#[test]
+fn a_discord_that_refuses_the_handshake_is_named_with_its_words() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        refuse: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    let refused = PresenceProblem::Refused {
+        message: "Invalid Client ID".to_string(),
+    };
+    assert_eq!(problem_reply(&core), Some(refused.clone()));
+    assert_eq!(problem_events(&c), vec![Some(refused)]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_refused_activity_is_named_while_connected() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_all: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    // Connected, but the profile is empty: Settings says Discord refused, and why.
+    assert_eq!(presence_reply(&core), (true, true));
+    let refused = PresenceProblem::Refused {
+        message: "details".to_string(),
+    };
+    assert_eq!(problem_reply(&core), Some(refused.clone()));
+    assert_eq!(problem_events(&c), vec![None, Some(refused)]);
+}
+
+#[test]
+fn a_connection_that_lands_names_no_problem() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    assert_eq!(problem_reply(&core), None);
+    assert_eq!(problem_events(&c), vec![None]);
 }
 
 fn wait_presence(c: &anibeam_core::events::Collector, connected: bool) {
     common::wait_for(
         c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: x } if x == connected),
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: x, .. } if x == connected),
         Duration::from_secs(5),
     );
 }

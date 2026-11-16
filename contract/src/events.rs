@@ -233,9 +233,12 @@ pub enum EventBody {
         people: Vec<TailnetPerson>,
     },
     /// Discord rich presence connected, or let the connection go: Discord
-    /// closed, stopped answering, or the switch went off.
+    /// closed, stopped answering, or the switch went off. Also said when only
+    /// `problem` changed: no Discord found, or Discord refused (#1029).
     PresenceChanged {
         connected: bool,
+        #[serde(default)]
+        problem: Option<PresenceProblem>,
     },
     /// Someone pressed Ask to Join on this person's Discord profile (#966), and this
     /// person has never said no to them: the shell asks whether to let them in, and

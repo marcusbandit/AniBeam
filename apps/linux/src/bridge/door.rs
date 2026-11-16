@@ -1420,7 +1420,9 @@ impl qobject::Door {
             EventBody::TailnetDevicesChanged { .. } => self
                 .as_mut()
                 .tailnet_devices_changed(arr("devices"), arr("people")),
-            EventBody::PresenceChanged { connected } => self.as_mut().presence_changed(*connected),
+            EventBody::PresenceChanged { connected, .. } => {
+                self.as_mut().presence_changed(*connected)
+            }
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
             }
