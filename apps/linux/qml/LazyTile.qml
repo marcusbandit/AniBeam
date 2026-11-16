@@ -33,17 +33,19 @@ Item {
         focusOnBuild = true
         if (flick && !seen) flick.lazyRemove(root)
         build(true)
+        // A card the sweep was already building ahead of the view finishes now
+        loader.asynchronous = false
         if (loader.item) handFocus()
     }
     // The card takes the focus; a tile that holds tiles (a section) passes it to its first
-    // stop, or its last when Shift+Tab came in from below
+    // stop, or its last when Shift+Tab came in from below. The PageScroll scrolls whatever
+    // Tab focused into view.
     function handFocus() {
         focusOnBuild = false
         var it = loader.item, back = root.focusReason === Qt.BacktabFocusReason
         var target = it.activeFocusOnTab ? it : back ? lastStopIn(it) : it.nextItemInFocusChain(true)
         if (!target || !inside(target, it)) target = it
         target.forceActiveFocus(back ? Qt.BacktabFocusReason : Qt.TabFocusReason)
-        if (flick && flick.reveal !== undefined) flick.reveal(target)
     }
     function inside(item, box) { for (var p = item; p; p = p.parent) if (p === box) return true; return false }
     function lastStopIn(box) {

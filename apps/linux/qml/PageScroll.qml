@@ -29,8 +29,17 @@ Flickable {
     function scrollTo(y) { wheel.scrollTo(y) }
     readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
-    // Scrolls a card into view the way the arrow keys do: a LazyTile that Tab built asks
-    function reveal(item) { gridKeys.reveal(item) }
+    // Tab or Shift+Tab onto anything in the page scrolls it into view the way the arrow keys
+    // do, a card that was built ahead of the view as much as one a LazyTile built (#627)
+    Connections {
+        target: root.Window.window
+        function onActiveFocusItemChanged() {
+            var it = root.Window.window.activeFocusItem
+            if (!it || (it.focusReason !== Qt.TabFocusReason && it.focusReason !== Qt.BacktabFocusReason)) return
+            for (var p = it.parent; p; p = p.parent)
+                if (p === root.contentItem) { gridKeys.reveal(it); return }
+        }
+    }
 
     // LazyTile's bookkeeping (#289). A budget of one viewport of card area,
     // refilled after every painted frame: tiles made while it lasts build at once. The
