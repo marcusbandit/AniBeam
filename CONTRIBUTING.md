@@ -299,7 +299,7 @@ update track from that version:
 | Nightly | `2.5.0-nightly.20261102.40` | a merge to main builds it, `nightly.yml` publishes it | the Nightly track in Settings |
 | PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
 | Phone stable | `android-v2.4.3` | Release workflow with app `phone`, promoting a phone nightly | everyone with the phone app |
-| Phone nightly | `android-v2.4.3-nightly.20261113.41` | `nightly.yml`, the same run | whoever installs it |
+| Phone nightly | `android-v2.4.3-nightly.20261113.41` | a merge to main builds it, `nightly.yml` publishes it | whoever installs it |
 
 The workspace version in `Cargo.toml` is always the next stable version, and every build
 between two releases carries it as its base. The phone has a number of its own, the
@@ -320,7 +320,9 @@ release needs. Nobody writes these pages by hand.
   Run `nightly.yml` from the Actions tab when main holds something worth trying; it
   publishes the newest of those builds as its own pre-release, built from the commit the
   release names, and builds main itself only when no finished build covers it yet or
-  `force` is ticked. It skips the run when the app has not changed since the last nightly.
+  `force` is ticked. A run started while a build of main is still going waits for it. A
+  merge never builds again what the last build of main failed on with the same files; Run
+  workflow does. It skips the run when the app has not changed since the last nightly.
   The ten newest are kept. The phone's APK and IPA ride the same way, when the phone or
   what it builds on changed since the phone's last nightly, and publish as their own
   `android-v*-nightly.*` pre-release. Publishing uses the `NIGHTLY_TOKEN` secret, a

@@ -78,8 +78,12 @@ jobs:
           EVENT: ${{ github.event_name }}
           FORCE: ${{ inputs.force || 'false' }}
         run: |
-          desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api apps/linux apps/cli Cargo.toml Cargo.lock)
-          phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml)
+          # What each app is built from, and the workflows that build it: a change to either
+          # means a build of main no longer covers main.
+          desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
+          desktop_build=(.github/workflows/nightly.yml .github/workflows/macos.yml .github/workflows/linux.yml .github/workflows/windows.yml .github/workflows/arch.yml)
+          phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)
+          phone_build=(.github/workflows/nightly.yml .github/workflows/android-apk.yml .github/workflows/ios-ipa.yml)
           sha="$(git rev-parse HEAD)"
           day="$(date -u +%Y%m%d)"
           here_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
@@ -90,59 +94,83 @@ jobs:
             echo "here_phone_version=$here_phone_version"
           } >> "$GITHUB_OUTPUT"
 
-          # The finished builds of main, newest first, each with the record its last job left:
-          # the commit, the versions, and which apps built.
+          # The builds of main, newest first. A dispatch first waits for one still running, so
+          # it publishes that build rather than building the same commit a second time.
+          if [ "$EVENT" != push ]; then
+            for status in in_progress queued; do
+              gh run list -w nightly.yml -b main -e push -s "$status" --json databaseId --jq '.[].databaseId'
+            done | while read -r id; do
+              echo "Waiting for the build of main in run $id."
+              gh run watch "$id" -i 30 < /dev/null > /dev/null 2>&1 || true
+            done
+          fi
           builds="$RUNNER_TEMP/builds"
           mkdir -p "$builds"
-          gh run list -w nightly.yml -b main -e push -s completed -L 30 --json databaseId --jq '.[].databaseId' |
-            while read -r id; do
-              gh run download "$id" -n nightly-build -D "$builds/$id" > /dev/null 2>&1 || continue
-              echo "$id" >> "$builds/order"
-            done
+          gh run list -w nightly.yml -b main -e push -s completed -L 30 --json databaseId --jq '.[].databaseId' > "$builds/order"
+
+          # load ID: fetches the record a build's last job left (the commit, the versions, and
+          # how each app's build went), once, when a decision first needs it.
+          load() {
+            [ -f "$builds/$1/build.env" ] && return 0
+            [ -e "$builds/$1.none" ] && return 1
+            gh run download "$1" -n nightly-build -D "$builds/$1" < /dev/null > /dev/null 2>&1 && return 0
+            touch "$builds/$1.none"; return 1
+          }
           field() { sed -n "s/^$2=//p" "$builds/$1/build.env"; }
 
-          # covering KEY PATHS...: the newest build in which the KEY app built, when nothing in
-          # PATHS changed on main since its commit. Prints its run id, or nothing.
+          # covering KEY INPUTS...: the newest build of main that tried the KEY app, when nothing
+          # in INPUTS changed on main since its commit. Prints its run id when it succeeded and
+          # failed:ID when it failed, or nothing. Records from before builds said failed are
+          # passed over.
           covering() {
             local key="$1"; shift
-            [ -f "$builds/order" ] || return 0
+            local id result
             while read -r id; do
-              [ "$(field "$id" "$key")" = success ] || continue
-              if git diff --quiet "$(field "$id" sha)" "$sha" -- "$@"; then echo "$id"; fi
+              load "$id" || continue
+              result="$(field "$id" "$key")"
+              [ "$result" = success ] || [ "$result" = failed ] || continue
+              if git diff --quiet "$(field "$id" sha)" "$sha" -- "$@"; then
+                if [ "$result" = success ]; then echo "$id"; else echo "failed:$id"; fi
+              fi
               return 0
             done < "$builds/order"
           }
 
-          # decide APP KEY VERSION_FIELD PREVIOUS PATHS...: sets build, publish and run (the
-          # build of main a publish takes its files from, empty for this run). Changed means
+          # decide APP KEY VERSION_FIELD PREVIOUS: sets build, publish and run (the build of
+          # main a publish takes its files from, empty for this run). Changed means APP_paths
           # changed since the app's last nightly, PREVIOUS; a build of main that covers the
-          # change is reused rather than built again.
+          # change, with nothing in APP_paths or APP_build changed since, is reused rather than
+          # built again. A merge does not build again what the last build of main failed to
+          # build from the same files; a dispatch does.
           decide() {
-            local app="$1" key="$2" field_name="$3" previous="$4"; shift 4
-            local changed=true reuse=""
+            local app="$1" key="$2" field_name="$3" previous="$4"
+            local -n paths="${app}_paths" inputs="${app}_build"
+            local changed=true reuse="" failed=""
             if [ -n "$previous" ]; then
               git fetch -q origin "refs/tags/$previous:refs/tags/$previous"
-              if git diff --quiet "$previous" "$sha" -- "$@"; then changed=false; fi
+              if git diff --quiet "$previous" "$sha" -- "${paths[@]}"; then changed=false; fi
             fi
-            if [ "$changed" = true ] && [ "$FORCE" != true ]; then reuse="$(covering "$key" "$@")"; fi
+            if [ "$changed" = true ] && [ "$FORCE" != true ]; then reuse="$(covering "$key" "${paths[@]}" "${inputs[@]}")"; fi
+            if [ "${reuse#failed:}" != "$reuse" ]; then failed="${reuse#failed:}"; reuse=""; fi
             # A reused build must be newer than the last nightly, or its number would not climb.
             if [ -n "$reuse" ] && [ -n "$previous" ]; then
-              local v; v="$(field "$reuse" "$field_name")"
-              if (( ${v##*.} <= ${previous##*.} )); then reuse=""; fi
+              local v n p
+              v="$(field "$reuse" "$field_name")"; n="${v##*.}"; p="${previous##*.}"
+              if ! [[ "$n" =~ ^[0-9]+$ && "$p" =~ ^[0-9]+$ ]] || (( n <= p )); then reuse=""; fi
             fi
             build=false; publish=false; run="$reuse"
             if [ "$EVENT" = push ]; then
-              if [ "$changed" = true ] && [ -z "$reuse" ]; then build=true; fi
+              if [ "$changed" = true ] && [ -z "$reuse" ] && [ -z "$failed" ]; then build=true; fi
             elif [ "$changed" = true ] || [ "$FORCE" = true ]; then
               publish=true
               if [ -z "$reuse" ]; then build=true; fi
             fi
-            echo "$app: changed since ${previous:-the start}: $changed, covered by run ${reuse:-none}, build here: $build, publish: $publish"
+            echo "$app: changed since ${previous:-the start}: $changed, covered by run ${reuse:-none}, failed in run ${failed:-none}, build here: $build, publish: $publish"
           }
 
           last="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | .tagName')"
-          decide desktop desktop version "$last" "${desktop_paths[@]}"
+          decide desktop desktop version "$last"
           {
             echo "build=$build"
             echo "publish=$publish"
@@ -163,7 +191,7 @@ jobs:
           tags="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("android-v"))] | sort_by(.createdAt) | .[].tagName')"
           last="$(grep -E '^android-v[0-9.]+-nightly\.' <<<"$tags" | tail -n1 || true)"
-          decide phone phone phone_version "$last" "${phone_paths[@]}"
+          decide phone phone phone_version "$last"
           if [ -z "$last" ]; then
             last="$(grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" | sort -V | tail -n1 || true)"
           fi
@@ -255,8 +283,8 @@ jobs:
           SHA: ${{ needs.gate.outputs.here_sha }}
           VERSION: ${{ needs.gate.outputs.here_version }}
           PHONE_VERSION: ${{ needs.gate.outputs.here_phone_version }}
-          DESKTOP: ${{ needs.macos.result == 'success' && needs.linux.result == 'success' && needs.windows.result == 'success' && 'success' || 'no' }}
-          PHONE: ${{ needs.android.result == 'success' && 'success' || 'no' }}
+          DESKTOP: ${{ (needs.gate.outputs.build != 'true' && 'skipped') || (needs.macos.result == 'success' && needs.linux.result == 'success' && needs.windows.result == 'success' && 'success') || 'failed' }}
+          PHONE: ${{ (needs.gate.outputs.phone != 'true' && 'skipped') || (needs.android.result == 'success' && 'success') || 'failed' }}
           IOS: ${{ needs.ios.result }}
         run: |
           mkdir record
