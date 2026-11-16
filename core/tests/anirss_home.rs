@@ -1,6 +1,6 @@
 //! The core reads anirss's files where anirss keeps them (#610): anirss expands
 //! `~/.config/anirss/config.toml` and `~/.local/state/anirss` from the home folder and never
-//! reads the XDG variables, so an installed AniBeam does not either. One test in its own
+//! reads the XDG variables, so an installed Anibeam does not either. One test in its own
 //! binary: `HOME`, `USERPROFILE` and the XDG homes are process-wide.
 
 use std::path::Path;
