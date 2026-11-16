@@ -1377,3 +1377,257 @@ fn notes_on_a_show_not_on_the_list_write_nothing() {
     }
     assert!(graphql_variables(&http, "notes: $notes").is_empty());
 }
+
+// MAL behind, and MAL ids AniList does not carry (#782) ----------------------
+
+/// The cheap guard reads every tracker the mark reaches, not only the main
+/// one: a list behind on either side still gets its write, and the tracker
+/// already there answers NotNewer from the job.
+#[test]
+fn a_mark_one_tracker_already_has_still_reaches_the_other() {
+    for (ahead, behind) in [
+        (Tracker::Anilist, Tracker::Mal),
+        (Tracker::Mal, Tracker::Anilist),
+    ] {
+        let http = FakeHttp::new();
+        let (_dir, core, c) = common::open_core_with_http(http.clone());
+        let series = library(&core);
+        fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+        fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+        let id = |t: Tracker| if t == Tracker::Anilist { 1 } else { 21 };
+        fixtures::insert_tracker_entry(&core, ahead.as_str(), id(ahead), 5, "current", None);
+        fixtures::insert_tracker_entry(&core, behind.as_str(), id(behind), 2, "current", None);
+
+        let (anilist_at, mal_at) = match ahead {
+            Tracker::Anilist => (5, 2),
+            Tracker::Mal => (2, 5),
+        };
+        http.push_for(
+            "anilist",
+            200,
+            format!(r#"{{"data":{{"MediaList":{{"progress":{anilist_at},"status":"CURRENT"}}}}}}"#),
+        );
+        if behind == Tracker::Anilist {
+            http.push_for(
+                "anilist",
+                200,
+                r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":5,"status":"CURRENT"}}}"#,
+            );
+        }
+        http.push_for(
+            "myanimelist",
+            200,
+            format!(
+                r#"{{"my_list_status":{{"status":"watching","num_episodes_watched":{mal_at}}}}}"#
+            ),
+        );
+        if behind == Tracker::Mal {
+            http.push_for("myanimelist", 200, "{}");
+        }
+
+        let job = started(
+            &core,
+            Call::MarkEpisode {
+                series,
+                episode: 5.0,
+            },
+        );
+        let outcomes = match common::wait_job(&c, job).body {
+            EventBody::Marked { outcomes, .. } => outcomes,
+            other => panic!("{other:?}"),
+        };
+        let behind_outcome = outcome(&outcomes, behind);
+        assert!(behind_outcome.ok, "{ahead:?} ahead: {outcomes:?}");
+        assert_eq!(behind_outcome.progress, Some(5));
+        assert_eq!(outcome(&outcomes, ahead).reason, Some(Refusal::NotNewer));
+        let mal_writes = mal_forms(&http);
+        match behind {
+            Tracker::Mal => {
+                assert_eq!(mal_writes.len(), 1);
+                assert!(form_has(&mal_writes[0], "num_watched_episodes", "5"));
+            }
+            Tracker::Anilist => {
+                assert!(mal_writes.is_empty());
+                assert_eq!(graphql_variables(&http, "SaveMediaListEntry").len(), 1);
+            }
+        }
+    }
+}
+
+/// Every tracker the mark reaches already covering it is still refused at
+/// once, without a request.
+#[test]
+fn a_mark_both_trackers_already_have_is_refused_at_once() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 5, "current", None);
+    fixtures::insert_tracker_entry(&core, "mal", 21, 6, "watching", None);
+
+    assert_eq!(
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 5.0
+        })
+        .err()
+        .unwrap(),
+        CoreError::Refused {
+            reason: Refusal::NotNewer
+        }
+    );
+    assert!(http.requests().is_empty());
+}
+
+/// A series AniList gave no MAL id, with only MAL connected.
+fn anilist_only(core: &Core) -> u64 {
+    let now = anibeam_core::time::now_secs();
+    let src = fixtures::insert_source(core, "/lib");
+    let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
+    fixtures::insert_episode_file(core, series, "/lib/Bebop/01.mkv", 1.0, now);
+    fixtures::media(1, "Cowboy Bebop").episodes(26).insert(core);
+    fixtures::match_series(core, series, Some(1), None);
+    fixtures::connect_tracker(core, Tracker::Mal, 7, "mtok");
+    series
+}
+
+fn searches(http: &FakeHttp) -> usize {
+    http.requests()
+        .iter()
+        .filter(|r| r.url.contains("/anime?q="))
+        .count()
+}
+
+fn saved_lookup(core: &Core) -> Option<Option<i64>> {
+    core.store()
+        .read(|c| {
+            use rusqlite::OptionalExtension;
+            Ok(c.query_row(
+                "SELECT mal_id FROM mal_lookups WHERE anilist_id = 1",
+                [],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()?)
+        })
+        .unwrap()
+}
+
+fn mark(
+    core: &Core,
+    c: &anibeam_core::events::Collector,
+    series: u64,
+    episode: f64,
+) -> Vec<TrackerOutcome> {
+    let job = started(core, Call::MarkEpisode { series, episode });
+    match common::wait_job(c, job).body {
+        EventBody::Marked { outcomes, .. } => outcomes,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// The first mark of a show with no MAL id searches MAL once, takes the one
+/// result whose title and type agree, writes to it and keeps the answer, so
+/// the next mark goes straight to the entry.
+#[test]
+fn a_show_with_no_mal_id_is_found_by_search_once() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = anilist_only(&core);
+
+    http.push_for(
+        "/anime?q=",
+        200,
+        r#"{"data":[
+            {"node":{"id":21,"title":"Cowboy Bebop","alternative_titles":{"en":"Cowboy Bebop","ja":"","synonyms":[]},"start_date":"1998-04-03","media_type":"tv"}},
+            {"node":{"id":5,"title":"Cowboy Bebop: Tengoku no Tobira","alternative_titles":{"en":"Cowboy Bebop: The Movie","ja":"","synonyms":[]},"start_date":"2001-09-01","media_type":"movie"}}
+        ]}"#,
+    );
+    http.push_for("/anime/21", 404, r#"{"error":"not_found"}"#);
+    http.push_for("/anime/21", 200, "{}");
+
+    let outcomes = mark(&core, &c, series, 3.0);
+    let mal = outcome(&outcomes, Tracker::Mal);
+    assert!(mal.ok, "{outcomes:?}");
+    assert_eq!(mal.progress, Some(3));
+    assert_eq!(searches(&http), 1);
+    let search = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.contains("/anime?q="))
+        .unwrap();
+    assert!(search.url.contains("q=Cowboy%20Bebop"), "{}", search.url);
+    assert!(form_has(&mal_forms(&http)[0], "num_watched_episodes", "3"));
+    assert_eq!(saved_lookup(&core), Some(Some(21)));
+
+    // The next mark goes by the saved id and never searches again.
+    http.push_for(
+        "/anime/21",
+        200,
+        r#"{"my_list_status":{"status":"watching","num_episodes_watched":3}}"#,
+    );
+    http.push_for("/anime/21", 200, "{}");
+    let outcomes = mark(&core, &c, series, 4.0);
+    assert!(outcome(&outcomes, Tracker::Mal).ok, "{outcomes:?}");
+    assert_eq!(searches(&http), 1);
+    assert_eq!(mal_forms(&http).len(), 2);
+}
+
+/// A search with no sure answer writes nowhere and is kept as no answer, so
+/// the show is not searched again and the next mark is refused at once.
+#[test]
+fn a_search_with_no_sure_answer_is_not_asked_again() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = anilist_only(&core);
+
+    // Two results that both fit are as good as none.
+    http.push_for(
+        "/anime?q=",
+        200,
+        r#"{"data":[
+            {"node":{"id":21,"title":"Cowboy Bebop","media_type":"tv"}},
+            {"node":{"id":22,"title":"Cowboy Bebop","media_type":"tv"}}
+        ]}"#,
+    );
+    let outcomes = mark(&core, &c, series, 3.0);
+    assert!(outcomes.is_empty(), "{outcomes:?}");
+    assert!(mal_forms(&http).is_empty());
+    assert_eq!(saved_lookup(&core), Some(None));
+
+    let requests = http.requests().len();
+    assert_eq!(
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 4.0
+        })
+        .err()
+        .unwrap(),
+        CoreError::NotConnected {
+            tracker: Tracker::Anilist
+        }
+    );
+    assert_eq!(http.requests().len(), requests);
+}
+
+/// A search that fails is MAL's failed outcome and keeps nothing, so the
+/// next mark searches again.
+#[test]
+fn a_failed_search_is_tried_again_next_time() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = anilist_only(&core);
+
+    http.push_for("/anime?q=", 500, "oops");
+    let outcomes = mark(&core, &c, series, 3.0);
+    let mal = outcome(&outcomes, Tracker::Mal);
+    assert!(!mal.ok);
+    assert!(mal.message.is_some());
+    assert_eq!(saved_lookup(&core), None);
+
+    http.push_for("/anime?q=", 200, r#"{"data":[]}"#);
+    let outcomes = mark(&core, &c, series, 3.0);
+    assert!(outcomes.is_empty(), "{outcomes:?}");
+    assert_eq!(searches(&http), 2);
+    assert_eq!(saved_lookup(&core), Some(None));
+}
