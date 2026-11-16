@@ -457,8 +457,9 @@ Item {
         page.searchFirst = false
         page.fetchGet(on[0].name)
     }
-    // The sources may arrive after the page opens on a show: the search waits for them
-    onEnabledEndpointsChanged: fetchFirst()
+    // The sources may arrive after the page opens on a show: the search waits for them. A
+    // source switched on also clears the line that said none was
+    onEnabledEndpointsChanged: { page.clearAllOff(); page.fetchFirst() }
     function closeGet() { page.searchFirst = false; page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
     function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
     function fetchGet(name) {
@@ -567,7 +568,7 @@ Item {
     }
     // Set while the error says no source is on: whichever control switches one on clears it
     property bool searchErrorAllOff: false
-    onEnabledEndpointsChanged: {
+    function clearAllOff() {
         if (!page.searchErrorAllOff || page.enabledEndpoints.length === 0) return
         page.searchErrorAllOff = false
         if (page.searchError !== "") { page.searchError = ""; page.searchFix = ({}) }
