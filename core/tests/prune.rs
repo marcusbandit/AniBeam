@@ -7,7 +7,6 @@
 mod common;
 mod fixtures;
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,13 +16,6 @@ use anibeam_core::*;
 use serde_json::json;
 
 const DAY: i64 = 86_400;
-
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
 
 fn remote(prune: bool) -> DownloadSettings {
     DownloadSettings {
@@ -96,7 +88,6 @@ fn rules_json(names: &[&str]) -> String {
 fn setup(prune: bool) -> (common::Dir, Arc<Core>, Arc<Collector>, Arc<FakeHttp>) {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(prune));
     let src = fixtures::insert_source(&core, "/lib");
     series(&core, src, 1, "FINISHED", Some(16));

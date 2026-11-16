@@ -41,18 +41,6 @@ fn settings(anirss_command: &str) -> DownloadSettings {
     }
 }
 
-/// Points the XDG config and state homes at `dir`, so `settings::defaults()`
-/// and the saved qBittorrent password never read the machine's own anirss
-/// files. Every test calls it before its first call. The variables are
-/// process-wide, but each test points them at an empty directory of its
-/// own, and a missing file reads the same as an empty directory.
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
-
 fn downloads_status(core: &Core) -> DownloadsStatus {
     match core.call(Call::GetDownloads).unwrap() {
         Reply::Downloads { status } => status,
@@ -124,8 +112,7 @@ fn captured(capture: &Path, name: &str) -> String {
 
 #[test]
 fn a_fresh_core_reports_anirss_off_and_no_torrent_password() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
 
     let status = downloads_status(&core);
     assert_eq!(status.anirss.state, AnirssState::Off);
@@ -135,8 +122,7 @@ fn a_fresh_core_reports_anirss_off_and_no_torrent_password() {
 
 #[test]
 fn saving_the_settings_keeps_the_torrent_password_until_it_is_cleared() {
-    let (dir, core, c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core();
 
     let mut s = settings("anirss");
     s.torrent_url = "http://localhost:9090/".to_string();
@@ -165,8 +151,7 @@ fn saving_the_settings_keeps_the_torrent_password_until_it_is_cleared() {
 
 #[test]
 fn a_torrent_url_without_a_scheme_is_refused_as_invalid() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
 
     let mut s = settings("anirss");
     s.torrent_url = "localhost:9090".to_string();
@@ -215,8 +200,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     }
 
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
 
     // The sidecar starts and both halves read. Health is asked twice: once
     // by the readiness poll, once by the read that follows it.
@@ -511,8 +495,7 @@ fn use_client(core: &Core, id: Option<&str>) -> Result<Reply, CoreError> {
 
 #[test]
 fn saved_clients_switch_and_keep_their_own_passwords() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
 
     // The one client a settings save names becomes the first saved one, and
     // its password goes where a single-client install always kept it.
@@ -588,8 +571,7 @@ fn saved_clients_switch_and_keep_their_own_passwords() {
 
 #[test]
 fn a_removed_clients_password_never_passes_to_a_new_one() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
     let mut s = settings("anirss");
     s.torrent_url = "http://192.0.2.10:8080".to_string();
     save(&core, s, None, Some("seedbox-pw"));
@@ -617,8 +599,7 @@ fn a_removed_clients_password_never_passes_to_a_new_one() {
 
 #[test]
 fn anibeams_own_never_starts_at_a_local_clients_port() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
     let mut s = settings("anirss");
     s.torrent_url = "http://localhost:8080".to_string();
     save(&core, s, None, None);
@@ -640,8 +621,7 @@ fn anibeams_own_never_starts_at_a_local_clients_port() {
 
 #[test]
 fn picking_the_client_in_use_keeps_it() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
     let mut s = settings("anirss");
     s.torrent_url = "http://192.0.2.10:8080".to_string();
     save(&core, s, None, Some("seedbox-pw"));
@@ -652,8 +632,7 @@ fn picking_the_client_in_use_keeps_it() {
 
 #[test]
 fn anibeams_own_never_starts_at_a_remote_clients_address() {
-    let (dir, core, _c) = common::open_core();
-    isolate_xdg(dir.path());
+    let (_dir, core, _c) = common::open_core();
     let mut s = settings("anirss");
     s.torrent_url = "http://192.0.2.10:8080".to_string();
     save(&core, s, None, Some("seedbox-pw"));
@@ -699,8 +678,7 @@ fn anibeams_own_never_starts_at_a_remote_clients_address() {
 #[test]
 fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     // The user's own client: a fresh install would probe for one first.
     save(&core, settings("anirss"), None, None);
 
@@ -760,8 +738,7 @@ fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
 #[test]
 fn a_refine_that_changes_nothing_ends_with_applied_false() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
 
     // Remote mode: the core talks to a server somebody else runs, so there
     // is no sidecar to start and no PATH to set up.
@@ -817,8 +794,7 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
 #[test]
 fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     let mut s = settings("anirss");
     s.anirss_mode = AnirssMode::Remote;
     s.anirss_url = "http://anirss.test:8787/".to_string();
@@ -890,7 +866,6 @@ fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
 fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     // The user's own client: a fresh install would probe for one first.
     save(&core, settings("anirss"), None, None);
     let lib = dir.path().join("lib");
@@ -963,8 +938,7 @@ fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
 #[test]
 fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     let url = "https://tracker.example/?page=rss&q=Frieren";
     http.push_for(
         "tracker.example",
@@ -1037,8 +1011,7 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
 #[test]
 fn reading_or_repairing_a_feed_puts_no_login_or_key_in_an_event() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     let feed =
         "https://user:hunter2@t.example/rss?apikey=K0123abcd&t=search&q=Helluva+Boss+S03+TBK";
@@ -1103,8 +1076,7 @@ fn reading_or_repairing_a_feed_puts_no_login_or_key_in_an_event() {
 #[test]
 fn subscribing_puts_no_login_or_key_in_an_event() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     http.push_for(
         "/health",
@@ -1188,8 +1160,7 @@ fn form_of(r: &anibeam_core::net::HttpRequest) -> String {
 #[test]
 fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     http.push_for(
         "subscriptions/remove",
@@ -1245,8 +1216,7 @@ fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
 #[test]
 fn remove_show_leaves_a_remote_clients_files_to_the_client() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(
         &core,
         DownloadSettings {
@@ -1289,7 +1259,6 @@ fn remove_show_leaves_a_remote_clients_files_to_the_client() {
 fn remove_show_refuses_a_library_root_and_removes_nothing() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
     let lib = dir.path().join("lib");
     std::fs::create_dir_all(lib.join("Frieren")).unwrap();
@@ -1368,7 +1337,6 @@ fn remove_show_refuses_a_library_root_and_removes_nothing() {
 fn a_subscription_for_a_library_show_saves_into_its_folder_through_anirss() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
     let home = common::library_show(dir.path(), &core, &c);
     http.push_for(
@@ -1447,7 +1415,6 @@ fn a_subscription_for_a_library_show_saves_into_its_folder_through_anirss() {
 fn a_subscription_for_a_library_show_is_written_into_its_folder_once() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
     let home = common::library_show(dir.path(), &core, &c);
     http.push_for(
@@ -1520,8 +1487,7 @@ fn a_subscription_for_a_library_show_is_written_into_its_folder_once() {
 #[test]
 fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_rule() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     // Connect so the core knows the search-proxy endpoint is a generic RSS endpoint
     http.push_for(
@@ -1623,8 +1589,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
 #[test]
 fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     http.push_for(
         "/health",
@@ -1729,8 +1694,7 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
 #[test]
 fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, remote(), Some("tok"), Some("pw"));
     let broken = "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.+S03+TBK";
     let empty = r#"<rss><channel><title>proxied</title></channel></rss>"#;
@@ -1802,8 +1766,7 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
 #[test]
 fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     core.let_sandbox_find_torrent_clients();
     http.push_for("app/version", 200, "v5.1.2");
     http.push_for("app/version", 200, "v5.1.2");
@@ -1828,7 +1791,6 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     unsafe { std::env::set_var("ANIBEAM_QBITTORRENT_NOX", &nox) };
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     core.let_sandbox_find_torrent_clients();
     // Nothing at the stock address, nothing on the new port until it starts
     http.fail_next("connection refused");
@@ -1889,7 +1851,6 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
 fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_new_one_is_done() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
     save(&core, remote(), Some("tok"), Some("pw"));
 
@@ -2013,7 +1974,6 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
 fn episodes_for_a_library_show_are_saved_into_its_folder() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
 
     let lib = dir.path().join("TV");
@@ -2086,7 +2046,6 @@ fn episodes_for_a_library_show_are_saved_into_its_folder() {
 fn deleting_an_episode_removes_the_torrent_that_held_it() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
     save(&core, settings("anirss"), None, None);
     let lib = std::fs::canonicalize(dir.path()).unwrap().join("lib");
