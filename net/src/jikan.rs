@@ -3,7 +3,7 @@
 //! carries no episode titles, so this fills them in.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -49,6 +49,13 @@ struct Pagination {
 /// says there is a next page forever stops here instead of looping.
 pub const JIKAN_MAX_PAGES: u32 = 20;
 
+/// How long one read may spend before it stops asking for more pages. A
+/// match waits on the read, so a long show on a slow Jikan stops here with
+/// what it has rather than holding the match for minutes. A quick Jikan
+/// gets through all of `JIKAN_MAX_PAGES` well inside it at the limiter's
+/// pace.
+pub const JIKAN_READ_BUDGET: Duration = Duration::from_secs(30);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JikanEpisode {
     pub number: u32,
@@ -63,7 +70,8 @@ pub struct JikanEpisodes {
     /// Every episode read, keyed by number and in episode order.
     pub episodes: Vec<JikanEpisode>,
     /// Whether this is all Jikan holds. It is not when a page after the
-    /// first failed, or the read stopped at `JIKAN_MAX_PAGES`, so a caller
+    /// first failed, or the read stopped at `JIKAN_MAX_PAGES` or at
+    /// `JIKAN_READ_BUDGET`, so a caller
     /// may add these episodes but must not delete a row they leave out.
     pub whole: bool,
     /// The failure that stopped the read on a page after the first.
@@ -83,11 +91,21 @@ impl JikanEpisodes {
 
 pub struct JikanClient {
     client: ProviderClient,
+    budget: Duration,
 }
 
 impl JikanClient {
     pub fn new(client: ProviderClient) -> JikanClient {
-        JikanClient { client }
+        JikanClient {
+            client,
+            budget: JIKAN_READ_BUDGET,
+        }
+    }
+
+    /// A client whose reads stop asking for pages after `budget`, for a
+    /// test that cannot wait out the real one.
+    pub fn with_budget(client: ProviderClient, budget: Duration) -> JikanClient {
+        JikanClient { client, budget }
     }
 
     /// Every episode Jikan holds for that MAL id, in episode order, read a
@@ -97,14 +115,19 @@ impl JikanClient {
     ///
     /// A failure on the first page is the read's failure. One on a later
     /// page keeps the pages before it, as a list that is not whole, with
-    /// the failure in `stopped`.
+    /// the failure in `stopped`. So does running past the read's budget
+    /// before a later page is asked for, with nothing in `stopped`.
     pub async fn episodes(&self, mal_id: u64) -> Result<JikanEpisodes, CoreError> {
         // Keyed by episode number, so a repeated entry collapses and the
         // list comes back in order whatever order Jikan sent it in.
         let mut by_number: BTreeMap<u32, JikanEpisode> = BTreeMap::new();
         let mut whole = false;
         let mut stopped = None;
+        let started = Instant::now();
         for page in 1..=JIKAN_MAX_PAGES {
+            if page > 1 && started.elapsed() >= self.budget {
+                break;
+            }
             let reply = match self.page(mal_id, page).await {
                 Ok(Some(reply)) => reply,
                 // A 404 on the first page is a series with no episode
@@ -292,6 +315,24 @@ mod tests {
         assert!(!read.whole);
         assert!(read.stopped.is_none());
         assert_eq!(read.episodes.len(), 100);
+    }
+
+    /// A read past its budget asks for no further page, and what it read
+    /// is not whole.
+    #[tokio::test]
+    async fn a_read_past_its_budget_stops_with_what_it_has() {
+        let http = FakeHttp::new();
+        http.push_json(200, page(1, 100, true));
+        http.push_json(200, page(101, 150, false));
+        let jikan = JikanClient::with_budget(
+            ProviderClient::new(Upstream::Jikan, http.clone(), Duration::from_millis(1)),
+            Duration::ZERO,
+        );
+        let read = jikan.episodes(21).await.unwrap();
+        assert!(!read.whole);
+        assert!(read.stopped.is_none());
+        assert_eq!(read.episodes.len(), 100);
+        assert_eq!(http.requests().len(), 1);
     }
 
     /// A reply that always says another page follows stops at the cap,
