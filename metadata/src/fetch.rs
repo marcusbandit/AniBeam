@@ -18,6 +18,7 @@ use crate::record;
 use anibeam_contract::{CoreError, Provider};
 use anibeam_foundation::store::sql::as_i64;
 use anibeam_net::anilist::{Enrichment, Media};
+use anibeam_net::jikan::JikanEpisodes;
 use anibeam_net::tvmaze::Show;
 
 /// The whole record behind `anilist_id`, written against `series`.
@@ -64,10 +65,10 @@ pub async fn fetch_and_write(
     let mal_id = media.id_mal.or(enrichment.id_mal);
     let jikan = match mal_id {
         Some(mal_id) => metadata.jikan_episodes(mal_id).await,
-        None => Some(Vec::new()),
+        None => JikanEpisodes::whole(Vec::new()),
     };
-    let whole = jikan.is_some();
-    let jikan = jikan.unwrap_or_default();
+    let whole = jikan.whole;
+    let jikan = jikan.episodes;
 
     let write = record::build(&media, Some(&enrichment));
     let titles = record::streaming_titles(&enrichment.streaming_episodes);

@@ -221,3 +221,57 @@ fn a_match_through_an_outage_keeps_the_rows_and_skips_jikan() {
 
     core.shutdown();
 }
+
+/// A long show whose second page of Jikan episodes fails (#1040): the
+/// first page's episodes are written, the future row only Jikan knew of
+/// stays, and the failure warns once like any outage.
+#[test]
+fn a_failure_on_jikans_second_page_keeps_the_first_and_deletes_nothing() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "One Piece", 1, 1001);
+
+    let now = time::now_secs();
+    fixtures::insert_episode(
+        &core,
+        1,
+        150,
+        Some("Only Jikan knew"),
+        Some(now + 30 * 86_400),
+    );
+
+    let nodes = [(1, now - 2 * 86_400), (2, now - 86_400)];
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((3, now + 86_400)), &nodes).to_string(),
+    );
+    // Page one carries an episode the schedule does not, and says another
+    // page follows; page two is down.
+    http.push_for(
+        "jikan.moe",
+        200,
+        serde_json::json!({
+            "pagination": { "has_next_page": true },
+            "data": [
+                { "mal_id": 1, "episode": 1, "title": "Romance Dawn", "aired": null },
+                { "mal_id": 5, "episode": 5, "title": "A Terrifying Mysterious Power", "aired": null }
+            ]
+        })
+        .to_string(),
+    );
+    http.push_for("episodes?page=2", 504, "gateway timeout");
+
+    let job = started(&core, Call::RefreshAiring { series });
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::AiringRefreshed { updated: true, .. }),
+        "{done:?}"
+    );
+    assert_eq!(numbers(&core, 1), vec![1, 2, 3, 5, 150]);
+    assert_eq!(jikan_requests(&http), 2, "{:#?}", http.requests());
+    assert_eq!(jikan_warnings(&c), 1);
+
+    core.shutdown();
+}

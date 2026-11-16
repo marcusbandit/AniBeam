@@ -40,6 +40,7 @@ use anibeam_foundation::events::Signal;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::services::Services;
 use anibeam_foundation::time;
+use anibeam_net::jikan::JikanEpisodes;
 use anibeam_net::tvmaze;
 
 /// How long a series' schedule is taken to be current. Electron's
@@ -209,10 +210,10 @@ async fn refresh_anilist(
     let schedule = metadata.net.anilist.schedule(anilist_id).await?;
     let jikan = match mal_id {
         Some(mal_id) => metadata.jikan_episodes(mal_id).await,
-        None => Some(Vec::new()),
+        None => JikanEpisodes::whole(Vec::new()),
     };
-    let whole = jikan.is_some();
-    let jikan = jikan.unwrap_or_default();
+    let whole = jikan.whole;
+    let jikan = jikan.episodes;
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);

@@ -17,7 +17,7 @@ use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
 use anibeam_library::Library;
 use anibeam_net::Net;
-use anibeam_net::jikan::JikanEpisode;
+use anibeam_net::jikan::JikanEpisodes;
 
 pub struct Metadata {
     pub services: Arc<Services>,
@@ -86,26 +86,33 @@ impl Metadata {
         }));
     }
 
-    /// Jikan's episodes for `mal_id`, or `None` when Jikan has nothing to
-    /// say: it failed just now, or it went down inside the last
+    /// Jikan's episodes for `mal_id`. The list is `whole` only when Jikan
+    /// answered every page; it is empty and not whole when Jikan has
+    /// nothing to say: it failed just now, or it went down inside the last
     /// `OUTAGE_WINDOW` and is not asked again until the window has passed.
-    /// A caller reads `None` as a Jikan half it does not have, which is not
-    /// the same as an empty list. Only a failure that looks like Jikan
-    /// itself being down opens the window; one series' bad answer costs
-    /// that series its titles and nothing else.
-    pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> Option<Vec<JikanEpisode>> {
+    /// A page after the first that fails leaves the pages before it, still
+    /// not whole (#1040). A caller reads a list that is not whole as part
+    /// of a Jikan half, which is not the same as all of it, and deletes
+    /// nothing on its word. Only a failure that looks like Jikan itself
+    /// being down opens the window; one series' bad answer costs that
+    /// series its titles and nothing else.
+    pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> JikanEpisodes {
         if self.jikan_down() {
-            return None;
+            return JikanEpisodes::default();
         }
-        match self.net.jikan.episodes(mal_id).await {
-            Ok(episodes) => Some(episodes),
-            Err(e) => {
-                if is_outage(&e) {
-                    self.report_jikan_outage(&message_of(&e));
-                }
-                None
+        let (read, failure) = match self.net.jikan.episodes(mal_id).await {
+            Ok(mut read) => {
+                let stopped = read.stopped.take();
+                (read, stopped)
             }
+            Err(e) => (JikanEpisodes::default(), Some(e)),
+        };
+        if let Some(e) = failure
+            && is_outage(&e)
+        {
+            self.report_jikan_outage(&message_of(&e));
         }
+        read
     }
 
     /// Whether Jikan failed inside the outage window.
