@@ -2238,9 +2238,9 @@ impl Find {
                         };
                         f.line(&unfollowed_line(&name, files.then_some(removed)), "");
                     }
-                    // The core takes the subscription out before it deletes, so a failure
-                    // can leave it gone with its downloads still there: the rules are read
-                    // again and the page says what is left.
+                    // The core takes the subscription out only once its downloads went, so
+                    // a failure part way keeps it with what is left: the rules are read
+                    // again and the page says so.
                     Err(e) => f.line("", &tr!("find-stop-failed", error = words(&e))),
                 }
                 f.draw_show();

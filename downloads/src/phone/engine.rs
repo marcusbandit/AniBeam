@@ -55,6 +55,14 @@ impl Entry {
     }
 }
 
+/// What an add did: the torrent's info hash, and whether this add is what brought it in.
+/// `new` is false for one the engine already held, got by hand or by an earlier round, so
+/// a subscription never counts it as its own (#654).
+pub struct Added {
+    pub hash: String,
+    pub new: bool,
+}
+
 /// A torrent's file list read before it is added, and what the add needs to start from it
 /// without asking the peers again.
 pub struct Peeked {
@@ -239,21 +247,23 @@ impl Engine {
         release: &Release,
         folder: &str,
         torrent: Option<Vec<u8>>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<Added, CoreError> {
         let source = match torrent {
             Some(bytes) => AddTorrent::from_bytes(bytes),
             None => AddTorrent::from_url(&release.link),
         };
         // A magnet has to fetch its few kilobytes of metadata before it can pause, so it is
         // added running and held right after: on mobile data only that little goes out.
-        self.start(
-            release,
-            folder,
-            source,
-            AddTorrentOptions::default(),
-            Vec::new(),
-        )
-        .await
+        let (hash, new) = self
+            .start(
+                release,
+                folder,
+                source,
+                AddTorrentOptions::default(),
+                Vec::new(),
+            )
+            .await?;
+        Ok(Added { hash, new })
     }
 
     /// Reads a torrent's file list without adding it, so a rolling download can pick the
@@ -344,14 +354,16 @@ impl Engine {
             paused: self.held(),
             ..Default::default()
         };
-        self.start(
-            release,
-            folder,
-            AddTorrent::from_bytes(peeked.bytes),
-            options,
-            entry.priorities,
-        )
-        .await
+        let (hash, _) = self
+            .start(
+                release,
+                folder,
+                AddTorrent::from_bytes(peeked.bytes),
+                options,
+                entry.priorities,
+            )
+            .await?;
+        Ok(hash)
     }
 
     async fn start(
@@ -361,7 +373,7 @@ impl Engine {
         source: AddTorrent<'_>,
         options: AddTorrentOptions,
         priorities: Vec<i64>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<(String, bool), CoreError> {
         let held = self.held();
         let output = self.root.join(folder);
         let added = within_a_minute(self.session.add_torrent(
@@ -377,7 +389,9 @@ impl Engine {
         let handle = match added {
             AddTorrentResponse::Added(_, h) => h,
             // One the engine has already keeps its record: its files stay where they are.
-            AddTorrentResponse::AlreadyManaged(_, h) => return Ok(h.info_hash().as_string()),
+            AddTorrentResponse::AlreadyManaged(_, h) => {
+                return Ok((h.info_hash().as_string(), false));
+            }
             AddTorrentResponse::ListOnly(_) => {
                 return Err(fail("the engine only listed the torrent"));
             }
@@ -397,7 +411,7 @@ impl Engine {
             },
         );
         self.save_entries();
-        Ok(hash)
+        Ok((hash, true))
     }
 
     /// Every torrent as qBittorrent would list it. A finished one is paused here: a phone
@@ -601,14 +615,6 @@ impl Engine {
         }
     }
 
-    /// The info hashes of every torrent the engine holds now, lowercase.
-    pub fn hashes(&self) -> std::collections::HashSet<String> {
-        self.session.with_torrents(|it| {
-            it.map(|(_, h)| h.info_hash().as_string().to_lowercase())
-                .collect()
-        })
-    }
-
     pub async fn control(&self, hashes: &[String], action: PhoneAction) -> Result<(), CoreError> {
         for hash in hashes {
             let Some(h) = self.handle(hash) else { continue };
@@ -780,6 +786,22 @@ mod tests {
         // Wanted again, it is fetched: the file shows up and reads as normal.
         engine.set_priority(&hash, &[two], NORMAL).await.unwrap();
         assert_eq!(engine.files(&hash).unwrap()[two].priority, NORMAL);
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_torrent_is_new_only_to_the_add_that_brought_it_in() {
+        // A subscription owns what its add brought in, never one already here (#654).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let first = engine.add(&r, "Show", Some(bytes.clone())).await.unwrap();
+        let again = engine.add(&r, "Show", Some(bytes)).await.unwrap();
+        assert!(first.new && !again.new);
+        assert_eq!(first.hash, again.hash);
         engine.session.stop().await;
     }
 }

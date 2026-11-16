@@ -568,7 +568,7 @@ pub fn download(
                         .await
                 }
                 None => match torrent_file(&downloads.services, &item.link).await {
-                    Ok(file) => engine.add(item, &folder, file).await,
+                    Ok(file) => engine.add(item, &folder, file).await.map(|a| a.hash),
                     Err(e) => Err(e),
                 },
             };
@@ -615,6 +615,11 @@ pub fn download(
         }
         Ok::<_, CoreError>((added, failed))
     })?;
+    // Got by hand, they are the person's, whatever a subscription brought in before (#654).
+    let hashes: Vec<String> = added.values().cloned().collect();
+    if let Err(e) = rules_store(&downloads.services).disown(&hashes) {
+        tracing::warn!("subscriptions not saved: {e}");
+    }
     if added.is_empty()
         && let Some(e) = failed
     {
@@ -721,7 +726,7 @@ impl crate::rolling::RollClient for PhoneRolls<'_> {
         let mut hashes = Vec::new();
         for item in items {
             let file = torrent_file(&self.downloads.services, &item.link).await?;
-            hashes.push(self.engine.add(item, &folder, file).await?);
+            hashes.push(self.engine.add(item, &folder, file).await?.hash);
         }
         Ok(hashes)
     }
@@ -859,32 +864,45 @@ pub fn unsubscribe(
     names: Vec<String>,
     files: bool,
 ) -> Result<Reply, CoreError> {
-    let gone = rules_store(&downloads.services).remove(&names)?;
-    let mut removed = 0;
-    if files {
-        downloads.services.handle.block_on(async {
-            let engine = engine(downloads).await?;
-            for rule in &gone {
-                // Only the torrents the rule added: the show's folder is shared with
-                // downloads got by hand, and those stay (#654).
-                let hashes: Vec<String> = engine
-                    .list()
-                    .await
-                    .into_iter()
-                    .filter(|t| rule.added.contains(&t.hash.to_lowercase()))
-                    .map(|t| t.hash)
-                    .collect();
-                engine.control(&hashes, PhoneAction::Remove).await?;
-                removed += hashes.len() as u64;
-                // The folder goes only when the rule's torrents took the last of it.
-                let _ = std::fs::remove_dir(&rule.save_path);
-            }
-            Ok::<(), CoreError>(())
-        })?;
+    let store = rules_store(&downloads.services);
+    if !files {
+        store.remove(&names)?;
+        return Ok(Reply::PhoneUnsubscribed { removed: 0 });
     }
-    // A subscription saved before #654 recorded nothing it added, so it removes nothing:
-    // the count says so rather than the phone claiming its episodes went.
-    Ok(Reply::PhoneUnsubscribed { removed })
+    downloads.services.handle.block_on(async {
+        let engine = engine(downloads).await?;
+        // No round adds for these rules while they go, so nothing they take is left in the
+        // engine with no record of whose it is.
+        let _one = downloads.phone.poll_lock.lock().await;
+        let going: Vec<_> = store
+            .load()
+            .into_iter()
+            .filter(|r| names.contains(&r.name))
+            .collect();
+        let mut removed = 0;
+        for rule in &going {
+            // Only the torrents the rule added: the show's folder is shared with downloads
+            // got by hand, and those stay. A rule saved before #654 has none on record, so
+            // it removes nothing, and the count says so.
+            let hashes: Vec<String> = engine
+                .list()
+                .await
+                .into_iter()
+                .filter(|t| rule.added.contains(&t.hash.to_lowercase()))
+                .map(|t| t.hash)
+                .collect();
+            engine.control(&hashes, PhoneAction::Remove).await?;
+            removed += hashes.len() as u64;
+        }
+        // Taken out once their downloads went: a failure above keeps the rules and their
+        // record, so stopping again finds what is left.
+        store.remove(&names)?;
+        for rule in &going {
+            // The folder goes only when the rule's torrents took the last of it.
+            let _ = std::fs::remove_dir(&rule.save_path);
+        }
+        Ok(Reply::PhoneUnsubscribed { removed })
+    })
 }
 
 /// A subscription's feed, read the way its source's kind answers: a json-feed source's
@@ -989,9 +1007,6 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| rule.name.clone());
-        // What the engine held before this round is not the rule's, even when the rule
-        // asks for the same torrent: a download got by hand stays the person's.
-        let before = engine.hashes();
         for item in anibeam_releases::rules::due(&rule, &items) {
             let file = match torrent_file(&downloads.services, &item.link).await {
                 Ok(file) => file,
@@ -1002,9 +1017,11 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
                 }
             };
             match engine.add(item, &folder, file).await {
-                Ok(hash) => {
-                    // Noted as it lands, so an unsubscribe right after finds it.
-                    let own = (!before.contains(&hash.to_lowercase())).then_some(hash.as_str());
+                Ok(added) => {
+                    // One the engine already held is not the rule's, even when the rule asks
+                    // for it: a download got by hand stays the person's. Noted as it lands,
+                    // so a torrent never sits in the engine without its owner on record.
+                    let own = added.new.then_some(added.hash.as_str());
                     if let Err(e) = store.mark_added(&rule.name, &item.link, own) {
                         tracing::warn!("subscription {} not saved: {e}", rule.name);
                     }

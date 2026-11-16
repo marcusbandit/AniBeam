@@ -103,10 +103,17 @@ impl RuleStore {
         {
             name = format!("{name} @{}", spec.endpoint_name);
         }
-        let (taken, added) = rules
+        let taken = rules
             .iter()
             .find(|r| r.name == name && same(r))
-            .map(|r| (r.taken.clone(), r.added.clone()))
+            .map(|r| r.taken.clone())
+            .unwrap_or_default();
+        // What a rule of this name added stays its own even when the feed changed: the
+        // rule it replaces filled the same folder, and its downloads are still there.
+        let added = rules
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| r.added.clone())
             .unwrap_or_default();
         let rule = Rule {
             name: name.clone(),
@@ -169,6 +176,23 @@ impl RuleStore {
             }
         }
         self.save(&rules)
+    }
+
+    /// Takes `hashes` off every rule's own: a torrent got by hand is the person's, even one
+    /// a subscription brought in once before (#654).
+    pub fn disown(&self, hashes: &[String]) -> Result<(), CoreError> {
+        let _one = editing();
+        let mut rules = self.load();
+        let mut changed = false;
+        for r in &mut rules {
+            for hash in hashes {
+                changed |= r.added.remove(&hash.to_lowercase());
+            }
+        }
+        if changed {
+            self.save(&rules)?;
+        }
+        Ok(())
     }
 
     /// Reads the rules, lets `change` change them, and writes them back when it says it
@@ -428,5 +452,40 @@ mod tests {
             .unwrap();
         assert_eq!(second.name, "Show @other");
         assert_eq!(store.load().len(), 2);
+    }
+
+    #[test]
+    fn what_a_rule_added_stays_its_own_through_a_new_feed_until_got_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RuleStore::new(dir.path().join("rules.json"));
+        let spec = |url: &str| SubscriptionSpec {
+            feed_url: url.into(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            endpoint_name: String::new(),
+        };
+        let as_is = |r: &Rule| Some(r.feed_url.clone());
+        let at_720 = "https://feed.example/rss?q=Show+720p";
+        store
+            .subscribe("Show", &spec(at_720), at_720, as_is, dir.path())
+            .unwrap();
+        store.mark_added("Show", "a", Some("AAA")).unwrap();
+        store.mark_added("Show", "b", Some("bbb")).unwrap();
+
+        // Followed again at 1080p: the same name and folder, so the rule replaces the
+        // old one. Its links are another feed's, but its downloads are still the rule's.
+        let at_1080 = "https://feed.example/rss?q=Show+1080p";
+        store
+            .subscribe("Show", &spec(at_1080), at_1080, as_is, dir.path())
+            .unwrap();
+        let rules = store.load();
+        assert_eq!(rules.len(), 1);
+        assert!(rules[0].taken.is_empty());
+        let both = BTreeSet::from(["aaa".to_string(), "bbb".to_string()]);
+        assert_eq!(rules[0].added, both);
+
+        // Got by hand, a torrent is the person's from then on.
+        store.disown(&["BBB".to_string()]).unwrap();
+        assert_eq!(store.load()[0].added, BTreeSet::from(["aaa".to_string()]));
     }
 }
