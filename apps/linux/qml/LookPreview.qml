@@ -7,7 +7,7 @@
 // core says a series or a scan changed, the same idiom SettingsLibraryTab.qml uses for its
 // own Door-driven stats.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

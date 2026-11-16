@@ -344,7 +344,7 @@ RFC 8252 section 7.3: native apps "can use the loopback interface to receive the
 
 The registered URI today is `http://127.0.0.1:53682/callback`, pinned "so the URL you register with AniList / MAL once keeps working forever". The core keeps host, port and path. `src/shared/trackerConstants.ts`
 
-Implementation: `tokio::net::TcpListener::bind(("127.0.0.1", 53682))`, accept one connection at a time, read the request line, answer with the forwarder page, the success page or the error page, close. That is a few dozen lines with no HTTP crate; `tiny_http` or axum would each be a larger dependency than the code they replace. A bind failure (`EADDRINUSE`) is reported to the shell as "another AniBeam is mid-connect", as today.
+Implementation: `tokio::net::TcpListener::bind(("127.0.0.1", 53682))`, accept one connection at a time, read the request line, answer with the forwarder page, the success page or the error page, close. That is a few dozen lines with no HTTP crate; `tiny_http` or axum would each be a larger dependency than the code they replace. A bind failure (`EADDRINUSE`) is reported to the shell as "another Anibeam is mid-connect", as today.
 
 ### Not verified
 
@@ -357,7 +357,7 @@ Implementation: `tokio::net::TcpListener::bind(("127.0.0.1", 53682))`, accept on
 
 directories 6.0.0 (2025-01-12) is the newest release; its repository is dirs-dev/directories-rs. https://crates.io/api/v1/crates/directories
 
-`ProjectDirs::from(qualifier, organization, application)` derives a per-platform project path. On Linux the application name is trimmed, lowercased and stripped of spaces (`trim_and_lowercase_then_replace_spaces(application, "")`), so `from("", "", "AniBeam")` and `from("", "", "anibeam")` both give `anibeam`. On macOS the identifier is the non-empty parts of qualifier, organization and application joined with dots after replacing spaces with hyphens, so `from("", "", "anibeam")` gives `anibeam` and `from("com", "Foo Corp", "Bar App")` gives `com.Foo-Corp.Bar-App`. https://raw.githubusercontent.com/dirs-dev/directories-rs/main/src/lin.rs, https://raw.githubusercontent.com/dirs-dev/directories-rs/main/src/mac.rs and https://docs.rs/directories/latest/directories/struct.ProjectDirs.html
+`ProjectDirs::from(qualifier, organization, application)` derives a per-platform project path. On Linux the application name is trimmed, lowercased and stripped of spaces (`trim_and_lowercase_then_replace_spaces(application, "")`), so `from("", "", "Anibeam")` and `from("", "", "anibeam")` both give `anibeam`. On macOS the identifier is the non-empty parts of qualifier, organization and application joined with dots after replacing spaces with hyphens, so `from("", "", "anibeam")` gives `anibeam` and `from("com", "Foo Corp", "Bar App")` gives `com.Foo-Corp.Bar-App`. https://raw.githubusercontent.com/dirs-dev/directories-rs/main/src/lin.rs, https://raw.githubusercontent.com/dirs-dev/directories-rs/main/src/mac.rs and https://docs.rs/directories/latest/directories/struct.ProjectDirs.html
 
 Linux results, from the README table:
 

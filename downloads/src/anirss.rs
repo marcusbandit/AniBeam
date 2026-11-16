@@ -1,0 +1,1414 @@
+//! anirss over its JSON HTTP API (`anirss --serve`), and the sidecar that
+//! runs it. The API is `docs/agents/api-reference.md` in anirss's repo:
+//! every route under `/api/v1`, a bearer token on all but `/health`, one
+//! error envelope `{"error": {"type", "message"}}` whose `type` is the word
+//! a client branches on. anirss keeps no search state, so every refine and
+//! subscribe call sends the whole `{endpoint, query, items}` back.
+//!
+//! As a sidecar the core picks the port and the token itself and hands
+//! them over in the environment, as the API docs ask of a client that
+//! launches the server: the startup banner is coloured prose, not a thing
+//! to parse. The qBittorrent password rides along as `ANIRSS_QBT_PASSWORD`
+//! so the one saved in Anibeam is the one anirss logs in with.
+
+use std::collections::VecDeque;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use serde_json::{Value, json};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Child;
+
+use anibeam_contract::*;
+use anibeam_foundation::sync::recover;
+use anibeam_net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
+
+/// How `CoreError::Service` names this service.
+pub const SERVICE: &str = "anirss";
+
+/// A search can start an on-demand endpoint (a Jackett pod) and wait a
+/// minute on it, then enrich for twenty seconds more.
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(120);
+/// A refine on a filtered-rss endpoint searches again; a subscribe may probe the show's own feed.
+const STEP_TIMEOUT: Duration = Duration::from_secs(60);
+/// A remove with `files` walks the download roots.
+const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long a fresh sidecar gets to answer `/health`.
+const READY_TIMEOUT: Duration = Duration::from_secs(20);
+const READY_POLL: Duration = Duration::from_millis(200);
+/// Lines of the sidecar's stderr kept for the failure message.
+const STDERR_TAIL: usize = 40;
+/// How long `anirss --version` gets when a sidecar failed to come up.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The first anirss release with everything this client needs: 0.4.0 brought
+/// `--serve` (0.3.4 and older exit on the flag), 0.4.1 the qBittorrent address
+/// from the environment, 0.4.2 a client that needs no login, which Anibeam's
+/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints Anibeam
+/// puts in through `POST` and `DELETE /endpoints` (`repos::sync_anirss`). It names
+/// the release to install in the hints and the oldest the AUR package may ask for
+/// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
+/// decided by the features it lists, not by this.
+pub const MIN_VERSION: &str = "0.6.0";
+
+/// The first anirss that lists `subscription_save_path`, so a subscription for a
+/// library show is written straight into its folder (#503). The bundles pin this or
+/// newer; an older anirss still works, and its rule is moved after (`rehome_rule`).
+pub const SAVE_PATH_SINCE: &str = "0.7.1";
+
+/// The feature a sidecar has to list in `/health`: an address only the
+/// environment names keeps its own session and saved password. Anibeam points
+/// its sidecar at the client in use through `ANIRSS_QBT_URL`, and an anirss
+/// without it sends that client the session cookie and saved password of the
+/// qBittorrent its own config names. That fails at nothing, so no call can
+/// find it out; anirss says it has it instead. A server the user runs is not
+/// pointed anywhere and needs no such thing.
+pub const SIDECAR_FEATURE: &str = "qbt_env_session";
+
+/// The feature an anirss lists when it takes endpoints from Anibeam (`POST` and `DELETE
+/// /endpoints`), 0.6.0 and newer. Whether the desktop syncs its installed endpoints into
+/// anirss follows this, never the version string, which a checkout or a fork can set to
+/// anything (#476).
+pub const ENDPOINT_WRITES: &str = "endpoint_writes";
+
+/// What `GET /health` says: the version, and the features this anirss lists
+/// (none from one older than 0.5.0, which has no list).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Health {
+    pub version: String,
+    pub features: Vec<String>,
+}
+
+impl Health {
+    pub fn has(&self, feature: &str) -> bool {
+        lists(&self.features, feature)
+    }
+}
+
+/// Whether a `/health` feature list holds `feature`; [`Health::has`] for a list kept
+/// apart from its `Health`.
+pub fn lists(features: &[String], feature: &str) -> bool {
+    features.iter().any(|f| f == feature)
+}
+/// Set by a shell whose package carries its own anirss.
+const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
+
+/// One server, one token.
+#[derive(Clone)]
+pub struct AnirssClient {
+    /// `http://host:port/api/v1`, no trailing slash.
+    base: String,
+    token: String,
+    http: Arc<dyn Http>,
+}
+
+/// qBittorrent as anirss sees it (`GET /qbt/status`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct QbtView {
+    pub url: String,
+    pub reachable: bool,
+    pub authenticated: bool,
+    pub login_failed: bool,
+}
+
+/// `GET /search` before the analysis is folded in.
+#[derive(Debug)]
+pub struct SearchRaw {
+    pub query: String,
+    pub endpoint: String,
+    pub items: Vec<Release>,
+    pub tried: Vec<EndpointTry>,
+    pub fell_back: bool,
+}
+
+/// `POST /refine/analyze`.
+#[derive(Debug)]
+pub struct Analysis {
+    pub query: String,
+    pub items: Vec<Release>,
+    pub groups: Vec<ReleaseGroup>,
+    pub best_fit: BestFit,
+    pub client_side: bool,
+    pub auto_resolution: Option<String>,
+}
+
+impl AnirssClient {
+    /// `server` is the base URL without `/api/v1`, with or without a
+    /// trailing slash.
+    pub fn new(server: &str, token: &str, http: Arc<dyn Http>) -> AnirssClient {
+        AnirssClient {
+            base: format!("{}/api/v1", server.trim_end_matches('/')),
+            token: token.to_string(),
+            http,
+        }
+    }
+
+    pub fn server(&self) -> String {
+        self.base.trim_end_matches("/api/v1").to_string()
+    }
+
+    /// `GET /health`: the version and the features. No token needed.
+    pub async fn health(&self) -> Result<Health, CoreError> {
+        let v = self.get("/health", &[], None).await?;
+        let features = v["features"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|f| f.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Health {
+            version: v["version"].as_str().unwrap_or("").to_string(),
+            features,
+        })
+    }
+
+    /// Each endpoint's kind comes back under its shape name, whatever anirss calls it.
+    pub async fn endpoints(&self) -> Result<Vec<SearchEndpoint>, CoreError> {
+        let v = self.get("/endpoints", &[], None).await?;
+        let mut endpoints: Vec<SearchEndpoint> =
+            serde_json::from_value(v["endpoints"].clone()).unwrap_or_default();
+        for e in &mut endpoints {
+            e.kind = anibeam_releases::kinds::shape_of(&e.kind).to_string();
+        }
+        Ok(endpoints)
+    }
+
+    /// `POST /endpoints` (anirss 0.6): writes an endpoint into anirss's config, or replaces
+    /// the one with its name.
+    pub async fn put_endpoint(&self, spec: Value) -> Result<(), CoreError> {
+        self.post("/endpoints", spec, None).await.map(|_| ())
+    }
+
+    /// `DELETE /endpoints/<name>` (anirss 0.6).
+    pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
+        let response = self
+            .send(
+                HttpRequest::new(
+                    Method::Delete,
+                    format!("{}/endpoints/{}", self.base, encode(name)),
+                )
+                .headers(self.headers()),
+            )
+            .await?;
+        judge(response).map(|_| ())
+    }
+
+    pub async fn qbt_status(&self) -> Result<QbtView, CoreError> {
+        let v = self.get("/qbt/status", &[], None).await?;
+        Ok(QbtView {
+            url: v["url"].as_str().unwrap_or("").to_string(),
+            reachable: v["reachable"].as_bool().unwrap_or(false),
+            authenticated: v["authenticated"].as_bool().unwrap_or(false),
+            login_failed: v["login_failed"].as_bool().unwrap_or(false),
+        })
+    }
+
+    /// `POST /search`. With `fallback`, an empty or unreachable endpoint
+    /// falls through to the others in anirss's order; zero results
+    /// everywhere is an empty list, not an error.
+    pub async fn search(
+        &self,
+        query: &str,
+        endpoint: Option<&str>,
+        fallback: bool,
+    ) -> Result<SearchRaw, CoreError> {
+        let mut body = json!({ "query": query, "fallback": fallback });
+        if let Some(e) = endpoint {
+            body["endpoint"] = Value::String(e.to_string());
+        }
+        let v = self.post("/search", body, Some(SEARCH_TIMEOUT)).await?;
+        Ok(SearchRaw {
+            query: v["query"].as_str().unwrap_or(query).to_string(),
+            endpoint: v["endpoint"].as_str().unwrap_or("").to_string(),
+            items: releases(&v["items"]),
+            tried: serde_json::from_value(v["tried"].clone()).unwrap_or_default(),
+            fell_back: v["fell_back"].as_bool().unwrap_or(false),
+        })
+    }
+
+    /// `POST /refine/analyze`: the groups and the best fit, after
+    /// auto-resolution.
+    pub async fn analyze(
+        &self,
+        query: &str,
+        endpoint: &str,
+        items: &[Release],
+    ) -> Result<Analysis, CoreError> {
+        let body = json!({ "query": query, "endpoint": endpoint, "items": items });
+        let v = self
+            .post("/refine/analyze", body, Some(STEP_TIMEOUT))
+            .await?;
+        let auto = &v["auto_resolution"];
+        Ok(Analysis {
+            query: v["query"].as_str().unwrap_or(query).to_string(),
+            items: releases(&v["items"]),
+            groups: groups(&v["groups"]),
+            best_fit: best_fit(&v["best_fit"]),
+            client_side: v["client_side"].as_bool().unwrap_or(false),
+            auto_resolution: auto["applied"]
+                .as_bool()
+                .unwrap_or(false)
+                .then(|| auto["token"].as_str().unwrap_or("").to_string())
+                .filter(|t| !t.is_empty()),
+        })
+    }
+
+    /// `POST /refine/apply`, one step.
+    pub async fn apply(
+        &self,
+        query: &str,
+        endpoint: &str,
+        items: &[Release],
+        op: &RefineOp,
+    ) -> Result<Refinement, CoreError> {
+        let op = match op {
+            RefineOp::Tokens { tokens } => json!({ "type": "tokens", "tokens": tokens }),
+            RefineOp::Term { term } => json!({ "type": "term", "term": term }),
+            RefineOp::Exclude { term } => json!({ "type": "exclude", "term": term }),
+            RefineOp::BestFit => json!({ "type": "best_fit" }),
+        };
+        let body = json!({ "query": query, "endpoint": endpoint, "items": items, "op": op });
+        let v = self.post("/refine/apply", body, Some(STEP_TIMEOUT)).await?;
+        let count = v["items"].as_array().map(|a| a.len()).unwrap_or(0) as i64;
+        let previous = v["previous_count"].as_u64().unwrap_or(items.len() as u64);
+        Ok(Refinement {
+            applied: v["applied"].as_bool().unwrap_or(false),
+            reason: v["reason"].as_str().map(String::from),
+            mode: v["mode"].as_str().unwrap_or("").to_string(),
+            query: v["query"].as_str().unwrap_or(query).to_string(),
+            endpoint: v["endpoint"].as_str().unwrap_or(endpoint).to_string(),
+            items: releases(&v["items"]),
+            groups: groups(&v["groups"]),
+            best_fit: best_fit(&v["best_fit"]),
+            previous_count: previous,
+            delta: v["delta"].as_i64().unwrap_or(count - previous as i64),
+            facts: Vec::new(),
+            show: None,
+        })
+    }
+
+    pub async fn preview(
+        &self,
+        query: &str,
+        endpoint: &str,
+        items: &[Release],
+    ) -> Result<SubscriptionSpec, CoreError> {
+        let body = json!({ "query": query, "endpoint": endpoint, "items": items });
+        let v = self
+            .post("/subscriptions/preview", body, Some(STEP_TIMEOUT))
+            .await?;
+        Ok(SubscriptionSpec {
+            feed_url: v["feed_url"].as_str().unwrap_or("").to_string(),
+            must_contain: v["must_contain"].as_str().unwrap_or("").to_string(),
+            must_not_contain: v["must_not_contain"].as_str().unwrap_or("").to_string(),
+            endpoint_name: v["endpoint_name"].as_str().unwrap_or("").to_string(),
+        })
+    }
+
+    /// Subscribes under anirss's root plus `name`, or straight into `save_path` when given:
+    /// the folder of a show already in the library. An anirss that lists
+    /// `subscription_save_path` writes the rule there; an older one ignores the field and
+    /// answers with its own folder, which the caller then moves the rule from.
+    pub async fn subscribe(
+        &self,
+        query: &str,
+        endpoint: &str,
+        items: &[Release],
+        name: Option<&str>,
+        save_path: Option<&str>,
+    ) -> Result<Subscribed, CoreError> {
+        let mut body = json!({ "query": query, "endpoint": endpoint, "items": items });
+        if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
+            body["name"] = Value::String(n.to_string());
+        }
+        let v = match save_path {
+            Some(p) => {
+                let mut with = body.clone();
+                with["save_path"] = Value::String(p.to_string());
+                match self.post("/subscriptions", with, Some(STEP_TIMEOUT)).await {
+                    // A folder anirss refuses is no reason to lose the subscription: it is
+                    // made under anirss's root, and the caller moves the rule as it would
+                    // for an anirss that takes no save path.
+                    Err(CoreError::Service { code, .. }) if code == "validation_error" => {
+                        self.post("/subscriptions", body, Some(STEP_TIMEOUT))
+                            .await?
+                    }
+                    answer => answer?,
+                }
+            }
+            None => {
+                self.post("/subscriptions", body, Some(STEP_TIMEOUT))
+                    .await?
+            }
+        };
+        Ok(Subscribed {
+            name: v["name"].as_str().unwrap_or("").to_string(),
+            feed_url: v["feed_url"].as_str().unwrap_or("").to_string(),
+            save_path: v["save_path"].as_str().unwrap_or("").to_string(),
+            must_contain: v["must_contain"].as_str().unwrap_or("").to_string(),
+            must_not_contain: v["must_not_contain"].as_str().unwrap_or("").to_string(),
+            tags: strings(&v["tags"]),
+        })
+    }
+
+    /// Adds the releases under anirss's root plus `name`, or straight into
+    /// `save_path` when given: the folder of a show already in the library.
+    pub async fn download(
+        &self,
+        items: &[Release],
+        name: Option<&str>,
+        save_path: Option<&str>,
+    ) -> Result<AddedTorrents, CoreError> {
+        let items: Vec<Release> = items
+            .iter()
+            .map(|r| Release {
+                link: url_safe(&r.link),
+                ..r.clone()
+            })
+            .collect();
+        let mut body = json!({ "items": items });
+        if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
+            body["name"] = Value::String(n.to_string());
+        }
+        if let Some(p) = save_path {
+            body["save_path"] = Value::String(p.to_string());
+        }
+        let v = self.post("/downloads", body, Some(STEP_TIMEOUT)).await?;
+        Ok(added(&v))
+    }
+
+    pub async fn movie(&self, link: &str) -> Result<AddedTorrents, CoreError> {
+        let v = self
+            .post(
+                "/movie",
+                json!({ "link": url_safe(link) }),
+                Some(STEP_TIMEOUT),
+            )
+            .await?;
+        Ok(added(&v))
+    }
+
+    pub async fn subscriptions(&self) -> Result<Vec<SubscriptionRule>, CoreError> {
+        let v = self.get("/subscriptions", &[], Some(STEP_TIMEOUT)).await?;
+        let mut rules: Vec<SubscriptionRule> =
+            serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
+        for r in &mut rules {
+            r.query = crate::query::decode_search_query(&r.feed_url).unwrap_or_default();
+        }
+        Ok(rules)
+    }
+
+    /// `POST /subscriptions/remove`; with `dry_run` the plan and nothing
+    /// else. The same route serves the plan and the removal, so the two
+    /// can never disagree about what goes.
+    pub async fn remove(
+        &self,
+        names: &[String],
+        torrents: bool,
+        files: bool,
+        dry_run: bool,
+    ) -> Result<Vec<RemovePlan>, CoreError> {
+        let body =
+            json!({ "names": names, "torrents": torrents, "files": files, "dry_run": dry_run });
+        let v = self
+            .post("/subscriptions/remove", body, Some(REMOVE_TIMEOUT))
+            .await?;
+        let plans = v["plans"].as_array().cloned().unwrap_or_default();
+        Ok(plans
+            .iter()
+            .map(|p| RemovePlan {
+                name: p["name"].as_str().unwrap_or("").to_string(),
+                feed_url: p["feed_url"].as_str().unwrap_or("").to_string(),
+                save_path: p["save_path"].as_str().unwrap_or("").to_string(),
+                torrent_count_in_qb: p["torrent_count_in_qb"].as_u64().unwrap_or(0),
+                size_bytes: p["size_bytes"].as_u64().unwrap_or(0),
+                torrents: p["torrents"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|t| t["name"].as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    // The wire --------------------------------------------------------------
+
+    async fn get(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        timeout: Option<Duration>,
+    ) -> Result<Value, CoreError> {
+        let mut url = format!("{}{}", self.base, path);
+        if !query.is_empty() {
+            let q: Vec<String> = query
+                .iter()
+                .map(|(k, v)| format!("{k}={}", encode(v)))
+                .collect();
+            url = format!("{url}?{}", q.join("&"));
+        }
+        let response = self
+            .send(
+                HttpRequest::get(url)
+                    .headers(self.headers())
+                    .timeout(timeout),
+            )
+            .await?;
+        judge(response)
+    }
+
+    async fn post(
+        &self,
+        path: &str,
+        body: Value,
+        timeout: Option<Duration>,
+    ) -> Result<Value, CoreError> {
+        let mut headers = self.headers();
+        headers.push(("Content-Type".to_string(), "application/json".to_string()));
+        let response = self
+            .send(
+                HttpRequest::post(format!("{}{}", self.base, path))
+                    .headers(headers)
+                    .body(Body::Json(body))
+                    .timeout(timeout),
+            )
+            .await?;
+        judge(response)
+    }
+
+    fn headers(&self) -> Vec<(String, String)> {
+        vec![
+            ("Accept".to_string(), "application/json".to_string()),
+            (
+                "Authorization".to_string(),
+                format!("Bearer {}", self.token),
+            ),
+        ]
+    }
+
+    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
+        self.http.send(req).await.map_err(|e| {
+            CoreError::service(
+                SERVICE,
+                "unreachable",
+                anibeam_contract::i18n::tr(
+                    "core-downloads-anirss-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
+        })
+    }
+}
+
+/// The endpoint writes the releases below sync the installed endpoints with (#854).
+impl anibeam_releases::repos::AnirssEndpoints for AnirssClient {
+    fn put_endpoint(&self, spec: Value) -> BoxFuture<'_, Result<(), CoreError>> {
+        Box::pin(AnirssClient::put_endpoint(self, spec))
+    }
+
+    fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>> {
+        Box::pin(AnirssClient::delete_endpoint(self, name))
+    }
+}
+
+/// A reply into its JSON, or the envelope's error. A success without a
+/// JSON body (there is none in the API) reads as an empty object.
+fn judge(response: HttpResponse) -> Result<Value, CoreError> {
+    if response.is_success() {
+        if response.body.is_empty() {
+            return Ok(json!({}));
+        }
+        return response.json();
+    }
+    let envelope: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
+    let code = envelope["error"]["type"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_else(|| format!("http_{}", response.status));
+    let message = envelope["error"]["message"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_else(|| {
+            anibeam_contract::i18n::tr(
+                "core-downloads-anirss-answered",
+                &[
+                    ("status", response.status.to_string().into()),
+                    ("text", response.text().into()),
+                ],
+            )
+        });
+    Err(CoreError::service(SERVICE, code, message))
+}
+
+/// Percent-encodes a query value the way a form does.
+fn encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// An item list, one malformed item dropped rather than the whole reply.
+fn releases(v: &Value) -> Vec<Release> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|i| serde_json::from_value(i.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn groups(v: &Value) -> Vec<ReleaseGroup> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|g| serde_json::from_value(g.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn best_fit(v: &Value) -> BestFit {
+    BestFit {
+        available: v["available"].as_bool().unwrap_or(false),
+        query: v["query"].as_str().unwrap_or("").to_string(),
+        item: serde_json::from_value(v["item"].clone()).ok(),
+        profile: strings(&v["profile"]),
+    }
+}
+
+fn strings(v: &Value) -> Vec<String> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn added(v: &Value) -> AddedTorrents {
+    AddedTorrents {
+        count: v["count"].as_u64().unwrap_or(0),
+        save_path: v["save_path"].as_str().unwrap_or("").to_string(),
+        tags: strings(&v["tags"]),
+        hashes: strings(&v["hashes"]),
+    }
+}
+
+// The sidecar ----------------------------------------------------------------
+
+/// `anirss --serve` as a child of the core.
+pub struct Sidecar {
+    child: Child,
+    pub port: u16,
+    pub token: String,
+    stderr: Arc<Mutex<VecDeque<String>>>,
+}
+
+/// The torrent client a sidecar is pointed at.
+pub struct QbtLogin<'a> {
+    pub url: &'a str,
+    pub username: &'a str,
+    pub password: Option<&'a str>,
+}
+
+/// The command a sidecar runs: the package's own anirss when the shell
+/// named one and the setting is still the plain default, else the setting.
+pub fn sidecar_command(setting: &str) -> String {
+    if setting == "anirss"
+        && let Some(path) = std::env::var_os(BUNDLED_ENV).map(std::path::PathBuf::from)
+        && path.is_file()
+    {
+        return path.to_string_lossy().into_owned();
+    }
+    setting.to_string()
+}
+
+/// Why a spawn did not happen.
+#[derive(Debug)]
+pub enum SpawnFailure {
+    /// The command is not on PATH: the "go install anirss" story.
+    Missing,
+    /// Anything else the OS said.
+    Io(String),
+}
+
+impl Sidecar {
+    /// Starts `command --serve --port <free port>` with the token and the
+    /// qBittorrent the core uses in its environment: its address and user
+    /// (anirss 0.4.1 reads them over its own config), and the password. A
+    /// sandboxed `home` becomes its home, so it keeps its config and state there.
+    /// Returns as soon as the process exists; `wait_ready` is the half that
+    /// waits on `/health`.
+    pub fn spawn(
+        command: &str,
+        qbt: &QbtLogin<'_>,
+        home: &super::home::AnirssHome,
+    ) -> Result<Sidecar, SpawnFailure> {
+        let port = free_port().map_err(|e| {
+            SpawnFailure::Io(anibeam_contract::i18n::tr(
+                "core-downloads-no-free-port",
+                &[("error", e.to_string().into())],
+            ))
+        })?;
+        let token = random_token();
+        let mut cmd = anibeam_foundation::process::command(command);
+        cmd.arg("--serve")
+            .arg("--port")
+            .arg(port.to_string())
+            .env("ANIRSS_API_TOKEN", &token)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        cmd.env("ANIRSS_QBT_URL", qbt.url)
+            .env("ANIRSS_QBT_USERNAME", qbt.username);
+        match qbt.password {
+            Some(pw) => {
+                cmd.env("ANIRSS_QBT_PASSWORD", pw);
+            }
+            None => {
+                cmd.env_remove("ANIRSS_QBT_PASSWORD");
+            }
+        }
+        if let Some(path) = child_path() {
+            cmd.env("PATH", path);
+        }
+        home.apply(&mut cmd);
+        let mut child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                SpawnFailure::Missing
+            } else {
+                SpawnFailure::Io(e.to_string())
+            }
+        })?;
+        // Python's http.server logs every request to stderr, so the pipe
+        // has to be drained or the child blocks once it fills. The last
+        // lines are kept for a failure message; the rest is dropped.
+        let stderr = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_TAIL)));
+        if let Some(pipe) = child.stderr.take() {
+            let tail = stderr.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(pipe).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let mut t = recover(&tail);
+                    if t.len() >= STDERR_TAIL {
+                        t.pop_front();
+                    }
+                    t.push_back(line);
+                }
+            });
+        }
+        Ok(Sidecar {
+            child,
+            port,
+            token,
+            stderr,
+        })
+    }
+
+    pub fn server(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// Polls `/health` until the server answers, the child exits, or the
+    /// ready timeout passes. Its health on success; what stderr said on
+    /// failure.
+    pub async fn wait_ready(&mut self, client: &AnirssClient) -> Result<Health, String> {
+        let started = tokio::time::Instant::now();
+        loop {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                let status = status.to_string();
+                return Err(match self.stderr_tail() {
+                    Some(said) => anibeam_contract::i18n::tr(
+                        "core-downloads-anirss-exited-said",
+                        &[("status", status.into()), ("said", said.into())],
+                    ),
+                    None => anibeam_contract::i18n::tr(
+                        "core-downloads-anirss-exited",
+                        &[("status", status.into())],
+                    ),
+                });
+            }
+            if let Ok(health) = client.health().await {
+                return Ok(health);
+            }
+            if started.elapsed() > READY_TIMEOUT {
+                let _ = self.child.start_kill();
+                let seconds = READY_TIMEOUT.as_secs();
+                return Err(match self.stderr_tail() {
+                    Some(said) => anibeam_contract::i18n::tr(
+                        "core-downloads-anirss-slow-start-said",
+                        &[("seconds", seconds.into()), ("said", said.into())],
+                    ),
+                    None => anibeam_contract::i18n::tr(
+                        "core-downloads-anirss-slow-start",
+                        &[("seconds", seconds.into())],
+                    ),
+                });
+            }
+            tokio::time::sleep(READY_POLL).await;
+        }
+    }
+
+    /// True while the child is still running.
+    pub fn alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    pub fn stop(&mut self) {
+        let _ = self.child.start_kill();
+    }
+
+    /// The last few lines stderr said, joined, or `None` when it said nothing.
+    fn stderr_tail(&self) -> Option<String> {
+        let t = recover(&self.stderr);
+        let lines: Vec<&str> = t
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines[lines.len().saturating_sub(3)..].join(" / "))
+        }
+    }
+}
+
+/// What `command --version` prints, if it answers within a few seconds.
+/// Asked after a sidecar failed to come up, to tell an anirss too old for
+/// `--serve` from one that broke some other way.
+pub async fn installed_version(command: &str) -> Option<String> {
+    let mut cmd = anibeam_foundation::process::command(command);
+    cmd.arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    if let Some(path) = child_path() {
+        cmd.env("PATH", path);
+    }
+    let out = tokio::time::timeout(VERSION_TIMEOUT, cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+/// The version number in what `--version` or `/health` says ("anirss
+/// 0.3.4", "0.4.0"), when the text holds one older than [`MIN_VERSION`].
+/// Text that does not parse is never called old: a checkout can say
+/// anything.
+pub fn too_old(text: &str) -> Option<String> {
+    let word = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()))?;
+    let version = parse_version(word)?;
+    (version < parse_version(MIN_VERSION)?).then(|| word.to_string())
+}
+
+fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = word.split('.').map(|part| {
+        let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse::<u32>().ok()
+    });
+    let major = parts.next()??;
+    let minor = parts.next().flatten().unwrap_or(0);
+    let patch = parts.next().flatten().unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// How this platform installs anirss, for the message a missing command
+/// shows.
+pub fn install_hint() -> String {
+    if cfg!(target_os = "macos") {
+        anibeam_contract::i18n::tr(
+            "core-downloads-anirss-install-mac",
+            &[
+                ("version", MIN_VERSION.into()),
+                ("command", "brew install marcusbandit/anirss/anirss".into()),
+            ],
+        )
+    } else {
+        anibeam_contract::i18n::tr(
+            "core-downloads-anirss-install-linux",
+            &[
+                ("version", MIN_VERSION.into()),
+                (
+                    "command",
+                    "uv tool install git+https://github.com/marcusbandit/anirss".into(),
+                ),
+            ],
+        )
+    }
+}
+
+/// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
+pub fn too_old_message(version: &str) -> String {
+    anibeam_contract::i18n::tr(
+        "core-downloads-anirss-too-old",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
+    )
+}
+
+/// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
+/// being its own.
+pub fn lacks_feature_message(version: &str) -> String {
+    anibeam_contract::i18n::tr(
+        "core-downloads-anirss-lacks-feature",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
+    )
+}
+
+/// How this platform updates anirss, for the message an old one shows.
+pub fn update_hint() -> String {
+    if cfg!(target_os = "macos") {
+        anibeam_contract::i18n::tr(
+            "core-downloads-anirss-update-mac",
+            &[("command", "brew upgrade anirss".into())],
+        )
+    } else {
+        anibeam_contract::i18n::tr(
+            "core-downloads-anirss-update-linux",
+            &[("command", "uv tool upgrade anirss".into())],
+        )
+    }
+}
+
+/// A port nobody is listening on right now. Bound and released, so there
+/// is a window in which something else could take it; a sidecar that then
+/// fails to bind reports it through `wait_ready`, and the next connect
+/// picks another.
+pub(crate) fn free_port() -> std::io::Result<u16> {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+    Ok(listener.local_addr()?.port())
+}
+
+/// 32 hex characters off the OS's randomness.
+fn random_token() -> String {
+    use rand::Rng;
+    let mut bytes = [0u8; 16];
+    rand::rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `~/.local/bin` ahead of `PATH` when it is not already on it, so a
+/// launch from a `.desktop` entry with a sparse `PATH` still finds a
+/// user-installed anirss. A Mac app opened from Finder gets launchd's
+/// `/usr/bin:/bin:/usr/sbin:/sbin`, so there Homebrew's two prefixes join it.
+/// `None` when nothing needs changing, or when a test switched the extra
+/// directories off with `set_child_path_extras`. The subscriptions call
+/// uses it too.
+pub(crate) fn child_path() -> Option<String> {
+    // Windows apps get the user's whole PATH; there is nothing to add.
+    if cfg!(windows) || !EXTRA_DIRS.load(Ordering::Relaxed) {
+        return None;
+    }
+    let home = std::env::var("HOME").ok()?;
+    let mut wanted = vec![format!("{home}/.local/bin")];
+    if cfg!(target_os = "macos") {
+        wanted.extend([
+            "/opt/homebrew/bin".to_string(),
+            "/usr/local/bin".to_string(),
+        ]);
+    }
+    with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
+}
+
+/// Whether `child_path` may add directories at all. Only a test turns it
+/// off.
+static EXTRA_DIRS: AtomicBool = AtomicBool::new(true);
+
+/// With `false`, `child_path` adds no directory until it is called again
+/// with `true`, so a child sees exactly the `PATH` a test set and a fake
+/// `anirss` on it is the one that runs, whatever the machine has in
+/// `~/.local/bin` or Homebrew's prefixes. Process-wide. Not part of the
+/// contract: public only so the integration tests can reach it, and no
+/// shell may call it.
+#[doc(hidden)]
+pub fn set_child_path_extras(on: bool) {
+    EXTRA_DIRS.store(on, Ordering::Relaxed);
+}
+
+/// `path` with each of `dirs` it lacks put in front, in order; `None` when
+/// it has them all.
+fn with_dirs(path: &str, dirs: &[String]) -> Option<String> {
+    let missing: Vec<&str> = dirs
+        .iter()
+        .map(String::as_str)
+        .filter(|d| !path.split(':').any(|segment| segment == *d))
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let mut parts = missing;
+    if !path.is_empty() {
+        parts.push(path);
+    }
+    Some(parts.join(":"))
+}
+
+/// A web link with what a URL may not carry raw percent-encoded: a source's
+/// torrent links come with spaces and square brackets in the file name, and
+/// anirss refuses them as they are. A magnet link, and anything already
+/// encoded, passes unchanged.
+pub fn url_safe(link: &str) -> String {
+    if !(link.starts_with("http://") || link.starts_with("https://")) {
+        return link.to_string();
+    }
+    let mut out = String::with_capacity(link.len());
+    for c in link.chars() {
+        match c {
+            ' ' | '"' | '<' | '>' | '`' | '{' | '}' | '|' | '\\' | '^' | '[' | ']' => {
+                out.push_str(&format!("%{:02X}", c as u32))
+            }
+            c if !c.is_ascii() || c.is_ascii_control() => {
+                let mut buf = [0u8; 4];
+                for b in c.encode_utf8(&mut buf).bytes() {
+                    out.push_str(&format!("%{b:02X}"));
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_bracketed_link_is_encoded_and_a_magnet_is_not() {
+        assert_eq!(
+            url_safe(
+                "https://t.keyed.example/Torrent/2026/Spring/[Kumo-Subs] Show - 24 [1080p].mkv.torrent"
+            ),
+            "https://t.keyed.example/Torrent/2026/Spring/%5BKumo-Subs%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
+        );
+        assert_eq!(
+            url_safe("https://x.org/a%20b?q=1&r=2"),
+            "https://x.org/a%20b?q=1&r=2"
+        );
+        assert_eq!(
+            url_safe("magnet:?xt=urn:btih:abc&dn=a b"),
+            "magnet:?xt=urn:btih:abc&dn=a b"
+        );
+        assert_eq!(url_safe("https://x.org/é"), "https://x.org/%C3%A9");
+    }
+
+    use super::*;
+
+    #[test]
+    fn only_the_missing_dirs_go_in_front_of_path() {
+        let dirs = ["/h/.local/bin".to_string(), "/opt/homebrew/bin".to_string()];
+        assert_eq!(
+            with_dirs("/usr/bin:/bin", &dirs).as_deref(),
+            Some("/h/.local/bin:/opt/homebrew/bin:/usr/bin:/bin")
+        );
+        assert_eq!(
+            with_dirs("/opt/homebrew/bin:/usr/bin", &dirs).as_deref(),
+            Some("/h/.local/bin:/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(with_dirs("/h/.local/bin:/opt/homebrew/bin", &dirs), None);
+        assert_eq!(with_dirs("", &dirs[..1]).as_deref(), Some("/h/.local/bin"));
+    }
+
+    #[test]
+    fn only_a_version_before_the_minimum_is_too_old() {
+        assert_eq!(too_old("anirss 0.3.4").as_deref(), Some("0.3.4"));
+        assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
+        assert_eq!(too_old("anirss 0.4.1").as_deref(), Some("0.4.1"));
+        assert_eq!(too_old("0.4.2").as_deref(), Some("0.4.2"));
+        assert_eq!(too_old("anirss 0.5.0").as_deref(), Some("0.5.0"));
+        assert_eq!(too_old("anirss 0.6.0"), None);
+        assert_eq!(too_old("anirss 0.10.1"), None);
+        assert_eq!(too_old("anirss 1.0.0rc1"), None);
+        assert_eq!(too_old("anirss dev"), None);
+        assert_eq!(too_old(""), None);
+    }
+    use anibeam_net::FakeHttp;
+
+    fn client(http: &Arc<FakeHttp>) -> AnirssClient {
+        AnirssClient::new("http://127.0.0.1:8787/", "tok", http.clone())
+    }
+
+    #[tokio::test]
+    async fn the_endpoints_anirss_lists_come_back_under_their_shape_kinds() {
+        let http = Arc::new(FakeHttp::new());
+        let old = anibeam_releases::kinds::RENAMED[0].0;
+        http.push_json(
+            200,
+            json!({"endpoints": [
+                {"name": "search", "kind": old, "url": "https://tracker.example/"},
+                {"name": "feed", "kind": "rss", "url": "https://feed.example/?q={query}"},
+            ]}),
+        );
+        let kinds: Vec<String> = client(&http)
+            .endpoints()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.kind)
+            .collect();
+        assert_eq!(kinds, ["filtered-rss", "rss"]);
+    }
+
+    #[tokio::test]
+    async fn health_reads_the_version_and_sends_the_bearer() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            200,
+            json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]}),
+        );
+        let h = client(&http).health().await.unwrap();
+        assert_eq!(h.version, "0.5.0");
+        assert!(h.has(SIDECAR_FEATURE) && h.has("qbt_clients") && !h.has("qbt_env"));
+        // One from before the list has none, which is not an error
+        http.push_json(200, json!({"ok": true, "version": "0.4.2"}));
+        let h = client(&http).health().await.unwrap();
+        assert_eq!((h.version.as_str(), h.features.len()), ("0.4.2", 0));
+        let sent = http.requests();
+        assert_eq!(sent[0].url, "http://127.0.0.1:8787/api/v1/health");
+        assert!(
+            sent[0]
+                .headers
+                .iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bearer tok")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_error_envelope_becomes_a_service_error_with_its_type() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            503,
+            json!({"error": {"type": "qbt_auth_required", "message": "fix the password"}}),
+        );
+        let err = client(&http).subscriptions().await.unwrap_err();
+        match err {
+            CoreError::Service {
+                service,
+                code,
+                message,
+            } => {
+                assert_eq!(service, "anirss");
+                assert_eq!(code, "qbt_auth_required");
+                assert_eq!(message, "fix the password");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A folder anirss refuses does not cost the subscription: it is asked again without
+    /// one and made under anirss's root, for the caller to move (#465).
+    #[tokio::test]
+    async fn a_refused_save_path_subscribes_without_it() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            400,
+            json!({"error": {"type": "validation_error", "message": "invalid save_path"}}),
+        );
+        http.push_json(
+            201,
+            json!({"name": "Show", "feed_url": "https://f.example/rss", "save_path": "/anirss/Show"}),
+        );
+        let made = client(&http)
+            .subscribe("Show", "feed", &[], Some("Show"), Some("/lib/Show "))
+            .await
+            .unwrap();
+        assert_eq!(made.save_path, "/anirss/Show");
+        let sent: Vec<Value> = http
+            .requests()
+            .into_iter()
+            .map(|r| match r.body {
+                Some(Body::Json(v)) => v,
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0]["save_path"], json!("/lib/Show "));
+        assert!(sent[1].get("save_path").is_none(), "{}", sent[1]);
+    }
+
+    #[tokio::test]
+    async fn a_transport_failure_is_unreachable() {
+        let http = Arc::new(FakeHttp::new());
+        http.fail_next("connection refused");
+        let err = client(&http).health().await.unwrap_err();
+        assert!(matches!(err, CoreError::Service { code, .. } if code == "unreachable"));
+    }
+
+    #[tokio::test]
+    async fn search_keeps_null_counts_as_unknown() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            200,
+            json!({"query": "Frieren", "endpoint": "keyed", "fell_back": true,
+                   "tried": [{"endpoint": "tracker", "status": "empty", "count": 0, "error": null}],
+                   "items": [{"title": "[Kumo-Subs] Frieren - 01", "link": "magnet:?x", "seeders": null,
+                              "leechers": null, "downloads": null, "size": "", "category": "",
+                              "page": "", "source": "keyed", "resolution": "1080p", "infomkv": "", "linktype": ""}]}),
+        );
+        let s = client(&http).search("Frieren", None, true).await.unwrap();
+        assert!(s.fell_back);
+        assert_eq!(s.endpoint, "keyed");
+        assert_eq!(s.items[0].seeders, None);
+        assert_eq!(s.tried[0].status, "empty");
+    }
+
+    #[tokio::test]
+    async fn apply_sends_the_op_and_reads_the_outcome() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            200,
+            json!({"applied": false, "reason": "noop", "mode": "client", "query": "q", "endpoint": "keyed",
+                   "items": [], "previous_count": 0, "delta": 0, "groups": [],
+                   "best_fit": {"available": false, "query": "", "item": null, "profile": []}}),
+        );
+        let r = client(&http)
+            .apply(
+                "q",
+                "keyed",
+                &[],
+                &RefineOp::Tokens {
+                    tokens: vec!["[Lumen]".into()],
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!r.applied);
+        assert_eq!(r.reason.as_deref(), Some("noop"));
+        let body = match &http.requests()[0].body {
+            Some(Body::Json(v)) => v.clone(),
+            _ => panic!("json body"),
+        };
+        assert_eq!(body["op"]["type"], "tokens");
+        assert_eq!(body["op"]["tokens"][0], "[Lumen]");
+    }
+
+    /// The anirss the app bundle and the AppImage carry, and the one the AUR
+    /// package asks for, have to be ones the core accepts: MIN_VERSION or newer.
+    /// The three bundles also pin SAVE_PATH_SINCE or newer. When either moves past
+    /// a pin, pin a release that has it (its ANIRSS_VERSION and sha256).
+    #[test]
+    fn the_bundled_anirss_is_new_enough() {
+        let packaging =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../apps/linux/packaging");
+        let pins = [
+            ("macos/anirss.sh", "ANIRSS_VERSION="),
+            ("linux/appimage.sh", "ANIRSS_VERSION="),
+            ("windows/anirss.sh", "ANIRSS_VERSION="),
+            ("aur/anibeam/PKGBUILD", "'anirss>="),
+            ("aur/anibeam-bin/PKGBUILD", "'anirss>="),
+        ];
+        for (file, prefix) in pins {
+            let text = std::fs::read_to_string(packaging.join(file)).unwrap();
+            let pinned = text
+                .split(prefix)
+                .nth(1)
+                .and_then(|rest| rest.split(['\n', '\'', ' ']).next())
+                .unwrap_or_else(|| panic!("{file} names no anirss version"));
+            assert_eq!(
+                too_old(pinned),
+                None,
+                "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
+                 pin a release that has it, with its sha256"
+            );
+            let version = parse_version(pinned)
+                .unwrap_or_else(|| panic!("{file} pins {pinned:?}, which is no version"));
+            // The bundles save a library show's subscription straight into its folder. The
+            // AUR asks for what the AUR has, until it carries SAVE_PATH_SINCE (#542).
+            if !file.starts_with("aur/") {
+                assert!(
+                    Some(version) >= parse_version(SAVE_PATH_SINCE),
+                    "{file} pins anirss {pinned}, which writes a show's rule under its own \
+                     root: pin {SAVE_PATH_SINCE} or newer, with its sha256"
+                );
+            }
+        }
+        // The three bundles ship one release, and each smoke check expects that one.
+        let bundled: Vec<String> = pins[..3]
+            .iter()
+            .map(|(file, prefix)| {
+                let text = std::fs::read_to_string(packaging.join(file)).unwrap();
+                text.split(prefix)
+                    .nth(1)
+                    .unwrap()
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert!(
+            bundled.iter().all(|v| v == &bundled[0]),
+            "the bundles pin different anirss releases: {bundled:?}"
+        );
+        let version = &bundled[0];
+        // A fresh install searches on Anibeam's own engine (#552), so the Downloads page drive
+        // never starts anirss; the Linux smoke's helpers step runs the bundled one instead.
+        let linux = std::fs::read_to_string(packaging.join("linux/smoke.sh")).unwrap();
+        assert!(
+            linux.contains(&format!("= \"anirss {version}\" ]")),
+            "linux/smoke.sh checks another anirss --version than the {version} bundled"
+        );
+    }
+
+    #[test]
+    fn encode_is_form_style() {
+        assert_eq!(encode("Frieren 1080p"), "Frieren+1080p");
+        assert_eq!(encode("a&b"), "a%26b");
+    }
+
+    #[test]
+    fn tokens_are_32_hex() {
+        let t = random_token();
+        assert_eq!(t.len(), 32);
+        assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(t, random_token());
+    }
+
+    fn health(version: &str, features: &[&str]) -> Health {
+        Health {
+            version: version.to_string(),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    /// The installed endpoints go into anirss through this client (#499): the releases'
+    /// `sync_anirss` writes ours and leaves what was written by hand.
+    #[test]
+    fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
+        use crate::testing::Teams;
+        use anibeam_releases::repos::{add_custom, sync_anirss};
+
+        let custom = |teams: &Teams, name: &str, url: &str| {
+            add_custom(&teams.releases, name.into(), url.into(), Vec::new()).unwrap();
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let http = anibeam_net::FakeHttp::new();
+        let teams = Teams::open(dir.path(), http.clone());
+        custom(&teams, "mine", "https://a.example/rss?q={query}&token=t1");
+        custom(
+            &teams,
+            "proxied",
+            "http://127.0.0.1:9117/x?apikey=k&q={query}",
+        );
+        let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
+
+        // anirss has its own search-proxy endpoint from config.toml; Anibeam writes only "mine".
+        let theirs = |name: &str, url: &str| SearchEndpoint {
+            name: name.into(),
+            kind: "rss".into(),
+            url: url.into(),
+            client_side_refine: false,
+            on_demand: None,
+            running: None,
+            followable: true,
+        };
+        // An anirss that does not list endpoint writes has no endpoint API, whatever its
+        // version says: nothing is sent.
+        let have = vec![theirs("proxied", "http://elsewhere/")];
+        let without = health("0.6.0", &["qbt_env_session"]);
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            without.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert!(http.requests().is_empty());
+
+        // One that lists it takes them, even with a version no parser reads.
+        let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
+        http.push_json(201, serde_json::json!({}));
+        assert!(teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].method, Method::Post);
+        let body = format!("{:?}", sent[0].body);
+        assert!(
+            body.contains("\"mine\"") && body.contains("token=t1"),
+            "{body}"
+        );
+
+        // Listed back with its token masked, as anirss lists it: unchanged, so not sent again.
+        let have = vec![
+            theirs("proxied", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token=***"),
+        ];
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert_eq!(http.requests().len(), 1);
+
+        // Switched off: it comes out of anirss again, and the hand-written one stays.
+        teams
+            .services
+            .store
+            .write(|c| {
+                c.execute(
+                    "UPDATE installed_endpoints SET enabled = 0 WHERE endpoint_id = 'mine'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        http.push_json(200, serde_json::json!({}));
+        let have = vec![
+            theirs("proxied", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token={token}"),
+        ];
+        assert!(teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].method, Method::Delete);
+        assert!(sent[1].url.ends_with("/endpoints/mine"));
+        // Nothing left to do: nothing is sent.
+        let have = vec![theirs("proxied", "http://elsewhere/")];
+        assert!(!teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
+        assert_eq!(http.requests().len(), 2);
+        teams.shutdown();
+    }
+}

@@ -5,14 +5,18 @@
 // - Create and Join wait on the relay's welcome for up to 20 s, so they run off the Qt
 //   thread through Door.callAsync and the panel shows them as busy.
 // - A join is answered by RoomEpisode: with a file this library holds, the player opens on it
-//   and attaches; without one, the panel says the episode is missing here.
+//   and attaches; without one, the panel offers Get media, which downloads the host's copy.
 // - The player calls playerOpened() with each session it opens. The host's always attaches,
 //   which is how the host's next episode moves the whole room; anyone else's attaches when it
 //   is the room's episode.
 // - A name comes first: the core refuses Create and Join without one, so the action waits
 //   while the panel asks, and runs once the name is saved.
+// - A room can start with nothing picked (#922): Create without a session. The first episode
+//   the host opens picks it, the same way the host's next episode moves the room.
+// - The host's first play of an episode waits while someone is not ready (#922): the core
+//   holds the player and sets the gate, and startAnyway() or waitForEveryone() answers it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: root
@@ -20,6 +24,8 @@ QtObject {
     property var info: null
     readonly property bool inRoom: info !== null
     readonly property bool host: inRoom && info.host === true
+    // Whether the host has picked what the room watches (#922)
+    readonly property bool picked: inRoom && info.episode !== null && info.episode !== undefined
     // "create" or "join" while one waits on the relay
     property string busy: ""
     // The last thing that went wrong, as a sentence that says what to do; cleared by the next try
@@ -61,6 +67,7 @@ QtObject {
         var w = waiting
         waiting = null
         if (w && w.kind === "create") create(w.session)
+        else if (w && w.kind === "letin") letIn(w.user)
         else if (w && w.kind === "join") join(w.code)
         return true
     }
@@ -82,9 +89,11 @@ QtObject {
         pending = p
         busy = kind
     }
+    // `session` is the player's, or null for a room with nothing picked yet
     function create(session) {
         if (busy !== "") return
         error = ""
+        if (session === undefined) session = null
         if (needsName) { waiting = { kind: "create", session: session }; return }
         callAsync("create", "RoomCreate", { session: session })
     }
@@ -96,6 +105,27 @@ QtObject {
         if (needsName) { waiting = { kind: "join", code: code }; return }
         episode = null
         callAsync("join", "RoomJoin", { code: code })
+    }
+    // Discord (#966): someone who asked to join is let in, into this room or one started
+    // for what plays. It waits on the relay like Create, and on a name like Create too.
+    // False while another room call waits on the relay: the ask stays up to press again
+    function letIn(user) {
+        if (busy !== "") return false
+        error = ""
+        if (needsName) { waiting = { kind: "letin", user: user }; frame.openRoom(); return true }
+        callAsync(inRoom ? "letin" : "create", "DiscordAnswer", { user_id: user, allow: true })
+        if (!inRoom) frame.openRoom()
+        return true
+    }
+    // Whether this build can show anything on Discord, and the switch is on
+    property bool discordAvailable: false
+    readonly property bool onDiscord: discordAvailable && !!Door.preferences.discord_presence
+    // Whether anyone on Discord may join this room without asking; each room starts invite only
+    property bool discordOpen: false
+    function setDiscordOpen(open) {
+        var r = Door.call("DiscordSetRoomOpen", { open: open })
+        if (r.error) { frame.fail(r.error); return }
+        discordOpen = !!r.reply.room_open
     }
     function cancelWaiting() { waiting = null; error = "" }
     function leave() {
@@ -122,6 +152,27 @@ QtObject {
         if (r.reply && r.reply.room) info = r.reply.room
     }
     function nudgeOffset(d) { if (inRoom) setOffset(info.offset + d) }
+    // Get media (#889): the host's app passes this member its torrent or its release, and the
+    // core downloads it; the episode opens once it is in the library (RoomEpisode)
+    // With wholeShow the rest of the host's release follows the episode (#922)
+    function getMedia(wholeShow) {
+        error = ""
+        var r = Door.call("RoomGetMedia", { whole_show: wholeShow === true })
+        if (r.error) { error = errorText(r.error); return }
+        if (r.reply && r.reply.room) info = r.reply.room
+    }
+    // Whether Get media asks this episode or the whole show first: a series' numbered
+    // episode does, a film or an extra does not
+    readonly property bool asksWholeShow: picked && !info.episode.film
+                                          && info.episode.number !== null && info.episode.number !== undefined
+    // The ready gate's two answers
+    function startAnyway() { gateAnswer(false) }
+    function waitForEveryone() { gateAnswer(true) }
+    function gateAnswer(wait) {
+        var r = Door.call("RoomStart", { wait: wait })
+        if (r.error) { error = errorText(r.error); return }
+        if (r.reply && r.reply.room) info = r.reply.room
+    }
 
     // The player opened a session: the host's always drives the room, anyone else's when it
     // is the episode the room watches
@@ -154,12 +205,25 @@ QtObject {
         else frame.go("player", { file: episode.file }, title)
     }
 
+    // Whether two episode refs name the same episode of the same show, as the core's
+    // episode::same does: the key and every show id
+    function sameEpisode(a, b) {
+        if (!a || !b) return false
+        var id = function(v) { return v === null || v === undefined ? "" : String(v) }
+        return String(a.episode_key) === String(b.episode_key)
+            && id(a.anilist_id) === id(b.anilist_id)
+            && id(a.mal_id) === id(b.mal_id)
+            && id(a.tvmaze_id) === id(b.tvmaze_id)
+    }
+
     // Every room error as a sentence that says what to do
     function errorText(e) {
         if (!e) return ""
         if (e.kind === "Service") {
             var ids = { not_found: "room-error-not-found", full: "room-error-full", unreachable: "room-error-unreachable",
-                        refused: "room-error-refused", proto: "room-error-proto", not_in_room: "room-error-not-in-room" }
+                        needs_episode: "room-error-needs-episode",
+                        refused: "room-error-refused", proto: "room-error-proto", not_in_room: "room-error-not-in-room",
+                        cannot_fetch: "room-error-cannot-fetch" }
             if (ids[e.code]) return words.t(ids[e.code])
         }
         if (e.kind === "Invalid" && e.field === "code") return words.t("room-error-bad-code")
@@ -173,15 +237,26 @@ QtObject {
     function refresh() {
         var r = Door.call("RoomStatus", {})
         if (!r.error) info = r.reply.room || null
+        var p = Door.call("GetPresence", {})
+        if (!p.error) discordAvailable = !!p.reply.available
     }
 
     property Connections events: Connections {
         target: Door
         function onPreferencesChanged() { root.savedName = "" }
         function onRoomChanged(room) {
+            var was = root.info ? String(root.info.fetch || "") : ""
+            var wasCode = root.info ? root.info.code : ""
             root.info = room && room.code ? room : null
-            if (!root.info) root.episode = null
-            else root.settle()
+            if (!root.info || root.info.code !== wasCode) root.discordOpen = false
+            if (!root.info) { root.episode = null; return }
+            // The room moved on: what was found for the last episode no longer holds
+            if (root.episode && !root.sameEpisode(root.episode.episode, root.info.episode)) root.episode = null
+            root.settle()
+            // A Get media that stopped short carries why in the room itself
+            var why = root.info.fetch_error
+            if (root.info.fetch === "Failed" && was !== "Failed" && why && why.id)
+                root.error = words.t(why.id, why.args || {})
         }
         function onRoomEpisode(ep, series, file) {
             root.episode = { episode: ep, series: series, file: file }

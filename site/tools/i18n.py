@@ -3,9 +3,9 @@
 
 The English pages are the source. For each language file site/i18n/<code>.json this writes the
 same pages under <site>/<code>/ (the home page and /download/), with every visible string and
-alt or aria text swapped for its translation, asset paths pointing one level up, the What's new
-links pointing at the English notes (the changelog is written in English), and the strings the
-scripts write themselves (window.I18N). Every page, English included, gets a working language
+alt or aria text swapped for its translation, asset paths pointing one level up, the links to
+What's new, the wiki, privacy and terms pointing at the English pages (ENGLISH_ONLY), and the
+strings the scripts write themselves (window.I18N). Every page, English included, gets a working language
 menu and hreflang links to its translations.
 
   i18n.py extract <site-dir>   print the English strings the pages hold, as JSON
@@ -26,16 +26,20 @@ JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "Wha
               "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy.",
               # the tour's screenshots, swapped by app.js
               "Anibeam's Home: shows to continue and shows not started yet, as poster cards",
-              "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters",
-              # the card a poster in the wall opens (app.js)
-              "Close", "{n} episodes", "Movie"]
+              "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters"]
 # A folder name is the short code; hreflang and lang take the full tag where the script matters.
 TAG = {"zh": "zh-Hans"}
 SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
-        "$", "|", "English", "AniList", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
+        "$", "|", "English", "AppImage", "anibeam-bin", ".dmg", "brew", "Android", "APK", "IPA", "install.sh",
+        "Arch", "Debian, Ubuntu", "Fedora", "AniList", "Wiki", "AltStore", "SideStore", "LiveContainer", "marcusbandit/Anibeam", "GPL 3.0", "Anibeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
-        "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan Season 2",
-        "Attack on Titan Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}
+        "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan", "Season 2",
+        "Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters",
+        "Cowboy Bebop", "Ghost in the Shell", "Steins;Gate", "Akira", "Fullmetal Alchemist: Brotherhood", "Princess Mononoke",
+        # the files the scan demo reads, the room code and the people in the room
+        "Cowboy.Bebop.S01E05.1080p.BluRay.mkv", "Ghost in the Shell (1995) 1080p.mkv", "steins_gate_12_bd.mkv",
+        "Akira.1988.REMASTER.mkv", "FMA Brotherhood - 03 [1080p].mkv", "Mononoke-hime.2160p.mkv",
+        "K7QM2X", "Alex", "Sam", "Kai", "Linux, Windows, Mac, Android"}
 PROTECT = re.compile(r"<(script|style|code|svg)\b.*?</\1>", re.S | re.I)
 TEXT = re.compile(r"(>|\x00\d+\x00)([^<>\x00]+)(?=<|\x00)")
 ATTR = re.compile(r'\b(alt|aria-label|title|placeholder)="([^"]*)"')
@@ -117,13 +121,17 @@ ASSET = re.compile(r'\b(href|src)="(?!https?:|#|/|mailto:|data:)([^"]+)"')
 SRCSET = re.compile(r'\bsrcset="([^"]+)"')
 
 
+# Pages that exist in English only: a translated page links the English one.
+ENGLISH_ONLY = ("whats-new/", "wiki/", "privacy/", "terms/")
+
+
 def deeper(page):
-    """Paths for a copy one folder down: assets and What's new go up a level; links to the
-    home page and the download page stay inside the language."""
+    """Paths for a copy one folder down: assets and the English-only pages go up a level;
+    links to the home page and the download page stay inside the language."""
     def fix(m):
         attr, url = m.groups()
         is_page = url.endswith("/") or url in (".", "./")
-        if is_page and "whats-new" not in url:
+        if is_page and not any(p in url for p in ENGLISH_ONLY):
             return m.group(0)
         return f'{attr}="../{url}"'
     page = SRCSET.sub(lambda m: 'srcset="' + ", ".join(

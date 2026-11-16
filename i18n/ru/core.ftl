@@ -92,7 +92,7 @@ event-problem-trackers = Что-то пошло не так с вашими сп
 event-problem-franchise = Что-то пошло не так со связанными сериалами. Подробности в параметрах разработчика.
 event-problem-playback = Что-то пошло не так с воспроизведением. Подробности в параметрах разработчика.
 event-problem-store = Что-то пошло не так при сохранении данных. Подробности в параметрах разработчика.
-event-problem-system = Что-то пошло не так в AniBeam. Подробности в параметрах разработчика.
+event-problem-system = Что-то пошло не так в Anibeam. Подробности в параметрах разработчика.
 event-problem-downloads = Что-то пошло не так с загрузками. Подробности в параметрах разработчика.
 
 ## Ошибки (contract::CoreError)
@@ -119,15 +119,15 @@ core-error-io = Не удалось прочитать или записать �
 core-error-storage = Не удалось сохранить библиотеку: { $message }
 core-error-keyring = Нет доступа к системному хранилищу паролей: { $message }
 core-error-unsupported = { $what } пока не поддерживается.
-core-error-version = Этот экспорт из более новой версии AniBeam (формат { $found }). Обновите AniBeam, чтобы импортировать его.
-core-error-internal = Внутренняя ошибка AniBeam: { $message }
+core-error-version = Этот экспорт из более новой версии Anibeam (формат { $found }). Обновите Anibeam, чтобы импортировать его.
+core-error-internal = Внутренняя ошибка Anibeam: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = вставьте адрес репозитория
 core-repos-must-be-https = адрес должен начинаться с https
@@ -166,7 +166,7 @@ core-repos-note-theirs = Этот anirss запущен вами, и компь�
 core-repos-note-sandbox = Этот запуск не пишет в конфиг anirss, поэтому здесь компьютер не ищет по { $id }
 core-repos-note-old = anirss { $version } не принимает источники от { -app-name }; обновите его до { $min } или новее, чтобы компьютер искал по нему
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = ключ индекса не является ключом ed25519
 core-repos-key-not-base64 = ключ индекса не является 32 байтами в base64
@@ -186,7 +186,7 @@ core-repos-check-auth-key = { $id }: неверный ключ авториза�
 core-repos-check-host-torznab = { $id }: только адрес torznab может указывать хост как {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: подстановка в имени хоста
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Дорожка { $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -319,7 +319,7 @@ core-jobs-start-endpoint = Запуск источника загрузки
 core-jobs-schedule-agent = Запрос расписания у ИИ-агента
     .stopped = Запрос расписания у ИИ-агента остановился из-за проблемы.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = Сейчас в эфире
 core-airing-now-winter = Зима { $year }
@@ -340,11 +340,11 @@ core-airing-now-already-on =
     }».
 core-airing-now-plan-failed = Не удалось добавить «{ $title }» в «В планах». Попробуйте позже.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = Вышла серия { $number } сериала «{ $title }».
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Трансляция на { $device }.
 core-cast-ended = Трансляция на { $device } завершена.
@@ -365,7 +365,7 @@ core-cast-refused-both = { $error }; исходный файл он тоже н�
 core-cast-chromecast-stopped = Chromecast остановился
 core-cast-hevc = { $error }. Эта серия в HEVC, который декодируют только новые Chromecast (с Google TV или Ultra)
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = не удалось связаться с Chromecast: { $error }
 core-cast-chromecast-broke = соединение с Chromecast оборвалось: { $error }
@@ -377,21 +377,21 @@ core-cast-no-reason = без причины
 core-cast-chromecast-cannot-play = Chromecast не может это воспроизвести ({ $kind })
 core-cast-chromecast-error = Chromecast остановился с ошибкой воспроизведения
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = телевизор не ответил: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = телевизор отклонил { $action }
 core-cast-tv-refused-code = телевизор отклонил { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = В этом файле нет видео.
 core-cast-hi10p = Эта серия в 10-битном H.264 (Hi10P), который не декодирует ни один телевизор или Chromecast. Для трансляции нужно перекодирование, а его пока нет.
 core-cast-video-codec = Видео этой серии ({ $codec }) нельзя транслировать.
 core-cast-audio-codec = Аудио этой серии ({ $codec }) нельзя транслировать.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -413,7 +413,7 @@ core-phone-no-results = ничего не найдено по запросу { $
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = Собственный торрент-движок
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = подключено
@@ -431,13 +431,13 @@ core-phone-check-reaching = { $label }: соединение с { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } байт
 core-phone-check-setup = настройка
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Прогресс по «{ $folder }» не сохранён. Сначала привяжите сериал.
 # $done is a whole percentage.
 core-playback-still-downloading = серия { $number } ещё скачивается, готово { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = длительность должна быть положительным числом секунд
 
@@ -465,7 +465,7 @@ core-core-guest-not-interested = «Не интересно» на том ком�
 core-core-guest-recommended = рекомендации на том компьютере подобраны по списку его владельца
 core-core-nothing-picked = ничего не выбрано
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } не является источником данных
 core-prefs-provider-count = { $provider } указан несколько раз ({ $count }); каждый источник указывается один раз
@@ -473,22 +473,22 @@ core-prefs-provider-count = { $provider } указан несколько раз
 core-prefs-outside = { $value } вне диапазона от { $low } до { $high }
 core-prefs-empty = пусто
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Подбор сериалов для вас
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Поиск людей с похожим вкусом
 core-recommended-reading-lists = Чтение их списков
 core-recommended-reading-yours = Чтение ваших сериалов
 core-recommended-reading-suggestions = Чтение сериалов для рекомендаций
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = На { -anilist } нет аниме { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = Выкл.
@@ -500,25 +500,25 @@ core-host-cannot-listen = Не удалось открыть порт
 core-host-port-taken = Порт { $port } занят
 core-host-cannot-listen-on = Не удалось слушать { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } не является адресом с портом
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = время ожидания истекло через { $ms } мс
 core-net-rate-limited = { $provider } ограничил частоту запросов
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: только что не ответил вовремя; { -app-name } ждёт { $seconds } с перед новым запросом
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = нет данных
 
@@ -543,13 +543,13 @@ core-update-cannot-read-dmg = Не удалось прочитать dmg: { $err
 core-update-no-app = В dmg нет приложения
 core-update-cannot-copy = Не удалось скопировать новое приложение рядом с этим: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title }, сезон { $season }, серия { $number }
 core-calendar-episode = { $title }, серия { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = нет домашней папки
 
@@ -557,15 +557,18 @@ core-paths-no-home = нет домашней папки
 
 core-first-run-not-absolute = папка с видео должна быть указана абсолютным путём
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал
+core-presence-room = Смотрим вместе
+core-presence-in-room = В комнате
+core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = Для { $tracker } не задан Client ID.
@@ -575,15 +578,15 @@ core-trackers-mal-wants-secret = MyAnimeList требует Client Secret это
 core-trackers-token-reply-unreadable = ответ с токеном не читается: { $error }
 core-trackers-token-reply-no-token = в ответе нет токена доступа
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = токен доступа не сохранён, переподключитесь в настройках
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = у аккаунта нет id пользователя
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = не выбраны сериалы для переноса
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -609,7 +612,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } не принял «{ $show }»: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Время авторизации истекло, попробуйте снова.
 core-trackers-oauth-state-mismatch = не совпал state, возможна CSRF-атака, вход прерван.
@@ -626,7 +629,7 @@ core-trackers-oauth-port-failed = не удалось открыть порт { 
 core-trackers-oauth-port-busy = порт { $port } на этом компьютере занят другой программой. Подождите немного и попробуйте снова или закройте ту программу, если порт не освобождается.
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site } вернул ошибку: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site } подключён к { $app }
 core-trackers-page-close-tab = Эту вкладку можно закрыть.
@@ -635,12 +638,12 @@ core-trackers-page-failed = Вход не завершился
 core-trackers-page-go-back = Вернитесь в { $app } и попробуйте снова.
 core-trackers-page-finishing-title = { $app }, вход завершается
 core-trackers-page-finishing = Вход завершается
-core-trackers-page-finishing-body = { $site } ответил, и AniBeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
+core-trackers-page-finishing-body = { $site } ответил, и Anibeam завершает вход. Вернитесь в { $app }: там будет видно, когда всё готово.
 core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Перенос в «Отложено» на { $tracker }
@@ -697,7 +700,7 @@ core-trackers-back-on-watching = «{ $name }» снова в «Смотрю» н
 core-trackers-back-on-watching-two = «{ $name }» снова в «Смотрю» на { $site } и { $secondSite }.
 core-trackers-back-on-watching-failed = Не удалось вернуть «{ $name }» в «Смотрю». Попробуйте позже.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } ограничил частоту запросов, попробуйте через минуту.
@@ -817,7 +820,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } сериала хранятся на этом компьютере, трекера для отправки нет.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = «{ $show }» привязан к «{ $title }».
@@ -920,7 +923,7 @@ core-metadata-find-busy =
        *[other] { $busy } сериала уже привязываются.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Не удалось прочитать ссылку. Вставьте адрес страницы AniList, MyAnimeList, TVmaze или IMDb.
 core-metadata-no-mal-entry = На AniList нет записи для этого id MyAnimeList.
@@ -960,29 +963,29 @@ core-metadata-updated-some =
        *[other] Обновлены данные о { $count } сериалах; не удалось обновить: { $failed }.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = На TVmaze нет сериала { $id }
 core-metadata-no-such-media = На AniList нет записи { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = ссылки IMDb из Wikidata
 core-metadata-progress-imdb-ratings = рейтинги IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = Общие персонажи
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported =
@@ -993,18 +996,18 @@ core-transfer-exported =
        *[other] { $count } сериала сохранено в { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = это не JSON: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = это не документ { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Библиотека загружена из файла.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = в библиотеке нет файла { $id }
@@ -1047,7 +1050,7 @@ core-library-watched-removed =
        *[trash] перемещено в корзину
     }.
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -1077,7 +1080,7 @@ core-library-runs-span = с { $first } по { $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init } и { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = номер серии от 0 до 10000
 core-library-fix-season-range = номер сезона не больше 200
@@ -1099,7 +1102,7 @@ core-library-fixed =
        *[other] «{ $title }»: исправлено чтение { $count } файла.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = «{ $title }» скрыт.
@@ -1109,12 +1112,12 @@ core-library-back-many = Снова видно сериалов: { $count }.
 core-library-episode-count-set = Число серий «{ $title }»: { $count }.
 core-library-episode-count-cleared = Число серий «{ $title }» сброшено.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Заметки о расписании «{ $title }» удалены.
 core-library-schedule-saved = Сохранено заметок о расписании «{ $title }»: { $count }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = путь к источнику должен быть абсолютным
 core-library-source-exists = уже есть такой источник
@@ -1166,7 +1169,7 @@ core-library-scan-done =
         }{ $removed } пропало
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -1200,7 +1203,7 @@ core-transfer-progress-accounts = аккаунты
 core-transfer-progress-preferences = настройки
 core-transfer-progress-done = готово
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirss не ответил: { $message }
@@ -1217,22 +1220,22 @@ core-downloads-anirss-slow-start-said = anirss не запустился за { 
 core-downloads-anirss-install-mac = Установите anirss { $version } или новее командой: { $command }
 core-downloads-anirss-install-linux = Установите anirss { $version } или новее: пакет anirss в AUR или { $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version } слишком старый для AniBeam, нужен { $minimum } или новее. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а AniBeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
+core-downloads-anirss-too-old = anirss { $version } слишком старый для Anibeam, нужен { $minimum } или новее. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } не умеет хранить вход каждого торрент-клиента отдельно, а Anibeam это нужно для смены клиента; anirss { $minimum } и новее умеет. { $update }.
 core-downloads-anirss-update-mac = Обновите его командой: { $command }
 core-downloads-anirss-update-linux = Обновите пакет anirss или выполните: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = торрент-файл не получен: { $message }
 core-downloads-torrent-file-answered = на запрос торрент-файла пришёл ответ { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = лента ответила { $status }
 core-downloads-not-a-feed = это не лента: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackett не установлен: { $program } не найден. Установите его или измените команду в настройках.
@@ -1241,7 +1244,7 @@ core-downloads-endpoint-start-failed = Не удалось запустить { 
 core-downloads-endpoint-start-timeout = { $name } запустился, но не ответил за { $seconds } с.
 core-downloads-command-exited = команда завершилась с кодом { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss остановился
 # $install is core-downloads-anirss-install-mac or -linux
@@ -1251,23 +1254,23 @@ core-downloads-anirss-command-missing = { $command } не найден. { $insta
 core-downloads-anirss-start-failed = Не удалось запустить { $command }: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld } Его ответ: { $message }
-core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у AniBeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и AniBeam будет запускать его сам
-core-downloads-own-client-gone = qBittorrent от AniBeam пропал: qbittorrent-nox не установлен. Переустановите AniBeam или укажите в настройках свой qBittorrent
+core-downloads-no-torrent-client = По адресу { $address } не отвечает qBittorrent, а своего у Anibeam нет. Установите qBittorrent и включите его веб-интерфейс или установите qbittorrent-nox, и Anibeam будет запускать его сам
+core-downloads-own-client-gone = qBittorrent от Anibeam пропал: qbittorrent-nox не установлен. Переустановите Anibeam или укажите в настройках свой qBittorrent
 core-downloads-no-port = в { $address } нет порта
 core-downloads-own-client-settings = не удалось записать настройки qBittorrent: { $error }
 core-downloads-own-client-start-failed = Не удалось запустить { $command }: { $error }
-core-downloads-own-client-slow-start = qBittorrent от AniBeam не запустился
+core-downloads-own-client-slow-start = qBittorrent от Anibeam не запустился
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = qBittorrent от AniBeam не запустился: { $said }
+core-downloads-own-client-slow-start-said = qBittorrent от Anibeam не запустился: { $said }
 core-downloads-not-ready = Загрузки не готовы. Проверьте раздел «Загрузки» в настройках.
 core-downloads-ready = Загрузки готовы.
 # $count is how many sources anirss's own config names
 core-downloads-helper-sources =
     { $count ->
-        [one] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [few] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-        [many] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
-       *[other] Теперь загрузки ищет сам AniBeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [one] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источник из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [few] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+        [many] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источников из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
+       *[other] Теперь загрузки ищет сам Anibeam, и он не читает { $count } источника из конфига помощника поиска. Добавьте их в настройках, раздел «Загрузки», или выберите там помощника поиска.
     }
 core-downloads-client-connected = Торрент-клиент подключён.
 core-downloads-client-not-connected = Торрент-клиент не подключён. Проверьте его адрес в настройках.
@@ -1349,7 +1352,7 @@ core-downloads-client-switched = Загрузки теперь идут чере
 core-downloads-host-not-running = не запущен на хосте
 core-downloads-host-late = не ответил вовремя
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = пустой запрос
 # $query is the search, in quotes
@@ -1370,33 +1373,37 @@ core-downloads-native-outside-folders = отказ удалять файлы в�
 core-downloads-refuse-home-folder = { $path } это домашняя папка или содержит её, поэтому ничего не удалено
 core-downloads-refuse-library-folder = { $path } это папка библиотеки или содержит её, поэтому ничего не удалено
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = в qBittorrent не задана папка сохранения по умолчанию; задайте её в qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } не полный путь к папке
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } не подходит для загрузок: выберите существующую папку, которая не является домашней
 core-downloads-name-empty = имя не может быть пустым
 core-downloads-name-slash = имя не должно содержать / или \
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name } не подходит как имя папки
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
 core-downloads-prune-failed = Не удалось отписаться от «{ $title }». Проверьте раздел «Загрузки» в настройках.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } не является простым абсолютным путём, поэтому ничего не удалено
 core-downloads-refuse-root = { $path } это корень файловой системы, поэтому ничего не удалено
 core-downloads-refuse-outside-library = { $path } не находится в папке библиотеки, поэтому ничего не удалено
 core-downloads-refuse-save-folder = { $path } это папка, куда сохранён торрент, а не то, что он скачал, поэтому ничего не удалено
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = Серия { $episode } «{ $title }» не появилась через три дня после выхода. Лента продолжает её искать.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = команда anirss не может быть пустой
 core-downloads-settings-anirss-address = адрес anirss должен начинаться с http:// или https://
@@ -1409,7 +1416,7 @@ core-downloads-settings-same-id = у двух клиентов одинаков�
 core-downloads-settings-saved-address = адрес { $name } должен начинаться с http:// или https://
 core-downloads-settings-same-name = два клиента называются { $name }; дайте каждому своё имя
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = qBittorrent не ответил по адресу { $address }: { $message }
@@ -1425,7 +1432,7 @@ core-downloads-qbt-some-not-added = qBittorrent не смог добавить �
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrent ответил { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = элемента { $item } нет среди релизов (всего { $count })
@@ -1433,7 +1440,7 @@ core-downloads-replace-bad-item = элемента { $item } нет среди �
 core-downloads-not-replaced = Серия { $episode } не заменена.
 core-downloads-replaced = Серия { $episode } заменена новой загрузкой.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = нет скользящей загрузки { $id }
@@ -1442,7 +1449,7 @@ core-downloads-rolled = «{ $title }»: теперь серии с { $from } п�
 core-downloads-roll-ahead = держите хотя бы одну серию впрок
 core-downloads-roll-nothing = скачивать нечего
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = источник поиска JSON берётся из репозитория источников, где описано, как читать его поля
 core-releases-endpoint-no-name = не указано `name`
@@ -1458,7 +1465,7 @@ core-releases-endpoint-not-http = { $name }: адрес должен начин�
 core-releases-endpoint-needs-query = { $name }: url типа { $kind } должен содержать подстановку {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name }: url типа { $kind } сам добавляет запрос, поэтому {"{"}query{"}"} в нём не нужен
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = индексатор ответил ошибкой { $code }
@@ -1466,11 +1473,11 @@ core-releases-bad-feed = некорректная лента: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = лента ответила { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = это не JSON ленты: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = это не JSON: { $error }
 # $message is what the search said about itself
@@ -1481,7 +1488,7 @@ core-releases-no-results-field = в ответе нет результатов �
 core-releases-results-not-list = результаты в ответе не являются списком
 core-releases-search-answered = поиск ответил { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = источников пока нет: добавьте репозиторий или источник вручную в разделе «Источники» в меню «Ещё»
 core-releases-no-source-named = нет источника { $name }
@@ -1489,7 +1496,7 @@ core-releases-empty-query = введите, что искать
 core-releases-cannot-follow = на { $name } нельзя подписаться: он отвечает на поиск, но у него нет ленты для проверки новых серий
 core-releases-endpoint-gone = { $name } больше недоступен: удалён, выключен или потерял ключ
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1503,12 +1510,12 @@ core-releases-quirks-url-https = url в show_feed должен быть https
 core-releases-quirks-url-host = url в show_feed должен быть на хосте самого источника
 core-releases-quirks-url-slug = url в show_feed содержит {"{"}slug{"}"} ровно один раз и никаких других подстановок
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = операции 'tokens' нужен непустой список `tokens`
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = пакет { $group }
@@ -1523,7 +1530,7 @@ core-releases-episode-range = с { $from } по { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1535,6 +1542,7 @@ core-room-service = Совместный просмотр
 core-room-not-found = Комнаты с таким кодом нет. Возможно, она закрылась.
 core-room-full = Эта комната заполнена.
 core-room-proto = Этот ретранслятор работает на другой версии комнат. Обновите { -app-name }, чтобы войти.
+core-room-needs-episode = Этому ретранслятору нужна серия, чтобы создать комнату. Создайте её из плеера или обновите ретранслятор.
 core-room-unreachable = Не удалось связаться с ретранслятором: { $message }
 core-room-refused = Ретранслятор отказал: { $message }
 core-room-not-in = Вы не в комнате.
@@ -1548,3 +1556,20 @@ core-room-member-left = { $name } покидает комнату.
 core-room-closed = Комната совместного просмотра закрыта.
 core-room-lost = Связь с комнатой совместного просмотра потеряна. Пробуем снова.
 core-room-back = Снова в комнате совместного просмотра.
+core-room-media-asked = Вы попросили серию у ведущего.
+core-room-media-cannot = Ведущий сейчас не может поделиться этой серией.
+core-room-media-sent = Торрент серии отправлен: { $name }.
+core-room-media-sent-name = Название релиза серии отправлено: { $name }.
+core-room-media-nothing = У ведущего нет копии серии, которой можно поделиться.
+core-room-media-no-answer = Приложение ведущего не ответило. Попробуйте ещё раз чуть позже.
+core-room-media-torrent = Серия скачивается по торренту ведущего.
+core-room-media-searching = Поиск релиза ведущего в ваших источниках.
+core-room-media-not-found = Ни в одном из ваших источников нет релиза ведущего.
+core-room-media-no-sources = Все источники выключены. Включите один, чтобы искать.
+core-room-media-no-start = Не удалось начать загрузку: { $message }
+core-room-media-client = торрент-клиент его не принял
+core-room-media-lost = Торрент-клиент потерял загрузку серии.
+core-room-media-stalled = Загрузка не продвигается уже десять минут. Попробуйте ещё раз позже.
+core-room-media-not-in-library = Серия скачана, но её нет в вашей библиотеке. Проверьте, что загрузки сохраняются в папку библиотеки.
+core-room-media-here = Серия теперь в вашей библиотеке.
+core-room-media-rest-missing = Не удалось получить остальные серии. Скачивается только эта серия.

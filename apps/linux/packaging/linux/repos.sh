@@ -68,13 +68,13 @@ cp "${debs[@]}" "$apt/pool/main/"
   apt-ftparchive packages pool > dists/stable/main/binary-amd64/Packages
   gzip -9nk dists/stable/main/binary-amd64/Packages
   apt-ftparchive \
-    -o APT::FTPArchive::Release::Origin=AniBeam \
-    -o APT::FTPArchive::Release::Label=AniBeam \
+    -o APT::FTPArchive::Release::Origin=Anibeam \
+    -o APT::FTPArchive::Release::Label=Anibeam \
     -o APT::FTPArchive::Release::Suite=stable \
     -o APT::FTPArchive::Release::Codename=stable \
     -o APT::FTPArchive::Release::Architectures=amd64 \
     -o APT::FTPArchive::Release::Components=main \
-    -o "APT::FTPArchive::Release::Description=AniBeam" \
+    -o "APT::FTPArchive::Release::Description=Anibeam" \
     release dists/stable > dists/stable/Release
 )
 sign --armor --detach-sign --output "$apt/dists/stable/Release.gpg" "$apt/dists/stable/Release"
@@ -105,7 +105,7 @@ rm -rf "$staging"
 sign --armor --detach-sign --output "$rpm/repodata/repomd.xml.asc" "$rpm/repodata/repomd.xml"
 cat > "$rpm/anibeam.repo" <<REPO
 [anibeam]
-name=AniBeam
+name=Anibeam
 baseurl=$base/rpm
 enabled=1
 gpgcheck=1

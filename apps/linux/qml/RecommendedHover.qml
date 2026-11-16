@@ -13,7 +13,7 @@
 // the card or a poster in it says `opened`, with the show to open.
 import QtQuick
 import QtQuick.Shapes
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

@@ -52,20 +52,20 @@ scan-summary-open-library = Åbn biblioteket
 
 ## UpdateNotice
 
-update-notice-check-failed = AniBeam kunne ikke tjekke for opdateringer. Tjek din internetforbindelse, og prøv igen.
-update-notice-up-to-date = AniBeam er opdateret
-update-notice-downloading = Downloader AniBeam { $version }
-update-notice-ready = AniBeam { $version } er klar
+update-notice-check-failed = Anibeam kunne ikke tjekke for opdateringer. Tjek din internetforbindelse, og prøv igen.
+update-notice-up-to-date = Anibeam er opdateret
+update-notice-downloading = Downloader Anibeam { $version }
+update-notice-ready = Anibeam { $version } er klar
 update-notice-failed = Opdateringen mislykkedes
-update-notice-on-aur = AniBeam { $version } er på AUR
-update-notice-in-repo = AniBeam { $version } er i { $manager }-arkivet
-update-notice-out = AniBeam { $version } er udkommet
-update-notice-out-titled = AniBeam { $version } “{ $title }” er udkommet
+update-notice-on-aur = Anibeam { $version } er på AUR
+update-notice-in-repo = Anibeam { $version } er i { $manager }-arkivet
+update-notice-out = Anibeam { $version } er udkommet
+update-notice-out-titled = Anibeam { $version } “{ $title }” er udkommet
 update-notice-progress = { $percent } %  ·  { $got } af { $total } MB
 update-notice-restart-hint = Genstart nu, eller den åbner næste gang
 update-notice-from-source = Denne kopi er bygget fra kildekoden: pull og byg igen
 update-notice-no-download = Ingen download her til denne computer
-update-notice-install-hint = Opdater installerer den og genstarter AniBeam
+update-notice-install-hint = Opdater installerer den og genstarter Anibeam
 update-notice-retry = Prøv igen
 update-notice-update = Opdater
 update-notice-restart = Genstart
@@ -105,7 +105,7 @@ activity-drawer-copy-tip = Klik for at kopiere linjen
 activity-drawer-fold = Luk
 activity-drawer-empty-technical = Intet logget endnu.
 activity-drawer-empty-problems = Ingen problemer. Alt virkede.
-activity-drawer-empty = Intet at rapportere endnu. Det, AniBeam gør for dig, vises her.
+activity-drawer-empty = Intet at rapportere endnu. Det, Anibeam gør for dig, vises her.
 
 ## ActivityColumn
 
@@ -153,14 +153,14 @@ activity-column-cube-progress = Afsnit { $number }: { $percent } %
 
 ## Frame
 
-frame-window-title = { $page } - AniBeam
+frame-window-title = { $page } - Anibeam
 frame-strip-ready = Klar
 frame-strip-progress = { $doing }, { $done } af { $total }
 frame-strip-idle = Intet kører
 frame-strip-time-format = HH:mm
 frame-finish-sign-in = Gør login på { $tracker } færdigt først
 frame-did-not-work = Det virkede ikke.
-frame-could-not-open = AniBeam kunne ikke åbne det. Kopier det og åbn det selv.
+frame-could-not-open = Anibeam kunne ikke åbne det. Kopier det og åbn det selv.
 frame-copy = Kopier
 frame-copied = Kopieret
 frame-status-refused = { $tracker } tog ikke imod det
@@ -275,7 +275,6 @@ frame-downloads-not-read = Ikke læst.
 ## HomePage
 
 home-title = Hjem
-home-scan-started = Scanning startet
 home-ago-minutes = { $count } min. siden
 home-ago-hours = { $count } t siden
 home-ago-days = { $count } d siden
@@ -330,7 +329,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } at se
 home-day-nothing = Intet
 home-now = Nu { $time }
-home-card-aired = { $episode } udkom { $ago }
 home-continue = Se videre
 home-continue-fact = { $count } serier at se videre i
 home-on-hold = På pause
@@ -354,6 +352,7 @@ home-week = Denne uge
 home-week-show-empty = Vis tomme dage
 home-week-hide-empty = Skjul tomme dage
 home-week-airing = Sendes nu
+home-week-feed = Feed
 home-week-out = Udkommet nu
 home-week-coming-up = Kommer snart
 home-recommended = Anbefalet til dig
@@ -375,20 +374,8 @@ home-dropped-fact = { $count ->
     [one] { $count } fil stadig på disken
    *[other] { $count } filer stadig på disken
 }
-home-out-now = Udkommet nu
-home-out-now-fact = Nye afsnit denne uge, fra AniList
-home-popular = Populært denne sæson
-home-add-folder-title = Dine egne serier hører også til her
-home-add-folder-body = Tilføj mappen med din anime, så fyldes Hjem med det, du ser.
-home-add-folder-button = Tilføj en mappe
-home-empty-scanned-title = Intet fundet i dine mapper endnu
-home-empty-title = Ingen serier endnu
-home-empty-scanned-body = AniBeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-home-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv.
-home-scan-all = Scan alle
-home-library-settings = Biblioteksindstillinger
 home-failed-title = Hjem kunne ikke indlæses
-home-failed-body = AniBeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
+home-failed-body = Anibeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
 
 ## Onboarding
 
@@ -413,7 +400,7 @@ onboarding-choose-folder = Vælg din animemappe
 onboarding-about = Et minuts opsætning. Dit bibliotek bliver færdigt af sig selv.
 onboarding-step-later = Senere
 onboarding-skip-setup = Spring opsætning over
-onboarding-title-welcome = Velkommen til AniBeam
+onboarding-title-welcome = Velkommen til Anibeam
 onboarding-title-library = Hvor er din anime?
 onboarding-title-lists = Forbind din animeliste
 onboarding-title-downloads = Sådan virker downloads
@@ -423,14 +410,14 @@ onboarding-title-later = { $count ->
     [2] Klar, to ting til senere
    *[other] Klar, tre ting til senere
 }
-onboarding-body-welcome = AniBeam samler din anime ét sted. Den finder serierne på din disk, afspiller dem lige her og holder AniList eller MyAnimeList opdateret, mens du ser.
-onboarding-body-library = Vælg den mappe, du har dine serier i. Hver mappe inden i den bliver en serie med plakat, afsnit og stedet, hvor du slap. AniBeam læser kun mappen. Den flytter eller omdøber aldrig en fil.
-onboarding-body-lists = Log ind én gang, så bliver hvert afsnit, du ser færdigt her, markeret på din liste, uden at du skal skrive noget. Login sker i din browser, så AniBeam ser aldrig din adgangskode.
+onboarding-body-welcome = Anibeam samler din anime ét sted. Den finder serierne på din disk, afspiller dem lige her og holder AniList eller MyAnimeList opdateret, mens du ser.
+onboarding-body-library = Vælg den mappe, du har dine serier i. Hver mappe inden i den bliver en serie med plakat, afsnit og stedet, hvor du slap. Anibeam læser kun mappen. Den flytter eller omdøber aldrig en fil.
+onboarding-body-lists = Log ind én gang, så bliver hvert afsnit, du ser færdigt her, markeret på din liste, uden at du skal skrive noget. Login sker i din browser, så Anibeam ser aldrig din adgangskode.
 onboarding-body-downloads = Følg en serie på siden Downloads, så lander hvert nyt afsnit i dit bibliotek, når det bliver sendt. Det kræver to ting: et sted at søge og et torrentprogram til at hente.
 onboarding-body-ready = Alt her kan ændres senere i Indstillinger, og Indstillinger, Om kører denne opsætning igen.
 onboarding-skip-step = Spring over for nu
 onboarding-get-started = Kom i gang
-onboarding-open-app = Åbn AniBeam
+onboarding-open-app = Åbn Anibeam
 onboarding-continue = Fortsæt
 onboarding-payoff-library = Dit bibliotek
 onboarding-payoff-library-line = Plakater, afsnit og hvad der kommer næste gang, for hver serie i dine mapper.
@@ -449,7 +436,7 @@ onboarding-shelf-more = mere
 onboarding-preview-show = Din serie
 onboarding-preview-finished = Afsnit 3 set færdigt her
 onboarding-preview-on-list = På din liste: 3 set
-onboarding-preview-set-by = Sat af AniBeam, så snart rulleteksterne starter
+onboarding-preview-set-by = Sat af Anibeam, så snart rulleteksterne starter
 onboarding-lists-connected = Forbundet. Det, du ser her, tæller nu på din liste.
 onboarding-lists-no-account = Ingen konto endnu? Begge er gratis, og én er rigeligt. Du kan afbryde forbindelsen når som helst i Indstillinger, Konti.
 onboarding-search-title = Et sted at søge
@@ -457,15 +444,12 @@ onboarding-search-ready = { $count ->
     [one] { $count } kilde klar til søgning.
    *[other] { $count } kilder klar til søgning.
 }
-onboarding-search-none = AniBeam kommer uden egne kilder. Du tilføjer dem fra et kilderepo: et link, som nogen deler med dig, og som du indsætter i Indstillinger, Downloads.
-onboarding-sources-after = Åbner efter opsætningen
-onboarding-sources-add = Tilføj et repo efter opsætningen
 onboarding-fetch-title = Hvem henter
-onboarding-fetch-auto = Lad AniBeam klare det
+onboarding-fetch-auto = Lad Anibeam klare det
 onboarding-fetch-recommended = Anbefalet
-onboarding-fetch-auto-line = AniBeam har sin egen qBittorrent med og kører den stille i baggrunden. Intet at installere, intet at udfylde.
+onboarding-fetch-auto-line = Anibeam har sin egen qBittorrent med og kører den stille i baggrunden. Intet at installere, intet at udfylde.
 onboarding-fetch-existing = Jeg bruger allerede qBittorrent
-onboarding-fetch-existing-line = AniBeam forbinder til den qBittorrent, du allerede kører. Du skriver dens adresse og login i Indstillinger bagefter.
+onboarding-fetch-existing-line = Anibeam forbinder til den qBittorrent, du allerede kører. Du skriver dens adresse og login i Indstillinger bagefter.
 onboarding-ready-library = Bibliotek
 onboarding-ready-library-none = Ingen mappe endnu. Den findes i Indstillinger, Bibliotek, når du vil.
 onboarding-ready-library-series = { $count ->
@@ -484,19 +468,18 @@ onboarding-ready-lists = Din liste
 onboarding-ready-lists-as = { $tracker }, som { $user }
 onboarding-ready-lists-none = Ikke forbundet endnu. Det findes i Indstillinger, Konti, når du vil.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Ingen kilder endnu
     [one] { $sources } kilde
    *[other] { $sources } kilder
 }, { $client ->
     [own] din egen qBittorrent.
-   *[bundled] AniBeams egen qBittorrent.
+   *[bundled] Anibeams egen qBittorrent.
 } { $next ->
     [ready] Alt er klar.
     [opens] Indstillinger, Downloads åbner bagefter.
-   *[both] Begge findes i Indstillinger, Downloads.
+   *[sources] Tilføj en kildeliste for at søge.
 }
-onboarding-ready-open-downloads = Åbn Indstillinger, Downloads
 onboarding-ready-set-up = Opsæt nu
 
 ## Rail.qml
@@ -504,9 +487,6 @@ onboarding-ready-set-up = Opsæt nu
 rail-home = Hjem
 rail-library = Bibliotek
 rail-airing = Sendes
-rail-feed = Feed
-rail-stats = Statistik
-rail-show-info = Serieinfo
 rail-downloads = Downloads
 rail-settings = Indstillinger
 rail-downloads-complete =
@@ -514,11 +494,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } abonnement er færdigt
        *[other] Downloads: { $count } abonnementer er færdige
     }
-rail-title-language-name = Titelsprog: { $language }. Tryk for det næste
-rail-title-language-english = Engelsk
-rail-title-language-tip = Titelsprog: romaji, engelsk eller japansk
-rail-whats-new-in = Nyheder i { $release }
-rail-whats-new = Nyheder
 rail-settings-note = Indstillinger: { $note }
 
 ## FixSheet.qml
@@ -707,12 +682,36 @@ library-group-season = Sæson
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Status
-library-scan-started = Scanning startet
+library-empty-none = Dit bibliotek er tomt
+library-empty-scanning = { $count ->
+    [1] Leder efter videoer i din mappe
+   *[other] Leder efter videoer i dine mapper
+}
+library-empty-nothing = { $count ->
+    [1] Ingen videoer i denne mappe endnu
+   *[other] Ingen videoer i disse mapper endnu
+}
+library-empty-missing = { $count ->
+    [1] Denne mappe findes ikke
+   *[other] Disse mapper findes ikke
+}
+library-empty-more-folders = { $count ->
+    [one] og { $count } mappe mere
+   *[other] og { $count } mapper mere
+}
+library-empty-add-folder = Tilføj en mappe
+library-empty-get = Find noget at se
+library-empty-scan-again = Scan igen
+library-empty-settings = Biblioteksindstillinger
+library-empty-pick-folder = Vælg en mappe til dit bibliotek
 library-tab-all = Alle
 library-tab-series = Serier
 library-tab-movies = Film
 library-tab-watched = Set
 library-tab-hidden = Skjulte
+library-tab-on-my-list = På min liste
+library-tab-stats = Statistik
+library-tab-fix-matches = Ret match
 library-count-movies =
     { $count ->
         [one] { $count } film
@@ -750,7 +749,7 @@ library-none-here =
         [hidden] Ingen skjulte serier her
        *[shows] Ingen serier her
     }
-library-load-failed-body = AniBeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
+library-load-failed-body = Anibeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
 library-no-matches-body = Tjek stavningen, eller søg i hele biblioteket fra Alle.
 library-none-in-genre-body = Intet i denne visning har den genre. Alle genrer viser resten.
 library-none-in-tab-body = Dit bibliotek har ingen af disse endnu. Alle viser alt i det.
@@ -770,18 +769,6 @@ library-rescan = Genscan
 library-find-match = Find et match
 library-find-match-tip = Søg efter hver valgt serie uden et match
 library-all-matched = Alle valgte har et match
-library-empty-scanned-title = Intet fundet i dine mapper endnu
-library-empty-title = Dit bibliotek er tomt
-library-empty-scanned-body = AniBeam fandt ingen serier eller film i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-library-empty-body = Tilføj mappen med din anime, så fylder biblioteket sig selv, eller importer en AniBeam-eksport.
-library-scan-all = Scan alle
-library-add-folder = Tilføj en mappe
-library-settings = Biblioteksindstillinger
-library-import = Importer
-library-import-title = Importer en AniBeam-eksport
-library-import-filter-export = AniBeam-eksport (*.json)
-library-import-filter-all = Alle filer (*)
-library-import-started = Import startet
 
 ## MetadataPage.qml
 
@@ -848,8 +835,8 @@ metadata-count =
     }
 metadata-search-placeholder = Filtrer titler
 metadata-find-rest = Find resten
-metadata-find-rest-started = Slår de mapper op, AniBeam endnu ikke kender
-metadata-find-rest-tip = Slår hver mappe op, som AniBeam endnu ikke kender, på hver infokilde i den rækkefølge, Indstillinger angiver
+metadata-find-rest-started = Slår de mapper op, Anibeam endnu ikke kender
+metadata-find-rest-tip = Slår hver mappe op, som Anibeam endnu ikke kender, på hver infokilde i den rækkefølge, Indstillinger angiver
 metadata-refresh-all = Opdater alle
 metadata-refresh-all-started = Opdaterer info om alle serier
 metadata-refresh-all-tip = Henter info om hver genkendt serie igen
@@ -865,9 +852,9 @@ metadata-nothing-under =
         [MissingFiles] Intet under Mangler
        *[other] Intet under { $filter }
     }
-metadata-load-failed-body = AniBeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
-metadata-empty-scanned-body = AniBeam fandt ingen serier i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
-metadata-empty-body = Dit bibliotek er tomt. Tilføj mappen med din anime, så scanner AniBeam den.
+metadata-load-failed-body = Anibeam kunne ikke læse biblioteket lige nu. Prøv igen om lidt.
+metadata-empty-scanned-body = Anibeam fandt ingen serier i de mapper, den holder øje med. Scan dem igen, eller tjek mapperne i Indstillinger.
+metadata-empty-body = Dit bibliotek er tomt. Tilføj mappen med din anime, så scanner Anibeam den.
 metadata-no-matches-body = Ingen titel i denne visning har de ord.
 metadata-nothing-under-body = Ingen af dine serier passer til dette filter lige nu. Alle viser resten.
 metadata-scan-all = Scan alle
@@ -877,8 +864,8 @@ metadata-show-all = Vis alle
 metadata-refreshing = Opdaterer { $title }
 metadata-refresh-tip = Hent seriens info igen
 metadata-forget-armed = Fjern den
-metadata-forget-confirm-tip = Klik igen for at fjerne serien og dens visningshistorik fra AniBeam
-metadata-forget-tip = Mappen findes ikke længere på disken: fjern serien og dens historik fra AniBeam
+metadata-forget-confirm-tip = Klik igen for at fjerne serien og dens visningshistorik fra Anibeam
+metadata-forget-tip = Mappen findes ikke længere på disken: fjern serien og dens historik fra Anibeam
 
 ## AiringPage.qml
 
@@ -1298,9 +1285,9 @@ series-add-notes = Tilføj noter
 series-notes-tip = Noter på din listepost, gemt på { $sites }
 series-unhide = Vis igen
 series-hide = Skjul
-series-hidden-toast = { $title } er skjult her, og AniBeam stopper med at synkronisere den med AniList og MyAnimeList
+series-hidden-toast = { $title } er skjult her, og Anibeam stopper med at synkronisere den med AniList og MyAnimeList
 series-unhidden-toast = { $title } er tilbage og synkroniseres igen
-series-hide-tip-tracked = Skjult på alle sider her, og AniBeam stopper med at synkronisere den med AniList og MyAnimeList
+series-hide-tip-tracked = Skjult på alle sider her, og Anibeam stopper med at synkronisere den med AniList og MyAnimeList
 series-hide-tip = Skjult på alle lister
 series-fixes = Rettelser
 series-fixes-tip = Ret filer, antal afsnit, matchet, eller genscan
@@ -1397,9 +1384,10 @@ get-show-kind-indexer-search = Indekssøgning
 get-show-ready = Klar
 get-show-running = Kører
 get-show-not-running = Kører ikke
-get-show-not-running-start = Kører ikke. Klik på kilden ovenfor for at starte den.
 get-show-switched-off = Slået fra
-get-show-click-to-see = Klik for at se, hvad den har af denne serie
+get-show-show-releases = Vis udgivelser
+get-show-show-releases-on = Vis udgivelser på { $name }
+get-show-try-again = Prøv igen
 get-show-searching = Søger
 get-show-searching-source = Søger i { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1565,7 +1553,6 @@ torrent-row-stop = Stop
 
 ## SourceRow
 
-source-row-unavailable-fix = Tilslut drevet, og vælg Genscan. Hvis mappen er flyttet, så fjern den og tilføj det nye sted.
 source-row-counts = { $count } serier
 source-row-counts-movies =
     { $movies ->
@@ -1573,7 +1560,7 @@ source-row-counts-movies =
        *[other] { $count } serier, { $movies } filmmapper
     }
 source-row-unavailable = Utilgængelig
-    .tip = AniBeam kan ikke nå denne mappe. Ligger den på et drev, der ikke er tilsluttet eller monteret, så tilslut det, og AniBeam finder den igen. Er den flyttet, så fjern den her og tilføj det nye sted.
+    .tip = Anibeam kan ikke nå denne mappe. Ligger den på et drev, der ikke er tilsluttet eller monteret, så tilslut det, og Anibeam finder den igen. Er den flyttet, så fjern den her og tilføj det nye sted.
 source-row-rescan = Genscan
 source-row-remove-question = Fjern { $name }, { $count } serier og deres historik?
 
@@ -1581,12 +1568,12 @@ source-row-remove-question = Fjern { $name }, { $count } serier og deres histori
 
 start-source-title = Start { $service } til { $name }?
 start-source-busy = Starter { $service }. { $name } slås til, når den svarer; det kan tage op til et minut.
-start-source-body = { $service } er tjenesten, der søger i { $name } for AniBeam. Den kører i baggrunden på denne computer og bliver ved med at køre, når AniBeam lukker.
+start-source-body = { $service } er tjenesten, der søger i { $name } for Anibeam. Den kører i baggrunden på denne computer og bliver ved med at køre, når Anibeam lukker.
 start-source-starting = Starter
 
 ## SearchProgress
 
-search-progress-why-helper = AniBeam starter sin søgehjælper; det tager et sekund eller to.
+search-progress-why-helper = Anibeam starter sin søgehjælper; det tager et sekund eller to.
 search-progress-why-starting = { $endpoint } kører gennem en hjælper, der starter, når en søgning har brug for den. Første søgning venter på den i op til { $seconds } sekunder; de næste springer det over.
 search-progress-why-reading = Deler udgivelserne op i grupper og tjekker dem mod biblioteket.
 search-progress-why-ondemand = En hjælper læser { $endpoint } forfra ved hver ny søgning, hvilket som regel tager ti til tyve sekunder.
@@ -1617,6 +1604,7 @@ release-table-season-batch = Pakke, sæson { $season }
 release-table-batch = Pakke
 release-table-via = via { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d. MMMM yyyy, HH:mm
 release-table-download = Download
 release-table-more = og { $count } mere. Indsnævr listen, eller sortér den for at se andre først.
@@ -1681,6 +1669,7 @@ downloads-error-unknown = Noget gik galt. Prøv igen.
 downloads-search-all-off = Alle kilder er slået fra. Slå en til for at søge.
 downloads-turn-on = Slå { $name } til
 downloads-search-no-sources = Der er ingen kilder at søge i endnu. Tilføj en kildeliste i Indstillinger under Downloads.
+downloads-no-sources = Ingen kilder at søge i endnu
 downloads-search-none-started = Ingen kilde kunne starte søgningen. Prøv igen om lidt.
 downloads-auto-resolution = Indsnævret til { $resolution }, den skarpeste, der er
 downloads-search-one-failed = Søgningen på { $name } virkede ikke. Prøv igen, eller søg i en anden kilde.
@@ -1788,8 +1777,8 @@ downloads-cancel-all = Annuller dem alle
 downloads-summary-connecting = Forbinder.
 downloads-summary-client-on = { $client } { $version } er forbundet.
 downloads-summary-client-off = { $client } er ikke forbundet. Tjek adressen og adgangskoden i Indstillinger under Downloads.
-downloads-summary-native = AniBeam søger selv i dine kilder.
-downloads-summary-native-with = AniBeam søger selv i dine kilder. { $client }
+downloads-summary-native = Anibeam søger selv i dine kilder.
+downloads-summary-native-with = Anibeam søger selv i dine kilder. { $client }
 downloads-summary-starting = Starter downloads.
 downloads-summary-not-running = Downloads kører ikke.
 downloads-summary-not-started = Downloads er ikke startet endnu.
@@ -1975,12 +1964,12 @@ downloads-preview-from-named = Fra { $host } ({ $name })
 downloads-preview-must = Skal indeholde { $terms }
 downloads-preview-must-not = Må ikke indeholde { $terms }
 downloads-helper-changed = Downloads er sat til en hjælper, der ikke svarer
-downloads-helper-missing = Denne kopi af AniBeam kom uden downloads
+downloads-helper-missing = Denne kopi af Anibeam kom uden downloads
 downloads-helper-failed = Downloads kunne ikke starte
-downloads-helper-changed-body = Søgninger og downloads kører gennem et lille hjælpeprogram. Indstillinger peger på et andet end AniBeams eget, og det svarer ikke. Skift tilbage, så starter det af sig selv.
+downloads-helper-changed-body = Søgninger og downloads kører gennem et lille hjælpeprogram. Indstillinger peger på et andet end Anibeams eget, og det svarer ikke. Skift tilbage, så starter det af sig selv.
 downloads-helper-missing-body = Den er bygget uden hjælpeprogrammet, som søgninger og downloads kører gennem. Installationsfilerne på udgivelsessiden har det. Indstillinger, Downloads forklarer, hvordan du tilføjer det til denne kopi.
 downloads-helper-failed-body = Hjælpeprogrammet, som søgninger og downloads kører gennem, stoppede, før det var klar. Som regel hjælper det at starte det igen.
-downloads-helper-use-own = Brug AniBeams eget
+downloads-helper-use-own = Brug Anibeams eget
 downloads-helper-start-again = Start igen
 downloads-helper-show-how = Vis mig hvordan
 downloads-helper-what-went-wrong = Hvad gik galt
@@ -2007,10 +1996,10 @@ downloads-card-next-span =
        *[no] Afsnit { $episode } til { $through } om { $time }
     }
 downloads-rules-unread = Dine abonnementer kunne ikke læses.
-downloads-lens-following-line = Feeds, AniBeam holder øje med, vist som de serier, de fylder.
+downloads-lens-following-line = Feeds, Anibeam holder øje med, vist som de serier, de fylder.
 downloads-none-yet = Ingen endnu.
 downloads-reading = Læser.
-downloads-rules-error = AniBeam kunne ikke læse dine abonnementer. Prøv igen om lidt.
+downloads-rules-error = Anibeam kunne ikke læse dine abonnementer. Prøv igen om lidt.
 downloads-removing-to-go = Fjerner, { $count } tilbage
 downloads-unsubscribe-all = Afmeld alle { $count }
 downloads-unsubscribe = Afmeld
@@ -2066,7 +2055,7 @@ track-picker-off = Fra
 roll-controls-window = Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }
 roll-controls-window-watched = Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }, { $watched } set
 roll-controls-more = Hent { $count } mere
-roll-controls-more-tip = Download de næste afsnit nu. AniBeam holder de næste klar igen, når du har indhentet dem.
+roll-controls-more-tip = Download de næste afsnit nu. Anibeam holder de næste klar igen, når du har indhentet dem.
 roll-controls-fewer-tip = Hold ét færre klar
 roll-controls-ahead = { $count } foran
 roll-controls-further-tip = Hold ét mere klar
@@ -2118,7 +2107,7 @@ player-no-chapters = Denne fil har ingen kapitler
 player-last-chapter = Dette er det sidste kapitel
 player-chapter = Kapitel { $number }
 player-chapter-titled = Kapitel { $number }: { $title }
-player-screenshot-saved = Gemt i Billeder/AniBeam
+player-screenshot-saved = Gemt i Billeder/Anibeam
 player-skipped-intro = Sprang intro over
 player-skipped-outro = Sprang outro over
 player-undo = Fortryd
@@ -2162,8 +2151,7 @@ player-not-now = Ikke nu
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Kildelister
-endpoint-repos-panel-helper = En kildeliste er et signeret sæt steder at søge, tilføjet via sin adresse. AniBeam tjekker signaturen og viser dig nøglen, før noget gemmes, og så installerer du de kilder, du vil have. Installerede kilder kommer med under Søgekilder ovenfor.
-endpoint-repos-panel-could-not-start = AniBeam kunne ikke starte det. Prøv igen om lidt.
+endpoint-repos-panel-could-not-start = Anibeam kunne ikke starte det. Prøv igen om lidt.
 endpoint-repos-panel-needs-value = { $name } skal have en værdi
 endpoint-repos-panel-values-of = Værdier for { $name }
 endpoint-repos-panel-secret-note = Gemmes i denne maskines hemmelige lager, aldrig i biblioteket eller en eksport.
@@ -2175,19 +2163,9 @@ endpoint-repos-panel-needs-fields = Skal have sin { $fields }, før den søger.
 endpoint-repos-panel-no-longer-offered = Tilbydes ikke længere af sin kildeliste.
 endpoint-repos-panel-update-requests-to = Opdateringen sender forespørgsler til { $host }.
 endpoint-repos-panel-unreadable = Denne liste kunne ikke læses. Opdater lister prøver igen.
-endpoint-repos-panel-add-list = Tilføj en kildeliste
-endpoint-repos-panel-add-list-helper = Adressen på dens indeksfil eller en sti til en på denne maskine.
 endpoint-repos-panel-checking = Tjekker
 endpoint-repos-panel-add = Tilføj
-endpoint-repos-panel-trust-question = Stol på { $name }?
 endpoint-repos-panel-fingerprint = Nøglens fingeraftryk  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } kilder, signeret. Dens kilder afgør, hvor dine søgninger går hen; stol kun på en liste fra nogen, du stoler på.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } kilder, signeret, allerede betroet. Dens kilder afgør, hvor dine søgninger går hen; stol kun på en liste fra nogen, du stoler på.
-endpoint-repos-panel-trust = Stol på
 endpoint-repos-panel-saving = Gemmer
 endpoint-repos-panel-install = Installer
 endpoint-repos-panel-update = Opdater
@@ -2198,10 +2176,25 @@ endpoint-repos-panel-add-value = Tilføj dens værdi
 endpoint-repos-panel-change = Skift { $fields }
 endpoint-repos-panel-asks-for = Beder om din { $fields }.
 endpoint-repos-panel-by-hand = Tilføj en manuelt
-endpoint-repos-panel-by-hand-helper = Til en side, ingen liste har: ethvert feed med {"{"}query{"}"}, hvor søgningen skal stå, også et fra en søgeproxy. En nøgle i adressen gemmes for sig, i systemets adgangskodelager, hvor der er et.
 endpoint-repos-panel-name = Navn
 endpoint-repos-panel-refreshing = Opdaterer
 endpoint-repos-panel-refresh = Opdater lister
+
+## SourceAttach.qml
+
+source-attach-placeholder = Indsæt adressen på en kildeliste
+source-attach-what = Hvad er en kildeliste?
+source-attach-recent = Brugt før
+source-attach-added = { $count ->
+    [one] Tilføjede { $name }: { $count } kilde er slået til.
+   *[other] Tilføjede { $name }: { $count } kilder er slået til.
+}
+source-attach-added-none = Tilføjede { $name }. Ingen ny kilde at slå til.
+source-attach-waiting = { $count ->
+    [one] { $names } skal have en værdi først.
+   *[other] { $names } skal have en værdi først.
+}
+source-attach-fill-in = Udfyld
 
 ## ScheduleSheet.qml
 
@@ -2233,8 +2226,8 @@ schedule-agent-looking = { $agent } slår datoerne op. Intet gemmes, før du try
 schedule-agent-stopped = { $agent } stoppede: { $error }
 schedule-stop = Stop
 schedule-paste-placeholder = Indsæt en udgivelsesliste, en tabel eller et opslag
-schedule-paste-helper = Det, AniBeam læser, vises på afsnittene nedenfor.
-schedule-agent-hint = Med Claude Code på denne computer kan AniBeam bede den om at slå datoerne op for dig.
+schedule-paste-helper = Det, Anibeam læser, vises på afsnittene nedenfor.
+schedule-agent-hint = Med Claude Code på denne computer kan Anibeam bede den om at slå datoerne op for dig.
 schedule-show-more = Vis flere afsnit
 schedule-pick-hint = Klik på et afsnit for at give det en dato. Shift-klik vælger en række.
 schedule-picked-one = Afsnit { $number }:
@@ -2288,8 +2281,8 @@ connect-did-not-finish = Login blev ikke gennemført
 connect-finish-in-browser = Gør det færdigt i din browser
 connect-signed-in-anilist = Logget ind som { $account }. Din liste er på siden Ser nu.
 connect-signed-in-mal = Logget ind som { $account }. Afsnit markeres dér, mens du ser.
-connect-setup-lead = { $name } logger AniBeam ind via din egen app. Det tager cirka et minut, én gang.
-connect-page-open = { $name }s loginside er åben i din browser. Godkend AniBeam dér, så lukker dette sig selv.
+connect-setup-lead = { $name } logger Anibeam ind via din egen app. Det tager cirka et minut, én gang.
+connect-page-open = { $name }s loginside er åben i din browser. Godkend Anibeam dér, så lukker dette sig selv.
 connect-page-opening = Åbner { $name }s loginside i din browser.
 connect-open-watching = Åbn Ser nu
 connect-done = Færdig
@@ -2309,7 +2302,7 @@ connect-step-paste-id-anilist = AniList kalder det Client ID: tallet på din nye
 connect-step-paste-id-mal = MyAnimeList kalder det Client ID: den lange streng på din nye apps side.
 connect-client-id = Client ID
 connect-client-secret-web = Klienthemmelighed (kun til Web-apps)
-connect-step-connect-body = Browseren åbner, { $name } beder dig logge ind og godkende AniBeam, og AniBeam fanger svaret.
+connect-step-connect-body = Browseren åbner, { $name } beder dig logge ind og godkende Anibeam, og Anibeam fanger svaret.
 
 ## SettingsPage
 
@@ -2319,88 +2312,16 @@ settings-section-library = Bibliotek
 settings-section-accounts = Konti
 settings-section-appearance = Udseende
 settings-section-playback = Afspilning
-settings-section-subtitles = Undertekster
 settings-section-keys = Tastatur
 settings-section-downloads = Downloads
-settings-section-phone = Telefon-app
-settings-section-storage = Lager og backup
-settings-section-help = Hjælp
 settings-section-about = Om
 settings-section-developer = Udvikler
-settings-status-library-empty = Ingen mapper endnu
-settings-status-library =
-    { $count ->
-        [one] { $count } serie
-       *[other] { $count } serier
-    } i { $folders ->
-        [one] { $folders } mappe
-       *[other] { $folders } mapper
-    }
-settings-status-library-missing =
-    { $gone ->
-        [one] { $gone } mappe
-       *[other] { $gone } mapper
-    } ikke fundet, { $count ->
-        [one] { $count } serie
-       *[other] { $count } serier
-    } i { $folders ->
-        [one] { $folders } mappe
-       *[other] { $folders } mapper
-    }
-settings-status-accounts-anilist = Synkroniserer med AniList
-settings-status-accounts-mal = Synkroniserer med MyAnimeList
-settings-status-accounts-both = Synkroniserer med AniList og MyAnimeList
-settings-status-accounts-none = Ingen liste forbundet
-settings-status-appearance =
-    { $mode ->
-        [system] Følger systemet
-        [light] Lys
-       *[dark] Mørk
-    }, { $source ->
-        [theme] temafarver
-       *[desktop] skrivebordets farver
-    }
-settings-status-playback =
-    { $skip ->
-        [both] Springer intro og outro over
-        [intro] Springer intro over
-        [outro] Springer outro over
-       *[none] Afspiller alt
-    }
-settings-status-playback-audio =
-    { $skip ->
-        [both] Springer intro og outro over
-        [intro] Springer intro over
-        [outro] Springer outro over
-       *[none] Afspiller alt
-    }, lyd { $languages }
-settings-status-subtitles =
-    Størrelse { $percent } procent, { $override ->
-        [AsScripted] stilede filer som lavet
-        [Force] din stil på alle filer
-       *[ScaleOnly] stilede filer beholder deres udseende
-    }
-settings-status-keys = Alle taster, AniBeam reagerer på
-settings-status-downloads-unread = Ikke læst endnu
-settings-status-downloads-answered = qBittorrent svarede
-settings-status-downloads-missing = Søgehjælper ikke installeret
-settings-status-downloads-unconnected = Ikke forbundet endnu
-settings-status-phone-shared = Delt på dit tailnet
-settings-status-phone-off = Ikke delt
-settings-status-storage = { $size } billeder i cache
-settings-status-storage-unread = Billeder, eksport og import
-settings-status-help = Svar på det, folk oftest spørger om
-settings-status-about-update = Version { $version } er udkommet
-settings-status-developer = Måler hver side
-settings-status-developer-last = { $page } bygget på { $ms } ms
 settings-results =
     { $count ->
         [one] { $count } indstilling passer
        *[other] { $count } indstillinger passer
     }
 settings-results-none = Intet passer
-settings-results-hint = Retur åbner den første.
-settings-results-none-hint = Prøv et enklere ord: tema, undertekster, tracker, adgangskode, mappe.
 
 settings-find-folders =
     .words = tilføj mappe scan genscan fjern kilde sti samling
@@ -2422,6 +2343,8 @@ settings-find-on-hold =
     .words = på pause pause inaktiv urørt dage
 settings-find-language =
     .words = sprog oversættelse locale engelsk dansk
+settings-find-title-language =
+    .words = titel romaji engelsk japansk navn
 settings-find-mode =
     .words = mørk lys system tema nat
 settings-find-colours-from =
@@ -2516,14 +2439,6 @@ settings-find-files =
     .words = database data konfiguration cache mappe sti filer
 settings-find-help-folders =
     .words = hjælp mappe opbygning navngivning afsnit sæsoner film filer struktur
-settings-find-help-recognised =
-    .words = hjælp match forkert serie ikke fundet umatchet genkendt
-settings-find-help-anilist =
-    .words = hjælp anilist myanimelist mal log ind forbind login tracker
-settings-find-help-downloads =
-    .words = hjælp downloads tom kilder intet torrent qbittorrent
-settings-find-help-data =
-    .words = hjælp data filer backup database privatliv
 settings-find-help-else =
     .words = hjælp opsætning introduktion gennemgang rapporter fejl problem
 settings-find-version =
@@ -2540,124 +2455,89 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = Downloads
-settings-downloads-lead = Hvor AniBeam sender det, du downloader, og hvordan den søger i udgivelsesfeeds.
-settings-downloads-keep-none = Når du ser et afsnit færdigt, slettes det forrige.
-settings-downloads-keep-line = Sete afsnit, der bliver liggende bag det seneste. Med { $count } slettes afsnit 1, når du har set afsnit { $finishing }.
 settings-downloads-anirss-ready = Kører, version { $version } på { $url }.
 settings-downloads-anirss-starting = Starter søgehjælperen.
-settings-downloads-anirss-missing = Søgehjælperen er ikke installeret. Geninstaller AniBeam, eller angiv din egen anirss under Kommando.
+settings-downloads-anirss-missing = Søgehjælperen er ikke installeret. Geninstaller Anibeam, eller angiv din egen anirss under Kommando.
 settings-downloads-anirss-failed = Søgehjælperen stoppede. Prøv igen starter den; Detaljer viser, hvad den sagde.
 settings-downloads-anirss-idle = Ikke startet endnu. Den starter første gang, du søger på siden Downloads.
 settings-downloads-torrent-trying = Prøver { $client }.
 settings-downloads-torrent-answered = { $client } { $version } svarede.
 settings-downloads-torrent-failed = { $client } blev ikke forbundet. Tjek adressen og adgangskoden ovenfor, og test igen.
 settings-downloads-torrent-untried = Ikke prøvet endnu.
-settings-downloads-mode-existing = En qBittorrent, du selv kører, med Web UI slået til.
-settings-downloads-mode-managed = AniBeam kører sin egen qBittorrent, der henter til ~/Downloads/Anime. Den kører videre, når AniBeam lukker, så abonnementer bliver ved med at downloade.
-settings-downloads-mode-auto = Bruger qBittorrent på adressen nedenfor, ellers sin egen.
 settings-downloads-password-saved = Der er gemt en adgangskode her til dette program.
 settings-downloads-password-anirss = Bruger den adgangskode, søgehjælperen gemte; gem en her for ikke at være afhængig af den.
 settings-downloads-password-none = Ingen adgangskode gemt. Et program, der springer login over for denne maskine, behøver ingen.
-settings-downloads-mismatch = Søgehjælperen taler med { $helperUrl }, mens AniBeam taler med { $url }. En søgehjælper, du selv kører, læser adressen fra sin egen config.toml, så et skift af program her flytter den ikke.
+settings-downloads-mismatch = Søgehjælperen taler med { $helperUrl }, mens Anibeam taler med { $url }. En søgehjælper, du selv kører, læser adressen fra sin egen config.toml, så et skift af program her flytter den ikke.
 settings-downloads-torrent-title = Torrentprogram
-settings-downloads-torrent-helper = Den qBittorrent, der henter. Adgangskoden gemmes i systemets adgangskodelager.
 settings-downloads-which-client = Hvilket program
 settings-downloads-pick-for-me = Vælg for mig
 settings-downloads-my-own = Mit eget
 settings-downloads-built-in = Indbygget
 settings-downloads-saved-clients = Gemte programmer
-settings-downloads-saved-clients-helper = For eksempel en seedbox og den på denne maskine. Programchippen på siden Downloads skifter også mellem dem.
 settings-downloads-add-client = Tilføj
 settings-downloads-name = Navn
 settings-downloads-name-placeholder = Opkaldt efter sin adresse
 settings-downloads-address = Adresse
-settings-downloads-address-managed-helper = Kun denne maskine kan nå den, og den kræver ingen adgangskode.
-settings-downloads-address-helper = Adressen på Web UI.
 settings-downloads-username = Brugernavn
 settings-downloads-password = Adgangskode
 settings-downloads-secret-saved = Gemt
 settings-downloads-secret-unset = Ikke sat
+settings-downloads-save-to = Gem i
+settings-downloads-save-to-client = qBittorrents egen mappe
+settings-downloads-save-to-choose = Vælg mappe
+settings-downloads-save-to-reset = Nulstil
+settings-downloads-save-to-pick = Gem downloads i
 settings-downloads-connection = Forbindelse
 settings-downloads-open-config = Åbn dens konfiguration
 settings-downloads-details = Detaljer
-settings-downloads-details-torrent = { $client } sagde dette, da AniBeam prøvede den.
+settings-downloads-details-torrent = { $client } sagde dette, da Anibeam prøvede den.
 settings-downloads-test-trying = Prøver
 settings-downloads-test-save = Gem og test
 settings-downloads-test = Test
 settings-downloads-searching = Søgning
 settings-downloads-search-helper = Søgehjælper
-settings-downloads-searching-helper = AniBeam søger selv i dine kilder og sender det, du vælger, til torrentprogrammet. Søgehjælperen er ikke nødvendig.
-settings-downloads-search-helper-helper = Den del af AniBeam, der søger og abonnerer, et program ved navn anirss. AniBeam kører det for dig; skift kun dette, hvis du kører dit eget.
 settings-downloads-runs-in = Søgninger kører i
-settings-downloads-runs-in-native-helper = Abonnementer kører i torrentprogrammet, også med AniBeam lukket.
-settings-downloads-runs-in-helper = Søgehjælperen, et separat program, som AniBeam kører, eller som du selv kører.
-settings-downloads-engine-native = AniBeam selv
+settings-downloads-engine-native = Anibeam selv
 settings-downloads-how-runs = Sådan kører den
-settings-downloads-how-runs-sidecar = AniBeam starter den, når den åbner, og stopper den, når den lukker.
-settings-downloads-how-runs-remote = AniBeam bruger en, du allerede kører, på adressen og med nøglen nedenfor.
-settings-downloads-runs-sidecar = AniBeam kører den
+settings-downloads-runs-sidecar = Anibeam kører den
 settings-downloads-runs-remote = Jeg kører den
 settings-downloads-command = Kommando
-settings-downloads-command-helper = Et navn på PATH eller en fuld sti. Der søges også i ~/.local/bin.
-settings-downloads-server-address-helper = Serverens grundadresse, uden /api/v1.
 settings-downloads-key = Nøgle
-settings-downloads-key-saved-helper = Der er gemt en nøgle. Skriv en ny for at erstatte den, eller ryd feltet for at fjerne den.
-settings-downloads-key-helper = Den nøgle, søgehjælperen viste, da den startede. Den lukker AniBeam ind.
 settings-downloads-details-anirss = Søgehjælperen sagde dette, da den stoppede.
 settings-downloads-starting = Starter
 settings-downloads-reconnect = Forbind igen
 settings-downloads-save-first = Gem dine ændringer først
 settings-downloads-roll-title = Hold de næste klar
-settings-downloads-roll-helper = En lang serie downloades få afsnit ad gangen, og hvert, du ser færdigt, starter det næste. Hele serien skal aldrig være på disken.
 settings-downloads-roll-big = Til lange serier
-settings-downloads-roll-big-helper = Alt over { $count } afsnit downloades selv nogle få ad gangen. Dens række på siden Downloads kan stadig hente alt på én gang.
 settings-downloads-roll-ahead = Afsnit foran
-settings-downloads-roll-ahead-helper = Hvor mange der forbliver downloadet efter det, du er nået til. 12 er cirka en sæson.
 settings-downloads-unit-episodes = afsnit
 settings-downloads-roll-over = Lang betyder over
-settings-downloads-roll-over-helper = Downloads med flere afsnit end dette hentes nogle få ad gangen.
 settings-downloads-roll-watched = Sete afsnit
-settings-downloads-roll-watched-delete-helper = Slettes, når du er nået længere, så disken kun har det, der er tilbage at se.
-settings-downloads-roll-watched-keep-helper = Alle filer bliver på disken, efter du har set dem.
 settings-downloads-keep-all = Behold alle
 settings-downloads-keep-behind = Behold bagud
 settings-downloads-subscriptions-title = Abonnementer og søgninger
 settings-downloads-last-search = Husk den sidste søgning
-settings-downloads-last-search-helper = Downloads åbner med din seneste søgning. Slået fra åbner den tom.
 settings-downloads-prune = Afmeld afsluttede serier
-settings-downloads-prune-helper = 16 dage efter, at en series sidste afsnit er sendt, droppes dens feed. Serien og dens filer bliver.
 settings-downloads-sources-title = Søgekilder
-settings-downloads-sources-helper = Hvor en søgning går hen, i den rækkefølge de prøves. Finder én intet, prøves den næste.
 settings-downloads-sources-empty = Ingen kilder sat op endnu
 settings-downloads-sources-connect = Forbind søgehjælperen for at vise dem
-settings-downloads-sources-empty-helper = Tilføj en kildeliste nedenfor, så vises dens kilder her.
 settings-downloads-config-file = Søgehjælperens indstillingsfil
-settings-downloads-config-native-helper = Indeholder gemmemapperne, tags og reglerne for bedste match, som AniBeam selv følger, når den kører hjælperen. Dens egne kilder tilhører kun hjælperen.
-settings-downloads-config-helper = Indeholder kilderne, gemmemapperne, tags og reglerne for bedste match.
 settings-downloads-unsaved = Ændringer ikke gemt
-settings-downloads-unsaved-helper = Når du gemmer, genstarter søgehjælperen med de nye indstillinger.
 settings-downloads-discard = Kassér
 
 ## SettingsDeveloperTab
 
 settings-developer-title = Udvikler
-settings-developer-lead = Hvorfor en side er langsom, målt. Hver kontakt gælder for den næste side, du åbner.
 settings-developer-ms = { $ms } ms
 settings-developer-mb = { $mb } MB
 settings-developer-seconds = { $seconds } s
 settings-developer-switches = Kontakter
 settings-developer-load-images = Indlæs billeder
-settings-developer-load-images-helper = Slået fra læses eller afkodes ingen plakater, bannere eller portrætter.
 settings-developer-overlay = Overlay for sideindlæsning
-settings-developer-overlay-helper = Den sidste sideindlæsning og hukommelsen, i vinduets nederste højre hjørne.
 settings-developer-read-cache = Gem bibliotekslæsninger
-settings-developer-read-cache-helper = Svaret på en læsning af hele biblioteket gemmes, indtil biblioteket ændrer sig. Slået fra spørger hver side kernen igen.
 settings-developer-poster-pool = Varm plakater op i baggrunden
-settings-developer-poster-pool-helper = Afkoder de 60 plakater, du mest sandsynligt ser, og holder dem i hukommelsen.
 settings-developer-options = Udviklerindstillinger
-settings-developer-options-helper = Slår denne fane, overlayet og målingerne fra.
 settings-developer-memory = Hukommelse
-settings-developer-memory-helper = Det, kernen tæller for denne proces. Billeder holder afkodede pixels i hukommelsen og på grafikkortet.
 settings-developer-memory-unknown = Dette system oplyser ikke, hvor meget hukommelse appen bruger.
 settings-developer-in-use = I brug
 settings-developer-peak = Top
@@ -2665,13 +2545,11 @@ settings-developer-heap = Heap
 settings-developer-files-mapped = Mappede filer
 settings-developer-threads = Tråde
 settings-developer-give-back = Frigiv hukommelse
-settings-developer-give-back-helper = Smider det væk, scenegrafen kan genopbygge, samler JavaScript-affald og giver ledig heap tilbage til systemet. Det, der frigives, er det, appen holdt på uden at have brug for det.
 settings-developer-released = { $before } til { $after }
 settings-developer-free-now = Frigiv nu
 settings-developer-images-total = Billeder siden start
 settings-developer-images-total-line = { $decodes } afkodet, { $pixels } pixels fra { $disk } på disken, { $ms } ms
 settings-developer-loads = Sideindlæsninger
-settings-developer-loads-helper = Bygget er ventetiden efter et klik: Qt-tråden laver intet andet, før siden findes. Faldet til er, når dens sidste billede kom.
 settings-developer-touring = Måler, { $at } af { $steps }
 settings-developer-tour = Mål hver side
 settings-developer-copy-report = Kopier rapport
@@ -2708,7 +2586,6 @@ settings-developer-scene = Hvad siden består af
 settings-developer-scene-line = { $items } elementer, { $offscreen } uden for vinduet; { $texts } tekster, { $shapes } former, { $icons } ikoner; { $images } billeder, heraf { $imagesOffscreen } uden for vinduet, der fylder { $size }
 settings-developer-copy-load = Kopier denne indlæsning
 settings-developer-tour-title = Hver side, billeder til og fra
-settings-developer-tour-helper = Den midterste af tre besøg på hver side. Hvor de to kolonner er ens, er det ikke billederne, der gør siden langsom.
 settings-developer-col-built-on = Bygget, billeder til
 settings-developer-col-built-off = Bygget, billeder fra
 settings-developer-col-settled-on = Faldet til, til
@@ -2717,7 +2594,6 @@ settings-developer-col-decodes-time = Afkodninger, tid
 settings-developer-col-data = Data
 settings-developer-tour-peak = Højeste hukommelsesforbrug under målingen { $size }
 settings-developer-events = Hændelser
-settings-developer-events-helper = Alt, kernen siger, på alle niveauer, nyeste først. Hver hændelse kopieres til Qt-tråden som JSON; størrelsen er, hvad det kostede at sende.
 settings-developer-event-rate = { $kind } { $count }/min, { $size }
 settings-developer-events-filter = Filtrer på ord, type eller trin
 settings-developer-event-plain = { $message }   (ren: { $plain })
@@ -2726,7 +2602,6 @@ settings-developer-copy-events = Kopier hændelser
 ## SettingsKeysTab
 
 settings-keys-title = Tastatur
-settings-keys-lead = Alle taster, AniBeam reagerer på. Tryk ? hvor som helst for de taster, der virker, hvor du er.
 settings-keys-player = I afspilleren
 settings-keys-player-around = Rundt i afspilleren
 settings-keys-around = Rundt i appen
@@ -2793,7 +2668,6 @@ key-help-pick-all = Vælg alle viste kort
 ## SettingsAboutTab
 
 settings-about-title = Om
-settings-about-lead = Hvilken AniBeam dette er, og hvordan den hører om den næste.
 settings-about-update-failed = Opdateringen blev ikke færdig. Prøv igen, eller hent den fra udgivelsessiden.
 settings-about-update-ready = { $version } er klar til at blive installeret.
 settings-about-update-command = { $version } er udkommet. Opdater den med { $command }
@@ -2801,20 +2675,16 @@ settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } er udkommet. Denne kopi er bygget fra kildekoden: pull og byg igen.
 settings-about-update-elsewhere = { $version } er udkommet, uden en download her til denne computer.
 settings-about-version = Version
-settings-about-build = AniBeam { $build }
+settings-about-build = Anibeam { $build }
 settings-about-whats-new = Nyheder
 settings-about-install = Installer { $version }
 settings-about-setup = Opsætning
-settings-about-setup-helper = Gennemgangen, en ny installation åbner med: din mappe, din liste og downloads.
 settings-about-run-setup = Kør opsætning igen
 settings-about-updates = Opdateringer
-settings-about-nightly-helper = En ny version de fleste dage. Nyere og mindre testet.
-settings-about-stable-helper = En ny version, når den er testet og udgivet.
 settings-about-stable = Stabil
 settings-about-nightly = Nightly
 settings-about-check-now = Tjek nu
 settings-about-developer = Udviklerindstillinger
-settings-about-developer-helper = Tilføjer en Udvikler-sektion, der måler hver side, viser hukommelse og hele den tekniske log og kan slå billeder fra.
 settings-about-credits = Kreditering
 settings-about-ratings = Bedømmelser
 settings-about-ratings-helper = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.
@@ -2824,28 +2694,29 @@ settings-about-series-helper = AniList og TVmaze. Springtider fra AniSkip.
 ## SettingsPlaybackTab
 
 settings-playback-title = Afspilning
-settings-playback-lead = Det, afspilleren gør af sig selv, så du kun skal røre den, når du vil.
 settings-playback-skipping = Spring over
-settings-playback-skipping-helper = Bruger filens kapitler, ellers springtider delt af andre seere online. Fortryd i afspilleren slår spring fra, til AniBeam lukker.
 settings-playback-skip-intros = Spring intro over
 settings-playback-skip-outros = Spring outro over
-settings-playback-skip-outros-helper = Når outroen nås, markeres afsnittet også som set.
 settings-playback-next-episode = Næste afsnit
 settings-playback-name-next = Vis næste afsnits navn
-settings-playback-name-next-helper = Knappen Næste i slutningen af et afsnit viser det næstes titel. Slået fra viser den kun nummeret.
 settings-playback-languages = Sprog
-settings-playback-languages-helper = Sprogkoder, de mest ønskede først. Det første, en fil har, vinder. Et spor, du vælger i afspilleren, huskes for den serie.
 settings-playback-subtitle-languages = Undertekstsprog
 settings-playback-audio-languages = Lydsprog
 settings-playback-discord = Vis, hvad du ser, på Discord
-settings-playback-discord-check-failed = AniBeam kunne ikke tjekke Discord lige nu. Prøv igen om lidt.
-settings-playback-discord-helper = Serien, afsnittet og plakaten vises på din Discord-profil, mens du afspiller. Intet sendes, mens dette er slået fra, eller Discord er lukket.
+settings-playback-discord-check-failed = Anibeam kunne ikke tjekke Discord lige nu. Prøv igen om lidt.
 settings-playback-discord-unavailable = Denne version har ingen Discord-applikation.
 settings-playback-discord-connected = Forbundet med Discord
-settings-playback-discord-not-connected = Ikke forbundet. AniBeam forbinder, mens et afsnit afspilles, og Discord er åben
+settings-playback-discord-not-connected = Ikke forbundet. Anibeam forbinder, mens et afsnit afspilles, og Discord er åben
+discord-ask-wants = { $name } vil gerne være med
+discord-ask-start-room = Start rum
+discord-ask-let-in = Lad komme ind
+discord-ask-no = Nej
+settings-playback-discord-blocked = Sagt nej til på Discord
+room-panel-discord = På Discord
+room-panel-discord-open = Åbent
+room-panel-discord-invite = Kun inviterede
 settings-playback-advanced = Avanceret
 settings-playback-my-mpv = Brug mine mpv-indstillinger
-settings-playback-my-mpv-helper = Læser din mpv.conf. Indstillinger, der kun virker ved opstart, springes over, og scripts indlæses aldrig.
 settings-playback-no-mpv-conf = Ingen mpv-indstillingsfil fundet. Sæt dine indstillinger i mpv.conf, og slå så dette til.
 
 ## SliderRow
@@ -2870,49 +2741,37 @@ look-preview-light = Lys
 ## SettingsAccountsTab
 
 settings-accounts-title = Konti
-settings-accounts-lead = Forbind AniList eller MyAnimeList, så bliver hvert afsnit, du ser færdigt, markeret dér for dig. Tallene går kun op.
 settings-accounts-syncing = Synkroniserer dine lister
 settings-accounts-synced = Lister synkroniseret
 settings-accounts-lists = Dine animelister
-settings-accounts-lists-helper = Uden en husker AniBeam stadig, hvad du har set på denne computer. En liste på AniList eller MyAnimeList tager det med til din telefon og din profil.
 settings-accounts-progress = Fremgang
 settings-accounts-main-list = Hovedliste
-settings-accounts-main-list-helper = Kortene viser fremgang fra denne. Den anden får stadig alle opdateringer.
 settings-accounts-local-lists = Lister på denne computer
 settings-accounts-local-lists-helper =
     { $count ->
         [one] Én serie har
        *[other] { $count } serier har
-    } en status eller karakter kun her. Flyt dem til { $tracker } for at se dem på din telefon og din profil.
+    } en status eller karakter kun her.
 settings-accounts-review-move = Gennemse og flyt
 settings-accounts-nothing-to-move = Intet tilbage at flytte
 settings-accounts-sync-now = Synkroniser nu
-settings-accounts-sync-now-helper = Læser alle forbundne lister igen. AniBeam gør det også, når den starter.
 settings-accounts-sync = Synkroniser
 settings-accounts-move-on-hold = Flyt til På pause
-settings-accounts-move-on-hold-helper = En serie på Ser nu, som du ikke har rørt i et stykke tid, flyttes til På pause på dine lister. Afspiller du den, flyttes den tilbage. En serie, der venter på sit næste afsnit, bliver, hvor den er.
 settings-accounts-after = Efter
 settings-accounts-after-line = Dage uden at afspille et afsnit
 settings-accounts-days-unit = dage
 
-## SettingsPhoneTab
+## SettingsAccountsTab: the phone app
 
 settings-phone-title = Telefon-app
-settings-phone-lead = AniBeam på din telefon kan afspille dette bibliotek, se hvad der sendes og følge dine downloads, uanset hvor du er.
 settings-phone-online = Online
 settings-phone-offline = Offline
 settings-phone-untrusted = Får intet fra denne computer
-settings-phone-sharing = Deling
-settings-phone-sharing-helper = Kun dine egne enheder på Tailscale kan nå den. Afsnit, du ser på telefonen, beholder deres plads og fremgang her.
 settings-phone-share = Del via Tailscale
 settings-phone-stream = Stream afsnit
-settings-phone-stream-on = Dine enheder kan afspille og caste afsnittene på denne computer.
-settings-phone-stream-off = Dine enheder ser biblioteket og hvad der sendes, men kan ikke afspille herfra.
 settings-phone-host-service = Værtstjeneste
 settings-phone-not-running = Kører ikke
 settings-phone-running = Kører
-settings-phone-service-off-helper = Kør kommandoen én gang, så når dine enheder AniBeam fra login, uden et åbent vindue.
-settings-phone-service-on-helper = Dine enheder når AniBeam uden et åbent vindue. Mens dette vindue er åbent, deler det i stedet for tjenesten.
 settings-phone-copy-command = Kopier kommando
 settings-phone-command-copied = Kommando kopieret
 settings-phone-nobody = Får intet: Tailscale angiver ingen person for den
@@ -2930,81 +2789,29 @@ settings-phone-person-devices =
        *[other] { $count } enheder
     }
 settings-phone-devices = Enheder på dit tailnet
-settings-phone-devices-helper = Alle enheder på dit tailnet kan nå denne computer, mens deling er slået til. Slå en fra, så får den intet herfra.
-settings-phone-addresses = Adresser
-settings-phone-addresses-helper = Skriv en af disse i telefonappen, første gang den spørger.
 settings-phone-copy = Kopier
 settings-phone-address-copied = Adresse kopieret
 
-## SettingsHelpTab
+## SettingsAboutTab: the questions people ask most
 
-settings-help-title = Hjælp
-settings-help-lead = Korte svar på det, folk oftest spørger om, hver med en direkte vej til løsningen.
+settings-about-help = Hjælp
 settings-help-folders = Hvordan skal mine mapper se ud?
-settings-help-folders-helper = Én mappe pr. serie med afsnittene i. Giv hver fil afsnitsnummeret i navnet, som udgivelser gør: "Frieren - 01.mkv" eller "Frieren S01E01.mkv". En anden sæson kan være sin egen mappe eller en "Season 2"-mappe inde i serien. Film skal i en mappe ved navn Movies, én fil hver.
-settings-help-for-example = For eksempel
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Ingen mappe tilføjet endnu
-settings-help-reads-folders =
-    { $count ->
-        [one] AniBeam læser én mappe
-       *[other] AniBeam læser { $count } mapper
-    }
-settings-help-add-folder-helper = Tilføj mappen, der indeholder dine serier, ikke hver serie for sig.
-settings-help-add-folder = Tilføj en mappe
-settings-help-open-folders = Åbn dine mapper
-settings-help-match = Hvorfor blev min serie ikke genkendt?
-settings-help-match-helper = AniBeam slår hver mappe op ud fra navnet, først på AniList, så på TVmaze. Ekstra ord, en stavefejl eller et navn på et andet sprog kan ramme forbi. Vælg den rigtige serie manuelt under Serieinfo; et valg, du træffer, bliver aldrig erstattet.
-settings-help-all-recognised = Alle serier er genkendt
-settings-help-unrecognised =
-    { $count ->
-        [one] Én serie er ikke genkendt
-       *[other] { $count } serier er ikke genkendt
-    }
-settings-help-open-show-info = Åbn Serieinfo
-settings-help-connect = Hvordan forbinder jeg AniList?
-settings-help-connect-helper = Forbind den, så bliver hvert afsnit, du ser færdigt, markeret på din liste, og din telefon og din profil følger med. AniList beder dig lave en lille app selv én gang; AniBeam guider dig igennem, og det tager cirka et minut. MyAnimeList virker på samme måde.
-settings-help-both-connected = Begge er forbundet
-settings-help-anilist-connected = AniList er forbundet
-settings-help-mal-connected = MyAnimeList er forbundet
-settings-help-none-connected = Ingen af dem er forbundet endnu
-settings-help-connect-anilist = Forbind AniList
-settings-help-connect-mal = Forbind MyAnimeList
-settings-help-downloads = Hvorfor er Downloads tom?
-settings-help-downloads-helper = AniBeam kommer uden steder at søge. Tilføj en kildeliste i Indstillinger under Downloads, og installer de kilder, du vil have, fra den. At downloade kræver også et torrentprogram: AniBeam kan køre sit eget eller bruge en qBittorrent, du allerede har.
-settings-help-sources = Kilder og torrentprogrammet
-settings-help-open-downloads = Åbn indstillinger for Downloads
-settings-help-data = Hvor er mine data?
-settings-help-data-helper = Dit bibliotek, det du har set, og dine indstillinger bliver på denne computer. Login til AniList og MyAnimeList gemmes i systemets adgangskodelager, eller i en fil kun du kan læse, hvor der ikke er et. Tag backup af det hele til én fil under Lager og backup.
-settings-help-library-history = Bibliotek og historik
-settings-help-show-folder = Vis mappen
-settings-help-backup = Tag backup eller gendan
-settings-help-open-storage = Åbn Lager og backup
 settings-help-more = Noget andet?
-settings-help-more-helper = Kør den første opsætning igen, eller fortæl os, hvad der gik galt. Et skærmbillede hjælper meget.
-settings-help-first-setup = Den første opsætning
-settings-help-first-setup-helper = Mappe, liste og downloads, trin for trin.
-settings-help-run-setup = Kør opsætning igen
 settings-help-report = Meld en fejl
-settings-help-report-helper = Åbner en fejlrapport på GitHub i din browser med denne version udfyldt.
 
-## SettingsSubtitlesTab
+## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Undertekster
-settings-subtitles-lead = Det, hvert afsnit starter med. Ændringer vises på billedet nedenfor, mens du laver dem.
 settings-subtitles-reset-done = Underteksterne ser ud, som de gjorde fra start
 settings-subtitles-size-place = Størrelse og placering
 settings-subtitles-size = Størrelse
 settings-subtitles-position = Placering
-settings-subtitles-position-helper = 100 ligger ved bunden. Lavere tal løfter linjerne op i billedet.
 settings-subtitles-style = Stil
 settings-subtitles-styled = Stilede undertekster
-settings-subtitles-as-made-helper = Stilede (ASS) filer ser ud præcis, som deres skabere har sat dem.
-settings-subtitles-mine-helper = Din stil nedenfor bruges på alle filer. Skilte og karaoke kan gå i stykker.
-settings-subtitles-size-only-helper = Stilede undertekster beholder udseendet og får din størrelse. Almindelige får din stil.
 settings-subtitles-as-made = Original
 settings-subtitles-size-only = Kun størrelse
 settings-subtitles-mine = Mine
@@ -3016,20 +2823,14 @@ settings-subtitles-colour-invalid = Skriv en farve som #ffcc00.
 settings-subtitles-outline = Kontur
 settings-subtitles-outline-invalid = Bredden er et tal, 0 eller mere.
 settings-subtitles-outline-colour-invalid = Skriv farven som #000000.
-settings-subtitles-outline-helper = Dens bredde, så dens farve.
 settings-subtitles-shadow = Skygge
 settings-subtitles-shadow-invalid = Et tal, 0 eller mere. 0 betyder ingen skygge.
-settings-subtitles-shadow-helper = Hvor langt skyggen falder, 0 for ingen.
 settings-subtitles-box = Baggrundsboks
-settings-subtitles-box-helper = En mørk boks bag linjerne. 0 udelader den.
 settings-subtitles-start-over = Fra start
-settings-subtitles-start-over-helper = Sætter størrelse, skrift, farver, kontur, boks og placering tilbage, som de var.
 settings-subtitles-reset = Nulstil
 
-## SettingsDataTab
+## SettingsAboutTab: storage and backup
 
-settings-data-title = Lager og backup
-settings-data-lead = Flyt dit bibliotek til en anden computer, gem en kopi sikkert, eller frigør pladsen, billeder fylder.
 settings-data-backed-up = Backup gemt i { $path }
 settings-data-restore-finished = Gendannelse færdig
 settings-data-images-removed =
@@ -3080,17 +2881,13 @@ settings-data-summary-unavailable =
 settings-data-summary-left-out = Udeladt: { $fields }.
 settings-data-backup = Backup
 settings-data-back-up-library = Tag backup af biblioteket
-settings-data-back-up-helper = Én fil med dine mapper, matches og det, du har set.
 settings-data-last-written = Sidst gemt i { $path }
 settings-data-open-folder = Åbn mappe
 settings-data-back-up = Tag backup
-settings-data-private = Medtag private data
-settings-data-private-helper = Tilføjer login til AniList og MyAnimeList, visningshistorik og præferencer. Login gemmes som ren tekst, så hold filen for dig selv.
+settings-data-private = Medtag log-ins, gemt som ren tekst
 settings-data-restore-from = Gendan fra en backup
-settings-data-restore-helper = Læser en backup ind i dette bibliotek. Det, der ligger på disken, vinder; filen udfylder resten.
 settings-data-restore = Gendan
 settings-data-image-cache = Billedcache
-settings-data-image-cache-helper = Plakater, bannere og portrætter gemmes på disken, så biblioteket virker offline. Ryddede billeder hentes igen efter behov.
 settings-data-cache-unmeasured = Billedcachen kunne ikke måles
 settings-data-cache-size =
     { $count ->
@@ -3098,18 +2895,17 @@ settings-data-cache-size =
        *[other] { $size } i { $count } billeder
     }
 settings-data-cache-empty = Ingen billeder i cache
-settings-data-cache-unmeasured-helper = Prøv igen om lidt. Selve billederne er i orden.
 settings-data-remove-images =
     { $count ->
         [one] Fjern { $count } billede?
        *[other] Fjern { $count } billeder?
     }
-settings-data-files = Hvor AniBeam gemmer sine filer
+settings-data-files = Hvor Anibeam gemmer sine filer
 settings-data-files-database = Biblioteksdatabase
 settings-data-files-data = Data
 settings-data-files-settings = Indstillinger
 settings-data-files-cache = Cache
-settings-data-backup-filter = AniBeam-backup (*.json)
+settings-data-backup-filter = Anibeam-backup (*.json)
 settings-data-all-files-filter = Alle filer (*)
 settings-data-backing-up = Tager backup
 settings-data-restoring = Gendanner
@@ -3117,62 +2913,57 @@ settings-data-restoring = Gendanner
 ## SettingsLibraryTab
 
 settings-library-title = Bibliotek
-settings-library-lead = De mapper, AniBeam overvåger, og hvordan den genkender indholdet.
 settings-library-not-scanned = Ikke scannet endnu
 settings-library-scan-nothing-changed = Intet ændret
 settings-library-scan-added = { $count } tilføjet
 settings-library-scan-changed = { $count } ændret
 settings-library-scan-removed = { $count } fjernet
 settings-library-scan-in-folder = { $folder }: { $what }
-settings-library-anilist-about = Anime: serier, film og hvordan de hænger sammen. Det, du ser, markeres hos dine trackere.
-settings-library-tvmaze-about = Andet tv: live action, tegnefilm, dokumentarer. Intet markeres hos en tracker.
 settings-library-tried-first = Prøves først
 settings-library-tried-second = Prøves som nr. 2
 settings-library-tried-third = Prøves som nr. 3
 settings-library-tried-fourth = Prøves som nr. 4
 settings-library-tried-nth = Prøves som nr. { $number }
 settings-library-folders = Mapper
-settings-library-folders-helper = Hver mappe inden i en af disse er en serie. En fil øverst i en Movies-mappe er en film.
 settings-library-rescan-started = Genscanning startet
 settings-library-load-failed = Dine mapper kunne ikke læses
-settings-library-load-failed-helper = AniBeam kunne ikke læse sin liste over mapper. Prøv igen om lidt.
 settings-library-no-folders = Ingen mapper endnu
-settings-library-no-folders-helper = Peg AniBeam på mappen med din anime. Den finder selv serierne og filmene.
 settings-library-scanned = Scannet { $when }
 settings-library-add-a-folder = Tilføj en mappe
 settings-library-scan-all = Scan alle
 settings-library-scan-started = Scanning startet
 settings-library-add-folder = Tilføj mappe
 settings-library-matching = Matchning
-settings-library-matching-helper = En ny mappe slås op i denne rækkefølge og beholder det første gode match. Et match, du sætter manuelt, bliver aldrig erstattet.
 settings-library-try-later = Prøv senere
 settings-library-try-first = Prøv først
 settings-library-check-matches = Tjek matchene
-settings-library-check-matches-helper = Siden Serieinfo viser hver serie med den info, AniBeam fandt, og retter en forkert.
 settings-library-open-show-info = Åbn Serieinfo
 settings-library-hidden-shows = Skjulte serier
 settings-library-show-hidden = Vis skjulte serier
-settings-library-show-hidden-helper = Viser de serier, du har skjult, på alle sider igen, indtil AniBeam lukker.
 settings-library-hidden-from-airing = Skjult fra Sendes nu
-settings-library-hidden-from-airing-helper = Serier, du har markeret som uinteressante. Hver bliver væk fra Sendes nu, indtil du henter den tilbage.
-settings-library-hidden-from-airing-empty = Intet endnu. Serier, du markerer som uinteressante under Sendes nu, samles her, så de kan komme tilbage.
+settings-library-hidden-from-airing-empty = Intet endnu
 settings-library-show-again = Vis igen
+settings-hidden-airing-filter = Filtrér titler
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Én serie, der er holdt op med at blive sendt, røg af listen
+       *[other] { $count } serier, der er holdt op med at blive sendt, røg af listen
+    }
 settings-library-calendar = Kalender
 settings-library-calendar-feed = Sendetider i en kalender
-settings-library-calendar-feed-helper = Holder en kalenderfil med de kommende afsnit af serierne på dine lister, opdateret når sendeplanen ændrer sig.
 settings-library-calendar-file = Kalenderfil
-settings-library-calendar-file-helper = Abonnér på denne fil i din kalenderapp.
 settings-library-copy = Kopier
 settings-library-path-copied = Sti kopieret
 settings-library-open-folder = Åbn mappe
 settings-library-notifications = Notifikationer
 settings-library-new-episodes = Nye afsnit
-settings-library-new-episodes-helper = En notifikation på skrivebordet, når et afsnit af en serie på din Ser nu-liste sendes. Klik på den for at åbne serien.
 settings-library-folder-added = Mappe tilføjet, scanner
 
 ## SettingsAppearanceTab
 
 settings-appearance-language = Sprog
+settings-appearance-title-language = Vis titler på
+settings-appearance-title-language-english = Engelsk
 settings-appearance-language-system = Samme som systemet ({ $language })
 settings-appearance-text-smaller = Mindre
 settings-appearance-text-normal = Normal
@@ -3180,51 +2971,39 @@ settings-appearance-text-large = Stor
 settings-appearance-text-larger = Større
 settings-appearance-text-largest = Størst
 settings-appearance-title = Udseende
-settings-appearance-lead = Ændringer ses med det samme, her og på alle sider. De gemmes i ~/.config/anibeam/theme.toml, som du også kan redigere selv.
 settings-appearance-colours = Farver
 settings-appearance-mode = Tilstand
 settings-appearance-mode-dark = Mørk
 settings-appearance-mode-light = Lys
 settings-appearance-mode-system = System
 settings-appearance-colours-from = Farver fra
-settings-appearance-from-theme-helper = Temaparret nedenfor, ét til mørk og ét til lys.
-settings-appearance-from-desktop-helper = Din terminals farver, ellers skrivebordets farveskema og accent.
 settings-appearance-from-desktop = Skrivebord
 settings-appearance-from-theme = Tema
 settings-appearance-dark-theme = Mørkt tema
 settings-appearance-light-theme = Lyst tema
-settings-appearance-themes-helper = Temafiler, du lægger i ~/.config/anibeam/themes, vises på begge lister.
 settings-appearance-accent = Accent
-settings-appearance-accent-helper = Markerer det valgte, det der afspilles og det nye.
 settings-appearance-icon = Ikon
 settings-appearance-app-icon = Appikon
-settings-appearance-app-icon-helper = Vinduets, proceslinjens og launcherens. Mørk bytter det gule og det sorte.
 settings-appearance-icon-default = Standard
 settings-appearance-icon-default-name = Standardappikon
 settings-appearance-icon-dark = Mørk
 settings-appearance-icon-dark-name = Mørkt appikon
 settings-appearance-size-motion = Størrelse og bevægelse
 settings-appearance-text-size = Tekststørrelse
-settings-appearance-text-size-helper = Hvor stor teksten er overalt i AniBeam, oven i systemets egen størrelse.
 settings-appearance-density = Tæthed
-settings-appearance-density-helper = Pladsen omkring alt, fra tæt til luftigt.
 settings-appearance-density-compact = Kompakt
 settings-appearance-density-normal = Normal
 settings-appearance-density-comfortable = Luftig
 settings-appearance-poster-size = Plakatstørrelse
-settings-appearance-poster-size-helper = Hvor stor en serie er i biblioteket og på Hjem.
 settings-appearance-poster-small = Lille
 settings-appearance-poster-medium = Mellem
 settings-appearance-poster-large = Stor
 settings-appearance-out-now = Udkommet nu under Sendes
-settings-appearance-out-now-helper = Kort med hver series banner eller en liste med små plakater og titler, tre rækker dyb.
 settings-appearance-out-now-cards = Kort
 settings-appearance-out-now-list = Liste
 settings-appearance-out-now-grid = Kort under Udkommet nu
-settings-appearance-out-now-grid-helper = Hvor mange kort der vises, kolonner gange rækker, før Alle åbner resten.
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Reducer bevægelse
-settings-appearance-reduce-motion-helper = Springer bibliotekets åbningsbevægelse og anden ren pynt over.
 
 ## LookPane
 
@@ -3292,7 +3071,7 @@ feed-sort-recent = Udkommet for nylig
 feed-sort-upcoming = Kommer snart
 feed-failed-title = Feedet kunne ikke indlæses
 feed-empty-title = Intet her endnu
-feed-failed-body = AniBeam kunne ikke læse feedet lige nu. Prøv igen om lidt.
+feed-failed-body = Anibeam kunne ikke læse feedet lige nu. Prøv igen om lidt.
 feed-empty-body-folders = Feedet fyldes, efterhånden som afsnit sendes og kommer. Sendes nu viser, hvad der sendes denne sæson.
 feed-empty-body = Tilføj mappen med din anime, så fyldes feedet med dens afsnit.
 feed-add-folder = Tilføj en mappe
@@ -3485,7 +3264,7 @@ status-dot-on-list = På din liste: { $status }
 ## TrackerNudge
 
 tracker-nudge-title = Forbind din animeliste
-tracker-nudge-body = AniBeam markerer afsnit på AniList eller MyAnimeList, mens du ser.
+tracker-nudge-body = Anibeam markerer afsnit på AniList eller MyAnimeList, mens du ser.
 tracker-nudge-connect-anilist = Forbind AniList
 tracker-nudge-connect-mal = Forbind MyAnimeList
 tracker-nudge-not-now = Ikke nu
@@ -3714,6 +3493,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Dit navn i rum
 rail-room = Se sammen (Ctrl+J)
 rail-room-in = I et se sammen-rum (Ctrl+J)
+rail-join-room = Gå ind i rum
+rail-in-room = I et rum
 player-chrome-watch-together = Se sammen
 player-chrome-room = Rum { $code } · { $count ->
     [one] 1 person
@@ -3729,6 +3510,8 @@ room-error-proto = Det rum kører på en nyere version af rum. Opdater { -app-na
 room-error-not-in-room = Du er ikke længere i det rum. Start eller gå ind i et igen.
 room-error-bad-code = En rumkode er 6 bogstaver og tal, fx K7QM2X.
 room-error-bad-relay = Rumserveren i Indstillinger, Afspilning er ikke en webadresse. Ret den der, og prøv igen.
+room-error-cannot-fetch = Værten kan ikke dele dette afsnit lige nu. Prøv igen, når de er tilbage i rummet.
+room-error-needs-episode = Den rumserver skal have et afsnit for at starte et rum. Start det fra afspilleren i stedet.
 room-panel-title = Se sammen
 room-panel-close = Luk
 room-panel-connected = Forbundet
@@ -3747,7 +3530,6 @@ room-panel-code-label = Rumkode
 room-panel-copy = Kopier link
 room-panel-link-copied = Rumlink kopieret
 room-panel-watching = { $series } · { $episode }
-room-panel-missing-here = Dette afsnit er ikke i dit bibliotek, så du kan ikke se med endnu.
 room-panel-open-episode = Åbn afsnittet
 room-panel-people = { $count ->
     [one] 1 person
@@ -3765,6 +3547,21 @@ room-panel-seconds = { $value } s
 room-panel-suggested = Introerne foreslår { $offset }
 room-panel-use-suggested = Brug den
 room-panel-leave = Forlad rummet
+room-panel-get-media = Hent medie
+room-panel-downloading = Henter
+room-panel-asking = Spørger værten
+room-panel-searching = Søger
+room-panel-failed = Kunne ikke hente
+room-panel-percent = { $percent } %
+room-panel-left = { $time } tilbage
+room-panel-nothing-picked = Intet valgt endnu
+room-panel-this-episode = Dette afsnit
+room-panel-whole-show = Hele serien
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } af { $total } klar · { $percent }%
+room-gate-start = Start alligevel
+room-gate-wait = Vent på alle
+room-gate-waiting = Venter på alle
 player-room-speed = Hastigheden følger rummet
 settings-find-room-name =
     .words = se sammen rum navn venner
@@ -3776,4 +3573,3 @@ settings-playback-together = Se sammen
 settings-playback-room-name = Dit navn i se sammen-rum
 settings-playback-room-name-placeholder = Dit navn
 settings-playback-room-relay = Rumserver
-settings-playback-room-relay-helper = Rum oprettes her. Skift den kun til en server, du selv kører.

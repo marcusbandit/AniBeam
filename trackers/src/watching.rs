@@ -1,0 +1,581 @@
+//! The watching list: what AniList says the user is part way through,
+//! read off the tables every other page reads and refreshed behind the
+//! page that asked for it.
+//!
+//! Three rules shape the file. The list is AniList's rather than the main
+//! tracker's, by the watching tab's own decision, and a rewatch counts as
+//! watching, so the page is the `CURRENT` and `REPEATING` entries. The
+//! same refresh keeps the `PLANNING` entries for the planning list (#210),
+//! read by `planning`; everything else on the account is another page's.
+//! Every visit refreshes, the way Electron's `WatchingPage.tsx` did, so
+//! there is no staleness window here at all: the call answers off the
+//! cache at once and hands back the id of the job filling it. And the
+//! cache is the database rather than a session's memory, which is what
+//! Electron never had: the page paints the last list before the first
+//! reply arrives, launch after launch.
+//!
+//! Carried from `getAnilistWatchingList` in
+//! `src/main/handlers/trackerHandler.ts` and the page that drew it.
+
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::sync::Arc;
+use std::time::UNIX_EPOCH;
+
+use rusqlite::types::Value;
+use rusqlite::{Connection, Transaction, params, params_from_iter};
+
+use crate::Trackers;
+use crate::accounts;
+use crate::cache::normalize_status;
+use crate::writes;
+use crate::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
+use anibeam_contract::*;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
+use anibeam_foundation::time;
+use anibeam_foundation::titles::{self, fallback_title};
+use anibeam_metadata::record::{self, StubWrite};
+use anibeam_net::anilist::WATCHING_LIST_QUERY;
+
+// The read -------------------------------------------------------------------
+
+/// The cached list over the statuses a page asks for (Watching and
+/// Repeating for the watching page, Planning for its planning tab).
+/// `images` answers the poster, `series` answers whether the library owns
+/// the media, and a series that owns it and hides it takes the entry off
+/// the page rather than turning it into an external card.
+const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.updated_at,
+        m.title_romaji, m.title_english, m.episodes, m.site_url, i.path,
+        (SELECT s.id FROM series s WHERE s.anilist_id = t.media_id AND s.missing_since IS NULL ORDER BY s.id LIMIT 1),
+        m.title_native
+     FROM tracker_entries t
+     LEFT JOIN anilist_media m ON m.id = t.media_id
+     LEFT JOIN images i ON i.url = m.cover_url
+     WHERE t.tracker = ?1 AND t.status IN ({statuses})
+       AND NOT EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = t.media_id AND s.hidden = 1)";
+
+/// The next broadcast of everything on the list, in one query rather than
+/// a subquery per row: the earliest scheduled episode of each media.
+const AIRING_SQL: &str = "SELECT e.anilist_id, e.number, e.aired_at
+     FROM anilist_episodes e
+     WHERE e.aired_at > ?1
+       AND e.anilist_id IN (SELECT media_id FROM tracker_entries WHERE tracker = ?2 AND status IN ({statuses}))
+     ORDER BY e.aired_at";
+
+/// The whole page off the database: no request, no waiting, whatever the
+/// last refresh left behind. Ordered by the tracker's own timestamp, most
+/// recently updated first, with an entry AniList gave none for at the
+/// bottom and ties settled by title.
+pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+    list_of(
+        conn,
+        images_dir,
+        &[ListStatus::Watching, ListStatus::Repeating],
+    )
+}
+
+/// The planning list (#210): the same read over the Planning entries.
+pub fn planning(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+    list_of(conn, images_dir, &[ListStatus::Planning])
+}
+
+fn list_of(
+    conn: &Connection,
+    images_dir: &Path,
+    statuses: &[ListStatus],
+) -> Result<WatchingList, CoreError> {
+    let named = |first: usize| -> String {
+        (first..first + statuses.len())
+            .map(|n| format!("?{n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let wanted = statuses.iter().map(|s| Value::from(s.as_str().to_string()));
+    let now = time::now_secs();
+    // A watching card sits beside the library's own cards, so it reads the
+    // same preference: two titles for the same series on one page would be
+    // the preference not being honoured at all.
+    let lang = prefs::load_preferences(conn)?.title_language;
+    let mut next_airing: HashMap<u64, Airing> = HashMap::new();
+    {
+        let mut stmt = conn.prepare(&AIRING_SQL.replace("{statuses}", &named(3)))?;
+        let rows = stmt.query_map(
+            params_from_iter(
+                [
+                    Value::from(now),
+                    Value::from(Tracker::Anilist.as_str().to_string()),
+                ]
+                .into_iter()
+                .chain(wanted.clone()),
+            ),
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as u64,
+                    r.get::<_, i64>(1)? as u32,
+                    r.get::<_, i64>(2)?,
+                ))
+            },
+        )?;
+        for row in rows {
+            let (anilist_id, episode, at) = row?;
+            // The query is in date order, so the first row for a media is
+            // its next broadcast.
+            next_airing.entry(anilist_id).or_insert(Airing {
+                episode,
+                at: time::from_secs(at),
+                season: None,
+                predicted: false,
+                through: None,
+            });
+        }
+    }
+
+    let mut stmt = conn.prepare(&LIST_SQL.replace("{statuses}", &named(2)))?;
+    let rows = stmt.query_map(
+        params_from_iter(
+            std::iter::once(Value::from(Tracker::Anilist.as_str().to_string())).chain(wanted),
+        ),
+        |r| {
+            let anilist_id = r.get::<_, i64>(0)? as u64;
+            let updated_at: Option<i64> = r.get(4)?;
+            let romaji: Option<String> = r.get(5)?;
+            let english: Option<String> = r.get(6)?;
+            let native: Option<String> = r.get(11)?;
+            let poster: Option<String> = r.get(9)?;
+            Ok((
+                updated_at,
+                WatchingEntry {
+                    anilist_id,
+                    title: titles::resolve(
+                        lang,
+                        romaji.as_deref(),
+                        english.as_deref(),
+                        native.as_deref(),
+                        &fallback_title(anilist_id),
+                    ),
+                    romaji,
+                    english,
+                    native,
+                    poster: local_path(images_dir, poster),
+                    progress: r.get::<_, i64>(1)? as u32,
+                    total: r.get::<_, Option<i64>>(7)?.map(|e| e as u32),
+                    // AniList sent no timestamp for this entry, so it sorts
+                    // last and the shell shows nothing for the epoch.
+                    updated_at: updated_at.map_or(UNIX_EPOCH, time::from_secs),
+                    owned: r.get::<_, Option<i64>>(10)?.map(|id| id as u64),
+                    repeating: r
+                        .get::<_, Option<String>>(2)?
+                        .as_deref()
+                        .and_then(ListStatus::from_column)
+                        == Some(ListStatus::Repeating),
+                    site_url: r.get(8)?,
+                    next_airing: next_airing.get(&anilist_id).cloned(),
+                    score: r.get(3)?,
+                },
+            ))
+        },
+    )?;
+    let mut entries = rows.collect::<Result<Vec<(Option<i64>, WatchingEntry)>, _>>()?;
+    entries.sort_by(|(a_at, a), (b_at, b)| {
+        a_at.is_none()
+            .cmp(&b_at.is_none())
+            .then_with(|| b_at.cmp(a_at))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+
+    Ok(WatchingList {
+        entries: entries.into_iter().map(|(_, entry)| entry).collect(),
+        fetched_at: settings::get::<i64>(conn, settings::WATCHING_FETCHED_AT)?.map(time::from_secs),
+    })
+}
+
+/// The call. The cached list leaves at once and nothing is started: a read
+/// that began an AniList fetch made every page reload a network request.
+/// `refreshing` names a refresh that is already running, so a page can
+/// still say one is on its way.
+pub fn list_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| list(c, &images_dir))?;
+    let refreshing = services
+        .jobs
+        .list()
+        .into_iter()
+        .find(|j| j.kind == JobKind::RefreshWatching)
+        .map(|j| j.id);
+    Ok(Reply::Watching { list, refreshing })
+}
+
+/// `ListPlanning`: the planning list off the cache, at once.
+pub fn planning_call(services: &Services) -> Result<Reply, CoreError> {
+    let images_dir = services.paths.images_dir();
+    let list = services.store.read(|c| planning(c, &images_dir))?;
+    Ok(Reply::Planning { list })
+}
+
+/// How old the cached list may be before `RefreshWatching` without `force`
+/// goes back to AniList.
+pub const STALE_AFTER_SECS: i64 = 5 * 60;
+
+/// The `RefreshWatching` call: the job when the cache is stale (or never
+/// filled) or `force` says so, `Ok` when it is fresh or there is no account
+/// to ask. A refresh already running is handed back rather than doubled.
+pub fn refresh_call(trackers: &Arc<Trackers>, force: bool) -> Result<Reply, CoreError> {
+    let (connected, fetched_at) = trackers.services.store.read(|c| {
+        Ok((
+            is_connected(c)?,
+            settings::get::<i64>(c, settings::WATCHING_FETCHED_AT)?,
+        ))
+    })?;
+    if !connected {
+        return Ok(Reply::Ok);
+    }
+    let fresh = fetched_at.is_some_and(|at| time::now_secs() - at < STALE_AFTER_SECS);
+    if fresh && !force {
+        return Ok(Reply::Ok);
+    }
+    let owner = trackers.clone();
+    Ok(Reply::Started {
+        job: start_refresh(&owner)?,
+    })
+}
+
+fn is_connected(conn: &Connection) -> Result<bool, CoreError> {
+    Ok(accounts::load_row(conn, Tracker::Anilist)?.is_some_and(|row| row.connected_at.is_some()))
+}
+
+/// A cached image's absolute path, and only while its file is still there:
+/// a row pointing at nothing is the same as no row.
+fn local_path(images_dir: &Path, relative: Option<String>) -> Option<String> {
+    relative
+        .map(|relative| images_dir.join(relative))
+        .filter(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+// The job --------------------------------------------------------------------
+
+/// One entry as the refresh writes it: the row `tracker_entries` keeps,
+/// the media row behind it, and the broadcast the query carried.
+struct Row {
+    media_id: u64,
+    progress: u32,
+    status: ListStatus,
+    score: Option<f64>,
+    updated_at: Option<i64>,
+    media: StubWrite,
+    next_airing: Option<(u32, i64)>,
+}
+
+/// Starts the RefreshWatching job, one at a time per kind: a second call
+/// while one runs hands back the running job's id. Refuses only when there
+/// is no account to ask, which the call itself has already ruled out.
+pub fn start_refresh(trackers: &Arc<Trackers>) -> Result<u64, CoreError> {
+    if !trackers.services.store.read(is_connected)? {
+        return Err(CoreError::NotConnected {
+            tracker: Tracker::Anilist,
+        });
+    }
+    let owner = trackers.clone();
+    Ok(trackers
+        .services
+        .jobs
+        .clone()
+        .start(JobKind::RefreshWatching, move |_| async move {
+            run(owner).await
+        }))
+}
+
+async fn run(trackers: Arc<Trackers>) -> Result<Finished, CoreError> {
+    refresh(&trackers).await.map_err(failed)
+}
+
+async fn refresh(trackers: &Arc<Trackers>) -> Result<Finished, CoreError> {
+    let account = trackers
+        .services
+        .store
+        .write_async(move |c| accounts::load_row(c, Tracker::Anilist))
+        .await?
+        .unwrap_or_default();
+    // The collection is asked for by user id, so an account whose profile
+    // never carried one cannot be read at all.
+    let user_id = account.user_id.ok_or_else(|| {
+        tracker_error(anibeam_contract::i18n::tr("core-trackers-no-user-id", &[]))
+    })?;
+    let token = accounts::access_token(trackers, Tracker::Anilist)
+        .await?
+        .ok_or_else(|| tracker_error(no_token()))?;
+    // Anything written to the cache after this moment (a status the user
+    // just set) is newer than what the fetch can know, and is left alone.
+    let started = time::now_secs();
+    let rows = fetch(trackers, user_id, &token).await?;
+
+    let covers_of = |wanted: &[ListStatus]| -> Vec<String> {
+        rows.iter()
+            .filter(|row| wanted.contains(&row.status))
+            .filter_map(|row| row.media.cover_url.clone())
+            .collect()
+    };
+    let covers = covers_of(&[ListStatus::Watching, ListStatus::Repeating]);
+    let planned = covers_of(&[ListStatus::Planning]);
+    let now = time::now_secs();
+    trackers
+        .services
+        .store
+        .tx_async(move |tx| write(tx, &rows, now, started))
+        .await?;
+    // Every watching cover before the job reports, so the page's posters
+    // are local files rather than urls the shell has to go and get.
+    for (url, outcome) in trackers.net.images.ensure(&covers).await {
+        if let Err(e) = outcome {
+            tracing::debug!("the watching list's cover {url} was not fetched: {e}");
+        }
+    }
+    // The planning covers after it: a long planning list must not hold the
+    // watching page on Refreshing. The planning tab reads them as they land.
+    if !planned.is_empty() {
+        let owner = trackers.clone();
+        tokio::spawn(async move {
+            for (url, outcome) in owner.net.images.ensure(&planned).await {
+                if let Err(e) = outcome {
+                    tracing::debug!("the planning list's cover {url} was not fetched: {e}");
+                }
+            }
+        });
+    }
+
+    let images_dir = trackers.services.paths.images_dir();
+    let list = trackers
+        .services
+        .store
+        .write_async(move |c| list(c, &images_dir))
+        .await?;
+    Ok(Finished {
+        plain: None,
+        level: Level::Debug,
+        message: format!("Watching list refreshed: {} entries", list.entries.len()),
+        body: EventBody::WatchingRefreshed { list },
+    })
+}
+
+/// The list itself. AniList repeats one media across custom lists, so the
+/// first copy of it is the one kept, and anything that is not being
+/// watched belongs to another page.
+async fn fetch(trackers: &Trackers, user_id: u64, token: &str) -> Result<Vec<Row>, CoreError> {
+    let data = trackers
+        .net
+        .anilist
+        .graphql_within(
+            WATCHING_LIST_QUERY,
+            serde_json::json!({ "userId": user_id }),
+            Some(token),
+            TRACKER_TIMEOUT,
+        )
+        .await?;
+
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut rows: Vec<Row> = Vec::new();
+    for list in data["MediaListCollection"]["lists"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        for entry in list["entries"].as_array().into_iter().flatten() {
+            let media = &entry["media"];
+            let Some(media_id) = media["id"].as_u64() else {
+                continue;
+            };
+            // Every status is kept: the fetch is the whole list, so the
+            // cache it writes is the whole list too, and a show that moves
+            // from Planning to Completed is updated rather than lost (#210).
+            let Some(status) = normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
+            else {
+                continue;
+            };
+            if !seen.insert(media_id) {
+                continue;
+            }
+            let title = &media["title"];
+            let next = &media["nextAiringEpisode"];
+            rows.push(Row {
+                media_id,
+                progress: as_count(entry["progress"].as_u64()),
+                status,
+                // Nought is AniList's unrated rather than a rating.
+                score: entry["score"].as_f64().filter(|s| *s > 0.0),
+                updated_at: entry["updatedAt"].as_i64().filter(|at| *at > 0),
+                media: StubWrite {
+                    id: media_id,
+                    mal_id: media["idMal"].as_u64(),
+                    media_type: None,
+                    title_romaji: media_title(&title["romaji"]),
+                    title_english: media_title(&title["english"]),
+                    title_native: media_title(&title["native"]),
+                    format: None,
+                    status: None,
+                    year: None,
+                    cover_url: media["coverImage"]["large"].as_str().map(str::to_string),
+                    site_url: media["siteUrl"].as_str().map(str::to_string),
+                    episodes: as_u32(media["episodes"].as_u64()),
+                    average_score: as_u32(media["averageScore"].as_u64()),
+                },
+                next_airing: as_u32(next["episode"].as_u64()).zip(next["airingAt"].as_i64()),
+            });
+        }
+    }
+    Ok(rows)
+}
+
+/// One entry's row, keeping the rewatch count: the watching query never
+/// asks for `repeat`, and a number the progress sweep fetched must not be
+/// zeroed by a page read.
+const ENTRY_UPSERT: &str = "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
+     ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
+        status = excluded.status,
+        progress = excluded.progress,
+        score = excluded.score,
+        repeat = tracker_entries.repeat,
+        updated_at = excluded.updated_at,
+        fetched_at = excluded.fetched_at
+     WHERE tracker_entries.fetched_at <= excluded.fetched_at";
+
+/// The next broadcast as an episode row. The list carries no titles at
+/// all, so a title already in the table is the best one there will ever
+/// be and this must never replace it.
+const AIRING_UPSERT: &str =
+    "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, NULL, ?3)
+     ON CONFLICT(anilist_id, number) DO UPDATE SET aired_at = excluded.aired_at";
+
+/// The whole list in one transaction: a half-written page would draw
+/// entries whose media row is not there yet.
+/// `started` is when the fetch went out, and its rows carry it: a row the
+/// cache took after it (a status write while the refresh was out, stamped
+/// with its own later time) is newer than the fetch and is neither
+/// overwritten nor removed. The stamps are whole seconds, so only a write
+/// in the very second the fetch left can still lose.
+fn write(tx: &Transaction, rows: &[Row], now: i64, started: i64) -> Result<(), CoreError> {
+    for row in rows {
+        tx.execute(
+            ENTRY_UPSERT,
+            params![
+                Tracker::Anilist.as_str(),
+                row.media_id as i64,
+                row.status.as_str(),
+                i64::from(row.progress),
+                row.score,
+                row.updated_at,
+                // Stamped with the fetch's own moment, so a status write
+                // that lands while it is out reads as newer and is kept.
+                started,
+            ],
+        )?;
+        // Before the episode row, which references it, and only ever
+        // filling blanks: the row may be a fetched one, and the list's
+        // thinner copy of a title must not replace it.
+        record::write_stub(tx, &row.media)?;
+        if let Some((episode, at)) = row.next_airing {
+            tx.execute(
+                AIRING_UPSERT,
+                params![row.media_id as i64, i64::from(episode), at],
+            )?;
+        }
+    }
+    // The fetch is the whole list, so a row it no longer carries is a show
+    // taken off the list on AniList: it leaves now, not at the next
+    // progress sweep. A row written after the fetch went out stays.
+    let kept: Vec<String> = rows.iter().map(|r| r.media_id.to_string()).collect();
+    tx.execute(
+        &format!(
+            "DELETE FROM tracker_entries WHERE tracker = ?1 AND fetched_at <= ?2 AND media_id NOT IN ({})",
+            // SQLite takes an empty list, and NOT IN () is every row
+            kept.join(", ")
+        ),
+        params![Tracker::Anilist.as_str(), started],
+    )?;
+    settings::set(tx, settings::WATCHING_FETCHED_AT, &now)?;
+    Ok(())
+}
+
+/// Whatever went wrong, in the one line a page can show. The job's failure
+/// is the shell's only account of it, so a GraphQL blob never reaches it.
+fn failed(e: CoreError) -> CoreError {
+    let message = writes::sanitize_error(Tracker::Anilist, &e);
+    match e {
+        CoreError::Provider {
+            provider,
+            status,
+            retry_after,
+            ..
+        } => CoreError::provider_retry(provider, status, message, retry_after),
+        _ => tracker_error(message),
+    }
+}
+
+fn tracker_error(message: impl Into<String>) -> CoreError {
+    accounts::tracker_error(Tracker::Anilist, message)
+}
+
+/// A title off the reply, treating an empty string as absent: the stub
+/// must not fill a blank column with nothing.
+fn media_title(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_str()
+        .filter(|t| !t.trim().is_empty())
+        .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_media_with_no_titles_at_all_is_named_by_its_id() {
+        assert_eq!(fallback_title(154587), "AniList 154587");
+        assert_eq!(
+            titles::resolve(TitleLanguage::English, None, None, None, &fallback_title(1)),
+            "AniList 1"
+        );
+    }
+
+    #[test]
+    fn a_count_survives_whatever_a_provider_sends() {
+        assert_eq!(as_count(None), 0);
+        assert_eq!(as_count(Some(12)), 12);
+        assert_eq!(as_count(Some(u64::MAX)), 0);
+        assert_eq!(as_u32(None), None);
+        assert_eq!(as_u32(Some(1122)), Some(1122));
+        assert_eq!(as_u32(Some(u64::MAX)), None);
+    }
+
+    /// The provider's raw words reach the shell sanitised, whatever shape
+    /// the failure took.
+    #[test]
+    fn a_failure_carries_one_readable_line() {
+        let limited = CoreError::provider_retry(
+            Provider::Anilist,
+            Some(429),
+            "AniList rate limited",
+            Some(9.0),
+        );
+        let out = failed(limited);
+        assert!(
+            matches!(&out, CoreError::Provider { status: Some(429), message, retry_after: Some(w), .. }
+                if message == "AniList rate limited, try again in a minute." && *w == 9.0),
+            "{out:?}"
+        );
+        let internal = failed(CoreError::internal("the writer thread is gone"));
+        assert!(
+            matches!(
+                &internal,
+                CoreError::Provider {
+                    provider: Provider::Anilist,
+                    ..
+                }
+            ),
+            "{internal:?}"
+        );
+    }
+}

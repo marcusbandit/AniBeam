@@ -80,7 +80,7 @@ event-problem-trackers = リストで問題が発生しました。詳細は開�
 event-problem-franchise = 関連作品で問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-playback = 再生で問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-store = データの保存で問題が発生しました。詳細は開発者向けオプションにあります。
-event-problem-system = AniBeamで問題が発生しました。詳細は開発者向けオプションにあります。
+event-problem-system = Anibeamで問題が発生しました。詳細は開発者向けオプションにあります。
 event-problem-downloads = ダウンロードで問題が発生しました。詳細は開発者向けオプションにあります。
 
 ## Errors (contract::CoreError)
@@ -107,15 +107,15 @@ core-error-io = ファイルを読み書きできませんでした: { $message 
 core-error-storage = ライブラリを保存できませんでした: { $message }
 core-error-keyring = システムのパスワード保管庫に接続できませんでした: { $message }
 core-error-unsupported = { $what }にはまだ対応していません。
-core-error-version = このエクスポートは新しいAniBeamのものです（形式 { $found }）。読み込むにはAniBeamを更新してください。
-core-error-internal = AniBeamで内部エラーが発生しました: { $message }
+core-error-version = このエクスポートは新しいAnibeamのものです（形式 { $found }）。読み込むにはAnibeamを更新してください。
+core-error-internal = Anibeamで内部エラーが発生しました: { $message }
 core-error-service = { $service }: { $message }
 
 # What the core says to a person outside downloads, releases, trackers, metadata, the
 # library, franchise, images and transfer: jobs, playback, casting, the host, the phone,
 # endpoint repos, updates and the rest.
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = リポジトリのアドレスを貼り付けてください
 core-repos-must-be-https = アドレスはhttpsにしてください
@@ -154,7 +154,7 @@ core-repos-note-theirs = このanirssはご自身で動かしているもので�
 core-repos-note-sandbox = この実行ではanirssの設定に書き込まないため、デスクトップはここで{ $id }を検索しません
 core-repos-note-old = anirss { $version }は{ -app-name }からエンドポイントを受け取れません。デスクトップで検索するには{ $min }以降に更新してください
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = インデックスの鍵がed25519鍵ではありません
 core-repos-key-not-base64 = インデックスの鍵が32バイトのbase64ではありません
@@ -174,7 +174,7 @@ core-repos-check-auth-key = { $id }: 認証キー{ $key }が不正です
 core-repos-check-host-torznab = { $id }: ホストを{"{"}{ $key }{"}"}と書けるのはtorznabのアドレスだけです
 core-repos-check-host-placeholder = { $id }: ホストにプレースホルダーがあります
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = トラック{ $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -307,7 +307,7 @@ core-jobs-start-endpoint = ダウンロードソースを起動中
 core-jobs-schedule-agent = コーディングエージェントにスケジュールを問い合わせ中
     .stopped = コーディングエージェントへのスケジュールの問い合わせが問題で停止しました。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 放送中
 core-airing-now-winter = { $year }年冬
@@ -328,11 +328,11 @@ core-airing-now-already-on =
     }」で入っています。
 core-airing-now-plan-failed = { $title }を視聴予定リストに追加できませんでした。あとでもう一度お試しください。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = { $title }の第{ $number }話が公開されました。
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = { $device }にキャスト中です。
 core-cast-ended = { $device }へのキャストが終わりました。
@@ -353,7 +353,7 @@ core-cast-refused-both = { $error }。元のファイルも受け付けません
 core-cast-chromecast-stopped = Chromecastが停止しました
 core-cast-hevc = { $error }。このエピソードはHEVCで、デコードできるのは新しいChromecast（Google TV搭載またはUltra）だけです
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecastに接続できませんでした: { $error }
 core-cast-chromecast-broke = Chromecastとの接続が切れました: { $error }
@@ -365,21 +365,21 @@ core-cast-no-reason = 理由なし
 core-cast-chromecast-cannot-play = Chromecastはこれを再生できませんでした（{ $kind }）
 core-cast-chromecast-error = Chromecastがこれの再生中にエラーで停止しました
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = テレビが応答しませんでした: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = テレビが{ $action }を拒否しました
 core-cast-tv-refused-code = テレビが{ $action }を拒否しました（{ $code }）
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = このファイルには映像がありません。
 core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テレビやChromecastではデコードできません。キャストするには変換が必要ですが、まだ実装されていません。
 core-cast-video-codec = このエピソードの映像（{ $codec }）はキャストできません。
 core-cast-audio-codec = このエピソードの音声（{ $codec }）はキャストできません。
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started = { $folder }のエピソード{ $count }話のダウンロードを開始しました。
 core-phone-subscribed = { $name }を購読しました。
@@ -395,7 +395,7 @@ core-phone-no-results = { $query }の結果はありません
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = 独自のトレントエンジン
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = 接続しました
@@ -413,13 +413,13 @@ core-phone-check-reaching = { $label }: { $ip }に接続中
 core-phone-check-http = HTTP { $status }、{ $bytes }バイト
 core-phone-check-setup = 準備
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = { $folder }の進捗は保存されませんでした。先に作品を照合してください。
 # $done is a whole percentage.
 core-playback-still-downloading = 第{ $number }話はまだダウンロード中です（{ $done }%完了）
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 長さは正の秒数で指定してください
 
@@ -447,7 +447,7 @@ core-core-guest-not-interested = そのパソコンの「興味なし」は持�
 core-core-guest-recommended = そのパソコンのおすすめは、持ち主のリストから作られています
 core-core-nothing-picked = 何も選ばれていません
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }は照合元ではありません
 core-prefs-provider-count = { $provider }が{ $count }回出てきます。各照合元は1回だけにしてください
@@ -455,22 +455,22 @@ core-prefs-provider-count = { $provider }が{ $count }回出てきます。各�
 core-prefs-outside = { $value }は{ $low }〜{ $high }の範囲外です
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = おすすめを順位付け中
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 好みの近い人を探しています
 core-recommended-reading-lists = その人たちのリストを読み込み中
 core-recommended-reading-yours = あなたの作品を読み込み中
 core-recommended-reading-suggestions = おすすめ候補を読み込み中
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist }にアニメ{ $id }はありません
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = オフ
@@ -482,25 +482,25 @@ core-host-cannot-listen = 待ち受けできませんでした
 core-host-port-taken = ポート{ $port }は使用中です
 core-host-cannot-listen-on = { $address }で待ち受けできませんでした: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text }はアドレスとポートではありません
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key }はデバイスキーではありません
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }msでタイムアウトしました
 core-net-rate-limited = { $provider }のレート制限中です
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }: 先ほどタイムアウトしました。{ -app-name }は{ $seconds }秒待ってから再度問い合わせます
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = データなし
 
@@ -525,13 +525,13 @@ core-update-cannot-read-dmg = dmgを読み込めませんでした: { $error }
 core-update-no-app = dmgにアプリが入っていません
 core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピーできませんでした: { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 # An episode's event in the calendar file.
 core-calendar-season-episode = { $title } - シーズン{ $season } 第{ $number }話
 core-calendar-episode = { $title } - 第{ $number }話
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = ホームディレクトリがありません
 
@@ -539,15 +539,18 @@ core-paths-no-home = ホームディレクトリがありません
 
 core-first-run-not-absolute = 動画フォルダは絶対パスで指定してください
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = 特典映像
+core-presence-room = 一緒に視聴中
+core-presence-in-room = ルームにいます
+core-presence-no-room = この Discord の招待にはまだルームがありません。ルームを始めてもらってください。
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = { $tracker }のクライアントIDが設定されていません。
@@ -557,15 +560,15 @@ core-trackers-mal-wants-secret = MyAnimeListがこのアプリのクライアン
 core-trackers-token-reply-unreadable = トークンの応答を読めません: { $error }
 core-trackers-token-reply-no-token = トークンの応答にアクセストークンがありませんでした
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = アクセストークンが保存されていません。設定で再連携してください
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = アカウントにユーザーIDがありません
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 移動する作品が選ばれていません
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -574,7 +577,7 @@ core-trackers-moved-up-some-refused = { $site }へ{ $moved }作品を移動し�
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site }は{ $show }を受け付けませんでした: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 認証がタイムアウトしました。もう一度お試しください。
 core-trackers-oauth-state-mismatch = stateが一致しません。CSRFの可能性があるため中止しました。
@@ -591,7 +594,7 @@ core-trackers-oauth-port-failed = このパソコンのポート{ $port }を開�
 core-trackers-oauth-port-busy = このパソコンのポート{ $port }は別のプログラムが使用中です。少し待ってからもう一度試すか、使用中のままならそのプログラムを閉じてください。
 # $error is the code the tracker sent back.
 core-trackers-oauth-provider-error = { $site }がエラーを返しました: { $error }
-# The browser tab the sign-in leaves. $app is AniBeam's name, in the brand colour in the
+# The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
 core-trackers-page-connected = { $site }と{ $app }を連携しました
 core-trackers-page-close-tab = このタブは閉じてかまいません。
@@ -600,12 +603,12 @@ core-trackers-page-failed = ログインが完了しませんでした
 core-trackers-page-go-back = { $app }に戻って、もう一度お試しください。
 core-trackers-page-finishing-title = { $app }、処理中
 core-trackers-page-finishing = 処理中です
-core-trackers-page-finishing-body = { $site }から応答があり、AniBeamがログインを仕上げています。{ $app }に戻ると、完了したときに表示されます。
+core-trackers-page-finishing-body = { $site }から応答があり、Anibeamがログインを仕上げています。{ $app }に戻ると、完了したときに表示されます。
 core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
 core-trackers-page-cancelled = このログインはキャンセルされました
 core-trackers-page-cancelled-body = このタブは閉じてかまいません。必要なら{ $app }からやり直してください。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = { $tracker }で保留に移動中
@@ -622,7 +625,7 @@ core-trackers-back-on-watching = { $site }で{ $name }を視聴中に戻しま�
 core-trackers-back-on-watching-two = { $site }と{ $secondSite }で{ $name }を視聴中に戻しました。
 core-trackers-back-on-watching-failed = { $name }を視聴中に戻せませんでした。あとでもう一度お試しください。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker }のレート制限中です。1分後にもう一度お試しください。
@@ -715,7 +718,7 @@ core-trackers-left-out =
        *[other] { $kept }作品は送信先のトラッカーがなく、このパソコンに保存されています。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 # $show is the show's folder name; $title is the title AniList or TVmaze gives it.
 core-metadata-matched-to = { $show }を{ $title }に照合しました。
@@ -757,7 +760,7 @@ core-metadata-find-failed = { $failed }作品を検索できませんでした�
 core-metadata-find-had = { $had }作品はすでに照合済みでした。
 core-metadata-find-busy = { $busy }作品はすでに照合中です。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = そのリンクを読めませんでした。AniList、MyAnimeList、TVmaze、IMDbのページURLを貼り付けてください。
 core-metadata-no-mal-entry = そのMyAnimeList IDに対応するエントリーはAniListにありません。
@@ -779,45 +782,45 @@ core-metadata-updated-many = { $count }作品の情報を更新しました。
 core-metadata-update-failed-many = { $count }作品の情報を更新できませんでした。あとでもう一度お試しください。
 core-metadata-updated-some = { $count }作品の情報を更新しました。{ $failed }作品は更新できませんでした。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 # $id is the provider's own number for the show.
 core-metadata-no-such-show = TVmazeに作品{ $id }はありません
 core-metadata-no-such-media = AniListにメディア{ $id }はありません
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 # Progress labels while the ratings update.
 core-metadata-progress-imdb-links = WikidataのIMDbリンク
 core-metadata-progress-imdb-ratings = IMDbの評価
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 # The words under a related show's title when the two share characters.
 core-franchise-relation-character = 共通キャラクター
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 # A progress label while covers and banners download.
 core-images-progress-fetching = 画像を取得中
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported = { $count }作品を{ $folder }に保存しました。
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = JSONではありません: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = { $format }形式のファイルではありません
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = ファイルからライブラリを読み込みました。
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 # $id is the file's number in the library.
 core-library-no-such-file = ライブラリにファイル{ $id }はありません
@@ -842,7 +845,7 @@ core-library-watched-removed =
        *[trash] ゴミ箱に移動しました
     }。
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 # A fix the series page offers. $read is episode, with its $number, or label, with the
 # name the file was read by in $label. $what is film or episode.
@@ -863,7 +866,7 @@ core-library-runs-span = { $first }〜{ $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
 core-library-runs-list = { $init }、{ $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 話数は0〜10000の範囲です
 core-library-fix-season-range = シーズンは200までです
@@ -873,7 +876,7 @@ core-library-file-elsewhere-not-fixed = ファイル{ $id }は別の作品のも
 core-library-fix-undone = { $title }のファイル{ $count }個を、名前からの読み取りに戻しました。
 core-library-fixed = { $title }のファイル{ $count }個の読み取り方を修正しました。
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 # $title is the show's title. The -many lines are for any count but one.
 core-library-hid-one = { $title }を非表示にしました。
@@ -883,12 +886,12 @@ core-library-back-many = { $count }作品を再表示しました。
 core-library-episode-count-set = { $title }の話数を{ $count }話にしました。
 core-library-episode-count-cleared = { $title }の話数をクリアしました。
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = { $title }の放送予定メモをクリアしました。
 core-library-schedule-saved = { $title }の放送予定メモを{ $count }件保存しました。
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = フォルダのパスは絶対パスにしてください
 core-library-source-exists = すでに追加されています
@@ -924,7 +927,7 @@ core-library-scan-done =
         }見つからない作品{ $removed }件
     }。
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 # Why a coding agent wrote no triage for a quick fix report. $span is
 # core-library-span-minutes or -seconds.
@@ -946,7 +949,7 @@ core-transfer-progress-accounts = アカウント
 core-transfer-progress-preferences = 設定
 core-transfer-progress-done = 完了
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirssから応答がありません: { $message }
@@ -963,22 +966,22 @@ core-downloads-anirss-slow-start-said = anirssが{ $seconds }秒以内に起動�
 core-downloads-anirss-install-mac = anirss { $version }以降をインストールしてください: { $command }
 core-downloads-anirss-install-linux = anirss { $version }以降をインストールしてください: AURのanirssパッケージ、または{ $command }
 # $update is core-downloads-anirss-update-mac or -linux
-core-downloads-anirss-too-old = anirss { $version }はAniBeamには古すぎます。{ $minimum }以降が必要です。{ $update }。
-core-downloads-anirss-lacks-feature = anirss { $version }はトレントクライアントごとのログイン情報を分けて保持できません。AniBeamがクライアントを切り替えるにはこれが必要で、anirss { $minimum }以降なら対応しています。{ $update }。
+core-downloads-anirss-too-old = anirss { $version }はAnibeamには古すぎます。{ $minimum }以降が必要です。{ $update }。
+core-downloads-anirss-lacks-feature = anirss { $version }はトレントクライアントごとのログイン情報を分けて保持できません。Anibeamがクライアントを切り替えるにはこれが必要で、anirss { $minimum }以降なら対応しています。{ $update }。
 core-downloads-anirss-update-mac = 次のコマンドで更新してください: { $command }
 core-downloads-anirss-update-linux = anirssパッケージを更新するか、次を実行してください: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = トレントファイルが届きませんでした: { $message }
 core-downloads-torrent-file-answered = トレントファイルの取得で{ $status }が返りました
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = フィードが{ $status }を返しました
 core-downloads-not-a-feed = フィードではありません: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackettがインストールされていません: { $program }が見つかりませんでした。インストールするか、設定でコマンドを変更してください。
@@ -987,7 +990,7 @@ core-downloads-endpoint-start-failed = { $name }を起動できませんでし�
 core-downloads-endpoint-start-timeout = { $name }は起動しましたが、{ $seconds }秒以内に応答しませんでした。
 core-downloads-command-exited = コマンドが{ $status }で終了しました
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirssが停止しました
 # $install is core-downloads-anirss-install-mac or -linux
@@ -997,18 +1000,18 @@ core-downloads-anirss-command-missing = { $command }が見つかりませんで�
 core-downloads-anirss-start-failed = { $command }を起動できませんでした: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld }応答: { $message }
-core-downloads-no-torrent-client = { $address }で応答するqBittorrentがなく、AniBeam自身が起動できるものもありません。qBittorrentをインストールしてWeb UIをオンにするか、qbittorrent-noxをインストールしてください。AniBeamが代わりに起動します
-core-downloads-own-client-gone = AniBeamのqBittorrentがありません: qbittorrent-noxがインストールされていません。AniBeamを再インストールするか、設定で自分のqBittorrentを指定してください
+core-downloads-no-torrent-client = { $address }で応答するqBittorrentがなく、Anibeam自身が起動できるものもありません。qBittorrentをインストールしてWeb UIをオンにするか、qbittorrent-noxをインストールしてください。Anibeamが代わりに起動します
+core-downloads-own-client-gone = AnibeamのqBittorrentがありません: qbittorrent-noxがインストールされていません。Anibeamを再インストールするか、設定で自分のqBittorrentを指定してください
 core-downloads-no-port = { $address }にポートがありません
 core-downloads-own-client-settings = qBittorrentの設定を書き込めません: { $error }
 core-downloads-own-client-start-failed = { $command }を起動できませんでした: { $error }
-core-downloads-own-client-slow-start = AniBeamのqBittorrentが起動しませんでした
+core-downloads-own-client-slow-start = AnibeamのqBittorrentが起動しませんでした
 # $said is the last lines of its log
-core-downloads-own-client-slow-start-said = AniBeamのqBittorrentが起動しませんでした: { $said }
+core-downloads-own-client-slow-start-said = AnibeamのqBittorrentが起動しませんでした: { $said }
 core-downloads-not-ready = ダウンロードの準備ができていません。設定の「ダウンロード」を確認してください。
 core-downloads-ready = ダウンロードの準備ができました。
 # $count is how many sources anirss's own config names
-core-downloads-helper-sources = ダウンロードの検索はAniBeam自身で行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーを選んでください。
+core-downloads-helper-sources = ダウンロードの検索はAnibeam自身で行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーを選んでください。
 core-downloads-client-connected = ダウンロードアプリに接続しました。
 core-downloads-client-not-connected = ダウンロードアプリに接続していません。設定でアドレスを確認してください。
 core-downloads-not-on-demand = { $name }はオンデマンドのエンドポイントではありません
@@ -1059,7 +1062,7 @@ core-downloads-client-switched = ダウンロードに別のダウンロード�
 core-downloads-host-not-running = ホストで動作していません
 core-downloads-host-late = 時間内に応答しませんでした
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 検索語が空です
 # $query is the search, in quotes
@@ -1080,33 +1083,37 @@ core-downloads-native-outside-folders = ダウンロードフォルダ外のフ�
 core-downloads-refuse-home-folder = { $path }はホームフォルダか、それを含んでいるので、何も削除しませんでした
 core-downloads-refuse-library-folder = { $path }はライブラリフォルダか、それを含んでいるので、何も削除しませんでした
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } はフォルダへの完全なパスではありません
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } にはダウンロードを保存できません。存在するフォルダで、ホームフォルダ以外を選んでください
 core-downloads-name-empty = 名前を空にはできません
 core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name }はフォルダ名ではありません
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = 放送が終了したため、{ $title }の購読を解除しました。
 core-downloads-prune-failed = { $title }の購読を解除できませんでした。設定の「ダウンロード」を確認してください。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path }は通常の絶対パスではないので、何も削除しませんでした
 core-downloads-refuse-root = { $path }はファイルシステムのルートなので、何も削除しませんでした
 core-downloads-refuse-outside-library = { $path }はライブラリフォルダ内にないので、何も削除しませんでした
 core-downloads-refuse-save-folder = { $path }はトレントの保存先フォルダで、ダウンロードしたものではないので、何も削除しませんでした
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = { $title }の第{ $episode }話が、放送から3日たっても見つかりません。フィードで探し続けます。
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirssのコマンドを空にはできません
 core-downloads-settings-anirss-address = anirssのアドレスはhttp://かhttps://で始めてください
@@ -1119,7 +1126,7 @@ core-downloads-settings-same-id = 2つのクライアントのIDが{ $id }で重
 core-downloads-settings-saved-address = { $name }のアドレスはhttp://かhttps://で始めてください
 core-downloads-settings-same-name = 2つのクライアントの名前が{ $name }で重複しています。それぞれ別の名前を付けてください
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = { $address }のqBittorrentから応答がありません: { $message }
@@ -1135,7 +1142,7 @@ core-downloads-qbt-some-not-added = qBittorrentは{ $count }件のトレント�
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrentが{ $status }を返しました: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリースのどれでもありません
@@ -1143,7 +1150,7 @@ core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリース
 core-downloads-not-replaced = 第{ $episode }話は置き換えられませんでした。
 core-downloads-replaced = 第{ $episode }話を新しいダウンロードに置き換えました。
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = 順次ダウンロード{ $id }はありません
@@ -1152,7 +1159,7 @@ core-downloads-rolled = { $title }: 全{ $total }話中、第{ $from }〜{ $to }
 core-downloads-roll-ahead = 少なくとも1話は先まで保持してください
 core-downloads-roll-nothing = 取得するものはありません
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON検索のソースは、項目の対応を定義したエンドポイントリポジトリから追加してください
 core-releases-endpoint-no-name = `name`がありません
@@ -1168,7 +1175,7 @@ core-releases-endpoint-not-http = { $name }: アドレスはhttp://かhttps://�
 core-releases-endpoint-needs-query = { $name }: { $kind }のurlには{"{"}query{"}"}プレースホルダーが必要です
 core-releases-endpoint-no-query = { $name }: { $kind }のurlは検索語を自動で付けるため、{"{"}query{"}"}は使いません
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 # $code is the error code the indexer sent
 core-releases-indexer-error = インデクサーがエラー{ $code }を返しました
@@ -1176,11 +1183,11 @@ core-releases-bad-feed = 不正なフィード: { $error }
 # $status is the HTTP status code
 core-releases-feed-answered = フィードが{ $status }を返しました
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = フィードのJSONではありません: { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = JSONではありません: { $error }
 # $message is what the search said about itself
@@ -1191,7 +1198,7 @@ core-releases-no-results-field = 応答の{ $path }に結果がありません
 core-releases-results-not-list = 応答の結果がリストではありません
 core-releases-search-answered = 検索が{ $status }を返しました
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = エンドポイントがまだありません: 「その他」の「エンドポイント」で、リポジトリか手動のエンドポイントを追加してください
 core-releases-no-source-named = { $name }という名前のソースはありません
@@ -1199,7 +1206,7 @@ core-releases-empty-query = 検索語を入力してください
 core-releases-cannot-follow = { $name }はフォローできません: 検索には応答しますが、新エピソードを確認するフィードがありません
 core-releases-endpoint-gone = { $name }はもう利用できません: 削除されたか、オフになっているか、鍵がありません
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 # What is wrong with an endpoint definition's quirks. one_variant, show_feed, slug and
 # {slug} are the definition's own words and stay as they are.
@@ -1213,12 +1220,12 @@ core-releases-quirks-url-https = show_feedのurlはhttpsにしてください
 core-releases-quirks-url-host = show_feedのurlはエンドポイントと同じホストにしてください
 core-releases-quirks-url-slug = show_feedのurlには{"{"}slug{"}"}を1回だけ使い、ほかのプレースホルダーは使えません
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 # 'tokens' and `tokens` name the call's own field and stay as they are
 core-releases-refine-no-tokens = 操作'tokens'には空でない`tokens`リストが必要です
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 # A release group's whole-season torrent; $group is the group's name
 core-releases-group-batch = { $group }のバッチ
@@ -1229,7 +1236,7 @@ core-releases-episode-range = { $from }〜{ $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1241,6 +1248,7 @@ core-room-service = 一緒に見る
 core-room-not-found = そのコードのルームはありません。終了した可能性があります。
 core-room-full = そのルームは満員です。
 core-room-proto = そのリレーは別のバージョンのルームを使っています。参加するには{ -app-name }を更新してください。
+core-room-needs-episode = そのリレーはルームを作るのにエピソードが必要です。プレーヤーから作るか、リレーを更新してください。
 core-room-unreachable = リレーに接続できませんでした: { $message }
 core-room-refused = リレーに拒否されました: { $message }
 core-room-not-in = ルームに参加していません。
@@ -1254,3 +1262,20 @@ core-room-member-left = { $name }がルームから退出しました。
 core-room-closed = 一緒に見るルームが終了しました。
 core-room-lost = 一緒に見るルームとの接続が切れました。再接続しています。
 core-room-back = 一緒に見るルームに戻りました。
+core-room-media-asked = ホストにエピソードをリクエストしました。
+core-room-media-cannot = ホストは今このエピソードを共有できません。
+core-room-media-sent = { $name } にエピソードのトレントを送りました。
+core-room-media-sent-name = { $name } にエピソードのリリース名を送りました。
+core-room-media-nothing = ホストには共有できるエピソードのコピーがありません。
+core-room-media-no-answer = ホストのアプリから応答がありませんでした。少ししてからもう一度お試しください。
+core-room-media-torrent = ホストのトレントからエピソードをダウンロードしています。
+core-room-media-searching = あなたのソースでホストのリリースを検索しています。
+core-room-media-not-found = あなたのソースにホストのリリースはありませんでした。
+core-room-media-no-sources = すべてのソースがオフです。検索するにはどれかをオンにしてください。
+core-room-media-no-start = ダウンロードを開始できませんでした: { $message }
+core-room-media-client = トレントクライアントが受け付けませんでした
+core-room-media-lost = トレントクライアントがエピソードのダウンロードを見失いました。
+core-room-media-stalled = ダウンロードが10分間進んでいません。後でもう一度お試しください。
+core-room-media-not-in-library = エピソードはダウンロードされましたが、ライブラリにありません。ダウンロードの保存先がライブラリのフォルダか確認してください。
+core-room-media-here = エピソードがライブラリに入りました。
+core-room-media-rest-missing = シリーズの残りを取得できませんでした。このエピソードだけをダウンロードしています。

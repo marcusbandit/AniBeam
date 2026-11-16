@@ -12,7 +12,7 @@
 // carried them, else from the core's own read of the same feed (`extras`, by link), which
 // is also where the dates come from; until that read lands the Released column waits.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -242,8 +242,10 @@ Item {
                     Cell { width: root.wRip; ink: theme.textDim; text: row.fact.rip || "" }
                     Cell {
                         width: root.wEp
-                        text: row.fact.episode !== null && row.fact.episode !== undefined
-                              ? (row.fact.season && row.fact.season > 1 ? words.t("release-table-season-episode", { season: row.fact.season, episode: row.fact.episode }) : String(row.fact.episode)) : ""
+                        // A batch names its range when its title gives one (#1004)
+                        readonly property string ep: row.fact.episode !== null && row.fact.episode !== undefined ? String(row.fact.episode)
+                              : row.fact.batch && row.fact.first_episode ? words.t("release-table-episode-range", { first: row.fact.first_episode, last: row.fact.last_episode || row.fact.first_episode }) : ""
+                        text: ep !== "" && row.fact.season && row.fact.season > 1 ? words.t("release-table-season-episode", { season: row.fact.season, episode: ep }) : ep
                     }
                     Cell { width: root.wSize; text: { var b = root.bytes(row.i); return b ? words.bytes(b) : (row.item.size || "") } }
                     Cell {

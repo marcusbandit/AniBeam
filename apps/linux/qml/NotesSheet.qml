@@ -2,7 +2,7 @@
 // AniList's notes and MAL's comments. A raised tile over a Blocker the owning page puts under
 // it, on the frame's escape stack like the schedule sheet.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

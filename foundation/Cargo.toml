@@ -1,0 +1,50 @@
+[package]
+name = "anibeam-foundation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Anibeam's foundation: the store, the event bus, the jobs, the paths, the prefs and the secrets every team of the core shares"
+
+[lib]
+name = "anibeam_foundation"
+crate-type = ["lib"]
+
+[dependencies]
+anibeam-contract = { workspace = true, features = ["sqlite"] }
+anibeam-host-api.workspace = true
+anibeam-room.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
+rusqlite_migration.workspace = true
+directories = "6"
+keyring-core = "1.0"
+regex = "1"
+tracing = "0.1"
+if-addrs = "0.13"
+# The relay address in the preferences is read with the parser the HTTP client uses.
+url = "2"
+
+# The machine's keyring: the Secret Service over D-Bus on Linux, the login keychain on a
+# Mac, the Credential Manager on Windows. `keychain` rather than `protected`: the
+# protected store needs a provisioning profile, and the Mac build is ad-hoc signed.
+[target.'cfg(not(any(target_os = "macos", windows)))'.dependencies]
+zbus-secret-service-keyring-store = { version = "1.0", features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1"
+
+# uname for the host's name; Windows reads COMPUTERNAME instead.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["system"] }
+
+[dev-dependencies]
+tempfile = "3"

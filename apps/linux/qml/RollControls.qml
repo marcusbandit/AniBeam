@@ -4,7 +4,7 @@
 // rest after an inline confirm. Each control calls the core directly; the next torrent
 // read brings the new window back in `roll`.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Column {
     id: root

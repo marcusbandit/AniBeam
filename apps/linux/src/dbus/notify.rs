@@ -161,7 +161,7 @@ impl Notifier {
         let label = action_label(&target);
         let actions = vec!["default", label.as_str()];
         let payload = (
-            "AniBeam",
+            "Anibeam",
             0u32,
             crate::APP_ID,
             summary.as_str(),
@@ -296,13 +296,13 @@ mod tests {
             n.show(target(None), 8, on_click).await;
             let seen = got.lock().unwrap().clone();
             assert_eq!(seen.len(), 2);
-            assert_eq!(seen[0].0, "AniBeam");
+            assert_eq!(seen[0].0, "Anibeam");
             assert_eq!(seen[0].1, crate::APP_ID);
             assert_eq!(seen[0].2, "Episode 7 of Frieren is out");
             assert_eq!(seen[0].3, vec!["default".to_string(), "Open".to_string()]);
             assert_eq!(
                 seen[0].4,
-                format!("Click to open it in AniBeam|{}", crate::APP_ID)
+                format!("Click to open it in Anibeam|{}", crate::APP_ID)
             );
             assert_eq!(
                 seen[1].3,
@@ -350,10 +350,10 @@ mod tests {
 
     #[test]
     fn the_second_line_says_what_a_click_does() {
-        assert_eq!(words(7, &target(Some(3))).1, "Click to open it in AniBeam");
+        assert_eq!(words(7, &target(Some(3))).1, "Click to open it in Anibeam");
         assert_eq!(
             words(7, &target(None)).1,
-            "Click to get the episodes in AniBeam"
+            "Click to get the episodes in Anibeam"
         );
     }
 }

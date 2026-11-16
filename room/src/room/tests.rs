@@ -13,11 +13,12 @@ fn ep(key: &str) -> EpisodeRef {
         episode_title: None,
         duration: None,
         opening_start: None,
+        film: false,
     }
 }
 
 fn room() -> Room {
-    Room::new("K7QM2X", KEY, ep("e1"), 0, [9; 16])
+    Room::new("K7QM2X", KEY, Some(ep("e1")), 0, [9; 16])
 }
 
 fn hello(name: &str, host_key: Option<&str>, rejoin_key: Option<&str>) -> ClientMsg {
@@ -27,6 +28,8 @@ fn hello(name: &str, host_key: Option<&str>, rejoin_key: Option<&str>) -> Client
         client: "anibeam/2.5.0".into(),
         host_key: host_key.map(Into::into),
         rejoin_key: rejoin_key.map(Into::into),
+        key: None,
+        unpicked: true,
     }
 }
 
@@ -113,6 +116,8 @@ fn another_protocol_version_is_refused() {
         client: "anibeam/9".into(),
         host_key: None,
         rejoin_key: None,
+        key: None,
+        unpicked: true,
     };
     let outs = r.handle(ConnId(1), msg, 0);
     assert_eq!(error_code(&outs), Some(ErrorCode::Proto));
@@ -178,7 +183,7 @@ fn welcome_carries_the_room_and_the_others_hear_of_the_joiner() {
             assert_eq!(room.code, "K7QM2X");
             assert_eq!(room.host, Some(ann));
             assert_eq!(room.max, 10);
-            assert_eq!(room.episode, ep("e1"));
+            assert_eq!(room.episode, Some(ep("e1")));
             assert_eq!(room.members.len(), 2);
             assert!(room.members[0].host);
             assert!(!room.members[1].host);
@@ -214,7 +219,7 @@ fn the_host_key_makes_the_host_and_a_wrong_one_does_not() {
 #[test]
 fn rejoin_keys_differ_between_members_and_between_rooms() {
     let mut a = room();
-    let mut b = Room::new("K7QM2X", KEY, ep("e1"), 0, [10; 16]);
+    let mut b = Room::new("K7QM2X", KEY, Some(ep("e1")), 0, [10; 16]);
     let (_, a1) = join(&mut a, 1, "Ann", None, 0);
     let (_, a2) = join(&mut a, 2, "Bea", None, 0);
     let (_, b1) = join(&mut b, 1, "Ann", None, 0);
@@ -383,6 +388,7 @@ fn only_the_host_changes_the_episode() {
         ConnId(2),
         ClientMsg::Status {
             ready: Ready::Ready,
+            progress: None,
         },
         11,
     );
@@ -391,10 +397,10 @@ fn only_the_host_changes_the_episode() {
     assert_eq!(outs.len(), 1);
     assert_eq!(outs[0].to, To::One(ConnId(2)));
     assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed));
-    assert_eq!(r.episode(), &ep("e1"));
+    assert_eq!(r.episode(), Some(&ep("e1")));
 
     let outs = r.handle(ConnId(1), ClientMsg::Episode { episode: ep("e2") }, 30);
-    assert_eq!(r.episode(), &ep("e2"));
+    assert_eq!(r.episode(), Some(&ep("e2")));
     let want = PlayState {
         playing: false,
         position: 0.0,
@@ -429,6 +435,7 @@ fn status_updates_the_member_list_for_everyone() {
         ConnId(2),
         ClientMsg::Status {
             ready: Ready::Missing,
+            progress: None,
         },
         10,
     );
@@ -812,7 +819,7 @@ fn the_view_shows_connected_members_only() {
 
 #[test]
 fn a_new_room_is_paused_at_zero() {
-    let r = Room::new("ABCDEF", KEY, ep("e1"), 1_234, [0; 16]);
+    let r = Room::new("ABCDEF", KEY, Some(ep("e1")), 1_234, [0; 16]);
     assert_eq!(r.code(), "ABCDEF");
     assert_eq!(
         r.state(),
@@ -826,4 +833,260 @@ fn a_new_room_is_paused_at_zero() {
     );
     assert!(r.members().is_empty());
     assert!(!r.is_closed());
+}
+
+// Sealed payloads, keys and download progress (#889)
+
+fn hello_keyed(name: &str, key: &str) -> ClientMsg {
+    ClientMsg::Hello {
+        name: name.into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: Some(key.into()),
+        unpicked: true,
+    }
+}
+
+fn seal(to: MemberId, data: &str) -> ClientMsg {
+    ClientMsg::Seal {
+        to,
+        data: data.into(),
+    }
+}
+
+#[test]
+fn a_sealed_payload_goes_to_its_member_only_unread() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    let (bea, _) = join(&mut r, 2, "Bea", None, 0);
+    join(&mut r, 3, "Cy", None, 0);
+    let data = "bm90IGZvciB0aGUgcmVsYXk=";
+    let outs = r.handle(ConnId(2), seal(ann, data), 10);
+    assert_eq!(
+        outs,
+        vec![Out {
+            to: To::One(ConnId(1)),
+            msg: ServerMsg::Sealed {
+                from: bea,
+                data: data.into()
+            }
+        }]
+    );
+}
+
+#[test]
+fn a_sealed_payload_over_the_cap_goes_nowhere() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let outs = r.handle(ConnId(2), seal(ann, &"A".repeat(MAX_SEALED)), 10);
+    assert!(matches!(outs[0].msg, ServerMsg::Sealed { .. }));
+    let outs = r.handle(ConnId(2), seal(ann, &"A".repeat(MAX_SEALED + 1)), 20);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].to, To::One(ConnId(2)));
+    assert_eq!(error_code(&outs), Some(ErrorCode::BadMessage));
+    assert!(!outs[0].msg.ends_connection());
+}
+
+#[test]
+fn a_sealed_payload_to_nobody_or_to_oneself_is_refused() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    let (bea, _) = join(&mut r, 2, "Bea", None, 0);
+    for to in [bea, MemberId(99)] {
+        let outs = r.handle(ConnId(2), seal(to, "eA=="), 10);
+        assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed), "{to:?}");
+        assert!(!outs[0].msg.ends_connection());
+    }
+    // Someone who dropped is passed nothing while away, and the sender hears the
+    // words it tells this refusal apart by
+    r.disconnect(ConnId(1), 20);
+    let outs = r.handle(ConnId(2), seal(ann, "eA=="), 30);
+    assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed));
+    assert!(matches!(&outs[0].msg, ServerMsg::Error { message, .. } if message == SEAL_NOBODY));
+}
+
+#[test]
+fn sealed_payloads_count_against_the_rate() {
+    let mut r = room();
+    let (ann, _) = join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let mut passed = 0;
+    let mut limited = false;
+    for _ in 0..(RATE_PER_SEC + 5) {
+        let outs = r.handle(ConnId(2), seal(ann, "eA=="), 100);
+        match outs.first().map(|o| &o.msg) {
+            Some(ServerMsg::Sealed { .. }) => passed += 1,
+            Some(ServerMsg::Error {
+                code: ErrorCode::RateLimited,
+                ..
+            }) => limited = true,
+            _ => {}
+        }
+    }
+    assert_eq!(passed, RATE_PER_SEC);
+    assert!(limited);
+}
+
+#[test]
+fn keys_show_in_the_member_list_and_bad_ones_do_not() {
+    let mut r = room();
+    let key = "A".repeat(43) + "=";
+    let outs = r.handle(ConnId(1), hello_keyed("Ann", &key), 0);
+    welcome(&outs, 1);
+    r.handle(ConnId(2), hello_keyed("Bea", "not a key!"), 0);
+    r.handle(ConnId(3), hello_keyed("Cy", &"A".repeat(MAX_KEY + 1)), 0);
+    let keys: Vec<Option<String>> = r.members().into_iter().map(|m| m.key).collect();
+    assert_eq!(keys, vec![Some(key), None, None]);
+}
+
+#[test]
+fn a_rejoin_brings_its_new_key() {
+    let mut r = room();
+    let outs = r.handle(ConnId(1), hello_keyed("Ann", "b2xk"), 0);
+    let (_, rejoin) = welcome(&outs, 1);
+    r.disconnect(ConnId(1), 10);
+    let again = ClientMsg::Hello {
+        name: "Ann".into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: Some(rejoin),
+        key: Some("bmV3".into()),
+        unpicked: true,
+    };
+    r.handle(ConnId(2), again, 20);
+    assert_eq!(r.members()[0].key.as_deref(), Some("bmV3"));
+}
+
+#[test]
+fn download_progress_shows_for_everyone_until_ready() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let progress = Progress {
+        percent: 40.0,
+        eta: Some(75),
+    };
+    let status = |ready, progress| ClientMsg::Status { ready, progress };
+    let outs = r.handle(ConnId(2), status(Ready::Missing, Some(progress)), 10);
+    assert_eq!(outs[0].to, To::All);
+    let ServerMsg::Members { members } = &outs[0].msg else {
+        panic!("{outs:?}")
+    };
+    assert_eq!(members[1].progress, Some(progress));
+    // Nonsense is dropped rather than shown
+    let silly = Progress {
+        percent: 400.0,
+        eta: None,
+    };
+    r.handle(ConnId(2), status(Ready::Missing, Some(silly)), 20);
+    assert_eq!(r.members()[1].progress, None);
+    // Ready carries none, whatever the status said
+    r.handle(ConnId(2), status(Ready::Ready, Some(progress)), 30);
+    assert_eq!(r.members()[1].progress, None);
+}
+
+#[test]
+fn a_new_episode_clears_download_progress() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    let fetching = ClientMsg::Status {
+        ready: Ready::Missing,
+        progress: Some(Progress {
+            percent: 10.0,
+            eta: None,
+        }),
+    };
+    r.handle(ConnId(2), fetching, 10);
+    r.handle(ConnId(1), ClientMsg::Episode { episode: ep("e2") }, 20);
+    assert!(r.members().iter().all(|m| m.progress.is_none()));
+}
+
+#[test]
+fn a_room_stored_before_keys_reads_back() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    let mut v = serde_json::to_value(&r).unwrap();
+    for slot in v["slots"].as_array_mut().unwrap() {
+        let slot = slot.as_object_mut().unwrap();
+        slot.remove("key");
+        slot.remove("progress");
+    }
+    let back: Room = serde_json::from_value(v).unwrap();
+    assert_eq!(back.members()[0].key, None);
+}
+
+// Rooms that start before an episode is picked (#922)
+
+fn old_hello(name: &str) -> ClientMsg {
+    ClientMsg::Hello {
+        name: name.into(),
+        proto: PROTO,
+        client: "anibeam/2.5.0".into(),
+        host_key: None,
+        rejoin_key: None,
+        key: None,
+        unpicked: false,
+    }
+}
+
+#[test]
+fn a_room_without_an_episode_takes_people_and_then_the_hosts_pick() {
+    let mut r = Room::new("K7QM2X", KEY, None, 0, [9; 16]);
+    assert_eq!(r.episode(), None);
+    let outs = r.handle(ConnId(1), hello("Ann", Some(KEY), None), 10);
+    let room = outs
+        .iter()
+        .find_map(|o| match &o.msg {
+            ServerMsg::Welcome { room, .. } => Some(room.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(room.episode, None);
+    join(&mut r, 2, "Ben", None, 20);
+    assert_eq!(member_ids(&r), vec![1, 2]);
+    // An app from before cannot read a room without an episode: refused, and told why
+    let outs = r.handle(ConnId(3), old_hello("Cid"), 30);
+    assert_eq!(error_code(&outs), Some(ErrorCode::Proto));
+    assert!(outs[0].msg.ends_connection());
+    assert_eq!(member_ids(&r), vec![1, 2]);
+    // The host picks: everyone hears it, and the room is paused at nought
+    let outs = r.handle(ConnId(1), ClientMsg::Episode { episode: ep("e3") }, 40);
+    assert!(outs.iter().any(|o| o.to == To::All
+        && matches!(&o.msg, ServerMsg::Episode { episode, state, .. }
+            if *episode == ep("e3") && !state.playing && state.position == 0.0)));
+    assert_eq!(r.episode(), Some(&ep("e3")));
+    // And changes their mind
+    r.handle(ConnId(1), ClientMsg::Episode { episode: ep("e4") }, 50);
+    assert_eq!(r.episode(), Some(&ep("e4")));
+    // The older app comes in now that there is an episode
+    let outs = r.handle(ConnId(3), old_hello("Cid"), 60);
+    welcome(&outs, 3);
+}
+
+#[test]
+fn a_member_cannot_pick_for_an_empty_room() {
+    let mut r = Room::new("K7QM2X", KEY, None, 0, [9; 16]);
+    join(&mut r, 1, "Ann", Some(KEY), 10);
+    join(&mut r, 2, "Ben", None, 20);
+    let outs = r.handle(ConnId(2), ClientMsg::Episode { episode: ep("e1") }, 30);
+    assert_eq!(error_code(&outs), Some(ErrorCode::NotAllowed));
+    assert_eq!(r.episode(), None);
+}
+
+#[test]
+fn a_stored_room_keeps_its_episode_or_its_lack_of_one() {
+    let r = room();
+    let mut v = serde_json::to_value(&r).unwrap();
+    assert_eq!(v["episode"]["episode_key"], "e1");
+    v["episode"] = serde_json::Value::Null;
+    let back: Room = serde_json::from_value(v.clone()).unwrap();
+    assert_eq!(back.episode(), None);
+    v.as_object_mut().unwrap().remove("episode");
+    let back: Room = serde_json::from_value(v).unwrap();
+    assert_eq!(back.episode(), None);
 }

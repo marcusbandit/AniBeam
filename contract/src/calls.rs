@@ -38,6 +38,12 @@ pub enum Call {
     RemoveSource {
         source: u64,
     },
+    /// The source's folder now sits at `path`, as a phone app's does after a reinstall
+    /// moves its container. The source keeps its id, and everything under it follows.
+    MoveSource {
+        source: u64,
+        path: String,
+    },
     ForgetSeries {
         series: u64,
     },
@@ -265,6 +271,11 @@ pub enum Call {
         not_interested: bool,
     },
     ListNotInterested,
+    /// Drops the marks of shows that no season read the Airing page still
+    /// holds carries any more, checked against the cached reads only, then
+    /// lists what is left the way `ListNotInterested` does. Nothing goes to
+    /// AniList. With no cached read of what is on air it drops nothing (#1012).
+    PruneNotInterested,
     /// Puts a show on Airing now on Planning, on every connected tracker
     /// that does not list it yet. `Started` with the job.
     PlanToWatch {
@@ -358,6 +369,30 @@ pub enum Call {
     /// Whether this build can show what plays on Discord, and whether it is
     /// talking to a Discord client right now. Never touches the socket.
     GetPresence,
+    /// The answer to a `DiscordJoinAsk`. Yes lets them in: into the room open now, or a
+    /// room started for what plays (none, when nothing does). No closes the ask and
+    /// never shows that person again on this machine. Answers `Room`.
+    DiscordAnswer {
+        user_id: String,
+        allow: bool,
+    },
+    /// The people who were told no on Discord, newest first.
+    DiscordBlocked,
+    /// Lets one person, or with `None` everyone, ask again. Answers `DiscordBlocked`.
+    DiscordUnblock {
+        user_id: Option<String>,
+    },
+    /// Whether anyone on Discord may join the room this person is in without asking.
+    /// Each room starts invite only. Answers `Presence`.
+    DiscordSetRoomOpen {
+        open: bool,
+    },
+    /// Discord launched the app to hand over a join: stay connected for a moment with
+    /// nothing to show so it can. Answers `Presence`.
+    DiscordListen,
+    /// The room Discord last asked this app to join, once: a window that opens after the
+    /// join came (Discord launched the app for it) takes it here. Answers `DiscordJoin`.
+    DiscordTakeJoin,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -586,11 +621,18 @@ pub enum Call {
         anirss_token: Option<String>,
         torrent_password: Option<String>,
     },
+    /// Where a show that is not in the library yet downloads to on the core's own engine:
+    /// a folder of its own under `folder`, which must be absolute. `None` or an empty folder
+    /// goes back to the default, the first library folder for Anibeam's own qBittorrent.
+    /// The search helper keeps its own folders. Emits `DownloadsStatusChanged`.
+    SetSaveFolder {
+        folder: Option<String>,
+    },
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
     /// Switches the downloads to another torrent client: the saved client
-    /// `id`, or AniBeam's own when `id` is `None`. A running sidecar is
+    /// `id`, or Anibeam's own when `id` is `None`. A running sidecar is
     /// stopped, as a save stops it; `ConnectDownloads` starts it again on
     /// the new client. Emits `DownloadsStatusChanged`.
     UseTorrentClient {
@@ -694,6 +736,13 @@ pub enum Call {
     AddEndpointRepo {
         url: String,
     },
+    /// Adds a repo in one step (#1003): fetches and checks its index, pins its key, and
+    /// installs every endpoint it offers that asks for no value and is not NSFW in a repo
+    /// that is not. A repo already saved under another key is refused, as on a refresh.
+    /// Replies with the catalog; the endpoints that ask for a value stay offered.
+    AttachEndpointRepo {
+        url: String,
+    },
     /// Saves a repo, pinning `key`, the one the preview showed.
     TrustEndpointRepo {
         url: String,
@@ -760,7 +809,7 @@ pub enum Call {
     /// Plays an HLS stream another machine serves on a device, through this one: the
     /// device reaches this machine on the local network, and this machine fetches every
     /// playlist and piece from `url`, which the device may have no route to (a tailnet
-    /// address). For an episode another AniBeam converts as it plays.
+    /// address). For an episode another Anibeam converts as it plays.
     CastStartStream {
         device: String,
         url: String,
@@ -777,9 +826,12 @@ pub enum Call {
     CastStatus,
     // Watch together (#846). One room at a time; every room call answers `Room`.
     /// Makes a room on the relay for the episode `session` plays, and joins it as the
-    /// host with that session attached. A room already joined is left first.
+    /// host with that session attached. With no session the room starts with nothing
+    /// picked (#922), and the first session the host attaches picks its episode. A
+    /// room already joined is left first.
     RoomCreate {
-        session: u64,
+        #[serde(default)]
+        session: Option<u64>,
     },
     /// Joins a room by its code, as typed: case, spaces and dashes do not matter. What to
     /// open follows as `RoomEpisode`. A room already joined is left first.
@@ -787,7 +839,8 @@ pub enum Call {
         code: String,
     },
     /// The playback session the room drives from now on. From the host, a session on
-    /// another episode moves the whole room there.
+    /// another episode moves the whole room there, and in a room with nothing picked
+    /// yet it picks that episode.
     RoomAttach {
         session: u64,
     },
@@ -803,6 +856,33 @@ pub enum Call {
     },
     RoomLeave,
     RoomStatus,
+    /// Get media (#889): asks the host for the room's episode this library lacks. The
+    /// host's app answers, sealed so a relay that only passes it on cannot read it, with
+    /// the torrent it came from or the release's name, and this core downloads it through
+    /// the downloads engine. `RoomChanged` follows it: `fetch`, then everyone's view of
+    /// the progress. With `whole_show`, the rest of the show follows the episode (#922):
+    /// the same release group and resolution as the host's, through the downloads engine.
+    RoomGetMedia {
+        #[serde(default)]
+        whole_show: bool,
+    },
+    /// The host's answer to the ready gate (#922): start for everyone now, or with
+    /// `wait`, start on its own once everyone has the episode open.
+    RoomStart {
+        #[serde(default)]
+        wait: bool,
+    },
+}
+
+/// The variant name of a call, for messages: the externally tagged JSON key.
+/// Beside `Call`, so a team that names a call in an error imports no front
+/// door.
+pub fn call_name(call: &Call) -> String {
+    match serde_json::to_value(call) {
+        Ok(serde_json::Value::String(s)) => s,
+        Ok(serde_json::Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
+        _ => "?".into(),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -916,6 +996,15 @@ pub enum Reply {
     Presence {
         available: bool,
         connected: bool,
+        /// The room this person is in can be joined from Discord without asking.
+        #[serde(default)]
+        room_open: bool,
+    },
+    DiscordBlocked {
+        people: Vec<DiscordPerson>,
+    },
+    DiscordJoin {
+        code: Option<String>,
     },
     Settings {
         settings: Settings,

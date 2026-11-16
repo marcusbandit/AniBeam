@@ -1,4 +1,4 @@
-//! What an AniBeam host serves over a tailnet, and what the phone app reads.
+//! What an Anibeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
 //! addresses only. Every device on the tailnet is answered unless the person
@@ -41,14 +41,14 @@
 //! put it there. The reply comes once the host's job is done, so it says
 //! whether the torrents went in.
 //!
-//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other Anibeams
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
 //!
 //! A host that lists [`FEATURE_HISTORY`] answers [`HISTORY`]: its watch
 //! history, resume points and matches as an `anibeam-export` document (the
 //! desktop's own export format, without sources, accounts, fixes or
-//! preferences), for another AniBeam computer to merge with its own.
+//! preferences), for another Anibeam computer to merge with its own.
 //!
 //! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
 //! client may sign each request with its own key ([`proof`], with the `proof`
@@ -72,7 +72,7 @@ pub const DEFAULT_PORT: u16 = 8790;
 pub const HELLO: &str = "/api/v1/hello";
 /// `GET`: [`Snapshot`].
 pub const SNAPSHOT: &str = "/api/v1/snapshot";
-/// What [`Hello::app`] says, so a client knows it reached AniBeam and not
+/// What [`Hello::app`] says, so a client knows it reached Anibeam and not
 /// something else on the port.
 pub const APP: &str = "anibeam";
 
@@ -171,6 +171,35 @@ pub fn hls_path(file: u64, height: u32, audio: Option<usize>, burn: Option<usize
     path
 }
 
+/// Seconds per piece of the playlist [`hls_path`] answers. Every piece starts
+/// on a keyframe the host forces at its start.
+pub const HLS_PIECE: f64 = 6.0;
+
+/// How many pieces an episode `duration` seconds long comes in: one at least.
+pub fn hls_pieces(duration: f64) -> u32 {
+    (duration / HLS_PIECE).ceil().max(1.0) as u32
+}
+
+/// The playlist [`hls_path`] answers for an episode `duration` seconds long:
+/// every piece of the whole episode up front, so a player seeks it like a
+/// file. Piece `n` is `seg<n>.ts` with `query` after it, so each piece asks
+/// for the same conversion the playlist did. A computer casting a conversion
+/// to a TV reads the pieces back out of this text.
+pub fn hls_playlist(duration: f64, query: &str) -> String {
+    let count = hls_pieces(duration);
+    let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+    out.push_str(&format!(
+        "#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n",
+        HLS_PIECE.ceil() as u32
+    ));
+    for i in 0..count {
+        let len = (duration - f64::from(i) * HLS_PIECE).min(HLS_PIECE);
+        out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
+    }
+    out.push_str("#EXT-X-ENDLIST\n");
+    out
+}
+
 /// `GET /api/v1/hello`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
@@ -178,9 +207,9 @@ pub struct Hello {
     pub app: String,
     /// The host's [`API_VERSION`].
     pub api: u32,
-    /// The AniBeam version, as its About page shows it.
+    /// The Anibeam version, as its About page shows it.
     pub version: String,
-    /// The machine's name, for a client to show ("banditbox").
+    /// The machine's name, for a client to show ("desk").
     pub host: String,
     /// The host's clock, so a client can tell how far apart they are.
     pub now: i64,
@@ -230,9 +259,9 @@ pub struct Profile {
     pub owner: bool,
 }
 
-/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// `GET` [`PEERS`]: the other Anibeams the host sees on the tailnet, for a
 /// client that cannot list tailnet devices itself. Only devices the host
-/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// trusts and that answered their hello as Anibeam a moment ago; neither the
 /// host nor the device asking is among them. A host that cannot read its
 /// tailnet answers `503` instead of an empty list, so a client keeps the list
 /// it had.
@@ -242,7 +271,7 @@ pub struct Peers {
     pub hosts: Vec<PeerHost>,
 }
 
-/// One AniBeam on the tailnet.
+/// One Anibeam on the tailnet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerHost {
     /// Its machine name, from its own hello.
@@ -250,7 +279,7 @@ pub struct PeerHost {
     pub name: String,
     /// `http://<tailnet address>:<port>`, where it answered.
     pub url: String,
-    /// Its AniBeam version.
+    /// Its Anibeam version.
     #[serde(default)]
     pub version: String,
 }
@@ -501,6 +530,16 @@ pub struct Torrent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_playlist_covers_the_whole_episode() {
+        let list = hls_playlist(14.5, "?audio=1");
+        assert!(list.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
+        assert!(list.contains("#EXTINF:6.000,\nseg0.ts?audio=1\n"));
+        assert!(list.contains("#EXTINF:2.500,\nseg2.ts?audio=1\n"));
+        assert!(!list.contains("seg3.ts"));
+        assert!(list.ends_with("#EXT-X-ENDLIST\n"));
+    }
 
     #[test]
     fn the_fixture_reads_as_a_snapshot() {

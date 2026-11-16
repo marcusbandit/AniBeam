@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fails when the tree names a download site (#277, #606): AniBeam ships no sources, and a site
+# Fails when the tree names a download site (#277, #606): Anibeam ships no sources, and a site
 # exists only as a definition in an endpoint repo the person attaches. CONTRIBUTING.md has the
 # rule under Sources.
 #
@@ -19,8 +19,8 @@ skip=(
   ':(exclude)**/CHANGELOG.md'
   ':(exclude)CHANGELOG.md'
   ':(exclude)docs/superpowers/'
-  ':(exclude)core/src/store/sql/'
-  ':(exclude)core/src/releases/kinds.rs'
+  ':(exclude)foundation/src/store/sql/'
+  ':(exclude)releases/src/kinds.rs'
   ':(exclude)*.lock'
   ':(exclude).github/no-site-names.sh'
 )
