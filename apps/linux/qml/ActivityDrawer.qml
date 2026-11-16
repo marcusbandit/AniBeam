@@ -7,7 +7,7 @@
 // chatter of its own, it only renders what the core already reported.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

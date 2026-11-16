@@ -1,7 +1,7 @@
 // A list-status square in the status hue. Static: an infinite pulse kept the whole window
 // rendering at the display's rate for as long as a dot was on screen.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     property string status: ""

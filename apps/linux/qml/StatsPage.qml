@@ -6,7 +6,7 @@
 import QtCore
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -134,6 +134,9 @@ Item {
                 onPicked: function(i) { page.pickYear(page.yearOptions[i]) }
             }
         }
+
+        // Library's tabs (#1012): this page is one of them
+        LibraryTabs { here: "stats" }
 
         // ---- Nothing watched yet
         Item {
@@ -263,7 +266,7 @@ Item {
                         }
                     }
                 }
-                Label { anchors.left: parent.left; anchors.bottom: parent.bottom; text: "AniBeam"; role: "ledger"; color: theme.textFaint }
+                Label { anchors.left: parent.left; anchors.bottom: parent.bottom; text: "Anibeam"; role: "ledger"; color: theme.textFaint }
             }
             Button {
                 id: saveRecapButton
@@ -282,7 +285,7 @@ Item {
         defaultSuffix: "png"
         nameFilters: [words.t("stats-save-filter-png")]
         currentFolder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
-        currentFile: currentFolder + "/AniBeam " + (page.stats ? page.stats.year : "") + ".png"
+        currentFile: currentFolder + "/Anibeam " + (page.stats ? page.stats.year : "") + ".png"
         onAccepted: page.saveRecap(Fmt.localPath(String(selectedFile)))
     }
     // The card at twice its size on screen, so the PNG holds up when shared

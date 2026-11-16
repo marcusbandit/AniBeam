@@ -18,8 +18,8 @@ Play's Device and Network Abuse policy says an app "may not download executable
 code (such as dex, JAR, .so files) from a source other than Google Play", with an
 exception for "code that runs in a virtual machine or an interpreter".
 
-So AniBeam copies Mihon's repository model and drops its extension model. A Mihon
-extension is an APK with Kotlin in it. An AniBeam endpoint in a repo is a JSON
+So Anibeam copies Mihon's repository model and drops its extension model. A Mihon
+extension is an APK with Kotlin in it. An Anibeam endpoint in a repo is a JSON
 definition the core already knows how to run. The core holds every kind of
 endpoint as Rust (`json`, `nyaa`, `rss`, `tosho`, `torznab`), and a new kind ships
 in an app update, through Play, like any other change.
@@ -36,9 +36,9 @@ in an app update, through Play, like any other change.
   one.
 - Mihon ships with no repo since 2024.
 
-## What AniBeam keeps and changes
+## What Anibeam keeps and changes
 
-| Mihon | AniBeam |
+| Mihon | Anibeam |
 | --- | --- |
 | Repo URL pasted in Settings | Same |
 | `index.min.json` | `repo.json`, format `anibeam-endpoint-repo` v1 |
@@ -236,6 +236,13 @@ synced to anirss as kind `rss`.
   and the key's fingerprint, and the user accepts it. The key is pinned from then
   on: an index signed by a different key is refused with a plain message, and the
   user has to remove and re-add the repo to accept a new key.
+- Changed 2026-11-15 (#1003), after the first beta tester could not get through
+  Add, Trust and one Install per source: the desktop adds a repo in one step,
+  `AttachEndpointRepo { url }`. It fetches and verifies the index, pins the key
+  on first use and installs every endpoint that asks for no value (an NSFW one
+  only from an NSFW repo). The fingerprint shows on the repo's row afterwards,
+  and a later index under another key is still refused. The phone keeps the
+  two-step preview and trust.
 - Installing an endpoint takes its definition from the verified index; there is
   nothing else to fetch or check.
 - Trusting a repo means trusting where its endpoints send requests. The owner's
@@ -268,10 +275,10 @@ synced to anirss as kind `rss`.
   phone's ordered endpoint list in `phone::sources`.
 - Desktop (built 2026-10-24, changed from the first draft at the owner's ask): the
   desktop searches through anirss, which reads only its own `config.toml`. The
-  core writes each enabled installed endpoint into AniBeam's own anirss sidecar
+  core writes each enabled installed endpoint into Anibeam's own anirss sidecar
   through anirss 0.6's endpoint API, filled URL included, so a credential does
   land in `config.toml` the way a hand-written one already does; the secret store
-  stays the record AniBeam reads. Only names AniBeam wrote are changed or
+  stays the record Anibeam reads. Only names Anibeam wrote are changed or
   removed (`anirss_synced_endpoints` in settings); an endpoint anirss already has
   from its config keeps its place and the catalog says so. A kind anirss cannot
   search (`tosho`) stays out and says so. A remote anirss, a sandbox root and a

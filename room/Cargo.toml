@@ -10,5 +10,7 @@ repository.workspace = true
 # No tokio and no rand: the caller hands in the clock and the randomness, so the
 # same crate runs in the native relay, the Cloudflare Worker (wasm32) and the core.
 [dependencies]
+# No dependencies of its own, so it builds for wasm32 as is
+percent-encoding = "2"
 serde.workspace = true
 serde_json.workspace = true

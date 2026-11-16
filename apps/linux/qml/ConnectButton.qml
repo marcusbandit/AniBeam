@@ -3,7 +3,7 @@
 // that one mid-flow. The reason is the tip, which lives on this wrapper rather than on the
 // Button because a disabled Button's own hover area is disabled with it.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

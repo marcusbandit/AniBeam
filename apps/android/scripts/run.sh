@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, install and launch AniBeam on the project's running emulator.
+# Build, install and launch Anibeam on the project's running emulator.
 # Usage: scripts/run.sh [--no-build] [build.sh args]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,5 +18,5 @@ if [[ "${1:-}" == "--no-build" ]]; then
 else
   scripts/build.sh "$@"
 fi
-"$ADB" install -r build/AniBeam-debug.apk
+"$ADB" install -r build/Anibeam-debug.apk
 "$ADB" shell am start -W -n "$PKG/$ACT"

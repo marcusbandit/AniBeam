@@ -97,7 +97,7 @@ pub mod qobject {
         /// The library page in one read: `{ series, airing, counts: { all, series,
         /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
         /// listSeries, carries `franchise: { id, title, size }` when other library
-        /// series share its franchise, else null (core `franchise::groups`).
+        /// series share its franchise, else null (core `library::franchises`).
         #[qinvokable]
         fn list_library(
             self: &Door,
@@ -194,6 +194,8 @@ pub mod qobject {
         fn set_not_interested(self: &Door, anilist_id: f64, not_interested: bool) -> QJsonObject;
         #[qinvokable]
         fn list_not_interested(self: &Door) -> QJsonObject;
+        #[qinvokable]
+        fn prune_not_interested(self: &Door) -> QJsonObject;
         #[qinvokable]
         fn plan_to_watch(self: &Door, anilist_id: f64) -> QJsonObject;
         // Franchise
@@ -350,7 +352,7 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn test_torrent_client(self: &Door) -> QJsonObject;
-        /// Switches to the saved torrent client `id`; an empty id is AniBeam's own.
+        /// Switches to the saved torrent client `id`; an empty id is Anibeam's own.
         #[qinvokable]
         fn use_torrent_client(self: &Door, id: &QString) -> QJsonObject;
         /// Any call by name, the CLI's door.
@@ -1373,6 +1375,9 @@ impl qobject::Door {
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
             | EventBody::RecommendedRefreshed
+            | EventBody::DiscordJoinAsk { .. }
+            | EventBody::DiscordAskGone { .. }
+            | EventBody::DiscordJoin { .. }
             | EventBody::ShowPageRead { .. } => {}
             EventBody::RoomChanged { room } => {
                 let room = match room {
@@ -1821,6 +1826,9 @@ impl qobject::Door {
     }
     pub fn list_not_interested(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListNotInterested))
+    }
+    pub fn prune_not_interested(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::PruneNotInterested))
     }
     pub fn plan_to_watch(&self, anilist_id: f64) -> QJsonObject {
         self.dispatch(Ok(Call::PlanToWatch {

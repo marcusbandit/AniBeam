@@ -109,7 +109,7 @@ public class TorrentService extends Service {
         nm.notify(1, ongoing(context, title, text, progress));
     }
 
-    /** Opens AniBeam where it was, the way its launcher icon does. */
+    /** Opens Anibeam where it was, the way its launcher icon does. */
     private static PendingIntent openApp(Context context) {
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (open == null) open = new Intent();

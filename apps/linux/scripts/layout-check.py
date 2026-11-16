@@ -26,8 +26,7 @@ APP = HERE.parent
 LANGS = ["en", "da", "de", "es", "fr", "pt-BR", "it", "nl", "pl", "ru", "ja", "ko", "zh-CN"]
 PAGES = ["home", "library", "airing", "feed", "watching", "stats", "metadata", "downloads",
          "recommended"]
-TABS = ["library", "accounts", "appearance", "playback", "subtitles", "keys", "downloads",
-        "phone", "data", "help", "about"]
+TABS = ["library", "accounts", "appearance", "playback", "downloads", "keys", "about"]
 
 
 def drive_script():

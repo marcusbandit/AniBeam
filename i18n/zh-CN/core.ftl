@@ -79,7 +79,7 @@ event-problem-trackers = 你的列表出了问题。详情见开发者选项。
 event-problem-franchise = 相关番剧出了问题。详情见开发者选项。
 event-problem-playback = 播放出了问题。详情见开发者选项。
 event-problem-store = 保存数据时出了问题。详情见开发者选项。
-event-problem-system = AniBeam 出了问题。详情见开发者选项。
+event-problem-system = Anibeam 出了问题。详情见开发者选项。
 event-problem-downloads = 下载出了问题。详情见开发者选项。
 
 ## Errors (contract::CoreError)
@@ -104,11 +104,11 @@ core-error-io = 无法读写文件：{ $message }
 core-error-storage = 无法保存媒体库：{ $message }
 core-error-keyring = 无法访问系统密码存储：{ $message }
 core-error-unsupported = 暂不支持 { $what }。
-core-error-version = 这份导出来自更新版本的 AniBeam（格式 { $found }）。请更新 AniBeam 后再导入。
-core-error-internal = AniBeam 遇到内部错误：{ $message }
+core-error-version = 这份导出来自更新版本的 Anibeam（格式 { $found }）。请更新 Anibeam 后再导入。
+core-error-internal = Anibeam 遇到内部错误：{ $message }
 core-error-service = { $service }：{ $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = 粘贴仓库地址
 core-repos-must-be-https = 地址必须是 https
@@ -145,7 +145,7 @@ core-repos-note-theirs = 这个 anirss 由你自己运行，电脑端从不更�
 core-repos-note-sandbox = 这次运行从不写入 anirss 的配置，所以电脑端在这里不搜索 { $id }
 core-repos-note-old = anirss { $version } 无法接收来自 { -app-name } 的端点；请更新到 { $min } 或更高版本，电脑端才能搜索它
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = 索引的密钥不是 ed25519 密钥
 core-repos-key-not-base64 = 索引的密钥不是 32 字节的 base64
@@ -163,7 +163,7 @@ core-repos-check-auth-key = { $id }：认证键 { $key } 无效
 core-repos-check-host-torznab = { $id }：只有 torznab 地址可以把主机写成 {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }：主机中有占位符
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = 轨道 { $number }
 core-playback-track-file = { $label }（文件）
@@ -292,7 +292,7 @@ core-jobs-start-endpoint = 正在启动下载来源
 core-jobs-schedule-agent = 正在向编程助手询问播出时间
     .stopped = 向编程助手询问播出时间时出现问题，已停止。
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = 正在播出
 core-airing-now-winter = { $year } 年冬季
@@ -312,11 +312,11 @@ core-airing-now-already-on =
     }”。
 core-airing-now-plan-failed = 无法把《{ $title }》加入“想看”列表，请稍后再试。
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = 《{ $title }》第 { $number } 集已播出。
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = 正在投屏到 { $device }。
 core-cast-ended = 已结束投屏到 { $device }。
@@ -336,7 +336,7 @@ core-cast-refused-both = { $error }；原文件它也拒绝了（{ $first }）
 core-cast-chromecast-stopped = Chromecast 已停止
 core-cast-hevc = { $error }。这一集是 HEVC 编码，只有较新的 Chromecast（带 Google TV 或 Ultra）才能解码
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = 无法连接 Chromecast：{ $error }
 core-cast-chromecast-broke = Chromecast 连接中断：{ $error }
@@ -346,20 +346,20 @@ core-cast-no-reason = 未说明原因
 core-cast-chromecast-cannot-play = Chromecast 无法播放此内容（{ $kind }）
 core-cast-chromecast-error = Chromecast 播放时出错并停止
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = 电视没有响应：{ $error }
 core-cast-tv-refused = 电视拒绝了 { $action }
 core-cast-tv-refused-code = 电视拒绝了 { $action }（{ $code }）
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = 这个文件没有视频。
 core-cast-hi10p = 这一集是 10 位 H.264（Hi10P），电视和 Chromecast 都无法解码。投屏需要转码，目前尚未实现。
 core-cast-video-codec = 这一集的视频（{ $codec }）无法投屏。
 core-cast-audio-codec = 这一集的音频（{ $codec }）无法投屏。
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started = 已开始下载《{ $folder }》的 { $count } 集。
 core-phone-subscribed = 已订阅《{ $name }》。
@@ -372,7 +372,7 @@ core-phone-empty-search = 搜索内容为空
 core-phone-no-results = 没有“{ $query }”的结果
 core-phone-own-engine = 自带的种子下载引擎
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = 已连接
 core-phone-check-refused = 被拒绝：{ $error }
@@ -389,12 +389,12 @@ core-phone-check-reaching = { $label }：正在连接 { $ip }
 core-phone-check-http = HTTP { $status }，{ $bytes } 字节
 core-phone-check-setup = 设置
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = 《{ $folder }》的进度没有保存。请先匹配这部番剧。
 core-playback-still-downloading = 第 { $number } 集仍在下载，已完成 { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 时长必须是正数秒
 
@@ -417,29 +417,29 @@ core-core-guest-not-interested = 那台电脑上的“不感兴趣”是它主�
 core-core-guest-recommended = 那台电脑上的推荐是根据它主人的列表生成的
 core-core-nothing-picked = 未选择任何内容
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } 不是匹配服务
 core-prefs-provider-count = { $provider } 出现了 { $count } 次；每个服务只能出现一次
 core-prefs-outside = { $value } 不在 { $low } 到 { $high } 之间
 core-prefs-empty = 空
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = 正在为你排列番剧
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = 正在寻找口味相近的人
 core-recommended-reading-lists = 正在读取他们的列表
 core-recommended-reading-yours = 正在读取你的番剧
 core-recommended-reading-suggestions = 正在读取推荐番剧
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } 上没有动画 { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = 关闭
 core-host-starting = 正在启动
@@ -449,24 +449,24 @@ core-host-cannot-listen = 无法监听
 core-host-port-taken = 端口 { $port } 已被占用
 core-host-cannot-listen-on = 无法在 { $address } 上监听：{ $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } 不是地址和端口
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } 不是设备密钥
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = { $ms }ms 后超时
 core-net-rate-limited = { $provider } 限制了请求频率
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host }：刚才超时了；{ -app-name } 会等待 { $seconds } 秒后再请求
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = 没有数据
 
@@ -490,12 +490,12 @@ core-update-cannot-read-dmg = 无法读取 dmg：{ $error }
 core-update-no-app = dmg 中没有应用
 core-update-cannot-copy = 无法把新应用复制到当前应用旁边：{ $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - 第 { $season } 季第 { $number } 集
 core-calendar-episode = { $title } - 第 { $number } 集
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = 没有主目录
 
@@ -503,11 +503,14 @@ core-paths-no-home = 没有主目录
 
 core-first-run-not-absolute = 视频文件夹必须是绝对路径
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = 附加内容
+core-presence-room = 一起观看
+core-presence-in-room = 在房间中
+core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = 没有为 { $tracker } 设置客户端 ID。
 core-trackers-mal-reconnect = 请在设置中重新连接 MyAnimeList。
@@ -515,22 +518,22 @@ core-trackers-mal-wants-secret = MyAnimeList 需要此应用的客户端密钥�
 core-trackers-token-reply-unreadable = 无法读取令牌响应：{ $error }
 core-trackers-token-reply-no-token = 令牌响应中没有访问令牌
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 没有保存访问令牌，请在设置中重新连接
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 账号中没有用户 ID
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 没有选择要移动的番剧
 core-trackers-moved-up = 已把 { $count } 部番剧从这台电脑移到 { $site }。
 core-trackers-moved-up-some-refused = 已把 { $moved } 部番剧移到 { $site }；{ $site } 没有接受 { $failed } 部。
 core-trackers-move-refused = { $site } 没有接受《{ $show }》：{ $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 授权超时，请重试。
 core-trackers-oauth-state-mismatch = state 不匹配，可能是 CSRF 攻击，已中止。
@@ -550,12 +553,12 @@ core-trackers-page-failed = 登录没有完成
 core-trackers-page-go-back = 请回到 { $app } 重试。
 core-trackers-page-finishing-title = { $app }，仍在完成中
 core-trackers-page-finishing = 仍在完成中
-core-trackers-page-finishing-body = { $site } 已响应，AniBeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
+core-trackers-page-finishing-body = { $site } 已响应，Anibeam 正在完成登录。请回到 { $app }，完成后它会告诉你。
 core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 此次登录已取消
 core-trackers-page-cancelled-body = 你可以关闭此标签页。如有需要，请从 { $app } 重新开始。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = 正在 { $tracker } 上移到“搁置”
 core-trackers-on-hold-moved = 已在 { $site } 上把 { $count } 部番剧移到“搁置”。
@@ -568,7 +571,7 @@ core-trackers-back-on-watching = 《{ $name }》已在 { $site } 上回到“在
 core-trackers-back-on-watching-two = 《{ $name }》已在 { $site } 和 { $secondSite } 上回到“在看”。
 core-trackers-back-on-watching-failed = 《{ $name }》无法回到“在看”，请稍后再试。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 限制了请求频率，请一分钟后重试。
 core-trackers-auth-expired = { $tracker } 授权已过期，请在设置中重新连接。
@@ -648,7 +651,7 @@ core-trackers-left-out =
        *[other] 有 { $kept } 部番剧保存在这台电脑上，没有可发送的追踪服务。
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = 已把《{ $show }》匹配为《{ $title }》。
 core-metadata-auto-matched = 已匹配 { $count } 部番剧。
@@ -697,7 +700,7 @@ core-metadata-find-failed = 有 { $failed } 部番剧无法搜索，请稍后再
 core-metadata-find-had = 有 { $had } 部番剧已有匹配。
 core-metadata-find-busy = 有 { $busy } 部番剧正在匹配中。
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = 无法读取该链接。请粘贴 AniList、MyAnimeList、TVmaze 或 IMDb 页面的网址。
 core-metadata-no-mal-entry = AniList 上没有与该 MyAnimeList ID 对应的条目。
@@ -715,38 +718,38 @@ core-metadata-updated-many = 已更新 { $count } 部番剧的信息。
 core-metadata-update-failed-many = 无法更新 { $count } 部番剧的信息，请稍后再试。
 core-metadata-updated-some = 已更新 { $count } 部番剧的信息；{ $failed } 部无法更新。
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze 上没有剧集 { $id }
 core-metadata-no-such-media = AniList 上没有作品 { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = Wikidata 的 IMDb 链接
 core-metadata-progress-imdb-ratings = IMDb 评分
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = 共同角色
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = 正在获取图片
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported = 已把 { $count } 部番剧保存到 { $folder }。
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = 不是 JSON：{ $error }
 core-transfer-wrong-format = 不是 { $format } 文档
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = 已从文件载入媒体库。
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = 媒体库中没有文件 { $id }
 core-library-file-elsewhere-not-removed = 文件 { $id } 属于另一部番剧，未移除任何内容
@@ -767,7 +770,7 @@ core-library-watched-removed =
        *[trash] 已移到回收站
     }。
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     这里唯一的文件被识别为{ $read ->
@@ -782,7 +785,7 @@ core-library-fix-numbered-on = 第 { $from } 集看起来是此条目的第 { $t
 core-library-runs-span = { $first } 至 { $last }
 core-library-runs-list = { $init } 和 { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = 集数范围为 0 到 10000
 core-library-fix-season-range = 季数最多为 200
@@ -791,7 +794,7 @@ core-library-file-elsewhere-not-fixed = 文件 { $id } 属于另一部番剧，�
 core-library-fix-undone = 已恢复按文件名识别《{ $title }》的 { $count } 个文件。
 core-library-fixed = 已修正《{ $title }》中 { $count } 个文件的识别方式。
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = 已隐藏《{ $title }》。
 core-library-back-one = 《{ $title }》已恢复显示。
@@ -800,12 +803,12 @@ core-library-back-many = { $count } 部番剧已恢复显示。
 core-library-episode-count-set = 《{ $title }》现在共 { $count } 集。
 core-library-episode-count-cleared = 已清除《{ $title }》的集数。
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = 已清除《{ $title }》的排期备注。
 core-library-schedule-saved = 已为《{ $title }》保存 { $count } 条排期备注。
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = 来源路径必须是绝对路径
 core-library-source-exists = 已是来源
@@ -837,7 +840,7 @@ core-library-scan-done =
         }{ $removed } 部缺失
     }。
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = { $span } 内没有响应
 core-library-agent-stopped-code = 它以代码 { $code } 停止
@@ -854,7 +857,7 @@ core-transfer-progress-accounts = 账号
 core-transfer-progress-preferences = 偏好设置
 core-transfer-progress-done = 完成
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss 没有响应：{ $message }
 core-downloads-anirss-answered = anirss 返回 { $status }：{ $text }
@@ -865,45 +868,45 @@ core-downloads-anirss-slow-start = anirss 没有在 { $seconds } 秒内启动
 core-downloads-anirss-slow-start-said = anirss 没有在 { $seconds } 秒内启动：{ $said }
 core-downloads-anirss-install-mac = 请安装 anirss { $version } 或更高版本：{ $command }
 core-downloads-anirss-install-linux = 请安装 anirss { $version } 或更高版本：AUR 上的 anirss 包，或 { $command }
-core-downloads-anirss-too-old = anirss { $version } 版本太旧，AniBeam 需要 { $minimum } 或更高版本。{ $update }。
-core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 AniBeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
+core-downloads-anirss-too-old = anirss { $version } 版本太旧，Anibeam 需要 { $minimum } 或更高版本。{ $update }。
+core-downloads-anirss-lacks-feature = anirss { $version } 无法为每个种子客户端分别保存登录信息，而 Anibeam 切换客户端需要这项功能；anirss { $minimum } 及更高版本支持。{ $update }。
 core-downloads-anirss-update-mac = 更新命令：{ $command }
 core-downloads-anirss-update-linux = 请更新 anirss 包，或运行：{ $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = 种子文件没有传来：{ $message }
 core-downloads-torrent-file-answered = 种子文件返回 { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = 订阅源返回 { $status }
 core-downloads-not-a-feed = 不是订阅源：{ $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = 未安装 Jackett：找不到 { $program }。请安装它，或在设置中更改命令。
 core-downloads-endpoint-start-failed = { $name } 无法启动：{ $why }
 core-downloads-endpoint-start-timeout = { $name } 已启动，但没有在 { $seconds } 秒内响应。
 core-downloads-command-exited = 命令以 { $status } 退出
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss 已停止
 core-downloads-anirss-missing = { $install }。或在设置中指向一个正在运行的服务器。
 core-downloads-anirss-command-missing = 找不到 { $command }。{ $install }。或在设置中指向一个正在运行的服务器。
 core-downloads-anirss-start-failed = { $command } 无法启动：{ $error }
 core-downloads-anirss-too-old-said = { $tooOld } 它说：{ $message }
-core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，AniBeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，AniBeam 会替你运行它
-core-downloads-own-client-gone = AniBeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 AniBeam，或在设置中指向你自己的 qBittorrent
+core-downloads-no-torrent-client = { $address } 上没有 qBittorrent 响应，Anibeam 也没有自带的可运行。请安装 qBittorrent 并开启它的 Web UI，或安装 qbittorrent-nox，Anibeam 会替你运行它
+core-downloads-own-client-gone = Anibeam 的 qBittorrent 不见了：未安装 qbittorrent-nox。请重新安装 Anibeam，或在设置中指向你自己的 qBittorrent
 core-downloads-no-port = { $address } 中没有端口
 core-downloads-own-client-settings = 无法写入 qBittorrent 的设置：{ $error }
 core-downloads-own-client-start-failed = { $command } 无法启动：{ $error }
-core-downloads-own-client-slow-start = AniBeam 的 qBittorrent 没有启动
-core-downloads-own-client-slow-start-said = AniBeam 的 qBittorrent 没有启动：{ $said }
+core-downloads-own-client-slow-start = Anibeam 的 qBittorrent 没有启动
+core-downloads-own-client-slow-start-said = Anibeam 的 qBittorrent 没有启动：{ $said }
 core-downloads-not-ready = 下载尚未就绪。请检查设置中的“下载”。
 core-downloads-ready = 下载已就绪。
-core-downloads-helper-sources = 下载现在由 AniBeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
+core-downloads-helper-sources = 下载现在由 Anibeam 自己搜索，不会读取搜索助手配置中的 { $count } 个来源。请在设置的“下载”中添加它们，或在那里选择搜索助手。
 core-downloads-client-connected = 下载应用已连接。
 core-downloads-client-not-connected = 下载应用未连接。请在设置中检查它的地址。
 core-downloads-not-on-demand = { $name } 不是按需启动的端点
@@ -944,7 +947,7 @@ core-downloads-client-switched = 下载现在使用另一个下载应用。
 core-downloads-host-not-running = 没有在主机上运行
 core-downloads-host-late = 没有及时响应
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 搜索为空
 core-downloads-native-no-results = 没有 { $query } 的结果
@@ -959,30 +962,34 @@ core-downloads-native-outside-folders = 拒绝移除下载文件夹以外的文�
 core-downloads-refuse-home-folder = { $path } 是主文件夹或包含主文件夹，未移除任何内容
 core-downloads-refuse-library-folder = { $path } 是媒体库文件夹或包含媒体库文件夹，未移除任何内容
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent 没有默认保存文件夹，请在 qBittorrent 中设置
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } 不是文件夹的完整路径
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } 无法保存下载：请选择一个存在且不是主文件夹的文件夹
 core-downloads-name-empty = 名称不能为空
 core-downloads-name-slash = 名称不能包含 / 或 \
 core-downloads-name-not-folder = { $name } 不是文件夹名称
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = 《{ $title }》已完结，已取消订阅。
 core-downloads-prune-failed = 无法取消订阅《{ $title }》。请检查设置中的“下载”。
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } 不是普通的绝对路径，未移除任何内容
 core-downloads-refuse-root = { $path } 是文件系统根目录，未移除任何内容
 core-downloads-refuse-outside-library = { $path } 不在媒体库文件夹内，未移除任何内容
 core-downloads-refuse-save-folder = { $path } 是种子的保存文件夹，而不是它下载的内容，未移除任何内容
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = 《{ $title }》第 { $episode } 集播出三天了仍未出现。你的订阅源会继续寻找。
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss 命令不能为空
 core-downloads-settings-anirss-address = anirss 地址必须以 http:// 或 https:// 开头
@@ -992,7 +999,7 @@ core-downloads-settings-same-id = 有两个客户端的 ID 都是 { $id }
 core-downloads-settings-saved-address = { $name } 的地址必须以 http:// 或 https:// 开头
 core-downloads-settings-same-name = 有两个客户端都叫 { $name }，请给每个起不同的名字
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = { $address } 上的 qBittorrent 没有响应：{ $message }
 core-downloads-qbt-password-rejected = qBittorrent 拒绝了密码，请在设置中修改
@@ -1004,20 +1011,20 @@ core-downloads-qbt-not-added = qBittorrent 没有添加这些种子：{ $said }
 core-downloads-qbt-some-not-added = qBittorrent 有 { $count } 个种子无法添加：{ $said }
 core-downloads-qbt-answered = qBittorrent 返回 { $status }：{ $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = 条目 { $item } 不在 { $count } 个资源之中
 core-downloads-not-replaced = 第 { $episode } 集没有被替换。
 core-downloads-replaced = 已用新下载替换第 { $episode } 集。
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = 没有滚动下载 { $id }
 core-downloads-rolled = 《{ $title }》：现在保留第 { $from } 至 { $to } 集，共 { $total } 集。
 core-downloads-roll-ahead = 至少提前保留一集
 core-downloads-roll-nothing = 没有可获取的内容
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = JSON 搜索来源必须来自端点仓库，由其定义映射字段
 core-releases-endpoint-no-name = 缺少 `name`
@@ -1029,17 +1036,17 @@ core-releases-endpoint-not-http = { $name }：地址必须以 http:// 或 https:
 core-releases-endpoint-needs-query = { $name }：{ $kind } 的 url 必须包含 {"{"}query{"}"} 占位符
 core-releases-endpoint-no-query = { $name }：{ $kind } 的 url 会自行添加搜索词，所以不需要 {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = 索引器返回错误 { $code }
 core-releases-bad-feed = 订阅源有误：{ $error }
 core-releases-feed-answered = 订阅源返回 { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = 不是订阅源的 JSON：{ $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = 不是 JSON：{ $error }
 core-releases-search-error-said = 搜索返回错误：{ $message }
@@ -1048,7 +1055,7 @@ core-releases-no-results-field = 响应中 { $path } 处没有结果
 core-releases-results-not-list = 响应中的结果不是列表
 core-releases-search-answered = 搜索返回 { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = 还没有端点：请在“更多”的“端点”中添加仓库，或手动添加一个
 core-releases-no-source-named = 没有名为 { $name } 的来源
@@ -1056,7 +1063,7 @@ core-releases-empty-query = 请输入要搜索的内容
 core-releases-cannot-follow = 无法追更 { $name }：它能响应搜索，但没有可检查新剧集的订阅源
 core-releases-endpoint-gone = { $name } 已不可用：已被移除、关闭，或缺少密钥
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } 必须是一个简短的词
 core-releases-quirks-pattern-count = show_feed 需要 1 到 { $most } 个页面模式
@@ -1067,11 +1074,11 @@ core-releases-quirks-url-https = show_feed url 必须是 https
 core-releases-quirks-url-host = show_feed url 必须在端点自己的主机上
 core-releases-quirks-url-slug = show_feed url 只能包含一次 {"{"}slug{"}"}，且不能有其他占位符
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = 操作 'tokens' 需要非空的 `tokens` 列表
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = { $group } 的合集
 core-releases-episodes-phrase = 第 { $list } 集
@@ -1079,7 +1086,7 @@ core-releases-episode-range = { $from } 至 { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1091,6 +1098,7 @@ core-room-service = 一起看
 core-room-not-found = 没有使用该代码的房间。房间可能已关闭。
 core-room-full = 该房间已满。
 core-room-proto = 该中继运行的是另一个版本的房间。请更新 { -app-name } 后再加入。
+core-room-needs-episode = 该中继需要一集才能创建房间。请在播放器里创建，或更新中继。
 core-room-unreachable = 无法连接中继：{ $message }
 core-room-refused = 中继拒绝了请求：{ $message }
 core-room-not-in = 你不在房间中。
@@ -1104,3 +1112,20 @@ core-room-member-left = { $name } 离开了房间。
 core-room-closed = 一起看房间已关闭。
 core-room-lost = 与一起看房间的连接已断开，正在重试。
 core-room-back = 已重新回到一起看房间。
+core-room-media-asked = 已向房主请求这一集。
+core-room-media-cannot = 房主现在无法分享这一集。
+core-room-media-sent = 已将这一集的种子发送给 { $name }。
+core-room-media-sent-name = 已将这一集的发布名称发送给 { $name }。
+core-room-media-nothing = 房主没有可分享的这一集。
+core-room-media-no-answer = 房主的应用没有回应。请稍后再试。
+core-room-media-torrent = 正在通过房主的种子下载这一集。
+core-room-media-searching = 正在你的来源中搜索房主的发布。
+core-room-media-not-found = 你的来源中都没有房主的发布。
+core-room-media-no-sources = 所有来源都已关闭。开启一个才能搜索。
+core-room-media-no-start = 无法开始下载：{ $message }
+core-room-media-client = 种子客户端没有接受
+core-room-media-lost = 种子客户端丢失了这一集的下载。
+core-room-media-stalled = 下载已经十分钟没有进展。请稍后再试。
+core-room-media-not-in-library = 这一集已下载，但不在你的媒体库中。请检查下载是否保存到媒体库文件夹。
+core-room-media-here = 这一集已在你的媒体库中。
+core-room-media-rest-missing = 无法获取这部剧的其余剧集。只在下载这一集。

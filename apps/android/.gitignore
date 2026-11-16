@@ -3,3 +3,4 @@
 /build/
 /captures/
 /vendor/
+/ios/*.xcodeproj/

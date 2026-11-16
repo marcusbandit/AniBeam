@@ -1,15 +1,15 @@
-// Settings: the head row (the title in the display cut, the settings search at the right),
-// then the index at the left and the open section beside it. The index is a status board
-// as much as a menu: each entry is a glyph, the section's name and one live line on how
-// it stands now (who is signed in, which theme, whether the torrent client answered), so
-// the page answers "is everything set up" before anything is clicked. The entries sit in
-// four runs with a gap between them: the library and its accounts; how things look and
-// play; downloads and the phone; the app itself. Typing in the search swaps the section
-// for the settings whose names or words match; picking one opens its section, scrolls the
-// row into view and lights it for a moment. The section and each one's scroll are session
-// state kept on the frame, by section id.
+// Settings: the index at the left with the settings search on top of it, and the open
+// section beside it. The index is a plain menu: each entry is a glyph and the section's
+// name, with a red dot at its right when the section wants attention (a folder gone, an
+// update waiting). Typing in the search swaps the section for the
+// settings whose names or words match; picking one opens its section, scrolls the row into
+// view and lights it for a moment. The section and each one's scroll are session state
+// kept on the frame, by section id. Section ids that have since moved into another
+// section (subtitles, phone, storage, help) still open the section that took them.
+// One page sits under a section without an entry of its own: `hidden`, the shows hidden from
+// Airing now, which Library opens and which keeps Library lit; Escape goes back to Library.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
@@ -18,25 +18,26 @@ FocusScope {
     property string title: words.t("settings-title")
     property real scrollY: 0
 
-    // ---- The sections, in index order; `run` starts a new run of the index
+    // ---- The sections, in index order
     readonly property var sections: [
-        { id: "library", name: words.t("settings-section-library"), icon: "folder", run: 0 },
-        { id: "accounts", name: words.t("settings-section-accounts"), icon: "user-check", run: 0 },
-        { id: "appearance", name: words.t("settings-section-appearance"), icon: "palette", run: 1 },
-        { id: "playback", name: words.t("settings-section-playback"), icon: "play", run: 1 },
-        { id: "subtitles", name: words.t("settings-section-subtitles"), icon: "captions", run: 1 },
-        { id: "keys", name: words.t("settings-section-keys"), icon: "keyboard", run: 1 },
-        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download", run: 2 },
-        { id: "phone", name: words.t("settings-section-phone"), icon: "radio", run: 2 },
-        { id: "storage", name: words.t("settings-section-storage"), icon: "hard-drive", run: 3 },
-        { id: "help", name: words.t("settings-section-help"), icon: "circle-question-mark", run: 3 },
-        { id: "about", name: words.t("settings-section-about"), icon: "info", run: 3 }
-    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug", run: 3 }] : [])
+        { id: "library", name: words.t("settings-section-library"), icon: "folder" },
+        { id: "accounts", name: words.t("settings-section-accounts"), icon: "user-check" },
+        { id: "appearance", name: words.t("settings-section-appearance"), icon: "palette" },
+        { id: "playback", name: words.t("settings-section-playback"), icon: "play" },
+        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download" },
+        { id: "keys", name: words.t("settings-section-keys"), icon: "keyboard" },
+        { id: "about", name: words.t("settings-section-about"), icon: "info" }
+    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug" }] : [])
     // Old tab names still open the section that took their place
-    readonly property var aliases: ({ data: "storage", trackers: "accounts" })
+    readonly property var aliases: ({ subtitles: "playback", phone: "accounts", storage: "about", data: "about", help: "about", trackers: "accounts" })
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
-    property string current: sectionIndex(frame.settingsTab) >= 0 ? frame.settingsTab : "library"
-    onCurrentChanged: frame.settingsTab = current
+    property string current: sectionIndex(aliases[frame.settingsTab] || frame.settingsTab) >= 0 ? (aliases[frame.settingsTab] || frame.settingsTab) : "library"
+    // The trail remembers the section, so the rail comes back to it; the hidden sub-page comes
+    // back as Library, the section that opens it
+    onCurrentChanged: {
+        frame.settingsTab = current
+        frame.nav.current.props = Object.assign({}, frame.nav.current.props, { tab: current === "hidden" ? "library" : current })
+    }
     // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
     // a beat in every case: a section just loaded, or one coming back from behind the search
     // results, has not laid out yet. Unsaved Downloads edits ride along on the frame
@@ -60,84 +61,51 @@ FocusScope {
         want = aliases[want] || want
         // The focus first: when `tab` names the section already loaded, nothing reloads and
         // the reveal has to be started here
-        if (props.focus) pendingFocus = props.focus === "not-interested" ? words.t("settings-library-hidden-from-airing") : props.focus
-        if (sectionIndex(want) >= 0) current = want
+        // The shows hidden from Airing now are Library's own page, opened by name or by the old
+        // focus Airing used to send
+        if (props.focus === "not-interested") want = "hidden"
+        else if (props.focus) pendingFocus = props.focus
+        if (sectionIndex(want) >= 0 || want === "hidden") current = want
         if (pendingFocus !== "") focusLater.restart()
         forceActiveFocus()
     }
     function focusSearch() { search.focusInput() }
     // Named escapePressed, not escape: QML's compiler reserves "escape" and refuses it as a
     // property, method or signal name on any object.
-    function escapePressed() { if (query !== "") { clearSearch(); return true } return false }
-
-    // ---- What each index entry says about its section, read live
-    property var srcs: []
-    property var downloads: null
-    property var storage: null
-    function readStatus() {
-        var s = Door.listSources(); if (!s.error) srcs = s.reply.sources
-        var d = Door.getDownloads(); if (!d.error) downloads = d.reply.status
-        var g = Door.getStorage(); if (!g.error) storage = g.reply
+    function escapePressed() {
+        if (query !== "") { clearSearch(); return true }
+        if (current === "hidden") { open("library"); return true }
+        return false
     }
-    Timer { id: statusDebounce; interval: 300; onTriggered: page.readStatus() }
+
+    // ---- Which index entries want attention, read live
+    property var srcs: []
+    function readSources() { var s = Door.listSources(); if (!s.error) srcs = s.reply.sources }
+    Timer { id: sourcesDebounce; interval: 300; onTriggered: page.readSources() }
     Connections {
         target: Door
-        function onSourceChanged(s) { statusDebounce.restart() }
-        function onSourceRemoved(s) { statusDebounce.restart() }
-        function onScanFinished(s, a, c, r) { statusDebounce.restart() }
-        function onDownloadsStatusChanged(status) { page.downloads = status }
-        function onImagesCleared(removed) { statusDebounce.restart() }
+        function onSourceChanged(s) { sourcesDebounce.restart() }
+        function onSourceRemoved(s) { sourcesDebounce.restart() }
+        function onScanFinished(s, a, c, r) { sourcesDebounce.restart() }
     }
-    Timer { interval: 0; running: true; onTriggered: page.readStatus() }
-
-    function tracked(k) { return !!(Door.trackers[k] && Door.trackers[k].connected) }
-    function statusOf(id) {
-        if (id === "library") {
-            var n = 0, gone = 0
-            srcs.forEach(function(s) { n += s.series_count || 0; if (s.available === false) gone++ })
-            if (!srcs.length) return words.t("settings-status-library-empty")
-            return gone ? words.t("settings-status-library-missing", { gone: gone, count: n, folders: srcs.length })
-                        : words.t("settings-status-library", { count: n, folders: srcs.length })
-        }
-        if (id === "accounts") {
-            var al = tracked("anilist"), mal = tracked("mal")
-            return words.t(al && mal ? "settings-status-accounts-both" : al ? "settings-status-accounts-anilist" : mal ? "settings-status-accounts-mal" : "settings-status-accounts-none")
-        }
-        if (id === "appearance") {
-            return words.t("settings-status-appearance", { mode: Theme.mode === "system" || Theme.mode === "light" ? Theme.mode : "dark",
-                                                           source: Theme.source === "theme" ? "theme" : "desktop" })
-        }
-        if (id === "playback") {
-            var sk = Door.settings.auto_skip || {}
-            var langs = (Door.settings.subtitle_defaults || {}).audio_languages || []
-            var skip = sk.intro && sk.outro ? "both" : sk.intro ? "intro" : sk.outro ? "outro" : "none"
-            return langs.length ? words.t("settings-status-playback-audio", { skip: skip, languages: langs.join(", ") })
-                                : words.t("settings-status-playback", { skip: skip })
-        }
-        if (id === "subtitles") {
-            var sd = Door.settings.subtitle_defaults || {}
-            return words.t("settings-status-subtitles", { percent: Math.round((sd.scale || 1) * 100), override: sd.ass_override || "ScaleOnly" })
-        }
-        if (id === "keys") return words.t("settings-status-keys")
-        if (id === "downloads") {
-            if (!downloads) return words.t("settings-status-downloads-unread")
-            var t = downloads.torrent || {}
-            if (t.connected) return words.t("settings-status-downloads-answered")
-            var a = downloads.anirss || {}
-            if (a.state === "Missing") return words.t("settings-status-downloads-missing")
-            return words.t("settings-status-downloads-unconnected")
-        }
-        if (id === "phone") return Door.preferences.share_over_tailscale ? words.t("settings-status-phone-shared") : words.t("settings-status-phone-off")
-        if (id === "storage") return storage ? words.t("settings-status-storage", { size: words.bytes(storage.image_bytes || 0) }) : words.t("settings-status-storage-unread")
-        if (id === "help") return words.t("settings-status-help")
-        if (id === "about") return !frame.updatePanel.pending ? Shell.build
-            : frame.updatePanel.phase === "offer" ? words.t("settings-status-about-update", { version: frame.updatePanel.version }) : frame.updatePanel.headline
-        if (id === "developer") return frame.devRecorder.last ? words.t("settings-status-developer-last", { page: frame.devRecorder.last.label, ms: Math.round(frame.devRecorder.last.built) }) : words.t("settings-status-developer")
-        return ""
+    Timer { interval: 0; running: true; onTriggered: page.readSources() }
+    // Downloads' state, for its dot: searches can run and there is nothing to search, no source
+    // list added yet (#1003)
+    property var downloads: null
+    function readDownloads() { var d = Door.getDownloads(); if (!d.error) downloads = d.reply.status }
+    Timer { interval: 0; running: true; onTriggered: page.readDownloads() }
+    Connections { target: Door; function onDownloadsStatusChanged(status) { page.downloads = status } }
+    function noSources() {
+        if (!downloads) return false
+        var native = !!downloads.settings && downloads.settings.engine === "Native"
+        var ready = native || (!!downloads.anirss && downloads.anirss.state === "Ready")
+        return ready && (downloads.endpoints || []).length === 0
     }
-    // An entry that wants attention: a folder gone, downloads not set up
+    // An entry that wants attention: a folder gone, no source list to search, an update
+    // waiting. A step the person skipped (no list connected) is not one: the dot would never clear
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
+        if (id === "downloads") return noSources()
         if (id === "about") return frame.updatePanel.pending
         return false
     }
@@ -156,6 +124,7 @@ FocusScope {
         ["accounts", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
         ["accounts", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
         ["appearance", words.t("settings-appearance-language"), words.t("settings-find-language.words")],
+        ["appearance", words.t("settings-appearance-title-language"), words.t("settings-find-title-language.words")],
         ["appearance", words.t("settings-appearance-mode"), words.t("settings-find-mode.words")],
         ["appearance", words.t("settings-appearance-colours-from"), words.t("settings-find-colours-from.words")],
         ["appearance", words.t("settings-appearance-dark-theme"), words.t("settings-find-dark-theme.words"), words.t("settings-appearance-colours-from")],
@@ -177,16 +146,16 @@ FocusScope {
         ["playback", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
         ["playback", words.t("settings-playback-room-name"), words.t("settings-find-room-name.words")],
         ["playback", words.t("settings-playback-room-relay"), words.t("settings-find-room-relay.words")],
-        ["subtitles", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
-        ["subtitles", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
-        ["subtitles", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
-        ["subtitles", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
-        ["subtitles", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
-        ["subtitles", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
-        ["subtitles", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
-        ["subtitles", words.t("settings-subtitles-shadow"), ""],
-        ["subtitles", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
-        ["subtitles", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
+        ["playback", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
+        ["playback", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
+        ["playback", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
+        ["playback", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
+        ["playback", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
+        ["playback", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
+        ["playback", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
+        ["playback", words.t("settings-subtitles-shadow"), ""],
+        ["playback", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
+        ["playback", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
         ["keys", words.t("settings-keys-player"), words.t("settings-find-keys-player.words")],
         ["keys", words.t("settings-keys-player-around"), words.t("settings-find-keys-player-around.words")],
         ["keys", words.t("settings-keys-around"), words.t("settings-find-keys-around.words")],
@@ -198,19 +167,15 @@ FocusScope {
         ["downloads", words.t("settings-downloads-last-search"), words.t("settings-find-last-search.words")],
         ["downloads", words.t("settings-downloads-sources-title"), words.t("settings-find-search-sources.words")],
         ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-source-lists.words")],
-        ["phone", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
-        ["phone", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
-        ["phone", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
-        ["storage", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
-        ["storage", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
-        ["storage", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
-        ["storage", words.t("settings-data-files"), words.t("settings-find-files.words")],
-        ["help", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
-        ["help", words.t("settings-help-match"), words.t("settings-find-help-recognised.words")],
-        ["help", words.t("settings-help-connect"), words.t("settings-find-help-anilist.words")],
-        ["help", words.t("settings-help-downloads"), words.t("settings-find-help-downloads.words")],
-        ["help", words.t("settings-help-data"), words.t("settings-find-help-data.words")],
-        ["help", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
+        ["accounts", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
+        ["accounts", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
+        ["accounts", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
+        ["about", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
+        ["about", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
+        ["about", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
+        ["about", words.t("settings-data-files"), words.t("settings-find-files.words")],
+        ["about", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
+        ["about", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
         ["about", words.t("settings-about-version"), words.t("settings-find-version.words")],
         ["about", words.t("settings-about-setup"), words.t("settings-find-setup.words")],
         ["about", words.t("settings-about-updates"), words.t("settings-find-updates.words")],
@@ -235,33 +200,22 @@ FocusScope {
         return out
     }
 
-    // ---- Geometry: the page's centred column, the index at its left
-    readonly property real sideInset: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
+    // ---- Geometry: the index and the section side by side, the pair centred in the page (#1012)
+    // with the same margin on both sides, the search on top of the index. The section's column
+    // is the measure SettingsTab sets its rows to; the stage itself runs on to the window's right
+    // edge, so the wheel scrolls the section from the margin and its scroll bar sits at the edge.
     readonly property real topInset: theme.space(7)
     readonly property real indexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
     readonly property real columnGap: theme.space(14)
+    readonly property real sectionWidth: Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
+    readonly property real sideInset: Math.max(theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
 
-    // ---- The head: the title, the search at the right of the index's column
-    Item {
-        id: head
-        x: page.sideInset
-        y: page.topInset
-        width: page.width - page.sideInset * 2
-        height: theme.space(20)
-        Label {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            msg: "settings-title"
-            role: "display"
-            font.pointSize: theme.typePage
-        }
-    }
     // ---- The index
     Flickable {
         id: indexPane
         objectName: "settings-index"
         x: page.sideInset
-        y: head.y + head.height + theme.space(4)
+        y: page.topInset
         width: page.indexWidth
         height: page.height - y
         contentHeight: indexCol.height + theme.space(10)
@@ -280,79 +234,61 @@ FocusScope {
                 onTextChanged: page.query = text
                 onAccepted: if (page.results.length) page.openResult(page.results[0])
             }
-            Item { width: 1; height: theme.space(5) }
+            Item { width: 1; height: theme.space(4) }
             Repeater {
                 model: page.sections
-                Item {
+                Rectangle {
                     id: entry
                     required property var modelData
-                    required property int index
-                    readonly property bool active: page.query === "" && page.current === modelData.id
-                    readonly property bool runStart: index > 0 && page.sections[index - 1].run !== modelData.run
+                    // Library stays lit on its own sub-page, the shows hidden from Airing now
+                    readonly property bool active: page.query === "" && (page.current === modelData.id || (page.current === "hidden" && modelData.id === "library"))
                     objectName: "settings-tabs-" + modelData.id
                     width: indexCol.width
-                    height: theme.space(15) + (runStart ? theme.space(4) : 0)
+                    height: theme.space(11)
+                    radius: theme.radiusTile
+                    color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
+                    border.width: entry.active ? 1 : 0
+                    border.color: theme.accentEdge
+                    Icon {
+                        id: glyph
+                        x: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: entry.modelData.icon
+                        size: theme.space(5)
+                        color: entry.active ? theme.accent : theme.text
+                    }
+                    Label {
+                        anchors.left: glyph.right
+                        anchors.leftMargin: theme.space(3.5)
+                        anchors.right: dot.left
+                        anchors.rightMargin: theme.space(2)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: entry.modelData.name
+                        role: "title"
+                        font.pointSize: theme.typeNormal
+                        color: entry.active ? theme.accent : theme.text
+                        elide: Text.ElideRight
+                    }
+                    // The section wants attention
                     Rectangle {
-                        id: plate
-                        y: entry.runStart ? theme.space(4) : 0
-                        width: parent.width
-                        height: theme.space(15)
-                        radius: theme.radiusTile
-                        color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
-                        border.width: entry.active ? 1 : 0
-                        border.color: theme.accentEdge
-                        Icon {
-                            id: glyph
-                            x: theme.space(4)
-                            anchors.verticalCenter: parent.verticalCenter
-                            glyph: entry.modelData.icon
-                            size: theme.space(5)
-                            color: entry.active ? theme.accent : theme.text
-                        }
-                        Column {
-                            anchors.left: glyph.right
-                            anchors.leftMargin: theme.space(3.5)
-                            anchors.right: parent.right
-                            anchors.rightMargin: theme.space(3)
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: theme.space(0.5)
-                            Label {
-                                width: parent.width
-                                text: entry.modelData.name
-                                role: "title"
-                                font.pointSize: theme.typeNormal
-                                color: entry.active ? theme.accent : theme.text
-                                elide: Text.ElideRight
-                            }
-                            Row {
-                                width: parent.width
-                                spacing: theme.space(1.5)
-                                Rectangle {
-                                    visible: page.warns(entry.modelData.id)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: theme.space(1.5); height: width; radius: width / 2
-                                    color: theme.yellow
-                                }
-                                Label {
-                                    width: parent.width - (page.warns(entry.modelData.id) ? theme.space(3) : 0)
-                                    text: page.statusOf(entry.modelData.id)
-                                    role: "ui"
-                                    font.pointSize: theme.typeSmall
-                                    color: theme.textDim
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                        MouseArea {
-                            Accessible.role: Accessible.Button
-                            Accessible.onPressAction: page.open(entry.modelData.id)
-                            Accessible.name: theme.nameNear(parent)
-                            id: hover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: page.open(entry.modelData.id)
-                        }
+                        id: dot
+                        objectName: "settings-tabs-" + entry.modelData.id + "-dot"
+                        visible: page.warns(entry.modelData.id)
+                        anchors.right: parent.right
+                        anchors.rightMargin: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: theme.space(2); height: width; radius: width / 2
+                        color: theme.red
+                    }
+                    MouseArea {
+                        Accessible.role: Accessible.Button
+                        Accessible.onPressAction: page.open(entry.modelData.id)
+                        Accessible.name: theme.nameNear(parent)
+                        id: hover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: page.open(entry.modelData.id)
                     }
                 }
             }
@@ -363,7 +299,7 @@ FocusScope {
         id: stage
         x: indexPane.x + indexPane.width + page.columnGap
         y: indexPane.y
-        width: page.width - x - page.sideInset + theme.space(6)
+        width: page.width - x
         height: page.height - y
         Loader {
             id: content
@@ -372,8 +308,8 @@ FocusScope {
             // under the results
             opacity: page.query === "" ? 1 : 0
             enabled: page.query === ""
-            source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback", subtitles: "Subtitles",
-                                     keys: "Keys", downloads: "Downloads", phone: "Phone", storage: "Data", help: "Help", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
+            source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback",
+                                     downloads: "Downloads", keys: "Keys", about: "About", developer: "Developer", hidden: "HiddenAiring" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()
@@ -407,12 +343,6 @@ FocusScope {
                     text: page.results.length ? words.t("settings-results", { count: page.results.length }) : words.t("settings-results-none")
                     role: "display"
                     font.pointSize: theme.typeHeading
-                }
-                Label {
-                    width: parent.width
-                    text: page.results.length ? words.t("settings-results-hint") : words.t("settings-results-none-hint")
-                    color: theme.textDim
-                    role: "ui"
                     bottomPadding: theme.space(6)
                 }
                 Rectangle {

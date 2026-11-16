@@ -76,7 +76,7 @@ pub mod qobject {
         fn track_ref(self: &Player, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
-        /// The subtitle defaults AniBeam ships with, for Settings' Reset.
+        /// The subtitle defaults Anibeam ships with, for Settings' Reset.
         #[qinvokable]
         fn stock_subtitle_defaults(self: &Player) -> QJsonObject;
         /// The subtitle preview's fallback source when there is no view history: a black
@@ -192,6 +192,11 @@ fn layers(use_my_conf: bool) -> QStringList {
 impl Default for PlayerRust {
     fn default() -> Self {
         let s = player_config::load(&crate::runtime::paths().player_toml());
+        let args = crate::runtime::args();
+        let silent = player_config::is_silent_run(
+            args.drive.is_some() || args.shoot.is_some(),
+            std::env::var_os("ANIBEAM_SILENT").as_deref(),
+        );
         PlayerRust {
             volume: s.volume,
             mute: s.mute,
@@ -200,7 +205,12 @@ impl Default for PlayerRust {
             owned_options: pairs(
                 player_config::owned_options()
                     .into_iter()
-                    .map(|(k, v)| (k.to_string(), v)),
+                    .map(|(k, v)| (k.to_string(), v))
+                    .chain(
+                        player_config::silent_options(silent)
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string())),
+                    ),
             ),
             preview_options: pairs(
                 player_config::preview_options()

@@ -1,0 +1,282 @@
+//! Keeping secrets out of what the core stores (#509). [`SECRET_PARAMS`] names the query
+//! parameters that hold one, [`secret_param`] looks a name up in it, [`split_params`] cuts an
+//! address at the separators in [`PARAM_SEPARATORS`], and [`scrub_secrets`] empties their
+//! values and drops the login from every address in a text.
+//!
+//! It names nothing else in the crate, so the event bus can scrub what it stores without
+//! reaching into the network layer (#856).
+
+/// Query parameters that hold a secret, with the label a person reads for each. A source
+/// added by hand has these lifted out of its address, a listed address has them masked, and
+/// the tailnet snapshot leaves them out. Names match case-insensitively.
+pub const SECRET_PARAMS: [(&str, &str); 15] = [
+    ("apikey", "API key"),
+    ("api_key", "API key"),
+    ("jackett_apikey", "API key"),
+    ("token", "Token"),
+    ("passkey", "Passkey"),
+    ("torrent_pass", "Passkey"),
+    ("rsskey", "RSS key"),
+    ("authkey", "Auth key"),
+    ("auth", "Auth key"),
+    ("key", "Key"),
+    ("secret", "Secret"),
+    ("sig", "Signature"),
+    ("pass", "Password"),
+    ("password", "Password"),
+    ("uid", "User id"),
+];
+
+/// The label of a query parameter that holds a secret; None for any other.
+pub fn secret_param(name: &str) -> Option<&'static str> {
+    SECRET_PARAMS
+        .iter()
+        .find(|(p, _)| p.eq_ignore_ascii_case(name))
+        .map(|(_, label)| *label)
+}
+
+/// What can stand in front of a query parameter: the `?` that opens the query, `&` and `;`
+/// between pairs, `&amp;` (an `&` in quoted XML), and the `#` of a fragment, which a feed
+/// or a callback can carry keys in too (#865). `&amp;` comes before `&` so it is read whole.
+pub const PARAM_SEPARATORS: [&str; 5] = ["&amp;", "?", "&", ";", "#"];
+
+/// The separator `text` starts with, if any.
+fn separator_at(text: &str) -> Option<&'static str> {
+    PARAM_SEPARATORS
+        .iter()
+        .find(|sep| text.starts_with(**sep))
+        .copied()
+}
+
+/// `url` cut at its parameters: the address up to its first `?` or `#`, then each
+/// parameter after it with the separator in front of it. Joining the pieces back in order
+/// gives `url`, so a caller can keep, mask or drop each pair and rebuild the rest.
+///
+/// A secret parameter's value runs to the next `&` or `#`, the way [`scrub_secrets`] reads
+/// it, so a `;` or `?` inside a password stays part of the one pair rather than starting a
+/// harmless-looking one that would carry the rest of it.
+pub fn split_params(url: &str) -> (&str, Vec<(&'static str, &str)>) {
+    let Some(start) = url.find(['?', '#']) else {
+        return (url, Vec::new());
+    };
+    let (base, mut rest) = url.split_at(start);
+    let mut params: Vec<(&'static str, &str)> = Vec::new();
+    // Where the pair being read starts in `url`, while it is a secret one.
+    let mut secret_from: Option<usize> = None;
+    while let Some(sep) = separator_at(rest) {
+        let at = url.len() - rest.len();
+        let after = &rest[sep.len()..];
+        let end = after
+            .char_indices()
+            .find(|(i, _)| separator_at(&after[*i..]).is_some())
+            .map_or(after.len(), |(i, _)| i);
+        let pair = &after[..end];
+        rest = &after[end..];
+        let ends_value = sep.starts_with('&') || sep == "#";
+        match secret_from {
+            Some(from) if !ends_value => {
+                // Still the secret's value: widen the last pair to take this piece too.
+                let (last_sep, _) = params.pop().expect("a secret pair was read");
+                let to = url.len() - rest.len();
+                params.push((last_sep, &url[from..to]));
+            }
+            _ => {
+                let name = pair.split('=').next().unwrap_or("");
+                secret_from =
+                    (pair.contains('=') && secret_param(name).is_some()).then_some(at + sep.len());
+                params.push((sep, pair));
+            }
+        }
+    }
+    (base, params)
+}
+
+/// The one-character separators in [`PARAM_SEPARATORS`] as a regex class; `&amp;` is
+/// covered by its closing `;`.
+fn separator_class() -> String {
+    let chars: String = PARAM_SEPARATORS
+        .iter()
+        .filter(|sep| sep.len() == 1)
+        .map(|sep| regex::escape(sep))
+        .collect();
+    format!("[{chars}]")
+}
+
+/// The secret query parameters [`scrub_secrets`] empties, as one alternation.
+fn secret_names() -> String {
+    SECRET_PARAMS
+        .iter()
+        .map(|(name, _)| regex::escape(name))
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+/// `user:password@` right after `scheme://`, up to the last `@` before the path, the way
+/// the HTTP client and `repos::index::split_login` read it: `u:p@ss@host` is a login of
+/// `u:p@ss`. A backslash ends the authority, as it does for them.
+static LOGIN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?i)([a-z][a-z0-9+.\-]*://)[^/?#\\\s"'<>]*@"#).unwrap()
+});
+
+/// A secret parameter's value, written plain: `?apikey=abc`, `&passkey=abc`, after an
+/// `&amp;` in quoted XML, or in a fragment (`#token=abc`). The value runs to the next `&`
+/// or `#`, the same end [`split_params`] gives a secret pair.
+static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(&format!(
+        r#"(?i)({}(?:{})=)[^&#\s"'<>]*"#,
+        separator_class(),
+        secret_names()
+    ))
+    .unwrap()
+});
+
+/// The same inside another address, percent-encoded: a magnet's tracker,
+/// `&tr=https%3A%2F%2Ft.example%2Fannounce%3Fpasskey%3Dabc`. The value runs to
+/// the next encoded `&`.
+static SECRET_ENCODED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(&format!(
+        r#"(?i)((?:%3F|%26|%23)(?:{})%3D)(?:[^%&#\s"'<>]|%(?:[013-9a-f][0-9a-f]|2[0-57-9a-f]))*"#,
+        secret_names()
+    ))
+    .unwrap()
+});
+
+/// Text as the stored events keep it (#509): every address in it loses its login
+/// (`user:password@`) and the value of every secret query parameter (the names in
+/// [`SECRET_PARAMS`], `apikey=` and `passkey=` among them), written plain or
+/// percent-encoded inside another address.
+/// The rest of the address stays, so a line still says which feed or tracker it was.
+/// A key the address keeps in its path rather than its query is not told from any
+/// other path, and stays.
+pub fn scrub_secrets(text: &str) -> String {
+    let text = LOGIN.replace_all(text, "$1");
+    let text = SECRET.replace_all(&text, "$1...");
+    let text = SECRET_ENCODED.replace_all(&text, "$1...");
+    scrub_encoded_logins(&text)
+}
+
+/// [`scrub_secrets`]'s login rule for an address percent-encoded inside another:
+/// `https%3A%2F%2Fuser%3Apass%40t.example` keeps `https%3A%2F%2Ft.example`, and so
+/// does a login that ends in a raw `@`.
+fn scrub_encoded_logins(text: &str) -> String {
+    const START: &str = "%3a%2f%2f";
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains(START) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut from = 0;
+    while let Some(found) = lower[from..].find(START) {
+        let start = from + found + START.len();
+        out.push_str(&text[from..start]);
+        let rest = &lower[start..];
+        // The encoded authority ends at a slash, a query or a fragment, encoded or not.
+        let end = rest
+            .find(|c: char| matches!(c, '/' | '?' | '#' | '&' | '"' | '\'') || c.is_whitespace())
+            .unwrap_or(rest.len());
+        let end = ["%2f", "%3f", "%23"]
+            .iter()
+            .filter_map(|stop| rest[..end].find(stop))
+            .min()
+            .unwrap_or(end);
+        // The login ends at the last @, encoded or not.
+        let at = [("%40", 3), ("@", 1)]
+            .iter()
+            .filter_map(|(sign, len)| rest[..end].rfind(sign).map(|at| at + len))
+            .max();
+        from = start + at.unwrap_or(0);
+    }
+    out.push_str(&text[from..]);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{scrub_secrets, split_params};
+
+    #[test]
+    fn an_address_splits_at_every_parameter_separator_and_joins_back_whole() {
+        let url = "https://h/a;b?q=x&amp;apikey=K&sig=S;p=1#token=T";
+        let (base, params) = split_params(url);
+        assert_eq!(base, "https://h/a;b");
+        assert_eq!(
+            params,
+            vec![
+                ("?", "q=x"),
+                ("&amp;", "apikey=K"),
+                ("&", "sig=S;p=1"),
+                ("#", "token=T"),
+            ]
+        );
+        // Any other pair ends at a ; or ?.
+        assert_eq!(
+            split_params("https://h/f?q=x;c=1?d=2"),
+            (
+                "https://h/f",
+                vec![("?", "q=x"), (";", "c=1"), ("?", "d=2")]
+            )
+        );
+        let joined: String = std::iter::once(base.to_string())
+            .chain(params.iter().map(|(sep, pair)| format!("{sep}{pair}")))
+            .collect();
+        assert_eq!(joined, url);
+        assert_eq!(split_params("https://h/rss"), ("https://h/rss", vec![]));
+        assert_eq!(
+            split_params("https://h/cb#token=T"),
+            ("https://h/cb", vec![("#", "token=T")])
+        );
+    }
+
+    #[test]
+    fn an_address_keeps_everything_but_its_login_and_keys() {
+        assert_eq!(
+            scrub_secrets("see https://u:p@h.example:8080/a?apikey=k&q=x#f"),
+            "see https://h.example:8080/a?apikey=...&q=x#f"
+        );
+        assert_eq!(
+            scrub_secrets("http://t.example/announce?PassKey=abc"),
+            "http://t.example/announce?PassKey=..."
+        );
+        assert_eq!(
+            scrub_secrets("no address, a@b.example"),
+            "no address, a@b.example"
+        );
+        // A password with an @ in it: the login runs to the last one, as the client reads it.
+        assert_eq!(
+            scrub_secrets("https://alice:p@ss@feed.example/rss"),
+            "https://feed.example/rss"
+        );
+        // A key after an XML-escaped separator, or in a fragment.
+        assert_eq!(
+            scrub_secrets("<link>https://h/?q=x&amp;apikey=SEKRIT</link>"),
+            "<link>https://h/?q=x&amp;apikey=...</link>"
+        );
+        assert_eq!(
+            scrub_secrets("https://h/cb#token=SEKRIT"),
+            "https://h/cb#token=..."
+        );
+        // A key-like word that is not a parameter stays.
+        assert_eq!(scrub_secrets("https://h/monkey=1"), "https://h/monkey=1");
+        assert_eq!(scrub_secrets("https://h/?monkey=1"), "https://h/?monkey=1");
+    }
+
+    #[test]
+    fn an_encoded_address_inside_another_loses_its_login_and_keys() {
+        assert_eq!(
+            scrub_secrets(
+                "magnet:?xt=1&tr=udp%3A%2F%2Fme%3Asecret%40t.example%3A80%2Fa%3Fpasskey%3Dzz%26b%3D2&dn=x"
+            ),
+            "magnet:?xt=1&tr=udp%3A%2F%2Ft.example%3A80%2Fa%3Fpasskey%3D...%26b%3D2&dn=x"
+        );
+        // An encoded address whose login ends in a raw @.
+        assert_eq!(
+            scrub_secrets("tr=https%3A%2F%2Fuser%3Apw@t.example%2Fannounce"),
+            "tr=https%3A%2F%2Ft.example%2Fannounce"
+        );
+        // An encoded @ after the host is no login.
+        assert_eq!(
+            scrub_secrets("x=https%3A%2F%2Fh.example%2Fa%40b"),
+            "x=https%3A%2F%2Fh.example%2Fa%40b"
+        );
+    }
+}

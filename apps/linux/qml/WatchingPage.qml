@@ -18,7 +18,7 @@
 // refresh (ListPlanning reads the cache). On disk first, then the rest. Start watching, in the
 // card's menu, moves a show to Watching on every connected tracker and plays the first episode.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -289,6 +289,9 @@ Item {
                 onClicked: if (!page.refreshing) page.refresh(true)
             }
         }
+
+        // Library's tabs (#1012): this page is one of them
+        LibraryTabs { here: "watching" }
 
         // ---- The sections: a heading in the display cut with its count and one fact,
         // over a grid of uniform cards
