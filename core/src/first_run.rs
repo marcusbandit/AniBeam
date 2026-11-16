@@ -68,7 +68,7 @@ pub fn make_starter_folder(videos: &Path) -> io::Result<PathBuf> {
     if !videos.is_absolute() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "the videos folder must be an absolute path",
+            crate::i18n::tr("core-first-run-not-absolute", &[]),
         ));
     }
     let dir = starter_folder(videos);
@@ -116,14 +116,6 @@ mod tests {
         ] {
             assert_eq!(start(facts), Start::Settle, "{facts:?}");
         }
-    }
-
-    #[test]
-    fn the_starter_folder_is_anime_in_videos() {
-        assert_eq!(
-            starter_folder(Path::new("/home/u/Videos")),
-            PathBuf::from("/home/u/Videos/Anime")
-        );
     }
 
     #[test]

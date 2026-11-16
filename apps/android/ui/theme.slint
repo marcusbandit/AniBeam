@@ -11,37 +11,46 @@ import "fonts/Archivo-UI-Strong.ttf";
 import "fonts/B612-Regular.ttf";
 
 export global Theme {
-    // Ground and glass. A pane is white at a low alpha over the ground, so panes nest.
-    out property <color> ground: #0e1013;
-    out property <color> surface: #ffffff09;
-    out property <color> raised: #ffffff10;
-    out property <color> pressed: #ffffff1c;
-    out property <color> sunken: #00000047;
-    out property <color> field: #00000047;
-    out property <color> line: #ffffff10;
-    out property <color> line-strong: #ffffff26;
+    // The look is More's Appearance (#754): the theme, the accent and the text size set the
+    // `in` properties below from Rust, and everything else follows. The defaults are the
+    // Graphite Glass dark theme, so a phone that has chosen nothing looks as it always did.
+    in property <color> ground: #0e1013;
+    // The glass tint: white over a dark ground, the text colour over a light one.
+    in property <color> ink: #ffffff;
+    in property <bool> dark: true;
     // Menus and sheets that float over the page: the ground lifted, opaque.
-    out property <color> float: #1a1c20;
+    in property <color> float: #1a1c20;
 
     // Ink.
-    out property <color> text: #eef2f5;
-    out property <color> dim: #9aa3ad;
-    out property <color> faint: #646c75;
+    in property <color> text: #eef2f5;
+    in property <color> dim: #9aa3ad;
+    in property <color> faint: #646c75;
     // The accent is near white, as on the desktop: the primary pill is white with ground ink.
-    out property <color> accent: #f2f4f6;
-    out property <color> on-accent: #0e1013;
-    out property <color> accent-soft: #f2f4f62b;
-    out property <color> accent-edge: #f2f4f680;
+    in property <color> accent: #f2f4f6;
+    in property <color> on-accent: #0e1013;
 
     // The few hues, each with one job.
-    out property <color> ok: #8cc58a;
-    out property <color> warn: #e0b25a;
-    out property <color> bad: #ff7a4d;
-    out property <color> bad-soft: #ff7a4d24;
-    out property <color> bad-edge: #ff7a4d55;
-    out property <color> cyan: #6cc4c0;
-    out property <color> purple: #b49be0;
-    out property <color> yellow: #e0b25a;
+    in property <color> ok: #8cc58a;
+    in property <color> warn: #e0b25a;
+    in property <color> bad: #ff7a4d;
+    in property <color> cyan: #6cc4c0;
+    in property <color> purple: #b49be0;
+    in property <color> yellow: #e0b25a;
+
+    // A pane is the ink at a low alpha over the ground, so panes nest.
+    out property <color> surface: self.ink.with-alpha(self.dark ? 0.035 : 0.045);
+    out property <color> raised: self.ink.with-alpha(self.dark ? 0.063 : 0.075);
+    out property <color> pressed: self.ink.with-alpha(self.dark ? 0.11 : 0.13);
+    out property <color> sunken: self.dark ? #00000047 : self.ink.with-alpha(0.07);
+    out property <color> field: self.dark ? #00000047 : self.ink.with-alpha(0.07);
+    out property <color> line: self.ink.with-alpha(self.dark ? 0.063 : 0.1);
+    out property <color> line-strong: self.ink.with-alpha(self.dark ? 0.15 : 0.2);
+    out property <color> accent-soft: self.accent.with-alpha(self.dark ? 0.17 : 0.14);
+    out property <color> accent-edge: self.accent.with-alpha(0.5);
+    // A primary pill while a finger is on it.
+    out property <color> accent-pressed: self.accent.darker(0.2);
+    out property <color> bad-soft: self.bad.with-alpha(0.14);
+    out property <color> bad-edge: self.bad.with-alpha(0.33);
 
     // Faces, one per role, cut from Archivo's axes by scripts/cut-fonts.py.
     // display: page and section titles, tall and light. title: names of shows. ui: body and
@@ -56,13 +65,15 @@ export global Theme {
 
     // The type ramp. The display sizes are the desktop's page (4x) and heading (2.2x) at a
     // phone's body size.
-    out property <length> page: 46px;
-    out property <length> display: 46px;
-    out property <length> section: 31px;
-    out property <length> large: 22px;
-    out property <length> heading: 17px;
-    out property <length> normal: 15px;
-    out property <length> small: 12.5px;
+    // Text size multiplies every step: 0.875 to 1.5, as the desktop's.
+    in property <float> text-scale: 1;
+    out property <length> page: 46px * self.text-scale;
+    out property <length> display: 46px * self.text-scale;
+    out property <length> section: 31px * self.text-scale;
+    out property <length> large: 22px * self.text-scale;
+    out property <length> heading: 17px * self.text-scale;
+    out property <length> normal: 15px * self.text-scale;
+    out property <length> small: 12.5px * self.text-scale;
 
     // Space comes in steps of one unit; the grout is also the page margin.
     out property <length> unit: 4px;
@@ -87,7 +98,7 @@ export global Theme {
     out property <color> chip-edge: #ffffff24;
     out property <color> on-poster: #eef2f5;
     out property <color> on-poster-dim: #aab2bb;
-    out property <color> track: #ffffff29;
+    out property <color> track: self.ink.with-alpha(0.16);
 
     // Posters are 2:3, like the desktop's.
     out property <float> poster-ratio: 1.5;
@@ -96,12 +107,12 @@ export global Theme {
 
     // The episode cube colours, by the core's codes (library::cards::cubes): watched and
     // tracked, watched here, on disk, missing, not downloaded, not aired, downloading.
-    out property <color> cube-watched: #8cc58a;
-    out property <color> cube-here: #6cc4c0;
-    out property <color> cube-disk: #ffffff;
-    out property <color> cube-missing: #e0b25a;
-    out property <color> cube-none: #ffffff29;
-    out property <color> cube-downloading: #b49be0;
+    out property <color> cube-watched: self.ok;
+    out property <color> cube-here: self.cyan;
+    out property <color> cube-disk: self.dark ? #ffffff : self.text;
+    out property <color> cube-missing: self.warn;
+    out property <color> cube-none: self.ink.with-alpha(0.16);
+    out property <color> cube-downloading: self.purple;
 
     // The cube colour for a code: 0 w, 1 l, 2 d, 3 m, 4 g, 5 f, 6 t.
     public pure function cube(code: int) -> color {

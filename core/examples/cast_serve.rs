@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anibeam_core::cast::media::{Prepared, Receiver, Subs};
+use anibeam_core::cast::media::{Prepared, Subs};
 use anibeam_core::cast::server::{Registry, Served, serve};
 
 #[tokio::main]
@@ -11,7 +11,7 @@ async fn main() {
     let path = std::path::PathBuf::from(std::env::args().nth(1).unwrap());
     let probe = anibeam_core::cast::mkv::probe(&anibeam_core::cast::mkv::open(&path).unwrap());
     let subs = probe.subs.first().map(|s| Subs::Track(s.number));
-    let p = Arc::new(Prepared::new(&path, None, subs, Receiver::Cast).unwrap());
+    let p = Arc::new(Prepared::new(&path, None, subs).unwrap());
     let reg = Arc::new(Registry::default());
     reg.add(
         "t".into(),

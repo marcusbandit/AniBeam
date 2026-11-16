@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anibeam_core::i18n::{Arg, tr};
 use futures_util::StreamExt;
 use zbus::Connection;
 use zbus::zvariant::Value;
@@ -25,14 +26,29 @@ pub struct Target {
     pub title: String,
 }
 
-/// The two lines a notification says: the news, and what a click does.
+/// The two lines a notification says: the news, and what a click does, in the language
+/// the app speaks when it is shown (#792).
 pub fn words(episode: u32, target: &Target) -> (String, String) {
-    let summary = format!("Episode {episode} of {} is out", target.title);
+    let summary = tr(
+        "notify-episode-out",
+        &[
+            ("episode", Arg::from(episode.to_string())),
+            ("title", Arg::from(target.title.as_str())),
+        ],
+    );
     let body = match target.series {
-        Some(_) => "Click to open it in AniBeam".to_string(),
-        None => "Click to get the episodes in AniBeam".to_string(),
+        Some(_) => tr("notify-click-open", &[]),
+        None => tr("notify-click-get", &[]),
     };
     (summary, body)
+}
+
+/// The label of the notification's one action, for a daemon that shows actions as buttons.
+fn action_label(target: &Target) -> String {
+    match target.series {
+        Some(_) => tr("action-open", &[]),
+        None => tr("notify-get-episodes", &[]),
+    }
 }
 
 /// Called with what to open and the xdg-activation token the daemon handed over for the
@@ -142,16 +158,10 @@ impl Notifier {
         let (summary, body) = words(episode, &target);
         let mut hints: HashMap<&str, Value> = HashMap::new();
         hints.insert("desktop-entry", Value::from(crate::APP_ID));
-        let actions = vec![
-            "default",
-            if target.series.is_some() {
-                "Open"
-            } else {
-                "Get episodes"
-            },
-        ];
+        let label = action_label(&target);
+        let actions = vec!["default", label.as_str()];
         let payload = (
-            "AniBeam",
+            "Anibeam",
             0u32,
             crate::APP_ID,
             summary.as_str(),
@@ -286,13 +296,13 @@ mod tests {
             n.show(target(None), 8, on_click).await;
             let seen = got.lock().unwrap().clone();
             assert_eq!(seen.len(), 2);
-            assert_eq!(seen[0].0, "AniBeam");
+            assert_eq!(seen[0].0, "Anibeam");
             assert_eq!(seen[0].1, crate::APP_ID);
             assert_eq!(seen[0].2, "Episode 7 of Frieren is out");
             assert_eq!(seen[0].3, vec!["default".to_string(), "Open".to_string()]);
             assert_eq!(
                 seen[0].4,
-                format!("Click to open it in AniBeam|{}", crate::APP_ID)
+                format!("Click to open it in Anibeam|{}", crate::APP_ID)
             );
             assert_eq!(
                 seen[1].3,
@@ -340,10 +350,10 @@ mod tests {
 
     #[test]
     fn the_second_line_says_what_a_click_does() {
-        assert_eq!(words(7, &target(Some(3))).1, "Click to open it in AniBeam");
+        assert_eq!(words(7, &target(Some(3))).1, "Click to open it in Anibeam");
         assert_eq!(
             words(7, &target(None)).1,
-            "Click to get the episodes in AniBeam"
+            "Click to get the episodes in Anibeam"
         );
     }
 }

@@ -1,7 +1,7 @@
 # Page loads: where the time and the memory go, and the plan to make them cheap
 
 Measured on 2026-10-31 for #287 against a copy of the owner's real library (61 series, 1,550
-cached images, 27 MB database), release build, offscreen at 2560x1440, banditbox (12 cores,
+cached images, 27 MB database), release build, offscreen at 2560x1440, the desktop (12 cores,
 RTX 3090, 32 GB). Every number below comes from the Developer tab this PR adds; `Time every
 page` reproduces them in the app. Another build ran on the box during some runs, so treat
 single numbers as plus or minus 20%; the ratios held across every run.
@@ -62,7 +62,8 @@ in three other places:
 - **Two full-size decodes per visit.** The banner on Home and on a series page has no
   `sourceSize` (`HomePage.qml:620`, `SeriesPage.qml:469`), and `PosterTone` decodes the whole
   poster into a canvas to average its colour (`PosterTone.qml`), though a C++ 8x12 path for
-  exactly this already exists and is unused (`Fmt.posterTone`).
+  exactly this existed unused as `Fmt.posterTone` (removed with other dead code in #763;
+  its last version is in git history).
 
 ### What the wait after a click is made of
 
@@ -209,9 +210,10 @@ The single biggest lever. Library, Feed, Airing, Watching, Metadata and Download
   the view asks for more as it scrolls. First paint of Library: 30 cards x 120 B, about
   4 KB.
 - **Patches, not rereads.** `SeriesChanged` carries ids and the fields that moved; the page
-  model applies them in place (`RecordModel.patch` already exists and no page uses it). No
+  model applies them in place (`RecordModel.patch` once did this unused; it went in #763 and comes back from git
+  history if this plan needs it). No
   page rereads the library on an event.
-- **Rows straight into a model.** Pages sit on `RecordModel` (or a C++ model per surface)
+- **Rows straight into a model.** Pages sit on one list model (the removed `RecordModel`, or a C++ model per surface)
   whose roles are read lazily by the delegates on screen, so no reply is ever converted to
   JavaScript as a whole. The `serde_json::Value` then `QJsonObject` double walk goes too.
 - **Specific calls for specific needs.** Settings asks `LastScan` (100 bytes) instead of 2,000

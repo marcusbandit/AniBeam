@@ -8,6 +8,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -35,7 +36,8 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     }
 }
 
@@ -69,21 +71,14 @@ fn save(core: &Core, settings: DownloadSettings, token: Option<&str>, password: 
     assert_eq!(reply, Reply::Ok);
 }
 
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
 /// One release as anirss's feed reads give it. A `null` count is a feed
 /// that did not carry it.
 fn release_json(n: u32, seeders: Value) -> Value {
     json!({
-        "title": format!("[SubsPlease] Sousou no Frieren - {n:02} (1080p)"),
+        "title": format!("[Lumen] Sousou no Frieren - {n:02} (1080p)"),
         "link": format!("magnet:?xt=urn:btih:{n:040}"),
         "seeders": seeders,
-        "source": "nyaa",
+        "source": "tracker",
         "resolution": "1080p"
     })
 }
@@ -241,7 +236,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     http.push_for(
         "/endpoints",
         200,
-        json!({"endpoints": [{"name": "nyaa", "kind": "nyaa", "url": "https://nyaa.si/", "client_side_refine": false}]}).to_string(),
+        json!({"endpoints": [{"name": "tracker", "kind": anibeam_core::releases::kinds::RENAMED[0].0, "url": "https://tracker.example/", "client_side_refine": false}]}).to_string(),
     );
     http.push_for(
         "/qbt/status",
@@ -257,7 +252,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     assert_eq!(status.anirss.state, AnirssState::Ready);
     assert_eq!(status.anirss.version, "0.5.0");
     assert_eq!(status.endpoints.len(), 1);
-    assert_eq!(status.endpoints[0].name, "nyaa");
+    assert_eq!(status.endpoints[0].name, "tracker");
     assert!(status.torrent.connected);
     assert_eq!(status.torrent.version, "v5.2.4");
     assert_eq!(done.level, Level::Info);
@@ -298,9 +293,9 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         200,
         json!({
             "query": "Frieren 1080p",
-            "endpoint": "nyaa",
+            "endpoint": "tracker",
             "fell_back": false,
-            "tried": [{"endpoint": "nyaa", "status": "ok", "count": 2, "error": null}],
+            "tried": [{"endpoint": "tracker", "status": "ok", "count": 2, "error": null}],
             "items": items.clone()
         })
         .to_string(),
@@ -313,8 +308,8 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
             "client_side": false,
             "auto_resolution": {"applied": false},
             "items": items.clone(),
-            "groups": [{"label": "SubsPlease", "tokens": ["[SubsPlease]"], "member_count": 1, "has_poster": false, "members": [0]}],
-            "best_fit": {"available": true, "query": "Frieren 1080p [SubsPlease]", "item": release_json(1, json!(42)), "profile": ["[SubsPlease]"]}
+            "groups": [{"label": "Lumen", "tokens": ["[Lumen]"], "member_count": 1, "has_poster": false, "members": [0]}],
+            "best_fit": {"available": true, "query": "Frieren 1080p [Lumen]", "item": release_json(1, json!(42)), "profile": ["[Lumen]"]}
         })
         .to_string(),
     );
@@ -329,7 +324,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     let EventBody::ReleasesFound { search } = &done.body else {
         panic!("{:?}", done.body)
     };
-    assert_eq!(search.endpoint, "nyaa");
+    assert_eq!(search.endpoint, "tracker");
     assert_eq!(search.items.len(), 2);
     assert_eq!(search.items[0].seeders, Some(42));
     assert_eq!(search.items[1].seeders, None);
@@ -337,7 +332,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     assert!(search.best_fit.available);
 
     // An anirss from before the server mode: `--serve` is a usage error,
-    // and the status names the version and the one AniBeam needs.
+    // and the status names the version and the one Anibeam needs.
     let old_path = bin.path().join("anirss-old");
     std::fs::write(
         &old_path,
@@ -358,7 +353,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.6.0"),
+            .starts_with("anirss 0.3.4 is too old for Anibeam, which needs 0.6.0"),
         "{}",
         status.anirss.message
     );
@@ -369,7 +364,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status.anirss.message
     );
 
-    // One that serves but does not list the feature AniBeam relies on is
+    // One that serves but does not list the feature Anibeam relies on is
     // stopped and reported, not used: it would carry one client's login to
     // another. An anirss from before 0.5.0 lists no features at all.
     save(&core, settings("anirss"), None, None);
@@ -628,7 +623,7 @@ fn anibeams_own_never_starts_at_a_local_clients_port() {
     s.torrent_url = "http://localhost:8080".to_string();
     save(&core, s, None, None);
 
-    // Picking AniBeam's own in Settings while the address is still the
+    // Picking Anibeam's own in Settings while the address is still the
     // user's own qBittorrent on this machine moves it off that port.
     let mut s = downloads_status(&core).settings;
     s.torrent_mode = TorrentMode::Managed;
@@ -663,7 +658,7 @@ fn anibeams_own_never_starts_at_a_remote_clients_address() {
     s.torrent_url = "http://192.0.2.10:8080".to_string();
     save(&core, s, None, Some("seedbox-pw"));
 
-    // Switching to AniBeam's own from a client elsewhere gives it an address
+    // Switching to Anibeam's own from a client elsewhere gives it an address
     // on this machine, and its user; the saved client stays on the list.
     assert_eq!(use_client(&core, None).unwrap(), Reply::Ok);
     let st = downloads_status(&core).settings;
@@ -684,7 +679,7 @@ fn anibeams_own_never_starts_at_a_remote_clients_address() {
     assert_eq!(st.torrent_url, "http://192.0.2.10:8080");
     assert!(st.has_torrent_password);
 
-    // A settings save that picks AniBeam's own with the remote address still
+    // A settings save that picks Anibeam's own with the remote address still
     // in the field gets the same treatment; a loopback one is kept.
     let mut s = st.clone();
     s.torrent_mode = TorrentMode::Managed;
@@ -714,7 +709,7 @@ fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
         200,
         json!([{
             "hash": "a1b2c3",
-            "name": "[SubsPlease] Sousou no Frieren - 01",
+            "name": "[Lumen] Sousou no Frieren - 01",
             "state": "downloading",
             "progress": 0.25,
             "size": 1500000000u64,
@@ -783,7 +778,7 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
             "reason": "noop",
             "mode": "client",
             "query": "Frieren 1080p",
-            "endpoint": "nyaa",
+            "endpoint": "tracker",
             "items": [release_json(1, json!(42))],
             "previous_count": 1,
             "delta": 0,
@@ -796,10 +791,10 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
         &core,
         Call::RefineReleases {
             query: "Frieren 1080p".to_string(),
-            endpoint: "nyaa".to_string(),
+            endpoint: "tracker".to_string(),
             items: vec![release(1, json!(42))],
             op: RefineOp::Tokens {
-                tokens: vec!["[SubsPlease]".to_string()],
+                tokens: vec!["[Lumen]".to_string()],
             },
         },
     );
@@ -838,7 +833,7 @@ fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
             "reason": null,
             "mode": "refetch",
             "query": "Frieren 1080p",
-            "endpoint": "nyaa",
+            "endpoint": "tracker",
             "items": [release_json(1, json!(42))],
             "previous_count": 2,
             "delta": -1,
@@ -850,13 +845,13 @@ fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
     http.push_for(
         "subscriptions/preview",
         200,
-        json!({"feed_url": feed, "must_contain": "", "must_not_contain": "", "endpoint_name": "nyaa"})
+        json!({"feed_url": feed, "must_contain": "", "must_not_contain": "", "endpoint_name": "tracker"})
             .to_string(),
     );
     http.push_for(
         "enrich-pace.example",
         200,
-        "<rss><channel><item><title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title>\
+        "<rss><channel><item><title>[Lumen] Sousou no Frieren - 01 (1080p)</title>\
          <link>https://enrich-pace.example/download/1.torrent</link></item></channel></rss>",
     );
     let asked = Instant::now();
@@ -864,10 +859,10 @@ fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
         &core,
         Call::RefineReleases {
             query: "Frieren 1080p".to_string(),
-            endpoint: "nyaa".to_string(),
+            endpoint: "tracker".to_string(),
             items: vec![release(1, json!(42)), release(2, json!(7))],
             op: RefineOp::Tokens {
-                tokens: vec!["[SubsPlease]".to_string()],
+                tokens: vec!["[Lumen]".to_string()],
             },
         },
     );
@@ -903,9 +898,7 @@ fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
     std::fs::create_dir_all(&show).unwrap();
     for n in 1..=3 {
         std::fs::write(
-            show.join(format!(
-                "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
-            )),
+            show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv")),
             b"x",
         )
         .unwrap();
@@ -972,16 +965,16 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
-    let url = "https://nyaa.si/?page=rss&q=Frieren";
+    let url = "https://tracker.example/?page=rss&q=Frieren";
     http.push_for(
-        "nyaa.si",
+        "tracker.example",
         200,
-        r#"<rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><item>
-             <title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title>
-             <link>https://nyaa.si/download/1.torrent</link>
-             <guid>https://nyaa.si/view/1</guid>
-             <nyaa:seeders>9</nyaa:seeders>
-             <nyaa:infoHash>ABCDEF0123456789ABCDEF0123456789ABCDEF01</nyaa:infoHash>
+        r#"<rss xmlns:tracker="https://tracker.example/xmlns/tracker"><channel><item>
+             <title>[Lumen] Sousou no Frieren - 01 (1080p)</title>
+             <link>https://tracker.example/download/1.torrent</link>
+             <guid>https://tracker.example/view/1</guid>
+             <tracker:seeders>9</tracker:seeders>
+             <tracker:infoHash>ABCDEF0123456789ABCDEF0123456789ABCDEF01</tracker:infoHash>
            </item></channel></rss>"#,
     );
     assert_eq!(
@@ -1007,9 +1000,9 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
         entries[0].info_hash,
         "abcdef0123456789abcdef0123456789abcdef01"
     );
-    assert_eq!(entries[0].page, "https://nyaa.si/view/1");
+    assert_eq!(entries[0].page, "https://tracker.example/view/1");
 
-    http.push_for("nyaa.si", 502, "bad gateway");
+    http.push_for("tracker.example", 502, "bad gateway");
     core.call(Call::ReadFeed {
         url: url.to_string(),
         tag: String::new(),
@@ -1519,7 +1512,7 @@ fn a_subscription_for_a_library_show_is_written_into_its_folder_once() {
     );
 }
 
-/// A subscription narrowed on anirss's side (1337x through Jackett): the
+/// A subscription narrowed on anirss's side (a site behind a search proxy): the
 /// rule anirss made reads a feed that searches for every word and finds
 /// nothing, so the core points it at the feed the search read and keeps
 /// the narrowing words in the rule; the rule first, then the empty feed
@@ -1530,7 +1523,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
-    // Connect so the core knows 1337x is a generic RSS endpoint
+    // Connect so the core knows the search-proxy endpoint is a generic RSS endpoint
     http.push_for(
         "/health",
         200,
@@ -1539,7 +1532,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     http.push_for(
         "/endpoints",
         200,
-        json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
+        json!({"endpoints": [{"name": "proxied", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
     );
     http.push_for(
         "/qbt/status",
@@ -1563,7 +1556,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     http.push_for(
         "subscriptions/preview",
         200,
-        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "1337x"}).to_string(),
+        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "proxied"}).to_string(),
     );
     http.push_for(
         "rss/rules",
@@ -1584,7 +1577,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
         &core,
         Call::Subscribe {
             query: "Helluva Boss S03 1080p WEB-DL".to_string(),
-            endpoint: "1337x".to_string(),
+            endpoint: "proxied".to_string(),
             items: vec![release(1, json!(5))],
             name: Some("Helluva Boss".to_string()),
             wire_query: Some("Helluva Boss S03".to_string()),
@@ -1641,7 +1634,7 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
     http.push_for(
         "/endpoints",
         200,
-        json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
+        json!({"endpoints": [{"name": "proxied", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
     );
     http.push_for(
         "/qbt/status",
@@ -1671,7 +1664,7 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
     http.push_for(
         "subscriptions/preview",
         200,
-        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "1337x"}).to_string(),
+        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "proxied"}).to_string(),
     );
     http.push_for(
         "q=Helluva+Boss+S03",
@@ -1708,7 +1701,7 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
         &core,
         Call::Subscribe {
             query: "Helluva Boss S03 TBK 1080p".to_string(),
-            endpoint: "1337x".to_string(),
+            endpoint: "proxied".to_string(),
             items: picked,
             name: Some("Helluva Boss".to_string()),
             wire_query: Some("Helluva Boss S03".to_string()),
@@ -1740,7 +1733,7 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
     isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
     let broken = "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.+S03+TBK";
-    let empty = r#"<rss><channel><title>1337x</title></channel></rss>"#;
+    let empty = r#"<rss><channel><title>proxied</title></channel></rss>"#;
     let six = r#"<rss><channel>
         <item><title>Helluva.Boss.S03E01.1080p.WEB-DL-TBK</title><link>http://j/dl/1</link></item>
         <item><title>Helluva.Boss.S03E01.1080p.HEVC.x265-MeGusta</title><link>http://j/dl/2</link></item>
@@ -1802,7 +1795,7 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
 }
 
 /// A fresh install settles the torrent client on first use: a qBittorrent
-/// that answers at the address is the user's, and with none AniBeam starts
+/// that answers at the address is the user's, and with none Anibeam starts
 /// its own (a fake qbittorrent-nox here) and points the settings at it.
 /// Both cases live in one test because the bundled binary is named through
 /// a process-wide variable.
@@ -1811,6 +1804,7 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    core.let_sandbox_find_torrent_clients();
     http.push_for("app/version", 200, "v5.1.2");
     http.push_for("app/version", 200, "v5.1.2");
     let job = started(&core, Call::TestTorrentClient);
@@ -1835,6 +1829,7 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    core.let_sandbox_find_torrent_clients();
     // Nothing at the stock address, nothing on the new port until it starts
     http.fail_next("connection refused");
     http.fail_next("connection refused");
@@ -1901,11 +1896,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     let lib = dir.path().join("lib");
     let show = lib.join("Sousou no Frieren");
     std::fs::create_dir_all(&show).unwrap();
-    let old = |n: u32| {
-        show.join(format!(
-            "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
-        ))
-    };
+    let old = |n: u32| show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv"));
     for n in 1..=3 {
         std::fs::write(old(n), b"x").unwrap();
     }
@@ -1920,7 +1911,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     );
 
     let mut item = release(2, Value::Null);
-    item.title = "[Erai-raws] Sousou no Frieren - 02 [1080p]".to_string();
+    item.title = "[Kumo-Subs] Sousou no Frieren - 02 [1080p]".to_string();
     let hash = format!("{:040}", 2);
     http.push_for(
         "/downloads",
@@ -1934,7 +1925,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
             name: Some("Sousou no Frieren".to_string()),
             options: DownloadOptions {
                 sequential: true,
-                provider: "erai".to_string(),
+                provider: "keyed".to_string(),
                 series: Some(1),
                 replace: vec![ReplaceItem {
                     item: 0,
@@ -1953,14 +1944,14 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     );
 
     let new_torrent = |progress: f64| {
-        json!([{"hash": hash, "name": "[Erai-raws] Sousou no Frieren - 02 [1080p]", "state": "downloading",
+        json!([{"hash": hash, "name": "[Kumo-Subs] Sousou no Frieren - 02 [1080p]", "state": "downloading",
                 "progress": progress, "size": 100, "save_path": "/dl/Frieren",
-                "content_path": "/dl/Frieren/[Erai-raws] Sousou no Frieren - 02 [1080p].mkv",
+                "content_path": "/dl/Frieren/[Kumo-Subs] Sousou no Frieren - 02 [1080p].mkv",
                 "added_on": 1, "completion_on": -1, "seq_dl": false}])
         .to_string()
     };
     let new_file = |progress: f64| {
-        json!([{"name": "[Erai-raws] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
+        json!([{"name": "[Kumo-Subs] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
                 "progress": progress, "priority": 1}])
         .to_string()
     };
@@ -2101,11 +2092,7 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     let lib = std::fs::canonicalize(dir.path()).unwrap().join("lib");
     let show = lib.join("Sousou no Frieren");
     std::fs::create_dir_all(&show).unwrap();
-    let ep = |n: u32| {
-        show.join(format!(
-            "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
-        ))
-    };
+    let ep = |n: u32| show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv"));
     for n in 1..=2 {
         std::fs::write(ep(n), b"x").unwrap();
     }
@@ -2119,22 +2106,10 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
         |e| matches!(e.body, EventBody::ScanFinished { .. }),
         Duration::from_secs(10),
     );
-    let series = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: true,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series
-            .into_iter()
-            .find(|s| s.path.ends_with("Sousou no Frieren"))
-            .expect("the show is in the library"),
-        other => panic!("{other:?}"),
-    };
+    let series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .expect("the show is in the library");
     let file = match core.call(Call::GetSeries { series: series.id }).unwrap() {
         Reply::SeriesDetail { detail } => {
             detail
@@ -2172,7 +2147,7 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     http.push_for(
         "torrents/files?hash=aa",
         200,
-        json!([{"name": "Sousou no Frieren/[SubsPlease] Sousou no Frieren - 01 (1080p).mkv",
+        json!([{"name": "Sousou no Frieren/[Lumen] Sousou no Frieren - 01 (1080p).mkv",
                 "size": 1, "progress": 1.0, "priority": 1}])
         .to_string(),
     );

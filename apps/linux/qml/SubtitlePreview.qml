@@ -1,7 +1,7 @@
 // The subtitle preview: the player's own item, paused on a frame, re-applying the
 // defaults on every change. A QML approximation is rejected by spec 4.5.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root

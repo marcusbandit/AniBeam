@@ -7,7 +7,10 @@ import QtQuick
 
 Corner {
     id: root
-    property string text: ""
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    property string text: msg ? words.t(msg, msgArgs) : ""
     property string action: ""
     signal acted()
 

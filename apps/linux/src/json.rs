@@ -90,6 +90,9 @@ pub fn event_json(e: &Event) -> Value {
         "stage": serde_json::to_value(e.stage).unwrap_or(Value::Null),
         "message": e.message,
         "plain": e.plain,
+        // The same line as a catalog ID and its arguments (#792), so the log shows it in
+        // the language the app speaks now, not the one it spoke when the line was said
+        "plain_words": e.plain_words,
         "job": e.job.as_ref().map(|j| json!({
             "id": j.id,
             "kind": serde_json::to_value(j.kind).unwrap_or(Value::Null),
@@ -302,6 +305,7 @@ mod tests {
             stage: Stage::Library,
             message: "scan finished: 1 added".into(),
             plain: None,
+            plain_words: None,
             job: Some(JobRef {
                 id: 2,
                 kind: JobKind::Scan,
@@ -321,6 +325,16 @@ mod tests {
         assert_eq!(v["job"]["phase"], "Finished");
         assert_eq!(v["at"], 10.0);
         assert_eq!(v["level"], "Info");
+        assert_eq!(v["plain_words"], Value::Null);
+        let said = Event {
+            plain: Some("Found 1 new show".into()),
+            plain_words: Some(anibeam_core::words!("count-shows", count = 1u64)),
+            ..e.clone()
+        };
+        assert_eq!(
+            event_json(&said)["plain_words"],
+            json!({ "id": "count-shows", "args": { "count": 1.0 } })
+        );
         let unit = Event {
             body: EventBody::Ready,
             job: None,

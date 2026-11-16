@@ -5,6 +5,7 @@
 //! groups.
 
 mod common;
+use common::started;
 
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
@@ -60,13 +61,6 @@ fn save(core: &Core, settings: DownloadSettings) {
     assert_eq!(reply, Reply::Ok);
 }
 
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
 fn stored_engine(core: &Core) -> DownloadsEngine {
     match core.call(Call::GetDownloads).unwrap() {
         Reply::Downloads { status } => status.settings.engine,
@@ -76,21 +70,26 @@ fn stored_engine(core: &Core) -> DownloadsEngine {
 
 // The setting ------------------------------------------------------------------------------
 
+/// The native engine is the default (#552): settings stored before the
+/// choice existed run on it, and settings that name anirss keep anirss.
 #[test]
-fn settings_saved_before_the_engine_existed_read_as_anirss() {
-    let mut blob = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
+fn settings_saved_before_the_engine_existed_read_as_native() {
+    let mut blob = serde_json::to_value(settings(DownloadsEngine::Anirss)).unwrap();
     blob.as_object_mut().unwrap().remove("engine");
+    let read: DownloadSettings = serde_json::from_value(blob.clone()).unwrap();
+    assert_eq!(read.engine, DownloadsEngine::Native);
+    blob["engine"] = json!("Anirss");
     let read: DownloadSettings = serde_json::from_value(blob).unwrap();
     assert_eq!(read.engine, DownloadsEngine::Anirss);
 }
 
 #[test]
-fn an_unknown_engine_reads_as_anirss_and_keeps_the_rest() {
-    let mut blob = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
+fn an_unknown_engine_reads_as_native_and_keeps_the_rest() {
+    let mut blob = serde_json::to_value(settings(DownloadsEngine::Anirss)).unwrap();
     blob["engine"] = json!("Telepathy");
     blob["prune_finished_feeds"] = json!(false);
     let read: DownloadSettings = serde_json::from_value(blob).unwrap();
-    assert_eq!(read.engine, DownloadsEngine::Anirss);
+    assert_eq!(read.engine, DownloadsEngine::Native);
     assert!(!read.prune_finished_feeds);
 }
 
@@ -98,19 +97,25 @@ fn an_unknown_engine_reads_as_anirss_and_keeps_the_rest() {
 fn the_native_engine_round_trips_through_the_settings() {
     isolate();
     let (_dir, core, c) = common::open_core();
+    // A fresh install runs on the native engine (#552)
+    assert_eq!(stored_engine(&core), DownloadsEngine::Native);
+    save(&core, settings(DownloadsEngine::Anirss));
     assert_eq!(stored_engine(&core), DownloadsEngine::Anirss);
+    // The switch is a state change, so it reaches the activity log.
+    common::wait_for(
+        &c,
+        |e| e.level == Level::Info && e.message.contains("now runs on anirss"),
+        std::time::Duration::from_secs(5),
+    );
     save(&core, settings(DownloadsEngine::Native));
     assert_eq!(stored_engine(&core), DownloadsEngine::Native);
     let json = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
     assert_eq!(json["engine"], json!("Native"));
-    // The switch is a state change, so it reaches the activity log.
     common::wait_for(
         &c,
-        |e| e.level == Level::Info && e.message.contains("AniBeam's own engine"),
+        |e| e.level == Level::Info && e.message.contains("Anibeam's own engine"),
         std::time::Duration::from_secs(5),
     );
-    save(&core, settings(DownloadsEngine::Anirss));
-    assert_eq!(stored_engine(&core), DownloadsEngine::Anirss);
 }
 
 // One feed ---------------------------------------------------------------------------------
@@ -278,7 +283,7 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
 #[test]
 fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_anirss_alone() {
     let (dir, core, c, http) = native_core();
-    // AniBeam runs anirss itself, through a command that leaves a mark if it is ever
+    // Anibeam runs anirss itself, through a command that leaves a mark if it is ever
     // started: the case "never starts anirss" is about.
     let mark = dir.path().join("anirss-started");
     let command = dir.path().join("anirss");
@@ -305,7 +310,7 @@ fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_a
         Reply::Downloads { status } => assert_eq!(status.endpoints.len(), 1),
         other => panic!("{other:?}"),
     }
-    assert!(done.message.contains("AniBeam itself"), "{}", done.message);
+    assert!(done.message.contains("Anibeam itself"), "{}", done.message);
     assert_eq!(status.endpoints.len(), 1);
     assert!(
         !matches!(

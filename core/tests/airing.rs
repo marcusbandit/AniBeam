@@ -2,6 +2,7 @@
 //! next broadcast right without asking for the whole record again.
 
 mod common;
+use common::started;
 mod fixtures;
 use std::time::Duration;
 
@@ -65,25 +66,12 @@ fn matched(
         &format!("/lib/{name}"),
         name,
     );
-    fixtures::insert_file(
-        core,
-        series,
-        &format!("/lib/{name}/01.mkv"),
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        core,
-        anilist_id,
-        Some(name),
-        None,
-        Some(12),
-        status,
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(core, series, &format!("/lib/{name}/01.mkv"), 1.0, 1);
+    fixtures::media(anilist_id, name)
+        .episodes(12)
+        .status(status)
+        .score(80)
+        .insert(core);
     fixtures::match_series(core, series, Some(anilist_id), Some(mal_id));
     series
 }
@@ -100,13 +88,6 @@ fn episodes(core: &Core, anilist_id: u64) -> Vec<Row> {
             Ok(rows.collect::<Result<Vec<_>, _>>()?)
         })
         .unwrap()
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 /// The whole point of the job: the next broadcast lands, the dates come
@@ -318,10 +299,10 @@ fn a_refresh_that_learns_the_series_ended_writes_the_status() {
 }
 
 /// Jikan is the title side-fetch and nothing else, so an outage costs a
-/// series its titles rather than its schedule. Two series failing inside
-/// the ten minute window is one line in the log, not two.
+/// series its titles rather than its schedule. Inside the ten minute
+/// window Jikan is not asked again, and the outage is one line in the log.
 #[test]
-fn two_jikan_failures_inside_the_window_write_one_warning() {
+fn a_jikan_failure_is_one_warning_and_no_second_request_inside_the_window() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
@@ -335,8 +316,8 @@ fn two_jikan_failures_inside_the_window_write_one_warning() {
             200,
             schedule_json(id, Some((9, now + 86_400)), &[]).to_string(),
         );
-        http.push_for("jikan.moe", 504, "gateway timeout");
     }
+    http.push_for("jikan.moe", 504, "gateway timeout");
 
     for series in [first, second] {
         let job = started(&core, Call::RefreshAiring { series });
@@ -350,7 +331,9 @@ fn two_jikan_failures_inside_the_window_write_one_warning() {
             }
         );
     }
-    assert_eq!(http.requests().len(), 4);
+    // Both schedules and one Jikan request: the second series' turn came
+    // inside the window, so Jikan was left alone.
+    assert_eq!(http.requests().len(), 3);
 
     let warnings: Vec<String> = c
         .events()
@@ -383,7 +366,7 @@ fn a_transport_failure_ends_the_sweep_and_stamps_nothing() {
     // the sweep makes a single request and never reaches the second row.
     http.fail_next("connection refused");
 
-    let job = anibeam_core::metadata::airing::start_refresh_library(&core);
+    let job = anibeam_core::metadata::airing::start_refresh_library(core.metadata());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(

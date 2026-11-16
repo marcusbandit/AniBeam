@@ -10,6 +10,26 @@ import { Area, Fold } from "fold.slint";
 import { CalendarHead } from "calhead.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { Button, Chip, EmptyNote, SectionHead, Segmented, TileGrid, TileRow } from "widgets.slint";
+import { Tr } from "tr.slint";
+
+// The season picker: any season back to 1940, which the desktop's SeasonPicker lists.
+export global AiringPick {
+    in-out property <bool> open;
+    // The season showing, "Spring 2019", or "" for this one.
+    in property <string> showing;
+    // The same season as a year and quarter, -1 for this season, so the picker marks it.
+    in property <int> showing-year: -1;
+    in property <int> showing-quarter: -1;
+    // The year and quarter this moment is in; the quarter carries a dot.
+    in property <int> this-year;
+    in property <int> this-quarter;
+    // The year the list opens on: the showing season's, else this one.
+    in property <int> focus-year;
+    // The years to list, newest first.
+    in property <[int]> years;
+    // A quarter, 0 Winter to 3 Fall, of a year.
+    callback picked(int, int);
+}
 
 // One filter as a row of the side pane's list, lit when picked.
 component FilterRow inherits Rectangle {
@@ -41,7 +61,13 @@ export component AiringControls inherits VerticalLayout {
     Segmented {
         options: AppData.airing-seasons;
         picked: AppData.airing-season;
-        pick(i) => { AppData.pick-airing-season(i); }
+        pick(i) => {
+            if (i == 2) {
+                AiringPick.open = true;
+            } else {
+                AppData.pick-airing-season(i);
+            }
+        }
     }
     if root.listed: VerticalLayout {
         spacing: Theme.unit;
@@ -83,8 +109,8 @@ export component OutNow inherits VerticalLayout {
     in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     if AppData.airing-out.length > 0: SectionHead {
-        title: "Out now";
-        note: "The last two days";
+        title: Tr.t("phone-airing-out-now");
+        note: Tr.t("airing-last-two-days");
     }
     if AppData.airing-out.length > 0 && root.grid: TileGrid {
         fit-width: root.fit-width;
@@ -104,7 +130,7 @@ export component AiringGrid inherits VerticalLayout {
     in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     if AppData.airing-tiles.length == 0 && AppData.airing-filter == 0: Text {
-        text: "The season's shows come from AniList.";
+        text: Tr.t("airing-season-note");
         color: Theme.faint;
         font-size: Theme.small + 1px;
     }
@@ -115,13 +141,17 @@ export component AiringGrid inherits VerticalLayout {
         held(id, title) => { AppData.airing-tap(id); }
     }
     if AppData.airing-tiles.length == 0 && AppData.airing-filter > 0: EmptyNote {
-        title: AppData.airing-filter == 1 ? "Nothing on air is on your lists" : "Nothing on air is on this phone";
-        body: AppData.airing-filter == 1 ? "Plan to watch on a show puts it on your list." : "Get episodes on a show downloads it here.";
+        title: AppData.airing-filter == 1 ? Tr.t("airing-none-lists-title") : Tr.t("airing-none-phone-title");
+        body: AppData.airing-filter == 1 ? Tr.t("airing-none-lists-body") : Tr.t("airing-none-phone-body");
     }
 }
 
-// Taken back for a few seconds after a show is marked not interested.
+// A line that can be taken back for a few seconds: a show marked not interested, an
+// episode mark. Undo shows while `can-undo` is set.
 export component UndoBar inherits Rectangle {
+    in property <string> text;
+    in property <bool> can-undo: true;
+    callback undo();
     height: row.preferred-height;
     background: Theme.float;
     border-radius: Theme.radius;
@@ -134,20 +164,20 @@ export component UndoBar inherits Rectangle {
         spacing: Theme.unit * 3;
         Text {
             horizontal-stretch: 1;
-            text: AppData.airing-undo + " is marked not interested.";
+            text: root.text;
             color: Theme.text;
             font-size: Theme.small + 0.5px;
             wrap: word-wrap;
             vertical-alignment: center;
         }
-        VerticalLayout {
+        if root.can-undo: VerticalLayout {
             alignment: center;
             Button {
-                text: "Undo";
+                text: Tr.t("phone-airing-undo");
                 icon: @image-url("icons/rotate-ccw.svg");
                 has-icon: true;
                 small: true;
-                clicked => { AppData.airing-take-back(); }
+                clicked => { root.undo(); }
             }
         }
     }
@@ -181,14 +211,14 @@ export component AiringSheet inherits Rectangle {
             }
             Rectangle { height: Theme.unit; }
             if !AppData.airing-menu.listed: Button {
-                text: "Plan to watch";
+                text: Tr.t("airing-plan");
                 icon: @image-url("icons/check-check.svg");
                 has-icon: true;
                 primary: true;
                 clicked => { AppData.airing-plan(AppData.airing-menu.id); }
             }
             Button {
-                text: AppData.airing-menu.owned >= 0 ? "Get more episodes" : "Get episodes";
+                text: AppData.airing-menu.owned >= 0 ? Tr.t("airing-get-more") : Tr.t("airing-get");
                 icon: @image-url("icons/download.svg");
                 has-icon: true;
                 primary: AppData.airing-menu.listed;
@@ -196,23 +226,109 @@ export component AiringSheet inherits Rectangle {
                     if (AppData.airing-menu.owned >= 0) {
                         FindData.find-series(AppData.airing-menu.owned);
                     } else {
-                        FindData.open("");
-                        FindData.text = AppData.airing-menu.title;
-                        FindData.suggest(AppData.airing-menu.title);
+                        AppData.airing-get(AppData.airing-menu.id);
                     }
                     AppData.airing-close();
                     Nav.page = 2;
                 }
             }
             Button {
-                text: "Not interested";
+                text: Tr.t("phone-airing-not-interested");
                 icon: @image-url("icons/x.svg");
                 has-icon: true;
                 clicked => { AppData.airing-dismiss(AppData.airing-menu.id); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 clicked => { AppData.airing-close(); }
+            }
+        }
+    }
+}
+
+// Any season: a sheet of years, newest first, each a row of its four quarters. It opens on
+// the season showing, or this year, and scrolls all the way back to 1940. The season
+// showing is in the accent and the quarter this moment falls in carries a dot.
+export component SeasonSheet inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { AiringPick.open = false; } }
+    property <length> row-h: 12 * Theme.unit;
+    property <[string]> names: [Tr.t("season-winter"), Tr.t("season-spring"), Tr.t("season-summer"), Tr.t("season-fall")];
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        height: Math.min(parent.height - root.inset-bottom - 2 * Theme.grout - 12 * Theme.unit, 120 * Theme.unit);
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        VerticalLayout {
+            padding: Theme.pad;
+            spacing: Theme.unit * 2;
+            Text {
+                text: Tr.t("season-pick");
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+            }
+            Flickable {
+                content-height: years-column.preferred-height;
+                init => {
+                    // Scrolled so the season showing, else this year, is a few rows down.
+                    self.content-y = Math.min(0px, 3 * root.row-h - (AiringPick.years.length > 0 ? (AiringPick.years[0] - AiringPick.focus-year) * root.row-h : 0px));
+                }
+                years-column := VerticalLayout {
+                for year in AiringPick.years: Rectangle {
+                    height: root.row-h;
+                    HorizontalLayout {
+                        spacing: Theme.unit;
+                        Text {
+                            width: 15 * Theme.unit;
+                            text: year;
+                            color: year == AiringPick.this-year ? Theme.text : Theme.faint;
+                            font-family: Theme.figure;
+                            font-size: Theme.small + 1px;
+                            vertical-alignment: center;
+                        }
+                        for name[q] in root.names: Rectangle {
+                            property <bool> on: year == AiringPick.showing-year && q == AiringPick.showing-quarter;
+                            property <bool> here: year == AiringPick.this-year && q == AiringPick.this-quarter;
+                            height: Theme.touch;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: self.height / 2;
+                            background: on ? Theme.accent-soft : cell.pressed ? Theme.pressed : transparent;
+                            border-width: on ? 1px : 0;
+                            border-color: Theme.accent-edge;
+                            if here: Rectangle {
+                                x: 2 * Theme.unit;
+                                y: (parent.height - self.height) / 2;
+                                width: 1.5 * Theme.unit;
+                                height: self.width;
+                                border-radius: self.width / 2;
+                                background: Theme.accent;
+                            }
+                            Text {
+                                text: name;
+                                color: on ? Theme.accent : Theme.dim;
+                                font-size: Theme.small;
+                                font-family: on ? Theme.strong-face : Theme.face;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            cell := TouchArea {
+                                clicked => {
+                                    AiringPick.open = false;
+                                    AiringPick.picked(q, year);
+                                }
+                            }
+                        }
+                    }
+                }
+                }
             }
         }
     }
@@ -247,6 +363,8 @@ export component AiringPage inherits Rectangle {
         }
     }
     if AppData.airing-undo != "": UndoBar {
+        text: Tr.s("airing-marked", "title", AppData.airing-undo);
+        undo => { AppData.airing-take-back(); }
         property <Area> area: Fold.show(0.38);
         x: self.area.x + Theme.grout;
         width: self.area.width - 2 * Theme.grout;

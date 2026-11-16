@@ -1,0 +1,91 @@
+name: iOS IPA
+
+# Builds the phone's unsigned IPA for an iPhone (arm64, no signature) as the version it
+# ships as, and uploads it as the phone-ipa artifact. AltStore and LiveContainer sign it
+# themselves when they install it, so it needs no certificate or provisioning profile.
+# pr-build.yml calls it and puts the IPA on the pr-builds release; nightly.yml calls it and
+# puts it on the phone's nightly; release.yml calls it and puts it on the phone's release.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      version:
+        type: string
+        default: ''
+      # A nightly builds as Anibeam Nightly with its own bundle id, beside the release (#944).
+      nightly:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The version the IPA ships as, 2.4.3 or 2.4.3-nightly.20261113.41; empty builds Cargo.toml's.
+  ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
+  ANIBEAM_NIGHTLY: ${{ inputs.nightly && '1' || '' }}
+  # The project's AniList and MAL registrations, so the phone signs in with one tap.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
+          rustup target add aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/android
+          key: ipa
+
+      # The macos-26 image's newest Xcode with a path it names. The hinge code looks
+      # UIHingeInteraction up at run time (src/platform/ios.rs), so an SDK older than
+      # iOS 27.1 builds it and the app finds no hinge class.
+      - name: Xcode and xcodegen
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          brew install xcodegen
+
+      # The player's libmpv and the libraries under it, MPVKit's static xcframeworks: about
+      # 350 MB of zips, so the unpacked archives are cached on the pin in the fetch script,
+      # without the zips. A cache hit leaves the fetch with nothing to do.
+      - name: Cache libmpv for iOS
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/android/vendor/mpv-ios
+            !apps/android/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+
+      - name: Fetch libmpv for iOS
+        run: |
+          scripts/fetch-mpv-ios.sh
+          rm -rf vendor/mpv-ios/zips
+
+      - name: Build
+        run: |
+          scripts/build-ios.sh ipa
+          ls -la build/ios/Anibeam.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-ipa
+          path: apps/android/build/ios/Anibeam.ipa
+          if-no-files-found: error

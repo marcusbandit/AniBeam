@@ -170,26 +170,15 @@ fn not_interested_is_one_entry_and_nothing_related_to_it() {
     // Frieren's earlier season sits in the library's tables as a prequel of
     // the one on air. Marking that one must not touch this one, and the
     // other way round.
-    fixtures::insert_media(
-        &core,
-        154588,
-        Some("Sousou no Frieren 2"),
-        None,
-        Some(12),
-        "NOT_YET_RELEASED",
-        "TV",
-        None,
-    );
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154588, "Sousou no Frieren 2")
+        .episodes(12)
+        .status("NOT_YET_RELEASED")
+        .insert(&core);
+    fixtures::media(154587, "Sousou no Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     core.store()
         .write(|c| {
             c.execute(
@@ -245,28 +234,16 @@ fn a_show_reads_owned_and_listed_and_a_hidden_series_is_left_out() {
 
     let src = fixtures::insert_source(&core, "/lib");
     let frieren = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154587, "Sousou no Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     fixtures::match_series(&core, frieren, Some(154587), None);
     let conan = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Conan", "Conan");
-    fixtures::insert_media(
-        &core,
-        235,
-        Some("Detective Conan"),
-        None,
-        None,
-        "RELEASING",
-        "TV",
-        None,
-    );
+    fixtures::media(235, "Detective Conan")
+        .status("RELEASING")
+        .insert(&core);
     fixtures::match_series(&core, conan, Some(235), None);
     core.call(Call::SetHidden {
         series: conan,
@@ -323,6 +300,108 @@ fn each_season_reads_once_at_a_time_and_beside_the_other() {
     assert_eq!(airing(&core, SeasonPick::Next).1, Some(next));
     common::wait_job(&c, first);
     common::wait_job(&c, next);
+}
+
+#[test]
+fn a_mark_with_nothing_left_to_hide_goes_at_the_next_read_of_what_is_on_air() {
+    let now = anibeam_core::time::now_secs();
+    let http = FakeHttp::new();
+    // Next season first, so its show is one the page holds.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [
+            show(500, "Next Thing", None),
+        ] } } }),
+    );
+    http.push_for("500.jpg", 200, JPEG.to_vec());
+    queue_now(&http, now);
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    common::wait_job(&c, refresh(&core, SeasonPick::Next, true).unwrap());
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+
+    // On air, next season, one whose finale is still in the strip, and a
+    // show that has ended since it was marked.
+    mark(&core, 235, true);
+    mark(&core, 500, true);
+    mark(&core, 300, true);
+    mark(&core, 777, true);
+
+    // AniList failing reads as no show on air, which ends nothing.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "airingSchedules": [] } } }),
+    );
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    let marked = |core: &Core| -> Vec<u64> {
+        let Reply::NotInterested { shows } = core.call(Call::ListNotInterested).unwrap() else {
+            panic!()
+        };
+        let mut ids: Vec<u64> = shows.iter().map(|s| s.anilist_id).collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(marked(&core), vec![235, 300, 500, 777]);
+
+    queue_now(&http, now);
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    assert_eq!(
+        marked(&core),
+        vec![235, 300, 500],
+        "the ended show's mark is gone"
+    );
+    let (page, _) = airing(&core, SeasonPick::Now);
+    assert_eq!(ids(&page), vec![154587, 171018]);
+    assert_eq!(page.not_interested, 1);
+    assert!(
+        page.aired.iter().all(|a| a.anilist_id != 300),
+        "the finale stays hidden"
+    );
+}
+
+#[test]
+fn opening_the_list_drops_marks_the_cached_reads_no_longer_carry() {
+    let now = anibeam_core::time::now_secs();
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let pruned = |core: &Core| -> Vec<u64> {
+        let Reply::NotInterested { shows } = core.call(Call::PruneNotInterested).unwrap() else {
+            panic!()
+        };
+        let mut ids: Vec<u64> = shows.iter().map(|s| s.anilist_id).collect();
+        ids.sort();
+        ids
+    };
+
+    // No read of what is on air yet: nothing to check against, nothing goes.
+    mark(&core, 777, true);
+    assert_eq!(pruned(&core), vec![777]);
+
+    // Next season and what is on air, read once; then the marks are checked
+    // against those reads alone, with nothing asked of AniList.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [
+            show(500, "Next Thing", None),
+        ] } } }),
+    );
+    http.push_for("500.jpg", 200, JPEG.to_vec());
+    queue_now(&http, now);
+    common::wait_job(&c, refresh(&core, SeasonPick::Next, true).unwrap());
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    // The read itself prunes; mark the ended show again so the call has one to drop.
+    mark(&core, 777, true);
+    mark(&core, 235, true);
+    mark(&core, 500, true);
+    mark(&core, 300, true);
+    assert_eq!(
+        pruned(&core),
+        vec![235, 300, 500],
+        "on air, next season and a finale in the strip stay; the ended show goes"
+    );
 }
 
 #[test]

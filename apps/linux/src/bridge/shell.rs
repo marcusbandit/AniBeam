@@ -40,6 +40,7 @@ pub mod qobject {
         #[qproperty(QString, release)]
         #[qproperty(QString, build)]
         #[qproperty(QString, own_track)]
+        #[qproperty(QString, default_icon)]
         #[qproperty(QString, shoot)]
         #[qproperty(QString, page)]
         #[qproperty(QString, props)]
@@ -48,7 +49,14 @@ pub mod qobject {
         #[qproperty(QString, drive)]
         #[qproperty(QString, drive_out)]
         #[qproperty(QString, settings_url)]
+        /// The watch together room code this run was started with, from an
+        /// `anibeam://room/<code>` link; empty when there was none (#846).
+        #[qproperty(QString, room_link)]
         type Shell = super::ShellRust;
+
+        /// A second launch handed over an `anibeam://room/<code>` link: join that room.
+        #[qsignal]
+        fn room_link_opened(self: Pin<&mut Self>, code: QString);
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
         #[qsignal]
@@ -186,6 +194,10 @@ pub mod qobject {
         /// The next exit opens the readied update; QML quits the app right after.
         #[qinvokable]
         fn restart_for_update(self: &Self);
+        /// `text` as a QR code: an SVG data URL an Image shows, black modules on white with
+        /// the quiet zone, or empty when the text is too long for one (#846).
+        #[qinvokable]
+        fn qr_code(self: &Self, text: &QString) -> QString;
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -197,6 +209,7 @@ pub struct ShellRust {
     release: QString,
     build: QString,
     own_track: QString,
+    default_icon: QString,
     shoot: QString,
     page: QString,
     props: QString,
@@ -205,6 +218,7 @@ pub struct ShellRust {
     drive: QString,
     drive_out: QString,
     settings_url: QString,
+    room_link: QString,
 }
 
 impl Default for ShellRust {
@@ -237,6 +251,8 @@ impl Default for ShellRust {
                     anibeam_core::update::Track::Stable => "stable",
                 },
             ),
+            // The Rail's and Appearance's Default icon: release, nightly or dev (build.rs).
+            default_icon: QString::from(crate::app_icon::DEFAULT_FILE),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
             page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
@@ -245,6 +261,13 @@ impl Default for ShellRust {
             drive: QString::from(drive.as_str()),
             drive_out: QString::from(drive_out.as_str()),
             settings_url: settings_url(&crate::runtime::paths().config_dir()),
+            room_link: QString::from(
+                a.link
+                    .as_deref()
+                    .and_then(crate::args::room_code)
+                    .unwrap_or_default()
+                    .as_str(),
+            ),
         }
     }
 }
@@ -267,7 +290,30 @@ const NOTES: &str = include_str!("../../CHANGELOG.md");
 /// The notes in changes/ that have not shipped yet, which show under the newest heading.
 const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
 
+/// `text` as an SVG QR code in a data URL, or empty when it does not fit in one.
+pub fn qr_data_url(text: &str) -> String {
+    use base64::Engine;
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
+        return String::new();
+    };
+    let svg = code
+        .render::<qrcode::render::svg::Color>()
+        .min_dimensions(256, 256)
+        .dark_color(qrcode::render::svg::Color("#000000"))
+        .light_color(qrcode::render::svg::Color("#ffffff"))
+        .quiet_zone(true)
+        .build();
+    format!(
+        "data:image/svg+xml;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(svg)
+    )
+}
+
 impl qobject::Shell {
+    pub fn qr_code(&self, text: &QString) -> QString {
+        QString::from(qr_data_url(&text.to_string()).as_str())
+    }
+
     pub fn first_run(
         &self,
         done: bool,
@@ -292,7 +338,13 @@ impl qobject::Shell {
         let state = match first_run::make_starter_folder(&videos) {
             Ok(dir) => serde_json::json!({ "path": dir.to_string_lossy() }),
             Err(e) => serde_json::json!({
-                "error": format!("Could not make {}: {e}", first_run::starter_folder(&videos).display())
+                "error": anibeam_core::i18n::tr(
+                    "shell-starter-folder-failed",
+                    &[
+                        ("folder", first_run::starter_folder(&videos).display().to_string().into()),
+                        ("error", e.to_string().into()),
+                    ],
+                )
             }),
         };
         crate::json::to_qjson_object(&state)
@@ -408,11 +460,29 @@ impl qobject::Shell {
                 };
             // A build the system's package manager installed is updated by that package
             // manager. The AUR's is offered once the AUR has it, with the command that
-            // fetches it; one pacman does not know is left alone.
-            if let Install::Package { package } = &install {
-                let Some(package) = package else {
+            // fetches it. The apt and dnf repos on anibeam.app carry each stable release as
+            // it ships; one is offered only once the repos carry it (repos.json), so the command
+            // it is given finds the new version. A copy no package manager knows is left alone.
+            if let Install::Package { owner } = &install {
+                let Some((manager, package)) = owner else {
                     return nothing(String::new());
                 };
+                if let Some(command) = install::repo_command(*manager, package) {
+                    match anibeam_core::update::check_repos(&http, &current).await {
+                        Ok(Some(version)) => offer(
+                            &version,
+                            "",
+                            &format!(
+                                "https://github.com/marcusbandit/Anibeam/releases/tag/v{version}"
+                            ),
+                            "command",
+                            command,
+                        ),
+                        Ok(None) => nothing(String::new()),
+                        Err(e) => nothing(e.to_string()),
+                    }
+                    return;
+                }
                 match anibeam_core::update::check_aur(&http, package, &current).await {
                     Ok(Some(version)) => {
                         let name = package.clone();
@@ -466,7 +536,10 @@ impl qobject::Shell {
             .ok()
             .and_then(|o| o.iter().find(|u| u.version == version).cloned());
         let (Some(install), Some(update)) = (INSTALL.get().cloned(), found) else {
-            return self.fail(format!("AniBeam {version} is no longer on offer"));
+            return self.fail(anibeam_core::i18n::tr(
+                "shell-update-gone",
+                &[("version", version.as_str().into())],
+            ));
         };
         // A click while one runs, even one just cancelled, carries on with that download
         CANCEL.store(false, Ordering::SeqCst);
@@ -649,6 +722,27 @@ impl qobject::Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_room_link_becomes_an_svg_qr_code() {
+        use base64::Engine;
+        let url = super::qr_data_url("https://rooms.example.com/K7QM2X");
+        let b64 = url
+            .strip_prefix("data:image/svg+xml;base64,")
+            .expect("an SVG data URL");
+        let svg = String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(svg.contains("<svg") && svg.contains("#000000"), "{svg}");
+        assert_eq!(
+            super::qr_data_url(&"x".repeat(8000)),
+            "",
+            "too long for a code"
+        );
+    }
+
     /// The url is absolute whatever the root was given as, and the characters a url
     /// would read as delimiters are escaped into the path.
     #[test]

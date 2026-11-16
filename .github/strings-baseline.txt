@@ -1,0 +1,2 @@
+# Raw strings each UI file still holds, from .github/strings-check.py --update.
+# A count only ever goes down; a file not listed may hold none (#792).

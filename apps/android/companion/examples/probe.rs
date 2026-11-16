@@ -2,7 +2,7 @@
 //! happened. For checking the network path from a device: build for the device's target,
 //! push, run.
 //!
-//!     probe banditbox:8790 10.0.2.2:8790
+//!     probe desktop:8790 10.0.2.2:8790
 
 use anibeam_companion::address::HostAddress;
 use anibeam_companion::client::HostClient;

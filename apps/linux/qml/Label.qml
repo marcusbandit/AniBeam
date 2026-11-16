@@ -7,6 +7,10 @@ import QtQuick
 
 Text {
     property string role: "ui"
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    text: msg ? words.t(msg, msgArgs) : ""
     color: theme.text
     font.family: theme.roleFamily(role)
     font.pointSize: theme.roleSize(role)

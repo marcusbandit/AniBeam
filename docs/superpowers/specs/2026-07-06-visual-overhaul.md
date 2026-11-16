@@ -1,10 +1,10 @@
-# AniBeam Visual Overhaul: "Quiet Console"
+# Anibeam Visual Overhaul: "Quiet Console"
 
 Date: 2026-07-06. Branch: `feat/visual-overhaul`.
 
 ## North star
 
-AniBeam is a calm instrument panel for a personal anime archive. The posters are
+Anibeam is a calm instrument panel for a personal anime archive. The posters are
 the only loud thing on screen; every piece of chrome is flat, dark, hairline-bordered,
 and set in tabular mono like a studio timing sheet. The interface feels alive under
 the cursor: everything clickable reacts on hover, presses down on click, and moves

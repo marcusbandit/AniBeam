@@ -13,8 +13,19 @@ on:
     branches: [main]
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
+      - 'releases/**'
+      - 'metadata/**'
+      - 'trackers/**'
+      - 'downloads/**'
+      - 'playback/**'
+      - 'host/**'
       - 'core/**'
       - 'host-api/**'
+      - 'recs/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
@@ -22,12 +33,36 @@ on:
   pull_request:
     paths:
       - 'apps/android/**'
+      - 'contract/**'
+      - 'foundation/**'
+      - 'net/**'
+      - 'library/**'
+      - 'releases/**'
+      - 'metadata/**'
+      - 'trackers/**'
+      - 'downloads/**'
+      - 'playback/**'
+      - 'host/**'
       - 'core/**'
       - 'host-api/**'
+      - 'recs/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/workflows/android.yml'
+      # An iPhone-only change cannot affect this (#950): the paths ios-automerge.sh counts as
+      # iPhone only, the same list as its ONLY regex, so a path added there is added here too.
+      # Later patterns win, so these stay after the positive ones.
+      - '!apps/android/ios/**'
+      - '!apps/android/src/**/ios.rs'
+      - '!apps/android/src/**/ios/**'
+      - '!apps/android/src/**/metal.rs'
+      - '!apps/android/src/**/metal/**'
+      - '!apps/android/scripts/*ios*'
+      # Every iPhone PR carries one. The build embeds them as text (build.rs) and the app
+      # parses them at run time, so no change file can fail this; ci.yml checks their format
+      # (core/tests/changelog.rs).
+      - '!apps/android/changes/**'
   workflow_dispatch:
 
 permissions:
@@ -56,7 +91,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
 
       - run: cargo fmt --check -p anibeam-android -p anibeam-companion
 
@@ -76,10 +114,15 @@ jobs:
       - name: Rust toolchain
         run: |
           rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustup target add x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/android
 
       - name: Test

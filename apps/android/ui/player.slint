@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { Fold } from "fold.slint";
 import { Button, TextButton } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // The player, the desktop's PlayerChrome at phone size: the picture fills the screen, the
 // header sits over its top, and the controls island over its foot carries the time, the
@@ -39,6 +40,8 @@ export global PlayerData {
     in property <bool> has-prev;
     in property <bool> has-next;
     in property <[Band]> bands;
+    // Where each chapter starts, in seconds: a notch in the groove at each.
+    in property <[float]> chapters;
     // "Skip intro", "Skip outro", or empty while the position is in neither window.
     in property <string> skip-label;
     in property <bool> next-visible;
@@ -52,7 +55,13 @@ export global PlayerData {
     in property <float> speed: 1;
     in property <string> notice;
     in property <string> notice-action;
-    // 0 none, 1 audio, 2 subtitles, 3 speed.
+    // The subtitle and audio delay mpv reports, in seconds, and whether the file's has moved.
+    // The text is the desktop's delayText, written in Rust.
+    in property <string> sub-delay-text;
+    in property <string> audio-delay-text;
+    in property <bool> sub-delay-set;
+    in property <bool> audio-delay-set;
+    // 0 none, 1 audio, 2 subtitles, 3 speed, 4 cast, 5 delays.
     in property <int> picker;
     in property <string> picker-title;
     in property <[PickRow]> picker-rows;
@@ -96,6 +105,9 @@ export global PlayerData {
     callback stay();
     callback replay-clicked();
     callback open-picker(int);
+    // A delay stepped (0 subtitles, 1 audio, by seconds) or put back to 0.
+    callback nudge-delay(int, float);
+    callback reset-delay(int);
     callback pick(int);
     callback close-picker();
     callback mark();
@@ -158,13 +170,15 @@ component PlayerButton inherits Rectangle {
 }
 
 // The groove, the desktop's SeekBar: the skip windows as white bands under the played
-// part, and the knob. A drag shows the frame under the finger in the bubble and seeks once on
-// release; the bar then holds that spot until mpv gets there, or 1.5 s, so the knob never
-// jumps back. A release within `still` of where the knob was at the press does not seek.
+// part, a thin dark notch where each chapter starts, and the knob. A drag shows the frame
+// under the finger in the bubble and seeks once on release; the bar then holds that spot
+// until mpv gets there, or 1.5 s, so the knob never jumps back. A release within `still` of
+// where the knob was at the press does not seek.
 component SeekBar inherits Rectangle {
     in property <float> position;
     in property <float> duration;
     in property <[Band]> bands;
+    in property <[float]> chapters;
     out property <bool> scrubbing: touch.pressed;
     out property <float> scrub-to;
     out property <length> knob-x: root.groove * root.shown + root.knob / 2;
@@ -203,6 +217,14 @@ component SeekBar inherits Rectangle {
         height: 4px;
         border-radius: 2px;
         background: Theme.accent;
+    }
+    // Placed against the duration as it is now, none in the first or last second.
+    for at in root.chapters: Rectangle {
+        visible: root.duration > 0 && at > 1 && at < root.duration - 1;
+        x: root.knob / 2 + root.groove * (root.duration > 0 ? at / root.duration : 0) - 1px;
+        width: 2px;
+        height: 4px;
+        background: #000000b3;
     }
     Rectangle {
         x: root.groove * root.shown;
@@ -297,6 +319,97 @@ component Picker inherits Rectangle {
     }
 }
 
+// One delay in the sheet: its name, a step down, the value mpv reports, a step up and a
+// reset to 0, the desktop's row.
+component DelayRow inherits Rectangle {
+    in property <string> label;
+    in property <int> kind;
+    in property <string> text;
+    in property <bool> set;
+    height: 14 * Theme.unit;
+    HorizontalLayout {
+        spacing: Theme.unit;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-family: Theme.strong-face;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        PlayerButton {
+            icon: @image-url("icons/minus.svg");
+            clicked => { PlayerData.nudge-delay(root.kind, -0.1); }
+        }
+        Text {
+            width: 18 * Theme.unit;
+            text: root.text;
+            color: root.set ? Theme.accent : Theme.text;
+            font-family: Theme.figure;
+            font-size: Theme.normal;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        PlayerButton {
+            icon: @image-url("icons/plus.svg");
+            clicked => { PlayerData.nudge-delay(root.kind, 0.1); }
+        }
+        PlayerButton {
+            icon: @image-url("icons/rotate-ccw.svg");
+            interactive: root.set;
+            clicked => { PlayerData.reset-delay(root.kind); }
+        }
+    }
+}
+
+// The delays sheet: subtitles and audio, each stepped 0.1 s at a time. Both go back to 0
+// with the next file, as on the desktop.
+component Delays inherits Rectangle {
+    in property <length> top;
+    background: #00000080;
+    TouchArea { clicked => { PlayerData.close-picker(); } }
+    sheet := Rectangle {
+        width: Math.min(parent.width - 2 * Theme.grout, 110 * Theme.unit);
+        height: Math.min(parent.height - root.top - 2 * Theme.grout, body.preferred-height);
+        x: (parent.width - self.width) / 2;
+        y: root.top + (parent.height - root.top - self.height) / 2;
+        background: Theme.float;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            spacing: Theme.unit;
+            Text {
+                text: Tr.t("player-delay-title");
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+            }
+            Text {
+                text: Tr.t("player-delay-note");
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            DelayRow {
+                label: Tr.t("player-subtitles");
+                kind: 0;
+                text: PlayerData.sub-delay-text;
+                set: PlayerData.sub-delay-set;
+            }
+            DelayRow {
+                label: Tr.t("player-audio");
+                kind: 1;
+                text: PlayerData.audio-delay-text;
+                set: PlayerData.audio-delay-set;
+            }
+        }
+    }
+}
+
 export component PlayerPage inherits Rectangle {
     in property <length> inset-left;
     in property <length> inset-right;
@@ -308,9 +421,9 @@ export component PlayerPage inherits Rectangle {
     // every control to the half below it, on the table: back, cast and lock too, so nothing
     // lies on the picture.
     property <bool> stood: Fold.stood;
-    property <length> picture-height: root.stood ? Fold.height / 2 - Fold.gutter / 2 : root.height;
+    property <length> picture-height: root.stood ? Fold.crease-mid-y - Fold.gutter / 2 : root.height;
     // Where the controls start: the top of the screen, or the top of the half on the table.
-    property <length> desk-y: root.stood ? Fold.height / 2 + Fold.gutter / 2 : 0;
+    property <length> desk-y: root.stood ? Fold.crease-mid-y + Fold.gutter / 2 : 0;
     property <length> head-top: root.stood ? root.desk-y : root.inset-top;
     // The middle of the ground the controls leave free: the screen's, or between the header
     // and the island on the table.
@@ -339,7 +452,7 @@ export component PlayerPage inherits Rectangle {
                 image-fit: contain;
             }
             Text {
-                text: "Playing on " + PlayerData.cast-device;
+                text: Tr.s("player-cast-playing-on", "device", PlayerData.cast-device);
                 color: Theme.text;
                 font-family: Theme.display-face;
                 font-size: Theme.section;
@@ -424,11 +537,11 @@ export component PlayerPage inherits Rectangle {
             }
             if (self.mouse-x < self.width / 3) {
                 PlayerData.seek-by(-10);
-                jump.text = "−10 s";
+                jump.text = Tr.t("player-jump-back");
                 jump.left = true;
             } else if (self.mouse-x > self.width * 2 / 3) {
                 PlayerData.seek-by(10);
-                jump.text = "+10 s";
+                jump.text = Tr.t("player-jump-forward");
                 jump.left = false;
             } else {
                 PlayerData.toggle-pause();
@@ -679,7 +792,7 @@ export component PlayerPage inherits Rectangle {
                 Text {
                     horizontal-stretch: 1;
                     horizontal-alignment: center;
-                    text: PlayerData.speed != 1 ? "Speed " + Fmt.speed(PlayerData.speed) : "";
+                    text: PlayerData.speed != 1 ? Tr.s("player-speed-now", "speed", Fmt.speed(PlayerData.speed)) : "";
                     color: Theme.accent;
                     font-family: Theme.figure;
                     font-size: Theme.small;
@@ -695,6 +808,7 @@ export component PlayerPage inherits Rectangle {
                 position: PlayerData.position;
                 duration: PlayerData.duration;
                 bands: PlayerData.bands;
+                chapters: PlayerData.chapters;
             }
             HorizontalLayout {
                 spacing: Theme.unit;
@@ -730,6 +844,11 @@ export component PlayerPage inherits Rectangle {
                     }
                 }
                 Rectangle { horizontal-stretch: 1; }
+                PlayerButton {
+                    icon: @image-url("icons/clock.svg");
+                    active: PlayerData.sub-delay-set || PlayerData.audio-delay-set;
+                    clicked => { PlayerData.open-picker(5); }
+                }
                 if PlayerData.audio-choice: PlayerButton {
                     icon: @image-url("icons/audio-lines.svg");
                     clicked => { PlayerData.open-picker(1); }
@@ -781,7 +900,7 @@ export component PlayerPage inherits Rectangle {
             padding: 1.5 * Theme.unit;
             spacing: 1.5 * Theme.unit;
             TextButton {
-                text: "Stay";
+                text: Tr.t("player-next-stay");
                 ink: Theme.on-poster;
                 clicked => { PlayerData.stay(); }
             }
@@ -800,7 +919,7 @@ export component PlayerPage inherits Rectangle {
                     background: Theme.accent.with-alpha(0.35);
                 }
                 next-label := Text {
-                    text: "Next";
+                    text: Tr.t("player-next-go");
                     color: Theme.text;
                     font-family: Theme.title-face;
                 }
@@ -877,7 +996,7 @@ export component PlayerPage inherits Rectangle {
             }
             Text {
                 vertical-alignment: center;
-                text: "2× speed";
+                text: Tr.t("player-hold-speed");
                 color: Theme.text;
                 font-family: Theme.figure;
             }
@@ -892,7 +1011,7 @@ export component PlayerPage inherits Rectangle {
         primary: true;
         has-icon: true;
         icon: @image-url("icons/rotate-ccw.svg");
-        text: "Replay";
+        text: Tr.t("player-replay");
         clicked => { PlayerData.replay-clicked(); }
     }
 
@@ -927,7 +1046,8 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    if PlayerData.picker != 0: Picker { top: root.desk-y; }
+    if PlayerData.picker != 0 && PlayerData.picker != 5: Picker { top: root.desk-y; }
+    if PlayerData.picker == 5: Delays { top: root.desk-y; }
 
     // ---- Locked: nothing under this takes a touch, the replay, the notice and the
     // pickers included; a tap shows Unlock for a moment. It is last, so it lies on top.
@@ -954,7 +1074,7 @@ export component PlayerPage inherits Rectangle {
         visible: PlayerData.locked && self.shown;
         has-icon: true;
         icon: @image-url("icons/lock-open.svg");
-        text: "Unlock";
+        text: Tr.t("player-unlock");
         primary: true;
         clicked => {
             PlayerData.locked = false;
