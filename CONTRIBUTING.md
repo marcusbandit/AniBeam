@@ -10,7 +10,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
-   [AniBeam project board](https://github.com/users/marcusbandit/projects/1),
+   [Anibeam project board](https://github.com/users/marcusbandit/projects/1),
    and its card moves as the work does. A security problem never goes in an
    issue: [`SECURITY.md`](SECURITY.md) says where to report it privately.
    Before your first card, ask the owner for board access and run
@@ -46,6 +46,14 @@ The scope is the crate the change belongs to: `core`, `shell` for
 in one part of the window can name it instead: `home`, `library`, `series`,
 `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
+`apps/android` is the phone app for Android and the iPhone alike, so its scope
+says whose code a change touches. `android` covers Android's own files only:
+`android/` and `src/platform/android.rs`. `ios` covers the iPhone's own only:
+`ios/`, `src/platform/ios.rs` and the `*ios*` scripts. Anything else in
+`apps/android` builds into both phones and is `phone core`, even when only one
+phone shows the difference: `feat(phone core): the phone app builds and opens
+on the iPhone simulator`.
+
 A `docs` change names the document: `readme`, `contributing`, `context`,
 `spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
 genuinely spans two scopes lists both, comma separated:
@@ -77,7 +85,7 @@ gives the run its own bus names, so it opens beside the installed app instead
 of handing off to it and never touches its data. anirss gets a home of its own
 there too, `<root>/state/home`: the run reads anirss's config from
 `<root>/state/home/.config/anirss/config.toml`, the anirss it starts keeps its
-state there, and a fresh run sets up AniBeam's own qBittorrent rather than
+state there, and a fresh run sets up Anibeam's own qBittorrent rather than
 taking one it finds on the machine. Point it at your own qBittorrent in
 Settings when you want that. For a picture without a
 window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
@@ -157,7 +165,7 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - A version can have a title to remember it by, between the number and the day:
   `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
   none. What's new and the update notice show it, and the release goes out named
-  "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
+  "Anibeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
 Good, as `apps/linux/changes/160-seek-jump.md`:
 
@@ -220,12 +228,12 @@ format string, ends in `// i18n: none`.
 
 ## Sources
 
-AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
+Anibeam ships no download sources, and this repo takes no PR that adds one. Nothing in
 the app points at a site: no address, no host, no default, no onboarding link, and no code,
 test or fixture that names one. A PR that adds a site gets closed, however well it is built.
 CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
 the known site names and fails on any hit. It skips what is kept as history (the changelogs
-and dated plans), applied SQL migrations, lockfiles, and `core/src/releases/kinds.rs`, the one
+and dated plans), applied SQL migrations, lockfiles, and `releases/src/kinds.rs`, the one
 module that holds the kinds' old names to rename them.
 
 What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
@@ -240,7 +248,7 @@ that site. A new source goes in one of two places:
 
 - A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
   the owner's own repo. Its README says how to write a definition.
-- A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
+- A repo of your own, signed with your own key, that anyone can add in Anibeam beside or
   instead of the owner's.
 
 Endpoints are not part of this project, and that is final. No PR here decides which sources
@@ -253,12 +261,32 @@ kind, open an issue about the kind and leave the source out.
 
 ## Before you open it
 
-- The test, clippy and fmt commands in `docs/build-from-source.md` under Working on it pass.
+- `.github/local-ci.sh` passes on your machine. It runs the Linux checks: fmt, the patch note
+  heading, strings, site names, clippy, the tests and a tester build to try by hand.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in a change file under the app's `changes/`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
 - Nothing in the diff names a download site. See Sources.
 - `.github/strings-check.py` passes: new words go in `i18n/en/` under an ID. See Words.
+
+## Checks on GitHub
+
+A push to a pull request runs only the fast checks: CI (fmt, clippy and the tests),
+Strings, No sites, the PR checks and the Android check when the phone or the core changed,
+about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
+the phone's code changed, and a PR that only touches iPhone files skips the Android check.
+Work on one platform at a time and check it locally with
+`.github/local-ci.sh`.
+
+CI and `.github/local-ci.sh` clippy and test only the crates a change touches and every
+crate that builds on them; `.github/affected-crates.py` prints what it picked and why. A
+change to the root manifest, the lock file or the toolchain checks every crate, and
+`.github/local-ci.sh --all` or a CI run by hand does too.
+
+When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
+and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
+Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
+last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
 
 ## Releases
 
@@ -268,10 +296,10 @@ update track from that version:
 | Build | Version | Comes from | Who gets it |
 | --- | --- | --- | --- |
 | Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
-| Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, run on demand | the Nightly track in Settings |
+| Nightly | `2.5.0-nightly.20261102.40` | a merge to main builds it, `nightly.yml` publishes it | the Nightly track in Settings |
 | PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
 | Phone stable | `android-v2.4.3` | Release workflow with app `phone`, promoting a phone nightly | everyone with the phone app |
-| Phone nightly | `android-v2.4.3-nightly.20261113.41` | `nightly.yml`, the same run | whoever installs it |
+| Phone nightly | `android-v2.4.3-nightly.20261113.41` | a merge to main builds it, `nightly.yml` publishes it | whoever installs it |
 
 The workspace version in `Cargo.toml` is always the next stable version, and every build
 between two releases carries it as its base. The phone has a number of its own, the
@@ -287,12 +315,19 @@ builds them from the patch notes below (`site/whats-new.py`), and `nightly.yml` 
 workflow deploy the site once their release is public, so writing the change files is all a
 release needs. Nobody writes these pages by hand.
 
-- **Nightly.** The less polished, frontier build, not a daily one. Run `nightly.yml` from
-  the Actions tab when main holds something worth trying; it builds main and publishes it as
-  its own pre-release, and skips the run when the app has not changed since the last
-  nightly unless `force` is ticked. The ten newest are kept. The same run builds the phone's
-  APK when the phone or what it builds on changed since the phone's last nightly, and
-  publishes it as its own `android-v*-nightly.*` pre-release.
+- **Nightly.** The less polished, frontier build, not a daily one. Every merge to main
+  builds the apps that changed since their last nightly and keeps the files on its run.
+  Run `nightly.yml` from the Actions tab when main holds something worth trying; it
+  publishes the newest of those builds as its own pre-release, built from the commit the
+  release names, and builds main itself only when no finished build covers it yet or
+  `force` is ticked. A run started while a build of main is still going waits for it. A
+  merge never builds again what the last build of main failed on with the same files; Run
+  workflow does. It skips the run when the app has not changed since the last nightly.
+  The ten newest are kept. The phone's APK and IPA ride the same way, when the phone or
+  what it builds on changed since the phone's last nightly, and publish as their own
+  `android-v*-nightly.*` pre-release. Publishing uses the `NIGHTLY_TOKEN` secret, a
+  fine-grained token with Contents and Workflows write, since the workflow's own token may
+  not tag a commit once a workflow file changed.
 - **PR test build.** Put the `test build` label on a PR to get installers for it on the
   `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
   closing the PR or taking the label off removes them. Use it to have someone try a

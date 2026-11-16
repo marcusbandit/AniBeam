@@ -1,13 +1,12 @@
-// Keyboard: every key AniBeam answers to, read off KeyHelp (never shown here) so the list
+// Keyboard: every key Anibeam answers to, read off KeyHelp (never shown here) so the list
 // is the one ? shows: the player's two groups, then the frame's two, the keys as chips at
 // the right of what they do.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
     title: words.t("settings-keys-title")
-    lead: words.t("settings-keys-lead")
     property Item keyMap: KeyHelp { visible: false; open: false }
     // The player's own keys first, then the ones that work on every page
     readonly property var groups: [

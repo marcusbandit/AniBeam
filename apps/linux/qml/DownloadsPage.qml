@@ -8,7 +8,7 @@
 // switched on. Under the field the sources: a chip per provider, lit when on and greyed when
 // off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
 // through a pod behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
-// small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
+// small sheet, whether to start Jackett; Anibeam starts it on that confirm and never before,
 // and the core refuses a search that would start it behind your back.
 //
 // With nothing searched the page is four lenses: Gaps in your library (aired episodes not
@@ -27,7 +27,7 @@
 // two seconds while something is downloading and the page is up, every fifteen while
 // nothing is, and not at all while the removal sheet is open.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -45,7 +45,8 @@ Item {
         if (page.state !== null || page.searchError !== "") { page.clearSearch(); return true }
         return false
     }
-    function focusSearch() { scroll.contentY = 0; search.focusInput() }
+    // With no source yet the search field is hidden, and the field that adds a list stands in
+    function focusSearch() { scroll.contentY = 0; if (page.noSources) noSourcesAttach.focusInput(); else search.focusInput() }
 
     // ---- The connection
     property var status: null
@@ -53,12 +54,15 @@ Item {
     readonly property var torrent: status ? status.torrent : null
     readonly property bool anirssReady: !!anirss && anirss.state === "Ready"
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
-    // AniBeam itself searches: nothing waits on the search helper (#549)
+    // Anibeam itself searches: nothing waits on the search helper (#549)
     readonly property bool nativeEngine: !!status && !!status.settings && status.settings.engine === "Native"
     // Searches, subscriptions and the rules list can go ahead
     readonly property bool searchReady: nativeEngine || anirssReady
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
+    // Searches could run and there is nothing to search: no source list added yet. The search
+    // field gives way to the one step that adds one (#1003)
+    readonly property bool noSources: searchReady && endpoints.length === 0
     // Whether the search's source has a feed a subscription can follow (#507)
     readonly property bool followable: {
         var name = page.state ? page.state.endpoint : ""
@@ -70,7 +74,7 @@ Item {
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
     readonly property bool remoteAnirss: !nativeEngine && !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
-    // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
+    // tell apart (the saved ones and Anibeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
         var s = status ? status.settings : null
         if (!s || savedClients.length === 0) return clientName
@@ -233,6 +237,14 @@ Item {
         else if (page.hoverGroupItem === item) { page.hoverGroupItem = null; page.hoverGroup = null }
     }
     function contextItems() {
+        // A line of the activity column (#1004): its torrent's folder
+        // Only for a client that keeps its files on this machine: another's paths are its own
+        var line = activity.visible ? activity.hoverTorrent : null
+        if (line) {
+            var here = !!page.status && !!page.status.save_folder && page.status.save_folder.here
+            var folder = here ? activity.saveFolderOf(line) : ""
+            return folder === "" ? [] : [{ text: words.t("frame-open-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(folder)) } }]
+        }
         var g = page.hoverGroup, anchor = page.hoverGroupItem
         if (!g || !anchor || !page.home || page.lens !== "downloaded") return []
         return [{ text: words.t("downloads-remove-group-torrents", { count: g.torrents.length }), icon: "x",
@@ -667,7 +679,7 @@ Item {
         if (r.error) { frame.fail(r.error, page.reload); return }
         page.status = r.reply.status
     }
-    // The helper the settings point at is not the one AniBeam comes with: a remote server, or
+    // The helper the settings point at is not the one Anibeam comes with: a remote server, or
     // a command typed into Settings. When that one does not answer, the fix is going back.
     readonly property bool helperChanged: !!status && !!status.settings
         && (status.settings.anirss_mode === "Remote" || status.settings.anirss_command !== "anirss")
@@ -689,7 +701,7 @@ Item {
         page.connecting = true
     }
     function loadRules() { frame.readDownloadsRules() }
-    // The client chip's menu: every saved client and AniBeam's own, the one in use ticked,
+    // The client chip's menu: every saved client and Anibeam's own, the one in use ticked,
     // then the settings. A pick switches the downloads to it and reconnects.
     function clientMenu() {
         var s = page.status ? page.status.settings : null
@@ -1895,6 +1907,7 @@ Item {
         SearchField {
             id: search
             objectName: "downloads-search"
+            visible: !page.noSources
             large: true
             width: parent.width
             placeholder: words.t("downloads-search-placeholder")
@@ -2039,6 +2052,27 @@ Item {
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
                     MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: page.runSearch() }
+                }
+            }
+        }
+
+        // ---- No sources yet: said plainly, with the step that adds a list in place of the search
+        Tile {
+            objectName: "downloads-no-sources"
+            visible: page.noSources
+            width: parent.width
+            height: noSourcesWords.implicitHeight + padding * 2
+            padding: theme.space(7)
+            Column {
+                id: noSourcesWords
+                width: parent.width
+                spacing: theme.space(5)
+                Label { width: parent.width; msg: "downloads-no-sources"; role: "title"; font.pointSize: theme.typeLarge * 1.2; wrapMode: Text.Wrap }
+                SourceAttach {
+                    id: noSourcesAttach
+                    width: parent.width
+                    onAttached: page.reload()
+                    onSettingsAsked: frame.go("settings", { tab: "downloads" })
                 }
             }
         }
@@ -2791,7 +2825,7 @@ Item {
                 height: visible ? theme.space(30) : 0
                 EmptyState {
                     icon: "rss"; title: words.t("downloads-no-rules"); body: words.t("downloads-no-rules-body")
-                    Button { objectName: "downloads-no-rules-search"; msg: "downloads-search"; icon: "search"; primary: true; onClicked: search.focusInput() }
+                    Button { objectName: "downloads-no-rules-search"; msg: "downloads-search"; icon: "search"; primary: true; onClicked: page.focusSearch() }
                 }
             }
         }
@@ -2902,7 +2936,7 @@ Item {
         }
     }
 
-    // The confirm before AniBeam starts a source's service; over everything on the page
+    // The confirm before Anibeam starts a source's service; over everything on the page
     StartSourceSheet {
         id: startSheet
         z: 20

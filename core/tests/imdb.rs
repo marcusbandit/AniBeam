@@ -219,7 +219,7 @@ fn upstream_requests(http: &FakeHttp) -> Vec<String> {
 
 /// Runs the refresh to its end and hands back the terminal event.
 fn run(core: &Arc<Core>, c: &Collector) -> (u64, Event) {
-    let job = imdb::start_refresh(core);
+    let job = imdb::start_refresh(core.services());
     (job, common::wait_job(c, job))
 }
 

@@ -7,7 +7,7 @@
 // theme.posterDecodeSize, the size the cards ask for. Main fills it a beat after the
 // first page is up, so the pool's decodes queue behind that page's own posters.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

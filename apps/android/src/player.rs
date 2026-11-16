@@ -10,7 +10,6 @@
 //! turns to landscape with the system bars hidden while a file plays.
 
 use std::cell::RefCell;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,7 +24,7 @@ use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 use crate::focus::{Act, Change, Focus};
 use crate::mpv::{Mpv, MpvEvent, Value};
 use crate::thumbs::{Shot, Thumbs};
-use crate::video::{Frame, Share, Video};
+use crate::video::{Frame, Images, Share, Video};
 use crate::{AppWindow, Band, PickRow, PlayerData};
 
 /// The chrome hides this long after the last touch.
@@ -300,6 +299,8 @@ struct Player {
     host: Option<Arc<crate::stream::Host>>,
     mpv: Arc<Mpv>,
     video: Option<Video>,
+    /// The renderer's frames as the page's images, kept where a platform reuses them.
+    images: Images,
     rules: Rules,
     tracks: Vec<tracks::Track>,
     aid: i64,
@@ -450,9 +451,9 @@ pub fn install(window: &AppWindow) {
     let weak = window.as_weak();
     let r = window
         .window()
-        .set_rendering_notifier(move |state, _api| match state {
+        .set_rendering_notifier(move |state, api| match state {
             slint::RenderingState::BeforeRendering => {
-                let Some(share) = crate::video::current_share() else {
+                let Some(share) = crate::video::current_share(api) else {
                     return;
                 };
                 let size = weak.upgrade().map(|w| picture_size(&w)).unwrap_or_default();
@@ -707,6 +708,7 @@ fn begin(
         host,
         mpv,
         video: None,
+        images: Images::default(),
         rules,
         tracks: Vec::new(),
         aid: -1,
@@ -912,6 +914,33 @@ fn neighbour(forward: bool) {
     }
 }
 
+/// The app went to the background (the iPhone): the renderer stops and lets go of its GL
+/// before this returns, since iOS ends an app that draws with OpenGL ES in the background,
+/// and mpv stops decoding pictures nobody sees. The sound plays on. Called on the UI loop.
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub fn background() {
+    with_player(|p| {
+        // The track goes first, and waits on the core: a render context freed under a video
+        // output that is still open fails the output, and mpv ends a file left with neither
+        // picture nor sound.
+        if p.rules.loaded {
+            p.mpv.command_now(&["set", "vid", "no"]);
+        }
+        p.drop_video();
+    });
+}
+
+/// The app is on the screen again: the next frame Slint draws starts a renderer, which
+/// chooses the video track again (`video_started`).
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub fn foreground() {
+    WINDOW.with(|w| {
+        if let Some(w) = w.borrow().as_ref().and_then(|w| w.upgrade()) {
+            w.window().request_redraw();
+        }
+    });
+}
+
 /// Android moved the audio focus: a call pauses the episode and its end plays it again,
 /// another app taking over for good pauses it. A cast plays on the TV and gave the focus
 /// back as it started, so a change then leaves it alone. Called on the UI loop.
@@ -1062,7 +1091,8 @@ impl Player {
     }
 
     fn ensure_video(&mut self, share: Share, size: (u32, u32)) {
-        if self.no_video {
+        // Off the screen no renderer starts; the one there was went with the screen.
+        if self.no_video || crate::video::held() {
             return;
         }
         if let Some(v) = &self.video {
@@ -1080,32 +1110,20 @@ impl Player {
         let on_frame = Box::new(move |frame: Frame| {
             let window = window.clone();
             let _ = slint::invoke_from_event_loop(move || {
-                PLAYER.with(|p| {
-                    let current = p
-                        .try_borrow()
-                        .ok()
-                        .and_then(|p| p.as_ref().map(|p| (p.session.session, p.video_gen)));
-                    if current != Some((session, generation)) {
-                        return;
+                let image = PLAYER.with(|p| {
+                    let mut p = p.try_borrow_mut().ok()?;
+                    let p = p.as_mut()?;
+                    if (p.session.session, p.video_gen) != (session, generation) {
+                        return None;
                     }
-                    let Some(texture) = NonZeroU32::new(frame.texture) else {
-                        return;
-                    };
-                    // Safety: the texture lives in Slint's share group until the renderer
-                    // stops, and the renderer stops before the page lets go of the image.
-                    let image = unsafe {
-                        slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(
-                            texture,
-                            (frame.width, frame.height).into(),
-                        )
-                        .origin(slint::BorrowedOpenGLTextureOrigin::TopLeft)
-                        .build()
-                    };
+                    frame.image(&mut p.images)
+                });
+                if let Some(image) = image {
                     data(&window, |d| {
                         d.set_frame(image);
                         d.set_has_frame(true);
                     });
-                });
+                }
             });
         });
         let session = self.session.session;
@@ -1151,6 +1169,7 @@ impl Player {
     fn drop_video(&mut self) {
         self.video_gen += 1;
         self.video = None;
+        self.images = Images::default();
         self.d(|d| {
             d.set_has_frame(false);
             d.set_frame(Default::default());

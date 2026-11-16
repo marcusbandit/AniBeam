@@ -40,6 +40,7 @@ pub mod qobject {
         #[qproperty(QString, release)]
         #[qproperty(QString, build)]
         #[qproperty(QString, own_track)]
+        #[qproperty(QString, default_icon)]
         #[qproperty(QString, shoot)]
         #[qproperty(QString, page)]
         #[qproperty(QString, props)]
@@ -208,6 +209,7 @@ pub struct ShellRust {
     release: QString,
     build: QString,
     own_track: QString,
+    default_icon: QString,
     shoot: QString,
     page: QString,
     props: QString,
@@ -249,6 +251,8 @@ impl Default for ShellRust {
                     anibeam_core::update::Track::Stable => "stable",
                 },
             ),
+            // The Rail's and Appearance's Default icon: release, nightly or dev (build.rs).
+            default_icon: QString::from(crate::app_icon::DEFAULT_FILE),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
             page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
@@ -469,7 +473,7 @@ impl qobject::Shell {
                             &version,
                             "",
                             &format!(
-                                "https://github.com/marcusbandit/AniBeam/releases/tag/v{version}"
+                                "https://github.com/marcusbandit/Anibeam/releases/tag/v{version}"
                             ),
                             "command",
                             command,

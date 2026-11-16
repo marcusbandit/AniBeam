@@ -19,8 +19,7 @@
 // match. The core writes one line to the activity log for the lot; Escape or Cancel stops.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -171,12 +170,9 @@ Item {
     property bool hiddenExist: false
     property bool watchedExist: false
     property bool libraryEmpty: false
-    // An empty library with folders is a scan that found nothing, not a library to start
-    property bool hasFolders: false
     // A read that failed says so with Try again, never as an empty library
     property bool loadFailed: false
     function showAll() { tab = "All"; persist(); reload() }
-    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("library-scan-started")) }
     property real nowMs: Date.now()
 
     function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel(""); reload() }
@@ -295,7 +291,6 @@ Item {
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
-        if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
     }
     Timer { id: debounce; interval: 400; onTriggered: page.reload() }
@@ -417,13 +412,14 @@ Item {
             // row stretched to the width it was given
             readonly property bool oneLine: tabSeg.implicitWidth + theme.space(8) + orderRow.fullWidth <= width
             height: oneLine ? Math.max(tabSeg.height, orderRow.height) : tabSeg.height + theme.space(3) + orderRow.height
-            Seg {
+            // The library's tabs, then the pages that live under Library (#1012)
+            LibraryTabs {
                 id: tabSeg
-                objectName: "tab"
                 anchors.left: parent.left
-                options: page.tabOptions
-                index: Math.max(0, page.tabNames.indexOf(page.tab))
-                onPicked: function(i) { page.pickTab(i) }
+                here: "library"
+                filters: page.tabOptions
+                filterIndex: Math.max(0, page.tabNames.indexOf(page.tab))
+                onFilterPicked: function(i) { page.pickTab(i) }
             }
             // The order pair and the cut trio. Fixed widths for the pills and the direction, so
             // a pick never moves the controls under the pointer or flips the line
@@ -680,22 +676,20 @@ Item {
         onCleared: page.ratePicked(null)
     }
 
-    // The empty library: a folder to add, or, with folders, a scan that found nothing
-    EmptyState {
+    // The tabs stay over an empty library too, so On my list, Stats and Fix matches can be reached
+    // before the first folder is in (#1012)
+    LibraryTabs {
+        visible: page.libraryEmpty
+        x: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
+        y: theme.space(8)
+        here: "library"
+        filters: page.tabOptions
+        filterIndex: Math.max(0, page.tabNames.indexOf(page.tab))
+        onFilterPicked: function(i) { page.pickTab(i) }
+    }
+    // The empty library: no folder, folders still being read, or folders with no video
+    LibraryEmpty {
         objectName: "library-empty"
         visible: page.libraryEmpty
-        icon: page.hasFolders ? "folder-search" : "tv"
-        title: page.hasFolders ? words.t("library-empty-scanned-title") : words.t("library-empty-title")
-        body: page.hasFolders ? words.t("library-empty-scanned-body") : words.t("library-empty-body")
-        Button { visible: page.hasFolders; msg: "library-scan-all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
-        Button { visible: !page.hasFolders; msg: "library-add-folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
-        Button { visible: page.hasFolders; msg: "library-settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "library" }) }
-        Button { visible: !page.hasFolders; msg: "library-import"; icon: "download"; flat: true; onClicked: importDialog.open() }
-    }
-    FileDialog {
-        id: importDialog
-        title: words.t("library-import-title")
-        nameFilters: [words.t("library-import-filter-export"), words.t("library-import-filter-all")]
-        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.fail(r.error); else frame.toast(words.t("library-import-started")) }
     }
 }

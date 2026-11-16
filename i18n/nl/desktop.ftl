@@ -52,19 +52,19 @@ scan-summary-open-library = Bibliotheek openen
 
 ## UpdateNotice
 
-update-notice-check-failed = AniBeam kon niet op updates controleren. Controleer je internetverbinding en probeer het opnieuw.
-update-notice-up-to-date = AniBeam is bijgewerkt
-update-notice-downloading = AniBeam { $version } downloaden
-update-notice-ready = AniBeam { $version } staat klaar
+update-notice-check-failed = Anibeam kon niet op updates controleren. Controleer je internetverbinding en probeer het opnieuw.
+update-notice-up-to-date = Anibeam is bijgewerkt
+update-notice-downloading = Anibeam { $version } downloaden
+update-notice-ready = Anibeam { $version } staat klaar
 update-notice-failed = De update is mislukt
-update-notice-on-aur = AniBeam { $version } staat in de AUR
-update-notice-out = AniBeam { $version } is uit
-update-notice-out-titled = AniBeam { $version } “{ $title }” is uit
+update-notice-on-aur = Anibeam { $version } staat in de AUR
+update-notice-out = Anibeam { $version } is uit
+update-notice-out-titled = Anibeam { $version } “{ $title }” is uit
 update-notice-progress = { $percent }%  ·  { $got } van { $total } MB
 update-notice-restart-hint = Herstart nu, of hij opent de volgende keer
 update-notice-from-source = Deze kopie is uit de broncode gebouwd: pull en bouw opnieuw
 update-notice-no-download = Geen download voor deze computer
-update-notice-install-hint = Bijwerken installeert hem en herstart AniBeam
+update-notice-install-hint = Bijwerken installeert hem en herstart Anibeam
 update-notice-retry = Opnieuw
 update-notice-update = Bijwerken
 update-notice-restart = Herstarten
@@ -104,7 +104,7 @@ activity-drawer-copy-tip = Klik om de regel te kopiëren
 activity-drawer-fold = Inklappen
 activity-drawer-empty-technical = Nog niets gelogd.
 activity-drawer-empty-problems = Geen problemen. Alles werkte.
-activity-drawer-empty = Nog niets te melden. Wat AniBeam voor je doet verschijnt hier.
+activity-drawer-empty = Nog niets te melden. Wat Anibeam voor je doet verschijnt hier.
 
 ## ActivityColumn
 
@@ -152,14 +152,14 @@ activity-column-cube-progress = Aflevering { $number }: { $percent }%
 
 ## Frame
 
-frame-window-title = { $page } - AniBeam
+frame-window-title = { $page } - Anibeam
 frame-strip-ready = Klaar
 frame-strip-progress = { $doing }, { $done } van { $total }
 frame-strip-idle = Er loopt niets
 frame-strip-time-format = HH:mm
 frame-finish-sign-in = Rond eerst het inloggen bij { $tracker } af
 frame-did-not-work = Dat werkte niet.
-frame-could-not-open = AniBeam kon dat niet openen. Kopieer het en open het zelf.
+frame-could-not-open = Anibeam kon dat niet openen. Kopieer het en open het zelf.
 frame-copy = Kopieer
 frame-copied = Gekopieerd
 frame-status-refused = { $tracker } nam het niet aan
@@ -274,7 +274,6 @@ frame-downloads-not-read = Niet gelezen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestart
 home-ago-minutes = { $count } min geleden
 home-ago-hours = { $count } u geleden
 home-ago-days = { $count } d geleden
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } te kijken
 home-day-nothing = Niets
 home-now = Nu { $time }
-home-card-aired = { $episode } uit { $ago }
 home-continue = Verder kijken
 home-continue-fact = { $count } series om mee verder te gaan
 home-on-hold = In de wacht
@@ -353,6 +351,7 @@ home-week = Deze week
 home-week-show-empty = Lege dagen tonen
 home-week-hide-empty = Lege dagen verbergen
 home-week-airing = Nu uitgezonden
+home-week-feed = Feed
 home-week-out = Nu uit
 home-week-coming-up = Binnenkort
 home-recommended = Aanbevolen voor jou
@@ -374,20 +373,8 @@ home-dropped-fact = { $count ->
     [one] { $count } bestand nog op schijf
    *[other] { $count } bestanden nog op schijf
 }
-home-out-now = Nu uit
-home-out-now-fact = Nieuwe afleveringen deze week, van AniList
-home-popular = Populair dit seizoen
-home-add-folder-title = Je eigen series komen hier ook
-home-add-folder-body = Voeg de map toe waar je anime staat en Start vult zich met wat je kijkt.
-home-add-folder-button = Map toevoegen
-home-empty-scanned-title = Nog niets gevonden in je mappen
-home-empty-title = Nog geen series
-home-empty-scanned-body = AniBeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-home-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf.
-home-scan-all = Alles scannen
-home-library-settings = Bibliotheekinstellingen
 home-failed-title = Start is niet geladen
-home-failed-body = AniBeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
+home-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
 
 ## Onboarding
 
@@ -412,7 +399,7 @@ onboarding-choose-folder = Kies je animemap
 onboarding-about = Een minuut instellen. Je bibliotheek maakt zichzelf af.
 onboarding-step-later = Later
 onboarding-skip-setup = Overslaan
-onboarding-title-welcome = Welkom bij AniBeam
+onboarding-title-welcome = Welkom bij Anibeam
 onboarding-title-library = Waar staat je anime?
 onboarding-title-lists = Koppel je animelijst
 onboarding-title-downloads = Zo werken downloads
@@ -422,14 +409,14 @@ onboarding-title-later = { $count ->
     [2] Klaar, twee dingen voor later
    *[other] Klaar, drie dingen voor later
 }
-onboarding-body-welcome = AniBeam houdt je anime op één plek. Het vindt de series op je schijf, speelt ze hier af en houdt AniList of MyAnimeList bij terwijl je kijkt.
-onboarding-body-library = Kies de map waarin je je series bewaart. Elke map daarin wordt een serie, met poster, afleveringen en waar je bleef. AniBeam leest de map alleen. Het verplaatst of hernoemt nooit een bestand.
-onboarding-body-lists = Log één keer in, en elke aflevering die je hier afkijkt wordt op je lijst gemarkeerd, zonder iets te typen. Het inloggen gebeurt in je browser, dus AniBeam ziet je wachtwoord nooit.
+onboarding-body-welcome = Anibeam houdt je anime op één plek. Het vindt de series op je schijf, speelt ze hier af en houdt AniList of MyAnimeList bij terwijl je kijkt.
+onboarding-body-library = Kies de map waarin je je series bewaart. Elke map daarin wordt een serie, met poster, afleveringen en waar je bleef. Anibeam leest de map alleen. Het verplaatst of hernoemt nooit een bestand.
+onboarding-body-lists = Log één keer in, en elke aflevering die je hier afkijkt wordt op je lijst gemarkeerd, zonder iets te typen. Het inloggen gebeurt in je browser, dus Anibeam ziet je wachtwoord nooit.
 onboarding-body-downloads = Volg een serie op de pagina Downloads en elke nieuwe aflevering komt in je bibliotheek zodra hij uitkomt. Daarvoor zijn twee dingen nodig: een plek om te zoeken en een torrentclient om op te halen.
 onboarding-body-ready = Alles hier kun je later wijzigen in Instellingen, en Instellingen, Over start deze introductie opnieuw.
 onboarding-skip-step = Nu overslaan
 onboarding-get-started = Aan de slag
-onboarding-open-app = AniBeam openen
+onboarding-open-app = Anibeam openen
 onboarding-continue = Verder
 onboarding-payoff-library = Je bibliotheek
 onboarding-payoff-library-line = Posters, afleveringen en wat er hierna komt, voor elke serie in je mappen.
@@ -448,7 +435,7 @@ onboarding-shelf-more = meer
 onboarding-preview-show = Je serie
 onboarding-preview-finished = Aflevering 3 hier afgekeken
 onboarding-preview-on-list = Op je lijst: 3 gekeken
-onboarding-preview-set-by = Door AniBeam ingesteld zodra de aftiteling begint
+onboarding-preview-set-by = Door Anibeam ingesteld zodra de aftiteling begint
 onboarding-lists-connected = Gekoppeld. Wat je hier kijkt telt nu mee op je lijst.
 onboarding-lists-no-account = Nog geen account? Beide zijn gratis, en één is genoeg. Je kunt altijd ontkoppelen in Instellingen, Accounts.
 onboarding-search-title = Een plek om te zoeken
@@ -456,15 +443,12 @@ onboarding-search-ready = { $count ->
     [one] { $count } bron klaar om te doorzoeken.
    *[other] { $count } bronnen klaar om te doorzoeken.
 }
-onboarding-search-none = AniBeam heeft geen eigen bronnen. Je voegt ze toe uit een bronrepo: een link die iemand met je deelt, en die je plakt in Instellingen, Downloads.
-onboarding-sources-after = Opent na de introductie
-onboarding-sources-add = Repo toevoegen na introductie
 onboarding-fetch-title = Wie haalt op
-onboarding-fetch-auto = Laat AniBeam het regelen
+onboarding-fetch-auto = Laat Anibeam het regelen
 onboarding-fetch-recommended = Aanbevolen
-onboarding-fetch-auto-line = AniBeam brengt zijn eigen qBittorrent mee en draait die stil op de achtergrond. Niets te installeren, niets in te vullen.
+onboarding-fetch-auto-line = Anibeam brengt zijn eigen qBittorrent mee en draait die stil op de achtergrond. Niets te installeren, niets in te vullen.
 onboarding-fetch-existing = Ik gebruik al qBittorrent
-onboarding-fetch-existing-line = AniBeam koppelt met de qBittorrent die je al draait. Je vult daarna het adres en de login in bij Instellingen.
+onboarding-fetch-existing-line = Anibeam koppelt met de qBittorrent die je al draait. Je vult daarna het adres en de login in bij Instellingen.
 onboarding-ready-library = Bibliotheek
 onboarding-ready-library-none = Nog geen map. Die staat in Instellingen, Bibliotheek wanneer je wilt.
 onboarding-ready-library-series = { $count ->
@@ -483,19 +467,18 @@ onboarding-ready-lists = Je lijst
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Nog niet gekoppeld. Dat staat in Instellingen, Accounts wanneer je wilt.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Nog geen bronnen
     [one] { $sources } bron
    *[other] { $sources } bronnen
 }, { $client ->
     [own] je eigen qBittorrent.
-   *[bundled] de eigen qBittorrent van AniBeam.
+   *[bundled] de eigen qBittorrent van Anibeam.
 } { $next ->
     [ready] Alles klaar.
     [opens] Instellingen, Downloads opent hierna.
-   *[both] Beide staan in Instellingen, Downloads.
+   *[sources] Voeg een bronlijst toe om te zoeken.
 }
-onboarding-ready-open-downloads = Instellingen, Downloads openen
 onboarding-ready-set-up = Nu instellen
 
 ## Rail.qml
@@ -503,9 +486,6 @@ onboarding-ready-set-up = Nu instellen
 rail-home = Start
 rail-library = Bibliotheek
 rail-airing = Uitzending
-rail-feed = Feed
-rail-stats = Stats
-rail-show-info = Serie-info
 rail-downloads = Downloads
 rail-settings = Instellingen
 rail-downloads-complete =
@@ -513,11 +493,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } abonnement is compleet
        *[other] Downloads: { $count } abonnementen zijn compleet
     }
-rail-title-language-name = Titeltaal: { $language }. Druk voor de volgende
-rail-title-language-english = Engels
-rail-title-language-tip = Titeltaal: romaji, Engels of Japans
-rail-whats-new-in = Wat is nieuw in { $release }
-rail-whats-new = Wat is nieuw
 rail-settings-note = Instellingen: { $note }
 
 ## FixSheet.qml
@@ -706,12 +681,36 @@ library-group-season = Seizoen
 library-group-type = Type
 library-group-genre = Genre
 library-group-watch-state = Kijkstatus
-library-scan-started = Scan gestart
+library-empty-none = Je bibliotheek is leeg
+library-empty-scanning = { $count ->
+    [1] Zoeken naar video's in je map
+   *[other] Zoeken naar video's in je mappen
+}
+library-empty-nothing = { $count ->
+    [1] Nog geen video's in deze map
+   *[other] Nog geen video's in deze mappen
+}
+library-empty-missing = { $count ->
+    [1] Deze map is er niet
+   *[other] Deze mappen zijn er niet
+}
+library-empty-more-folders = { $count ->
+    [one] en nog { $count } map
+   *[other] en nog { $count } mappen
+}
+library-empty-add-folder = Map toevoegen
+library-empty-get = Iets zoeken om te kijken
+library-empty-scan-again = Opnieuw scannen
+library-empty-settings = Bibliotheekinstellingen
+library-empty-pick-folder = Kies een map voor je bibliotheek
 library-tab-all = Alles
 library-tab-series = Series
 library-tab-movies = Films
 library-tab-watched = Gekeken
 library-tab-hidden = Verborgen
+library-tab-on-my-list = Op mijn lijst
+library-tab-stats = Statistieken
+library-tab-fix-matches = Koppelingen herstellen
 library-count-movies =
     { $count ->
         [one] { $count } film
@@ -749,7 +748,7 @@ library-none-here =
         [hidden] Geen verborgen series hier
        *[shows] Geen series hier
     }
-library-load-failed-body = AniBeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
+library-load-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
 library-no-matches-body = Controleer de spelling, of doorzoek de hele bibliotheek vanuit Alles.
 library-none-in-genre-body = Niets in deze weergave heeft dat genre. Alle genres toont de rest.
 library-none-in-tab-body = Je bibliotheek heeft hier nog niets van. Alles toont alles wat erin staat.
@@ -769,18 +768,6 @@ library-rescan = Opnieuw scannen
 library-find-match = Koppeling zoeken
 library-find-match-tip = Zoek voor elke keuze zonder koppeling
 library-all-matched = Elke keuze is gekoppeld
-library-empty-scanned-title = Nog niets gevonden in je mappen
-library-empty-title = Je bibliotheek is leeg
-library-empty-scanned-body = AniBeam vond geen series of films in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-library-empty-body = Voeg de map toe waar je anime staat en de bibliotheek vult zichzelf, of importeer een AniBeam-export.
-library-scan-all = Alles scannen
-library-add-folder = Map toevoegen
-library-settings = Bibliotheekinstellingen
-library-import = Importeren
-library-import-title = Een AniBeam-export importeren
-library-import-filter-export = AniBeam-export (*.json)
-library-import-filter-all = Alle bestanden (*)
-library-import-started = Import gestart
 
 ## MetadataPage.qml
 
@@ -847,8 +834,8 @@ metadata-count =
     }
 metadata-search-placeholder = Titels filteren
 metadata-find-rest = Zoek de rest
-metadata-find-rest-started = De mappen opzoeken die AniBeam nog niet kent
-metadata-find-rest-tip = Zoekt elke map op die AniBeam nog niet kent, op elke site voor serie-info in de volgorde die Instellingen aangeeft
+metadata-find-rest-started = De mappen opzoeken die Anibeam nog niet kent
+metadata-find-rest-tip = Zoekt elke map op die Anibeam nog niet kent, op elke site voor serie-info in de volgorde die Instellingen aangeeft
 metadata-refresh-all = Alles vernieuwen
 metadata-refresh-all-started = De info van elke serie bijwerken
 metadata-refresh-all-tip = Haalt de info van elke herkende serie opnieuw op
@@ -864,9 +851,9 @@ metadata-nothing-under =
         [MissingFiles] Niets onder Ontbreekt
        *[other] Niets onder { $filter }
     }
-metadata-load-failed-body = AniBeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
-metadata-empty-scanned-body = AniBeam vond geen series in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
-metadata-empty-body = Je bibliotheek is leeg. Voeg de map toe waar je anime staat en AniBeam scant hem.
+metadata-load-failed-body = Anibeam kon de bibliotheek nu niet lezen. Probeer het zo opnieuw.
+metadata-empty-scanned-body = Anibeam vond geen series in de mappen die het bewaakt. Scan ze opnieuw, of controleer de mappen in Instellingen.
+metadata-empty-body = Je bibliotheek is leeg. Voeg de map toe waar je anime staat en Anibeam scant hem.
 metadata-no-matches-body = Geen titel in deze weergave bevat die woorden.
 metadata-nothing-under-body = Geen van je series past nu bij dit filter. Alles toont de rest.
 metadata-scan-all = Alles scannen
@@ -876,8 +863,8 @@ metadata-show-all = Alles tonen
 metadata-refreshing = { $title } vernieuwen
 metadata-refresh-tip = Haal de info van deze serie opnieuw op
 metadata-forget-armed = Weghalen
-metadata-forget-confirm-tip = Klik nogmaals om deze serie en de kijkgeschiedenis uit AniBeam te halen
-metadata-forget-tip = De map staat niet meer op de schijf: haal deze serie en de geschiedenis uit AniBeam
+metadata-forget-confirm-tip = Klik nogmaals om deze serie en de kijkgeschiedenis uit Anibeam te halen
+metadata-forget-tip = De map staat niet meer op de schijf: haal deze serie en de geschiedenis uit Anibeam
 
 ## AiringPage.qml
 
@@ -1297,9 +1284,9 @@ series-add-notes = Notitie maken
 series-notes-tip = Notities bij je lijstitem, bewaard op { $sites }
 series-unhide = Tonen
 series-hide = Verbergen
-series-hidden-toast = { $title } is hier verborgen, en AniBeam synct hem niet meer met AniList en MyAnimeList
+series-hidden-toast = { $title } is hier verborgen, en Anibeam synct hem niet meer met AniList en MyAnimeList
 series-unhidden-toast = { $title } is terug, en synct weer
-series-hide-tip-tracked = Verborgen op elke pagina hier, en AniBeam synct hem niet meer met AniList en MyAnimeList
+series-hide-tip-tracked = Verborgen op elke pagina hier, en Anibeam synct hem niet meer met AniList en MyAnimeList
 series-hide-tip = Verborgen in elke lijst
 series-fixes = Correcties
 series-fixes-tip = Corrigeer bestanden, het aantal afleveringen, de koppeling, of scan opnieuw
@@ -1396,9 +1383,10 @@ get-show-kind-indexer-search = Indexer-zoeken
 get-show-ready = Klaar
 get-show-running = Draait
 get-show-not-running = Draait niet
-get-show-not-running-start = Draait niet. Klik hierboven op de bron om hem te starten.
 get-show-switched-off = Uitgezet
-get-show-click-to-see = Klik om te zien wat het voor deze serie heeft
+get-show-show-releases = Releases tonen
+get-show-show-releases-on = Releases op { $name } tonen
+get-show-try-again = Opnieuw proberen
 get-show-searching = Zoeken
 get-show-searching-source = { $name } doorzoeken
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1564,7 +1552,6 @@ torrent-row-stop = Stop
 
 ## SourceRow
 
-source-row-unavailable-fix = Sluit de schijf aan en scan opnieuw. Is de map verplaatst, haal hem dan weg en voeg de nieuwe plek toe.
 source-row-counts = { $count } series
 source-row-counts-movies =
     { $movies ->
@@ -1572,7 +1559,7 @@ source-row-counts-movies =
        *[other] { $count } series, { $movies } filmmappen
     }
 source-row-unavailable = Niet beschikbaar
-    .tip = AniBeam kan deze map niet bereiken. Staat hij op een schijf die niet is aangesloten of gekoppeld, sluit die dan aan en AniBeam pakt hem weer op. Is hij verplaatst, haal hem hier weg en voeg de nieuwe plek toe.
+    .tip = Anibeam kan deze map niet bereiken. Staat hij op een schijf die niet is aangesloten of gekoppeld, sluit die dan aan en Anibeam pakt hem weer op. Is hij verplaatst, haal hem hier weg en voeg de nieuwe plek toe.
 source-row-rescan = Opnieuw scannen
 source-row-remove-question = { $name }, { $count } series en hun geschiedenis weghalen?
 
@@ -1580,12 +1567,12 @@ source-row-remove-question = { $name }, { $count } series en hun geschiedenis we
 
 start-source-title = { $service } starten voor { $name }?
 start-source-busy = { $service } starten. { $name } gaat aan zodra het antwoordt; dit kan tot een minuut duren.
-start-source-body = { $service } is de dienst die { $name } doorzoekt voor AniBeam. Starten draait het op de achtergrond op deze computer, en het blijft draaien nadat AniBeam sluit.
+start-source-body = { $service } is de dienst die { $name } doorzoekt voor Anibeam. Starten draait het op de achtergrond op deze computer, en het blijft draaien nadat Anibeam sluit.
 start-source-starting = Starten
 
 ## SearchProgress
 
-search-progress-why-helper = AniBeam start zijn zoekhulp; dit duurt een seconde of twee.
+search-progress-why-helper = Anibeam start zijn zoekhulp; dit duurt een seconde of twee.
 search-progress-why-starting = { $endpoint } loopt via een hulp die start als een zoekopdracht hem nodig heeft. De eerste zoekopdracht wacht erop, tot { $seconds } seconden; de volgende slaan dit over.
 search-progress-why-reading = De releases in groepen verdelen en vergelijken met de bibliotheek.
 search-progress-why-ondemand = Een hulp leest { $endpoint } opnieuw voor elke nieuwe zoekopdracht, wat meestal tien tot twintig seconden duurt.
@@ -1616,6 +1603,7 @@ release-table-season-batch = Batch seizoen { $season }
 release-table-batch = Batch
 release-table-via = via { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d MMMM yyyy, HH:mm
 release-table-download = Download
 release-table-more = en nog { $count }. Verfijn of sorteer de lijst om andere eerst te zien.
@@ -1680,6 +1668,7 @@ downloads-error-unknown = Er ging iets mis. Probeer het opnieuw.
 downloads-search-all-off = Elke bron staat uit. Zet er een aan om te zoeken.
 downloads-turn-on = { $name } aanzetten
 downloads-search-no-sources = Er zijn nog geen bronnen om te doorzoeken. Voeg een bronlijst toe in Instellingen, onder Downloads.
+downloads-no-sources = Nog geen bronnen om te doorzoeken
 downloads-search-none-started = Geen bron kon de zoekopdracht starten. Probeer het zo opnieuw.
 downloads-auto-resolution = Verfijnd tot { $resolution }, de scherpste die er is
 downloads-search-one-failed = Zoeken op { $name } werkte niet. Probeer het opnieuw, of doorzoek een andere bron.
@@ -1787,8 +1776,8 @@ downloads-cancel-all = Alles annuleren
 downloads-summary-connecting = Verbinden.
 downloads-summary-client-on = { $client } { $version } is gekoppeld.
 downloads-summary-client-off = { $client } is niet gekoppeld. Controleer het adres en wachtwoord in Instellingen, onder Downloads.
-downloads-summary-native = AniBeam doorzoekt je bronnen zelf.
-downloads-summary-native-with = AniBeam doorzoekt je bronnen zelf. { $client }
+downloads-summary-native = Anibeam doorzoekt je bronnen zelf.
+downloads-summary-native-with = Anibeam doorzoekt je bronnen zelf. { $client }
 downloads-summary-starting = Downloads starten.
 downloads-summary-not-running = Downloads draait niet.
 downloads-summary-not-started = Downloads is nog niet gestart.
@@ -1973,12 +1962,12 @@ downloads-preview-from-named = Van { $host } ({ $name })
 downloads-preview-must = Moet { $terms } bevatten
 downloads-preview-must-not = Mag { $terms } niet bevatten
 downloads-helper-changed = Downloads staat op een hulp die niet antwoordt
-downloads-helper-missing = Deze kopie van AniBeam kwam zonder downloads
+downloads-helper-missing = Deze kopie van Anibeam kwam zonder downloads
 downloads-helper-failed = Downloads kon niet starten
-downloads-helper-changed-body = Zoeken en downloaden lopen via een klein hulpprogramma. Instellingen wijzen naar een ander dan dat van AniBeam zelf, en dat antwoordt niet. Schakel terug en het start vanzelf.
+downloads-helper-changed-body = Zoeken en downloaden lopen via een klein hulpprogramma. Instellingen wijzen naar een ander dan dat van Anibeam zelf, en dat antwoordt niet. Schakel terug en het start vanzelf.
 downloads-helper-missing-body = Hij is gebouwd zonder het hulpprogramma waarmee zoeken en downloaden werken. De installers op de releasepagina hebben het wel. Instellingen, Downloads zegt hoe je het aan deze kopie toevoegt.
 downloads-helper-failed-body = Het hulpprogramma waarmee zoeken en downloaden werken stopte voordat het klaar was. Opnieuw starten lost dit meestal op.
-downloads-helper-use-own = Die van AniBeam gebruiken
+downloads-helper-use-own = Die van Anibeam gebruiken
 downloads-helper-start-again = Opnieuw starten
 downloads-helper-show-how = Laat zien hoe
 downloads-helper-what-went-wrong = Wat ging er mis
@@ -2005,10 +1994,10 @@ downloads-card-next-span =
        *[no] Afleveringen { $episode } t/m { $through } over { $time }
     }
 downloads-rules-unread = Je abonnementen konden niet worden gelezen.
-downloads-lens-following-line = Feeds die AniBeam volgt, als de series die ze vullen.
+downloads-lens-following-line = Feeds die Anibeam volgt, als de series die ze vullen.
 downloads-none-yet = Nog geen.
 downloads-reading = Lezen.
-downloads-rules-error = AniBeam kon je abonnementen niet lezen. Probeer het zo opnieuw.
+downloads-rules-error = Anibeam kon je abonnementen niet lezen. Probeer het zo opnieuw.
 downloads-removing-to-go = Weghalen, nog { $count }
 downloads-unsubscribe-all = Alle { $count } opzeggen
 downloads-unsubscribe = Opzeggen
@@ -2064,7 +2053,7 @@ track-picker-off = Uit
 roll-controls-window = { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }
 roll-controls-window-watched = { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }, { $watched } gekeken
 roll-controls-more = Nog { $count } ophalen
-roll-controls-more-tip = Download de volgende afleveringen nu. AniBeam houdt de volgende paar weer klaar zodra je bij bent.
+roll-controls-more-tip = Download de volgende afleveringen nu. Anibeam houdt de volgende paar weer klaar zodra je bij bent.
 roll-controls-fewer-tip = Houd er één minder klaar
 roll-controls-ahead = { $count } vooruit
 roll-controls-further-tip = Houd er één meer klaar
@@ -2116,7 +2105,7 @@ player-no-chapters = Dit bestand heeft geen hoofdstukken
 player-last-chapter = Dit is het laatste hoofdstuk
 player-chapter = Hoofdstuk { $number }
 player-chapter-titled = Hoofdstuk { $number }: { $title }
-player-screenshot-saved = Opgeslagen in Pictures/AniBeam
+player-screenshot-saved = Opgeslagen in Pictures/Anibeam
 player-skipped-intro = Intro overgeslagen
 player-skipped-outro = Outro overgeslagen
 player-undo = Ongedaan maken
@@ -2160,8 +2149,7 @@ player-not-now = Niet nu
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Bronlijsten
-endpoint-repos-panel-helper = Een bronlijst is een ondertekende set zoekplekken die je via het adres toevoegt. AniBeam controleert de handtekening en toont de sleutel vóór opslaan; daarna installeer je wat je wilt. Die komen bij Zoekbronnen hierboven.
-endpoint-repos-panel-could-not-start = AniBeam kon dat niet starten. Probeer het zo opnieuw.
+endpoint-repos-panel-could-not-start = Anibeam kon dat niet starten. Probeer het zo opnieuw.
 endpoint-repos-panel-needs-value = { $name } heeft een waarde nodig
 endpoint-repos-panel-values-of = Waarden van { $name }
 endpoint-repos-panel-secret-note = Bewaard in de geheimenopslag van deze machine, nooit in de bibliotheek of een export.
@@ -2173,19 +2161,9 @@ endpoint-repos-panel-needs-fields = Heeft { $fields } nodig voordat het zoekt.
 endpoint-repos-panel-no-longer-offered = Wordt niet meer aangeboden door de bronlijst.
 endpoint-repos-panel-update-requests-to = De update stuurt verzoeken naar { $host }.
 endpoint-repos-panel-unreadable = Deze lijst kon niet worden gelezen. Lijsten vernieuwen probeert het opnieuw.
-endpoint-repos-panel-add-list = Bronlijst toevoegen
-endpoint-repos-panel-add-list-helper = Het adres van het indexbestand, of een pad ernaar op deze machine.
 endpoint-repos-panel-checking = Controleren
 endpoint-repos-panel-add = Toevoegen
-endpoint-repos-panel-trust-question = { $name } vertrouwen?
 endpoint-repos-panel-fingerprint = Vingerafdruk sleutel  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } bronnen, ondertekend. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } bronnen, ondertekend, al vertrouwd. De bronnen bepalen waar je zoekopdrachten heen gaan; vertrouw een lijst alleen van iemand die je vertrouwt.
-endpoint-repos-panel-trust = Vertrouwen
 endpoint-repos-panel-saving = Opslaan
 endpoint-repos-panel-install = Installeren
 endpoint-repos-panel-update = Bijwerken
@@ -2196,10 +2174,25 @@ endpoint-repos-panel-add-value = Waarde toevoegen
 endpoint-repos-panel-change = { $fields } wijzigen
 endpoint-repos-panel-asks-for = Vraagt om je { $fields }.
 endpoint-repos-panel-by-hand = Handmatig toevoegen
-endpoint-repos-panel-by-hand-helper = Voor sites zonder lijst: elke feed met {"{"}query{"}"} op de plek van de zoekterm, ook via een proxy. Een sleutel in het adres gaat apart naar de wachtwoordopslag.
 endpoint-repos-panel-name = Naam
 endpoint-repos-panel-refreshing = Vernieuwen
 endpoint-repos-panel-refresh = Lijsten vernieuwen
+
+## SourceAttach.qml
+
+source-attach-placeholder = Plak het adres van een bronlijst
+source-attach-what = Wat is een bronlijst?
+source-attach-recent = Eerder gebruikt
+source-attach-added = { $count ->
+    [one] { $name } toegevoegd: { $count } bron staat aan.
+   *[other] { $name } toegevoegd: { $count } bronnen staan aan.
+}
+source-attach-added-none = { $name } toegevoegd. Geen nieuwe bron om aan te zetten.
+source-attach-waiting = { $count ->
+    [one] { $names } vraagt eerst om een waarde.
+   *[other] { $names } vragen eerst om een waarde.
+}
+source-attach-fill-in = Invullen
 
 ## ScheduleSheet.qml
 
@@ -2231,8 +2224,8 @@ schedule-agent-looking = { $agent } zoekt de data op. Er wordt niets opgeslagen 
 schedule-agent-stopped = { $agent } is gestopt: { $error }
 schedule-stop = Stop
 schedule-paste-placeholder = Plak een releaselijst, een tabel of een bericht
-schedule-paste-helper = Wat AniBeam leest verschijnt bij de afleveringen hieronder.
-schedule-agent-hint = Met Claude Code op deze computer kan AniBeam het vragen de data voor je op te zoeken.
+schedule-paste-helper = Wat Anibeam leest verschijnt bij de afleveringen hieronder.
+schedule-agent-hint = Met Claude Code op deze computer kan Anibeam het vragen de data voor je op te zoeken.
 schedule-show-more = Meer afleveringen tonen
 schedule-pick-hint = Klik op een aflevering om hem een datum te geven. Shift-klik kiest een reeks.
 schedule-picked-one = Aflevering { $number }:
@@ -2286,8 +2279,8 @@ connect-did-not-finish = Het inloggen is niet afgerond
 connect-finish-in-browser = Rond af in je browser
 connect-signed-in-anilist = Ingelogd als { $account }. Je lijst staat op de pagina Kijken.
 connect-signed-in-mal = Ingelogd als { $account }. Afleveringen worden daar gemarkeerd terwijl je kijkt.
-connect-setup-lead = { $name } logt AniBeam in via een eigen app van jou. Dat kost één keer ongeveer een minuut.
-connect-page-open = De inlogpagina van { $name } staat open in je browser. Keur AniBeam daar goed en dit sluit vanzelf.
+connect-setup-lead = { $name } logt Anibeam in via een eigen app van jou. Dat kost één keer ongeveer een minuut.
+connect-page-open = De inlogpagina van { $name } staat open in je browser. Keur Anibeam daar goed en dit sluit vanzelf.
 connect-page-opening = De inlogpagina van { $name } openen in je browser.
 connect-open-watching = Kijken openen
 connect-done = Klaar
@@ -2307,7 +2300,7 @@ connect-step-paste-id-anilist = AniList noemt het Client ID: het getal op de pag
 connect-step-paste-id-mal = MyAnimeList noemt het Client ID: de lange tekenreeks op de pagina van je nieuwe app.
 connect-client-id = Client ID
 connect-client-secret-web = Client secret (alleen voor web-apps)
-connect-step-connect-body = De browser opent, { $name } vraagt je in te loggen en AniBeam goed te keuren, en AniBeam vangt het antwoord op.
+connect-step-connect-body = De browser opent, { $name } vraagt je in te loggen en Anibeam goed te keuren, en Anibeam vangt het antwoord op.
 
 ## SettingsPage
 
@@ -2317,88 +2310,16 @@ settings-section-library = Bibliotheek
 settings-section-accounts = Accounts
 settings-section-appearance = Weergave
 settings-section-playback = Afspelen
-settings-section-subtitles = Ondertitels
 settings-section-keys = Toetsenbord
 settings-section-downloads = Downloads
-settings-section-phone = Telefoonapp
-settings-section-storage = Opslag en back-up
-settings-section-help = Help
 settings-section-about = Over
 settings-section-developer = Ontwikkelaar
-settings-status-library-empty = Nog geen mappen
-settings-status-library =
-    { $count ->
-        [one] { $count } serie
-       *[other] { $count } series
-    } in { $folders ->
-        [one] { $folders } map
-       *[other] { $folders } mappen
-    }
-settings-status-library-missing =
-    { $gone ->
-        [one] { $gone } map
-       *[other] { $gone } mappen
-    } niet gevonden, { $count ->
-        [one] { $count } serie
-       *[other] { $count } series
-    } in { $folders ->
-        [one] { $folders } map
-       *[other] { $folders } mappen
-    }
-settings-status-accounts-anilist = Synct met AniList
-settings-status-accounts-mal = Synct met MyAnimeList
-settings-status-accounts-both = Synct met AniList en MyAnimeList
-settings-status-accounts-none = Geen lijst gekoppeld
-settings-status-appearance =
-    { $mode ->
-        [system] Volgt het systeem
-        [light] Licht
-       *[dark] Donker
-    }, { $source ->
-        [theme] themakleuren
-       *[desktop] bureaubladkleuren
-    }
-settings-status-playback =
-    { $skip ->
-        [both] Slaat intro's en outro's over
-        [intro] Slaat intro's over
-        [outro] Slaat outro's over
-       *[none] Speelt alles helemaal af
-    }
-settings-status-playback-audio =
-    { $skip ->
-        [both] Slaat intro's en outro's over
-        [intro] Slaat intro's over
-        [outro] Slaat outro's over
-       *[none] Speelt alles helemaal af
-    }, audio { $languages }
-settings-status-subtitles =
-    Grootte { $percent } procent, { $override ->
-        [AsScripted] opgemaakte bestanden zoals gemaakt
-        [Force] jouw stijl op elk bestand
-       *[ScaleOnly] opgemaakte bestanden houden hun uiterlijk
-    }
-settings-status-keys = Elke toets waar AniBeam op reageert
-settings-status-downloads-unread = Nog niet gelezen
-settings-status-downloads-answered = qBittorrent antwoordde
-settings-status-downloads-missing = Zoekhulp niet geïnstalleerd
-settings-status-downloads-unconnected = Nog niet gekoppeld
-settings-status-phone-shared = Gedeeld op je tailnet
-settings-status-phone-off = Niet gedeeld
-settings-status-storage = { $size } in beeldcache
-settings-status-storage-unread = Afbeeldingen, export en import
-settings-status-help = Veelgestelde vragen
-settings-status-about-update = Versie { $version } is uit
-settings-status-developer = Elke pagina timen
-settings-status-developer-last = { $page } gebouwd in { $ms } ms
 settings-results =
     { $count ->
         [one] { $count } instelling past
        *[other] { $count } instellingen passen
     }
 settings-results-none = Niets past
-settings-results-hint = Enter opent de eerste.
-settings-results-none-hint = Probeer een eenvoudiger woord: thema, ondertitels, tracker, wachtwoord, map.
 settings-find-folders =
     .words = map toevoegen scannen opnieuw weghalen bron pad collectie
 settings-find-matching =
@@ -2419,6 +2340,8 @@ settings-find-on-hold =
     .words = in de wacht gepauzeerd inactief stil dagen
 settings-find-language =
     .words = taal vertaling locale nederlands engels
+settings-find-title-language =
+    .words = titel romaji engels japans naam
 settings-find-mode =
     .words = donker licht systeem thema nacht
 settings-find-colours-from =
@@ -2513,14 +2436,6 @@ settings-find-files =
     .words = database gegevens config cache map pad
 settings-find-help-folders =
     .words = help map indeling namen afleveringen seizoenen films bestanden structuur
-settings-find-help-recognised =
-    .words = help koppelen verkeerde serie niet gevonden ongekoppeld herkend
-settings-find-help-anilist =
-    .words = help anilist myanimelist mal inloggen koppelen login tracker
-settings-find-help-downloads =
-    .words = help downloads leeg bronnen niets torrent qbittorrent
-settings-find-help-data =
-    .words = help gegevens bestanden back-up database privacy
 settings-find-help-else =
     .words = help instellen introductie rondleiding melden bug probleem issue
 settings-find-version =
@@ -2537,124 +2452,89 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = Downloads
-settings-downloads-lead = Waar AniBeam je downloads naartoe stuurt, en hoe het de releasefeeds doorzoekt.
-settings-downloads-keep-none = Een aflevering afkijken wist de vorige.
-settings-downloads-keep-line = Gekeken afleveringen die achter de laatste blijven. Met { $count } wist afkijken van aflevering { $finishing } aflevering 1.
 settings-downloads-anirss-ready = Draait, versie { $version } op { $url }.
 settings-downloads-anirss-starting = De zoekhulp starten.
-settings-downloads-anirss-missing = De zoekhulp is niet geïnstalleerd. Installeer AniBeam opnieuw, of geef je eigen anirss op bij Commando.
+settings-downloads-anirss-missing = De zoekhulp is niet geïnstalleerd. Installeer Anibeam opnieuw, of geef je eigen anirss op bij Commando.
 settings-downloads-anirss-failed = De zoekhulp is gestopt. Opnieuw proberen start hem; Details zegt wat hij meldde.
 settings-downloads-anirss-idle = Nog niet gestart. Hij start de eerste keer dat je zoekt op de pagina Downloads.
 settings-downloads-torrent-trying = { $client } proberen.
 settings-downloads-torrent-answered = { $client } { $version } antwoordde.
 settings-downloads-torrent-failed = { $client } kon niet verbinden. Controleer adres en wachtwoord en test opnieuw.
 settings-downloads-torrent-untried = Nog niet geprobeerd.
-settings-downloads-mode-existing = Een qBittorrent die je zelf draait, met de Web UI aan.
-settings-downloads-mode-managed = AniBeam draait een eigen qBittorrent naar ~/Downloads/Anime. Die blijft draaien nadat AniBeam sluit, zodat abonnementen blijven downloaden.
-settings-downloads-mode-auto = Gebruikt qBittorrent op het adres hieronder, anders een eigen.
 settings-downloads-password-saved = Er is hier een wachtwoord voor deze client opgeslagen.
 settings-downloads-password-anirss = Het wachtwoord dat de zoekhulp opsloeg wordt gebruikt; sla er hier een op om daar niet meer van af te hangen.
 settings-downloads-password-none = Geen wachtwoord opgeslagen. Onnodig als de client deze machine geen login vraagt.
-settings-downloads-mismatch = De zoekhulp praat met { $helperUrl } terwijl AniBeam met { $url } praat. Een zoekhulp die je zelf draait leest het adres uit zijn eigen config.toml, dus hier van client wisselen verplaatst hem niet.
+settings-downloads-mismatch = De zoekhulp praat met { $helperUrl } terwijl Anibeam met { $url } praat. Een zoekhulp die je zelf draait leest het adres uit zijn eigen config.toml, dus hier van client wisselen verplaatst hem niet.
 settings-downloads-torrent-title = Torrentclient
-settings-downloads-torrent-helper = De qBittorrent die downloadt. Het wachtwoord staat in de wachtwoordopslag van het systeem.
 settings-downloads-which-client = Welke client
 settings-downloads-pick-for-me = Kies voor mij
 settings-downloads-my-own = Mijn eigen
 settings-downloads-built-in = Ingebouwd
 settings-downloads-saved-clients = Bewaarde clients
-settings-downloads-saved-clients-helper = Een seedbox en die op deze machine, bijvoorbeeld. De clientchip op de pagina Downloads wisselt er ook tussen.
 settings-downloads-add-client = Toevoegen
 settings-downloads-name = Naam
 settings-downloads-name-placeholder = Genoemd naar het adres
 settings-downloads-address = Adres
-settings-downloads-address-managed-helper = Alleen deze machine kan hem bereiken, en er is geen wachtwoord nodig.
-settings-downloads-address-helper = Het adres van de Web UI.
 settings-downloads-username = Gebruikersnaam
 settings-downloads-password = Wachtwoord
 settings-downloads-secret-saved = Opgeslagen
 settings-downloads-secret-unset = Niet ingesteld
+settings-downloads-save-to = Opslaan in
+settings-downloads-save-to-client = De eigen map van qBittorrent
+settings-downloads-save-to-choose = Map kiezen
+settings-downloads-save-to-reset = Herstellen
+settings-downloads-save-to-pick = Downloads opslaan in
 settings-downloads-connection = Verbinding
 settings-downloads-open-config = Config openen
 settings-downloads-details = Details
-settings-downloads-details-torrent = { $client } zei dit toen AniBeam het probeerde.
+settings-downloads-details-torrent = { $client } zei dit toen Anibeam het probeerde.
 settings-downloads-test-trying = Proberen
 settings-downloads-test-save = Opslaan en testen
 settings-downloads-test = Testen
 settings-downloads-searching = Zoeken
 settings-downloads-search-helper = Zoekhulp
-settings-downloads-searching-helper = AniBeam doorzoekt je bronnen zelf en stuurt wat je kiest naar de torrentclient. De zoekhulp is niet nodig.
-settings-downloads-search-helper-helper = Het deel van AniBeam dat zoekt en abonneert, een programma dat anirss heet. AniBeam draait het voor je; wijzig dit alleen als je je eigen draait.
 settings-downloads-runs-in = Zoeken loopt in
-settings-downloads-runs-in-native-helper = Abonnementen lopen via de torrentclient, ook als AniBeam dicht is.
-settings-downloads-runs-in-helper = De zoekhulp, een apart programma dat AniBeam draait of dat je zelf draait.
-settings-downloads-engine-native = AniBeam zelf
+settings-downloads-engine-native = Anibeam zelf
 settings-downloads-how-runs = Hoe het draait
-settings-downloads-how-runs-sidecar = AniBeam start het bij openen en stopt het bij afsluiten.
-settings-downloads-how-runs-remote = AniBeam gebruikt er een die je al draait, op het adres en met de sleutel hieronder.
-settings-downloads-runs-sidecar = AniBeam draait het
+settings-downloads-runs-sidecar = Anibeam draait het
 settings-downloads-runs-remote = Ik draai het
 settings-downloads-command = Commando
-settings-downloads-command-helper = Een naam in PATH of een volledig pad. ~/.local/bin wordt ook doorzocht.
-settings-downloads-server-address-helper = De basis van de server, zonder /api/v1.
 settings-downloads-key = Sleutel
-settings-downloads-key-saved-helper = Er is een sleutel opgeslagen. Typ een nieuwe om hem te vervangen, of maak het veld leeg om hem weg te halen.
-settings-downloads-key-helper = De sleutel die de zoekhulp toonde bij het starten. Daarmee komt AniBeam binnen.
 settings-downloads-details-anirss = De zoekhulp zei dit toen hij stopte.
 settings-downloads-starting = Starten
 settings-downloads-reconnect = Opnieuw verbinden
 settings-downloads-save-first = Sla eerst je wijzigingen op
 settings-downloads-roll-title = Houd de volgende paar klaar
-settings-downloads-roll-helper = Een lange serie downloadt een paar afleveringen tegelijk; elke afgekeken start de volgende. De hele reeks hoeft nooit op schijf.
 settings-downloads-roll-big = Voor lange series
-settings-downloads-roll-big-helper = Alles boven { $count } afleveringen downloadt vanzelf een paar tegelijk. Via de rij op Downloads haal je toch alles in één keer op.
 settings-downloads-roll-ahead = Afleveringen vooruit
-settings-downloads-roll-ahead-helper = Hoeveel er klaarstaan na je huidige aflevering. 12 is zo'n seizoen.
 settings-downloads-unit-episodes = afleveringen
 settings-downloads-roll-over = Lang betekent meer dan
-settings-downloads-roll-over-helper = Downloads met meer afleveringen dan dit halen er een paar tegelijk op.
 settings-downloads-roll-watched = Gekeken afleveringen
-settings-downloads-roll-watched-delete-helper = Gewist zodra je verder bent, zodat de schijf alleen bevat wat je nog moet kijken.
-settings-downloads-roll-watched-keep-helper = Elk bestand blijft op de schijf nadat je het hebt gekeken.
 settings-downloads-keep-all = Alles houden
 settings-downloads-keep-behind = Achter houden
 settings-downloads-subscriptions-title = Abonnementen en zoekopdrachten
 settings-downloads-last-search = Laatste zoekopdracht houden
-settings-downloads-last-search-helper = De pagina Downloads opent met je laatste zoekopdracht. Uit, opent hij leeg.
 settings-downloads-prune = Afgelopen series opzeggen
-settings-downloads-prune-helper = 16 dagen na de laatste aflevering van een serie vervalt de feed. De serie en de bestanden blijven.
 settings-downloads-sources-title = Zoekbronnen
-settings-downloads-sources-helper = Waar zoeken heen gaat, op volgorde. Vindt een bron niets, dan de volgende.
 settings-downloads-sources-empty = Nog geen bronnen ingesteld
 settings-downloads-sources-connect = Koppel de zoekhulp om ze te tonen
-settings-downloads-sources-empty-helper = Bronnen uit een bronlijst hieronder verschijnen hier.
 settings-downloads-config-file = Instellingenbestand van de zoekhulp
-settings-downloads-config-native-helper = Bevat de opslagmappen, de tags en de regels voor beste match, die AniBeam zelf volgt als het de hulp draait. De eigen bronnen zijn alleen van de hulp.
-settings-downloads-config-helper = Bevat de bronnen, de opslagmappen, de tags en de regels voor beste match.
 settings-downloads-unsaved = Niet-opgeslagen wijzigingen
-settings-downloads-unsaved-helper = Opslaan herstart de zoekhulp met de nieuwe instellingen.
 settings-downloads-discard = Weggooien
 
 ## SettingsDeveloperTab
 
 settings-developer-title = Ontwikkelaar
-settings-developer-lead = Waarom een pagina traag is, gemeten. Elke schakelaar geldt voor de volgende pagina die je opent.
 settings-developer-ms = { $ms } ms
 settings-developer-mb = { $mb } MB
 settings-developer-seconds = { $seconds } s
 settings-developer-switches = Schakelaars
 settings-developer-load-images = Afbeeldingen laden
-settings-developer-load-images-helper = Uit wordt geen poster, banner of portret gelezen of gedecodeerd.
 settings-developer-overlay = Overlay paginaladen
-settings-developer-overlay-helper = Het laatste paginaladen en het geheugen, rechtsonder in het venster.
 settings-developer-read-cache = Bibliotheekleesacties bewaren
-settings-developer-read-cache-helper = Het antwoord op een leesactie van de hele bibliotheek blijft bewaard tot de bibliotheek verandert. Uit vraagt elke pagina het de core opnieuw.
 settings-developer-poster-pool = Posters vooraf laden
-settings-developer-poster-pool-helper = Decodeert de 60 posters die je het waarschijnlijkst ziet en houdt ze in het geheugen.
 settings-developer-options = Ontwikkelaarsopties
-settings-developer-options-helper = Zet dit tabblad, de overlay en het meten uit.
 settings-developer-memory = Geheugen
-settings-developer-memory-helper = Wat de kernel voor dit proces telt. Afbeeldingen houden gedecodeerde pixels in het geheugen en op de grafische kaart.
 settings-developer-memory-unknown = Dit systeem zegt niet hoeveel geheugen de app gebruikt.
 settings-developer-in-use = In gebruik
 settings-developer-peak = Piek
@@ -2662,13 +2542,11 @@ settings-developer-heap = Heap
 settings-developer-files-mapped = Gemapte bestanden
 settings-developer-threads = Threads
 settings-developer-give-back = Geheugen teruggeven
-settings-developer-give-back-helper = Laat los wat de scene graph opnieuw kan opbouwen, ruimt JavaScript-garbage op en geeft vrije heap terug aan het systeem. Wat het vrijmaakt is wat de app vasthield zonder het nodig te hebben.
 settings-developer-released = { $before } naar { $after }
 settings-developer-free-now = Nu vrijmaken
 settings-developer-images-total = Afbeeldingen sinds de start
 settings-developer-images-total-line = { $decodes } gedecodeerd, { $pixels } aan pixels uit { $disk } op schijf, { $ms } ms
 settings-developer-loads = Paginaladingen
-settings-developer-loads-helper = Gebouwd is het wachten na een klik: de Qt-thread doet niets anders tot de pagina bestaat. Klaar is wanneer de laatste afbeelding binnen was.
 settings-developer-touring = Timen, { $at } van { $steps }
 settings-developer-tour = Elke pagina timen
 settings-developer-copy-report = Rapport kopiëren
@@ -2705,7 +2583,6 @@ settings-developer-scene = Waar de pagina uit bestaat
 settings-developer-scene-line = { $items } items, { $offscreen } buiten het venster; { $texts } teksten, { $shapes } vormen, { $icons } iconen; { $images } afbeeldingen, waarvan { $imagesOffscreen } buiten het venster met samen { $size }
 settings-developer-copy-load = Deze lading kopiëren
 settings-developer-tour-title = Elke pagina, afbeeldingen aan en uit
-settings-developer-tour-helper = Het middelste van drie bezoeken aan elke pagina. Waar de twee kolommen gelijk zijn, maken afbeeldingen de pagina niet traag.
 settings-developer-col-built-on = Gebouwd, afbeeldingen aan
 settings-developer-col-built-off = Gebouwd, afbeeldingen uit
 settings-developer-col-settled-on = Klaar, aan
@@ -2714,7 +2591,6 @@ settings-developer-col-decodes-time = Decodes, tijd
 settings-developer-col-data = Data
 settings-developer-tour-peak = Piekgeheugen tijdens de ronde { $size }
 settings-developer-events = Gebeurtenissen
-settings-developer-events-helper = Alles wat de core zegt, elk niveau, nieuwste eerst. Elke gebeurtenis gaat als JSON naar de Qt-thread; de grootte is wat het versturen kostte.
 settings-developer-event-rate = { $kind } { $count }/min, { $size }
 settings-developer-events-filter = Filter op woorden, soort of onderdeel
 settings-developer-event-plain = { $message }   (gewoon: { $plain })
@@ -2723,7 +2599,6 @@ settings-developer-copy-events = Gebeurtenissen kopiëren
 ## SettingsKeysTab
 
 settings-keys-title = Toetsenbord
-settings-keys-lead = Elke toets waar AniBeam op reageert. Druk overal op ? voor de toetsen die werken waar je bent.
 settings-keys-player = In de speler
 settings-keys-player-around = Navigeren in de speler
 settings-keys-around = Navigeren
@@ -2790,7 +2665,6 @@ key-help-pick-all = Kies elke getoonde kaart
 ## SettingsAboutTab
 
 settings-about-title = Over
-settings-about-lead = Welke AniBeam dit is, en hoe het hoort van de volgende.
 settings-about-update-failed = De update is niet afgerond. Probeer het opnieuw, of haal hem van de releasepagina.
 settings-about-update-ready = { $version } staat klaar om te installeren.
 settings-about-update-command = { $version } is uit. Werk bij met { $command }
@@ -2798,20 +2672,16 @@ settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } is uit. Deze kopie is uit de broncode gebouwd: pull en bouw opnieuw.
 settings-about-update-elsewhere = { $version } is uit, zonder download voor deze computer.
 settings-about-version = Versie
-settings-about-build = AniBeam { $build }
+settings-about-build = Anibeam { $build }
 settings-about-whats-new = Wat is nieuw
 settings-about-install = { $version } installeren
 settings-about-setup = Introductie
-settings-about-setup-helper = De rondleiding waarmee een nieuwe installatie opent: je map, je lijst en downloads.
 settings-about-run-setup = Introductie opnieuw
 settings-about-updates = Updates
-settings-about-nightly-helper = Bijna elke dag een nieuwe build. Nieuwer, en minder getest.
-settings-about-stable-helper = Een nieuwe versie zodra die getest en uitgebracht is.
 settings-about-stable = Stabiel
 settings-about-nightly = Nightly
 settings-about-check-now = Nu controleren
 settings-about-developer = Ontwikkelaarsopties
-settings-about-developer-helper = Voegt Ontwikkelaar toe: timet elke pagina, toont geheugen en het technische log, kan afbeeldingen uitzetten.
 settings-about-credits = Credits
 settings-about-ratings = Beoordelingen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
@@ -2821,28 +2691,29 @@ settings-about-series-helper = AniList en TVmaze. Overslaantijden van AniSkip.
 ## SettingsPlaybackTab
 
 settings-playback-title = Afspelen
-settings-playback-lead = Wat de speler uit zichzelf doet, zodat je er alleen naar grijpt als je wilt.
 settings-playback-skipping = Overslaan
-settings-playback-skipping-helper = Gebruikt de hoofdstukken, anders tijden die kijkers online delen. Ongedaan maken in de speler stopt overslaan tot AniBeam sluit.
 settings-playback-skip-intros = Intro's overslaan
 settings-playback-skip-outros = Outro's overslaan
-settings-playback-skip-outros-helper = De outro bereiken markeert de aflevering ook als gekeken.
 settings-playback-next-episode = Volgende aflevering
 settings-playback-name-next = Volgende aflevering bij naam
-settings-playback-name-next-helper = De knop Volgende aan het eind van een aflevering toont de titel van de volgende. Uit toont hij alleen het nummer.
 settings-playback-languages = Talen
-settings-playback-languages-helper = Taalcodes, liefste eerst. De eerste die een bestand heeft, wint. Een in de speler gekozen spoor wordt per serie onthouden.
 settings-playback-subtitle-languages = Ondertiteltalen
 settings-playback-audio-languages = Audiotalen
 settings-playback-discord = Toon op Discord wat je kijkt
-settings-playback-discord-check-failed = AniBeam kon Discord nu niet controleren. Probeer het zo opnieuw.
-settings-playback-discord-helper = De serie, aflevering en poster verschijnen op je Discord-profiel terwijl je afspeelt. Er wordt niets verstuurd als dit uit staat of Discord dicht is.
+settings-playback-discord-check-failed = Anibeam kon Discord nu niet controleren. Probeer het zo opnieuw.
 settings-playback-discord-unavailable = Deze build heeft geen Discord-applicatie.
 settings-playback-discord-connected = Verbonden met Discord
-settings-playback-discord-not-connected = Niet verbonden. AniBeam verbindt terwijl een aflevering speelt en Discord open is
+settings-playback-discord-not-connected = Niet verbonden. Anibeam verbindt terwijl een aflevering speelt en Discord open is
+discord-ask-wants = { $name } wil meekijken
+discord-ask-start-room = Kamer starten
+discord-ask-let-in = Binnenlaten
+discord-ask-no = Nee
+settings-playback-discord-blocked = Geweigerd op Discord
+room-panel-discord = Op Discord
+room-panel-discord-open = Open
+room-panel-discord-invite = Alleen op uitnodiging
 settings-playback-advanced = Geavanceerd
 settings-playback-my-mpv = Mijn mpv-instellingen gebruiken
-settings-playback-my-mpv-helper = Leest je mpv.conf. Opties die alleen bij het starten werken worden overgeslagen, en scripts laden nooit.
 settings-playback-no-mpv-conf = Geen mpv-instellingenbestand gevonden. Zet je opties in mpv.conf en zet dit dan aan.
 
 ## SliderRow
@@ -2867,49 +2738,37 @@ look-preview-light = Licht
 ## SettingsAccountsTab
 
 settings-accounts-title = Accounts
-settings-accounts-lead = Koppel AniList of MyAnimeList en elke aflevering die je afkijkt wordt daar voor je gemarkeerd. Aantallen gaan alleen omhoog.
 settings-accounts-syncing = Je lijsten syncen
 settings-accounts-synced = Lijsten gesynct
 settings-accounts-lists = Je animelijsten
-settings-accounts-lists-helper = Zonder lijst onthoudt AniBeam nog steeds wat je op deze computer keek. Een lijst op AniList of MyAnimeList brengt het naar je telefoon en je profiel.
 settings-accounts-progress = Voortgang
 settings-accounts-main-list = Hoofdlijst
-settings-accounts-main-list-helper = De kaarten tonen voortgang van deze. De andere krijgt nog steeds elke update.
 settings-accounts-local-lists = Lijsten op deze computer
 settings-accounts-local-lists-helper =
     { $count ->
         [one] Eén serie heeft
        *[other] { $count } series hebben
-    } alleen hier een status of score. Verhuis ze naar { $tracker } om ze op je telefoon en profiel te zien.
+    } alleen hier een status of score.
 settings-accounts-review-move = Bekijken en verhuizen
 settings-accounts-nothing-to-move = Niets meer te verhuizen
 settings-accounts-sync-now = Nu syncen
-settings-accounts-sync-now-helper = Leest elke gekoppelde lijst opnieuw. AniBeam doet dit ook bij het starten.
 settings-accounts-sync = Syncen
 settings-accounts-move-on-hold = Naar In de wacht
-settings-accounts-move-on-hold-helper = Een serie op Kijken die je een tijd niet hebt aangeraakt gaat op je lijsten naar In de wacht. Afspelen zet hem terug. Een serie die op de volgende aflevering wacht blijft staan.
 settings-accounts-after = Na
 settings-accounts-after-line = Dagen zonder een aflevering af te spelen
 settings-accounts-days-unit = dagen
 
-## SettingsPhoneTab
+## SettingsAccountsTab: the phone app
 
 settings-phone-title = Telefoonapp
-settings-phone-lead = AniBeam op je telefoon kan deze bibliotheek afspelen, tonen wat er loopt en je downloads volgen, waar je ook bent.
 settings-phone-online = Online
 settings-phone-offline = Offline
 settings-phone-untrusted = Krijgt niets van deze computer
-settings-phone-sharing = Delen
-settings-phone-sharing-helper = Alleen je eigen apparaten op Tailscale kunnen erbij. Afleveringen die je op de telefoon kijkt houden hier hun plek en voortgang.
 settings-phone-share = Delen via Tailscale
 settings-phone-stream = Afleveringen streamen
-settings-phone-stream-on = Je apparaten kunnen de afleveringen op deze computer afspelen en casten.
-settings-phone-stream-off = Je apparaten zien de bibliotheek en wat er loopt, maar kunnen hier niet van afspelen.
 settings-phone-host-service = Hostdienst
 settings-phone-not-running = Draait niet
 settings-phone-running = Draait
-settings-phone-service-off-helper = Voer het commando eenmaal uit: je apparaten bereiken AniBeam na inloggen, zonder venster.
-settings-phone-service-on-helper = Je apparaten bereiken AniBeam zonder open venster. Zolang dit venster open is, deelt het in plaats van de dienst.
 settings-phone-copy-command = Commando kopiëren
 settings-phone-command-copied = Commando gekopieerd
 settings-phone-nobody = Krijgt niets: Tailscale noemt er geen persoon bij
@@ -2927,81 +2786,29 @@ settings-phone-person-devices =
        *[other] { $count } apparaten
     }
 settings-phone-devices = Apparaten op je tailnet
-settings-phone-devices-helper = Elk apparaat op je tailnet kan deze computer bereiken zolang delen aan staat. Zet er een uit en hij krijgt niets meer van hier.
-settings-phone-addresses = Adressen
-settings-phone-addresses-helper = Typ er een in de telefoonapp de eerste keer dat hij erom vraagt.
 settings-phone-copy = Kopieer
 settings-phone-address-copied = Adres gekopieerd
 
-## SettingsHelpTab
+## SettingsAboutTab: the questions people ask most
 
-settings-help-title = Help
-settings-help-lead = Korte antwoorden op veelgestelde vragen, elk direct naar de oplossing.
+settings-about-help = Hulp
 settings-help-folders = Hoe moeten mijn mappen eruitzien?
-settings-help-folders-helper = Eén map per serie, met de afleveringen erin. Geef elk bestand het afleveringsnummer, zoals releases: "Frieren - 01.mkv" of "Frieren S01E01.mkv". Een tweede seizoen mag een eigen map zijn of een map "Season 2" in de serie. Films gaan in een map Movies, één bestand per film.
-settings-help-for-example = Bijvoorbeeld
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Nog geen map toegevoegd
-settings-help-reads-folders =
-    { $count ->
-        [one] AniBeam leest één map
-       *[other] AniBeam leest { $count } mappen
-    }
-settings-help-add-folder-helper = Voeg de map toe die je series bevat, niet elke serie apart.
-settings-help-add-folder = Map toevoegen
-settings-help-open-folders = Je mappen openen
-settings-help-match = Waarom is mijn serie niet herkend?
-settings-help-match-helper = AniBeam zoekt elke map op naam op, eerst op AniList, dan op TVmaze. Extra woorden, een typfout of een naam in een andere taal kunnen missen. Kies de juiste serie met de hand bij Serie-info; een keuze die jij maakt wordt nooit vervangen.
-settings-help-all-recognised = Elke serie is herkend
-settings-help-unrecognised =
-    { $count ->
-        [one] Eén serie is niet herkend
-       *[other] { $count } series zijn niet herkend
-    }
-settings-help-open-show-info = Serie-info openen
-settings-help-connect = Hoe koppel ik AniList?
-settings-help-connect-helper = Koppel het en elke aflevering die je afkijkt wordt op je lijst gemarkeerd, zodat je telefoon en je profiel bijblijven. AniList vraagt je één keer een kleine eigen app te maken; AniBeam leidt je erdoor en het kost ongeveer een minuut. MyAnimeList werkt hetzelfde.
-settings-help-both-connected = Beide zijn gekoppeld
-settings-help-anilist-connected = AniList is gekoppeld
-settings-help-mal-connected = MyAnimeList is gekoppeld
-settings-help-none-connected = Nog geen van beide gekoppeld
-settings-help-connect-anilist = AniList koppelen
-settings-help-connect-mal = MyAnimeList koppelen
-settings-help-downloads = Waarom is Downloads leeg?
-settings-help-downloads-helper = AniBeam heeft geen plekken om te zoeken. Voeg een bronlijst toe in Instellingen, onder Downloads, en installeer de bronnen die je wilt. Downloaden heeft ook een torrentclient nodig: AniBeam kan een eigen draaien, of een qBittorrent gebruiken die je al hebt.
-settings-help-sources = Bronnen en de torrentclient
-settings-help-open-downloads = Downloads-instellingen openen
-settings-help-data = Waar staan mijn gegevens?
-settings-help-data-helper = Je bibliotheek, kijkgeschiedenis en instellingen blijven op deze computer. Logins voor AniList en MyAnimeList gaan naar de wachtwoordopslag van het systeem, of anders een bestand alleen voor jou. Alles past in één back-up via Opslag en back-up.
-settings-help-library-history = Bibliotheek en geschiedenis
-settings-help-show-folder = Map tonen
-settings-help-backup = Back-up maken of herstellen
-settings-help-open-storage = Opslag en back-up openen
 settings-help-more = Iets anders?
-settings-help-more-helper = Doorloop de introductie opnieuw of meld wat er misging. Een screenshot helpt veel.
-settings-help-first-setup = De eerste introductie
-settings-help-first-setup-helper = Je map, je lijst en downloads, stap voor stap.
-settings-help-run-setup = Introductie opnieuw
 settings-help-report = Probleem melden
-settings-help-report-helper = Opent een bugmelding op GitHub in je browser, met deze versie al ingevuld.
 
-## SettingsSubtitlesTab
+## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Ondertitels
-settings-subtitles-lead = Waarmee elke aflevering begint. Wijzigingen zie je meteen op het beeld hieronder.
 settings-subtitles-reset-done = Ondertitels zien er weer uit zoals eerst
 settings-subtitles-size-place = Grootte en plek
 settings-subtitles-size = Grootte
 settings-subtitles-position = Positie
-settings-subtitles-position-helper = 100 staat op de onderrand. Lagere getallen tillen de regels hoger in beeld.
 settings-subtitles-style = Stijl
 settings-subtitles-styled = Opgemaakte ondertitels
-settings-subtitles-as-made-helper = Opgemaakte (ASS) bestanden zien er precies uit zoals de makers ze instelden.
-settings-subtitles-mine-helper = Jouw stijl hieronder gaat op elk bestand. Beeldtekst en karaoke kunnen breken.
-settings-subtitles-size-only-helper = Opgemaakte ondertitels houden hun uiterlijk, met jouw grootte. Gewone krijgen je stijl.
 settings-subtitles-as-made = Origineel
 settings-subtitles-size-only = Alleen grootte
 settings-subtitles-mine = Eigen
@@ -3013,20 +2820,14 @@ settings-subtitles-colour-invalid = Typ een kleur zoals #ffcc00.
 settings-subtitles-outline = Omlijning
 settings-subtitles-outline-invalid = De breedte is een getal, 0 of meer.
 settings-subtitles-outline-colour-invalid = Typ de kleur zoals #000000.
-settings-subtitles-outline-helper = De breedte, dan de kleur.
 settings-subtitles-shadow = Schaduw
 settings-subtitles-shadow-invalid = Een getal, 0 of meer. 0 betekent geen schaduw.
-settings-subtitles-shadow-helper = Hoe ver de schaduw valt, 0 voor geen.
 settings-subtitles-box = Achtergrondvak
-settings-subtitles-box-helper = Een donker vak achter de regels. 0 laat het weg.
 settings-subtitles-start-over = Opnieuw beginnen
-settings-subtitles-start-over-helper = Zet grootte, lettertype, kleuren, omlijning, vak en positie terug zoals ze waren.
 settings-subtitles-reset = Herstellen
 
-## SettingsDataTab
+## SettingsAboutTab: storage and backup
 
-settings-data-title = Opslag en back-up
-settings-data-lead = Zet je bibliotheek op een andere pc, bewaar een kopie of maak afbeeldingsruimte vrij.
 settings-data-backed-up = Back-up gemaakt in { $path }
 settings-data-restore-finished = Herstel klaar
 settings-data-images-removed =
@@ -3077,17 +2878,13 @@ settings-data-summary-unavailable =
 settings-data-summary-left-out = Weggelaten: { $fields }.
 settings-data-backup = Back-up
 settings-data-back-up-library = Back-up van de bibliotheek
-settings-data-back-up-helper = Eén bestand met mappen, koppelingen en wat je zag.
 settings-data-last-written = Laatst geschreven naar { $path }
 settings-data-open-folder = Map openen
 settings-data-back-up = Back-up maken
-settings-data-private = Privégegevens meenemen
-settings-data-private-helper = Bevat ook logins voor AniList en MyAnimeList, kijkgeschiedenis en voorkeuren. Logins staan erin als platte tekst: deel het niet.
+settings-data-private = Aanmeldingen meenemen, opgeslagen als platte tekst
 settings-data-restore-from = Herstellen uit een back-up
-settings-data-restore-helper = Leest een back-up in deze bibliotheek. Wat op schijf staat wint; het bestand vult de rest aan.
 settings-data-restore = Herstellen
 settings-data-image-cache = Afbeeldingscache
-settings-data-image-cache-helper = Posters, banners en portretten staan op schijf voor offline gebruik. Gewiste afbeeldingen komen terug zodra een pagina ze vraagt.
 settings-data-cache-unmeasured = De afbeeldingscache kon niet worden gemeten
 settings-data-cache-size =
     { $count ->
@@ -3095,18 +2892,17 @@ settings-data-cache-size =
        *[other] { $size } in { $count } afbeeldingen
     }
 settings-data-cache-empty = Geen afbeeldingen in cache
-settings-data-cache-unmeasured-helper = Probeer het zo opnieuw. De afbeeldingen zelf zijn in orde.
 settings-data-remove-images =
     { $count ->
         [one] { $count } afbeelding weghalen?
        *[other] { $count } afbeeldingen weghalen?
     }
-settings-data-files = Waar AniBeam zijn bestanden bewaart
+settings-data-files = Waar Anibeam zijn bestanden bewaart
 settings-data-files-database = Bibliotheekdatabase
 settings-data-files-data = Gegevens
 settings-data-files-settings = Instellingen
 settings-data-files-cache = Cache
-settings-data-backup-filter = AniBeam-back-up (*.json)
+settings-data-backup-filter = Anibeam-back-up (*.json)
 settings-data-all-files-filter = Alle bestanden (*)
 settings-data-backing-up = Back-up maken
 settings-data-restoring = Herstellen
@@ -3114,62 +2910,57 @@ settings-data-restoring = Herstellen
 ## SettingsLibraryTab
 
 settings-library-title = Bibliotheek
-settings-library-lead = De mappen die AniBeam bewaakt, en hoe het uitzoekt wat erin staat.
 settings-library-not-scanned = Nog niet gescand
 settings-library-scan-nothing-changed = Niets veranderd
 settings-library-scan-added = { $count } toegevoegd
 settings-library-scan-changed = { $count } gewijzigd
 settings-library-scan-removed = { $count } weggehaald
 settings-library-scan-in-folder = { $folder }: { $what }
-settings-library-anilist-about = Anime: series, films en hoe ze samenhangen. Wat je kijkt wordt gemarkeerd op je trackers.
-settings-library-tvmaze-about = Andere televisie: live action, tekenfilms, documentaires. Er wordt niets op een tracker gemarkeerd.
 settings-library-tried-first = Als eerste geprobeerd
 settings-library-tried-second = Als tweede geprobeerd
 settings-library-tried-third = Als derde geprobeerd
 settings-library-tried-fourth = Als vierde geprobeerd
 settings-library-tried-nth = Als { $number }e geprobeerd
 settings-library-folders = Mappen
-settings-library-folders-helper = Elke map in een van deze is een serie. Een bestand bovenin een map Movies is een film.
 settings-library-rescan-started = Opnieuw scannen gestart
 settings-library-load-failed = Je mappen konden niet worden gelezen
-settings-library-load-failed-helper = AniBeam kon zijn lijst met mappen niet lezen. Probeer het zo opnieuw.
 settings-library-no-folders = Nog geen mappen
-settings-library-no-folders-helper = Wijs AniBeam de map waar je anime staat. Het vindt de series en films zelf.
 settings-library-scanned = Gescand { $when }
 settings-library-add-a-folder = Map toevoegen
 settings-library-scan-all = Alles scannen
 settings-library-scan-started = Scan gestart
 settings-library-add-folder = Map toevoegen
 settings-library-matching = Koppelen
-settings-library-matching-helper = Een nieuwe map wordt in deze volgorde opgezocht; de eerste goede koppeling telt. Een handmatige blijft altijd.
 settings-library-try-later = Later proberen
 settings-library-try-first = Eerst proberen
 settings-library-check-matches = Koppelingen controleren
-settings-library-check-matches-helper = De pagina Serie-info toont elke serie met de info die AniBeam vond, en corrigeert een verkeerde.
 settings-library-open-show-info = Serie-info openen
 settings-library-hidden-shows = Verborgen series
 settings-library-show-hidden = Verborgen series tonen
-settings-library-show-hidden-helper = Brengt de series die je verborg terug op elke pagina tot AniBeam sluit.
 settings-library-hidden-from-airing = Verborgen in Nu uitgezonden
-settings-library-hidden-from-airing-helper = Series die je als niet interessant markeerde. Elke serie blijft weg uit Nu uitgezonden tot je hem terughaalt.
-settings-library-hidden-from-airing-empty = Nog niets. Series die je in Nu uitgezonden als niet interessant markeert komen hier, zodat ze terug kunnen.
+settings-library-hidden-from-airing-empty = Nog niets
 settings-library-show-again = Weer tonen
+settings-hidden-airing-filter = Titels filteren
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Eén serie die niet meer wordt uitgezonden is van de lijst gehaald
+       *[other] { $count } series die niet meer worden uitgezonden zijn van de lijst gehaald
+    }
 settings-library-calendar = Agenda
 settings-library-calendar-feed = Uitzendtijden in een agenda
-settings-library-calendar-feed-helper = Houdt een agendabestand bij met de komende afleveringen van de series op je lijsten, bijgewerkt als het schema verandert.
 settings-library-calendar-file = Agendabestand
-settings-library-calendar-file-helper = Abonneer je op dit bestand in je agenda-app.
 settings-library-copy = Kopieer
 settings-library-path-copied = Pad gekopieerd
 settings-library-open-folder = Map openen
 settings-library-notifications = Meldingen
 settings-library-new-episodes = Nieuwe afleveringen
-settings-library-new-episodes-helper = Een bureaubladmelding als een aflevering uitkomt van een serie op je Kijken-lijst. Klik erop om de serie te openen.
 settings-library-folder-added = Map toegevoegd, scannen
 
 ## SettingsAppearanceTab
 
 settings-appearance-language = Taal
+settings-appearance-title-language = Titels tonen in
+settings-appearance-title-language-english = Engels
 settings-appearance-language-system = Zoals het systeem ({ $language })
 settings-appearance-text-smaller = Kleiner
 settings-appearance-text-normal = Normaal
@@ -3177,51 +2968,39 @@ settings-appearance-text-large = Groot
 settings-appearance-text-larger = Groter
 settings-appearance-text-largest = Grootst
 settings-appearance-title = Weergave
-settings-appearance-lead = Wijzigingen zie je meteen, hier en op elke pagina. Ze staan in ~/.config/anibeam/theme.toml, dat je ook met de hand kunt bewerken.
 settings-appearance-colours = Kleuren
 settings-appearance-mode = Modus
 settings-appearance-mode-dark = Donker
 settings-appearance-mode-light = Licht
 settings-appearance-mode-system = Systeem
 settings-appearance-colours-from = Kleuren van
-settings-appearance-from-theme-helper = Het themapaar hieronder, voor donker en voor licht.
-settings-appearance-from-desktop-helper = De kleuren van je terminal, anders het kleurenschema en accent van het bureaublad.
 settings-appearance-from-desktop = Bureaublad
 settings-appearance-from-theme = Thema
 settings-appearance-dark-theme = Donker thema
 settings-appearance-light-theme = Licht thema
-settings-appearance-themes-helper = Themabestanden die je in ~/.config/anibeam/themes zet verschijnen in beide lijsten.
 settings-appearance-accent = Accent
-settings-appearance-accent-helper = Markeert wat geselecteerd is, afspeelt of nieuw is.
 settings-appearance-icon = Icoon
 settings-appearance-app-icon = App-icoon
-settings-appearance-app-icon-helper = Dat van het venster, de taakbalk en de launcher. Donker wisselt het geel en het zwart om.
 settings-appearance-icon-default = Standaard
 settings-appearance-icon-default-name = Standaard app-icoon
 settings-appearance-icon-dark = Donker
 settings-appearance-icon-dark-name = Donker app-icoon
 settings-appearance-size-motion = Grootte en beweging
 settings-appearance-text-size = Tekstgrootte
-settings-appearance-text-size-helper = Hoe groot de tekst overal in AniBeam is, bovenop de grootte van je systeem.
 settings-appearance-density = Dichtheid
-settings-appearance-density-helper = De ruimte rond alles, van krap tot luchtig.
 settings-appearance-density-compact = Compact
 settings-appearance-density-normal = Normaal
 settings-appearance-density-comfortable = Ruim
 settings-appearance-poster-size = Postergrootte
-settings-appearance-poster-size-helper = Postergrootte in de bibliotheek en op Start.
 settings-appearance-poster-small = Klein
 settings-appearance-poster-medium = Middel
 settings-appearance-poster-large = Groot
 settings-appearance-out-now = Nu uit in Uitzending
-settings-appearance-out-now-helper = Kaarten met de banner van elke serie, of een lijst met kleine posters en titels, drie rijen diep.
 settings-appearance-out-now-cards = Kaarten
 settings-appearance-out-now-list = Lijst
 settings-appearance-out-now-grid = Nu uit-kaarten
-settings-appearance-out-now-grid-helper = Hoeveel kaarten er staan, kolommen bij rijen, voordat Alle de rest opent.
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Minder beweging
-settings-appearance-reduce-motion-helper = Slaat de bibliotheekanimatie bij openen en andere franje over.
 
 ## LookPane
 
@@ -3289,7 +3068,7 @@ feed-sort-recent = Recent uitgekomen
 feed-sort-upcoming = Binnenkort
 feed-failed-title = De feed is niet geladen
 feed-empty-title = Hier staat nog niets
-feed-failed-body = AniBeam kon de feed nu niet lezen. Probeer het zo opnieuw.
+feed-failed-body = Anibeam kon de feed nu niet lezen. Probeer het zo opnieuw.
 feed-empty-body-folders = De feed vult zich als afleveringen uitkomen en binnenkomen. Nu uitgezonden toont wat er dit seizoen loopt.
 feed-empty-body = Voeg de map toe waar je anime staat en de feed vult zich met de afleveringen.
 feed-add-folder = Map toevoegen
@@ -3482,7 +3261,7 @@ status-dot-on-list = Op je lijst: { $status }
 ## TrackerNudge
 
 tracker-nudge-title = Koppel je animelijst
-tracker-nudge-body = AniBeam markeert afleveringen op AniList of MyAnimeList terwijl je kijkt.
+tracker-nudge-body = Anibeam markeert afleveringen op AniList of MyAnimeList terwijl je kijkt.
 tracker-nudge-connect-anilist = AniList koppelen
 tracker-nudge-connect-mal = MyAnimeList koppelen
 tracker-nudge-not-now = Niet nu
@@ -3709,6 +3488,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Je naam in kamers
 rail-room = Samen kijken (Ctrl+J)
 rail-room-in = In een kamer om samen te kijken (Ctrl+J)
+rail-join-room = Kamer betreden
+rail-in-room = In een kamer
 player-chrome-watch-together = Samen kijken
 player-chrome-room = Kamer { $code } · { $count ->
     [one] 1 persoon
@@ -3724,6 +3505,8 @@ room-error-proto = Die kamer draait op een nieuwere versie van kamers. Werk { -a
 room-error-not-in-room = Je zit niet meer in die kamer. Start er een of doe opnieuw mee.
 room-error-bad-code = Een kamercode is 6 letters en cijfers, zoals K7QM2X.
 room-error-bad-relay = De kamerserver in Instellingen, Afspelen is geen webadres. Pas het daar aan en probeer het opnieuw.
+room-error-cannot-fetch = De host kan deze aflevering nu niet delen. Probeer het opnieuw als die weer in de kamer is.
+room-error-needs-episode = Die kamerserver heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler.
 room-panel-title = Samen kijken
 room-panel-close = Sluiten
 room-panel-connected = Verbonden
@@ -3742,7 +3525,6 @@ room-panel-code-label = Kamercode
 room-panel-copy = Link kopiëren
 room-panel-link-copied = Kamerlink gekopieerd
 room-panel-watching = { $series } · { $episode }
-room-panel-missing-here = Deze aflevering staat niet in je bibliotheek, dus je kunt nog niet meekijken.
 room-panel-open-episode = Aflevering openen
 room-panel-people = { $count ->
     [one] 1 persoon
@@ -3760,6 +3542,21 @@ room-panel-seconds = { $value } s
 room-panel-suggested = De intro's wijzen op { $offset }
 room-panel-use-suggested = Gebruiken
 room-panel-leave = Kamer verlaten
+room-panel-get-media = Media ophalen
+room-panel-downloading = Downloaden
+room-panel-asking = Host vragen
+room-panel-searching = Zoeken
+room-panel-failed = Niet gelukt
+room-panel-percent = { $percent }%
+room-panel-left = nog { $time }
+room-panel-nothing-picked = Nog niets gekozen
+room-panel-this-episode = Deze aflevering
+room-panel-whole-show = Hele serie
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } van { $total } klaar · { $percent }%
+room-gate-start = Toch starten
+room-gate-wait = Op iedereen wachten
+room-gate-waiting = Wacht op iedereen
 player-room-speed = De snelheid volgt de kamer
 settings-find-room-name =
     .words = samen kijken kamer naam vrienden
@@ -3771,4 +3568,3 @@ settings-playback-together = Samen kijken
 settings-playback-room-name = Je naam in kamers om samen te kijken
 settings-playback-room-name-placeholder = Je naam
 settings-playback-room-relay = Kamerserver
-settings-playback-room-relay-helper = Hier worden kamers gemaakt. Wijzig dit alleen voor een server die je zelf draait.

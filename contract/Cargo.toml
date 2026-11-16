@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's contract: the calls, replies, records, events and errors every shell speaks, and the catalog of words"
+description = "Anibeam's contract: the calls, replies, records, events and errors every shell speaks, and the catalog of words"
+
+# Files outside this folder the build reads, so a change to one checks this crate and what
+# builds on it (.github/affected-crates.py): the catalog compiles in i18n/.
+[package.metadata.ci]
+reads = ["../i18n"]
 
 [lib]
 name = "anibeam_contract"

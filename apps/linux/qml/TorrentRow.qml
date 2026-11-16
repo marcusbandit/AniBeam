@@ -3,7 +3,7 @@
 // the foot, and Stop or Start and Remove at the right. Remove opens the removal sheet
 // (the torrent goes, and with a tick what it downloaded goes to the trash).
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

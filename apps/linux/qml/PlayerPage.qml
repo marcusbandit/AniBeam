@@ -9,7 +9,7 @@
 import QtQuick
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
@@ -168,7 +168,7 @@ FocusScope {
         // A cast that goes on with this episode plays on the TV, not here (#756)
         if (carriedCast) video.setProperty("pause", true)
         // S saves the frame, subtitles and all, into the pictures folder
-        video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/AniBeam")
+        video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/Anibeam")
         video.setProperty("screenshot-template", "%F %wH.%wM.%wS") // i18n: none
         video.command(["loadfile", session.path])
     }
@@ -936,6 +936,21 @@ FocusScope {
     function openRoomPanel() { roomPanel.openAt(chrome.roomAnchor) }
     function toggleRoomPanel() { if (roomPanel.open) roomPanel.close(); else openRoomPanel() }
     RoomPanel { id: roomPanel; player: page }
+    // The host's ready gate (#922) over the picture, while the room panel is closed: the room
+    // holds paused until the host starts anyway or everyone is ready
+    Corner {
+        id: roomGateCard
+        objectName: "player-room-gate"
+        readonly property real pad: theme.space(5)
+        visible: roomGate.shown && !roomPanel.open
+        anchors.centerIn: parent
+        z: 850
+        width: Math.min(page.width - theme.space(8), Math.max(theme.space(90), roomGate.needed + pad * 2))
+        height: roomGate.implicitHeight + pad * 2
+        color: theme.glassFloat; borderColor: theme.lineStrong; borderWidth: 1; highlight: theme.glassHighlight
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
+        RoomGate { id: roomGate; x: roomGateCard.pad; y: roomGateCard.pad; width: roomGateCard.width - roomGateCard.pad * 2; takesFocus: false }
+    }
 
     // ---- The HUD line: one message over the picture, gone after 1.2 s. The two delays and
     // the frame step share it, each owning the line through its own kind. A

@@ -3,7 +3,7 @@
 // use these pieces.
 
 import { Theme } from "theme.slint";
-import { Button, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
+import { Button, ButtonRow, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
 import { Tr } from "tr.slint";
 
 // A trusted repo.
@@ -238,10 +238,9 @@ component RepoPreview inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        ButtonRow {
             Button {
+                widest: parent.width;
                 text: Tr.t("repos-trust");
                 small: true;
                 primary: true;
@@ -249,6 +248,7 @@ component RepoPreview inherits Rectangle {
                 clicked => { RepoData.trust(); }
             }
             Button {
+                widest: parent.width;
                 text: Tr.t("common-cancel");
                 small: true;
                 clicked => { RepoData.cancel(); }
@@ -360,6 +360,8 @@ component AskField inherits Rectangle {
             alignment: start;
             TextButton {
                 text: Tr.s("repos-open-link", "url", root.field.help-url);
+                // A long address is cut short rather than running off the pane.
+                widest: root.width;
                 ink: Theme.accent;
                 clicked => { RepoData.open-link(root.field.help-url); }
             }
@@ -393,10 +395,9 @@ component AskValues inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        ButtonRow {
             Button {
+                widest: parent.width;
                 text: RepoData.busy ? Tr.t("repos-saving") : RepoData.asking-kind == 0 ? Tr.t("repos-install") : RepoData.asking-kind == 1 ? Tr.t("repos-update") : Tr.t("common-save");
                 small: true;
                 primary: true;
@@ -404,6 +405,7 @@ component AskValues inherits Rectangle {
                 clicked => { RepoData.confirm(); }
             }
             Button {
+                widest: parent.width;
                 text: Tr.t("common-cancel");
                 small: true;
                 clicked => { RepoData.dismiss(); }
@@ -526,37 +528,38 @@ export component EndpointItem inherits Rectangle {
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
-            HorizontalLayout {
-                spacing: Theme.gap;
-                alignment: start;
+            ButtonRow {
                 Button {
+                    widest: parent.width;
                     text: Tr.t("common-save");
                     small: true;
                     primary: true;
                     clicked => { RepoData.save-edit(); }
                 }
                 Button {
+                    widest: parent.width;
                     text: Tr.t("common-cancel");
                     small: true;
                     clicked => { RepoData.close-edit(); }
                 }
                 if RepoData.edit-keys != "": Button {
+                    widest: parent.width;
                     text: Tr.s("repos-change-its", "keys", RepoData.edit-keys);
                     small: true;
                     clicked => { RepoData.change-values(); }
                 }
             }
         }
-        if root.endpoint.installed && !root.asking && !root.editing: HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        if root.endpoint.installed && !root.asking && !root.editing: ButtonRow {
             if root.endpoint.update != "": Button {
+                widest: parent.width;
                 text: root.endpoint.update;
                 small: true;
                 primary: true;
                 clicked => { root.act(); }
             }
             Button {
+                widest: parent.width;
                 text: Tr.t("common-remove");
                 small: true;
                 danger: true;
@@ -586,10 +589,9 @@ export component RepoPanes inherits VerticalLayout {
     if RepoData.repos.length > 0 || RepoData.on-count > 0: Lit {
         on: root.lit == Tr.t("repos-check-repos") || root.lit == Tr.t("repos-check-sites");
         reveal(y) => { root.reveal(y); }
-        HorizontalLayout {
-            alignment: start;
-            spacing: Theme.gap;
+        ButtonRow {
             if RepoData.repos.length > 0: Button {
+                widest: parent.width;
                 text: Tr.t("repos-check-repos");
                 icon: @image-url("icons/refresh-cw.svg");
                 has-icon: true;
@@ -597,6 +599,7 @@ export component RepoPanes inherits VerticalLayout {
                 clicked => { RepoData.refresh(); }
             }
             if RepoData.on-count > 0: Button {
+                widest: parent.width;
                 text: RepoData.checking ? Tr.t("common-checking") : Tr.t("repos-check-sites");
                 icon: @image-url("icons/wifi.svg");
                 has-icon: true;

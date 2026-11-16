@@ -1,6 +1,6 @@
 // Every token and every primitive on one page, for a capture. Reached with --page tokens.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Flickable {
     id: root
@@ -43,7 +43,7 @@ Flickable {
         Row {
             spacing: theme.space(3)
             Field { placeholder: "A field" }
-            Dropdown { options: ["AniBeam Dark", "Catppuccin Mocha"]; index: 0 }
+            Dropdown { options: ["Anibeam Dark", "Catppuccin Mocha"]; index: 0 }
             Swatches { slot: 4 }
             SliderRow { from: 0; to: 150; value: 100 }
         }

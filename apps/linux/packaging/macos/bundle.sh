@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: bundle.sh <out-dir>
-# Turns target/release/anibeam into <out-dir>/AniBeam.app and <out-dir>/AniBeam-<ver>-macos-arm64.dmg.
+# Turns target/release/anibeam into <out-dir>/Anibeam.app and <out-dir>/Anibeam-<ver>-macos-arm64.dmg.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam)
 #   DEPS_PREFIX   where deps.sh installed libmpv and MpvQt
 #   SIGN_IDENTITY a code-signing identity to sign with (default: ad hoc). An ad-hoc app is
@@ -29,7 +29,7 @@ describe="$(git -C "$repo" describe --tags --match 'v*' --exclude 'v*-*' --dirty
 pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")}"
 short="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$pkgver")"
 
-app="$out/AniBeam.app"
+app="$out/Anibeam.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/anibeam"
@@ -42,14 +42,14 @@ plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
 # Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws.
-iconset="$(mktemp -d)/AniBeam.iconset"
+iconset="$(mktemp -d)/Anibeam.iconset"
 mkdir -p "$iconset"
 for size in 16 32 128 256 512; do
   sips -z "$size" "$size" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
   sips -z "$double" "$double" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
-iconutil -c icns "$iconset" -o "$app/Contents/Resources/AniBeam.icns"
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/Anibeam.icns"
 
 # What /usr/share/anibeam holds on Arch; paths.rs looks for it in Resources on a Mac.
 cp -R "$shell/themes" "$app/Contents/Resources/themes"
@@ -97,8 +97,8 @@ echo "== dmg"
 stage="$(mktemp -d)"
 cp -R "$app" "$stage/"
 ln -s /Applications "$stage/Applications"
-dmg="$out/AniBeam-$pkgver-macos-arm64.dmg"
+dmg="$out/Anibeam-$pkgver-macos-arm64.dmg"
 rm -f "$dmg"
-hdiutil create -volname AniBeam -srcfolder "$stage" -ov -format UDZO "$dmg"
+hdiutil create -volname Anibeam -srcfolder "$stage" -ov -format UDZO "$dmg"
 du -sh "$app" "$dmg"
 echo "$dmg"

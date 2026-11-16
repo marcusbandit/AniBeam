@@ -402,7 +402,7 @@ Add a new `<Section>` (place it just before the `Playback` section, ~L369), reus
           <div className="pref-row">
             <div>
               <div className="pref-label">Show hidden shows</div>
-              <div className="pref-help">Reveal incognito series across all pages. Resets off when AniBeam restarts.</div>
+              <div className="pref-help">Reveal incognito series across all pages. Resets off when Anibeam restarts.</div>
             </div>
             <Toggle on={showHidden} onChange={setShowHidden} ariaLabel="Toggle hidden shows" />
           </div>
@@ -779,7 +779,7 @@ Expected: all print OK / exit 0.
 - [ ] **Step 4: Package**
 
 Run: `bun run package`
-Expected: builds to `out/AniBeam-linux-x64/anibeam` so the `.desktop` launcher picks up the change.
+Expected: builds to `out/Anibeam-linux-x64/anibeam` so the `.desktop` launcher picks up the change.
 
 - [ ] **Step 5: Final state**
 

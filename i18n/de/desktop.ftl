@@ -52,19 +52,19 @@ scan-summary-open-library = Bibliothek öffnen
 
 ## UpdateNotice
 
-update-notice-check-failed = AniBeam konnte nicht nach Updates suchen. Prüfe deine Internetverbindung und versuch es nochmal.
-update-notice-up-to-date = AniBeam ist aktuell
-update-notice-downloading = Lade AniBeam { $version }
-update-notice-ready = AniBeam { $version } ist bereit
+update-notice-check-failed = Anibeam konnte nicht nach Updates suchen. Prüfe deine Internetverbindung und versuch es nochmal.
+update-notice-up-to-date = Anibeam ist aktuell
+update-notice-downloading = Lade Anibeam { $version }
+update-notice-ready = Anibeam { $version } ist bereit
 update-notice-failed = Das Update ist fehlgeschlagen
-update-notice-on-aur = AniBeam { $version } ist im AUR
-update-notice-out = AniBeam { $version } ist da
-update-notice-out-titled = AniBeam { $version } „{ $title }“ ist da
+update-notice-on-aur = Anibeam { $version } ist im AUR
+update-notice-out = Anibeam { $version } ist da
+update-notice-out-titled = Anibeam { $version } „{ $title }“ ist da
 update-notice-progress = { $percent } %  ·  { $got } von { $total } MB
 update-notice-restart-hint = Jetzt neu starten, oder es öffnet sich beim nächsten Mal
 update-notice-from-source = Diese Kopie ist aus dem Quellcode gebaut: pullen und neu bauen
 update-notice-no-download = Hier kein Download für diesen Computer
-update-notice-install-hint = Aktualisieren installiert es und startet AniBeam neu
+update-notice-install-hint = Aktualisieren installiert es und startet Anibeam neu
 update-notice-retry = Nochmal
 update-notice-update = Aktualisieren
 update-notice-restart = Neu starten
@@ -104,7 +104,7 @@ activity-drawer-copy-tip = Klicken, um die Zeile zu kopieren
 activity-drawer-fold = Einklappen
 activity-drawer-empty-technical = Noch nichts protokolliert.
 activity-drawer-empty-problems = Keine Probleme. Alles hat geklappt.
-activity-drawer-empty = Noch nichts zu melden. Was AniBeam für dich tut, erscheint hier.
+activity-drawer-empty = Noch nichts zu melden. Was Anibeam für dich tut, erscheint hier.
 
 ## ActivityColumn
 
@@ -152,14 +152,14 @@ activity-column-cube-progress = Folge { $number }: { $percent } %
 
 ## Frame
 
-frame-window-title = { $page } - AniBeam
+frame-window-title = { $page } - Anibeam
 frame-strip-ready = Bereit
 frame-strip-progress = { $doing }, { $done } von { $total }
 frame-strip-idle = Nichts läuft
 frame-strip-time-format = HH:mm
 frame-finish-sign-in = Schließ zuerst die Anmeldung bei { $tracker } ab
 frame-did-not-work = Das hat nicht geklappt.
-frame-could-not-open = AniBeam konnte das nicht öffnen. Kopiere es und öffne es selbst.
+frame-could-not-open = Anibeam konnte das nicht öffnen. Kopiere es und öffne es selbst.
 frame-copy = Kopieren
 frame-copied = Kopiert
 frame-status-refused = { $tracker } hat es nicht übernommen
@@ -274,7 +274,6 @@ frame-downloads-not-read = Nicht gelesen.
 ## HomePage
 
 home-title = Start
-home-scan-started = Scan gestartet
 home-ago-minutes = vor { $count } Min.
 home-ago-hours = vor { $count } Std.
 home-ago-days = vor { $count } T.
@@ -329,7 +328,6 @@ home-tile-season-span = S{ $season } { $span }
 home-tile-to-watch = { $count } zu schauen
 home-day-nothing = Nichts
 home-now = Jetzt { $time }
-home-card-aired = { $episode } erschienen { $ago }
 home-continue = Weiterschauen
 home-continue-fact = { $count } Serien zum Weiterschauen
 home-on-hold = Pausiert
@@ -353,6 +351,7 @@ home-week = Diese Woche
 home-week-show-empty = Leere Tage zeigen
 home-week-hide-empty = Leere Tage ausblenden
 home-week-airing = Läuft jetzt
+home-week-feed = Feed
 home-week-out = Jetzt da
 home-week-coming-up = Demnächst
 home-recommended = Empfohlen für dich
@@ -374,20 +373,8 @@ home-dropped-fact = { $count ->
     [one] { $count } Datei noch auf der Platte
    *[other] { $count } Dateien noch auf der Platte
 }
-home-out-now = Jetzt da
-home-out-now-fact = Neue Folgen dieser Woche, von AniList
-home-popular = Beliebt diese Saison
-home-add-folder-title = Deine eigenen Serien gehören auch hierher
-home-add-folder-body = Füge den Ordner mit deinen Anime hinzu, und Start füllt sich mit dem, was du schaust.
-home-add-folder-button = Ordner hinzufügen
-home-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-home-empty-title = Noch keine Serien
-home-empty-scanned-body = AniBeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-home-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst.
-home-scan-all = Alle scannen
-home-library-settings = Bibliothekseinstellungen
 home-failed-title = Start wurde nicht geladen
-home-failed-body = AniBeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
+home-failed-body = Anibeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
 
 ## Onboarding
 
@@ -412,7 +399,7 @@ onboarding-choose-folder = Wähle deinen Anime-Ordner
 onboarding-about = Eine Minute Einrichtung. Deine Bibliothek macht sich danach selbst fertig.
 onboarding-step-later = Später
 onboarding-skip-setup = Einrichtung überspringen
-onboarding-title-welcome = Willkommen bei AniBeam
+onboarding-title-welcome = Willkommen bei Anibeam
 onboarding-title-library = Wo sind deine Anime?
 onboarding-title-lists = Verbinde deine Anime-Liste
 onboarding-title-downloads = So funktionieren Downloads
@@ -422,14 +409,14 @@ onboarding-title-later = { $count ->
     [2] Bereit, zwei Sachen für später
    *[other] Bereit, drei Sachen für später
 }
-onboarding-body-welcome = AniBeam hält deine Anime an einem Ort. Es findet die Serien auf deiner Platte, spielt sie direkt hier ab und hält AniList oder MyAnimeList beim Schauen aktuell.
-onboarding-body-library = Wähle den Ordner, in dem deine Serien liegen. Jeder Ordner darin wird eine Serie, mit Poster, Folgen und der Stelle, an der du warst. AniBeam liest den Ordner nur. Es verschiebt oder benennt nie eine Datei um.
-onboarding-body-lists = Melde dich einmal an, und jede Folge, die du hier beendest, wird auf deiner Liste markiert, ohne Tippen. Die Anmeldung läuft in deinem Browser, also sieht AniBeam dein Passwort nie.
+onboarding-body-welcome = Anibeam hält deine Anime an einem Ort. Es findet die Serien auf deiner Platte, spielt sie direkt hier ab und hält AniList oder MyAnimeList beim Schauen aktuell.
+onboarding-body-library = Wähle den Ordner, in dem deine Serien liegen. Jeder Ordner darin wird eine Serie, mit Poster, Folgen und der Stelle, an der du warst. Anibeam liest den Ordner nur. Es verschiebt oder benennt nie eine Datei um.
+onboarding-body-lists = Melde dich einmal an, und jede Folge, die du hier beendest, wird auf deiner Liste markiert, ohne Tippen. Die Anmeldung läuft in deinem Browser, also sieht Anibeam dein Passwort nie.
 onboarding-body-downloads = Abonniere eine Serie auf der Seite Downloads, und jede neue Folge landet bei Ausstrahlung in deiner Bibliothek. Dafür braucht es zwei Dinge: einen Ort zum Suchen und einen Torrent-Client zum Laden.
 onboarding-body-ready = Alles hier lässt sich später in den Einstellungen ändern, und Einstellungen, Info startet diese Einrichtung erneut.
 onboarding-skip-step = Erst mal überspringen
 onboarding-get-started = Los geht's
-onboarding-open-app = AniBeam öffnen
+onboarding-open-app = Anibeam öffnen
 onboarding-continue = Weiter
 onboarding-payoff-library = Deine Bibliothek
 onboarding-payoff-library-line = Poster, Folgen und was als Nächstes kommt, für jede Serie in deinen Ordnern.
@@ -448,7 +435,7 @@ onboarding-shelf-more = mehr
 onboarding-preview-show = Deine Serie
 onboarding-preview-finished = Folge 3 hier beendet
 onboarding-preview-on-list = Auf deiner Liste: 3 geschaut
-onboarding-preview-set-by = Von AniBeam gesetzt, sobald der Abspann läuft
+onboarding-preview-set-by = Von Anibeam gesetzt, sobald der Abspann läuft
 onboarding-lists-connected = Verbunden. Was du hier schaust, zählt jetzt auf deiner Liste.
 onboarding-lists-no-account = Noch kein Konto? Beide sind kostenlos, und eins reicht. Trennen kannst du jederzeit unter Einstellungen, Konten.
 onboarding-search-title = Ein Ort zum Suchen
@@ -456,15 +443,12 @@ onboarding-search-ready = { $count ->
     [one] { $count } Quelle bereit zum Suchen.
    *[other] { $count } Quellen bereit zum Suchen.
 }
-onboarding-search-none = AniBeam bringt keine eigenen Quellen mit. Du fügst sie aus einem Quellen-Repo hinzu: ein Link, den dir jemand gibt und den du unter Einstellungen, Downloads einfügst.
-onboarding-sources-after = Öffnet nach der Einrichtung
-onboarding-sources-add = Repo nach der Einrichtung hinzufügen
 onboarding-fetch-title = Wer lädt
-onboarding-fetch-auto = AniBeam kümmert sich
+onboarding-fetch-auto = Anibeam kümmert sich
 onboarding-fetch-recommended = Empfohlen
-onboarding-fetch-auto-line = AniBeam bringt ein eigenes qBittorrent mit und lässt es still im Hintergrund laufen. Nichts zu installieren, nichts auszufüllen.
+onboarding-fetch-auto-line = Anibeam bringt ein eigenes qBittorrent mit und lässt es still im Hintergrund laufen. Nichts zu installieren, nichts auszufüllen.
 onboarding-fetch-existing = Ich nutze schon qBittorrent
-onboarding-fetch-existing-line = AniBeam verbindet sich mit deinem laufenden qBittorrent. Adresse und Anmeldung trägst du gleich in den Einstellungen ein.
+onboarding-fetch-existing-line = Anibeam verbindet sich mit deinem laufenden qBittorrent. Adresse und Anmeldung trägst du gleich in den Einstellungen ein.
 onboarding-ready-library = Bibliothek
 onboarding-ready-library-none = Noch kein Ordner. Er findet sich unter Einstellungen, Bibliothek, wenn du ihn brauchst.
 onboarding-ready-library-series = { $count ->
@@ -483,19 +467,18 @@ onboarding-ready-lists = Deine Liste
 onboarding-ready-lists-as = { $tracker }, als { $user }
 onboarding-ready-lists-none = Noch nicht verbunden. Das findet sich unter Einstellungen, Konten, wenn du es brauchst.
 onboarding-ready-downloads = Downloads
-onboarding-ready-downloads-line = { $sources ->
+onboarding-ready-downloads-state = { $sources ->
     [0] Noch keine Quellen
     [one] { $sources } Quelle
    *[other] { $sources } Quellen
 }, { $client ->
     [own] dein eigenes qBittorrent.
-   *[bundled] das qBittorrent von AniBeam.
+   *[bundled] das qBittorrent von Anibeam.
 } { $next ->
     [ready] Alles bereit.
     [opens] Als Nächstes öffnet Einstellungen, Downloads.
-   *[both] Beides findest du unter Einstellungen, Downloads.
+   *[sources] Füge eine Quellenliste hinzu, um zu suchen.
 }
-onboarding-ready-open-downloads = Einstellungen, Downloads öffnen
 onboarding-ready-set-up = Jetzt einrichten
 
 ## Rail.qml
@@ -503,9 +486,6 @@ onboarding-ready-set-up = Jetzt einrichten
 rail-home = Start
 rail-library = Bibliothek
 rail-airing = Läuft
-rail-feed = Feed
-rail-stats = Statistik
-rail-show-info = Serieninfo
 rail-downloads = Downloads
 rail-settings = Einstellungen
 rail-downloads-complete =
@@ -513,11 +493,6 @@ rail-downloads-complete =
         [one] Downloads: { $count } Abo ist vollständig
        *[other] Downloads: { $count } Abos sind vollständig
     }
-rail-title-language-name = Titelsprache: { $language }. Klicken für die nächste
-rail-title-language-english = Englisch
-rail-title-language-tip = Titelsprache: Romaji, Englisch oder Japanisch
-rail-whats-new-in = Neu in { $release }
-rail-whats-new = Neuerungen
 rail-settings-note = Einstellungen: { $note }
 
 ## FixSheet.qml
@@ -706,12 +681,36 @@ library-group-season = Saison
 library-group-type = Typ
 library-group-genre = Genre
 library-group-watch-state = Schaustatus
-library-scan-started = Scan gestartet
+library-empty-none = Deine Bibliothek ist leer
+library-empty-scanning = { $count ->
+    [1] Suche nach Videos in deinem Ordner
+   *[other] Suche nach Videos in deinen Ordnern
+}
+library-empty-nothing = { $count ->
+    [1] Noch keine Videos in diesem Ordner
+   *[other] Noch keine Videos in diesen Ordnern
+}
+library-empty-missing = { $count ->
+    [1] Dieser Ordner ist nicht da
+   *[other] Diese Ordner sind nicht da
+}
+library-empty-more-folders = { $count ->
+    [one] und { $count } weiterer Ordner
+   *[other] und { $count } weitere Ordner
+}
+library-empty-add-folder = Ordner hinzufügen
+library-empty-get = Etwas zum Schauen holen
+library-empty-scan-again = Erneut scannen
+library-empty-settings = Bibliothekseinstellungen
+library-empty-pick-folder = Ordner für deine Bibliothek wählen
 library-tab-all = Alle
 library-tab-series = Serien
 library-tab-movies = Filme
 library-tab-watched = Geschaut
 library-tab-hidden = Ausgeblendet
+library-tab-on-my-list = Auf meiner Liste
+library-tab-stats = Statistik
+library-tab-fix-matches = Zuordnungen prüfen
 library-count-movies =
     { $count ->
         [one] { $count } Film
@@ -749,7 +748,7 @@ library-none-here =
         [hidden] Keine ausgeblendeten Serien hier
        *[shows] Keine Serien hier
     }
-library-load-failed-body = AniBeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
+library-load-failed-body = Anibeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
 library-no-matches-body = Prüfe die Schreibweise, oder durchsuche unter Alle die ganze Bibliothek.
 library-none-in-genre-body = Nichts in dieser Ansicht hat dieses Genre. Alle Genres zeigt den Rest.
 library-none-in-tab-body = Davon hat deine Bibliothek noch nichts. Alle zeigt alles darin.
@@ -769,18 +768,6 @@ library-rescan = Neu scannen
 library-find-match = Zuordnung suchen
 library-find-match-tip = Für jede Auswahl ohne Zuordnung suchen
 library-all-matched = Jede Auswahl ist zugeordnet
-library-empty-scanned-title = Noch nichts in deinen Ordnern gefunden
-library-empty-title = Deine Bibliothek ist leer
-library-empty-scanned-body = AniBeam hat in den beobachteten Ordnern keine Serien oder Filme gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-library-empty-body = Füge den Ordner mit deinen Anime hinzu, und die Bibliothek füllt sich von selbst, oder importiere einen AniBeam-Export.
-library-scan-all = Alle scannen
-library-add-folder = Ordner hinzufügen
-library-settings = Bibliothekseinstellungen
-library-import = Importieren
-library-import-title = AniBeam-Export importieren
-library-import-filter-export = AniBeam-Export (*.json)
-library-import-filter-all = Alle Dateien (*)
-library-import-started = Import gestartet
 
 ## MetadataPage.qml
 
@@ -847,8 +834,8 @@ metadata-count =
     }
 metadata-search-placeholder = Titel filtern
 metadata-find-rest = Rest suchen
-metadata-find-rest-started = Suche die Ordner, die AniBeam noch nicht kennt
-metadata-find-rest-tip = Sucht jeden Ordner, den AniBeam noch nicht kennt, auf jeder Infoseite in der Reihenfolge aus den Einstellungen
+metadata-find-rest-started = Suche die Ordner, die Anibeam noch nicht kennt
+metadata-find-rest-tip = Sucht jeden Ordner, den Anibeam noch nicht kennt, auf jeder Infoseite in der Reihenfolge aus den Einstellungen
 metadata-refresh-all = Alle aktualisieren
 metadata-refresh-all-started = Aktualisiere die Infos jeder Serie
 metadata-refresh-all-tip = Lädt die Infos jeder erkannten Serie neu
@@ -864,9 +851,9 @@ metadata-nothing-under =
         [MissingFiles] Nichts unter Fehlt
        *[other] Nichts unter { $filter }
     }
-metadata-load-failed-body = AniBeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
-metadata-empty-scanned-body = AniBeam hat in den beobachteten Ordnern keine Serien gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
-metadata-empty-body = Deine Bibliothek ist leer. Füge den Ordner mit deinen Anime hinzu, und AniBeam scannt ihn.
+metadata-load-failed-body = Anibeam konnte die Bibliothek gerade nicht lesen. Versuch es gleich nochmal.
+metadata-empty-scanned-body = Anibeam hat in den beobachteten Ordnern keine Serien gefunden. Scanne sie neu, oder prüfe die Ordner in den Einstellungen.
+metadata-empty-body = Deine Bibliothek ist leer. Füge den Ordner mit deinen Anime hinzu, und Anibeam scannt ihn.
 metadata-no-matches-body = Kein Titel in dieser Ansicht hat diese Wörter.
 metadata-nothing-under-body = Keine deiner Serien passt gerade zu diesem Filter. Alle zeigt den Rest.
 metadata-scan-all = Alle scannen
@@ -876,8 +863,8 @@ metadata-show-all = Alle zeigen
 metadata-refreshing = { $title } wird aktualisiert
 metadata-refresh-tip = Infos dieser Serie neu laden
 metadata-forget-armed = Entfernen
-metadata-forget-confirm-tip = Nochmal klicken, um diese Serie und ihren Verlauf aus AniBeam zu entfernen
-metadata-forget-tip = Der Ordner ist nicht mehr auf der Platte: Entferne diese Serie und ihren Verlauf aus AniBeam
+metadata-forget-confirm-tip = Nochmal klicken, um diese Serie und ihren Verlauf aus Anibeam zu entfernen
+metadata-forget-tip = Der Ordner ist nicht mehr auf der Platte: Entferne diese Serie und ihren Verlauf aus Anibeam
 
 ## AiringPage.qml
 
@@ -1297,9 +1284,9 @@ series-add-notes = Notiz anlegen
 series-notes-tip = Notizen zu deinem Listeneintrag, gespeichert bei { $sites }
 series-unhide = Einblenden
 series-hide = Ausblenden
-series-hidden-toast = { $title } ist hier ausgeblendet, und AniBeam synct es nicht mehr mit AniList und MyAnimeList
+series-hidden-toast = { $title } ist hier ausgeblendet, und Anibeam synct es nicht mehr mit AniList und MyAnimeList
 series-unhidden-toast = { $title } ist wieder da und wird gesynct
-series-hide-tip-tracked = Auf jeder Seite hier ausgeblendet, und AniBeam synct es nicht mehr mit AniList und MyAnimeList
+series-hide-tip-tracked = Auf jeder Seite hier ausgeblendet, und Anibeam synct es nicht mehr mit AniList und MyAnimeList
 series-hide-tip = Aus jeder Liste ausgeblendet
 series-fixes = Korrektur
 series-fixes-tip = Dateien, Folgenzahl oder Zuordnung korrigieren, oder neu scannen
@@ -1396,9 +1383,10 @@ get-show-kind-indexer-search = Indexer-Suche
 get-show-ready = Bereit
 get-show-running = Läuft
 get-show-not-running = Läuft nicht
-get-show-not-running-start = Läuft nicht. Klicke oben auf die Quelle, um sie zu starten.
 get-show-switched-off = Ausgeschaltet
-get-show-click-to-see = Klicken, um zu sehen, was sie für diese Serie hat
+get-show-show-releases = Releases anzeigen
+get-show-show-releases-on = Releases auf { $name } anzeigen
+get-show-try-again = Erneut versuchen
 get-show-searching = Sucht
 get-show-searching-source = Durchsuche { $name }
 get-show-searching-elapsed = { $label }, { $seconds } s
@@ -1564,7 +1552,6 @@ torrent-row-stop = Stoppen
 
 ## SourceRow
 
-source-row-unavailable-fix = Schließ das Laufwerk an, dann Neu scannen. Wenn der Ordner umgezogen ist, entferne ihn und füge den neuen Ort hinzu.
 source-row-counts = { $count } Serien
 source-row-counts-movies =
     { $movies ->
@@ -1572,7 +1559,7 @@ source-row-counts-movies =
        *[other] { $count } Serien, { $movies } Filmordner
     }
 source-row-unavailable = Nicht verfügbar
-    .tip = AniBeam erreicht diesen Ordner nicht. Liegt er auf einem Laufwerk, das nicht angeschlossen oder eingehängt ist, schließ es an, und AniBeam findet ihn wieder. Ist er umgezogen, entferne ihn hier und füge den neuen Ort hinzu.
+    .tip = Anibeam erreicht diesen Ordner nicht. Liegt er auf einem Laufwerk, das nicht angeschlossen oder eingehängt ist, schließ es an, und Anibeam findet ihn wieder. Ist er umgezogen, entferne ihn hier und füge den neuen Ort hinzu.
 source-row-rescan = Neu scannen
 source-row-remove-question = { $name } entfernen, mit { $count } Serien und ihrem Verlauf?
 
@@ -1580,12 +1567,12 @@ source-row-remove-question = { $name } entfernen, mit { $count } Serien und ihre
 
 start-source-title = { $service } für { $name } starten?
 start-source-busy = Starte { $service }. { $name } schaltet sich ein, sobald es antwortet; das kann bis zu einer Minute dauern.
-start-source-body = { $service } ist der Dienst, der { $name } für AniBeam durchsucht. Beim Start läuft er im Hintergrund auf diesem Computer, und er läuft weiter, wenn AniBeam geschlossen wird.
+start-source-body = { $service } ist der Dienst, der { $name } für Anibeam durchsucht. Beim Start läuft er im Hintergrund auf diesem Computer, und er läuft weiter, wenn Anibeam geschlossen wird.
 start-source-starting = Startet
 
 ## SearchProgress
 
-search-progress-why-helper = AniBeam startet seinen Suchhelfer; das dauert ein, zwei Sekunden.
+search-progress-why-helper = Anibeam startet seinen Suchhelfer; das dauert ein, zwei Sekunden.
 search-progress-why-starting = { $endpoint } läuft über einen Helfer, der startet, wenn eine Suche ihn braucht. Die erste Suche wartet auf ihn, bis zu { $seconds } Sekunden; die nächsten sparen sich das.
 search-progress-why-reading = Teile die Releases in Gruppen auf und gleiche sie mit der Bibliothek ab.
 search-progress-why-ondemand = Ein Helfer liest { $endpoint } für jede neue Suche frisch, was meist zehn bis zwanzig Sekunden dauert.
@@ -1616,6 +1603,7 @@ release-table-season-batch = Batch Staffel { $season }
 release-table-batch = Batch
 release-table-via = über { $source }
 release-table-season-episode = S{ $season } { $episode }
+release-table-episode-range = { $first }-{ $last }
 release-table-date-format = d. MMMM yyyy, HH:mm
 release-table-download = Laden
 release-table-more = und { $count } weitere. Grenze die Liste ein oder sortiere sie, um andere zuerst zu sehen.
@@ -1680,6 +1668,7 @@ downloads-error-unknown = Etwas ist schiefgegangen. Versuch es nochmal.
 downloads-search-all-off = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
 downloads-turn-on = { $name } einschalten
 downloads-search-no-sources = Es gibt noch keine Quellen zum Suchen. Füge in den Einstellungen unter Downloads eine Quellenliste hinzu.
+downloads-no-sources = Noch keine Quellen zum Suchen
 downloads-search-none-started = Keine Quelle konnte die Suche starten. Versuch es gleich nochmal.
 downloads-auto-resolution = Eingegrenzt auf { $resolution }, die schärfste im Angebot
 downloads-search-one-failed = Die Suche bei { $name } hat nicht geklappt. Versuch es nochmal oder durchsuche eine andere Quelle.
@@ -1787,8 +1776,8 @@ downloads-cancel-all = Alle abbrechen
 downloads-summary-connecting = Verbinde.
 downloads-summary-client-on = { $client } { $version } ist verbunden.
 downloads-summary-client-off = { $client } ist nicht verbunden. Prüfe Adresse und Passwort in den Einstellungen unter Downloads.
-downloads-summary-native = AniBeam durchsucht deine Quellen selbst.
-downloads-summary-native-with = AniBeam durchsucht deine Quellen selbst. { $client }
+downloads-summary-native = Anibeam durchsucht deine Quellen selbst.
+downloads-summary-native-with = Anibeam durchsucht deine Quellen selbst. { $client }
 downloads-summary-starting = Starte Downloads.
 downloads-summary-not-running = Downloads läuft nicht.
 downloads-summary-not-started = Downloads ist noch nicht gestartet.
@@ -1973,12 +1962,12 @@ downloads-preview-from-named = Von { $host } ({ $name })
 downloads-preview-must = Muss { $terms } enthalten
 downloads-preview-must-not = Darf { $terms } nicht enthalten
 downloads-helper-changed = Downloads ist auf einen Helfer gestellt, der nicht antwortet
-downloads-helper-missing = Diese Kopie von AniBeam kam ohne Downloads
+downloads-helper-missing = Diese Kopie von Anibeam kam ohne Downloads
 downloads-helper-failed = Downloads konnte nicht starten
-downloads-helper-changed-body = Suchen und Downloads laufen über ein kleines Hilfsprogramm. Die Einstellungen zeigen auf ein anderes als das von AniBeam, und es antwortet nicht. Stell zurück, dann startet es von selbst.
+downloads-helper-changed-body = Suchen und Downloads laufen über ein kleines Hilfsprogramm. Die Einstellungen zeigen auf ein anderes als das von Anibeam, und es antwortet nicht. Stell zurück, dann startet es von selbst.
 downloads-helper-missing-body = Sie wurde ohne das Hilfsprogramm gebaut, über das Suchen und Downloads laufen. Die Installer auf der Release-Seite haben es. Einstellungen, Downloads sagt, wie du es dieser Kopie hinzufügst.
 downloads-helper-failed-body = Das Hilfsprogramm für Suchen und Downloads wurde beendet, bevor es bereit war. Ein Neustart behebt das meistens.
-downloads-helper-use-own = Das von AniBeam nutzen
+downloads-helper-use-own = Das von Anibeam nutzen
 downloads-helper-start-again = Neu starten
 downloads-helper-show-how = Zeig mir wie
 downloads-helper-what-went-wrong = Was schiefging
@@ -2005,10 +1994,10 @@ downloads-card-next-span =
        *[no] Folgen { $episode } bis { $through } in { $time }
     }
 downloads-rules-unread = Deine Abos konnten nicht gelesen werden.
-downloads-lens-following-line = Feeds, die AniBeam beobachtet, nach den Serien, die sie füllen.
+downloads-lens-following-line = Feeds, die Anibeam beobachtet, nach den Serien, die sie füllen.
 downloads-none-yet = Noch keine.
 downloads-reading = Lese.
-downloads-rules-error = AniBeam konnte deine Abos nicht lesen. Versuch es gleich nochmal.
+downloads-rules-error = Anibeam konnte deine Abos nicht lesen. Versuch es gleich nochmal.
 downloads-removing-to-go = Entferne, noch { $count }
 downloads-unsubscribe-all = Alle { $count } Abos beenden
 downloads-unsubscribe = Abo beenden
@@ -2064,7 +2053,7 @@ track-picker-off = Aus
 roll-controls-window = { $ahead } bereit: Folgen { $next } bis { $through } von { $total }
 roll-controls-window-watched = { $ahead } bereit: Folgen { $next } bis { $through } von { $total }, { $watched } geschaut
 roll-controls-more = { $count } mehr laden
-roll-controls-more-tip = Die nächsten Folgen jetzt laden. AniBeam hält wieder ein paar bereit, sobald du aufholst.
+roll-controls-more-tip = Die nächsten Folgen jetzt laden. Anibeam hält wieder ein paar bereit, sobald du aufholst.
 roll-controls-fewer-tip = Eine weniger vorhalten
 roll-controls-ahead = { $count } voraus
 roll-controls-further-tip = Eine mehr vorhalten
@@ -2116,7 +2105,7 @@ player-no-chapters = Diese Datei hat keine Kapitel
 player-last-chapter = Das ist das letzte Kapitel
 player-chapter = Kapitel { $number }
 player-chapter-titled = Kapitel { $number }: { $title }
-player-screenshot-saved = Gespeichert in Pictures/AniBeam
+player-screenshot-saved = Gespeichert in Pictures/Anibeam
 player-skipped-intro = Intro übersprungen
 player-skipped-outro = Abspann übersprungen
 player-undo = Rückgängig
@@ -2160,8 +2149,7 @@ player-not-now = Nicht jetzt
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = Quellenlisten
-endpoint-repos-panel-helper = Eine Quellenliste ist eine signierte Liste von Suchorten, per Adresse hinzugefügt. AniBeam prüft die Signatur und zeigt den Schlüssel vor dem Speichern, dann installierst du, was du willst. Sie ergänzen die Suchquellen oben.
-endpoint-repos-panel-could-not-start = AniBeam konnte das nicht starten. Versuch es gleich nochmal.
+endpoint-repos-panel-could-not-start = Anibeam konnte das nicht starten. Versuch es gleich nochmal.
 endpoint-repos-panel-needs-value = { $name } braucht einen Wert
 endpoint-repos-panel-values-of = Werte von { $name }
 endpoint-repos-panel-secret-note = Liegt im Geheimnisspeicher dieses Rechners, nie in der Bibliothek oder einem Export.
@@ -2173,19 +2161,9 @@ endpoint-repos-panel-needs-fields = Braucht { $fields }, bevor es sucht.
 endpoint-repos-panel-no-longer-offered = Von seiner Quellenliste nicht mehr angeboten.
 endpoint-repos-panel-update-requests-to = Das Update sendet Anfragen an { $host }.
 endpoint-repos-panel-unreadable = Diese Liste war nicht lesbar. Listen aktualisieren versucht es erneut.
-endpoint-repos-panel-add-list = Quellenliste hinzufügen
-endpoint-repos-panel-add-list-helper = Die Adresse ihrer Indexdatei oder ein Pfad zu einer auf diesem Rechner.
 endpoint-repos-panel-checking = Prüfe
 endpoint-repos-panel-add = Hinzufügen
-endpoint-repos-panel-trust-question = { $name } vertrauen?
 endpoint-repos-panel-fingerprint = Schlüssel-Fingerabdruck  { $fingerprint }
-endpoint-repos-panel-preview =
-    { $url }
-    { $count } Quellen, signiert. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-preview-trusted =
-    { $url }
-    { $count } Quellen, signiert, schon vertraut. Ihre Quellen bestimmen, wohin deine Suchen gehen; vertraue einer Liste nur, wenn du ihrem Absender vertraust.
-endpoint-repos-panel-trust = Vertrauen
 endpoint-repos-panel-saving = Speichere
 endpoint-repos-panel-install = Installieren
 endpoint-repos-panel-update = Aktualisieren
@@ -2196,10 +2174,25 @@ endpoint-repos-panel-add-value = Wert eintragen
 endpoint-repos-panel-change = { $fields } ändern
 endpoint-repos-panel-asks-for = Fragt nach { $fields }.
 endpoint-repos-panel-by-hand = Von Hand hinzufügen
-endpoint-repos-panel-by-hand-helper = Für Seiten ohne Liste: jeder Feed mit {"{"}query{"}"} statt des Suchbegriffs, auch per Proxy. Ein Schlüssel in der Adresse liegt im Passwortspeicher des Systems.
 endpoint-repos-panel-name = Name
 endpoint-repos-panel-refreshing = Aktualisiere
 endpoint-repos-panel-refresh = Listen aktualisieren
+
+## SourceAttach.qml
+
+source-attach-placeholder = Adresse einer Quellenliste einfügen
+source-attach-what = Was ist eine Quellenliste?
+source-attach-recent = Schon verwendet
+source-attach-added = { $count ->
+    [one] { $name } hinzugefügt: { $count } Quelle ist an.
+   *[other] { $name } hinzugefügt: { $count } Quellen sind an.
+}
+source-attach-added-none = { $name } hinzugefügt. Keine neue Quelle zum Einschalten.
+source-attach-waiting = { $count ->
+    [one] { $names } braucht zuerst einen Wert.
+   *[other] { $names } brauchen zuerst einen Wert.
+}
+source-attach-fill-in = Ausfüllen
 
 ## ScheduleSheet.qml
 
@@ -2231,8 +2224,8 @@ schedule-agent-looking = { $agent } sucht die Termine. Gespeichert wird erst, we
 schedule-agent-stopped = { $agent } hat aufgehört: { $error }
 schedule-stop = Stoppen
 schedule-paste-placeholder = Füge eine Release-Liste, eine Tabelle oder einen Post ein
-schedule-paste-helper = Was AniBeam liest, erscheint bei den Folgen unten.
-schedule-agent-hint = Mit Claude Code auf diesem Computer kann AniBeam es bitten, die Termine für dich zu suchen.
+schedule-paste-helper = Was Anibeam liest, erscheint bei den Folgen unten.
+schedule-agent-hint = Mit Claude Code auf diesem Computer kann Anibeam es bitten, die Termine für dich zu suchen.
 schedule-show-more = Mehr Folgen zeigen
 schedule-pick-hint = Klicke auf eine Folge, um sie zu datieren. Umschalt-Klick wählt eine Reihe.
 schedule-picked-one = Folge { $number }:
@@ -2286,8 +2279,8 @@ connect-did-not-finish = Die Anmeldung wurde nicht abgeschlossen
 connect-finish-in-browser = Im Browser abschließen
 connect-signed-in-anilist = Angemeldet als { $account }. Deine Liste steht auf der Seite Schaue ich.
 connect-signed-in-mal = Angemeldet als { $account }. Folgen werden dort beim Schauen markiert.
-connect-setup-lead = { $name } meldet AniBeam über eine eigene App von dir an. Das dauert einmalig etwa eine Minute.
-connect-page-open = Die Anmeldeseite von { $name } ist in deinem Browser offen. Erlaube AniBeam dort, dann schließt sich das hier von selbst.
+connect-setup-lead = { $name } meldet Anibeam über eine eigene App von dir an. Das dauert einmalig etwa eine Minute.
+connect-page-open = Die Anmeldeseite von { $name } ist in deinem Browser offen. Erlaube Anibeam dort, dann schließt sich das hier von selbst.
 connect-page-opening = Öffne die Anmeldeseite von { $name } in deinem Browser.
 connect-open-watching = Schaue ich öffnen
 connect-done = Fertig
@@ -2307,7 +2300,7 @@ connect-step-paste-id-anilist = AniList nennt sie Client ID: die Zahl auf der Se
 connect-step-paste-id-mal = MyAnimeList nennt sie Client ID: die lange Zeichenfolge auf der Seite deiner neuen App.
 connect-client-id = Client-ID
 connect-client-secret-web = Client-Secret (nur für Web-Apps)
-connect-step-connect-body = Der Browser öffnet sich, { $name } bittet dich, dich anzumelden und AniBeam zu erlauben, und AniBeam fängt die Antwort ab.
+connect-step-connect-body = Der Browser öffnet sich, { $name } bittet dich, dich anzumelden und Anibeam zu erlauben, und Anibeam fängt die Antwort ab.
 
 ## SettingsPage
 
@@ -2317,88 +2310,16 @@ settings-section-library = Bibliothek
 settings-section-accounts = Konten
 settings-section-appearance = Darstellung
 settings-section-playback = Wiedergabe
-settings-section-subtitles = Untertitel
 settings-section-keys = Tastatur
 settings-section-downloads = Downloads
-settings-section-phone = Handy-App
-settings-section-storage = Speicher und Backup
-settings-section-help = Hilfe
 settings-section-about = Info
 settings-section-developer = Entwickler
-settings-status-library-empty = Noch keine Ordner
-settings-status-library =
-    { $count ->
-        [one] { $count } Serie
-       *[other] { $count } Serien
-    } in { $folders ->
-        [one] { $folders } Ordner
-       *[other] { $folders } Ordnern
-    }
-settings-status-library-missing =
-    { $gone ->
-        [one] { $gone } Ordner
-       *[other] { $gone } Ordner
-    } nicht gefunden, { $count ->
-        [one] { $count } Serie
-       *[other] { $count } Serien
-    } in { $folders ->
-        [one] { $folders } Ordner
-       *[other] { $folders } Ordnern
-    }
-settings-status-accounts-anilist = Sync mit AniList
-settings-status-accounts-mal = Sync mit MyAnimeList
-settings-status-accounts-both = Sync mit AniList und MyAnimeList
-settings-status-accounts-none = Keine Liste verbunden
-settings-status-appearance =
-    { $mode ->
-        [system] Folgt dem System
-        [light] Hell
-       *[dark] Dunkel
-    }, { $source ->
-        [theme] Designfarben
-       *[desktop] Desktopfarben
-    }
-settings-status-playback =
-    { $skip ->
-        [both] Überspringt Intros und Abspänne
-        [intro] Überspringt Intros
-        [outro] Überspringt Abspänne
-       *[none] Spielt alles durch
-    }
-settings-status-playback-audio =
-    { $skip ->
-        [both] Überspringt Intros und Abspänne
-        [intro] Überspringt Intros
-        [outro] Überspringt Abspänne
-       *[none] Spielt alles durch
-    }, Audio { $languages }
-settings-status-subtitles =
-    Größe { $percent } Prozent, { $override ->
-        [AsScripted] gestaltete Dateien wie gemacht
-        [Force] dein Stil auf jeder Datei
-       *[ScaleOnly] gestaltete Dateien behalten ihren Look
-    }
-settings-status-keys = Jede Taste, auf die AniBeam hört
-settings-status-downloads-unread = Noch nicht gelesen
-settings-status-downloads-answered = qBittorrent hat geantwortet
-settings-status-downloads-missing = Suchhelfer nicht installiert
-settings-status-downloads-unconnected = Noch nicht verbunden
-settings-status-phone-shared = In deinem Tailnet geteilt
-settings-status-phone-off = Nicht geteilt
-settings-status-storage = { $size } Bilder im Cache
-settings-status-storage-unread = Bilder, Export und Import
-settings-status-help = Antworten auf die häufigsten Fragen
-settings-status-about-update = Version { $version } ist da
-settings-status-developer = Misst jede Seite
-settings-status-developer-last = { $page } gebaut in { $ms } ms
 settings-results =
     { $count ->
         [one] { $count } Einstellung passt
        *[other] { $count } Einstellungen passen
     }
 settings-results-none = Nichts passt
-settings-results-hint = Enter öffnet die erste.
-settings-results-none-hint = Versuch ein einfacheres Wort: Design, Untertitel, Tracker, Passwort, Ordner.
 
 settings-find-folders =
     .words = ordner hinzufügen scan scannen neu entfernen quelle pfad sammlung
@@ -2420,6 +2341,8 @@ settings-find-on-hold =
     .words = pausiert pause inaktiv unberührt tage
 settings-find-language =
     .words = sprache übersetzung locale deutsch englisch
+settings-find-title-language =
+    .words = titel romaji englisch japanisch name
 settings-find-mode =
     .words = dunkel hell system design nacht modus
 settings-find-colours-from =
@@ -2514,14 +2437,6 @@ settings-find-files =
     .words = datenbank daten konfiguration cache ordner pfad
 settings-find-help-folders =
     .words = hilfe ordner aufbau benennung folgen staffeln filme dateien struktur
-settings-find-help-recognised =
-    .words = hilfe zuordnung falsch serie nicht gefunden nicht zugeordnet erkannt
-settings-find-help-anilist =
-    .words = hilfe anilist myanimelist mal anmelden verbinden login tracker
-settings-find-help-downloads =
-    .words = hilfe downloads leer quellen nichts torrent qbittorrent
-settings-find-help-data =
-    .words = hilfe daten dateien backup datenbank datenschutz
 settings-find-help-else =
     .words = hilfe einrichtung onboarding anleitung melden fehler problem issue
 settings-find-version =
@@ -2538,124 +2453,89 @@ settings-find-ratings =
 ## SettingsDownloadsTab
 
 settings-downloads-title = Downloads
-settings-downloads-lead = Wohin AniBeam schickt, was du lädst, und wie es die Release-Feeds durchsucht.
-settings-downloads-keep-none = Eine Folge zu beenden löscht die davor.
-settings-downloads-keep-line = Geschaute Folgen, die hinter der beendeten bleiben. Bei { $count } löscht das Beenden von Folge { $finishing } Folge 1.
 settings-downloads-anirss-ready = Läuft, Version { $version } unter { $url }.
 settings-downloads-anirss-starting = Starte den Suchhelfer.
-settings-downloads-anirss-missing = Der Suchhelfer ist nicht installiert. Installiere AniBeam neu, oder trag unter Befehl dein eigenes anirss ein.
+settings-downloads-anirss-missing = Der Suchhelfer ist nicht installiert. Installiere Anibeam neu, oder trag unter Befehl dein eigenes anirss ein.
 settings-downloads-anirss-failed = Der Suchhelfer wurde beendet. Nochmal startet ihn; Details zeigt, was er gemeldet hat.
 settings-downloads-anirss-idle = Noch nicht gestartet. Er startet bei der ersten Suche auf der Seite Downloads.
 settings-downloads-torrent-trying = Probiere { $client }.
 settings-downloads-torrent-answered = { $client } { $version } hat geantwortet.
 settings-downloads-torrent-failed = { $client } hat sich nicht verbunden. Prüfe Adresse und Passwort oben und teste erneut.
 settings-downloads-torrent-untried = Noch nicht probiert.
-settings-downloads-mode-existing = Ein qBittorrent, das du selbst betreibst, mit eingeschaltetem Web UI.
-settings-downloads-mode-managed = AniBeam betreibt ein eigenes qBittorrent, das nach ~/Downloads/Anime lädt. Es läuft weiter, wenn AniBeam beendet wird, also laden Abos weiter.
-settings-downloads-mode-auto = qBittorrent an der Adresse unten, sonst ein eigenes.
 settings-downloads-password-saved = Für diesen Client ist hier ein Passwort gespeichert.
 settings-downloads-password-anirss = Nutzt das Passwort, das der Suchhelfer gespeichert hat; speichere hier eins, um nicht davon abzuhängen.
 settings-downloads-password-none = Kein Passwort gespeichert. Ein Client ohne Login hier braucht keins.
-settings-downloads-mismatch = Der Suchhelfer spricht mit { $helperUrl }, AniBeam aber mit { $url }. Ein Suchhelfer, den du selbst betreibst, liest die Adresse aus seiner eigenen config.toml, also verschiebt ein Clientwechsel hier ihn nicht.
+settings-downloads-mismatch = Der Suchhelfer spricht mit { $helperUrl }, Anibeam aber mit { $url }. Ein Suchhelfer, den du selbst betreibst, liest die Adresse aus seiner eigenen config.toml, also verschiebt ein Clientwechsel hier ihn nicht.
 settings-downloads-torrent-title = Torrent-Client
-settings-downloads-torrent-helper = Das qBittorrent, das lädt. Sein Passwort liegt im Passwortspeicher des Systems.
 settings-downloads-which-client = Welcher Client
 settings-downloads-pick-for-me = Für mich wählen
 settings-downloads-my-own = Mein eigener
 settings-downloads-built-in = Eingebaut
 settings-downloads-saved-clients = Gespeicherte Clients
-settings-downloads-saved-clients-helper = Zum Beispiel eine Seedbox und der auf diesem Rechner. Der Client-Chip auf der Seite Downloads wechselt auch zwischen ihnen.
 settings-downloads-add-client = Hinzufügen
 settings-downloads-name = Name
 settings-downloads-name-placeholder = Nach seiner Adresse benannt
 settings-downloads-address = Adresse
-settings-downloads-address-managed-helper = Nur dieser Rechner erreicht ihn, und er braucht kein Passwort.
-settings-downloads-address-helper = Die Adresse des Web UI.
 settings-downloads-username = Benutzername
 settings-downloads-password = Passwort
 settings-downloads-secret-saved = Gespeichert
 settings-downloads-secret-unset = Nicht gesetzt
+settings-downloads-save-to = Speichern in
+settings-downloads-save-to-client = qBittorrents eigener Ordner
+settings-downloads-save-to-choose = Ordner wählen
+settings-downloads-save-to-reset = Zurücksetzen
+settings-downloads-save-to-pick = Downloads speichern in
 settings-downloads-connection = Verbindung
 settings-downloads-open-config = Konfiguration öffnen
 settings-downloads-details = Details
-settings-downloads-details-torrent = Das hat { $client } gemeldet, als AniBeam es probiert hat.
+settings-downloads-details-torrent = Das hat { $client } gemeldet, als Anibeam es probiert hat.
 settings-downloads-test-trying = Probiere
 settings-downloads-test-save = Speichern und testen
 settings-downloads-test = Testen
 settings-downloads-searching = Suche
 settings-downloads-search-helper = Suchhelfer
-settings-downloads-searching-helper = AniBeam durchsucht deine Quellen selbst und schickt, was du wählst, an den Torrent-Client. Der Suchhelfer wird nicht gebraucht.
-settings-downloads-search-helper-helper = Der Teil von AniBeam, der sucht und abonniert, ein Programm namens anirss. AniBeam startet es für dich; ändere das nur, wenn du ein eigenes betreibst.
 settings-downloads-runs-in = Suchen laufen in
-settings-downloads-runs-in-native-helper = Abos gehen an den Torrent-Client, so kommen neue Folgen auch, wenn AniBeam zu ist.
-settings-downloads-runs-in-helper = Dem Suchhelfer, einem eigenen Programm, das AniBeam oder du selbst startest.
-settings-downloads-engine-native = AniBeam selbst
+settings-downloads-engine-native = Anibeam selbst
 settings-downloads-how-runs = Wie er läuft
-settings-downloads-how-runs-sidecar = AniBeam startet ihn beim Öffnen und stoppt ihn beim Beenden.
-settings-downloads-how-runs-remote = AniBeam nutzt einen, den du schon betreibst, unter der Adresse und mit dem Schlüssel unten.
-settings-downloads-runs-sidecar = AniBeam startet ihn
+settings-downloads-runs-sidecar = Anibeam startet ihn
 settings-downloads-runs-remote = Ich starte ihn
 settings-downloads-command = Befehl
-settings-downloads-command-helper = Ein Name im PATH oder ein voller Pfad. ~/.local/bin wird auch durchsucht.
-settings-downloads-server-address-helper = Die Basis des Servers, ohne /api/v1.
 settings-downloads-key = Schlüssel
-settings-downloads-key-saved-helper = Ein Schlüssel ist gespeichert. Gib einen neuen ein, um ihn zu ersetzen, oder leere das Feld, um ihn zu entfernen.
-settings-downloads-key-helper = Der Schlüssel, den der Suchhelfer beim Start gezeigt hat. Er lässt AniBeam herein.
 settings-downloads-details-anirss = Das hat der Suchhelfer gemeldet, als er beendet wurde.
 settings-downloads-starting = Startet
 settings-downloads-reconnect = Neu verbinden
 settings-downloads-save-first = Speichere zuerst deine Änderungen
 settings-downloads-roll-title = Die nächsten bereithalten
-settings-downloads-roll-helper = Eine lange Serie lädt ein paar Folgen auf einmal; jede beendete startet die nächste. Nie muss alles auf die Platte.
 settings-downloads-roll-big = Für lange Serien
-settings-downloads-roll-big-helper = Serien über { $count } Folgen laden von selbst ein paar auf einmal. Ihre Zeile unter Downloads kann trotzdem alles sofort holen.
 settings-downloads-roll-ahead = Folgen voraus
-settings-downloads-roll-ahead-helper = Wie viele nach der aktuellen geladen bleiben. 12 ist etwa eine Staffel.
 settings-downloads-unit-episodes = Folgen
 settings-downloads-roll-over = Lang heißt über
-settings-downloads-roll-over-helper = Downloads mit mehr Folgen als das kommen in Häppchen.
 settings-downloads-roll-watched = Geschaute Folgen
-settings-downloads-roll-watched-delete-helper = Gelöscht, sobald du weiter bist, also hält die Platte nur, was noch zu schauen ist.
-settings-downloads-roll-watched-keep-helper = Jede Datei bleibt nach dem Schauen auf der Platte.
 settings-downloads-keep-all = Alle behalten
 settings-downloads-keep-behind = Zurück behalten
 settings-downloads-subscriptions-title = Abos und Suchen
 settings-downloads-last-search = Letzte Suche behalten
-settings-downloads-last-search-helper = Die Seite Downloads öffnet mit deiner letzten Suche. Aus, öffnet sie leer.
 settings-downloads-prune = Abos beendeter Serien beenden
-settings-downloads-prune-helper = 16 Tage nach der letzten Folge einer Serie fällt ihr Feed weg. Die Serie und ihre Dateien bleiben.
 settings-downloads-sources-title = Suchquellen
-settings-downloads-sources-helper = Wohin eine Suche geht, in Probierreihenfolge. Findet eine nichts, kommt die nächste.
 settings-downloads-sources-empty = Noch keine Quellen eingerichtet
 settings-downloads-sources-connect = Verbinde den Suchhelfer, um sie aufzulisten
-settings-downloads-sources-empty-helper = Füge unten eine Liste hinzu, um Quellen zu sehen.
 settings-downloads-config-file = Einstellungsdatei des Suchhelfers
-settings-downloads-config-native-helper = Enthält die Speicherordner, die Tags und die Regeln für die beste Wahl, denen AniBeam selbst folgt, wenn es den Helfer startet. Seine eigenen Quellen gehören nur dem Helfer.
-settings-downloads-config-helper = Enthält die Quellen, die Speicherordner, die Tags und die Regeln für die beste Wahl.
 settings-downloads-unsaved = Ungespeicherte Änderungen
-settings-downloads-unsaved-helper = Speichern startet den Suchhelfer mit den neuen Einstellungen neu.
 settings-downloads-discard = Verwerfen
 
 ## SettingsDeveloperTab
 
 settings-developer-title = Entwickler
-settings-developer-lead = Warum eine Seite langsam ist, gemessen. Jeder Schalter gilt für die nächste Seite, die du öffnest.
 settings-developer-ms = { $ms } ms
 settings-developer-mb = { $mb } MB
 settings-developer-seconds = { $seconds } s
 settings-developer-switches = Schalter
 settings-developer-load-images = Bilder laden
-settings-developer-load-images-helper = Aus wird kein Poster, Banner oder Porträt gelesen oder dekodiert.
 settings-developer-overlay = Overlay für Seitenladen
-settings-developer-overlay-helper = Das letzte Seitenladen und der Speicher, unten rechts im Fenster.
 settings-developer-read-cache = Bibliotheksabfragen behalten
-settings-developer-read-cache-helper = Die Antwort auf eine Abfrage der ganzen Bibliothek bleibt, bis sich die Bibliothek ändert. Aus fragt jede Seite den Kern neu.
 settings-developer-poster-pool = Poster im Hintergrund vorladen
-settings-developer-poster-pool-helper = Dekodiert die 60 Poster, die du am ehesten siehst, und hält sie im Speicher.
 settings-developer-options = Entwickleroptionen
-settings-developer-options-helper = Schaltet diesen Tab, das Overlay und das Messen aus.
 settings-developer-memory = Speicher
-settings-developer-memory-helper = Was der Kernel für diesen Prozess zählt. Bilder halten dekodierte Pixel im Speicher und auf der Grafikkarte.
 settings-developer-memory-unknown = Dieses System sagt nicht, wie viel Speicher die App nutzt.
 settings-developer-in-use = Belegt
 settings-developer-peak = Spitze
@@ -2663,13 +2543,11 @@ settings-developer-heap = Heap
 settings-developer-files-mapped = Gemappte Dateien
 settings-developer-threads = Threads
 settings-developer-give-back = Speicher freigeben
-settings-developer-give-back-helper = Verwirft, was der Szenengraph neu bauen kann, sammelt JavaScript-Müll und gibt freien Heap ans System zurück. Was dabei frei wird, hat die App gehalten, ohne es zu brauchen.
 settings-developer-released = { $before } auf { $after }
 settings-developer-free-now = Jetzt freigeben
 settings-developer-images-total = Bilder seit dem Start
 settings-developer-images-total-line = { $decodes } dekodiert, { $pixels } Pixel aus { $disk } auf der Platte, { $ms } ms
 settings-developer-loads = Seitenladen
-settings-developer-loads-helper = Gebaut ist die Wartezeit nach einem Klick: Der Qt-Thread tut nichts anderes, bis die Seite existiert. Fertig ist, wenn ihr letztes Bild ankam.
 settings-developer-touring = Messe, { $at } von { $steps }
 settings-developer-tour = Jede Seite messen
 settings-developer-copy-report = Bericht kopieren
@@ -2706,7 +2584,6 @@ settings-developer-scene = Woraus die Seite besteht
 settings-developer-scene-line = { $items } Elemente, { $offscreen } außerhalb des Fensters; { $texts } Texte, { $shapes } Formen, { $icons } Symbole; { $images } Bilder, davon { $imagesOffscreen } außerhalb des Fensters mit { $size }
 settings-developer-copy-load = Diesen Ladevorgang kopieren
 settings-developer-tour-title = Jede Seite, Bilder an und aus
-settings-developer-tour-helper = Der mittlere von drei Besuchen jeder Seite. Wo beide Spalten gleich sind, machen nicht die Bilder die Seite langsam.
 settings-developer-col-built-on = Gebaut, Bilder an
 settings-developer-col-built-off = Gebaut, Bilder aus
 settings-developer-col-settled-on = Fertig, an
@@ -2715,7 +2592,6 @@ settings-developer-col-decodes-time = Dekodierungen, Zeit
 settings-developer-col-data = Daten
 settings-developer-tour-peak = Spitzenspeicher während der Messung { $size }
 settings-developer-events = Ereignisse
-settings-developer-events-helper = Alles, was der Kern sagt, jede Stufe, neueste zuerst. Jedes Ereignis wird als JSON in den Qt-Thread kopiert; die Größe ist, was das Senden gekostet hat.
 settings-developer-event-rate = { $kind } { $count }/min, { $size }
 settings-developer-events-filter = Nach Wörtern, Art oder Stufe filtern
 settings-developer-event-plain = { $message }   (einfach: { $plain })
@@ -2724,7 +2600,6 @@ settings-developer-copy-events = Ereignisse kopieren
 ## SettingsKeysTab
 
 settings-keys-title = Tastatur
-settings-keys-lead = Jede Taste, auf die AniBeam hört. Drück überall ?, um die Tasten zu sehen, die dort gehen.
 settings-keys-player = Im Player
 settings-keys-player-around = Im Player bewegen
 settings-keys-around = Bewegen
@@ -2791,7 +2666,6 @@ key-help-pick-all = Jede gezeigte Karte wählen
 ## SettingsAboutTab
 
 settings-about-title = Info
-settings-about-lead = Welches AniBeam das ist, und wie es vom nächsten erfährt.
 settings-about-update-failed = Das Update wurde nicht abgeschlossen. Versuch es nochmal oder hol es von der Release-Seite.
 settings-about-update-ready = { $version } ist bereit zur Installation.
 settings-about-update-command = { $version } ist da. Aktualisiere mit { $command }
@@ -2799,20 +2673,16 @@ settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } ist da. Diese Kopie ist aus dem Quellcode gebaut: pullen und neu bauen.
 settings-about-update-elsewhere = { $version } ist da, ohne Download für diesen Computer.
 settings-about-version = Version
-settings-about-build = AniBeam { $build }
+settings-about-build = Anibeam { $build }
 settings-about-whats-new = Neuerungen
 settings-about-install = { $version } installieren
 settings-about-setup = Einrichtung
-settings-about-setup-helper = Die Einführung neuer Installationen: Ordner, Liste und Downloads.
 settings-about-run-setup = Einrichtung erneut starten
 settings-about-updates = Updates
-settings-about-nightly-helper = Fast täglich ein neuer Build. Neuer und weniger getestet.
-settings-about-stable-helper = Eine neue Version, sobald sie getestet und veröffentlicht ist.
 settings-about-stable = Stabil
 settings-about-nightly = Nightly
 settings-about-check-now = Jetzt prüfen
 settings-about-developer = Entwickleroptionen
-settings-about-developer-helper = Fügt den Bereich Entwickler hinzu: misst jede Seite, zeigt Speicher und das ganze Protokoll, schaltet Bilder ab.
 settings-about-credits = Credits
 settings-about-ratings = Bewertungen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
@@ -2822,28 +2692,29 @@ settings-about-series-helper = AniList und TVmaze. Skip-Zeiten von AniSkip.
 ## SettingsPlaybackTab
 
 settings-playback-title = Wiedergabe
-settings-playback-lead = Was der Player von selbst tut, damit du nur eingreifst, wenn du willst.
 settings-playback-skipping = Überspringen
-settings-playback-skipping-helper = Nutzt Dateikapitel, sonst online geteilte Skip-Zeiten. Rückgängig im Player stoppt das Überspringen, bis AniBeam schließt.
 settings-playback-skip-intros = Intros überspringen
 settings-playback-skip-outros = Abspänne überspringen
-settings-playback-skip-outros-helper = Beim Abspann wird die Folge auch als geschaut markiert.
 settings-playback-next-episode = Nächste Folge
 settings-playback-name-next = Nächste Folge benennen
-settings-playback-name-next-helper = Der Knopf Weiter am Ende einer Folge zeigt den Titel der nächsten. Aus zeigt er nur ihre Nummer.
 settings-playback-languages = Sprachen
-settings-playback-languages-helper = Sprachcodes, die liebste zuerst. Die erste, die eine Datei hat, gewinnt. Eine Spur, die du im Player wählst, merkt sich die Serie.
 settings-playback-subtitle-languages = Untertitelsprachen
 settings-playback-audio-languages = Audiosprachen
 settings-playback-discord = Auf Discord zeigen, was du schaust
-settings-playback-discord-check-failed = AniBeam konnte Discord gerade nicht prüfen. Versuch es gleich nochmal.
-settings-playback-discord-helper = Serie, Folge und Poster erscheinen beim Abspielen in deinem Discord-Profil. Gesendet wird nichts, solange das aus oder Discord geschlossen ist.
+settings-playback-discord-check-failed = Anibeam konnte Discord gerade nicht prüfen. Versuch es gleich nochmal.
 settings-playback-discord-unavailable = Dieser Build hat keine Discord-Anwendung.
 settings-playback-discord-connected = Mit Discord verbunden
-settings-playback-discord-not-connected = Nicht verbunden. AniBeam verbindet sich, während eine Folge läuft und Discord offen ist
+settings-playback-discord-not-connected = Nicht verbunden. Anibeam verbindet sich, während eine Folge läuft und Discord offen ist
+discord-ask-wants = { $name } möchte mitschauen
+discord-ask-start-room = Raum starten
+discord-ask-let-in = Reinlassen
+discord-ask-no = Nein
+settings-playback-discord-blocked = Auf Discord abgelehnt
+room-panel-discord = Auf Discord
+room-panel-discord-open = Offen
+room-panel-discord-invite = Nur mit Einladung
 settings-playback-advanced = Erweitert
 settings-playback-my-mpv = Meine mpv-Einstellungen nutzen
-settings-playback-my-mpv-helper = Liest deine mpv.conf. Optionen, die nur beim Start wirken, werden übersprungen, und Skripte laden nie.
 settings-playback-no-mpv-conf = Keine mpv-Einstellungsdatei gefunden. Trag deine Optionen in mpv.conf ein und schalte das dann ein.
 
 ## SliderRow
@@ -2868,49 +2739,37 @@ look-preview-light = Hell
 ## SettingsAccountsTab
 
 settings-accounts-title = Konten
-settings-accounts-lead = Verbinde AniList oder MyAnimeList, und jede Folge, die du beendest, wird dort für dich markiert. Zahlen gehen nur nach oben.
 settings-accounts-syncing = Synce deine Listen
 settings-accounts-synced = Listen gesynct
 settings-accounts-lists = Deine Anime-Listen
-settings-accounts-lists-helper = Ohne Liste merkt sich AniBeam trotzdem, was du auf diesem Computer geschaut hast. Eine Liste bei AniList oder MyAnimeList bringt es auf dein Handy und in dein Profil.
 settings-accounts-progress = Fortschritt
 settings-accounts-main-list = Hauptliste
-settings-accounts-main-list-helper = Die Karten zeigen den Fortschritt aus dieser. Die andere bekommt trotzdem jedes Update.
 settings-accounts-local-lists = Listen auf diesem Computer
 settings-accounts-local-lists-helper =
     { $count ->
         [one] Eine Serie hat
        *[other] { $count } Serien haben
-    } Status oder Wertung nur hier. Verschiebe sie zu { $tracker }, um sie auf deinem Handy und in deinem Profil zu sehen.
+    } Status oder Wertung nur hier.
 settings-accounts-review-move = Prüfen und verschieben
 settings-accounts-nothing-to-move = Nichts mehr zu verschieben
 settings-accounts-sync-now = Jetzt syncen
-settings-accounts-sync-now-helper = Liest jede verbundene Liste neu. AniBeam tut das auch beim Start.
 settings-accounts-sync = Sync
 settings-accounts-move-on-hold = Auf Pausiert setzen
-settings-accounts-move-on-hold-helper = Eine Serie auf Schaue ich, die du eine Weile nicht angerührt hast, wird auf deinen Listen auf Pausiert gesetzt. Abspielen holt sie zurück. Eine Serie, die auf ihre nächste Folge wartet, bleibt, wo sie ist.
 settings-accounts-after = Nach
 settings-accounts-after-line = Tage ohne gespielte Folge
 settings-accounts-days-unit = Tage
 
-## SettingsPhoneTab
+## SettingsAccountsTab: the phone app
 
 settings-phone-title = Handy-App
-settings-phone-lead = AniBeam auf deinem Handy kann diese Bibliothek abspielen, zeigen, was läuft, und deinen Downloads folgen, wo immer du bist.
 settings-phone-online = Online
 settings-phone-offline = Offline
 settings-phone-untrusted = Bekommt nichts von diesem Computer
-settings-phone-sharing = Teilen
-settings-phone-sharing-helper = Nur deine eigenen Geräte in Tailscale erreichen es. Auf dem Handy geschaute Folgen behalten hier ihre Stelle und ihren Fortschritt.
 settings-phone-share = Über Tailscale teilen
 settings-phone-stream = Folgen streamen
-settings-phone-stream-on = Deine Geräte können Folgen von hier abspielen und senden.
-settings-phone-stream-off = Deine Geräte sehen die Bibliothek und was läuft, können aber nicht von hier abspielen.
 settings-phone-host-service = Hostdienst
 settings-phone-not-running = Läuft nicht
 settings-phone-running = Läuft
-settings-phone-service-off-helper = Führe den Befehl einmal aus, dann erreichen deine Geräte AniBeam ab der Anmeldung, ohne offenes Fenster.
-settings-phone-service-on-helper = Deine Geräte erreichen AniBeam ohne offenes Fenster. Solange dieses Fenster offen ist, teilt es anstelle des Dienstes.
 settings-phone-copy-command = Befehl kopieren
 settings-phone-command-copied = Befehl kopiert
 settings-phone-nobody = Bekommt nichts: Tailscale nennt keine Person dafür
@@ -2928,81 +2787,29 @@ settings-phone-person-devices =
        *[other] { $count } Geräte
     }
 settings-phone-devices = Geräte in deinem Tailnet
-settings-phone-devices-helper = Jedes Gerät im Tailnet erreicht diesen Computer, solange Teilen an ist. Ausgeschaltet bekommt es nichts mehr.
-settings-phone-addresses = Adressen
-settings-phone-addresses-helper = Gib eine davon in die Handy-App ein, wenn sie beim ersten Mal fragt.
 settings-phone-copy = Kopieren
 settings-phone-address-copied = Adresse kopiert
 
-## SettingsHelpTab
+## SettingsAboutTab: the questions people ask most
 
-settings-help-title = Hilfe
-settings-help-lead = Kurze Antworten auf häufige Fragen, je mit direktem Weg zur Lösung.
+settings-about-help = Hilfe
 settings-help-folders = Wie sollen meine Ordner aussehen?
-settings-help-folders-helper = Ein Ordner pro Serie, die Folgen darin. Benenne jede Datei mit ihrer Folgennummer wie Releases: "Frieren - 01.mkv" oder "Frieren S01E01.mkv". Eine zweite Staffel ist ein eigener Ordner oder "Season 2" in der Serie. Filme kommen in den Ordner Movies, je eine Datei.
-settings-help-for-example = Zum Beispiel
 settings-help-folders-example =
     Anime / Frieren / Frieren - 01.mkv
     Anime / Frieren / Season 2 / Frieren S02E01.mkv
     Anime / Movies / Suzume.mkv
-settings-help-no-folder = Noch kein Ordner hinzugefügt
-settings-help-reads-folders =
-    { $count ->
-        [one] AniBeam liest einen Ordner
-       *[other] AniBeam liest { $count } Ordner
-    }
-settings-help-add-folder-helper = Füge den Ordner hinzu, der deine Serien enthält, nicht jede Serie einzeln.
-settings-help-add-folder = Ordner hinzufügen
-settings-help-open-folders = Deine Ordner öffnen
-settings-help-match = Warum wurde meine Serie nicht erkannt?
-settings-help-match-helper = AniBeam sucht Ordner nach Namen, erst bei AniList, dann bei TVmaze. Extra-Wörter, Tippfehler oder ein fremdsprachiger Name gehen mal daneben. Wähle die Serie unter Serieninfo; deine Wahl bleibt immer.
-settings-help-all-recognised = Jede Serie ist erkannt
-settings-help-unrecognised =
-    { $count ->
-        [one] Eine Serie ist nicht erkannt
-       *[other] { $count } Serien sind nicht erkannt
-    }
-settings-help-open-show-info = Serieninfo öffnen
-settings-help-connect = Wie verbinde ich AniList?
-settings-help-connect-helper = Verbinde es, und jede beendete Folge wird auf deiner Liste markiert, damit Handy und Profil mitkommen. AniList will einmal eine kleine eigene App; AniBeam führt dich durch, in etwa einer Minute. MyAnimeList geht genauso.
-settings-help-both-connected = Beide sind verbunden
-settings-help-anilist-connected = AniList ist verbunden
-settings-help-mal-connected = MyAnimeList ist verbunden
-settings-help-none-connected = Keins verbunden
-settings-help-connect-anilist = AniList verbinden
-settings-help-connect-mal = MyAnimeList verbinden
-settings-help-downloads = Warum ist Downloads leer?
-settings-help-downloads-helper = AniBeam bringt keine Suchorte mit. Füge unter Einstellungen, Downloads eine Quellenliste hinzu und installiere daraus, was du willst. Dazu braucht es einen Torrent-Client: AniBeam startet einen eigenen oder nutzt dein qBittorrent.
-settings-help-sources = Quellen und der Torrent-Client
-settings-help-open-downloads = Downloadeinstellungen öffnen
-settings-help-data = Wo sind meine Daten?
-settings-help-data-helper = Bibliothek, Verlauf und Einstellungen bleiben auf diesem Computer. AniList- und MyAnimeList-Anmeldungen liegen im Passwortspeicher des Systems, sonst in einer Datei nur für dich. Sichere alles unter Speicher und Backup in eine Datei.
-settings-help-library-history = Bibliothek und Verlauf
-settings-help-show-folder = Ordner zeigen
-settings-help-backup = Sichern oder wiederherstellen
-settings-help-open-storage = Speicher und Backup öffnen
 settings-help-more = Etwas anderes?
-settings-help-more-helper = Starte die erste Einrichtung erneut, oder sag uns, was schiefging. Ein Screenshot hilft sehr.
-settings-help-first-setup = Die erste Einrichtung
-settings-help-first-setup-helper = Ordner, Liste und Downloads.
-settings-help-run-setup = Einrichtung erneut starten
 settings-help-report = Problem melden
-settings-help-report-helper = Öffnet einen Fehlerbericht auf GitHub in deinem Browser, mit dieser Version schon eingetragen.
 
-## SettingsSubtitlesTab
+## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Untertitel
-settings-subtitles-lead = Womit jede Folge startet. Änderungen erscheinen sofort im Bild unten.
 settings-subtitles-reset-done = Untertitel sehen wieder aus wie am Anfang
 settings-subtitles-size-place = Größe und Position
 settings-subtitles-size = Größe
 settings-subtitles-position = Position
-settings-subtitles-position-helper = 100 sitzt am unteren Rand. Kleinere Zahlen heben die Zeilen im Bild an.
 settings-subtitles-style = Stil
 settings-subtitles-styled = Gestaltete Untertitel
-settings-subtitles-as-made-helper = Gestaltete (ASS) Dateien sehen genau so aus, wie ihre Macher sie eingestellt haben.
-settings-subtitles-mine-helper = Dein Stil unten gilt für jede Datei. Signs und Karaoke können kaputtgehen.
-settings-subtitles-size-only-helper = Gestaltete behalten ihren Look in deiner Größe, schlichte nehmen deinen Stil.
 settings-subtitles-as-made = Original
 settings-subtitles-size-only = Nur Größe
 settings-subtitles-mine = Eigene
@@ -3014,20 +2821,14 @@ settings-subtitles-colour-invalid = Gib eine Farbe wie #ffcc00 ein.
 settings-subtitles-outline = Umriss
 settings-subtitles-outline-invalid = Die Breite ist eine Zahl, 0 oder mehr.
 settings-subtitles-outline-colour-invalid = Gib die Farbe wie #000000 ein.
-settings-subtitles-outline-helper = Erst die Breite, dann die Farbe.
 settings-subtitles-shadow = Schatten
 settings-subtitles-shadow-invalid = Eine Zahl, 0 oder mehr. 0 heißt kein Schatten.
-settings-subtitles-shadow-helper = Wie weit der Schatten fällt, 0 für keinen.
 settings-subtitles-box = Hintergrundbox
-settings-subtitles-box-helper = Dunkle Box hinterm Text. 0 lässt sie weg.
 settings-subtitles-start-over = Von vorn
-settings-subtitles-start-over-helper = Setzt Größe, Schrift, Farben, Umriss, Box und Position auf die Ausgangswerte zurück.
 settings-subtitles-reset = Zurücksetzen
 
-## SettingsDataTab
+## SettingsAboutTab: storage and backup
 
-settings-data-title = Speicher und Backup
-settings-data-lead = Bibliothek umziehen, eine Kopie sichern oder den Platz der Bilder freigeben.
 settings-data-backed-up = Gesichert in { $path }
 settings-data-restore-finished = Wiederherstellung fertig
 settings-data-images-removed =
@@ -3078,17 +2879,13 @@ settings-data-summary-unavailable =
 settings-data-summary-left-out = Ausgelassen: { $fields }.
 settings-data-backup = Backup
 settings-data-back-up-library = Bibliothek sichern
-settings-data-back-up-helper = Eine Datei mit Ordnern, Zuordnungen und Geschautem.
 settings-data-last-written = Zuletzt geschrieben nach { $path }
 settings-data-open-folder = Ordner öffnen
 settings-data-back-up = Sichern
-settings-data-private = Private Daten einschließen
-settings-data-private-helper = Fügt Anmeldungen bei AniList und MyAnimeList, Verlauf und Einstellungen hinzu. Anmeldungen stehen im Klartext, behalte die Datei für dich.
+settings-data-private = Anmeldungen einschließen, als Klartext gespeichert
 settings-data-restore-from = Aus Backup wiederherstellen
-settings-data-restore-helper = Liest ein Backup in diese Bibliothek. Was auf der Platte liegt, gilt; die Datei füllt den Rest auf.
 settings-data-restore = Wiederherstellen
 settings-data-image-cache = Bildcache
-settings-data-image-cache-helper = Poster, Banner und Porträts liegen auf der Platte, damit die Bibliothek offline geht. Gelöschte lädt die Seite neu.
 settings-data-cache-unmeasured = Der Bildcache ließ sich nicht messen
 settings-data-cache-size =
     { $count ->
@@ -3096,18 +2893,17 @@ settings-data-cache-size =
        *[other] { $size } in { $count } Bildern
     }
 settings-data-cache-empty = Keine Bilder im Cache
-settings-data-cache-unmeasured-helper = Versuch es gleich nochmal. Die Bilder selbst sind in Ordnung.
 settings-data-remove-images =
     { $count ->
         [one] { $count } Bild entfernen?
        *[other] { $count } Bilder entfernen?
     }
-settings-data-files = Wo AniBeam seine Dateien ablegt
+settings-data-files = Wo Anibeam seine Dateien ablegt
 settings-data-files-database = Bibliotheksdatenbank
 settings-data-files-data = Daten
 settings-data-files-settings = Einstellungen
 settings-data-files-cache = Cache
-settings-data-backup-filter = AniBeam-Backup (*.json)
+settings-data-backup-filter = Anibeam-Backup (*.json)
 settings-data-all-files-filter = Alle Dateien (*)
 settings-data-backing-up = Sichere
 settings-data-restoring = Stelle wieder her
@@ -3115,62 +2911,57 @@ settings-data-restoring = Stelle wieder her
 ## SettingsLibraryTab
 
 settings-library-title = Bibliothek
-settings-library-lead = Die Ordner, die AniBeam beobachtet, und wie es herausfindet, was darin ist.
 settings-library-not-scanned = Noch nicht gescannt
 settings-library-scan-nothing-changed = Nichts geändert
 settings-library-scan-added = { $count } hinzugefügt
 settings-library-scan-changed = { $count } geändert
 settings-library-scan-removed = { $count } entfernt
 settings-library-scan-in-folder = { $folder }: { $what }
-settings-library-anilist-about = Anime: Serien, Filme und wie sie zusammenhängen. Was du schaust, wird bei deinen Trackern markiert.
-settings-library-tvmaze-about = Anderes Fernsehen: Realserien, Cartoons, Dokus. Nichts wird bei einem Tracker markiert.
 settings-library-tried-first = Zuerst probiert
 settings-library-tried-second = Als Zweites probiert
 settings-library-tried-third = Als Drittes probiert
 settings-library-tried-fourth = Als Viertes probiert
 settings-library-tried-nth = Als { $number }. probiert
 settings-library-folders = Ordner
-settings-library-folders-helper = Jeder Ordner in einem davon ist eine Serie. Eine Datei oben in einem Ordner Movies ist ein Film.
 settings-library-rescan-started = Neuer Scan gestartet
 settings-library-load-failed = Deine Ordner konnten nicht gelesen werden
-settings-library-load-failed-helper = AniBeam konnte seine Ordnerliste nicht lesen. Versuch es gleich nochmal.
 settings-library-no-folders = Noch keine Ordner
-settings-library-no-folders-helper = Zeig AniBeam den Ordner mit deinen Anime. Es findet die Serien und Filme von selbst.
 settings-library-scanned = Gescannt { $when }
 settings-library-add-a-folder = Ordner hinzufügen
 settings-library-scan-all = Alle scannen
 settings-library-scan-started = Scan gestartet
 settings-library-add-folder = Ordner hinzufügen
 settings-library-matching = Zuordnung
-settings-library-matching-helper = Neue Ordner werden der Reihe nach gesucht, der erste gute Treffer gilt. Eigene Zuordnungen bleiben immer.
 settings-library-try-later = Später probieren
 settings-library-try-first = Zuerst probieren
 settings-library-check-matches = Zuordnungen prüfen
-settings-library-check-matches-helper = Die Seite Serieninfo listet jede Serie mit den Infos, die AniBeam gefunden hat, und korrigiert eine falsche.
 settings-library-open-show-info = Serieninfo öffnen
 settings-library-hidden-shows = Ausgeblendete Serien
 settings-library-show-hidden = Ausgeblendete Serien zeigen
-settings-library-show-hidden-helper = Zeigt ausgeblendete Serien überall wieder, bis AniBeam schließt.
 settings-library-hidden-from-airing = Aus Läuft jetzt ausgeblendet
-settings-library-hidden-from-airing-helper = Serien, die du als uninteressant markiert hast. Jede bleibt aus Läuft jetzt raus, bis du sie zurückholst.
-settings-library-hidden-from-airing-empty = Noch nichts. Serien, die du unter Läuft jetzt als uninteressant markierst, sammeln sich hier, damit jede zurückkommen kann.
+settings-library-hidden-from-airing-empty = Noch nichts
 settings-library-show-again = Wieder zeigen
+settings-hidden-airing-filter = Titel filtern
+settings-hidden-airing-ended =
+    { $count ->
+        [one] Eine Serie, die nicht mehr läuft, ist von der Liste
+       *[other] { $count } Serien, die nicht mehr laufen, sind von der Liste
+    }
 settings-library-calendar = Kalender
 settings-library-calendar-feed = Sendezeiten im Kalender
-settings-library-calendar-feed-helper = Hält eine Kalenderdatei mit den kommenden Folgen der Serien auf deinen Listen, aktualisiert, wenn sich der Sendeplan ändert.
 settings-library-calendar-file = Kalenderdatei
-settings-library-calendar-file-helper = Abonniere diese Datei in deiner Kalender-App.
 settings-library-copy = Kopieren
 settings-library-path-copied = Pfad kopiert
 settings-library-open-folder = Ordner öffnen
 settings-library-notifications = Benachrichtigungen
 settings-library-new-episodes = Neue Folgen
-settings-library-new-episodes-helper = Eine Desktop-Benachrichtigung, wenn eine Folge einer Serie auf deiner Liste Schaue ich läuft. Klick darauf öffnet die Serie.
 settings-library-folder-added = Ordner hinzugefügt, scanne
 
 ## SettingsAppearanceTab
 
 settings-appearance-language = Sprache
+settings-appearance-title-language = Titel anzeigen auf
+settings-appearance-title-language-english = Englisch
 settings-appearance-language-system = Wie das System ({ $language })
 settings-appearance-text-smaller = Kleiner
 settings-appearance-text-normal = Normal
@@ -3178,51 +2969,39 @@ settings-appearance-text-large = Groß
 settings-appearance-text-larger = Größer
 settings-appearance-text-largest = Am größten
 settings-appearance-title = Darstellung
-settings-appearance-lead = Änderungen gelten sofort, hier und auf jeder Seite. Sie liegen in ~/.config/anibeam/theme.toml, das du auch von Hand bearbeiten kannst.
 settings-appearance-colours = Farben
 settings-appearance-mode = Modus
 settings-appearance-mode-dark = Dunkel
 settings-appearance-mode-light = Hell
 settings-appearance-mode-system = System
 settings-appearance-colours-from = Farben von
-settings-appearance-from-theme-helper = Das Designpaar unten, eins für dunkel und eins für hell.
-settings-appearance-from-desktop-helper = Die Farben deines Terminals, sonst das Farbschema und der Akzent des Desktops.
 settings-appearance-from-desktop = Desktop
 settings-appearance-from-theme = Design
 settings-appearance-dark-theme = Dunkles Design
 settings-appearance-light-theme = Helles Design
-settings-appearance-themes-helper = Designdateien, die du in ~/.config/anibeam/themes legst, erscheinen in beiden Listen.
 settings-appearance-accent = Akzent
-settings-appearance-accent-helper = Markiert, was ausgewählt ist, läuft oder neu ist.
 settings-appearance-icon = Symbol
 settings-appearance-app-icon = App-Symbol
-settings-appearance-app-icon-helper = Das des Fensters, der Taskleiste und des Launchers. Dunkel tauscht Gelb und Schwarz.
 settings-appearance-icon-default = Standard
 settings-appearance-icon-default-name = Standard-App-Symbol
 settings-appearance-icon-dark = Dunkel
 settings-appearance-icon-dark-name = Dunkles App-Symbol
 settings-appearance-size-motion = Größe und Bewegung
 settings-appearance-text-size = Textgröße
-settings-appearance-text-size-helper = Wie groß die Wörter überall in AniBeam sind, zusätzlich zur Textgröße deines Systems.
 settings-appearance-density = Dichte
-settings-appearance-density-helper = Der Raum um alles, von eng bis luftig.
 settings-appearance-density-compact = Kompakt
 settings-appearance-density-normal = Normal
 settings-appearance-density-comfortable = Luftig
 settings-appearance-poster-size = Postergröße
-settings-appearance-poster-size-helper = Wie groß Serien in Bibliothek und Start sind.
 settings-appearance-poster-small = Klein
 settings-appearance-poster-medium = Mittel
 settings-appearance-poster-large = Groß
 settings-appearance-out-now = Jetzt da unter Läuft
-settings-appearance-out-now-helper = Karten mit dem Banner jeder Serie, oder eine Liste kleiner Poster mit Titeln, drei Zeilen tief.
 settings-appearance-out-now-cards = Karten
 settings-appearance-out-now-list = Liste
 settings-appearance-out-now-grid = Karten unter Jetzt da
-settings-appearance-out-now-grid-helper = Wie viele Karten erscheinen, Spalten mal Zeilen, bevor Alle den Rest öffnet.
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Bewegung reduzieren
-settings-appearance-reduce-motion-helper = Lässt den Auftakt der Bibliothek und andere reine Zierbewegung weg.
 
 ## LookPane
 
@@ -3290,7 +3069,7 @@ feed-sort-recent = Zuletzt erschienen
 feed-sort-upcoming = Demnächst
 feed-failed-title = Der Feed wurde nicht geladen
 feed-empty-title = Hier ist noch nichts
-feed-failed-body = AniBeam konnte den Feed gerade nicht lesen. Versuch es gleich nochmal.
+feed-failed-body = Anibeam konnte den Feed gerade nicht lesen. Versuch es gleich nochmal.
 feed-empty-body-folders = Der Feed füllt sich, wenn Folgen laufen und ankommen. Läuft jetzt zeigt, was diese Saison läuft.
 feed-empty-body = Füge den Ordner mit deinen Anime hinzu, und der Feed füllt sich mit seinen Folgen.
 feed-add-folder = Ordner hinzufügen
@@ -3483,7 +3262,7 @@ status-dot-on-list = Auf deiner Liste: { $status }
 ## TrackerNudge
 
 tracker-nudge-title = Verbinde deine Anime-Liste
-tracker-nudge-body = AniBeam markiert Geschautes auf AniList oder MyAnimeList.
+tracker-nudge-body = Anibeam markiert Geschautes auf AniList oder MyAnimeList.
 tracker-nudge-connect-anilist = AniList verbinden
 tracker-nudge-connect-mal = MyAnimeList verbinden
 tracker-nudge-not-now = Nicht jetzt
@@ -3712,6 +3491,8 @@ onboarding-together-friend-2 = Robin
 onboarding-together-name = Dein Name in Räumen
 rail-room = Gemeinsam schauen (Strg+J)
 rail-room-in = Im Raum zum gemeinsamen Schauen (Strg+J)
+rail-join-room = Raum beitreten
+rail-in-room = Im Raum
 player-chrome-watch-together = Gemeinsam schauen
 player-chrome-room = Raum { $code } · { $count ->
     [one] 1 Person
@@ -3727,6 +3508,8 @@ room-error-proto = Dieser Raum läuft auf einer neueren Version von Räumen. Akt
 room-error-not-in-room = Du bist nicht mehr in diesem Raum. Starte einen oder tritt wieder einem bei.
 room-error-bad-code = Ein Raumcode hat 6 Buchstaben und Ziffern, wie K7QM2X.
 room-error-bad-relay = Der Raumserver unter Einstellungen, Wiedergabe ist keine Webadresse. Korrigiere ihn dort und versuch es nochmal.
+room-error-cannot-fetch = Der Host kann diese Folge gerade nicht teilen. Versuch es wieder, wenn er zurück im Raum ist.
+room-error-needs-episode = Dieser Raumserver braucht eine Folge, um einen Raum zu starten. Starte ihn stattdessen im Player.
 room-panel-title = Gemeinsam schauen
 room-panel-close = Schließen
 room-panel-connected = Verbunden
@@ -3745,7 +3528,6 @@ room-panel-code-label = Raumcode
 room-panel-copy = Link kopieren
 room-panel-link-copied = Raumlink kopiert
 room-panel-watching = { $series } · { $episode }
-room-panel-missing-here = Diese Folge ist nicht in deiner Bibliothek, also kannst du noch nicht mitschauen.
 room-panel-open-episode = Folge öffnen
 room-panel-people = { $count ->
     [one] 1 Person
@@ -3763,6 +3545,21 @@ room-panel-seconds = { $value } s
 room-panel-suggested = Die Openings schlagen { $offset } vor
 room-panel-use-suggested = Übernehmen
 room-panel-leave = Raum verlassen
+room-panel-get-media = Medien holen
+room-panel-downloading = Lädt herunter
+room-panel-asking = Frage den Host
+room-panel-searching = Suche
+room-panel-failed = Nicht bekommen
+room-panel-percent = { $percent } %
+room-panel-left = noch { $time }
+room-panel-nothing-picked = Noch nichts ausgewählt
+room-panel-this-episode = Diese Folge
+room-panel-whole-show = Ganze Serie
+# The host's ready gate (#922): how many in the room have the episode open
+room-gate-ready = { $ready } von { $total } bereit · { $percent } %
+room-gate-start = Trotzdem starten
+room-gate-wait = Auf alle warten
+room-gate-waiting = Wartet auf alle
 player-room-speed = Das Tempo bestimmt der Raum
 settings-find-room-name =
     .words = gemeinsam schauen raum name freunde
@@ -3774,4 +3571,3 @@ settings-playback-together = Gemeinsam schauen
 settings-playback-room-name = Dein Name beim gemeinsamen Schauen
 settings-playback-room-name-placeholder = Dein Name
 settings-playback-room-relay = Raumserver
-settings-playback-room-relay-helper = Hier entstehen die Räume. Ändere das nur für einen Server, den du selbst betreibst.

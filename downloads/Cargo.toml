@@ -1,0 +1,49 @@
+[package]
+name = "anibeam-downloads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Anibeam's downloads team: the anirss sidecar and the torrent client, search, rules, rolling downloads, the watch for new episodes, and the phone's own torrent engine"
+
+# Files outside this folder the tests read, so a change to one checks this crate and what
+# builds on it (.github/affected-crates.py): the anirss pins in the packaging (anirss.rs).
+[package.metadata.ci]
+reads = ["../apps/linux/packaging"]
+
+[lib]
+name = "anibeam_downloads"
+crate-type = ["lib"]
+
+[dependencies]
+anibeam-contract = { workspace = true, features = ["sqlite"] }
+anibeam-foundation.workspace = true
+anibeam-net.workspace = true
+anibeam-library.workspace = true
+anibeam-releases.workspace = true
+anibeam-metadata.workspace = true
+anibeam-trackers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+rusqlite.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
+regex = "1"
+walkdir = "2"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+rand = "0.10"
+tracing = "0.1"
+toml = "1"
+roxmltree = "0.20"
+# The phone's torrent engine; only the Android app turns it on.
+librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
+# The error type librqbit's storage trait answers in.
+anyhow = { version = "1", optional = true }
+
+[features]
+# The phone's own torrent engine (phone/). The core's `phone` turns it on.
+phone = ["dep:librqbit", "dep:anyhow"]
+
+[dev-dependencies]
+tempfile = "3"

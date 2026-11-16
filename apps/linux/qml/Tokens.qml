@@ -3,7 +3,7 @@
 // forced, so a preview renders the other mode with the same components. Colours come from
 // the Rust Theme singleton; the sizes are arithmetic on its settings.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -21,16 +21,16 @@ Item {
     // picks a cut and a role's axes land inside it (scripts/cut-fonts.py). Multiple Tokens
     // instances share the engine's font cache, so a second loader on a URL costs nothing.
     // Until the loader resolves, text falls back to the system face for a frame at most.
-    FontLoader { id: face; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-Regular.ttf" }
-    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-SemiBold.ttf" }
-    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-ExtraBold.ttf" }
+    FontLoader { id: face; source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/fonts/Archivo-Variable-Regular.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/fonts/Archivo-Variable-SemiBold.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/fonts/Archivo-Variable-ExtraBold.ttf" }
     readonly property string fontFamily: face.name !== "" ? face.name : Qt.application.font.family
     readonly property string fontDisplay: fontFamily
     // The figures: B612, the face Airbus drew for reading numbers on a cockpit screen at a
     // glance (OFL). Only numbers take it, through the `figure` role: speeds, sizes, counts,
     // seeders, times, percentages. Words stay in Archivo.
-    FontLoader { id: figureFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/B612-Regular.ttf" }
-    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/B612-Bold.ttf" }
+    FontLoader { id: figureFace; source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/fonts/B612-Regular.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/fonts/B612-Bold.ttf" }
     readonly property string fontFigure: figureFace.name !== "" ? figureFace.name : fontFamily
 
     // ---- Episode cubes (EpisodeCubes.qml). One cube per episode, its colour its state. The

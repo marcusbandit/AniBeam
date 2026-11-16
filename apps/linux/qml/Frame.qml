@@ -5,7 +5,7 @@ import QtQuick
 import QtCore
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: frame
@@ -193,17 +193,19 @@ FocusScope {
         id: rail
         visible: !frame.fullWindow
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-        active: nav.railIndex
+        page: nav.railPages[nav.railIndex]
         downloadsBadge: frame.downloadsAttention
         settingsBadge: updateNotice.pending
         settingsNote: updateNotice.pending ? updateNotice.headline : ""
         // A rail page opens as it was left; the icon of the page already open takes it back
         // to its top
-        onPicked: function(i) {
-            if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) nav.openRail(nav.railPages[i], frame.leavingScroll())
+        onPicked: function(p) {
+            // From a page the place holds (Stats under Library) it is a sideways move, as the
+            // place's own tabs make, so Back still leaves the place
+            if (rail.holders[nav.current.page] === p) nav.sideways(p, frame.leavingScroll())
+            else if (nav.current.page !== p) nav.openRail(p, frame.leavingScroll())
             else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
         }
-        onVersionClicked: frame.openWhatsNew()
         inRoom: roomState.inRoom
         roomOpen: roomSheet.open
         onRoomClicked: frame.toggleRoom()
@@ -248,9 +250,16 @@ FocusScope {
 
         // The drawer is a floating panel over the page: it lives outside content, above it
         // in z, and rises from the strip's top edge, which is content's bottom edge.
+        // Seen only while there is something to say (#1012): a job running, an error not yet
+        // seen, the drawer open, or developer options on. Idle it keeps its height, so a job
+        // starting or ending never moves the page, and fades out; a click on the empty band and
+        // Ctrl+L still open the drawer.
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
+            readonly property bool speaking: job !== null || Door.unseenErrors > 0 || frame.devOn || drawer.openness > 0.001
+            opacity: speaking ? 1 : 0
+            Behavior on opacity { enabled: !theme.reducedMotion; NumberAnimation { duration: 160 } }
             // One band with the rail's foot tile: the same height, the same bottom joint
             height: visible ? rail.footHeight + theme.grout : 0
             x: content.columnX
@@ -543,6 +552,23 @@ FocusScope {
         roomState.join(code)
     }
     Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+    // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
+    // takes the same road as a room link
+    Connections {
+        target: Door
+        function onEvent(envelope) {
+            var b = envelope.body
+            if (envelope.kind === "DiscordJoinAsk") discordAsk.add({ user_id: b.user_id, name: b.name, avatar: b.avatar || "", in_room: b.in_room })
+            else if (envelope.kind === "DiscordAskGone") discordAsk.drop(b.user_id)
+            else if (envelope.kind === "DiscordJoin") frame.takeDiscordJoin()
+        }
+    }
+    // Taken from the core rather than the event, so a join that came before this window
+    // was up (Discord launched the app for it) still lands, and only once
+    function takeDiscordJoin() {
+        var r = Door.call("DiscordTakeJoin", {})
+        if (!r.error && r.reply.code) frame.joinRoomLink(r.reply.code)
+    }
 
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
@@ -565,6 +591,11 @@ FocusScope {
         MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
+        DiscordAsk {
+            id: discordAsk
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top; anchors.topMargin: theme.space(4)
+        }
         UpdateNotice {
             id: updateNotice
             covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
@@ -667,6 +698,7 @@ FocusScope {
         roomState.refresh()
         // Started from a room link: join it once the first page is up
         if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
+        Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
@@ -942,7 +974,7 @@ FocusScope {
     property var moveOffers: ({})
     // The move sheet for a tracker, from Settings; answers whether there was anything to move
     function openMoveLists(t) { return moveListsSheet.openFor(t) }
-    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // A series Anibeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
         return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })

@@ -2,7 +2,7 @@
 // window's bottom right corner over whatever page is up, and the process's memory now. A
 // click opens the Developer tab with that load picked.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Rectangle {
     id: root

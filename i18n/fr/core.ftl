@@ -89,7 +89,7 @@ event-problem-trackers = Un problème est survenu avec vos listes. Les options d
 event-problem-franchise = Un problème est survenu avec les séries liées. Les options développeur donnent les détails.
 event-problem-playback = Un problème est survenu pendant la lecture. Les options développeur donnent les détails.
 event-problem-store = Un problème est survenu à l'enregistrement de vos données. Les options développeur donnent les détails.
-event-problem-system = Un problème est survenu dans AniBeam. Les options développeur donnent les détails.
+event-problem-system = Un problème est survenu dans Anibeam. Les options développeur donnent les détails.
 event-problem-downloads = Un problème est survenu avec les téléchargements. Les options développeur donnent les détails.
 
 ## Errors (contract::CoreError)
@@ -114,11 +114,11 @@ core-error-io = Impossible de lire ou d'écrire un fichier : { $message }
 core-error-storage = Impossible d'enregistrer votre bibliothèque : { $message }
 core-error-keyring = Impossible de joindre le gestionnaire de mots de passe du système : { $message }
 core-error-unsupported = { $what } n'est pas encore pris en charge.
-core-error-version = Cet export vient d'un AniBeam plus récent (format { $found }). Mettez AniBeam à jour pour l'importer.
-core-error-internal = AniBeam a rencontré une erreur interne : { $message }
+core-error-version = Cet export vient d'un Anibeam plus récent (format { $found }). Mettez Anibeam à jour pour l'importer.
+core-error-internal = Anibeam a rencontré une erreur interne : { $message }
 core-error-service = { $service } : { $message }
 
-## core/src/repos/mod.rs
+## releases/src/repos/mod.rs
 
 core-repos-paste-address = collez l'adresse d'un dépôt
 core-repos-must-be-https = l'adresse doit être en https
@@ -155,7 +155,7 @@ core-repos-note-theirs = Cet anirss est le vôtre, et l'ordinateur ne touche jam
 core-repos-note-sandbox = Cette session n'écrit jamais dans la configuration d'anirss, donc l'ordinateur ne cherche pas { $id } ici
 core-repos-note-old = anirss { $version } ne peut pas recevoir de sources d'{ -app-name } ; passez à la version { $min } ou plus récente pour que l'ordinateur cherche celle-ci
 
-## core/src/repos/index.rs
+## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = la clé de l'index n'est pas une clé ed25519
 core-repos-key-not-base64 = la clé de l'index n'est pas 32 octets en base64
@@ -173,7 +173,7 @@ core-repos-check-auth-key = { $id } : clé d'authentification incorrecte { $key
 core-repos-check-host-torznab = { $id } : seule une adresse torznab peut donner son hôte sous la forme {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id } : un espace réservé dans l'hôte
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Piste { $number }
 core-playback-track-file = { $label } (fichier)
@@ -302,7 +302,7 @@ core-jobs-start-endpoint = Démarrage d'une source de téléchargement
 core-jobs-schedule-agent = Demande d'un planning à votre agent de code
     .stopped = La demande d'un planning à votre agent de code s'est arrêtée sur un problème.
 
-## core/src/airing_now.rs
+## metadata/src/airing_now.rs
 
 core-airing-now-now = En diffusion
 core-airing-now-winter = Hiver { $year }
@@ -322,11 +322,11 @@ core-airing-now-already-on =
     }.
 core-airing-now-plan-failed = Impossible d'ajouter { $title } à votre liste À voir. Réessayez plus tard.
 
-## core/src/aired.rs
+## metadata/src/aired.rs
 
 core-aired-episode-out = L'épisode { $number } de { $title } est sorti.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Diffusion vers { $device }.
 core-cast-ended = Diffusion vers { $device } terminée.
@@ -346,7 +346,7 @@ core-cast-refused-both = { $error } ; elle a aussi refusé le fichier tel quel 
 core-cast-chromecast-stopped = le Chromecast s'est arrêté
 core-cast-hevc = { $error }. Cet épisode est en HEVC, que seuls les Chromecast récents (avec Google TV, ou Ultra) décodent
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = impossible de joindre le Chromecast : { $error }
 core-cast-chromecast-broke = la connexion au Chromecast a été coupée : { $error }
@@ -356,20 +356,20 @@ core-cast-no-reason = sans raison
 core-cast-chromecast-cannot-play = le Chromecast n'a pas pu lire ceci ({ $kind })
 core-cast-chromecast-error = le Chromecast s'est arrêté sur une erreur en lisant ceci
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = la TV n'a pas répondu : { $error }
 core-cast-tv-refused = la TV a refusé { $action }
 core-cast-tv-refused-code = la TV a refusé { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Ce fichier n'a pas de vidéo.
 core-cast-hi10p = Cet épisode est en H.264 10 bits (Hi10P), qu'aucune TV ni aucun Chromecast ne décode. Il faudrait le transcoder, ce qui n'existe pas encore.
 core-cast-video-codec = La vidéo de cet épisode ({ $codec }) ne peut pas être diffusée.
 core-cast-audio-codec = L'audio de cet épisode ({ $codec }) ne peut pas être diffusé.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -386,7 +386,7 @@ core-phone-empty-search = la recherche est vide
 core-phone-no-results = aucun résultat pour { $query }
 core-phone-own-engine = un moteur torrent intégré
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = connecté
 core-phone-check-refused = refusé : { $error }
@@ -403,12 +403,12 @@ core-phone-check-reaching = { $label } : connexion à { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } octets
 core-phone-check-setup = préparation
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Votre progression sur { $folder } n'a pas été enregistrée. Associez d'abord la série.
 core-playback-still-downloading = l'épisode { $number } est encore en téléchargement, { $done } % fait
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = une durée est un nombre positif de secondes
 
@@ -431,29 +431,29 @@ core-core-guest-not-interested = Sans intérêt sur cet ordinateur est la liste 
 core-core-guest-recommended = les recommandations de cet ordinateur viennent de la liste de son propriétaire
 core-core-nothing-picked = rien de choisi
 
-## core/src/prefs.rs
+## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } n'est pas une source d'association
 core-prefs-provider-count = { $provider } apparaît { $count } fois ; chaque source n'apparaît qu'une fois
 core-prefs-outside = { $value } est hors de l'intervalle { $low } à { $high }
 core-prefs-empty = vide
 
-## core/src/recommended/mod.rs
+## metadata/src/recommended/mod.rs
 
 core-recommended-ranking = Classement des séries pour vous
 
-## core/src/recommended/sync.rs
+## metadata/src/recommended/sync.rs
 
 core-recommended-finding-people = Recherche de gens qui ont vos goûts
 core-recommended-reading-lists = Lecture de leurs listes
 core-recommended-reading-yours = Lecture de vos séries
 core-recommended-reading-suggestions = Lecture des séries à suggérer
 
-## core/src/recommended/page.rs
+## metadata/src/recommended/page.rs
 
 core-recommended-no-anime = { -anilist } n'a pas d'anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Désactivé
 core-host-starting = Démarrage
@@ -463,24 +463,24 @@ core-host-cannot-listen = Écoute impossible
 core-host-port-taken = Le port { $port } est déjà pris
 core-host-cannot-listen-on = Impossible d'écouter sur { $address } : { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } n'est pas une adresse avec un port
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } n'est pas une clé d'appareil
 
-## core/src/net/limiter.rs
+## net/src/limiter.rs
 
 core-net-timed-out = délai dépassé après { $ms } ms
 core-net-rate-limited = { $provider } limite le nombre de requêtes
 
-## core/src/net/mod.rs
+## net/src/lib.rs
 
 core-net-waiting = { $host } : délai dépassé il y a un instant ; { -app-name } attend { $seconds } s avant de le relancer
 
-## core/src/net/anilist.rs
+## net/src/anilist.rs
 
 core-net-no-data = aucune donnée
 
@@ -504,12 +504,12 @@ core-update-cannot-read-dmg = Impossible de lire le dmg : { $error }
 core-update-no-app = Le dmg ne contient aucune appli
 core-update-cannot-copy = Impossible de copier la nouvelle appli à côté de celle-ci : { $error }
 
-## core/src/calendar.rs
+## metadata/src/calendar.rs
 
 core-calendar-season-episode = { $title } - Saison { $season } Épisode { $number }
 core-calendar-episode = { $title } - Épisode { $number }
 
-## core/src/paths.rs
+## foundation/src/paths.rs
 
 core-paths-no-home = aucun dossier personnel
 
@@ -517,11 +517,14 @@ core-paths-no-home = aucun dossier personnel
 
 core-first-run-not-absolute = le dossier des vidéos doit être un chemin absolu
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Bonus
+core-presence-room = Regarder ensemble
+core-presence-in-room = Dans un salon
+core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demandez-lui d'en ouvrir un.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Aucun identifiant client défini pour { $tracker }.
 core-trackers-mal-reconnect = Reconnectez MyAnimeList dans les réglages.
@@ -529,15 +532,15 @@ core-trackers-mal-wants-secret = MyAnimeList demande le secret client de cette a
 core-trackers-token-reply-unreadable = réponse de jeton illisible : { $error }
 core-trackers-token-reply-no-token = la réponse ne contenait aucun jeton d'accès
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = aucun jeton d'accès enregistré, reconnectez-vous dans les réglages
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = le compte n'a pas d'identifiant utilisateur
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = aucune série choisie à transférer
 core-trackers-moved-up =
@@ -555,7 +558,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } n'a pas accepté { $show } : { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = L'autorisation a expiré, réessayez.
 core-trackers-oauth-state-mismatch = état différent, possible CSRF, abandon.
@@ -575,12 +578,12 @@ core-trackers-page-failed = La connexion n'a pas abouti
 core-trackers-page-go-back = Revenez à { $app } et réessayez.
 core-trackers-page-finishing-title = { $app }, finalisation en cours
 core-trackers-page-finishing = Finalisation en cours
-core-trackers-page-finishing-body = { $site } a répondu et AniBeam finalise la connexion. Revenez à { $app }, qui vous dira quand c'est fait.
+core-trackers-page-finishing-body = { $site } a répondu et Anibeam finalise la connexion. Revenez à { $app }, qui vous dira quand c'est fait.
 core-trackers-page-cancelled-title = { $app }, connexion annulée
 core-trackers-page-cancelled = Cette connexion a été annulée
 core-trackers-page-cancelled-body = Vous pouvez fermer cet onglet. Recommencez depuis { $app } si c'était voulu.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Passage en attente sur { $tracker }
 core-trackers-on-hold-moved =
@@ -619,7 +622,7 @@ core-trackers-back-on-watching = { $name } est de retour dans En cours sur { $si
 core-trackers-back-on-watching-two = { $name } est de retour dans En cours sur { $site } et { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } n'a pas pu revenir dans En cours. Réessayez plus tard.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } limite les requêtes, réessayez dans une minute.
 core-trackers-auth-expired = La connexion à { $tracker } a expiré, reconnectez-vous dans les réglages.
@@ -712,7 +715,7 @@ core-trackers-left-out =
        *[other] {" "}{ $kept } séries sont gardées sur cet ordinateur, sans suivi où les envoyer.
     }
 
-## core/src/metadata/automatch.rs
+## metadata/src/automatch.rs
 
 core-metadata-matched-to = { $show } associée à { $title }.
 core-metadata-auto-matched =
@@ -794,7 +797,7 @@ core-metadata-find-busy =
        *[other] { $busy } séries sont déjà en cours d'association.
     }
 
-## core/src/metadata/apply.rs
+## metadata/src/apply.rs
 
 core-metadata-link-unreadable = Impossible de lire ce lien. Collez l'URL d'une page AniList, MyAnimeList, TVmaze ou IMDb.
 core-metadata-no-mal-entry = AniList n'a aucune entrée pour cet identifiant MyAnimeList.
@@ -824,25 +827,25 @@ core-metadata-updated-some =
        *[other] Infos de { $count } séries mises à jour ; échec pour { $failed }.
     }
 
-## core/src/metadata/fetch.rs
+## metadata/src/fetch.rs
 
 core-metadata-no-such-show = TVmaze n'a pas de série { $id }
 core-metadata-no-such-media = AniList n'a pas de média { $id }
 
-## core/src/metadata/imdb.rs
+## metadata/src/imdb.rs
 
 core-metadata-progress-imdb-links = liens IMDb de Wikidata
 core-metadata-progress-imdb-ratings = notes IMDb
 
-## core/src/franchise/layout.rs
+## metadata/src/franchise/layout.rs
 
 core-franchise-relation-character = Mêmes personnages
 
-## core/src/images/mod.rs
+## net/src/images.rs
 
 core-images-progress-fetching = récupération des images
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -850,16 +853,16 @@ core-transfer-exported =
        *[other] { $count } séries enregistrées dans { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = ce n'est pas du JSON : { $error }
 core-transfer-wrong-format = ce n'est pas un document { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Bibliothèque chargée depuis le fichier.
 
-## core/src/library/delete.rs
+## library/src/delete.rs
 
 core-library-no-such-file = aucun fichier { $id } dans la bibliothèque
 core-library-file-elsewhere-not-removed = le fichier { $id } appartient à une autre série, donc rien n'a été retiré
@@ -898,7 +901,7 @@ core-library-watched-removed =
         }.
     }
 
-## core/src/library/detail.rs
+## library/src/detail.rs
 
 core-library-fix-one-file =
     Le seul fichier ici se lit comme { $read ->
@@ -920,7 +923,7 @@ core-library-fix-numbered-on = Les épisodes { $from } semblent être les { $to 
 core-library-runs-span = { $first } à { $last }
 core-library-runs-list = { $init } et { $last }
 
-## core/src/library/fixes.rs
+## library/src/fixes.rs
 
 core-library-fix-episode-range = un numéro d'épisode va de 0 à 10000
 core-library-fix-season-range = une saison va jusqu'à 200
@@ -937,7 +940,7 @@ core-library-fixed =
        *[other] Lecture de { $count } fichiers de { $title } corrigée.
     }
 
-## core/src/library/reads.rs
+## library/src/reads.rs
 
 core-library-hid-one = { $title } masquée.
 core-library-back-one = { $title } est de retour.
@@ -946,12 +949,12 @@ core-library-back-many = { $count } séries sont de retour.
 core-library-episode-count-set = { $title } compte maintenant { $count } épisodes.
 core-library-episode-count-cleared = Nombre d'épisodes de { $title } effacé.
 
-## core/src/library/schedule.rs
+## library/src/schedule.rs
 
 core-library-schedule-cleared = Notes de planning de { $title } effacées.
 core-library-schedule-saved = { $count } notes de planning enregistrées pour { $title }.
 
-## core/src/library/scan.rs
+## library/src/scan.rs
 
 core-library-source-not-absolute = le chemin d'une source doit être absolu
 core-library-source-exists = c'est déjà une source
@@ -996,7 +999,7 @@ core-library-scan-done =
         }
     }.
 
-## core/src/library/report.rs
+## library/src/report.rs
 
 core-library-agent-no-answer = pas de réponse en { $span }
 core-library-agent-stopped-code = il s'est arrêté avec le code { $code }
@@ -1021,7 +1024,7 @@ core-transfer-progress-accounts = comptes
 core-transfer-progress-preferences = préférences
 core-transfer-progress-done = terminé
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss n'a pas répondu : { $message }
 core-downloads-anirss-answered = anirss a répondu { $status } : { $text }
@@ -1032,48 +1035,48 @@ core-downloads-anirss-slow-start = anirss n'a pas démarré en { $seconds } seco
 core-downloads-anirss-slow-start-said = anirss n'a pas démarré en { $seconds } secondes : { $said }
 core-downloads-anirss-install-mac = Installez anirss { $version } ou plus récent avec : { $command }
 core-downloads-anirss-install-linux = Installez anirss { $version } ou plus récent : le paquet anirss de l'AUR, ou { $command }
-core-downloads-anirss-too-old = anirss { $version } est trop ancien pour AniBeam, qui demande la { $minimum } ou plus récente. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } ne sait pas garder la connexion de chaque client torrent à part, ce dont AniBeam a besoin pour changer de client ; anirss { $minimum } et plus récent le savent. { $update }.
+core-downloads-anirss-too-old = anirss { $version } est trop ancien pour Anibeam, qui demande la { $minimum } ou plus récente. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } ne sait pas garder la connexion de chaque client torrent à part, ce dont Anibeam a besoin pour changer de client ; anirss { $minimum } et plus récent le savent. { $update }.
 core-downloads-anirss-update-mac = Mettez-le à jour avec : { $command }
 core-downloads-anirss-update-linux = Mettez à jour le paquet anirss, ou lancez : { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = le fichier torrent n'est pas arrivé : { $message }
 core-downloads-torrent-file-answered = le fichier torrent a répondu { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = le flux a répondu { $status }
 core-downloads-not-a-feed = ce n'est pas un flux : { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett n'est pas installé : { $program } est introuvable. Installez-le, ou changez la commande dans les réglages.
 core-downloads-endpoint-start-failed = { $name } n'a pas pu démarrer : { $why }
 core-downloads-endpoint-start-timeout = { $name } a démarré mais n'a pas répondu en { $seconds } secondes.
 core-downloads-command-exited = la commande s'est terminée avec { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss s'est arrêté
 core-downloads-anirss-missing = { $install }. Ou indiquez un serveur en marche dans les réglages.
 core-downloads-anirss-command-missing = { $command } est introuvable. { $install }. Ou indiquez un serveur en marche dans les réglages.
 core-downloads-anirss-start-failed = { $command } n'a pas pu démarrer : { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Il a dit : { $message }
-core-downloads-no-torrent-client = Aucun qBittorrent ne répond à { $address }, et AniBeam n'en a pas à lancer lui-même. Installez qBittorrent et activez son interface Web, ou installez qbittorrent-nox, qu'AniBeam lancera pour vous
-core-downloads-own-client-gone = Le qBittorrent d'AniBeam a disparu : qbittorrent-nox n'est pas installé. Réinstallez AniBeam, ou indiquez votre propre qBittorrent dans les réglages
+core-downloads-no-torrent-client = Aucun qBittorrent ne répond à { $address }, et Anibeam n'en a pas à lancer lui-même. Installez qBittorrent et activez son interface Web, ou installez qbittorrent-nox, qu'Anibeam lancera pour vous
+core-downloads-own-client-gone = Le qBittorrent d'Anibeam a disparu : qbittorrent-nox n'est pas installé. Réinstallez Anibeam, ou indiquez votre propre qBittorrent dans les réglages
 core-downloads-no-port = aucun port dans { $address }
 core-downloads-own-client-settings = impossible d'écrire les réglages de qBittorrent : { $error }
 core-downloads-own-client-start-failed = { $command } n'a pas pu démarrer : { $error }
-core-downloads-own-client-slow-start = Le qBittorrent d'AniBeam n'a pas démarré
-core-downloads-own-client-slow-start-said = Le qBittorrent d'AniBeam n'a pas démarré : { $said }
+core-downloads-own-client-slow-start = Le qBittorrent d'Anibeam n'a pas démarré
+core-downloads-own-client-slow-start-said = Le qBittorrent d'Anibeam n'a pas démarré : { $said }
 core-downloads-not-ready = Les téléchargements ne sont pas prêts. Vérifiez Téléchargements dans les réglages.
 core-downloads-ready = Les téléchargements sont prêts.
 core-downloads-helper-sources =
     { $count ->
-        [one] Les téléchargements cherchent maintenant avec AniBeam lui-même, qui ne lit pas la { $count } source de la configuration de l'assistant de recherche. Ajoutez-la dans Réglages, Téléchargements, ou choisissez-y l'assistant de recherche.
-       *[other] Les téléchargements cherchent maintenant avec AniBeam lui-même, qui ne lit pas les { $count } sources de la configuration de l'assistant de recherche. Ajoutez-les dans Réglages, Téléchargements, ou choisissez-y l'assistant de recherche.
+        [one] Les téléchargements cherchent maintenant avec Anibeam lui-même, qui ne lit pas la { $count } source de la configuration de l'assistant de recherche. Ajoutez-la dans Réglages, Téléchargements, ou choisissez-y l'assistant de recherche.
+       *[other] Les téléchargements cherchent maintenant avec Anibeam lui-même, qui ne lit pas les { $count } sources de la configuration de l'assistant de recherche. Ajoutez-les dans Réglages, Téléchargements, ou choisissez-y l'assistant de recherche.
     }
 core-downloads-client-connected = L'appli de téléchargement est connectée.
 core-downloads-client-not-connected = L'appli de téléchargement n'est pas connectée. Vérifiez son adresse dans les réglages.
@@ -1135,7 +1138,7 @@ core-downloads-client-switched = Les téléchargements utilisent maintenant une 
 core-downloads-host-not-running = ne tourne pas sur l'hôte
 core-downloads-host-late = n'a pas répondu à temps
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = recherche vide
 core-downloads-native-no-results = aucun résultat pour { $query }
@@ -1150,30 +1153,34 @@ core-downloads-native-outside-folders = refus de supprimer des fichiers hors des
 core-downloads-refuse-home-folder = { $path } est le dossier personnel ou le contient, donc rien n'a été retiré
 core-downloads-refuse-library-folder = { $path } est un dossier de bibliothèque ou en contient un, donc rien n'a été retiré
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent n'indique aucun dossier d'enregistrement par défaut ; définissez-en un dans qBittorrent
+# $folder is the folder given
+core-downloads-save-folder-not-absolute = { $folder } n'est pas un chemin complet vers un dossier
+# $folder is the folder given
+core-downloads-save-folder-unusable = { $folder } ne peut pas recevoir de téléchargements : choisissez un dossier qui existe et qui n'est pas votre dossier personnel
 core-downloads-name-empty = le nom ne peut pas être vide
 core-downloads-name-slash = le nom ne doit contenir ni / ni \
 core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Désabonné de { $title }, sa diffusion est terminée.
 core-downloads-prune-failed = Impossible de se désabonner de { $title }. Vérifiez Téléchargements dans les réglages.
 
-## core/src/downloads/trash.rs
+## library/src/trash.rs
 
 core-downloads-refuse-not-absolute = { $path } n'est pas un simple chemin absolu, donc rien n'a été retiré
 core-downloads-refuse-root = { $path } est la racine du système de fichiers, donc rien n'a été retiré
 core-downloads-refuse-outside-library = { $path } n'est pas dans un dossier de bibliothèque, donc rien n'a été retiré
 core-downloads-refuse-save-folder = { $path } est le dossier où le torrent a été enregistré, pas ce qu'il a téléchargé, donc rien n'a été retiré
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = L'épisode { $episode } de { $title } n'est toujours pas arrivé trois jours après sa diffusion. Votre flux continue de le chercher.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = la commande anirss ne peut pas être vide
 core-downloads-settings-anirss-address = l'adresse d'anirss doit commencer par http:// ou https://
@@ -1183,7 +1190,7 @@ core-downloads-settings-same-id = deux clients ont l'identifiant { $id }
 core-downloads-settings-saved-address = l'adresse de { $name } doit commencer par http:// ou https://
 core-downloads-settings-same-name = deux clients s'appellent { $name } ; donnez à chacun son propre nom
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = qBittorrent n'a pas répondu à { $address } : { $message }
 core-downloads-qbt-password-rejected = qBittorrent a refusé le mot de passe ; corrigez-le dans les réglages
@@ -1195,20 +1202,20 @@ core-downloads-qbt-not-added = qBittorrent n'a pas ajouté les torrents : { $sa
 core-downloads-qbt-some-not-added = qBittorrent n'a pas pu ajouter { $count } des torrents : { $said }
 core-downloads-qbt-answered = qBittorrent a répondu { $status } : { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = l'élément { $item } ne fait pas partie des { $count } releases
 core-downloads-not-replaced = L'épisode { $episode } n'a pas été remplacé.
 core-downloads-replaced = Épisode { $episode } remplacé par le nouveau téléchargement.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = aucun téléchargement glissant { $id }
 core-downloads-rolled = { $title } : maintenant sur les épisodes { $from } à { $to } sur { $total }.
 core-downloads-roll-ahead = gardez au moins un épisode d'avance
 core-downloads-roll-nothing = rien à récupérer
 
-## core/src/releases/endpoints.rs
+## releases/src/endpoints.rs
 
 core-releases-json-needs-repo = une source de recherche JSON vient d'un dépôt de sources dont la définition associe ses champs
 core-releases-endpoint-no-name = `name` manquant
@@ -1220,17 +1227,17 @@ core-releases-endpoint-not-http = { $name } : l'adresse doit commencer par http
 core-releases-endpoint-needs-query = { $name } : l'url { $kind } doit contenir l'espace réservé {"{"}query{"}"}
 core-releases-endpoint-no-query = { $name } : une url { $kind } ajoute elle-même la recherche, elle ne prend donc pas de {"{"}query{"}"}
 
-## core/src/releases/fetch.rs
+## releases/src/fetch.rs
 
 core-releases-indexer-error = l'indexeur a répondu l'erreur { $code }
 core-releases-bad-feed = flux incorrect : { $error }
 core-releases-feed-answered = le flux a répondu { $status }
 
-## core/src/releases/json_feed.rs
+## releases/src/json_feed.rs
 
 core-releases-not-feed-json = ce n'est pas le JSON du flux : { $error }
 
-## core/src/releases/json.rs
+## releases/src/json.rs
 
 core-releases-not-json = ce n'est pas du JSON : { $error }
 core-releases-search-error-said = la recherche a répondu par une erreur : { $message }
@@ -1239,7 +1246,7 @@ core-releases-no-results-field = la réponse n'a pas de résultats à { $path }
 core-releases-results-not-list = les résultats de la réponse ne sont pas une liste
 core-releases-search-answered = la recherche a répondu { $status }
 
-## core/src/releases/native.rs
+## releases/src/native.rs
 
 core-releases-no-endpoints = aucun site pour l'instant : ajoutez un dépôt, ou un site à la main, sous Sites dans Plus
 core-releases-no-source-named = aucune source nommée { $name }
@@ -1247,7 +1254,7 @@ core-releases-empty-query = saisissez quelque chose à chercher
 core-releases-cannot-follow = { $name } ne peut pas être suivi : il répond aux recherches, mais n'a pas de flux pour vérifier les nouveaux épisodes
 core-releases-endpoint-gone = { $name } n'est plus disponible : retiré, désactivé ou sans sa clé
 
-## core/src/releases/quirks.rs
+## releases/src/quirks.rs
 
 core-releases-quirks-variant = one_variant { $word } doit être un mot court
 core-releases-quirks-pattern-count = show_feed prend de 1 à { $most } modèles de page
@@ -1258,11 +1265,11 @@ core-releases-quirks-url-https = l'url show_feed doit être en https
 core-releases-quirks-url-host = l'url show_feed doit être sur l'hôte même de la source
 core-releases-quirks-url-slug = l'url show_feed prend {"{"}slug{"}"} une fois et aucun autre espace réservé
 
-## core/src/releases/refinement.rs
+## releases/src/refinement.rs
 
 core-releases-refine-no-tokens = l'opération 'tokens' demande une liste `tokens` non vide
 
-## core/src/releases/grid.rs
+## releases/src/grid.rs
 
 core-releases-group-batch = Lot de { $group }
 core-releases-episodes-phrase =
@@ -1274,7 +1281,7 @@ core-releases-episode-range = { $from } à { $to }
 
 ## Names that stay the same in every language
 
--app-name = AniBeam
+-app-name = Anibeam
 -anilist = AniList
 -mal = MyAnimeList
 
@@ -1286,6 +1293,7 @@ core-room-service = Regarder ensemble
 core-room-not-found = Aucun salon n'a ce code. Il est peut-être fermé.
 core-room-full = Ce salon est plein.
 core-room-proto = Ce relais utilise une autre version des salons. Mettez à jour { -app-name } pour le rejoindre.
+core-room-needs-episode = Ce relais a besoin d'un épisode pour ouvrir un salon. Ouvrez-le depuis le lecteur ou mettez à jour le relais.
 core-room-unreachable = Impossible de joindre le relais : { $message }
 core-room-refused = Le relais a refusé : { $message }
 core-room-not-in = Vous n'êtes dans aucun salon.
@@ -1299,3 +1307,20 @@ core-room-member-left = { $name } a quitté le salon.
 core-room-closed = Le salon de visionnage est fermé.
 core-room-lost = Connexion au salon de visionnage perdue. Nouvelle tentative.
 core-room-back = De retour dans le salon de visionnage.
+core-room-media-asked = Épisode demandé à l'hôte.
+core-room-media-cannot = L'hôte ne peut pas partager cet épisode pour le moment.
+core-room-media-sent = Torrent de l'épisode envoyé à { $name }.
+core-room-media-sent-name = Nom de la sortie de l'épisode envoyé à { $name }.
+core-room-media-nothing = L'hôte n'a aucune copie de l'épisode à partager.
+core-room-media-no-answer = L'application de l'hôte n'a pas répondu. Réessayez dans un instant.
+core-room-media-torrent = Téléchargement de l'épisode depuis le torrent de l'hôte.
+core-room-media-searching = Recherche de la sortie de l'hôte dans vos sources.
+core-room-media-not-found = Aucune de vos sources n'a la sortie de l'hôte.
+core-room-media-no-sources = Chaque source est désactivée. Activez-en une pour chercher.
+core-room-media-no-start = Impossible de lancer le téléchargement : { $message }
+core-room-media-client = le client torrent ne l'a pas accepté
+core-room-media-lost = Le client torrent a perdu le téléchargement de l'épisode.
+core-room-media-stalled = Le téléchargement n'a pas avancé depuis dix minutes. Réessayez plus tard.
+core-room-media-not-in-library = L'épisode est téléchargé, mais il n'est pas dans votre bibliothèque. Vérifiez que les téléchargements vont dans un dossier de la bibliothèque.
+core-room-media-here = L'épisode est maintenant dans votre bibliothèque.
+core-room-media-rest-missing = Impossible d'obtenir le reste de la série. Seul cet épisode se télécharge.

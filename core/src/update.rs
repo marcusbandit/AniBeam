@@ -12,11 +12,11 @@ use serde::Deserialize;
 
 use crate::changelog::digits;
 use crate::contract::CoreError;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 pub mod install;
 
-const RELEASES: &str = "https://api.github.com/repos/marcusbandit/AniBeam/releases?per_page=100";
+const RELEASES: &str = "https://api.github.com/repos/marcusbandit/Anibeam/releases?per_page=100";
 
 /// Which builds a person wants to hear about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,7 +50,7 @@ impl Track {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Update {
     pub version: String,
-    /// The release's title, `Quality of life` out of `AniBeam 2.5.0 · Quality of life`;
+    /// The release's title, `Quality of life` out of `Anibeam 2.5.0 · Quality of life`;
     /// empty for a release known by its number.
     pub title: String,
     pub url: String,
@@ -126,8 +126,8 @@ struct Release {
     assets: Vec<Asset>,
 }
 
-/// A release's title out of its name: the Release workflow names one `AniBeam 2.5.0 ·
-/// Quality of life` when its CHANGELOG heading has a title, and `AniBeam 2.5.0` when not.
+/// A release's title out of its name: the Release workflow names one `Anibeam 2.5.0 ·
+/// Quality of life` when its CHANGELOG heading has a title, and `Anibeam 2.5.0` when not.
 fn title_of(name: &str) -> String {
     name.split_once(" · ")
         .map(|(_, title)| title.trim().to_string())
@@ -177,13 +177,7 @@ pub async fn check(
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: RELEASES.to_string(),
-            headers: vec![("Accept".into(), "application/vnd.github+json".into())],
-            body: None,
-            timeout: None,
-        })
+        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
         .await
         .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
     if !res.is_success() {
@@ -235,13 +229,7 @@ const REPOS: &str = "https://anibeam.app/repos.json";
 /// them is offered only what they already have, so the command it is given finds it.
 pub async fn check_repos(http: &dyn Http, current: &str) -> Result<Option<String>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: REPOS.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: None,
-        })
+        .send(HttpRequest::get(REPOS))
         .await
         .map_err(|e| CoreError::internal(format!("repos: {}", e.message)))?;
     if !res.is_success() {
@@ -271,14 +259,11 @@ pub async fn check_aur(
     current: &str,
 ) -> Result<Option<String>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            // Names are [a-z0-9@._+-]; a raw + would read as a space
-            url: format!("{AUR_INFO}{}", package.replace('+', "%2B")),
-            headers: Vec::new(),
-            body: None,
-            timeout: None,
-        })
+        // Names are [a-z0-9@._+-]; a raw + would read as a space
+        .send(HttpRequest::get(format!(
+            "{AUR_INFO}{}",
+            package.replace('+', "%2B")
+        )))
         .await
         .map_err(|e| CoreError::internal(format!("aur: {}", e.message)))?;
     if !res.is_success() {
@@ -333,8 +318,8 @@ mod tests {
     #[test]
     fn a_titled_release_carries_its_title() {
         let list = serde_json::json!([
-            { "tag_name": "v2.5.0", "name": "AniBeam 2.5.0 · Quality of life", "html_url": "u250" },
-            { "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }
+            { "tag_name": "v2.5.0", "name": "Anibeam 2.5.0 · Quality of life", "html_url": "u250" },
+            { "tag_name": "v2.4.0", "name": "Anibeam 2.4.0", "html_url": "u240" }
         ])
         .to_string();
         let titled = newest(list.as_bytes(), "2.4.0", Track::Stable)
@@ -343,7 +328,7 @@ mod tests {
         assert_eq!(titled.title, "Quality of life");
         let plain = newest(list.as_bytes(), "2.3.0", Track::Stable).unwrap();
         assert_eq!(plain.unwrap().title, "Quality of life");
-        let older = r#"[{ "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }]"#;
+        let older = r#"[{ "tag_name": "v2.4.0", "name": "Anibeam 2.4.0", "html_url": "u240" }]"#;
         let untitled = newest(older.as_bytes(), "2.3.0", Track::Stable)
             .unwrap()
             .unwrap();
@@ -400,7 +385,7 @@ mod tests {
     fn the_update_carries_its_release_files() {
         let list = serde_json::json!([{
             "tag_name": "v2.5.0", "html_url": "u250",
-            "assets": [{ "name": "AniBeam-2.5.0-x86_64.AppImage", "size": 9,
+            "assets": [{ "name": "Anibeam-2.5.0-x86_64.AppImage", "size": 9,
                          "browser_download_url": "https://dl/a", "digest": "sha256:ab" }]
         }])
         .to_string();

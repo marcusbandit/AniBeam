@@ -2,9 +2,12 @@
 //!
 //! The same routes as the native relay in `apps/relay`:
 //!
-//! - `POST /rooms` with `{"episode": EpisodeRef}` makes a room: `201` with
+//! - `POST /rooms` with `{"episode": EpisodeRef}`, or `{}` for a room with
+//!   nothing picked yet (#922), makes a room: `201` with
 //!   `{"code", "host_key"}`.
 //! - `GET /rooms/{code}/ws` joins one over WebSocket; `404` when it does not exist.
+//! - `GET /` is the find page, where a code is typed; `/?code=...` goes to
+//!   that room's page.
 //! - `GET /{code}` is the join page a shared link opens.
 //! - `GET /health` answers `ok`.
 //!
@@ -110,6 +113,12 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             _ => text(405, "method not allowed"),
         };
     }
+    if path == "/" {
+        return match method {
+            Method::Get | Method::Head => find_page(&req),
+            _ => text(405, "method not allowed"),
+        };
+    }
     if let Some(raw) = path.strip_prefix('/').filter(|raw| !raw.contains('/')) {
         return match method {
             Method::Get | Method::Head => join_page(req, &env, raw).await,
@@ -147,7 +156,9 @@ async fn allowed(env: &Env, binding: &str, req: &Request) -> bool {
 #[derive(Serialize, Deserialize)]
 struct Init {
     code: String,
-    episode: EpisodeRef,
+    /// None for a room that has not picked an episode yet (#922).
+    #[serde(default)]
+    episode: Option<EpisodeRef>,
 }
 
 async fn create(mut req: Request, env: &Env) -> Result<Response> {
@@ -168,7 +179,7 @@ async fn create(mut req: Request, env: &Env) -> Result<Response> {
         return text(413, "length limit exceeded");
     }
     let Ok(request) = serde_json::from_slice::<CreateRoom>(&body) else {
-        return text(400, "expected {\"episode\": ...}");
+        return text(400, "expected {} or {\"episode\": ...}");
     };
     let namespace = env.durable_object(ROOMS)?;
     for _ in 0..CODE_TRIES {
@@ -209,6 +220,20 @@ async fn join(req: Request, env: &Env, raw: &str) -> Result<Response> {
         .id_from_name(&room_code)?
         .get_stub()?;
     stub.fetch_with_request(req).await
+}
+
+/// The find page, or the room page a script-less form asked for.
+fn find_page(req: &Request) -> Result<Response> {
+    let query = req.url()?.query().map(str::to_owned);
+    match page::code_from_query(query.as_deref()) {
+        Ok(Some(room_code)) => {
+            let mut res = Response::empty()?.with_status(303);
+            res.headers_mut().set("Location", &format!("/{room_code}"))?;
+            Ok(res)
+        }
+        Ok(None) => Response::from_html(page::find_html(None)),
+        Err(typed) => Ok(Response::from_html(page::find_html(Some(&typed)))?.with_status(400)),
+    }
 }
 
 async fn join_page(req: Request, env: &Env, raw: &str) -> Result<Response> {

@@ -5,7 +5,8 @@
 // it instead, which reads the option's colour and record off its parent Loader as `tint`
 // and `option`; `count`, when set, is a dim number after the text.
 //
-// A Tab stop: Left and Right pick the cell before or after, Home and End the first and last.
+// A Tab stop: Left and Right pick the cell before or after, Home and End the first and last,
+// up to `keyLast`.
 import QtQuick
 
 Corner {
@@ -18,8 +19,12 @@ Corner {
     Accessible.role: Accessible.Grouping
     Accessible.name: theme.spokenName(accessibleName, "", root, "")
     activeFocusOnTab: true
+    // The last cell the arrow keys reach: a row whose later cells open other pages (Library's
+    // tabs) stops the keys before them; below 0 the keys move nothing
+    property int keyLast: options.length - 1
     Keys.onPressed: function(e) {
-        var n = options.length, to = -1
+        var n = Math.min(options.length, keyLast + 1), to = -1
+        if (n <= 0 || index >= n) return
         if (e.key === Qt.Key_Left) to = Math.max(0, index - 1)
         else if (e.key === Qt.Key_Right) to = Math.min(n - 1, index + 1)
         else if (e.key === Qt.Key_Home) to = 0

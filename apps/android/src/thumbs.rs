@@ -146,8 +146,8 @@ mod imp {
             ("ao", "null"),
             ("aid", "no"),
             ("sid", "no"),
-            // Software decoding: a thumbnail needs the frame in memory, and MediaCodec is
-            // busy with the episode itself.
+            // Software decoding: a thumbnail needs the frame in memory, and the hardware
+            // decoder (MediaCodec, VideoToolbox) is busy with the episode itself.
             ("hwdec", "no"),
             ("pause", "yes"),
             ("keep-open", "yes"),

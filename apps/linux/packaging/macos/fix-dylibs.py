@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""usage: fix-dylibs.py <AniBeam.app> [--check]
+"""usage: fix-dylibs.py <Anibeam.app> [--check]
 
 Makes an app bundle self-contained: every Mach-O inside it may load only system libraries
 and files inside the bundle. Run after macdeployqt, which deploys Qt's own frameworks and
