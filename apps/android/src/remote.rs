@@ -137,19 +137,21 @@ pub fn series(
         }
     };
 
-    // Aired, listed by the rule as missing, and not on disk.
+    // Aired, listed by the rule as missing, and not on disk. The host sends bare numbers;
+    // `missing_season` says which season they are in (#1087).
     let on_disk: Vec<(u32, u32)> = page
         .episodes
         .iter()
         .filter(|e| e.number.fract() == 0.0)
         .map(|e| (e.season.unwrap_or(1), e.number as u32))
         .collect();
+    let season = missing_season(&page.episodes, page.upcoming.first());
     let next_number = page.upcoming.first().map(|a| a.episode);
     let missing: Vec<u32> = page
         .subscription
         .iter()
         .flat_map(|s| s.missing.iter().copied())
-        .filter(|n| !on_disk.contains(&(1, *n)) && next_number.is_none_or(|next| *n < next))
+        .filter(|n| !on_disk.contains(&(season, *n)) && next_number.is_none_or(|next| *n < next))
         .collect();
 
     let head = SeriesHead {
@@ -252,7 +254,7 @@ pub fn series(
         .collect();
     for n in &missing {
         let line = EpisodeLine {
-            code: format::episode_code(None, *n).into(),
+            code: format::episode_code(Some(season), *n).into(),
             title: tr!("common-episode-n", n = n.to_string()).into(),
             date: tr!("remote-aired").into(),
             note: tr!("remote-missing").into(),
@@ -264,7 +266,7 @@ pub fn series(
             versions: Default::default(),
             ..Default::default()
         };
-        lines.push(((1, f64::from(*n)), line));
+        lines.push(((season, f64::from(*n)), line));
     }
     lines.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut lines: Vec<EpisodeLine> = lines.into_iter().map(|(_, l)| l).collect();
@@ -290,6 +292,24 @@ pub fn series(
         });
     }
     Some((head, lines))
+}
+
+/// The season the host's missing numbers belong to: the one airing next, the way its row
+/// is coded, else the one season every file is in. Files across several seasons, or none,
+/// leave them in the first, since the host counts every season's numbers together.
+/// Specials (season 0) never decide it.
+fn missing_season(episodes: &[library::DiskEpisode], next: Option<&Airing>) -> u32 {
+    if let Some(a) = next {
+        return a.season.unwrap_or(1);
+    }
+    let mut seasons = episodes
+        .iter()
+        .map(|e| e.season.unwrap_or(1))
+        .filter(|s| *s > 0);
+    match seasons.next() {
+        Some(first) if seasons.all(|s| s == first) => first,
+        _ => 1,
+    }
 }
 
 /// The versions the other device keeps of an episode, streamed from there at a tap.
@@ -355,4 +375,55 @@ pub fn calendar(
         })
         .collect();
     crate::phone::days_of(timed, now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on_disk(season: Option<u32>, number: f64) -> library::DiskEpisode {
+        library::DiskEpisode {
+            season,
+            number,
+            code: format::episode_code(season, number as u32),
+            watched: false,
+            title: None,
+            aired_at: None,
+            file: Some(1),
+            versions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn missing_episodes_belong_to_the_season_airing_now() {
+        let files = [on_disk(Some(3), 1.0), on_disk(Some(3), 7.0)];
+        let next = Airing {
+            episode: 16,
+            season: Some(3),
+            at: 0,
+        };
+        assert_eq!(missing_season(&files, Some(&next)), 3);
+        assert_eq!(missing_season(&files, None), 3);
+        assert_eq!(missing_season(&[on_disk(None, 1.0)], None), 1);
+        assert_eq!(missing_season(&[], None), 1);
+    }
+
+    #[test]
+    fn a_next_airing_without_a_season_is_the_first() {
+        let files = [on_disk(Some(3), 1.0)];
+        let next = Airing {
+            episode: 16,
+            season: None,
+            at: 0,
+        };
+        assert_eq!(missing_season(&files, Some(&next)), 1);
+    }
+
+    #[test]
+    fn several_seasons_or_only_specials_leave_the_first() {
+        let mixed = [on_disk(Some(1), 10.0), on_disk(Some(2), 5.0)];
+        assert_eq!(missing_season(&mixed, None), 1);
+        let specials = [on_disk(None, 1.0), on_disk(Some(0), 1.0)];
+        assert_eq!(missing_season(&specials, None), 1);
+    }
 }
