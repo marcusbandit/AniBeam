@@ -21,7 +21,7 @@
 set -eu
 
 base="${ANIBEAM_BASE:-https://anibeam.app}"
-repo="marcusbandit/AniBeam"
+repo="marcusbandit/Anibeam"
 channel="${ANIBEAM_CHANNEL:-stable}"
 
 say() { printf '\033[1;33m==>\033[0m %s\n' "$*"; }
@@ -50,7 +50,7 @@ asset() {
     # newest build there is, the same rule releases.py keeps, so it counts too; test builds
     # (-pr.) do not.
     url="$(curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=30" \
-      | grep -oE "\"browser_download_url\": *\"[^\"]*/AniBeam-[0-9.]+(-nightly\.[0-9.]+)?-$2\"" | head -n 1 \
+      | grep -oiE "\"browser_download_url\": *\"[^\"]*/Anibeam-[0-9.]+(-nightly\.[0-9.]+)?-$2\"" | head -n 1 \
       | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
     return
   fi
@@ -90,7 +90,7 @@ mac() {
     say "Installing Anibeam with Homebrew"
     brew tap marcusbandit/anibeam "https://github.com/$repo" < /dev/null
     brew install --cask marcusbandit/anibeam/anibeam < /dev/null
-    unquarantine /Applications/AniBeam.app
+    unquarantine /Applications/Anibeam.app
     return
   fi
   say "Finding the newest $channel dmg"
@@ -98,15 +98,15 @@ mac() {
   [ -n "$url" ] || fail "Could not find the dmg on the newest $channel release: https://github.com/$repo/releases"
   work="$(mktemp -d)"
   say "Downloading $(basename "$url")"
-  curl -fL --progress-bar "$url" -o "$work/AniBeam.dmg"
-  hdiutil attach -nobrowse -quiet -mountpoint "$work/mnt" "$work/AniBeam.dmg"
+  curl -fL --progress-bar "$url" -o "$work/Anibeam.dmg"
+  hdiutil attach -nobrowse -quiet -mountpoint "$work/mnt" "$work/Anibeam.dmg"
   apps=/Applications
   [ -w "$apps" ] || { apps="$HOME/Applications"; mkdir -p "$apps"; }
-  rm -rf "$apps/AniBeam.app"
-  ditto "$work/mnt/AniBeam.app" "$apps/AniBeam.app"
+  rm -rf "$apps/Anibeam.app"
+  ditto "$work/mnt/Anibeam.app" "$apps/Anibeam.app"
   hdiutil detach -quiet "$work/mnt"
   rm -rf "$work"
-  unquarantine "$apps/AniBeam.app"
+  unquarantine "$apps/Anibeam.app"
   say "Anibeam is in $apps. It updates itself from Settings > About"
 }
 
@@ -173,16 +173,16 @@ appimage() {
   curl -fL --progress-bar "$url" -o "$bin/anibeam.part"
   chmod 755 "$bin/anibeam.part"
   mv "$bin/anibeam.part" "$bin/anibeam"
-  curl -fsSL "$base/img/icon.png" -o "$HOME/.local/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png" || true
+  curl -fsSL "$base/img/icon.png" -o "$HOME/.local/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png" || true
   # APPIMAGELAUNCHER_DISABLE: AppImageLauncher, where it is installed, would otherwise offer to
   # "integrate" the file on its first run and move it to ~/Applications, away from this entry
-  cat > "$HOME/.local/share/applications/com.marcusrosado.AniBeam.desktop" <<EOF
+  cat > "$HOME/.local/share/applications/com.marcusrosado.Anibeam.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Anibeam
 Comment=Your anime folder, as a library you can watch and track
 Exec=env APPIMAGELAUNCHER_DISABLE=1 "$bin/anibeam" %u
-Icon=com.marcusrosado.AniBeam
+Icon=com.marcusrosado.Anibeam
 Categories=AudioVideo;Video;Player;
 Terminal=false
 MimeType=x-scheme-handler/anibeam;

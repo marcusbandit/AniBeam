@@ -28,6 +28,8 @@ export component Leaf inherits Rectangle {
 // not move under a finger.
 export component Scroll inherits Flickable {
     in property <length> pad-bottom: Theme.pad * 2;
+    in property <length> pad-x: Theme.grout + Theme.unit;
+    in property <length> pad-top: Theme.unit * 4;
     // Only ever as wide as the pane: nothing in a page scrolls sideways as a whole.
     content-width: self.width;
     content-height: column.preferred-height;
@@ -41,9 +43,9 @@ export component Scroll inherits Flickable {
     column := VerticalLayout {
         width: root.width;
         alignment: start;
-        padding-left: Theme.grout + Theme.unit;
-        padding-right: Theme.grout + Theme.unit;
-        padding-top: Theme.unit * 4;
+        padding-left: root.pad-x;
+        padding-right: root.pad-x;
+        padding-top: root.pad-top;
         padding-bottom: root.pad-bottom;
         spacing: Theme.unit * 4;
         @children

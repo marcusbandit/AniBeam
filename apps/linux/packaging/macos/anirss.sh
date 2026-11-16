@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: anirss.sh <AniBeam.app>
+# usage: anirss.sh <Anibeam.app>
 # Puts anirss and a Python to run it into <app>/Contents/Resources/anirss:
 #   python/      python-build-standalone 3.13.16 (release 20261013), the install_only_stripped
 #                build for Apple silicon, minus what anirss never imports (Tk, IDLE, pip, the

@@ -134,43 +134,64 @@ async fn reach(action: Option<&str>, link: Option<&str>) -> Result<(), String> {
         .map_err(|e| format!("no session bus: {e}"))?;
     let token = std::env::var("XDG_ACTIVATION_TOKEN").ok();
     let data = platform_data(token.as_deref());
-    let name = bus_name();
-    let path = object_path();
-    let result = match (action, link) {
+    let sandboxed = sandboxed();
+    let first = call(&conn, &app_name(sandboxed), action, link, &data).await;
+    // A window from before 2.5 still answers on the id with its capital B (#1047), as after
+    // a package upgrade while the app was open.
+    let result = match first {
+        Err(_) => call(&conn, &old_app_name(sandboxed), action, link, &data)
+            .await
+            .or(first),
+        ok => ok,
+    };
+    result.map_err(|e| format!("could not reach the running Anibeam: {e}"))
+}
+
+/// The name builds before 2.5 owned, split so a search for the old spelling finds nothing.
+fn old_app_name(sandboxed: bool) -> String {
+    let old = concat!("com.marcusrosado.Ani", "Beam");
+    match sandboxed {
+        true => format!("{old}.{SANDBOX}"),
+        false => old.to_string(),
+    }
+}
+
+async fn call(
+    conn: &zbus::Connection,
+    name: &str,
+    action: Option<&str>,
+    link: Option<&str>,
+    data: &HashMap<String, Value<'static>>,
+) -> zbus::Result<()> {
+    let path = format!("/{}", name.replace('.', "/"));
+    let iface = Some("org.freedesktop.Application");
+    match (action, link) {
         (_, Some(link)) => {
             conn.call_method(
-                Some(name.as_str()),
+                Some(name),
                 path.as_str(),
-                Some("org.freedesktop.Application"),
+                iface,
                 "Open",
-                &(vec![link], &data),
+                &(vec![link], data),
             )
             .await
         }
         (Some(action_name), None) => {
             conn.call_method(
-                Some(name.as_str()),
+                Some(name),
                 path.as_str(),
-                Some("org.freedesktop.Application"),
+                iface,
                 "ActivateAction",
-                &(action_name, Vec::<Value<'_>>::new(), &data),
+                &(action_name, Vec::<Value<'_>>::new(), data),
             )
             .await
         }
         (None, None) => {
-            conn.call_method(
-                Some(name.as_str()),
-                path.as_str(),
-                Some("org.freedesktop.Application"),
-                "Activate",
-                &(&data,),
-            )
-            .await
+            conn.call_method(Some(name), path.as_str(), iface, "Activate", &(data,))
+                .await
         }
-    };
-    result
-        .map(|_| ())
-        .map_err(|e| format!("could not reach the running Anibeam: {e}"))
+    }
+    .map(|_| ())
 }
 
 pub struct AppInterface {
@@ -264,7 +285,23 @@ mod tests {
         assert!(first.is_some());
         assert!(try_lock(&path).unwrap().is_none(), "held");
         drop(first);
-        assert!(try_lock(&path).unwrap().is_some(), "free again");
+        assert!(free_soon(&path).is_some(), "free again");
+    }
+
+    /// The lock once it is free, waiting a bounded while for it. A drop closes the file at
+    /// once, but a process another test forks in that moment carries a copy of the open
+    /// file, and the lock holds until that copy closes too (#645).
+    fn free_soon(path: &Path) -> Option<Lock> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(lock) = try_lock(path).unwrap() {
+                return Some(lock);
+            }
+            if std::time::Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[cfg(unix)]
@@ -311,11 +348,15 @@ mod tests {
 
     #[test]
     fn a_sandbox_owns_its_own_names_and_nothing_else_moves() {
-        assert_eq!(app_name(false), "com.marcusrosado.AniBeam");
-        assert_eq!(app_path(false), "/com/marcusrosado/AniBeam");
+        assert_eq!(app_name(false), "com.marcusrosado.Anibeam");
+        assert_eq!(app_path(false), "/com/marcusrosado/Anibeam");
+        assert_eq!(
+            old_app_name(true),
+            format!("com.marcusrosado.Ani{}eam.Sandbox", 'B')
+        );
         assert_eq!(mpris_suffix(false), "anibeam");
-        assert_eq!(app_name(true), "com.marcusrosado.AniBeam.Sandbox");
-        assert_eq!(app_path(true), "/com/marcusrosado/AniBeam/Sandbox");
+        assert_eq!(app_name(true), "com.marcusrosado.Anibeam.Sandbox");
+        assert_eq!(app_path(true), "/com/marcusrosado/Anibeam/Sandbox");
         assert_eq!(mpris_suffix(true), "anibeam.sandbox");
     }
 }

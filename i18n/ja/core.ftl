@@ -174,7 +174,7 @@ core-repos-check-auth-key = { $id }: 認証キー{ $key }が不正です
 core-repos-check-host-torznab = { $id }: ホストを{"{"}{ $key }{"}"}と書けるのはtorznabのアドレスだけです
 core-repos-check-host-placeholder = { $id }: ホストにプレースホルダーがあります
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = トラック{ $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -332,7 +332,7 @@ core-airing-now-plan-failed = { $title }を視聴予定リストに追加でき�
 
 core-aired-episode-out = { $title }の第{ $number }話が公開されました。
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = { $device }にキャスト中です。
 core-cast-ended = { $device }へのキャストが終わりました。
@@ -353,7 +353,7 @@ core-cast-refused-both = { $error }。元のファイルも受け付けません
 core-cast-chromecast-stopped = Chromecastが停止しました
 core-cast-hevc = { $error }。このエピソードはHEVCで、デコードできるのは新しいChromecast（Google TV搭載またはUltra）だけです
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecastに接続できませんでした: { $error }
 core-cast-chromecast-broke = Chromecastとの接続が切れました: { $error }
@@ -365,21 +365,21 @@ core-cast-no-reason = 理由なし
 core-cast-chromecast-cannot-play = Chromecastはこれを再生できませんでした（{ $kind }）
 core-cast-chromecast-error = Chromecastがこれの再生中にエラーで停止しました
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = テレビが応答しませんでした: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = テレビが{ $action }を拒否しました
 core-cast-tv-refused-code = テレビが{ $action }を拒否しました（{ $code }）
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = このファイルには映像がありません。
 core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テレビやChromecastではデコードできません。キャストするには変換が必要ですが、まだ実装されていません。
 core-cast-video-codec = このエピソードの映像（{ $codec }）はキャストできません。
 core-cast-audio-codec = このエピソードの音声（{ $codec }）はキャストできません。
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started = { $folder }のエピソード{ $count }話のダウンロードを開始しました。
 core-phone-subscribed = { $name }を購読しました。
@@ -395,7 +395,7 @@ core-phone-no-results = { $query }の結果はありません
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = 独自のトレントエンジン
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = 接続しました
@@ -413,13 +413,13 @@ core-phone-check-reaching = { $label }: { $ip }に接続中
 core-phone-check-http = HTTP { $status }、{ $bytes }バイト
 core-phone-check-setup = 準備
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = { $folder }の進捗は保存されませんでした。先に作品を照合してください。
 # $done is a whole percentage.
 core-playback-still-downloading = 第{ $number }話はまだダウンロード中です（{ $done }%完了）
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 長さは正の秒数で指定してください
 
@@ -470,7 +470,7 @@ core-recommended-reading-suggestions = おすすめ候補を読み込み中
 
 core-recommended-no-anime = { -anilist }にアニメ{ $id }はありません
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = オフ
@@ -482,11 +482,11 @@ core-host-cannot-listen = 待ち受けできませんでした
 core-host-port-taken = ポート{ $port }は使用中です
 core-host-cannot-listen-on = { $address }で待ち受けできませんでした: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text }はアドレスとポートではありません
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key }はデバイスキーではありません
@@ -539,7 +539,7 @@ core-paths-no-home = ホームディレクトリがありません
 
 core-first-run-not-absolute = 動画フォルダは絶対パスで指定してください
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = 特典映像
@@ -550,7 +550,7 @@ core-presence-no-room = この Discord の招待にはまだルームがあり�
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = { $tracker }のクライアントIDが設定されていません。
@@ -560,15 +560,15 @@ core-trackers-mal-wants-secret = MyAnimeListがこのアプリのクライアン
 core-trackers-token-reply-unreadable = トークンの応答を読めません: { $error }
 core-trackers-token-reply-no-token = トークンの応答にアクセストークンがありませんでした
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = アクセストークンが保存されていません。設定で再連携してください
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = アカウントにユーザーIDがありません
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 移動する作品が選ばれていません
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -577,7 +577,7 @@ core-trackers-moved-up-some-refused = { $site }へ{ $moved }作品を移動し�
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site }は{ $show }を受け付けませんでした: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 認証がタイムアウトしました。もう一度お試しください。
 core-trackers-oauth-state-mismatch = stateが一致しません。CSRFの可能性があるため中止しました。
@@ -608,7 +608,7 @@ core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
 core-trackers-page-cancelled = このログインはキャンセルされました
 core-trackers-page-cancelled-body = このタブは閉じてかまいません。必要なら{ $app }からやり直してください。
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = { $tracker }で保留に移動中
@@ -625,7 +625,7 @@ core-trackers-back-on-watching = { $site }で{ $name }を視聴中に戻しま�
 core-trackers-back-on-watching-two = { $site }と{ $secondSite }で{ $name }を視聴中に戻しました。
 core-trackers-back-on-watching-failed = { $name }を視聴中に戻せませんでした。あとでもう一度お試しください。
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker }のレート制限中です。1分後にもう一度お試しください。
@@ -804,19 +804,19 @@ core-franchise-relation-character = 共通キャラクター
 # A progress label while covers and banners download.
 core-images-progress-fetching = 画像を取得中
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported = { $count }作品を{ $folder }に保存しました。
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = JSONではありません: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = { $format }形式のファイルではありません
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = ファイルからライブラリを読み込みました。
 
@@ -949,7 +949,7 @@ core-transfer-progress-accounts = アカウント
 core-transfer-progress-preferences = 設定
 core-transfer-progress-done = 完了
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirssから応答がありません: { $message }
@@ -971,17 +971,17 @@ core-downloads-anirss-lacks-feature = anirss { $version }はトレントクラ�
 core-downloads-anirss-update-mac = 次のコマンドで更新してください: { $command }
 core-downloads-anirss-update-linux = anirssパッケージを更新するか、次を実行してください: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = トレントファイルが届きませんでした: { $message }
 core-downloads-torrent-file-answered = トレントファイルの取得で{ $status }が返りました
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = フィードが{ $status }を返しました
 core-downloads-not-a-feed = フィードではありません: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackettがインストールされていません: { $program }が見つかりませんでした。インストールするか、設定でコマンドを変更してください。
@@ -990,7 +990,7 @@ core-downloads-endpoint-start-failed = { $name }を起動できませんでし�
 core-downloads-endpoint-start-timeout = { $name }は起動しましたが、{ $seconds }秒以内に応答しませんでした。
 core-downloads-command-exited = コマンドが{ $status }で終了しました
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirssが停止しました
 # $install is core-downloads-anirss-install-mac or -linux
@@ -1062,7 +1062,7 @@ core-downloads-client-switched = ダウンロードに別のダウンロード�
 core-downloads-host-not-running = ホストで動作していません
 core-downloads-host-late = 時間内に応答しませんでした
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 検索語が空です
 # $query is the search, in quotes
@@ -1083,7 +1083,7 @@ core-downloads-native-outside-folders = ダウンロードフォルダ外のフ�
 core-downloads-refuse-home-folder = { $path }はホームフォルダか、それを含んでいるので、何も削除しませんでした
 core-downloads-refuse-library-folder = { $path }はライブラリフォルダか、それを含んでいるので、何も削除しませんでした
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
 # $folder is the folder given
@@ -1095,7 +1095,7 @@ core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name }はフォルダ名ではありません
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = 放送が終了したため、{ $title }の購読を解除しました。
@@ -1108,12 +1108,12 @@ core-downloads-refuse-root = { $path }はファイルシステムのルートな
 core-downloads-refuse-outside-library = { $path }はライブラリフォルダ内にないので、何も削除しませんでした
 core-downloads-refuse-save-folder = { $path }はトレントの保存先フォルダで、ダウンロードしたものではないので、何も削除しませんでした
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = { $title }の第{ $episode }話が、放送から3日たっても見つかりません。フィードで探し続けます。
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirssのコマンドを空にはできません
 core-downloads-settings-anirss-address = anirssのアドレスはhttp://かhttps://で始めてください
@@ -1126,7 +1126,7 @@ core-downloads-settings-same-id = 2つのクライアントのIDが{ $id }で重
 core-downloads-settings-saved-address = { $name }のアドレスはhttp://かhttps://で始めてください
 core-downloads-settings-same-name = 2つのクライアントの名前が{ $name }で重複しています。それぞれ別の名前を付けてください
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = { $address }のqBittorrentから応答がありません: { $message }
@@ -1142,7 +1142,7 @@ core-downloads-qbt-some-not-added = qBittorrentは{ $count }件のトレント�
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrentが{ $status }を返しました: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリースのどれでもありません
@@ -1150,7 +1150,7 @@ core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリース
 core-downloads-not-replaced = 第{ $episode }話は置き換えられませんでした。
 core-downloads-replaced = 第{ $episode }話を新しいダウンロードに置き換えました。
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = 順次ダウンロード{ $id }はありません

@@ -35,14 +35,31 @@ use slint::winit_030::winit::window::Window as WinitWindow;
 use super::FocusAsk;
 use crate::worker::Command;
 
-pub use super::other::*;
+// `other.rs`'s stand-ins for the calls the iPhone does not answer yet.
+pub use super::other::{
+    ask_notifications, bars, brightness, copy_text, episode_ready, line_colours, log, multicast,
+    notification_settings, notifications_allowed, open_url, pick_file, relocalize, set_brightness,
+    set_volume, start_service, stop_service, unmetered, update_service, volume,
+};
 
 /// Called by `main.rs`: runs the app over its data directory in the app's container.
 pub fn ios_main() {
     // HOME is the app's own container on iOS. Application Support is the app's, and not
     // shown in Files.
-    let data_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-        .join("Library/Application Support/AniBeam");
+    let mut data_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+        .join("Library/Application Support/Anibeam");
+    // Builds before 2.5 spelled the folder with a capital B, and the iPhone's disk tells the
+    // two apart. The data moves once; the library's source follows it in `local`. A move
+    // that fails runs this launch from the old folder, so the next launch tries again
+    // instead of finding an empty new one.
+    let before = data_dir.with_file_name(concat!("Ani", "Beam"));
+    if before.is_dir()
+        && !data_dir.exists()
+        && let Err(e) = std::fs::rename(&before, &data_dir)
+    {
+        eprintln!("Anibeam: could not move {}: {e}", before.display());
+        data_dir = before;
+    }
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         eprintln!("Anibeam: no data directory at {}: {e}", data_dir.display());
     }

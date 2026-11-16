@@ -4,7 +4,7 @@ description = "The watch together relay as a Cloudflare Worker: one Durable Obje
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/marcusbandit/AniBeam"
+repository = "https://github.com/marcusbandit/Anibeam"
 publish = false
 
 # Its own workspace, so the repo's `cargo test --workspace` never builds this

@@ -8,7 +8,7 @@
 // row in Settings, Appearance, and the version with What's new is in Settings, About. The
 // active place takes the soft accent; nothing else is lit.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -68,7 +68,7 @@ Item {
         Image {
             x: (root.itemWidth - width) / 2
             width: root.itemWidth - theme.space(2); height: width
-            source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
+            source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
             sourceSize: Qt.size(96, 96)
             // Decoded off the Qt thread, not inside the frame's first build
             asynchronous: true

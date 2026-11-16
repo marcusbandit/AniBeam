@@ -68,8 +68,8 @@ cp "${debs[@]}" "$apt/pool/main/"
   apt-ftparchive packages pool > dists/stable/main/binary-amd64/Packages
   gzip -9nk dists/stable/main/binary-amd64/Packages
   apt-ftparchive \
-    -o APT::FTPArchive::Release::Origin=AniBeam \
-    -o APT::FTPArchive::Release::Label=AniBeam \
+    -o APT::FTPArchive::Release::Origin=Anibeam \
+    -o APT::FTPArchive::Release::Label=Anibeam \
     -o APT::FTPArchive::Release::Suite=stable \
     -o APT::FTPArchive::Release::Codename=stable \
     -o APT::FTPArchive::Release::Architectures=amd64 \

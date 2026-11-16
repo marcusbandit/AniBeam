@@ -10,12 +10,14 @@ use crate::OUTAGE_WINDOW;
 use crate::aired::Aired;
 use crate::automatch;
 use crate::calendar::Calendar;
-use anibeam_contract::{EventBody, Stage};
+use crate::fetch::message_of;
+use anibeam_contract::{CoreError, EventBody, Stage};
 use anibeam_foundation::events::Signal;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
 use anibeam_library::Library;
 use anibeam_net::Net;
+use anibeam_net::jikan::JikanEpisode;
 
 pub struct Metadata {
     pub services: Arc<Services>,
@@ -36,10 +38,11 @@ pub struct Metadata {
     /// some seventy requests, and AniList's limit while degraded is thirty
     /// a minute (#732). A test shortens it.
     pub recommender_gap_ms: AtomicU64,
-    /// When the core last said out loud that Jikan was not answering.
-    /// Jikan is the episode-title side-fetch, so an outage costs a series
-    /// its titles rather than its match, and a job walking a whole library
-    /// through one must not write a warning per series into the log.
+    /// When Jikan last failed and the core said so out loud. Jikan is the
+    /// episode-title side-fetch, so an outage costs a series its titles
+    /// rather than its match, and a job walking a whole library through
+    /// one must neither write a warning per series into the log nor wait
+    /// on Jikan once per series: inside the window it is not asked at all.
     jikan_outage: Mutex<Option<Instant>>,
     /// When each franchise root was last crawled on a page's behalf. A
     /// series page asks for its franchise every time it opens, and the
@@ -83,10 +86,38 @@ impl Metadata {
         }));
     }
 
-    /// Warns that Jikan is not answering, at most once every ten minutes.
-    /// Every caller reports every failure; this is what decides which of
-    /// them the user is told about.
-    pub(crate) fn report_jikan_outage(&self, message: &str) {
+    /// Jikan's episodes for `mal_id`, or `None` when Jikan has nothing to
+    /// say: it failed just now, or it went down inside the last
+    /// `OUTAGE_WINDOW` and is not asked again until the window has passed.
+    /// A caller reads `None` as a Jikan half it does not have, which is not
+    /// the same as an empty list. Only a failure that looks like Jikan
+    /// itself being down opens the window; one series' bad answer costs
+    /// that series its titles and nothing else.
+    pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> Option<Vec<JikanEpisode>> {
+        if self.jikan_down() {
+            return None;
+        }
+        match self.net.jikan.episodes(mal_id).await {
+            Ok(episodes) => Some(episodes),
+            Err(e) => {
+                if is_outage(&e) {
+                    self.report_jikan_outage(&message_of(&e));
+                }
+                None
+            }
+        }
+    }
+
+    /// Whether Jikan failed inside the outage window.
+    fn jikan_down(&self) -> bool {
+        recover(&self.jikan_outage).is_some_and(|at| at.elapsed() < OUTAGE_WINDOW)
+    }
+
+    /// Warns that Jikan is not answering, at most once every ten minutes,
+    /// and starts the window in which it is not asked. A request already in
+    /// flight when the window opened can still fail inside it; this is what
+    /// keeps that failure out of the log.
+    fn report_jikan_outage(&self, message: &str) {
         let mut last = recover(&self.jikan_outage);
         if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
             return;
@@ -100,5 +131,37 @@ impl Metadata {
             format!("Jikan is not answering: {message}"),
             EventBody::Notice,
         );
+    }
+}
+
+/// Whether a Jikan failure says Jikan is down rather than that one series'
+/// answer was bad: no answer at all (a timeout or a dropped connection), a
+/// rate limit the limiter already waited out, or a server error.
+fn is_outage(e: &CoreError) -> bool {
+    match e {
+        CoreError::Provider { status, .. } => match status {
+            None => true,
+            Some(code) => *code == 429 || *code >= 500,
+        },
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anibeam_contract::Provider;
+
+    fn provider(status: Option<u32>) -> CoreError {
+        CoreError::provider(Provider::Mal, status, "Jikan")
+    }
+
+    #[test]
+    fn only_a_jikan_that_is_down_opens_the_window() {
+        assert!(is_outage(&provider(None)));
+        assert!(is_outage(&provider(Some(429))));
+        assert!(is_outage(&provider(Some(504))));
+        assert!(!is_outage(&provider(Some(400))));
+        assert!(!is_outage(&provider(Some(403))));
     }
 }

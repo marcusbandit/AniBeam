@@ -13,7 +13,7 @@
 // PlayerPage forces its tokens dark, so this reads the same on a light theme.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

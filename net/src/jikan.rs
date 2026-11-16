@@ -3,6 +3,7 @@
 //! carries no episode titles, so this fills them in.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -11,6 +12,11 @@ use super::{HttpRequest, null_to_default};
 use anibeam_contract::{CoreError, Provider};
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
+
+/// How long one Jikan request may take. Jikan answers in a second or two
+/// when it is up, and a match waits on it, so a request that has not
+/// answered by now is an outage rather than a slow reply.
+pub const JIKAN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One episode as Jikan reports it. `mal_id` is the database row, never the
 /// episode number, so `episode` is the only key worth having.
@@ -97,7 +103,6 @@ mod tests {
     use crate::limiter::ProviderClient;
     use crate::{FakeHttp, Upstream};
     use std::sync::Arc;
-    use std::time::Duration;
 
     fn client(http: Arc<FakeHttp>) -> JikanClient {
         JikanClient::new(ProviderClient::new(

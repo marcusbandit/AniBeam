@@ -271,12 +271,17 @@ kind, open an issue about the kind and leave the source out.
 
 ## Checks on GitHub
 
-A push to a pull request runs only the fast checks: CI (fmt, clippy and the core's tests),
+A push to a pull request runs only the fast checks: CI (fmt, clippy and the tests),
 Strings, No sites, the PR checks and the Android check when the phone or the core changed,
 about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
 the phone's code changed, and a PR that only touches iPhone files skips the Android check.
 Work on one platform at a time and check it locally with
 `.github/local-ci.sh`.
+
+CI and `.github/local-ci.sh` clippy and test only the crates a change touches and every
+crate that builds on them; `.github/affected-crates.py` prints what it picked and why. A
+change to the root manifest, the lock file or the toolchain checks every crate, and
+`.github/local-ci.sh --all` or a CI run by hand does too.
 
 When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
 and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the

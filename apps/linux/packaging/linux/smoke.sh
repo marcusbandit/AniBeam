@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: smoke.sh <AniBeam.AppImage> <out-dir>
+# usage: smoke.sh <Anibeam.AppImage> <out-dir>
 # Runs the AppImage the way a user gets it and leaves PNGs and logs in <out-dir>: the
 # version, the home and settings pages on an empty sandbox root, and the two helper
 # programs it carries. Needs xvfb and a Mesa that draws on the CPU.

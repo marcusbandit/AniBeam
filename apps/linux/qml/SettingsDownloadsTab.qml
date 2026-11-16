@@ -9,7 +9,7 @@
 // The password row says under it whether one is saved; no row explains itself further.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab

@@ -4,7 +4,7 @@
 // many are ready stands as the heading, with a bar under it. The room panel shows it above
 // the people, and the player shows it over the picture while the panel is closed.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Column {
     id: root

@@ -9,14 +9,14 @@ use crate::app;
 use crate::cast;
 use crate::contract::*;
 use crate::downloads::{self, Downloads};
-use crate::events::{EventBus, Subscription};
+use crate::events::Subscription;
 use crate::feed;
 use crate::foundation::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::foundation::services::Services;
 use crate::franchise;
 use crate::host::{self, Host};
 use crate::images;
-use crate::jobs::{Jobs, started, started_or_ok};
+use crate::jobs::{started, started_or_ok};
 use crate::launch;
 use crate::library::scan;
 use crate::library::watcher::Watcher;
@@ -55,6 +55,9 @@ pub struct Core {
     pub(crate) releases: Arc<Releases>,
     pub(crate) downloads: Arc<Downloads>,
     pub(crate) playback: Arc<Playback>,
+    /// The watch together room this core is in, if any (`Room*` calls),
+    /// above the playback team whose session it drives.
+    pub(crate) rooms: Arc<room::Rooms>,
     /// The tailnet host: the read-only API the phone app reads, served on
     /// this machine's Tailscale addresses while the preference is on.
     pub(crate) host: Arc<Host>,
@@ -80,14 +83,19 @@ pub struct Core {
 /// through the limiter's own per-attempt timeout.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long `shutdown` waits for the runtime's tasks to observe the
-/// cancellation before it stops waiting and closes the store anyway.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
-
-/// The line every start logs, around the version: "AniBeam core 2.1.0
+/// The line every start logs, around the version: "Anibeam core 2.1.0
 /// ready". `earlier_starts` reads the version back out of it.
-const READY_BEFORE: &str = "AniBeam core ";
+const READY_BEFORE: &str = "Anibeam core ";
 const READY_AFTER: &str = " ready";
+
+/// The version in a start's line. Builds before 2.5 logged the name with a capital B
+/// (#1047), so the name matches in any case.
+fn ready_version(message: &str) -> Option<&str> {
+    let name = message.get(..READY_BEFORE.len())?;
+    name.eq_ignore_ascii_case(READY_BEFORE)
+        .then(|| message[READY_BEFORE.len()..].strip_suffix(READY_AFTER))
+        .flatten()
+}
 
 impl Core {
     /// `open` with the transport handed in, so a test drives every provider
@@ -119,31 +127,7 @@ impl Core {
         http: Arc<dyn Http>,
         secrets: Arc<Secrets>,
     ) -> Result<Arc<Core>, CoreError> {
-        let store = Store::open(&paths.db_path())?;
-        let bus = EventBus::new(store.clone())?;
-        // Creating the cache directory is opening, the same as creating the
-        // data directory the database file lives in. Before the runtime, so
-        // that nothing after it can fail and drop a live runtime here.
-        let images_dir = paths.images_dir();
-        std::fs::create_dir_all(&images_dir)
-            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("anibeam-core")
-            .enable_all()
-            .build()
-            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
-        let handle = runtime.handle().clone();
-        let jobs = Jobs::new(handle.clone(), bus.clone());
-        let services = Arc::new(Services {
-            paths,
-            store,
-            bus,
-            jobs,
-            handle,
-            http,
-            secrets,
-        });
+        let (services, runtime) = Services::open(paths, http, secrets)?;
         // Each team over the ones below it, bottom up.
         let closed = Arc::new(AtomicBool::new(false));
         let net = Arc::new(Net::new(services.clone(), crate::library::cards::cards_for));
@@ -160,6 +144,11 @@ impl Core {
             services.clone(),
             net.clone(),
             trackers.clone(),
+            downloads.clone(),
+        ));
+        let rooms = Arc::new(room::Rooms::new(
+            services.clone(),
+            playback.clone(),
             downloads.clone(),
             library.clone(),
             metadata.clone(),
@@ -179,6 +168,13 @@ impl Core {
         releases
             .searcher
             .set(Arc::downgrade(&downloads) as Weak<dyn crate::releases::Searcher>);
+        playback
+            .follower
+            .set(Arc::downgrade(&rooms) as Weak<dyn crate::playback::Follower>);
+        playback
+            .presence
+            .rooms
+            .set(Arc::downgrade(&rooms) as Weak<dyn crate::presence::JoinRooms>);
         metadata.listen();
         crate::downloads::watch::listen(&downloads);
         // Every SeriesChanged, from whichever job or scan, carries what is
@@ -200,6 +196,7 @@ impl Core {
             releases,
             downloads,
             playback,
+            rooms,
             host,
             launch: Arc::new(launch::Slot::default()),
             runtime: Mutex::new(Some(runtime)),
@@ -312,14 +309,14 @@ impl Core {
     /// second. Not part of the contract.
     #[doc(hidden)]
     pub fn set_room_correction_gap(&self, gap: std::time::Duration) {
-        self.playback.rooms.set_correction_gap(gap);
+        self.rooms.set_correction_gap(gap);
     }
 
     /// Drops the room's connection without a goodbye, as a lost network would.
     /// Not part of the contract.
     #[doc(hidden)]
     pub fn room_drop_connection(&self) {
-        self.playback.rooms.drop_connection();
+        self.rooms.drop_connection();
     }
 
     /// Returns once every Discord presence send asked for so far has been
@@ -373,10 +370,7 @@ impl Core {
                 let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
                 Ok(rows
                     .filter_map(Result::ok)
-                    .filter_map(|m| {
-                        let v = m.strip_prefix(READY_BEFORE)?.strip_suffix(READY_AFTER)?;
-                        Some(v.to_string())
-                    })
+                    .filter_map(|m| ready_version(&m).map(str::to_string))
                     .collect())
             })
             .unwrap_or_default()
@@ -1022,7 +1016,7 @@ impl Core {
             | Call::RoomLeave
             | Call::RoomStatus
             | Call::RoomGetMedia { .. }
-            | Call::RoomStart { .. }) => room::call(&self.playback, c),
+            | Call::RoomStart { .. }) => room::call(&self.rooms, c),
         }
     }
 
@@ -1066,7 +1060,7 @@ impl Core {
         // clears it first and ends the worker.
         crate::presence::shutdown(&self.playback);
         // A room says goodbye, so the others see this member leave at once.
-        crate::room::shutdown(&self.playback);
+        crate::room::shutdown(&self.rooms);
         self.services.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
@@ -1074,15 +1068,7 @@ impl Core {
         // keeps the guard alive for the whole `if let` body, which would
         // hold this lock for as long as the wait below.
         let runtime = self.runtime.lock().unwrap().take();
-        if let Some(runtime) = runtime {
-            // Two seconds is the whole budget for the tasks to observe the
-            // cancellation above. A shell is on its way out by now, and an
-            // ffprobe or a keyring call that will not stop must not be the
-            // reason the window hangs around.
-            runtime.shutdown_timeout(SHUTDOWN_GRACE);
-        }
-        self.services.store.checkpoint();
-        self.services.store.close();
+        self.services.close(runtime);
     }
 }
 
@@ -1166,5 +1152,14 @@ mod tests {
         core.services.bus.signal(Signal::TrackersChanged);
         assert_eq!(refits(&c), 1);
         core.shutdown();
+    }
+
+    #[test]
+    fn a_start_line_from_before_the_rename_still_gives_its_version() {
+        assert_eq!(ready_version("Anibeam core 2.5.0 ready"), Some("2.5.0"));
+        let old = format!("Ani{}eam core 2.4.0 ready", 'B');
+        assert_eq!(ready_version(&old), Some("2.4.0"));
+        assert_eq!(ready_version("Anibeam core 2.5.0"), None);
+        assert_eq!(ready_version("core 2.5.0 ready"), None);
     }
 }

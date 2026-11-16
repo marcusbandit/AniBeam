@@ -109,7 +109,7 @@ pub fn multipart_bytes(fields: &[(String, String)], files: &[FilePart], boundary
 /// A boundary that appears in none of the parts.
 fn boundary_for(fields: &[(String, String)], files: &[FilePart]) -> String {
     loop {
-        let boundary = format!("AniBeamBoundary{:016x}", rand::random::<u64>());
+        let boundary = format!("AnibeamBoundary{:016x}", rand::random::<u64>());
         let inside = |b: &[u8]| b.windows(boundary.len()).any(|w| w == boundary.as_bytes());
         let taken = fields
             .iter()
@@ -275,7 +275,7 @@ impl ReqwestHttp {
         #[cfg(phone_os)]
         let fronted;
         let builder = reqwest::Client::builder()
-            .user_agent(format!("AniBeam/{}", crate::VERSION))
+            .user_agent(format!("Anibeam/{}", crate::VERSION))
             .timeout(timeout);
         #[cfg(phone_os)]
         let builder = {
@@ -284,7 +284,7 @@ impl ReqwestHttp {
             // name do it in plain DNS (see doh.rs). The resolvers' own client goes by
             // address, so it needs no lookup of its own.
             let resolvers = with_roots(
-                reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION)),
+                reqwest::Client::builder().user_agent(format!("Anibeam/{}", crate::VERSION)),
                 roots.clone(),
             )
             .build()
@@ -331,7 +331,7 @@ pub fn room_client(connect_timeout: Duration) -> Result<reqwest::Client, CoreErr
 
 /// A client builder with the user agent and, on Android, the bundled Mozilla roots.
 fn plain_builder() -> Result<reqwest::ClientBuilder, CoreError> {
-    let builder = reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION));
+    let builder = reqwest::Client::builder().user_agent(format!("Anibeam/{}", crate::VERSION));
     Ok(with_roots(builder, bundled_roots()?))
 }
 
@@ -801,9 +801,9 @@ mod tests {
             field: "f".to_string(),
             file_name: "x".to_string(),
             content_type: "application/octet-stream".to_string(),
-            bytes: b"AniBeamBoundary".to_vec(),
+            bytes: b"AnibeamBoundary".to_vec(),
         };
-        assert!(boundary_for(&[], &[file]).starts_with("AniBeamBoundary"));
+        assert!(boundary_for(&[], &[file]).starts_with("AnibeamBoundary"));
     }
 
     #[tokio::test]

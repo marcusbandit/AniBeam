@@ -186,7 +186,7 @@ core-repos-check-auth-key = { $id }: неверный ключ авториза�
 core-repos-check-host-torznab = { $id }: только адрес torznab может указывать хост как {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: подстановка в имени хоста
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Дорожка { $number }
 # A sidecar subtitle file beside the video; $label is the rest of its name.
@@ -344,7 +344,7 @@ core-airing-now-plan-failed = Не удалось добавить «{ $title }�
 
 core-aired-episode-out = Вышла серия { $number } сериала «{ $title }».
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Трансляция на { $device }.
 core-cast-ended = Трансляция на { $device } завершена.
@@ -365,7 +365,7 @@ core-cast-refused-both = { $error }; исходный файл он тоже н�
 core-cast-chromecast-stopped = Chromecast остановился
 core-cast-hevc = { $error }. Эта серия в HEVC, который декодируют только новые Chromecast (с Google TV или Ultra)
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = не удалось связаться с Chromecast: { $error }
 core-cast-chromecast-broke = соединение с Chromecast оборвалось: { $error }
@@ -377,21 +377,21 @@ core-cast-no-reason = без причины
 core-cast-chromecast-cannot-play = Chromecast не может это воспроизвести ({ $kind })
 core-cast-chromecast-error = Chromecast остановился с ошибкой воспроизведения
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = телевизор не ответил: { $error }
 # $action is the DLNA command; $code the TV's own error.
 core-cast-tv-refused = телевизор отклонил { $action }
 core-cast-tv-refused-code = телевизор отклонил { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = В этом файле нет видео.
 core-cast-hi10p = Эта серия в 10-битном H.264 (Hi10P), который не декодирует ни один телевизор или Chromecast. Для трансляции нужно перекодирование, а его пока нет.
 core-cast-video-codec = Видео этой серии ({ $codec }) нельзя транслировать.
 core-cast-audio-codec = Аудио этой серии ({ $codec }) нельзя транслировать.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -413,7 +413,7 @@ core-phone-no-results = ничего не найдено по запросу { $
 # Ends "... is not supported yet." (core-error-unsupported).
 core-phone-own-engine = Собственный торрент-движок
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 # The connection check: each line is a step for one host ($label), and what came of it.
 core-phone-check-connected = подключено
@@ -431,13 +431,13 @@ core-phone-check-reaching = { $label }: соединение с { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } байт
 core-phone-check-setup = настройка
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Прогресс по «{ $folder }» не сохранён. Сначала привяжите сериал.
 # $done is a whole percentage.
 core-playback-still-downloading = серия { $number } ещё скачивается, готово { $done }%
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = длительность должна быть положительным числом секунд
 
@@ -488,7 +488,7 @@ core-recommended-reading-suggestions = Чтение сериалов для ре
 
 core-recommended-no-anime = На { -anilist } нет аниме { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = Выкл.
@@ -500,11 +500,11 @@ core-host-cannot-listen = Не удалось открыть порт
 core-host-port-taken = Порт { $port } занят
 core-host-cannot-listen-on = Не удалось слушать { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } не является адресом с портом
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
@@ -557,7 +557,7 @@ core-paths-no-home = нет домашней папки
 
 core-first-run-not-absolute = папка с видео должна быть указана абсолютным путём
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = Доп. материал
@@ -568,7 +568,7 @@ core-presence-no-room = У этого приглашения из Discord ещё
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = Для { $tracker } не задан Client ID.
@@ -578,15 +578,15 @@ core-trackers-mal-wants-secret = MyAnimeList требует Client Secret это
 core-trackers-token-reply-unreadable = ответ с токеном не читается: { $error }
 core-trackers-token-reply-no-token = в ответе нет токена доступа
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = токен доступа не сохранён, переподключитесь в настройках
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = у аккаунта нет id пользователя
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = не выбраны сериалы для переноса
 # $site is the tracker's full name: AniList or MyAnimeList.
@@ -612,7 +612,7 @@ core-trackers-moved-up-some-refused =
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
 core-trackers-move-refused = { $site } не принял «{ $show }»: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Время авторизации истекло, попробуйте снова.
 core-trackers-oauth-state-mismatch = не совпал state, возможна CSRF-атака, вход прерван.
@@ -643,7 +643,7 @@ core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Этот вход отменён
 core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если вход был нужен, начните заново из { $app }.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 # A progress label while the pass runs; $tracker is AniList or MAL.
 core-trackers-on-hold-moving = Перенос в «Отложено» на { $tracker }
@@ -700,7 +700,7 @@ core-trackers-back-on-watching = «{ $name }» снова в «Смотрю» н
 core-trackers-back-on-watching-two = «{ $name }» снова в «Смотрю» на { $site } и { $secondSite }.
 core-trackers-back-on-watching-failed = Не удалось вернуть «{ $name }» в «Смотрю». Попробуйте позже.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 # A tracker's failure in words a person can act on. $tracker is AniList or MAL.
 core-trackers-rate-limited = { $tracker } ограничил частоту запросов, попробуйте через минуту.
@@ -985,7 +985,7 @@ core-franchise-relation-character = Общие персонажи
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported =
@@ -996,14 +996,14 @@ core-transfer-exported =
        *[other] { $count } сериала сохранено в { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = это не JSON: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = это не документ { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Библиотека загружена из файла.
 
@@ -1203,7 +1203,7 @@ core-transfer-progress-accounts = аккаунты
 core-transfer-progress-preferences = настройки
 core-transfer-progress-done = готово
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 # $message is what the connection said
 core-downloads-anirss-no-answer = anirss не ответил: { $message }
@@ -1225,17 +1225,17 @@ core-downloads-anirss-lacks-feature = anirss { $version } не умеет хра
 core-downloads-anirss-update-mac = Обновите его командой: { $command }
 core-downloads-anirss-update-linux = Обновите пакет anirss или выполните: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = торрент-файл не получен: { $message }
 core-downloads-torrent-file-answered = на запрос торрент-файла пришёл ответ { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = лента ответила { $status }
 core-downloads-not-a-feed = это не лента: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 # $program is the command that was not found
 core-downloads-jackett-missing = Jackett не установлен: { $program } не найден. Установите его или измените команду в настройках.
@@ -1244,7 +1244,7 @@ core-downloads-endpoint-start-failed = Не удалось запустить { 
 core-downloads-endpoint-start-timeout = { $name } запустился, но не ответил за { $seconds } с.
 core-downloads-command-exited = команда завершилась с кодом { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss остановился
 # $install is core-downloads-anirss-install-mac or -linux
@@ -1352,7 +1352,7 @@ core-downloads-client-switched = Загрузки теперь идут чере
 core-downloads-host-not-running = не запущен на хосте
 core-downloads-host-late = не ответил вовремя
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = пустой запрос
 # $query is the search, in quotes
@@ -1373,7 +1373,7 @@ core-downloads-native-outside-folders = отказ удалять файлы в�
 core-downloads-refuse-home-folder = { $path } это домашняя папка или содержит её, поэтому ничего не удалено
 core-downloads-refuse-library-folder = { $path } это папка библиотеки или содержит её, поэтому ничего не удалено
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = в qBittorrent не задана папка сохранения по умолчанию; задайте её в qBittorrent
 # $folder is the folder given
@@ -1385,7 +1385,7 @@ core-downloads-name-slash = имя не должно содержать / или
 # $name is the name given, in quotes
 core-downloads-name-not-folder = { $name } не подходит как имя папки
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 # $title is the show's title
 core-downloads-pruned = Подписка на «{ $title }» отменена: сериал закончил выходить.
@@ -1398,12 +1398,12 @@ core-downloads-refuse-root = { $path } это корень файловой си
 core-downloads-refuse-outside-library = { $path } не находится в папке библиотеки, поэтому ничего не удалено
 core-downloads-refuse-save-folder = { $path } это папка, куда сохранён торрент, а не то, что он скачал, поэтому ничего не удалено
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
 core-downloads-episode-missed = Серия { $episode } «{ $title }» не появилась через три дня после выхода. Лента продолжает её искать.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = команда anirss не может быть пустой
 core-downloads-settings-anirss-address = адрес anirss должен начинаться с http:// или https://
@@ -1416,7 +1416,7 @@ core-downloads-settings-same-id = у двух клиентов одинаков�
 core-downloads-settings-saved-address = адрес { $name } должен начинаться с http:// или https://
 core-downloads-settings-same-name = два клиента называются { $name }; дайте каждому своё имя
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
 core-downloads-qbt-no-answer = qBittorrent не ответил по адресу { $address }: { $message }
@@ -1432,7 +1432,7 @@ core-downloads-qbt-some-not-added = qBittorrent не смог добавить �
 # $line is the first line of what qBittorrent answered
 core-downloads-qbt-answered = qBittorrent ответил { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 # $item is the number of the release asked for, $count how many there are
 core-downloads-replace-bad-item = элемента { $item } нет среди релизов (всего { $count })
@@ -1440,7 +1440,7 @@ core-downloads-replace-bad-item = элемента { $item } нет среди �
 core-downloads-not-replaced = Серия { $episode } не заменена.
 core-downloads-replaced = Серия { $episode } заменена новой загрузкой.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 # $id is the rolling download's number
 core-downloads-no-roll = нет скользящей загрузки { $id }

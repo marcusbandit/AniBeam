@@ -173,7 +173,7 @@ core-repos-check-auth-key = { $id }: ugyldig auth-nøgle { $key }
 core-repos-check-host-torznab = { $id }: kun en torznab-adresse må angive sin vært som {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: en pladsholder i værten
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Spor { $number }
 core-playback-track-file = { $label } (fil)
@@ -326,7 +326,7 @@ core-airing-now-plan-failed = Kunne ikke føje { $title } til din Planlagt-liste
 
 core-aired-episode-out = Afsnit { $number } af { $title } er udkommet.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Caster til { $device }.
 core-cast-ended = Færdig med at caste til { $device }.
@@ -346,7 +346,7 @@ core-cast-refused-both = { $error }; den afviste også filen, som den er ({ $fir
 core-cast-chromecast-stopped = Chromecasten stoppede
 core-cast-hevc = { $error }. Dette afsnit er HEVC, som kun nyere Chromecasts (med Google TV, eller Ultra) kan afkode
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = kunne ikke nå Chromecasten: { $error }
 core-cast-chromecast-broke = forbindelsen til Chromecasten blev afbrudt: { $error }
@@ -356,20 +356,20 @@ core-cast-no-reason = ingen grund
 core-cast-chromecast-cannot-play = Chromecasten kunne ikke afspille dette ({ $kind })
 core-cast-chromecast-error = Chromecasten stoppede med en fejl under afspilningen
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = tv'et svarede ikke: { $error }
 core-cast-tv-refused = tv'et afviste { $action }
 core-cast-tv-refused-code = tv'et afviste { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Denne fil har ingen video.
 core-cast-hi10p = Dette afsnit er 10-bit H.264 (Hi10P), som intet tv eller Chromecast kan afkode. Det skal omkodes for at kunne castes, og det er ikke bygget endnu.
 core-cast-video-codec = Dette afsnits video ({ $codec }) kan ikke castes.
 core-cast-audio-codec = Dette afsnits lyd ({ $codec }) kan ikke castes.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -386,7 +386,7 @@ core-phone-empty-search = søgningen er tom
 core-phone-no-results = ingen resultater for { $query }
 core-phone-own-engine = en egen torrentmotor
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = forbundet
 core-phone-check-refused = afvist: { $error }
@@ -403,12 +403,12 @@ core-phone-check-reaching = { $label }: når { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = opsætning
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Din fremgang i { $folder } blev ikke gemt. Match serien først.
 core-playback-still-downloading = afsnit { $number } downloades stadig, { $done } % færdigt
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = en varighed er et positivt antal sekunder
 
@@ -453,7 +453,7 @@ core-recommended-reading-suggestions = Læser serier at foreslå
 
 core-recommended-no-anime = { -anilist } har ingen anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Fra
 core-host-starting = Starter
@@ -463,11 +463,11 @@ core-host-cannot-listen = Kunne ikke lytte
 core-host-port-taken = Port { $port } er optaget
 core-host-cannot-listen-on = Kunne ikke lytte på { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } er ikke en adresse og port
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } er ikke en enhedsnøgle
 
@@ -517,14 +517,14 @@ core-paths-no-home = ingen hjemmemappe
 
 core-first-run-not-absolute = videomappen skal være en absolut sti
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Ekstra
 core-presence-room = Ser sammen
 core-presence-in-room = I et rum
 core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Intet klient-id sat for { $tracker }.
 core-trackers-mal-reconnect = Forbind MyAnimeList igen i Indstillinger.
@@ -532,15 +532,15 @@ core-trackers-mal-wants-secret = MyAnimeList vil have denne apps klienthemmeligh
 core-trackers-token-reply-unreadable = svaret med token kunne ikke læses: { $error }
 core-trackers-token-reply-no-token = svaret indeholdt ingen adgangstoken
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = ingen adgangstoken gemt, forbind igen i Indstillinger
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = kontoen har intet bruger-id
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = ingen serier valgt at flytte
 core-trackers-moved-up =
@@ -558,7 +558,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = { $site } tog ikke imod { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = Godkendelsen fik timeout, prøv igen.
 core-trackers-oauth-state-mismatch = state passer ikke, mulig CSRF, afbrudt.
@@ -583,7 +583,7 @@ core-trackers-page-cancelled-title = { $app }, login annulleret
 core-trackers-page-cancelled = Dette login blev annulleret
 core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis det var meningen.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Flytter til På pause på { $tracker }
 core-trackers-on-hold-moved =
@@ -622,7 +622,7 @@ core-trackers-back-on-watching = { $name } er tilbage på Ser nu på { $site }.
 core-trackers-back-on-watching-two = { $name } er tilbage på Ser nu på { $site } og { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } kunne ikke komme tilbage på Ser nu. Prøv igen senere.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } begrænser forespørgsler, prøv igen om et minut.
 core-trackers-auth-expired = { $tracker }-login er udløbet, forbind igen i Indstillinger.
@@ -845,7 +845,7 @@ core-franchise-relation-character = Fælles figurer
 
 core-images-progress-fetching = henter billeder
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -853,12 +853,12 @@ core-transfer-exported =
        *[other] Gemte { $count } serier i { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = ikke JSON: { $error }
 core-transfer-wrong-format = ikke et { $format }-dokument
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Indlæste dit bibliotek fra filen.
 
@@ -1012,7 +1012,7 @@ core-transfer-progress-accounts = konti
 core-transfer-progress-preferences = præferencer
 core-transfer-progress-done = færdig
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss svarede ikke: { $message }
 core-downloads-anirss-answered = anirss svarede { $status }: { $text }
@@ -1028,24 +1028,24 @@ core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert t
 core-downloads-anirss-update-mac = Opdater den med: { $command }
 core-downloads-anirss-update-linux = Opdater anirss-pakken, eller kør: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = torrentfilen kom ikke: { $message }
 core-downloads-torrent-file-answered = torrentfilen svarede { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = feedet svarede { $status }
 core-downloads-not-a-feed = ikke et feed: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett er ikke installeret: { $program } blev ikke fundet. Installer det, eller skift kommandoen i Indstillinger.
 core-downloads-endpoint-start-failed = { $name } kunne ikke starte: { $why }
 core-downloads-endpoint-start-timeout = { $name } startede, men svarede ikke inden for { $seconds } sekunder.
 core-downloads-command-exited = kommandoen sluttede med { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss stoppede
 core-downloads-anirss-missing = { $install }. Eller peg Indstillinger på en server, der kører.
@@ -1126,7 +1126,7 @@ core-downloads-client-switched = Downloads bruger nu et andet downloadprogram.
 core-downloads-host-not-running = kører ikke på værten
 core-downloads-host-late = svarede ikke i tide
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = tom søgning
 core-downloads-native-no-results = ingen resultater for { $query }
@@ -1141,7 +1141,7 @@ core-downloads-native-outside-folders = nægter at fjerne filer uden for downloa
 core-downloads-refuse-home-folder = { $path } er hjemmemappen eller indeholder den, så intet blev fjernet
 core-downloads-refuse-library-folder = { $path } er en biblioteksmappe eller indeholder en, så intet blev fjernet
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent har ingen standardmappe at gemme i; vælg en i qBittorrent
 # $folder is the folder given
@@ -1152,7 +1152,7 @@ core-downloads-name-empty = navnet må ikke være tomt
 core-downloads-name-slash = navnet må ikke indeholde / eller \
 core-downloads-name-not-folder = { $name } er ikke et mappenavn
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Afmeldte { $title }, den er færdig med at blive sendt.
 core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i Indstillinger.
@@ -1164,11 +1164,11 @@ core-downloads-refuse-root = { $path } er filsystemets rod, så intet blev fjern
 core-downloads-refuse-outside-library = { $path } ligger ikke i en biblioteksmappe, så intet blev fjernet
 core-downloads-refuse-save-folder = { $path } er mappen, torrenten blev gemt i, ikke det den downloadede, så intet blev fjernet
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = Afsnit { $episode } af { $title } er ikke dukket op tre dage efter, det blev sendt. Dit feed leder stadig efter det.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss-kommandoen må ikke være tom
 core-downloads-settings-anirss-address = anirss-adressen skal starte med http:// eller https://
@@ -1178,7 +1178,7 @@ core-downloads-settings-same-id = to programmer har id'et { $id }
 core-downloads-settings-saved-address = adressen på { $name } skal starte med http:// eller https://
 core-downloads-settings-same-name = to programmer hedder { $name }; giv hvert sit eget navn
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = qBittorrent svarede ikke på { $address }: { $message }
 core-downloads-qbt-password-rejected = qBittorrent afviste adgangskoden; ret den i Indstillinger
@@ -1190,13 +1190,13 @@ core-downloads-qbt-not-added = qBittorrent tilføjede ikke torrents: { $said }
 core-downloads-qbt-some-not-added = qBittorrent kunne ikke tilføje { $count } af de torrents: { $said }
 core-downloads-qbt-answered = qBittorrent svarede { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = element { $item } er ikke en af de { $count } udgivelser
 core-downloads-not-replaced = Afsnit { $episode } blev ikke erstattet.
 core-downloads-replaced = Erstattede afsnit { $episode } med det nye download.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = intet løbende download { $id }
 core-downloads-rolled = { $title }: nu på afsnit { $from } til { $to } af { $total }.

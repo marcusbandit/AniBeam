@@ -17,7 +17,7 @@ name: Nightly
 # The phone rides the same train under its own number: when the phone or what it builds on
 # changed since its last nightly, a build of its APK from apps/android/Cargo.toml's version,
 # 2.4.3-nightly.20261030.12, is published as android-v2.4.3-nightly.20261030.12, with the
-# iPhone's unsigned IPA (AniBeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
+# iPhone's unsigned IPA (Anibeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
 #
 # Publishing takes the NIGHTLY_TOKEN secret when it is set, a fine-grained token with Contents
 # and Workflows write: the workflow's own token may not tag a commit once a workflow file
@@ -78,8 +78,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           FORCE: ${{ inputs.force || 'false' }}
         run: |
-          desktop_paths=(contract foundation net library releases metadata core host-api apps/linux apps/cli Cargo.toml Cargo.lock)
-          phone_paths=(apps/android contract foundation net library releases metadata core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml)
+          desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api apps/linux apps/cli Cargo.toml Cargo.lock)
+          phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml)
           sha="$(git rev-parse HEAD)"
           day="$(date -u +%Y%m%d)"
           here_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
@@ -371,8 +371,8 @@ jobs:
         if: env.IPA == 'true'
         env:
           VERSION: ${{ needs.gate.outputs.phone_version }}
-        # AniBeam-Nightly-: the site lists only IPAs built with the nightly bundle id (site/tools/altstore.py).
-        run: mv ipa/AniBeam.ipa "dist/AniBeam-Nightly-$VERSION.ipa"
+        # Anibeam-Nightly-: the site lists only IPAs built with the nightly bundle id (site/tools/altstore.py).
+        run: mv ipa/Anibeam.ipa "dist/Anibeam-Nightly-$VERSION.ipa"
 
       - name: Publish the phone's nightly
         env:

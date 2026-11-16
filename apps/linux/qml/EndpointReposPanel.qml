@@ -7,7 +7,7 @@
 // The calls that fetch or store a secret run off the Qt thread (Door.callAsync), so a slow or
 // dead repo never freezes the window; the tab refreshes the repos each time it opens.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Panel {
     id: root

@@ -57,11 +57,12 @@ impl Net {
             http.clone(),
             ANILIST_GAP,
         )));
-        let jikan = Arc::new(JikanClient::new(ProviderClient::new(
-            Upstream::Jikan,
-            http.clone(),
-            JIKAN_GAP,
-        )));
+        // A match waits on Jikan, so its requests are capped the same way:
+        // a Jikan that has stopped answering costs one timeout, not a hang.
+        let jikan = Arc::new(JikanClient::new(
+            ProviderClient::new(Upstream::Jikan, http.clone(), JIKAN_GAP)
+                .with_attempt_timeout(crate::jikan::JIKAN_TIMEOUT),
+        ));
         let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(
             Upstream::AniSkip,
             http.clone(),

@@ -171,7 +171,7 @@ core-repos-check-auth-key = { $id }: chave de autenticação inválida { $key }
 core-repos-check-host-torznab = { $id }: só um endereço torznab pode dar o host como {"{"}{ $key }{"}"}
 core-repos-check-host-placeholder = { $id }: um marcador no host
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = Faixa { $number }
 core-playback-track-file = { $label } (arquivo)
@@ -324,7 +324,7 @@ core-airing-now-plan-failed = Não foi possível incluir { $title } na sua lista
 
 core-aired-episode-out = Saiu o episódio { $number } de { $title }.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = Transmitindo para { $device }.
 core-cast-ended = Transmissão para { $device } concluída.
@@ -344,7 +344,7 @@ core-cast-refused-both = { $error }; ela também recusou o arquivo como está ({
 core-cast-chromecast-stopped = o Chromecast parou
 core-cast-hevc = { $error }. Este episódio é HEVC, que só Chromecasts mais novos (com Google TV, ou Ultra) decodificam
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = não foi possível acessar o Chromecast: { $error }
 core-cast-chromecast-broke = a conexão com o Chromecast caiu: { $error }
@@ -354,20 +354,20 @@ core-cast-no-reason = sem motivo
 core-cast-chromecast-cannot-play = o Chromecast não conseguiu reproduzir isto ({ $kind })
 core-cast-chromecast-error = o Chromecast parou com um erro ao reproduzir isto
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = a TV não respondeu: { $error }
 core-cast-tv-refused = a TV recusou { $action }
 core-cast-tv-refused-code = a TV recusou { $action } ({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = Este arquivo não tem vídeo.
 core-cast-hi10p = Este episódio é H.264 de 10 bits (Hi10P), que nenhuma TV ou Chromecast decodifica. Transmiti-lo exige converter o vídeo, o que ainda não existe.
 core-cast-video-codec = O vídeo deste episódio ({ $codec }) não pode ser transmitido.
 core-cast-audio-codec = O áudio deste episódio ({ $codec }) não pode ser transmitido.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -384,7 +384,7 @@ core-phone-empty-search = a busca está vazia
 core-phone-no-results = nenhum resultado para { $query }
 core-phone-own-engine = um motor de torrent próprio
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = conectado
 core-phone-check-refused = recusado: { $error }
@@ -401,12 +401,12 @@ core-phone-check-reaching = { $label }: acessando { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = configuração
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = Seu progresso em { $folder } não foi salvo. Vincule a série primeiro.
 core-playback-still-downloading = o episódio { $number } ainda está baixando, { $done }% concluído
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = uma duração é um número positivo de segundos
 
@@ -451,7 +451,7 @@ core-recommended-reading-suggestions = Lendo séries para sugerir
 
 core-recommended-no-anime = O { -anilist } não tem o anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Desativado
 core-host-starting = Iniciando
@@ -461,11 +461,11 @@ core-host-cannot-listen = Não foi possível escutar
 core-host-port-taken = A porta { $port } está em uso
 core-host-cannot-listen-on = Não foi possível escutar em { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } não é um endereço com porta
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } não é uma chave de dispositivo
 
@@ -515,7 +515,7 @@ core-paths-no-home = sem pasta pessoal
 
 core-first-run-not-absolute = a pasta de vídeos precisa ser um caminho absoluto
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = Extra
 core-presence-room = Assistindo juntos
@@ -524,7 +524,7 @@ core-presence-no-room = Esse convite do Discord ainda não tem sala. Peça para 
 
 # As palavras do core para o grupo da biblioteca (#798).
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = Nenhum client ID definido para { $tracker }.
 core-trackers-mal-reconnect = Reconecte o MyAnimeList nas Configurações.
@@ -532,15 +532,15 @@ core-trackers-mal-wants-secret = O MyAnimeList pede o client secret deste app. I
 core-trackers-token-reply-unreadable = resposta de token ilegível: { $error }
 core-trackers-token-reply-no-token = a resposta de token não trouxe access token
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = nenhum access token guardado, reconecte nas Configurações
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = a conta não tem id de usuário
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = nenhuma série escolhida para mover
 core-trackers-moved-up =
@@ -558,7 +558,7 @@ core-trackers-moved-up-some-refused =
     }.
 core-trackers-move-refused = O { $site } não aceitou { $show }: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = A autorização expirou, tente de novo.
 core-trackers-oauth-state-mismatch = state não confere, possível CSRF, cancelado.
@@ -583,7 +583,7 @@ core-trackers-page-cancelled-title = { $app }, login cancelado
 core-trackers-page-cancelled = Este login foi cancelado
 core-trackers-page-cancelled-body = Você pode fechar esta aba. Comece de novo pelo { $app } se quiser.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = Movendo para Em pausa no { $tracker }
 core-trackers-on-hold-moved =
@@ -622,7 +622,7 @@ core-trackers-back-on-watching = { $name } voltou para Assistindo no { $site }.
 core-trackers-back-on-watching-two = { $name } voltou para Assistindo no { $site } e no { $secondSite }.
 core-trackers-back-on-watching-failed = { $name } não pôde voltar para Assistindo. Tente de novo mais tarde.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = O { $tracker } limitou as requisições, tente de novo em um minuto.
 core-trackers-auth-expired = O login no { $tracker } expirou, reconecte nas Configurações.
@@ -845,7 +845,7 @@ core-franchise-relation-character = Personagens em comum
 
 core-images-progress-fetching = baixando imagens
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -853,12 +853,12 @@ core-transfer-exported =
        *[other] { $count } séries salvas em { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = não é JSON: { $error }
 core-transfer-wrong-format = não é um documento { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Sua biblioteca foi carregada do arquivo.
 
@@ -1030,7 +1030,7 @@ core-transfer-progress-accounts = contas
 core-transfer-progress-preferences = preferências
 core-transfer-progress-done = pronto
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = o anirss não respondeu: { $message }
 core-downloads-anirss-answered = o anirss respondeu { $status }: { $text }
@@ -1046,24 +1046,24 @@ core-downloads-anirss-lacks-feature = O anirss { $version } não consegue guarda
 core-downloads-anirss-update-mac = Atualize com: { $command }
 core-downloads-anirss-update-linux = Atualize o pacote anirss, ou rode: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = o arquivo torrent não veio: { $message }
 core-downloads-torrent-file-answered = o arquivo torrent respondeu { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = o feed respondeu { $status }
 core-downloads-not-a-feed = não é um feed: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = O Jackett não está instalado: { $program } não foi encontrado. Instale-o, ou mude o comando nas Configurações.
 core-downloads-endpoint-start-failed = { $name } não pôde iniciar: { $why }
 core-downloads-endpoint-start-timeout = { $name } iniciou mas não respondeu em { $seconds } segundos.
 core-downloads-command-exited = o comando terminou com { $status }
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = o anirss parou
 core-downloads-anirss-missing = { $install }. Ou aponte as Configurações para um servidor em execução.
@@ -1144,7 +1144,7 @@ core-downloads-client-switched = Os downloads agora usam outro app de download.
 core-downloads-host-not-running = não está rodando no host
 core-downloads-host-late = não respondeu a tempo
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = busca vazia
 core-downloads-native-no-results = nenhum resultado para { $query }
@@ -1159,7 +1159,7 @@ core-downloads-native-outside-folders = recusando remover arquivos fora das past
 core-downloads-refuse-home-folder = { $path } é a pasta pessoal ou a contém, então nada foi removido
 core-downloads-refuse-library-folder = { $path } é uma pasta da biblioteca ou contém uma, então nada foi removido
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = o qBittorrent não tem pasta padrão de destino; defina uma no qBittorrent
 # $folder is the folder given
@@ -1170,7 +1170,7 @@ core-downloads-name-empty = o nome não pode ficar vazio
 core-downloads-name-slash = o nome não pode conter / nem \
 core-downloads-name-not-folder = { $name } não é um nome de pasta
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = Deixou de seguir { $title }, a exibição terminou.
 core-downloads-prune-failed = Não foi possível deixar de seguir { $title }. Confira Downloads nas Configurações.
@@ -1182,11 +1182,11 @@ core-downloads-refuse-root = { $path } é a raiz do sistema de arquivos, então 
 core-downloads-refuse-outside-library = { $path } não está dentro de uma pasta da biblioteca, então nada foi removido
 core-downloads-refuse-save-folder = { $path } é a pasta onde o torrent foi salvo, não o que ele baixou, então nada foi removido
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = O episódio { $episode } de { $title } não apareceu três dias depois de ir ao ar. Seu feed continua procurando.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = o comando do anirss não pode ficar vazio
 core-downloads-settings-anirss-address = o endereço do anirss precisa começar com http:// ou https://
@@ -1196,7 +1196,7 @@ core-downloads-settings-same-id = dois clientes têm o id { $id }
 core-downloads-settings-saved-address = o endereço de { $name } precisa começar com http:// ou https://
 core-downloads-settings-same-name = dois clientes se chamam { $name }; dê a cada um um nome próprio
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = O qBittorrent não respondeu em { $address }: { $message }
 core-downloads-qbt-password-rejected = O qBittorrent recusou a senha; corrija nas Configurações
@@ -1208,13 +1208,13 @@ core-downloads-qbt-not-added = O qBittorrent não incluiu os torrents: { $said }
 core-downloads-qbt-some-not-added = O qBittorrent não conseguiu incluir { $count } dos torrents: { $said }
 core-downloads-qbt-answered = O qBittorrent respondeu { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = o item { $item } não é um dos { $count } releases
 core-downloads-not-replaced = O episódio { $episode } não foi substituído.
 core-downloads-replaced = Episódio { $episode } substituído pelo novo download.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = nenhum download contínuo { $id }
 core-downloads-rolled = { $title }: agora nos episódios { $from } a { $to } de { $total }.

@@ -4,7 +4,7 @@
 // cubes, time left), then the Downloads lines of the log, newest first. The torrents come
 // from the page's own poll; the log is backfilled once and then follows Door.event.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

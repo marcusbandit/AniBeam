@@ -568,12 +568,14 @@ mod unix {
             assert_eq!(state(root), Some(State::Serving), "the first is untouched");
 
             // A window asks for the library: the service closes its core and lets the lock
-            // go before it answers, so the window's own lock is free the moment it hears.
+            // go before it answers. The lock can still read held for a beat after that, while
+            // a process another test forks carries a copy of the service's open file (#577),
+            // so the window's lock is waited for, not assumed.
             let window = ask_to_yield(&socket(root)).expect("the service steps aside");
             let window_lock = open_lock(root);
-            window_lock
-                .try_lock()
-                .expect("the lock is free for the window");
+            eventually("the lock is free for the window", || {
+                window_lock.try_lock().is_ok()
+            });
             eventually("the service's host stops", || hello(addr).is_none());
             assert_eq!(state(root), Some(State::Waiting));
             assert!(
@@ -592,9 +594,11 @@ mod unix {
             assert_eq!(stop(running), 0);
             assert!(!socket(root).exists(), "the socket is cleared");
             assert!(hello(addr).is_none());
-            open_lock(root)
-                .try_lock()
-                .expect("the lock is free after stopping");
+            let after = open_lock(root);
+            eventually("the lock is free after stopping", || {
+                after.try_lock().is_ok()
+            });
+            drop(after);
             assert_eq!(state(root), None);
             // The window it stepped aside for asked, so it was never told anything.
             assert!(told.lock().unwrap().is_empty());

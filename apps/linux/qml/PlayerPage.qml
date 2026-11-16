@@ -9,7 +9,7 @@
 import QtQuick
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
@@ -168,7 +168,7 @@ FocusScope {
         // A cast that goes on with this episode plays on the TV, not here (#756)
         if (carriedCast) video.setProperty("pause", true)
         // S saves the frame, subtitles and all, into the pictures folder
-        video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/AniBeam")
+        video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/Anibeam")
         video.setProperty("screenshot-template", "%F %wH.%wM.%wS") // i18n: none
         video.command(["loadfile", session.path])
     }

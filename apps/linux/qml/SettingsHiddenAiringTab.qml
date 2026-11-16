@@ -6,7 +6,7 @@
 // stopped airing and its mark goes, with nothing asked of AniList.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: tab

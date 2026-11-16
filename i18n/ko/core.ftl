@@ -169,7 +169,7 @@ core-repos-check-auth-key = { $id }: 잘못된 인증 키 { $key }
 core-repos-check-host-torznab = { $id }: torznab 주소만 호스트를 {"{"}{ $key }{"}"}(으)로 쓸 수 있어요
 core-repos-check-host-placeholder = { $id }: 호스트에 자리표시자가 있어요
 
-## core/src/playback/tracks.rs
+## playback/src/tracks.rs
 
 core-playback-track-number = 트랙 { $number }
 core-playback-track-file = { $label } (파일)
@@ -322,7 +322,7 @@ core-airing-now-plan-failed = { $title }을(를) 시청 예정 목록에 추가�
 
 core-aired-episode-out = { $title } { $number }화가 공개됐어요.
 
-## core/src/cast/mod.rs
+## playback/src/cast/mod.rs
 
 core-cast-connecting = { $device }(으)로 캐스트 중.
 core-cast-ended = { $device } 캐스트를 마쳤어요.
@@ -342,7 +342,7 @@ core-cast-refused-both = { $error }. 원본 파일도 거부했어요({ $first }
 core-cast-chromecast-stopped = Chromecast가 멈췄어요
 core-cast-hevc = { $error }. 이 에피소드는 HEVC라서 최신 Chromecast(Google TV 또는 Ultra)에서만 디코딩돼요
 
-## core/src/cast/castv2.rs
+## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecast에 연결하지 못했어요: { $error }
 core-cast-chromecast-broke = Chromecast 연결이 끊겼어요: { $error }
@@ -352,20 +352,20 @@ core-cast-no-reason = 이유 없음
 core-cast-chromecast-cannot-play = Chromecast에서 재생할 수 없어요({ $kind })
 core-cast-chromecast-error = Chromecast가 재생 중 오류로 멈췄어요
 
-## core/src/cast/dlna.rs
+## playback/src/cast/dlna.rs
 
 core-cast-tv-no-answer = TV가 응답하지 않았어요: { $error }
 core-cast-tv-refused = TV가 { $action } 명령을 거부했어요
 core-cast-tv-refused-code = TV가 { $action } 명령을 거부했어요({ $code })
 
-## core/src/cast/media.rs
+## playback/src/cast/media.rs
 
 core-cast-no-video = 이 파일에는 영상이 없어요.
 core-cast-hi10p = 이 에피소드는 10비트 H.264(Hi10P)라서 TV나 Chromecast에서 디코딩할 수 없어요. 캐스트하려면 변환이 필요한데, 아직 지원하지 않아요.
 core-cast-video-codec = 이 에피소드의 영상({ $codec })은 캐스트할 수 없어요.
 core-cast-audio-codec = 이 에피소드의 오디오({ $codec })는 캐스트할 수 없어요.
 
-## core/src/phone/mod.rs
+## downloads/src/phone/mod.rs
 
 core-phone-download-started =
     { $count ->
@@ -381,7 +381,7 @@ core-phone-empty-search = 검색어가 비어 있어요
 core-phone-no-results = { $query } 검색 결과가 없어요
 core-phone-own-engine = 자체 토렌트 엔진
 
-## core/src/phone/check.rs
+## downloads/src/phone/check.rs
 
 core-phone-check-connected = 연결됨
 core-phone-check-refused = 거부됨: { $error }
@@ -398,12 +398,12 @@ core-phone-check-reaching = { $label }: { $ip }에 연결 중
 core-phone-check-http = HTTP { $status }, { $bytes }바이트
 core-phone-check-setup = 설정
 
-## core/src/playback/session.rs
+## playback/src/session.rs
 
 core-playback-not-saved = { $folder }의 진행 상황이 저장되지 않았어요. 먼저 작품을 매칭하세요.
 core-playback-still-downloading = { $number }화는 아직 다운로드 중이에요, { $done }% 완료
 
-## core/src/playback/skip.rs
+## playback/src/skip.rs
 
 core-playback-bad-duration = 길이는 0보다 큰 초 단위 숫자여야 해요
 
@@ -448,7 +448,7 @@ core-recommended-reading-suggestions = 추천할 작품 읽는 중
 
 core-recommended-no-anime = { -anilist }에 애니 { $id }이(가) 없어요
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = 꺼짐
 core-host-starting = 시작 중
@@ -458,11 +458,11 @@ core-host-cannot-listen = 대기할 수 없어요
 core-host-port-taken = 포트 { $port }이(가) 사용 중이에요
 core-host-cannot-listen-on = { $address }에서 대기할 수 없어요: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
@@ -512,14 +512,14 @@ core-paths-no-home = 홈 디렉터리가 없어요
 
 core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 
-## core/src/presence/mod.rs
+## playback/src/presence/mod.rs
 
 core-presence-extra = 번외
 core-presence-room = 함께 보는 중
 core-presence-in-room = 방에 있음
 core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
-## core/src/trackers/accounts.rs
+## trackers/src/accounts.rs
 
 core-trackers-no-client-id = { $tracker } 클라이언트 ID가 설정되지 않았어요.
 core-trackers-mal-reconnect = 설정에서 MyAnimeList를 다시 연결하세요.
@@ -527,15 +527,15 @@ core-trackers-mal-wants-secret = MyAnimeList가 이 앱의 클라이언트 시�
 core-trackers-token-reply-unreadable = 토큰 응답을 읽을 수 없어요: { $error }
 core-trackers-token-reply-no-token = 토큰 응답에 액세스 토큰이 없어요
 
-## core/src/trackers/mod.rs
+## trackers/src/lib.rs
 
 core-trackers-no-token = 저장된 액세스 토큰이 없어요. 설정에서 다시 연결하세요
 
-## core/src/trackers/cache.rs
+## trackers/src/cache.rs
 
 core-trackers-no-user-id = 계정에 사용자 ID가 없어요
 
-## core/src/trackers/move_up.rs
+## trackers/src/move_up.rs
 
 core-trackers-move-none-picked = 옮길 작품을 선택하지 않았어요
 core-trackers-moved-up =
@@ -550,7 +550,7 @@ core-trackers-moved-up-some-refused =
     }는 받지 않았어요.
 core-trackers-move-refused = { $site }이(가) { $show }을(를) 받지 않았어요: { $error }
 
-## core/src/trackers/oauth.rs
+## trackers/src/oauth.rs
 
 core-trackers-oauth-timed-out = 인증 시간이 초과됐어요. 다시 시도하세요.
 core-trackers-oauth-state-mismatch = state가 일치하지 않아요. CSRF일 수 있어 중단했어요.
@@ -575,7 +575,7 @@ core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
 core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 원래 하려던 거라면 { $app }에서 다시 시작하세요.
 
-## core/src/trackers/on_hold.rs
+## trackers/src/on_hold.rs
 
 core-trackers-on-hold-moving = { $tracker }에서 보류로 옮기는 중
 core-trackers-on-hold-moved =
@@ -607,7 +607,7 @@ core-trackers-back-on-watching = { $name }이(가) { $site }에서 다시 시청
 core-trackers-back-on-watching-two = { $name }이(가) { $site }와(과) { $secondSite }에서 다시 시청 중으로 돌아왔어요.
 core-trackers-back-on-watching-failed = { $name }을(를) 시청 중으로 되돌리지 못했어요. 나중에 다시 시도하세요.
 
-## core/src/trackers/writes.rs
+## trackers/src/writes.rs
 
 core-trackers-rate-limited = { $tracker } 요청 한도 초과. 1분 뒤 다시 시도하세요.
 core-trackers-auth-expired = { $tracker } 인증이 만료됐어요. 설정에서 다시 연결하세요.
@@ -787,19 +787,19 @@ core-franchise-relation-character = 같은 캐릭터
 
 core-images-progress-fetching = 이미지 가져오는 중
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
        *[other] 작품 { $count }개를 { $folder }에 저장했어요.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = JSON이 아니에요: { $error }
 core-transfer-wrong-format = { $format } 문서가 아니에요
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = 파일에서 라이브러리를 불러왔어요.
 
@@ -926,7 +926,7 @@ core-transfer-progress-accounts = 계정
 core-transfer-progress-preferences = 환경설정
 core-transfer-progress-done = 완료
 
-## core/src/downloads/anirss.rs
+## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss가 응답하지 않았어요: { $message }
 core-downloads-anirss-answered = anirss 응답 { $status }: { $text }
@@ -942,24 +942,24 @@ core-downloads-anirss-lacks-feature = anirss { $version }은(는) 토렌트 클�
 core-downloads-anirss-update-mac = 다음 명령으로 업데이트하세요: { $command }
 core-downloads-anirss-update-linux = anirss 패키지를 업데이트하거나 다음을 실행하세요: { $command }
 
-## core/src/downloads/contents.rs
+## downloads/src/contents.rs
 
 core-downloads-torrent-file-no-answer = 토렌트 파일을 받지 못했어요: { $message }
 core-downloads-torrent-file-answered = 토렌트 파일 응답 { $status }
 
-## core/src/downloads/feed.rs
+## downloads/src/feed.rs
 
 core-downloads-feed-answered = 피드 응답 { $status }
 core-downloads-not-a-feed = 피드가 아니에요: { $error }
 
-## core/src/downloads/jackett.rs
+## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett가 설치되지 않았어요: { $program }을(를) 찾지 못했어요. 설치하거나 설정에서 명령을 바꾸세요.
 core-downloads-endpoint-start-failed = { $name }을(를) 시작하지 못했어요: { $why }
 core-downloads-endpoint-start-timeout = { $name }이(가) 시작됐지만 { $seconds }초 안에 응답하지 않았어요.
 core-downloads-command-exited = 명령이 { $status }(으)로 종료됐어요
 
-## core/src/downloads/mod.rs
+## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss가 멈췄어요
 core-downloads-anirss-missing = { $install }. 또는 설정에서 실행 중인 서버를 지정하세요.
@@ -1034,7 +1034,7 @@ core-downloads-client-switched = 이제 다운로드에 다른 다운로드 앱�
 core-downloads-host-not-running = 호스트에서 실행 중이 아니에요
 core-downloads-host-late = 제시간에 응답하지 않았어요
 
-## core/src/downloads/native.rs
+## downloads/src/native.rs
 
 core-downloads-native-empty-query = 검색어가 비어 있어요
 core-downloads-native-no-results = { $query } 검색 결과가 없어요
@@ -1049,7 +1049,7 @@ core-downloads-native-outside-folders = 다운로드 폴더 밖의 파일은 제
 core-downloads-refuse-home-folder = { $path }은(는) 홈 폴더이거나 홈 폴더를 포함해서 아무것도 제거하지 않았어요
 core-downloads-refuse-library-folder = { $path }은(는) 라이브러리 폴더이거나 라이브러리 폴더를 포함해서 아무것도 제거하지 않았어요
 
-## core/src/downloads/paths.rs
+## downloads/src/paths.rs
 
 core-downloads-no-default-folder = qBittorrent에 기본 저장 폴더가 없어요. qBittorrent에서 설정하세요
 # $folder is the folder given
@@ -1060,7 +1060,7 @@ core-downloads-name-empty = 이름은 비워 둘 수 없어요
 core-downloads-name-slash = 이름에 / 또는 \를 쓸 수 없어요
 core-downloads-name-not-folder = { $name }은(는) 폴더 이름이 아니에요
 
-## core/src/downloads/prune.rs
+## downloads/src/prune.rs
 
 core-downloads-pruned = { $title } 방영이 끝나서 구독을 해지했어요.
 core-downloads-prune-failed = { $title } 구독을 해지하지 못했어요. 설정의 다운로드를 확인하세요.
@@ -1072,11 +1072,11 @@ core-downloads-refuse-root = { $path }은(는) 파일 시스템 루트라서 아
 core-downloads-refuse-outside-library = { $path }은(는) 라이브러리 폴더 안에 있지 않아서 아무것도 제거하지 않았어요
 core-downloads-refuse-save-folder = { $path }은(는) 토렌트가 받은 내용이 아니라 저장된 폴더라서 아무것도 제거하지 않았어요
 
-## core/src/downloads/watch.rs
+## downloads/src/watch.rs
 
 core-downloads-episode-missed = { $title } { $episode }화가 방영 후 3일이 지나도 나오지 않았어요. 피드에서 계속 찾고 있어요.
 
-## core/src/downloads/settings.rs
+## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss 명령은 비워 둘 수 없어요
 core-downloads-settings-anirss-address = anirss 주소는 http:// 또는 https://로 시작해야 해요
@@ -1086,7 +1086,7 @@ core-downloads-settings-same-id = 두 클라이언트의 ID가 { $id }(으)로 �
 core-downloads-settings-saved-address = { $name }의 주소는 http:// 또는 https://로 시작해야 해요
 core-downloads-settings-same-name = 두 클라이언트의 이름이 { $name }(으)로 같아요. 각각 다른 이름을 지어 주세요
 
-## core/src/downloads/qbt.rs
+## downloads/src/qbt.rs
 
 core-downloads-qbt-no-answer = { $address }의 qBittorrent가 응답하지 않았어요: { $message }
 core-downloads-qbt-password-rejected = qBittorrent가 비밀번호를 거부했어요. 설정에서 고치세요
@@ -1098,13 +1098,13 @@ core-downloads-qbt-not-added = qBittorrent가 토렌트를 추가하지 않았�
 core-downloads-qbt-some-not-added = qBittorrent가 토렌트 { $count }개를 추가하지 못했어요: { $said }
 core-downloads-qbt-answered = qBittorrent 응답 { $status }: { $line }
 
-## core/src/downloads/replace.rs
+## downloads/src/replace.rs
 
 core-downloads-replace-bad-item = 항목 { $item }은(는) 릴리스 { $count }개 중 하나가 아니에요
 core-downloads-not-replaced = { $episode }화를 교체하지 않았어요.
 core-downloads-replaced = { $episode }화를 새 다운로드로 교체했어요.
 
-## core/src/downloads/rolling.rs
+## downloads/src/rolling.rs
 
 core-downloads-no-roll = 순환 다운로드 { $id }이(가) 없어요
 core-downloads-rolled = { $title }: 이제 { $total }화 중 { $from }~{ $to }화를 보관해요.

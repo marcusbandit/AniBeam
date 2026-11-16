@@ -3,14 +3,14 @@
 
 use super::FocusAsk;
 
-/// Writes `line` to stderr, under AniBeamCore.
+/// Writes `line` to stderr, under AnibeamCore.
 pub fn log(line: &str) {
-    eprintln!("AniBeamCore: {line}");
+    eprintln!("AnibeamCore: {line}");
 }
 
 /// No browser to open: the link is logged.
 pub fn open_url(url: &str) {
-    crate::local::log(&format!("open {url}"));
+    super::log(&format!("open {url}"));
 }
 
 /// Nothing can be picked here.
@@ -112,7 +112,7 @@ pub fn fold() -> (Option<f32>, bool) {
 /// extensions.
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn crease() -> crate::crease::Reading {
-    crate::crease::decode(crate::crease::SILENT)
+    crate::crease::Reading::Silent
 }
 
 /// The window's brightness, halfway.

@@ -4,7 +4,7 @@
 // here beside what the tracker has now, and moves nothing until Move is pressed. Not now
 // leaves the list here and the pointer in Settings.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root

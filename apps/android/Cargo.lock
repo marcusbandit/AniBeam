@@ -145,6 +145,7 @@ dependencies = [
  "anibeam-core",
  "block2 0.6.2",
  "chrono",
+ "i-slint-backend-testing",
  "image",
  "jni 0.21.1",
  "ndk-context",
@@ -194,45 +195,51 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-contract",
+ "anibeam-downloads",
  "anibeam-foundation",
- "anibeam-host-api",
+ "anibeam-host",
  "anibeam-library",
  "anibeam-metadata",
  "anibeam-net",
+ "anibeam-playback",
  "anibeam-releases",
- "anibeam-room",
- "anyhow",
+ "anibeam-trackers",
  "axum",
- "base64",
- "chacha20poly1305",
- "ed25519-dalek",
- "flate2",
- "futures-core",
- "futures-util",
- "hkdf",
- "librqbit",
- "matroska-demuxer",
- "mdns-sd",
- "rand 0.10.3",
- "regex",
  "reqwest",
- "roxmltree 0.20.0",
  "rusqlite",
- "rustix 1.1.5",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "time",
  "tokio",
- "tokio-tungstenite",
- "tokio-util",
+ "uniffi",
+]
+
+[[package]]
+name = "anibeam-downloads"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "anibeam-releases",
+ "anibeam-trackers",
+ "anyhow",
+ "librqbit",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "roxmltree 0.20.0",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
  "toml",
  "tracing",
- "uniffi",
  "walkdir",
- "windows-sys 0.61.2",
- "x25519-dalek",
 ]
 
 [[package]]
@@ -259,6 +266,33 @@ dependencies = [
  "url",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
+]
+
+[[package]]
+name = "anibeam-host"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-downloads",
+ "anibeam-foundation",
+ "anibeam-host-api",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "anibeam-releases",
+ "anibeam-trackers",
+ "axum",
+ "rand 0.10.3",
+ "reqwest",
+ "rusqlite",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -329,6 +363,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-playback"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-downloads",
+ "anibeam-foundation",
+ "anibeam-host-api",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "anibeam-releases",
+ "anibeam-room",
+ "anibeam-trackers",
+ "axum",
+ "base64",
+ "chacha20poly1305",
+ "flate2",
+ "futures-core",
+ "futures-util",
+ "hkdf",
+ "matroska-demuxer",
+ "mdns-sd",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "roxmltree 0.20.0",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "windows-sys 0.61.2",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "anibeam-recs"
 version = "2.5.0"
 dependencies = [
@@ -365,6 +439,24 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "anibeam-trackers"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-foundation",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "base64",
+ "rand 0.10.3",
+ "rusqlite",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
