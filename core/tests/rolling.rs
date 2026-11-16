@@ -12,7 +12,6 @@ mod common;
 use common::started;
 mod fixtures;
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anibeam_core::events::Collector;
@@ -41,15 +40,6 @@ fn settings() -> DownloadSettings {
         rolling: Default::default(),
         // These run on anirss, which is no longer the default (#552)
         engine: DownloadsEngine::Anirss,
-    }
-}
-
-/// Points the XDG homes at `dir`, so no case reads the machine's own anirss
-/// files.
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
     }
 }
 
@@ -222,7 +212,6 @@ struct Rig {
 fn batch_rig() -> Rig {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save_settings(&core);
 
     let hash = "ab".repeat(20);
@@ -293,8 +282,7 @@ fn a_batch_of_forty_episodes_rolls_twelve_ahead() {
 #[test]
 fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save_settings(&core);
 
     // Handed over in reverse, so the order is the roll's own.
@@ -451,7 +439,6 @@ fn roll_more_widens_the_window_and_set_roll_off_fetches_the_rest_and_ends_the_ro
 fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_are_watched() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save_settings(&core);
 
     // The batch on disk: episodes 1 to 4, in the library.

@@ -44,28 +44,21 @@ impl AnirssHome {
         }
     }
 
-    /// `~/.config/anirss/config.toml`, honouring `XDG_CONFIG_HOME` on the person's own home.
+    /// `~/.config/anirss/config.toml`. anirss fixes its config there and never reads
+    /// `XDG_CONFIG_HOME` (#610), so neither does this.
     pub fn config_path(&self) -> Option<PathBuf> {
-        let base = match self {
-            AnirssHome::Shared => match std::env::var("XDG_CONFIG_HOME") {
-                Ok(d) if !d.is_empty() => PathBuf::from(d),
-                _ => std::env::home_dir()?.join(".config"),
-            },
-            AnirssHome::Sandbox(dir) => dir.join(".config"),
-        };
-        Some(base.join("anirss").join("config.toml"))
+        Some(
+            self.dir()?
+                .join(".config")
+                .join("anirss")
+                .join("config.toml"),
+        )
     }
 
-    /// anirss's state directory, where its CLI saves the qBittorrent password.
+    /// `~/.local/state/anirss`, where anirss's CLI saves the qBittorrent password. Fixed
+    /// under the home folder in anirss too, whatever `XDG_STATE_HOME` says.
     pub fn state_dir(&self) -> Option<PathBuf> {
-        let base = match self {
-            AnirssHome::Shared => match std::env::var("XDG_STATE_HOME") {
-                Ok(d) if !d.is_empty() => PathBuf::from(d),
-                _ => std::env::home_dir()?.join(".local").join("state"),
-            },
-            AnirssHome::Sandbox(dir) => dir.join(".local").join("state"),
-        };
-        Some(base.join("anirss"))
+        Some(self.dir()?.join(".local").join("state").join("anirss"))
     }
 
     /// Where Anibeam's own qBittorrent saves: `~/Downloads/Anime`.
@@ -73,8 +66,10 @@ impl AnirssHome {
         Some(self.dir()?.join("Downloads").join("Anime"))
     }
 
-    /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows) and the four
-    /// XDG homes inside it, made first so the child finds them. Python's user site stays
+    /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows), made first so
+    /// the child finds it, and the four XDG homes inside it. anirss itself reads none of the
+    /// XDG variables (#610); they keep anything else the child runs, such as an endpoint's
+    /// on-demand start command, out of the person's own XDG folders. Python's user site stays
     /// where it was, so an anirss installed with `pip --user` still imports. Nothing changes
     /// for the person's own home.
     pub fn apply(&self, cmd: &mut Command) {

@@ -33,23 +33,6 @@ fn settings(engine: DownloadsEngine) -> DownloadSettings {
     }
 }
 
-/// No case reads the machine's own anirss config: its saved best fit would rank these. The
-/// homes are set once for the whole binary, before any case opens a core, so no case reads
-/// the environment while another writes it.
-fn isolate() {
-    static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-    HOME.get_or_init(|| {
-        let dir =
-            std::env::temp_dir().join(format!("anibeam-native-engine-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &dir);
-            std::env::set_var("XDG_STATE_HOME", &dir);
-        }
-        dir
-    });
-}
-
 fn save(core: &Core, settings: DownloadSettings) {
     let reply = core
         .call(Call::SetDownloadSettings {
@@ -95,7 +78,6 @@ fn an_unknown_engine_reads_as_native_and_keeps_the_rest() {
 
 #[test]
 fn the_native_engine_round_trips_through_the_settings() {
-    isolate();
     let (_dir, core, c) = common::open_core();
     // A fresh install runs on the native engine (#552)
     assert_eq!(stored_engine(&core), DownloadsEngine::Native);
@@ -165,7 +147,6 @@ fn native_core() -> (
     std::sync::Arc<FakeHttp>,
 ) {
     let http = FakeHttp::new();
-    isolate();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, settings(DownloadsEngine::Native));
     core.call(Call::AddCustomEndpoint {
@@ -377,7 +358,6 @@ fn the_same_feed_gives_the_same_releases_and_groups_on_either_engine() {
     let native = search(&ncore, &nc, "Show");
 
     let http = FakeHttp::new();
-    isolate();
     let (_adir, acore, ac) = common::open_core_with_http(http.clone());
     save(&acore, settings(DownloadsEngine::Anirss));
     let items: Vec<Value> = (0..4).map(release_json).collect();
