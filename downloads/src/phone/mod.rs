@@ -860,6 +860,7 @@ pub fn unsubscribe(
     files: bool,
 ) -> Result<Reply, CoreError> {
     let gone = rules_store(&downloads.services).remove(&names)?;
+    let mut removed = 0;
     if files {
         downloads.services.handle.block_on(async {
             let engine = engine(downloads).await?;
@@ -874,13 +875,16 @@ pub fn unsubscribe(
                     .map(|t| t.hash)
                     .collect();
                 engine.control(&hashes, PhoneAction::Remove).await?;
+                removed += hashes.len() as u64;
                 // The folder goes only when the rule's torrents took the last of it.
                 let _ = std::fs::remove_dir(&rule.save_path);
             }
             Ok::<(), CoreError>(())
         })?;
     }
-    Ok(Reply::Ok)
+    // A subscription saved before #654 recorded nothing it added, so it removes nothing:
+    // the count says so rather than the phone claiming its episodes went.
+    Ok(Reply::PhoneUnsubscribed { removed })
 }
 
 /// A subscription's feed, read the way its source's kind answers: a json-feed source's

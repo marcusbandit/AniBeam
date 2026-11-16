@@ -678,7 +678,8 @@ find-rule-taken = 폴더에 다운로드 { $downloads }개, 파일 { $files }개
 find-rule-paused = 일시정지 상태라 새 에피소드가 오지 않아요. { $taken }.
 find-rule-no-feed = 소스에 피드가 없어서 새 에피소드가 오지 않아요. { $taken }.
 find-rule-active = 새 에피소드가 자동으로 다운로드돼요. { $taken }.
-find-unfollowed-deleted = { $name } 구독을 멈추고 에피소드를 삭제했어요.
+find-unfollowed-deleted = { $name } 구독을 멈추고 다운로드 { $count }개를 삭제했어요.
+find-unfollowed-none-deleted = { $name } 구독을 멈췄어요. 삭제된 에피소드는 없어요.
 find-unfollowed-kept = { $name } 구독을 멈췄어요. 에피소드는 이 휴대전화에 남아요.
 find-stop-failed = 구독 해지를 마치지 못했어요: { $error }
 

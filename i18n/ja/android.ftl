@@ -634,7 +634,8 @@ find-rule-taken = フォルダにダウンロード{ $downloads }件、ファイ
 find-rule-paused = 一時停止中のため、新エピソードは届きません。{ $taken }。
 find-rule-no-feed = ソースにフィードがないため、新エピソードは届きません。{ $taken }。
 find-rule-active = 新エピソードは自動でダウンロードされます。{ $taken }。
-find-unfollowed-deleted = 「{ $name }」のフォローをやめ、エピソードを削除しました。
+find-unfollowed-deleted = 「{ $name }」のフォローをやめ、ダウンロード{ $count }件を削除しました。
+find-unfollowed-none-deleted = 「{ $name }」のフォローをやめました。エピソードは削除されていません。
 find-unfollowed-kept = 「{ $name }」のフォローをやめました。エピソードはこの端末に残ります。
 find-stop-failed = 停止を完了できませんでした: { $error }
 

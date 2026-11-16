@@ -716,7 +716,11 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Gepauzeerd, dus er komen geen nieuwe afleveringen. { $taken }.
 find-rule-no-feed = De bron heeft geen feed, dus er komen geen nieuwe afleveringen. { $taken }.
 find-rule-active = Nieuwe afleveringen downloaden vanzelf. { $taken }.
-find-unfollowed-deleted = { $name } niet meer gevolgd en de afleveringen gewist.
+find-unfollowed-deleted = { $name } niet meer gevolgd en { $count ->
+    [one] { $count } download
+   *[other] { $count } downloads
+} gewist.
+find-unfollowed-none-deleted = { $name } niet meer gevolgd. Er zijn geen afleveringen verwijderd.
 find-unfollowed-kept = { $name } niet meer gevolgd. De afleveringen blijven op deze telefoon.
 find-stop-failed = Stoppen is niet afgerond: { $error }
 

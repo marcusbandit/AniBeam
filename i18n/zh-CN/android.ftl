@@ -638,7 +638,8 @@ find-rule-taken = 文件夹中有 { $downloads } 个下载、{ $files } 个文�
 find-rule-paused = 已暂停，不会有新剧集。{ $taken }。
 find-rule-no-feed = 它的来源没有订阅源，不会有新剧集。{ $taken }。
 find-rule-active = 新剧集会自动下载。{ $taken }。
-find-unfollowed-deleted = 已停止追更《{ $name }》，并删除了它的剧集。
+find-unfollowed-deleted = 已停止追更《{ $name }》，并删除了 { $count } 个下载。
+find-unfollowed-none-deleted = 已停止追更《{ $name }》。没有删除任何剧集。
 find-unfollowed-kept = 已停止追更《{ $name }》。它的剧集仍保留在这部手机上。
 find-stop-failed = 未能完成停止：{ $error }
 

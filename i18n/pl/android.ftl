@@ -766,7 +766,13 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Jest wstrzymana, więc nowe odcinki nie przychodzą. { $taken }.
 find-rule-no-feed = Jej źródło nie ma kanału, więc nowe odcinki nie przychodzą. { $taken }.
 find-rule-active = Nowe odcinki pobierają się same. { $taken }.
-find-unfollowed-deleted = Przestano obserwować: { $name }. Usunięto odcinki subskrypcji.
+find-unfollowed-deleted = Przestano obserwować: { $name }. Usunięto { $count ->
+    [one] { $count } pobranie
+    [few] { $count } pobrania
+    [many] { $count } pobrań
+   *[other] { $count } pobrań
+}.
+find-unfollowed-none-deleted = Przestano obserwować: { $name }. Nie usunięto żadnych odcinków.
 find-unfollowed-kept = Przestano obserwować: { $name }. Odcinki zostają na tym telefonie.
 find-stop-failed = Nie udało się zatrzymać: { $error }
 

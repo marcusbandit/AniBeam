@@ -714,7 +714,11 @@ find-rule-taken = { $downloads } download, { $files } file nella sua cartella
 find-rule-paused = È in pausa, quindi non arrivano nuovi episodi. { $taken }.
 find-rule-no-feed = La fonte non ha un feed, quindi non arrivano nuovi episodi. { $taken }.
 find-rule-active = I nuovi episodi si scaricano da soli. { $taken }.
-find-unfollowed-deleted = Hai smesso di seguire { $name } e i suoi episodi sono stati eliminati.
+find-unfollowed-deleted = Hai smesso di seguire { $name } e { $count ->
+    [one] { $count } download è stato eliminato
+   *[other] { $count } download sono stati eliminati
+}.
+find-unfollowed-none-deleted = Hai smesso di seguire { $name }. Nessun episodio è stato rimosso.
 find-unfollowed-kept = Hai smesso di seguire { $name }. I suoi episodi restano su questo telefono.
 find-stop-failed = L'interruzione non è finita: { $error }
 

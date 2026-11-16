@@ -764,7 +764,13 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Подписка на паузе, новые серии не придут. { $taken }.
 find-rule-no-feed = У источника нет ленты, новые серии не придут. { $taken }.
 find-rule-active = Новые серии скачиваются сами. { $taken }.
-find-unfollowed-deleted = Подписка на «{ $name }» отменена, её серии удалены.
+find-unfollowed-deleted = Подписка на «{ $name }» отменена, { $count ->
+    [one] удалена { $count } загрузка
+    [few] удалены { $count } загрузки
+    [many] удалено { $count } загрузок
+   *[other] удалено { $count } загрузки
+}.
+find-unfollowed-none-deleted = Подписка на «{ $name }» отменена. Ни одна серия не удалена.
 find-unfollowed-kept = Подписка на «{ $name }» отменена. Серии остаются на этом телефоне.
 find-stop-failed = Отмена подписки не завершилась: { $error }
 

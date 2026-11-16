@@ -716,7 +716,11 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Está em pausa, então não chegam novos episódios. { $taken }.
 find-rule-no-feed = A fonte não tem feed, então não chegam novos episódios. { $taken }.
 find-rule-active = Os novos episódios baixam sozinhos. { $taken }.
-find-unfollowed-deleted = Deixou de seguir { $name } e excluiu os episódios.
+find-unfollowed-deleted = Deixou de seguir { $name } e excluiu { $count ->
+    [one] { $count } download
+   *[other] { $count } downloads
+}.
+find-unfollowed-none-deleted = Deixou de seguir { $name }. Nenhum episódio foi removido.
 find-unfollowed-kept = Deixou de seguir { $name }. Os episódios continuam neste celular.
 find-stop-failed = Não foi possível concluir: { $error }
 

@@ -716,7 +716,11 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Es ist pausiert, also kommen keine neuen Folgen. { $taken }.
 find-rule-no-feed = Seine Quelle hat keinen Feed, also kommen keine neuen Folgen. { $taken }.
 find-rule-active = Neue Folgen werden von selbst geladen. { $taken }.
-find-unfollowed-deleted = Abo von { $name } beendet und seine Folgen gelöscht.
+find-unfollowed-deleted = Abo von { $name } beendet und { $count ->
+    [one] { $count } Download
+   *[other] { $count } Downloads
+} gelöscht.
+find-unfollowed-none-deleted = Abo von { $name } beendet. Es wurden keine Folgen entfernt.
 find-unfollowed-kept = Abo von { $name } beendet. Seine Folgen bleiben auf diesem Handy.
 find-stop-failed = Beenden ist nicht durchgelaufen: { $error }
 

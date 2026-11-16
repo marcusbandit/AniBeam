@@ -716,7 +716,11 @@ find-rule-taken = { $downloads ->
 find-rule-paused = Det er sat på pause, så der kommer ingen nye afsnit. { $taken }.
 find-rule-no-feed = Kilden har intet feed, så der kommer ingen nye afsnit. { $taken }.
 find-rule-active = Nye afsnit downloades af sig selv. { $taken }.
-find-unfollowed-deleted = Stoppede med at følge { $name } og slettede dens afsnit.
+find-unfollowed-deleted = Stoppede med at følge { $name } og slettede { $count ->
+    [one] { $count } download
+   *[other] { $count } downloads
+}.
+find-unfollowed-none-deleted = Stoppede med at følge { $name }. Ingen afsnit blev fjernet.
 find-unfollowed-kept = Stoppede med at følge { $name }. Dens afsnit bliver på denne telefon.
 find-stop-failed = Stoppet blev ikke færdigt: { $error }
 
