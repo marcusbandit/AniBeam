@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -221,7 +221,8 @@ fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
 /// A file there under the series path there, as the same path under the
 /// series path here: a season folder there stays a season folder here,
 /// joined with the separator of the system here. A path that climbs out of
-/// the series is no file of it.
+/// the series is no file of it, and neither is one with a part that names
+/// a root, a drive or a parent here, which a push would follow out of it.
 fn moved(file: &str, there: &str, here: &str) -> Option<String> {
     let file = normalise(file);
     let rest = file.strip_prefix(there)?;
@@ -229,8 +230,15 @@ fn moved(file: &str, there: &str, here: &str) -> Option<String> {
         return None;
     }
     let mut out = PathBuf::from(here);
-    for segment in rest.split(['/', '\\']).filter(|s| !s.is_empty()) {
-        if segment == "." || segment == ".." {
+    for segment in rest
+        .split(['/', '\\'])
+        .filter(|s| !s.is_empty() && *s != ".")
+    {
+        let mut parts = Path::new(segment).components();
+        if !matches!(
+            (parts.next(), parts.next()),
+            (Some(Component::Normal(_)), None)
+        ) {
             return None;
         }
         out.push(segment);
@@ -698,7 +706,12 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         assert_eq!(
-            moved("/m/Show/Season 1/Show - 01.mkv", "/m/Show", "/srv/anime/Show").as_deref(),
+            moved(
+                "/m/Show/Season 1/Show - 01.mkv",
+                "/m/Show",
+                "/srv/anime/Show"
+            )
+            .as_deref(),
             Some(here.as_str())
         );
         assert_eq!(
@@ -736,6 +749,23 @@ mod tests {
         assert_eq!(
             moved("/m/Show/../Other/x.mkv", "/m/Show", "/srv/anime/Show"),
             None
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            moved("/m/Show/D:/Anime/Other/x.mkv", "/m/Show", "C:\\Anime\\Show"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_dot_in_the_path_stays_in_the_same_folder() {
+        let here = Path::new("/srv/anime/Show")
+            .join("Show - 01.mkv")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            moved("/m/Show/./Show - 01.mkv", "/m/Show", "/srv/anime/Show").as_deref(),
+            Some(here.as_str())
         );
     }
 
