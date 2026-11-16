@@ -2,101 +2,214 @@ name: Nightly
 
 # What main is becoming, as a build of its own. A nightly is the frontier channel, not a
 # daily timer: it is cut on demand, by running this workflow, when main holds something worth
-# trying. It builds only when the app changed on main since the last nightly; `force` builds
-# regardless. Each nightly is versioned from the workspace version, 2.5.0-nightly.20261030.12
-# (the day and this workflow's run number), and published as the pre-release
+# trying. The builds happen before that: every merge to main builds the apps whose files
+# changed since their last nightly, unless a newer build already covers them, and keeps the
+# files on its run (#1069). Running the workflow then publishes the newest such build, built
+# from the commit its release targets, and builds here only when no finished build covers
+# main yet; `force` always builds here. Nothing changed since the last nightly publishes
+# nothing. Each nightly is versioned from the workspace version, 2.5.0-nightly.20261030.12
+# (the day and the number of the run that built it), and published as the pre-release
 # v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the Nightly
 # track hears about it; the Stable track never does. release.yml promotes the newest nightly
 # to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under Releases,
 # has the whole line.
 #
 # The phone rides the same train under its own number: when the phone or what it builds on
-# changed since its last nightly, the same run builds its APK from apps/android/Cargo.toml's
-# version, 2.4.3-nightly.20261030.12, and publishes it as android-v2.4.3-nightly.20261030.12,
-# with the iPhone's unsigned IPA (Anibeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
+# changed since its last nightly, a build of its APK from apps/android/Cargo.toml's version,
+# 2.4.3-nightly.20261030.12, is published as android-v2.4.3-nightly.20261030.12, with the
+# iPhone's unsigned IPA (Anibeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
+#
+# Publishing takes the NIGHTLY_TOKEN secret when it is set, a fine-grained token with Contents
+# and Workflows write: the workflow's own token may not tag a commit once a workflow file
+# changed since the last nightly (#1011).
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       force:
-        description: Build even if the apps have not changed on main since their last nightlies
+        description: Build here even if the apps have not changed, or a build on main already covers them
         type: boolean
         default: false
 
-# One nightly at a time; a second run waits for the first.
+# One nightly at a time, and one build of main at a time; a second run waits for the first.
+# Builds queue in a group of their own, so a merge never pushes a waiting nightly out.
 concurrency:
-  group: nightly
+  group: nightly-${{ github.event_name }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   gate:
     runs-on: ubuntu-latest
     outputs:
+      # Build here, then for a run of the workflow publish: the desktop apps' and the phone's.
       build: ${{ steps.gate.outputs.build }}
+      publish: ${{ steps.gate.outputs.publish }}
+      phone: ${{ steps.gate.outputs.phone }}
+      phone_publish: ${{ steps.gate.outputs.phone_publish }}
+      # What a publish ships: the run whose files it takes, their commit and their version.
+      run: ${{ steps.gate.outputs.run }}
       sha: ${{ steps.gate.outputs.sha }}
       version: ${{ steps.gate.outputs.version }}
       previous: ${{ steps.gate.outputs.previous }}
-      phone: ${{ steps.gate.outputs.phone }}
+      phone_run: ${{ steps.gate.outputs.phone_run }}
+      phone_sha: ${{ steps.gate.outputs.phone_sha }}
       phone_version: ${{ steps.gate.outputs.phone_version }}
       phone_previous: ${{ steps.gate.outputs.phone_previous }}
+      phone_ipa: ${{ steps.gate.outputs.phone_ipa }}
+      # What this run builds as, recorded for a later nightly to publish.
+      here_sha: ${{ steps.gate.outputs.here_sha }}
+      here_version: ${{ steps.gate.outputs.here_version }}
+      here_phone_version: ${{ steps.gate.outputs.here_phone_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Is a nightly due
+      - name: Is a build or a nightly due
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
           FORCE: ${{ inputs.force || 'false' }}
         run: |
+          # What each app is built from, and the workflows that build it: a change to either
+          # means a build of main no longer covers main.
+          desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
+          desktop_build=(.github/workflows/nightly.yml .github/workflows/macos.yml .github/workflows/linux.yml .github/workflows/windows.yml .github/workflows/arch.yml)
+          phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)
+          phone_build=(.github/workflows/nightly.yml .github/workflows/android-apk.yml .github/workflows/ios-ipa.yml)
           sha="$(git rev-parse HEAD)"
-          base="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
-          version="$base-nightly.$(date -u +%Y%m%d).$GITHUB_RUN_NUMBER"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          last="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | "\(.tagName) \(.createdAt)"')"
-          build=true
-          if [ -n "$last" ]; then
-            read -r tag _ <<<"$last"
-            echo "previous=$tag" >> "$GITHUB_OUTPUT"
-            git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
-            if git diff --quiet "$tag" "$sha" -- contract foundation net library releases metadata trackers downloads playback host core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
-              echo "The app has not changed on main since $tag."
-              build=false
-            fi
+          day="$(date -u +%Y%m%d)"
+          here_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
+          here_phone_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
+          {
+            echo "here_sha=$sha"
+            echo "here_version=$here_version"
+            echo "here_phone_version=$here_phone_version"
+          } >> "$GITHUB_OUTPUT"
+
+          # The builds of main, newest first. A dispatch first waits for one still running, so
+          # it publishes that build rather than building the same commit a second time.
+          if [ "$EVENT" != push ]; then
+            for status in in_progress queued; do
+              gh run list -w nightly.yml -b main -e push -s "$status" --json databaseId --jq '.[].databaseId'
+            done | while read -r id; do
+              echo "Waiting for the build of main in run $id."
+              gh run watch "$id" -i 30 < /dev/null > /dev/null 2>&1 || true
+            done
           fi
-          if [ "$FORCE" = true ]; then build=true; fi
-          echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "build=$build, $version at ${sha::7}"
+          builds="$RUNNER_TEMP/builds"
+          mkdir -p "$builds"
+          gh run list -w nightly.yml -b main -e push -s completed -L 30 --json databaseId --jq '.[].databaseId' > "$builds/order"
+
+          # load ID: fetches the record a build's last job left (the commit, the versions, and
+          # how each app's build went), once, when a decision first needs it.
+          load() {
+            [ -f "$builds/$1/build.env" ] && return 0
+            [ -e "$builds/$1.none" ] && return 1
+            gh run download "$1" -n nightly-build -D "$builds/$1" < /dev/null > /dev/null 2>&1 && return 0
+            touch "$builds/$1.none"; return 1
+          }
+          field() { sed -n "s/^$2=//p" "$builds/$1/build.env"; }
+
+          # covering KEY INPUTS...: the newest build of main that tried the KEY app, when nothing
+          # in INPUTS changed on main since its commit. Prints its run id when it succeeded and
+          # failed:ID when it failed, or nothing. Records from before builds said failed are
+          # passed over.
+          covering() {
+            local key="$1"; shift
+            local id result
+            while read -r id; do
+              load "$id" || continue
+              result="$(field "$id" "$key")"
+              [ "$result" = success ] || [ "$result" = failed ] || continue
+              if git diff --quiet "$(field "$id" sha)" "$sha" -- "$@"; then
+                if [ "$result" = success ]; then echo "$id"; else echo "failed:$id"; fi
+              fi
+              return 0
+            done < "$builds/order"
+          }
+
+          # decide APP KEY VERSION_FIELD PREVIOUS: sets build, publish and run (the build of
+          # main a publish takes its files from, empty for this run). Changed means APP_paths
+          # changed since the app's last nightly, PREVIOUS; a build of main that covers the
+          # change, with nothing in APP_paths or APP_build changed since, is reused rather than
+          # built again. A merge does not build again what the last build of main failed to
+          # build from the same files; a dispatch does.
+          decide() {
+            local app="$1" key="$2" field_name="$3" previous="$4"
+            local -n paths="${app}_paths" inputs="${app}_build"
+            local changed=true reuse="" failed=""
+            if [ -n "$previous" ]; then
+              git fetch -q origin "refs/tags/$previous:refs/tags/$previous"
+              if git diff --quiet "$previous" "$sha" -- "${paths[@]}"; then changed=false; fi
+            fi
+            if [ "$changed" = true ] && [ "$FORCE" != true ]; then reuse="$(covering "$key" "${paths[@]}" "${inputs[@]}")"; fi
+            if [ "${reuse#failed:}" != "$reuse" ]; then failed="${reuse#failed:}"; reuse=""; fi
+            # A reused build must be newer than the last nightly, or its number would not climb.
+            if [ -n "$reuse" ] && [ -n "$previous" ]; then
+              local v n p
+              v="$(field "$reuse" "$field_name")"; n="${v##*.}"; p="${previous##*.}"
+              if ! [[ "$n" =~ ^[0-9]+$ && "$p" =~ ^[0-9]+$ ]] || (( n <= p )); then reuse=""; fi
+            fi
+            build=false; publish=false; run="$reuse"
+            if [ "$EVENT" = push ]; then
+              if [ "$changed" = true ] && [ -z "$reuse" ] && [ -z "$failed" ]; then build=true; fi
+            elif [ "$changed" = true ] || [ "$FORCE" = true ]; then
+              publish=true
+              if [ -z "$reuse" ]; then build=true; fi
+            fi
+            echo "$app: changed since ${previous:-the start}: $changed, covered by run ${reuse:-none}, failed in run ${failed:-none}, build here: $build, publish: $publish"
+          }
+
+          last="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | .tagName')"
+          decide desktop desktop version "$last"
+          {
+            echo "build=$build"
+            echo "publish=$publish"
+            echo "previous=$last"
+            if [ -n "$run" ]; then
+              echo "run=$run"
+              echo "sha=$(field "$run" sha)"
+              echo "version=$(field "$run" version)"
+            else
+              echo "run=$GITHUB_RUN_ID"
+              echo "sha=$sha"
+              echo "version=$here_version"
+            fi
+          } >> "$GITHUB_OUTPUT"
 
           # The phone: its own version and its own last nightly. Its first nightly's notes
           # start at its newest release made by hand.
-          phone_base="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)"
-          phone_version="$phone_base-nightly.$(date -u +%Y%m%d).$GITHUB_RUN_NUMBER"
-          echo "phone_version=$phone_version" >> "$GITHUB_OUTPUT"
           tags="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("android-v"))] | sort_by(.createdAt) | .[].tagName')"
           last="$(grep -E '^android-v[0-9.]+-nightly\.' <<<"$tags" | tail -n1 || true)"
-          phone=true
-          if [ -n "$last" ]; then
-            echo "phone_previous=$last" >> "$GITHUB_OUTPUT"
-            git fetch -q origin "refs/tags/$last:refs/tags/$last"
-            if git diff --quiet "$last" "$sha" -- apps/android contract foundation net library releases metadata trackers downloads playback host core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
-              echo "The phone has not changed on main since $last."
-              phone=false
-            fi
-          else
-            hand="$(grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" | sort -V | tail -n1 || true)"
-            if [ -n "$hand" ]; then echo "phone_previous=$hand" >> "$GITHUB_OUTPUT"; fi
+          decide phone phone phone_version "$last"
+          if [ -z "$last" ]; then
+            last="$(grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" | sort -V | tail -n1 || true)"
           fi
-          if [ "$FORCE" = true ]; then phone=true; fi
-          echo "phone=$phone" >> "$GITHUB_OUTPUT"
-          echo "phone=$phone, $phone_version at ${sha::7}"
+          {
+            echo "phone=$build"
+            echo "phone_publish=$publish"
+            echo "phone_previous=$last"
+            if [ -n "$run" ]; then
+              echo "phone_run=$run"
+              echo "phone_sha=$(field "$run" sha)"
+              echo "phone_version=$(field "$run" phone_version)"
+              echo "phone_ipa=$([ "$(field "$run" ios)" = success ] && echo true || echo false)"
+            else
+              echo "phone_run=$GITHUB_RUN_ID"
+              echo "phone_sha=$sha"
+              echo "phone_version=$here_phone_version"
+            fi
+          } >> "$GITHUB_OUTPUT"
 
   macos:
     needs: gate
@@ -104,8 +217,8 @@ jobs:
     uses: ./.github/workflows/macos.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_version }}
 
   linux:
     needs: gate
@@ -113,8 +226,8 @@ jobs:
     uses: ./.github/workflows/linux.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_version }}
 
   windows:
     needs: gate
@@ -122,8 +235,8 @@ jobs:
     uses: ./.github/workflows/windows.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_version }}
 
   # The AUR tarball is built only to show it still packs (#993): a pull request builds it only
   # under the `full ci` label (#986), so a rolling Arch update that breaks it shows up here,
@@ -134,8 +247,8 @@ jobs:
     uses: ./.github/workflows/arch.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_version }}
 
   android:
     needs: gate
@@ -143,8 +256,8 @@ jobs:
     uses: ./.github/workflows/android-apk.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.phone_version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_phone_version }}
 
   # The phone's unsigned IPA, for AltStore, SideStore and LiveContainer to sign. It rides the
   # phone's nightly; a failed IPA build never holds the APK back.
@@ -154,29 +267,74 @@ jobs:
     uses: ./.github/workflows/ios-ipa.yml
     secrets: inherit
     with:
-      ref: ${{ needs.gate.outputs.sha }}
-      version: ${{ needs.gate.outputs.phone_version }}
+      ref: ${{ needs.gate.outputs.here_sha }}
+      version: ${{ needs.gate.outputs.here_phone_version }}
       nightly: true
+
+  # A build of main records what it built, so a later nightly can publish it without building
+  # again. An app counts as built only when every one of its builds succeeded.
+  record:
+    needs: [gate, macos, linux, windows, android, ios]
+    if: ${{ !cancelled() && github.event_name == 'push' && (needs.gate.outputs.build == 'true' || needs.gate.outputs.phone == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the record
+        env:
+          SHA: ${{ needs.gate.outputs.here_sha }}
+          VERSION: ${{ needs.gate.outputs.here_version }}
+          PHONE_VERSION: ${{ needs.gate.outputs.here_phone_version }}
+          DESKTOP: ${{ (needs.gate.outputs.build != 'true' && 'skipped') || (needs.macos.result == 'success' && needs.linux.result == 'success' && needs.windows.result == 'success' && 'success') || 'failed' }}
+          PHONE: ${{ (needs.gate.outputs.phone != 'true' && 'skipped') || (needs.android.result == 'success' && 'success') || 'failed' }}
+          IOS: ${{ needs.ios.result }}
+        run: |
+          mkdir record
+          printf 'sha=%s\nversion=%s\nphone_version=%s\ndesktop=%s\nphone=%s\nios=%s\n' \
+            "$SHA" "$VERSION" "$PHONE_VERSION" "$DESKTOP" "$PHONE" "$IOS" | tee record/build.env
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-build
+          path: record/build.env
 
   publish:
     needs: [gate, macos, linux, windows]
+    # Files built here have to have built; files from a build of main already did.
+    if: >-
+      !cancelled() && needs.gate.outputs.publish == 'true' && (needs.gate.outputs.build != 'true'
+      || (needs.macos.result == 'success' && needs.linux.result == 'success' && needs.windows.result == 'success'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
+      # Each platform by name: the run also holds the AUR tarball, which is not published.
       - uses: actions/download-artifact@v4
         with:
-          pattern: anibeam-*
-          merge-multiple: true
+          name: anibeam-macos-arm64
           path: dist
+          run-id: ${{ needs.gate.outputs.run }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: anibeam-linux-x86_64
+          path: dist
+          run-id: ${{ needs.gate.outputs.run }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: anibeam-windows-x64
+          path: dist
+          run-id: ${{ needs.gate.outputs.run }}
+          github-token: ${{ github.token }}
 
       # A draft first, made public only once every file is on it, so an app that checks
       # meanwhile never finds a nightly without its download.
       - name: Publish the nightly
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_TOKEN || github.token }}
           VERSION: ${{ needs.gate.outputs.version }}
           SHA: ${{ needs.gate.outputs.sha }}
           PREVIOUS: ${{ needs.gate.outputs.previous }}
@@ -196,7 +354,7 @@ jobs:
 
       - name: Keep the ten newest nightlies
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_TOKEN || github.token }}
         run: |
           gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
@@ -210,26 +368,35 @@ jobs:
   publish-phone:
     needs: [gate, android, ios]
     # The IPA is optional: only the APK build has to succeed.
-    if: ${{ !cancelled() && needs.android.result == 'success' }}
+    if: >-
+      !cancelled() && needs.gate.outputs.phone_publish == 'true'
+      && (needs.gate.outputs.phone != 'true' || needs.android.result == 'success')
     runs-on: ubuntu-latest
+    env:
+      # Whether the IPA is there: built here, or built by the build of main this publishes.
+      IPA: ${{ (needs.gate.outputs.phone == 'true' && needs.ios.result == 'success') || (needs.gate.outputs.phone != 'true' && needs.gate.outputs.phone_ipa == 'true') }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.gate.outputs.sha }}
+          ref: ${{ needs.gate.outputs.phone_sha }}
 
       - uses: actions/download-artifact@v4
         with:
           name: phone-apk
           path: dist
+          run-id: ${{ needs.gate.outputs.phone_run }}
+          github-token: ${{ github.token }}
 
       - uses: actions/download-artifact@v4
-        if: needs.ios.result == 'success'
+        if: env.IPA == 'true'
         with:
           name: phone-ipa
           path: ipa
+          run-id: ${{ needs.gate.outputs.phone_run }}
+          github-token: ${{ github.token }}
 
       - name: Name the IPA for this nightly
-        if: needs.ios.result == 'success'
+        if: env.IPA == 'true'
         env:
           VERSION: ${{ needs.gate.outputs.phone_version }}
         # Anibeam-Nightly-: the site lists only IPAs built with the nightly bundle id (site/tools/altstore.py).
@@ -237,9 +404,9 @@ jobs:
 
       - name: Publish the phone's nightly
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_TOKEN || github.token }}
           VERSION: ${{ needs.gate.outputs.phone_version }}
-          SHA: ${{ needs.gate.outputs.sha }}
+          SHA: ${{ needs.gate.outputs.phone_sha }}
           PREVIOUS: ${{ needs.gate.outputs.phone_previous }}
         run: |
           ls -la dist
@@ -260,7 +427,7 @@ jobs:
 
       - name: Keep the ten newest phone nightlies
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_TOKEN || github.token }}
         run: |
           gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^android-v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
