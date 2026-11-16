@@ -2195,8 +2195,8 @@ impl Find {
 
 impl Find {
     /// Stops following the open show: every subscription that fills its folder goes, and
-    /// with `files` what downloaded into that folder too, episodes included. The desktop's
-    /// Unsubscribe, after the same confirm.
+    /// with `files` the episodes those subscriptions downloaded too, while what was got by
+    /// hand into the folder stays. The desktop's Unsubscribe, after the same confirm.
     fn unfollow(&mut self, files: bool) {
         let busy = self
             .data()
@@ -2228,13 +2228,19 @@ impl Find {
             move |f, answer| {
                 f.with_data(|d| d.set_busy(false));
                 match answer {
-                    Ok(_) => {
+                    Ok(reply) => {
                         f.rules.retain(|r| !names.contains(&r.name));
-                        f.line(&unfollowed_line(&name, files), "");
+                        // Only what the core says it took counts as deleted: a subscription
+                        // saved before it noted its downloads removes none (#654).
+                        let removed = match reply {
+                            Reply::PhoneUnsubscribed { removed } => removed,
+                            _ => 0,
+                        };
+                        f.line(&unfollowed_line(&name, files.then_some(removed)), "");
                     }
-                    // The core takes the subscription out before it deletes, so a failure
-                    // can leave it gone with its downloads still there: the rules are read
-                    // again and the page says what is left.
+                    // The core takes the subscription out only once its downloads went, so
+                    // a failure part way keeps it with what is left: the rules are read
+                    // again and the page says so.
                     Err(e) => f.line("", &tr!("find-stop-failed", error = words(&e))),
                 }
                 f.draw_show();
@@ -2442,12 +2448,13 @@ fn rule_line(r: &SubscriptionRule) -> String {
     tr!(id, taken = taken(r))
 }
 
-/// What the page says once a show is no longer followed.
-fn unfollowed_line(name: &str, files: bool) -> String {
-    if files {
-        tr!("find-unfollowed-deleted", name = name)
-    } else {
-        tr!("find-unfollowed-kept", name = name)
+/// What the page says once a show is no longer followed: `removed` is how many
+/// downloads went, `None` when the episodes were kept.
+fn unfollowed_line(name: &str, removed: Option<u64>) -> String {
+    match removed {
+        None => tr!("find-unfollowed-kept", name = name),
+        Some(0) => tr!("find-unfollowed-none-deleted", name = name),
+        Some(count) => tr!("find-unfollowed-deleted", name = name, count = count),
     }
 }
 
@@ -2732,7 +2739,12 @@ mod tests {
 
     #[test]
     fn stopping_says_what_happened_to_the_episodes() {
-        assert!(unfollowed_line("Frieren", false).contains("stay on this phone"));
-        assert!(unfollowed_line("Frieren", true).contains("deleted the downloads in its folder"));
+        assert!(unfollowed_line("Frieren", None).contains("stay on this phone"));
+        assert!(unfollowed_line("Frieren", Some(1)).contains("deleted 1 download."));
+        assert!(unfollowed_line("Frieren", Some(3)).contains("deleted 3 downloads."));
+        // Nothing went, so the line never says it did.
+        let none = unfollowed_line("Frieren", Some(0));
+        assert!(none.contains("No episodes were removed"), "{none}");
+        assert!(!none.contains("deleted"), "{none}");
     }
 }

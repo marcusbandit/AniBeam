@@ -817,10 +817,10 @@ find-dropped = { $count ->
 find-following = Following
 # { $name } is the subscription's name.
 find-stop-following-ask = Stop following { $name }?
-find-unfollow-explain = New episodes stop downloading. What is in its folder can stay, or go with it: every download there, episodes you got by hand included.
+find-unfollow-explain = New episodes stop downloading. The episodes it downloaded can stay, or go with it. Episodes you got by hand stay either way.
 find-stop-following = Stop following
 find-stop-keep = Stop, keep the episodes
-find-stop-delete = Stop and delete its folder's downloads
+find-stop-delete = Stop and delete its episodes
 find-rule-taken = { $downloads ->
     [one] { $downloads } download
    *[other] { $downloads } downloads
@@ -832,7 +832,12 @@ find-rule-taken = { $downloads ->
 find-rule-paused = It is paused, so no new episodes come. { $taken }.
 find-rule-no-feed = Its source has no feed, so no new episodes come. { $taken }.
 find-rule-active = New episodes download by themselves. { $taken }.
-find-unfollowed-deleted = Stopped following { $name } and deleted the downloads in its folder.
+# { $count } is how many downloads went with it, at least one.
+find-unfollowed-deleted = Stopped following { $name } and deleted { $count ->
+    [one] { $count } download
+   *[other] { $count } downloads
+}.
+find-unfollowed-none-deleted = Stopped following { $name }. No episodes were removed.
 find-unfollowed-kept = Stopped following { $name }. Its episodes stay on this phone.
 find-stop-failed = Stopping did not finish: { $error }
 

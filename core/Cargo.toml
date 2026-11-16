@@ -47,9 +47,12 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+# The phone's torrent engine, the one downloads runs: core/tests/phone_unsubscribe.rs makes
+# its test torrents with it. A dev-dependency cannot wait for the phone feature.
+librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
 
 [features]
-phone = ["anibeam-downloads/phone", "anibeam-trackers/phone"]
+phone = ["anibeam-downloads/phone", "anibeam-trackers/phone", "dep:librqbit"]
 cast = ["anibeam-playback/cast"]
 
 [dev-dependencies]

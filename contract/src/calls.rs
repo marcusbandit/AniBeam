@@ -707,7 +707,8 @@ pub enum Call {
         name: Option<String>,
     },
     PhoneRules,
-    /// Takes subscriptions out; with `files`, their downloads and episodes too.
+    /// Takes subscriptions out; with `files`, the downloads they added and their episodes
+    /// too, never one got by hand. Answers `PhoneUnsubscribed`.
     PhoneUnsubscribe {
         names: Vec<String>,
         files: bool,
@@ -1038,6 +1039,11 @@ pub enum Reply {
     },
     PhoneRules {
         rules: Vec<SubscriptionRule>,
+    },
+    /// What `PhoneUnsubscribe` took off the phone: the downloads the subscriptions had
+    /// added, none without `files` (#654).
+    PhoneUnsubscribed {
+        removed: u64,
     },
     PhoneNetCheck {
         checks: Vec<NetCheck>,
