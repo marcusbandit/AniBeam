@@ -176,6 +176,14 @@ jobs:
         env:
           TESTS: ${{ steps.affected.outputs.tests }}
         run: |
+          status=0
           for t in $TESTS; do
-            cargo nextest run --locked --profile ci -p "${t%%:*}" --test "${t#*:}"
+            cargo nextest run --locked --profile ci -p "${t%%:*}" --test "${t#*:}" || { status=1; echo "::error::$t failed"; }
           done
+          exit $status
+
+      # A lock change that reaches no crate runs no cargo step above, so --locked never checks
+      # it against the manifests. This does, without building anything.
+      - name: Lock is current
+        if: steps.affected.outputs.lock == 'true'
+        run: cargo metadata --locked --format-version 1 >/dev/null

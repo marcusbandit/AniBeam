@@ -35,7 +35,7 @@ for arg in "$@"; do
     --quick) quick=1 ;;
     --cargo) cargo=1 ;;
     --all) all=1 ;;
-    -h | --help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "local-ci: unknown option $arg" >&2; exit 2 ;;
   esac
 done
@@ -95,12 +95,13 @@ if [ $cargo -eq 1 ]; then
   step "affected crates" python3 .github/affected-crates.py "${pick[@]}" --output "$picked"
   # A failed selection, which its step reports, checks every crate rather than none.
   grep -q '^crates=' "$picked" || python3 .github/affected-crates.py --all --output "$picked" >/dev/null
-  crates=() alone=() core=false packages=() targets=() docs=()
+  crates=() alone=() core=false packages=() targets=() docs=() lock=false
   if grep -q '^crates=' "$picked"; then
     read -ra crates <<<"$(sed -n 's/^crates=//p' "$picked")"
     read -ra alone <<<"$(sed -n 's/^alone=//p' "$picked")"
     read -ra targets <<<"$(sed -n 's/^tests=//p' "$picked")"
     read -ra doc <<<"$(sed -n 's/^doc=//p' "$picked")"
+    lock="$(sed -n 's/^lock=//p' "$picked")"
     core="$(sed -n 's/^core=//p' "$picked")"
     for crate in "${crates[@]}"; do packages+=(-p "$crate"); done
     for crate in "${doc[@]}"; do docs+=(-p "$crate"); done
@@ -144,6 +145,10 @@ if [ $cargo -eq 1 ]; then
   for t in "${targets[@]}"; do
     step "test ${t%%:*} --test ${t#*:}" "${run_tests[@]}" -p "${t%%:*}" --test "${t#*:}"
   done
+  # A lock change that reaches no crate ran nothing with --locked (ci.yml says more).
+  if [ "$lock" = true ]; then
+    step "lock is current" cargo metadata --locked --format-version 1 >/dev/null
+  fi
   [ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
 fi
 

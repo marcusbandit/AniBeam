@@ -13,7 +13,7 @@ it; cargo never builds a dev-dependency for the user's own users. The crates, th
   affected-crates.py --self-test       the cases at the bottom of this file
 
   --skip NAME       leave a crate out of the answer, e.g. one the machine cannot build
-  --output FILE     also write crates=, alone=, core=, tests= and doc= lines to FILE
+  --output FILE     also write crates=, alone=, core=, tests=, doc= and lock= lines to FILE
   --github-output   the same into $GITHUB_OUTPUT
 
 Prints one crate per line on stdout, dependencies first, and why each was picked (and what
@@ -136,8 +136,8 @@ class Workspace:
                 "dir": d,
                 "reads": from_root(ci.get("reads") or []),
                 "test_reads": {t: from_root(rs) for t, rs in (ci.get("test-reads") or {}).items()},
-                "doctests": any(has_doctest(t["src_path"]) for t in p["targets"]
-                                if set(t["kind"]) & {"lib", "rlib", "dylib", "proc-macro"}),
+                "lib_roots": [t["src_path"] for t in p["targets"]
+                              if set(t["kind"]) & {"lib", "rlib", "dylib", "proc-macro"}],
                 "deps": p["dependencies"],
             }
         for c in crates.values():
@@ -259,12 +259,15 @@ def select(ws, files, everything=False, skip=(), lock=None):
     # A crate checked in full runs every test target anyway.
     alone_tests = []
     for (n, t), f in sorted(tests.items()):
-        if n in picked or n in skip:
+        if n in picked:
+            continue
+        if n in skip:
+            why.append(f"left out: {n} --test {t}, skipped on this machine")
             continue
         why.append(f"{n} --test {t} only: {f} changed")
         alone_tests.append(f"{n}:{t}")
-    tested = {t.split(":")[0] for t in alone_tests}
-    unpicked = sorted(set(ws.crates) - set(picked) - tested)
+    # A crate that runs one test target only is still not checked: no clippy, no other test.
+    unpicked = sorted(set(ws.crates) - set(picked))
     if unpicked:
         why.append("not checked: " + ", ".join(unpicked))
     crates = ws.order(names)
@@ -298,11 +301,14 @@ def lock_users(old_text, new_text, members):
             # "name", "name version" or "name version (source)", as Cargo.lock spells a use.
             m = re.fullmatch(r"(\S+)(?: (\S+))?(?: \((.+)\))?", spec)
             if not m:
-                return ("?", spec, "")
+                raise ValueError(spec)
             name, version, source = m.groups()
             found = [i for i in by_name.get(name, [])
                      if (version is None or i[1] == version) and (source is None or i[2] == source)]
-            return found[0] if len(found) == 1 else ("?", spec, "")
+            # A use that names no package, or several, would drop an edge and miss its users.
+            if len(found) != 1:
+                raise ValueError(spec)
+            return found[0]
 
         uses = {}
         sign = {}
@@ -314,7 +320,7 @@ def lock_users(old_text, new_text, members):
     try:
         old_uses, old_sign = graph(old)
         new_uses, new_sign = graph(new)
-    except (KeyError, TypeError, AttributeError):
+    except (KeyError, TypeError, AttributeError, ValueError):
         return None
     changed = {i for i in set(old_sign) | set(new_sign) if old_sign.get(i) != new_sign.get(i)}
     reached = set()
@@ -365,17 +371,31 @@ def is_doctest(info):
     return not words or not any(w in NOT_RUST for w in words)
 
 
+# Doc forms rustdoc can run code from that doc_blocks does not read: a block comment, docs from
+# an attribute (#[doc = include_str!("../README.md")]), and an indented code block, a doc line
+# indented four spaces after a blank doc line. Any of them counts as a doctest, so a mistake
+# here runs cargo test --doc for nothing rather than leaving a doctest unrun.
+OTHER_DOCS = re.compile(r"^\s*(/\*\*[^*/]|/\*!|#!?\[doc\s*=)", re.M)
+INDENTED = re.compile(r"^\s*//[/!][ \t]*\n\s*//[/!] {5,}\S", re.M)
+
+
 def has_doctest(lib_root):
-    """Whether any .rs file in the library's folder has a block rustdoc runs. Over-counts a file
-    the library never includes, which only runs cargo test --doc for nothing."""
+    """Whether any .rs file in the library's folder may hold a doctest. Over-counts a file the
+    library never includes, and some prose, which only runs cargo test --doc for nothing. A
+    library that cannot be read counts as having one."""
+    if not os.path.isfile(lib_root):
+        return True
     top = os.path.dirname(lib_root)
     for here, subdirs, files in os.walk(top):
         subdirs[:] = [d for d in subdirs if d != "target"]
         for f in files:
             if f.endswith(".rs"):
                 with open(os.path.join(here, f), errors="replace") as fh:
-                    if any(is_doctest(i) for i in doc_blocks(fh.read())):
-                        return True
+                    text = fh.read()
+                if any(is_doctest(i) for i in doc_blocks(text)):
+                    return True
+                if OTHER_DOCS.search(text) or INDENTED.search(text):
+                    return True
     return False
 
 
@@ -446,7 +466,12 @@ def main():
             f.write(f"alone={' '.join(alone)}\n")
             f.write(f"core={'true' if 'anibeam-core' in crates else 'false'}\n")
             f.write(f"tests={' '.join(tests)}\n")
-            f.write(f"doc={' '.join(n for n in crates if ws.crates[n].get('doctests', True))}\n")
+            # A lock change is checked against the manifests even when it reaches no crate.
+            f.write(f"lock={'true' if 'Cargo.lock' in files or a.all else 'false'}\n")
+            # Worked out for the picked crates only, since it reads their sources.
+            doc = [n for n in crates
+                   if any(has_doctest(r) for r in ws.crates[n].get("lib_roots", ["?"]))]
+            f.write(f"doc={' '.join(doc)}\n")
     return 0
 
 
@@ -627,6 +652,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee"
 """
 LOCK_CASES = [
+    # A use that names no package in the lock: unknown, so every crate.
+    (LOCK.replace('dependencies = ["core", "qt"]', 'dependencies = ["core", "gone"]'), None),
     # A dependency only the shell takes reaches the shell alone.
     (SHELL_DEP, {"shell"}),
     # A bump deep down reaches every member that uses it, through the packages between.
@@ -645,6 +672,9 @@ LOCK_CASES = [
 
 
 def self_test():
+    global SCRATCH
+    import tempfile
+    SCRATCH = tempfile.mkdtemp(prefix="affected-crates-")
     ws = Workspace(FAKE)
     bad = 0
     for files, want in CASES:
@@ -714,10 +744,33 @@ def self_test():
     if [is_doctest(b) for b in blocks] != [True, False, True, False]:
         bad += 1
         print(f"self-test: doc blocks read as {blocks}", file=sys.stderr)
+    for text, want in [("/// ```\n/// x\n/// ```\n", True), ("/// ```text\n/// ```\n", False),
+                       ('#![doc = include_str!("../README.md")]\n', True),
+                       ("/** Docs\n */\n", True), ("///\n///     let a = 1;\n", True),
+                       ("/// - a\n///   b\n", False), ("// plain\n", False)]:
+        total += 1
+        d = os.path.join(SCRATCH, "doc-probe")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "lib.rs"), "w") as fh:
+            fh.write(text)
+        if has_doctest(os.path.join(d, "lib.rs")) != want:
+            bad += 1
+            print(f"self-test: has_doctest({text!r}) should be {want}", file=sys.stderr)
     total += 1
-    if real.crates["anibeam-cli"].get("doctests"):
+    if not has_doctest("/no/such/lib.rs"):
+        bad += 1
+        print("self-test: an unreadable library should count as having doctests", file=sys.stderr)
+    total += 1
+    if any(has_doctest(r) for r in real.crates["anibeam-cli"]["lib_roots"]):
         bad += 1
         print("self-test: the cli has no library, so no doctests", file=sys.stderr)
+    got, _, tests, why = select(ws, ["apps/android/changes/1-x.md"], skip=["core"])
+    total += 1
+    if tests or not any("left out: core --test changelog" in w for w in why):
+        bad += 1
+        print(f"self-test: a skipped test target should say so: {why}", file=sys.stderr)
+    import shutil
+    shutil.rmtree(SCRATCH, ignore_errors=True)
     print(f"self-test: {total - bad} of {total} passed", file=sys.stderr)
     return 1 if bad else 0
 
