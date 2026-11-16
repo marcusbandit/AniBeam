@@ -439,7 +439,7 @@ core-recommended-reading-suggestions = 正在读取推荐番剧
 
 core-recommended-no-anime = { -anilist } 上没有动画 { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = 关闭
 core-host-starting = 正在启动
@@ -449,11 +449,11 @@ core-host-cannot-listen = 无法监听
 core-host-port-taken = 端口 { $port } 已被占用
 core-host-cannot-listen-on = 无法在 { $address } 上监听：{ $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } 不是地址和端口
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } 不是设备密钥
 
@@ -736,16 +736,16 @@ core-franchise-relation-character = 共同角色
 
 core-images-progress-fetching = 正在获取图片
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported = 已把 { $count } 部番剧保存到 { $folder }。
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = 不是 JSON：{ $error }
 core-transfer-wrong-format = 不是 { $format } 文档
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = 已从文件载入媒体库。
 

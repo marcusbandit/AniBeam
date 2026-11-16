@@ -2,9 +2,14 @@
 //! `contract`, which hands on the `anibeam-contract` crate below it. The
 //! plumbing every team shares is the `anibeam-foundation` crate, the network
 //! team is `anibeam-net`, the library team `anibeam-library`, and the releases,
-//! metadata, trackers, downloads and playback teams `anibeam-releases`,
-//! `anibeam-metadata`, `anibeam-trackers`, `anibeam-downloads` and
-//! `anibeam-playback`, each handed on here under the name it had in the core.
+//! metadata, trackers, downloads, playback and host teams `anibeam-releases`,
+//! `anibeam-metadata`, `anibeam-trackers`, `anibeam-downloads`,
+//! `anibeam-playback` and `anibeam-host`, each handed on here under the name it
+//! had in the core.
+//!
+//! What is left in this crate is the app team: `Core` and its call router,
+//! launch, update, the changelog, the agent, stats, the uniffi export and
+//! `Subscription`.
 
 pub(crate) mod act;
 pub mod agent;
@@ -15,12 +20,9 @@ pub mod core;
 pub mod events;
 pub mod first_run;
 pub mod foundation;
-pub mod host;
 pub mod launch;
 pub mod paths;
-pub(crate) mod process;
 pub mod stats;
-pub mod transfer;
 pub mod update;
 
 pub(crate) use anibeam_foundation::sync;
@@ -64,6 +66,11 @@ pub use anibeam_downloads::phone;
 /// together room.
 pub use anibeam_playback as playback;
 pub use anibeam_playback::{cast, presence, room};
+
+/// The host team, in its own crate above downloads: the tailnet host the
+/// phone reads and the library's export and import.
+pub use anibeam_host as host;
+pub use anibeam_host::transfer;
 
 pub use anibeam_contract::i18n;
 pub use contract::*;

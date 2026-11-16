@@ -15,21 +15,21 @@ use std::time::SystemTime;
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::atomic_file;
-use crate::contract::*;
-use crate::foundation::services::Services;
-use crate::foundation::titles;
-use crate::jobs::Finished;
-use crate::library::classifier;
-use crate::paths::under;
-use crate::prefs;
-use crate::time;
-use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
     self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, ListEntry,
     MatchEntry, PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName,
     TrackerName, TvmazeName, View,
 };
+use anibeam_contract::*;
+use anibeam_foundation::atomic_file;
+use anibeam_foundation::jobs::Finished;
+use anibeam_foundation::paths::under;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_foundation::titles;
+use anibeam_library::classifier;
+use anibeam_trackers::accounts::{self, access_key, refresh_key, secret_key};
 
 /// One series as the tables hold it, before it becomes a document entry.
 struct Row {
@@ -73,7 +73,7 @@ pub fn build(services: &Services, private: bool, now: SystemTime) -> Result<Docu
         exported_by: ExportedBy {
             app: "anibeam".to_string(),
             line: "native".to_string(),
-            version: crate::VERSION.to_string(),
+            version: anibeam_net::VERSION.to_string(),
             extra: HashMap::new(),
         },
         private,
@@ -163,10 +163,10 @@ pub fn start(services: &Arc<Services>, path: String, private: bool) -> u64 {
             let text = serde_json::to_string_pretty(&doc)?;
             atomic_file::write_async(Path::new(&path), text).await?;
             Ok(Finished {
-                plain: Some(crate::words!(
+                plain: Some(anibeam_contract::words!(
                     "core-transfer-exported",
                     count = count,
-                    folder = crate::library::scan::folder_of(&path)
+                    folder = anibeam_library::scan::folder_of(&path)
                 )),
                 level: Level::Info,
                 message: format!("Exported {count} series to {path}"),

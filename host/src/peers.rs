@@ -90,7 +90,7 @@ pub fn others(hosts: &[wire::PeerHost], from: std::net::IpAddr) -> Vec<wire::Pee
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host::trust::read_status;
+    use crate::trust::read_status;
 
     const STATUS: &[u8] = br#"{
         "Self": {"ID": "nSelf", "TailscaleIPs": ["100.64.0.1"]},

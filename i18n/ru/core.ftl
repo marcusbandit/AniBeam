@@ -488,7 +488,7 @@ core-recommended-reading-suggestions = Чтение сериалов для ре
 
 core-recommended-no-anime = На { -anilist } нет аниме { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = Выкл.
@@ -500,11 +500,11 @@ core-host-cannot-listen = Не удалось открыть порт
 core-host-port-taken = Порт { $port } занят
 core-host-cannot-listen-on = Не удалось слушать { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } не является адресом с портом
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } не является ключом устройства
@@ -985,7 +985,7 @@ core-franchise-relation-character = Общие персонажи
 # A progress label while covers and banners download.
 core-images-progress-fetching = загрузка изображений
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported =
@@ -996,14 +996,14 @@ core-transfer-exported =
        *[other] { $count } сериала сохранено в { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = это не JSON: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = это не документ { $format }
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Библиотека загружена из файла.
 

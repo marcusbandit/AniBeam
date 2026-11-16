@@ -10,6 +10,11 @@
 //! picked up without a restart. Turning the preference off, or shutting the
 //! core down, ends the task and the servers with it. `ANIBEAM_HOST_BIND`
 //! (`ip:port`) replaces the address search, for development and tests.
+//!
+//! The host team (#854) is this crate: the tailnet host here and the library
+//! transfer, export and import, in `transfer`. It sits above the downloads,
+//! reaches the core only through [`Front`], and names nothing of the app. The
+//! core hands it on as `anibeam_core::host` and `anibeam_core::transfer`.
 
 pub mod addr;
 pub mod build;
@@ -19,6 +24,7 @@ pub mod keys;
 pub mod peers;
 pub mod server;
 pub mod stream;
+pub mod transfer;
 pub mod trust;
 
 use std::net::SocketAddr;
@@ -31,13 +37,13 @@ use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::contract::*;
-use crate::events::EventBus;
-use crate::foundation::above::Above;
-use crate::foundation::services::Services;
-use crate::foundation::trust::{Asker, TailnetUser};
-use crate::prefs;
-use crate::sync::recover;
+use anibeam_contract::*;
+use anibeam_foundation::above::Above;
+use anibeam_foundation::events::EventBus;
+use anibeam_foundation::prefs;
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::trust::{Asker, TailnetUser};
 
 /// How often the supervisor looks again: for Tailscale when it was not
 /// there, for a changed address when it was.
@@ -67,7 +73,7 @@ const TAILNET_AGAIN: Duration = Duration::from_secs(5);
 /// the skip windows of a session open there. `Core` implements it and
 /// `Core::open` links it to `Host::front`, so the host names no team above
 /// it.
-pub(crate) trait Front: Send + Sync {
+pub trait Front: Send + Sync {
     /// `Core::call_as`.
     fn answer(&self, profile: u64, call: Call) -> Result<Reply, CoreError>;
     /// The skip windows found so far for an open session
@@ -79,13 +85,13 @@ pub(crate) trait Front: Send + Sync {
 /// trust, and the history pulled from other computers.
 pub struct Host {
     pub(crate) services: Arc<Services>,
-    pub(crate) net: Arc<crate::net::Net>,
-    pub(crate) library: Arc<crate::library::Library>,
-    pub(crate) downloads: Arc<crate::downloads::Downloads>,
+    pub(crate) net: Arc<anibeam_net::Net>,
+    pub(crate) library: Arc<anibeam_library::Library>,
+    pub(crate) downloads: Arc<anibeam_downloads::Downloads>,
     /// The front door the phone's requests go through: the server answers
     /// them with `Core::call_as`, the same router a shell calls, through the
     /// host's own trait.
-    pub(crate) front: Above<dyn Front>,
+    pub front: Above<dyn Front>,
     status: Arc<Status>,
     run: Mutex<Option<Run>>,
     /// A bind override a test sets on one core, where the env var would be
@@ -148,16 +154,16 @@ fn off() -> HostStatus {
     HostStatus {
         enabled: false,
         urls: Vec::new(),
-        message: crate::i18n::tr("core-host-off", &[]),
+        message: anibeam_contract::i18n::tr("core-host-off", &[]),
     }
 }
 
 impl Host {
-    pub(crate) fn new(
+    pub fn new(
         services: Arc<Services>,
-        net: Arc<crate::net::Net>,
-        library: Arc<crate::library::Library>,
-        downloads: Arc<crate::downloads::Downloads>,
+        net: Arc<anibeam_net::Net>,
+        library: Arc<anibeam_library::Library>,
+        downloads: Arc<anibeam_downloads::Downloads>,
     ) -> Host {
         let bus = services.bus.clone();
         Host {
@@ -261,7 +267,7 @@ impl Host {
         let known = |t: Option<Arc<trust::Tailnet>>| {
             t.unwrap_or_else(|| {
                 Arc::new(trust::local_tailnet(
-                    &crate::foundation::machine::local_addresses(),
+                    &anibeam_foundation::machine::local_addresses(),
                 ))
             })
         };
@@ -333,7 +339,7 @@ impl Host {
             HostStatus {
                 enabled: true,
                 urls: Vec::new(),
-                message: crate::i18n::tr("core-host-starting", &[]),
+                message: anibeam_contract::i18n::tr("core-host-starting", &[]),
             },
         );
         let bind = recover(&self.bind)
@@ -360,7 +366,7 @@ impl Host {
 /// What a preferences save hands the host (`SetPreferences`): whether it
 /// streams the episodes, which devices are switched off, and whether it
 /// shares at all.
-pub(crate) fn apply_preferences(host: &Arc<Host>, p: &Preferences) {
+pub fn apply_preferences(host: &Arc<Host>, p: &Preferences) {
     host.set_streaming(p.stream_over_tailscale);
     host.set_switched_off(p.tailnet_switched_off.clone());
     host.follow(p.share_over_tailscale);
@@ -407,25 +413,21 @@ pub fn devices(host: &Arc<Host>) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
 }
 
 /// `GetHost`: the host's state as last known.
-pub(crate) fn status_call(host: &Host) -> Result<Reply, CoreError> {
+pub fn status_call(host: &Host) -> Result<Reply, CoreError> {
     Ok(Reply::Host {
         status: host.status(),
     })
 }
 
 /// `ListTailnetDevices`: [`devices`] as the call's reply.
-pub(crate) fn devices_call(host: &Arc<Host>) -> Result<Reply, CoreError> {
+pub fn devices_call(host: &Arc<Host>) -> Result<Reply, CoreError> {
     let (devices, people) = devices(host);
     Ok(Reply::TailnetDevices { devices, people })
 }
 
 /// `SetTailnetDeviceTrust`: switches one device off or back on, the only
 /// write that changes which devices are off.
-pub(crate) fn set_device_trust(
-    host: &Host,
-    device: String,
-    trusted: bool,
-) -> Result<Reply, CoreError> {
+pub fn set_device_trust(host: &Host, device: String, trusted: bool) -> Result<Reply, CoreError> {
     let preferences = host.services.store.write(move |c| {
         let mut p = prefs::load_preferences(c)?;
         p.tailnet_switched_off.retain(|d| *d != device);
@@ -522,7 +524,7 @@ fn person(user: &TailnetUser, owner: bool) -> TailnetPerson {
     TailnetPerson {
         id: user.id.clone(),
         name: user.shown().map_or_else(
-            || crate::i18n::tr("tailnet-person-no-name", &[]),
+            || anibeam_contract::i18n::tr("tailnet-person-no-name", &[]),
             str::to_string,
         ),
         login: user.login.clone(),
@@ -617,7 +619,7 @@ impl Serving {
         HostStatus {
             enabled: true,
             urls,
-            message: crate::i18n::tr(
+            message: anibeam_contract::i18n::tr(
                 "core-host-serving",
                 &[("addresses", shown.join(", ").into())],
             ),
@@ -640,7 +642,7 @@ async fn supervise(
     loop {
         match addr::wanted(
             bind.as_deref(),
-            &crate::foundation::machine::local_addresses(),
+            &anibeam_foundation::machine::local_addresses(),
         ) {
             Err(message) => {
                 if let Some(old) = serving.take() {
@@ -654,7 +656,7 @@ async fn supervise(
                 }
                 status.put(
                     Some(&cancel),
-                    waiting(&crate::i18n::tr("core-host-no-tailscale", &[])),
+                    waiting(&anibeam_contract::i18n::tr("core-host-no-tailscale", &[])),
                 );
             }
             Ok(wanted) => {
@@ -724,7 +726,9 @@ async fn listen(host: &Weak<Host>, wanted: Vec<SocketAddr>) -> Result<Serving, S
     };
     let (_, failure) = serving.bind(&wanted).await;
     if serving.bound.is_empty() {
-        return Err(failure.unwrap_or_else(|| crate::i18n::tr("core-host-cannot-listen", &[])));
+        return Err(
+            failure.unwrap_or_else(|| anibeam_contract::i18n::tr("core-host-cannot-listen", &[]))
+        );
     }
     Ok(serving)
 }
@@ -768,13 +772,13 @@ impl Serving {
                     took += 1;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                    failure = Some(crate::i18n::tr(
+                    failure = Some(anibeam_contract::i18n::tr(
                         "core-host-port-taken",
                         &[("port", want.port().to_string().into())],
                     ));
                 }
                 Err(e) => {
-                    failure = Some(crate::i18n::tr(
+                    failure = Some(anibeam_contract::i18n::tr(
                         "core-host-cannot-listen-on",
                         &[
                             ("address", want.to_string().into()),
@@ -835,18 +839,18 @@ mod tests {
 
     impl Teams {
         fn open(dir: &std::path::Path) -> Teams {
-            let running = Running::open(dir, crate::net::FakeHttp::new());
+            let running = Running::open(dir, anibeam_net::FakeHttp::new());
             let services = running.services.clone();
-            let net = Arc::new(crate::net::Net::new(
+            let net = Arc::new(anibeam_net::Net::new(
                 services.clone(),
-                crate::library::cards::cards_for,
+                anibeam_library::cards::cards_for,
             ));
-            let library = Arc::new(crate::library::Library::new(
+            let library = Arc::new(anibeam_library::Library::new(
                 services.clone(),
                 net.clone(),
                 Arc::new(AtomicBool::new(false)),
             ));
-            let downloads = Arc::new(crate::downloads::Downloads::new(
+            let downloads = Arc::new(anibeam_downloads::Downloads::new(
                 services.clone(),
                 net.clone(),
             ));
@@ -923,7 +927,7 @@ mod tests {
             .replace(r#""3": {"ID": 3"#, r#""103": {"ID": 103"#);
         let t = trust::read_status(bare.as_bytes()).unwrap();
         let (devices, people) = listing(&t, &[]);
-        let no_name = crate::i18n::tr("tailnet-person-no-name", &[]);
+        let no_name = anibeam_contract::i18n::tr("tailnet-person-no-name", &[]);
         let listed: Vec<(&str, bool)> = people.iter().map(|p| (p.name.as_str(), p.owner)).collect();
         assert_eq!(
             listed,

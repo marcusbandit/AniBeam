@@ -32,10 +32,9 @@ pub fn pick(all: &[IpAddr]) -> Vec<IpAddr> {
 /// text when it is not an address.
 pub fn wanted(bind_override: Option<&str>, all: &[IpAddr]) -> Result<Vec<SocketAddr>, String> {
     match bind_override.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(text) => text
-            .parse::<SocketAddr>()
-            .map(|a| vec![a])
-            .map_err(|_| crate::i18n::tr("core-host-not-an-address", &[("text", text.into())])),
+        Some(text) => text.parse::<SocketAddr>().map(|a| vec![a]).map_err(|_| {
+            anibeam_contract::i18n::tr("core-host-not-an-address", &[("text", text.into())])
+        }),
         None => Ok(pick(all)
             .into_iter()
             .map(|ip| SocketAddr::new(ip, DEFAULT_PORT))

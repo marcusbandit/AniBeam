@@ -20,10 +20,10 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use super::Front;
 use super::convert::{self, Converter, Key, Source};
 use super::server::{Served, error};
-use crate::contract::{Call, CoreError, Sidecar, call_name};
-use crate::foundation::range::{Range, byte_range};
-use crate::foundation::services::Services;
-use crate::sync::recover;
+use anibeam_contract::{Call, CoreError, Sidecar, call_name};
+use anibeam_foundation::range::{Range, byte_range};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
 
 /// The parts of the host only streaming uses, made on first use.
 #[derive(Default)]
@@ -51,7 +51,7 @@ fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
         .map(|(path, side)| {
             (
                 PathBuf::from(path),
-                crate::library::sidecar::sidecars_of(&side),
+                anibeam_library::sidecar::sidecars_of(&side),
             )
         })
 }
@@ -349,8 +349,8 @@ pub(crate) fn run_to_end(
     profile: u64,
     call: Call,
     wait: std::time::Duration,
-) -> Result<crate::contract::Reply, CoreError> {
-    use crate::contract::{Event, EventBody, EventListener, JobPhase, Reply};
+) -> Result<anibeam_contract::Reply, CoreError> {
+    use anibeam_contract::{Event, EventBody, EventListener, JobPhase, Reply};
     struct Relay(std::sync::mpsc::Sender<Event>);
     impl EventListener for Relay {
         fn on_event(&self, event: Event) {
@@ -359,7 +359,8 @@ pub(crate) fn run_to_end(
     }
     let (tx, rx) = std::sync::mpsc::channel();
     // Removed from the bus when this function returns, on every path.
-    let _listening = crate::events::Listening::new(services.bus.clone(), Arc::new(Relay(tx)));
+    let _listening =
+        anibeam_foundation::events::Listening::new(services.bus.clone(), Arc::new(Relay(tx)));
     let job = match front.answer(profile, call) {
         Ok(Reply::Started { job }) => job,
         other => return other,
@@ -418,7 +419,7 @@ pub async fn call(
     }
     // Downloads fill this computer's disk and its torrent client, so only the
     // person it belongs to may send them (#733).
-    if download && profile != crate::foundation::trust::OWNER {
+    if download && profile != anibeam_foundation::trust::OWNER {
         return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
     let Some((team, front)) = st

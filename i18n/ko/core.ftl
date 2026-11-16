@@ -448,7 +448,7 @@ core-recommended-reading-suggestions = 추천할 작품 읽는 중
 
 core-recommended-no-anime = { -anilist }에 애니 { $id }이(가) 없어요
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = 꺼짐
 core-host-starting = 시작 중
@@ -458,11 +458,11 @@ core-host-cannot-listen = 대기할 수 없어요
 core-host-port-taken = 포트 { $port }이(가) 사용 중이에요
 core-host-cannot-listen-on = { $address }에서 대기할 수 없어요: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text }은(는) 주소와 포트가 아니에요
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key }은(는) 기기 키가 아니에요
 
@@ -787,19 +787,19 @@ core-franchise-relation-character = 같은 캐릭터
 
 core-images-progress-fetching = 이미지 가져오는 중
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
        *[other] 작품 { $count }개를 { $folder }에 저장했어요.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = JSON이 아니에요: { $error }
 core-transfer-wrong-format = { $format } 문서가 아니에요
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = 파일에서 라이브러리를 불러왔어요.
 

@@ -18,11 +18,11 @@ use axum::routing::{get, post};
 use super::Host;
 use super::build::{self, LibraryPart};
 use super::{convert, history, keys, peers, stream, trust};
-use crate::contract::CoreError;
-use crate::foundation::machine::hostname;
-use crate::foundation::trust::{Asker, TailnetUser};
-use crate::sync::recover;
-use crate::time;
+use anibeam_contract::CoreError;
+use anibeam_foundation::machine::hostname;
+use anibeam_foundation::sync::recover;
+use anibeam_foundation::time;
+use anibeam_foundation::trust::{Asker, TailnetUser};
 
 /// How long a built snapshot answers every request.
 pub const CACHE_FOR: Duration = Duration::from_secs(30);
@@ -224,7 +224,7 @@ async fn trusted(
         let profile = team
             .services
             .store
-            .write(move |c| crate::profiles::resolve(c, &asker, me.as_ref(), now))?;
+            .write(move |c| anibeam_foundation::profiles::resolve(c, &asker, me.as_ref(), now))?;
         // The owner is remembered only once their Tailscale user is known, so
         // profile 1 learns it from the first request that can tell.
         if let Some(id) = profile
@@ -326,7 +326,7 @@ async fn hello(
     // takes them from (#733).
     let owner = profile
         .as_ref()
-        .is_some_and(|p| p.0.0 == crate::foundation::trust::OWNER);
+        .is_some_and(|p| p.0.0 == anibeam_foundation::trust::OWNER);
     let team = st.live();
     // `trusted` read the key before this route, so this only takes it.
     let key = team
@@ -342,11 +342,13 @@ async fn hello(
     let fresh = person
         .and_then(|p| p.0.0)
         .zip(id)
-        .and_then(|(user, id)| crate::profiles::shown(&user, id));
+        .and_then(|(user, id)| anibeam_foundation::profiles::shown(&user, id));
     let named = match (fresh, team, id) {
         (Some(named), _, _) => Some(named),
         (None, Some(team), Some(id)) => tokio::task::spawn_blocking(move || {
-            team.services.store.read(|c| crate::profiles::named(c, id))
+            team.services
+                .store
+                .read(|c| anibeam_foundation::profiles::named(c, id))
         })
         .await
         .ok()
@@ -357,7 +359,7 @@ async fn hello(
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
-        version: crate::VERSION.to_string(),
+        version: anibeam_net::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
         features: features(streaming, key.is_some(), owner),
@@ -478,7 +480,7 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
     let (snapshot, library) = build::snapshot(&team, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
     // The posters are everyone's; the owner's read keeps their table fresh.
-    if profile == crate::foundation::trust::OWNER {
+    if profile == anibeam_foundation::trust::OWNER {
         *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
     }
     *slot = Some((Instant::now(), body.clone()));
@@ -498,7 +500,7 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
         .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let part = tokio::task::spawn_blocking(move || {
-        build::library_part(&team.services, crate::foundation::trust::OWNER)
+        build::library_part(&team.services, anibeam_foundation::trust::OWNER)
     })
     .await
     .map_err(|e| CoreError::internal(format!("library read: {e}")))??;

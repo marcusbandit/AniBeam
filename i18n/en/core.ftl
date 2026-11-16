@@ -494,7 +494,7 @@ core-recommended-reading-suggestions = Reading shows to suggest
 
 core-recommended-no-anime = { -anilist } has no anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 # The tailnet host's status line in Settings.
 core-host-off = Off
@@ -506,11 +506,11 @@ core-host-cannot-listen = Could not listen
 core-host-port-taken = Port { $port } is taken
 core-host-cannot-listen-on = Could not listen on { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } is not an address and port
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 # $key is the text given, in quotes.
 core-host-not-a-key = { $key } is not a device key
@@ -975,7 +975,7 @@ core-franchise-relation-character = Shared characters
 # A progress label while covers and banners download.
 core-images-progress-fetching = fetching images
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 # $folder is the name of the folder the file went to.
 core-transfer-exported =
@@ -984,14 +984,14 @@ core-transfer-exported =
        *[other] Saved { $count } shows to { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 # $error is the JSON parser's own message.
 core-transfer-not-json = not JSON: { $error }
 # $format is the file format's name, anibeam-export.
 core-transfer-wrong-format = not an { $format } document
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Loaded your library from the file.
 

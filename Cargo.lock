@@ -124,6 +124,7 @@ dependencies = [
  "anibeam-contract",
  "anibeam-downloads",
  "anibeam-foundation",
+ "anibeam-host",
  "anibeam-host-api",
  "anibeam-library",
  "anibeam-metadata",
@@ -136,18 +137,14 @@ dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
  "flate2",
- "rand 0.10.2",
  "reqwest",
  "rusqlite",
- "rustix",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
  "time",
  "tokio",
- "tokio-util",
- "tracing",
  "uniffi",
 ]
 
@@ -204,6 +201,34 @@ dependencies = [
  "url",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
+]
+
+[[package]]
+name = "anibeam-host"
+version = "2.5.0"
+dependencies = [
+ "anibeam-contract",
+ "anibeam-downloads",
+ "anibeam-foundation",
+ "anibeam-host-api",
+ "anibeam-library",
+ "anibeam-metadata",
+ "anibeam-net",
+ "anibeam-releases",
+ "anibeam-trackers",
+ "axum",
+ "rand 0.10.2",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

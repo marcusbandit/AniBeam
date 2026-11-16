@@ -454,7 +454,7 @@ core-recommended-reading-suggestions = Series om aan te raden lezen
 
 core-recommended-no-anime = { -anilist } heeft geen anime { $id }
 
-## core/src/host/mod.rs
+## host/src/lib.rs
 
 core-host-off = Uit
 core-host-starting = Starten
@@ -464,11 +464,11 @@ core-host-cannot-listen = Kon niet luisteren
 core-host-port-taken = Poort { $port } is bezet
 core-host-cannot-listen-on = Kon niet luisteren op { $address }: { $error }
 
-## core/src/host/addr.rs
+## host/src/addr.rs
 
 core-host-not-an-address = { $text } is geen adres met poort
 
-## core/src/host/keys.rs
+## host/src/keys.rs
 
 core-host-not-a-key = { $key } is geen apparaatsleutel
 
@@ -846,7 +846,7 @@ core-franchise-relation-character = Gedeelde personages
 
 core-images-progress-fetching = afbeeldingen ophalen
 
-## core/src/transfer/export.rs
+## host/src/transfer/export.rs
 
 core-transfer-exported =
     { $count ->
@@ -854,12 +854,12 @@ core-transfer-exported =
        *[other] { $count } series opgeslagen in { $folder }.
     }
 
-## core/src/transfer/format.rs
+## host/src/transfer/format.rs
 
 core-transfer-not-json = geen JSON: { $error }
 core-transfer-wrong-format = geen { $format }-document
 
-## core/src/transfer/import.rs
+## host/src/transfer/import.rs
 
 core-transfer-imported = Je bibliotheek is uit het bestand geladen.
 
