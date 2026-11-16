@@ -921,10 +921,10 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
             lifted.push((key.to_string(), value.to_string()));
         }
     };
-    let (base, query) = match url.split_once('?') {
-        Some((b, q)) => (b.to_string(), Some(q.to_string())),
-        None => (url.to_string(), None),
-    };
+    // Cut the way `mask` and `without_secrets` read an address, so a key after a `#` or a
+    // `;` is lifted too, not only one after `?` or `&` (#1046).
+    let (base, params) = anibeam_foundation::redact::split_params(url);
+    let base = base.to_string();
     // A login in front of the host: the user name stays, the password is a secret. A login
     // with no password is a key on its own.
     let hidden = |part: &str| part.is_empty() || part.starts_with('{');
@@ -948,25 +948,20 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
         },
         None => base,
     };
-    if let Some(query) = query {
-        let pairs: Vec<String> = query
-            .split('&')
-            .map(|pair| {
-                let Some((k, v)) = pair.split_once('=') else {
-                    return pair.to_string();
-                };
-                let Some(label) = anibeam_foundation::redact::secret_param(k) else {
-                    return pair.to_string();
-                };
-                if v.is_empty() || v.starts_with('{') {
-                    return pair.to_string();
-                }
+    for (sep, pair) in params {
+        template.push_str(sep);
+        let secret = pair.split_once('=').and_then(|(k, v)| {
+            let label = anibeam_foundation::redact::secret_param(k)?;
+            (!v.is_empty() && !v.starts_with('{')).then_some((k, v, label))
+        });
+        match secret {
+            Some((k, v, label)) => {
                 let lower = k.to_lowercase();
                 lift(&lower, label, &crate::endpoints::unquote_plus(v));
-                format!("{k}={{{lower}}}")
-            })
-            .collect();
-        template = format!("{template}?{}", pairs.join("&"));
+                template.push_str(&format!("{k}={{{lower}}}"));
+            }
+            None => template.push_str(pair),
+        }
     }
     // Placeholders the person wrote themselves.
     let mut rest = template.as_str();
@@ -2617,6 +2612,23 @@ mod tests {
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].label, "API key");
         assert_eq!(lifted, vec![("apikey".to_string(), "abc123".to_string())]);
+    }
+
+    #[test]
+    fn a_key_after_a_hash_or_a_semicolon_moves_out_of_the_address() {
+        let (template, _, lifted) = lift_secrets("https://h.example/feed?q={query}#token=K");
+        assert_eq!(template, "https://h.example/feed?q={query}#token={token}");
+        assert_eq!(lifted, vec![("token".to_string(), "K".to_string())]);
+        let (template, _, lifted) = lift_secrets("https://h.example/feed?q={query};passkey=P");
+        assert_eq!(
+            template,
+            "https://h.example/feed?q={query};passkey={passkey}"
+        );
+        assert_eq!(lifted, vec![("passkey".to_string(), "P".to_string())]);
+        // A fragment with no query, and a `;` inside a key, which stays part of it.
+        let (template, _, lifted) = lift_secrets("https://h.example/feed#apikey=a;b&q={query}");
+        assert_eq!(template, "https://h.example/feed#apikey={apikey}&q={query}");
+        assert_eq!(lifted, vec![("apikey".to_string(), "a;b".to_string())]);
     }
 
     #[test]
