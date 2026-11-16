@@ -18,5 +18,5 @@
  {"shot": "1094-02-one-on"},
  {"log": "an error that is not about the sources stays when a source flips"},
  {"eval": "var p = frame.item.pageItem; p.sayOnSearch('Example failure', '', '', null); p.toggleSource('alpha'); p.searchError", "expect": "Example failure"},
- {"eval": "frame.item.pageItem.clearSearch(); true"}
+ {"eval": "frame.item.pageItem.clearSearch(); frame.item.downloadsSources = ({}); var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status)); st.endpoints = []; p.status = st; p.endpoints.length", "expect": 0}
 ]

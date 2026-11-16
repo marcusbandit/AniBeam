@@ -561,17 +561,16 @@ Item {
     // The search error's Details and its button: { detail, label, act }
     property var searchFix: ({})
     // A search error in plain words, with the button that does the fix (#538)
-    function sayOnSearch(text, detail, label, act) {
-        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null }
+    // `allOff` marks an error that says no source is on: whichever control switches one on
+    // clears it
+    function sayOnSearch(text, detail, label, act, allOff) {
+        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null, allOff: !!allOff }
         page.searchError = text
-        page.searchErrorAllOff = false
     }
-    // Set while the error says no source is on: whichever control switches one on clears it
-    property bool searchErrorAllOff: false
     function clearAllOff() {
-        if (!page.searchErrorAllOff || page.enabledEndpoints.length === 0) return
-        page.searchErrorAllOff = false
-        if (page.searchError !== "") { page.searchError = ""; page.searchFix = ({}) }
+        if (page.searchError === "" || !page.searchFix.allOff || page.enabledEndpoints.length === 0) return
+        page.searchError = ""
+        page.searchFix = ({})
     }
     property var selected: ({})
     property int hoveredGroup: -1
@@ -782,9 +781,8 @@ Item {
                     page.setSource(first, true)
                     // A source that runs now searches at once; one to start asks first
                     if (page.sourceOn(first)) page.runSearch()
-                })
-            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) })
-            page.searchErrorAllOff = true
+                }, true)
+            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) }, true)
             return
         }
         page.closeGet()
