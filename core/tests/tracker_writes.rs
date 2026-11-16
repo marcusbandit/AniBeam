@@ -1492,6 +1492,16 @@ fn anilist_only(core: &Core) -> u64 {
     series
 }
 
+fn no_match() -> TrackerOutcome {
+    TrackerOutcome {
+        tracker: Tracker::Mal,
+        ok: false,
+        progress: None,
+        reason: Some(Refusal::NoMatch),
+        message: None,
+    }
+}
+
 fn searches(http: &FakeHttp) -> usize {
     http.requests()
         .iter()
@@ -1573,8 +1583,9 @@ fn a_show_with_no_mal_id_is_found_by_search_once() {
     assert_eq!(mal_forms(&http).len(), 2);
 }
 
-/// A search with no sure answer writes nowhere and is kept as no answer, so
-/// the show is not searched again and the next mark is refused at once.
+/// A search with no sure answer writes nowhere, says so as MAL's NoMatch,
+/// and is kept as no answer, so the show is not searched again and the next
+/// mark is refused at once.
 #[test]
 fn a_search_with_no_sure_answer_is_not_asked_again() {
     let http = FakeHttp::new();
@@ -1591,7 +1602,7 @@ fn a_search_with_no_sure_answer_is_not_asked_again() {
         ]}"#,
     );
     let outcomes = mark(&core, &c, series, 3.0);
-    assert!(outcomes.is_empty(), "{outcomes:?}");
+    assert_eq!(outcomes, vec![no_match()]);
     assert!(mal_forms(&http).is_empty());
     assert_eq!(saved_lookup(&core), Some(None));
 
@@ -1627,7 +1638,71 @@ fn a_failed_search_is_tried_again_next_time() {
 
     http.push_for("/anime?q=", 200, r#"{"data":[]}"#);
     let outcomes = mark(&core, &c, series, 3.0);
-    assert!(outcomes.is_empty(), "{outcomes:?}");
+    assert_eq!(outcomes, vec![no_match()]);
     assert_eq!(searches(&http), 2);
     assert_eq!(saved_lookup(&core), Some(None));
+}
+
+/// A miss stands for a week: a show marked before MAL listed it is searched
+/// again after that.
+#[test]
+fn a_week_old_miss_is_searched_again() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = anilist_only(&core);
+
+    http.push_for("/anime?q=", 200, r#"{"data":[]}"#);
+    assert_eq!(mark(&core, &c, series, 3.0), vec![no_match()]);
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE mal_lookups SET looked_at = looked_at - 8 * 24 * 3600",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    http.push_for(
+        "/anime?q=",
+        200,
+        r#"{"data":[{"node":{"id":21,"title":"Cowboy Bebop","media_type":"tv"}}]}"#,
+    );
+    http.push_for("/anime/21", 404, r#"{"error":"not_found"}"#);
+    http.push_for("/anime/21", 200, "{}");
+    let outcomes = mark(&core, &c, series, 3.0);
+    assert!(outcome(&outcomes, Tracker::Mal).ok, "{outcomes:?}");
+    assert_eq!(searches(&http), 2);
+    assert_eq!(saved_lookup(&core), Some(Some(21)));
+}
+
+/// A score on one series searches too, rather than being kept here because
+/// MAL has no id yet.
+#[test]
+fn a_score_on_a_show_with_no_mal_id_searches() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = anilist_only(&core);
+
+    http.push_for(
+        "/anime?q=",
+        200,
+        r#"{"data":[{"node":{"id":21,"title":"Cowboy Bebop","media_type":"tv"}}]}"#,
+    );
+    http.push_for("/anime/21", 404, r#"{"error":"not_found"}"#);
+    http.push_for("/anime/21", 200, "{}");
+    let job = started(
+        &core,
+        Call::SetScore {
+            series,
+            score: Some(8.0),
+        },
+    );
+    let outcomes = match common::wait_job(&c, job).body {
+        EventBody::Scored { outcomes, .. } => outcomes,
+        other => panic!("{other:?}"),
+    };
+    assert!(outcome(&outcomes, Tracker::Mal).ok, "{outcomes:?}");
+    assert_eq!(searches(&http), 1);
+    assert_eq!(mal_forms(&http).len(), 1);
 }

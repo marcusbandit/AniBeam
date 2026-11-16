@@ -470,7 +470,7 @@ pub fn set_score(
             ),
         ));
     }
-    if kept_here(&trackers.services, &target)? {
+    if kept_here(&trackers.services, &target, true)? {
         let now = time::now_secs();
         // Nought is unrated here as it is on a tracker.
         let rated = (score > 0.0).then_some(score);
@@ -502,7 +502,7 @@ pub fn set_list_status(
         ));
     }
     let target = trackers.services.store.read(|c| targets(c, series))?;
-    if kept_here(&trackers.services, &target)? {
+    if kept_here(&trackers.services, &target, true)? {
         let now = time::now_secs();
         trackers
             .services
@@ -650,8 +650,9 @@ pub fn set_show_score(
 /// Whether a status or a score stays on this device: the series has no
 /// tracker match, or no account is connected behind the ids it has. A
 /// hidden series is still refused, since hiding is about its tracker sync
-/// and a person who hid it asked for nothing to go out.
-fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
+/// and a person who hid it asked for nothing to go out. `lookup` is
+/// `guard_reach`'s: a write to one series may look a missing MAL id up.
+fn kept_here(services: &Services, target: &Targets, lookup: bool) -> Result<bool, CoreError> {
     // `guard` answers NoMatch before it looks at the hidden flag, which a
     // series with no ids has nothing else to say about.
     let hidden = services.store.read(|c| {
@@ -666,7 +667,7 @@ fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
             reason: Refusal::Hidden,
         });
     }
-    match guard_reach(services, target, false) {
+    match guard_reach(services, target, lookup) {
         Ok(_) => Ok(false),
         Err(CoreError::Refused {
             reason: Refusal::NoMatch,
@@ -768,7 +769,7 @@ pub fn start_many(
     let now = time::now_secs();
     for &id in series {
         let target = trackers.services.store.read(|c| targets(c, id))?;
-        match kept_here(&trackers.services, &target) {
+        match kept_here(&trackers.services, &target, false) {
             Ok(false) => reachable.push(target),
             Ok(true) => {
                 trackers.services.store.write(move |c| match write {
@@ -1105,6 +1106,7 @@ async fn write_all(
     loud: bool,
 ) -> Result<Vec<TrackerOutcome>, CoreError> {
     let mut outcomes: Vec<TrackerOutcome> = Vec::new();
+    let mut missed = false;
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
         // A tracker with no account behind it is not this write's business.
@@ -1125,7 +1127,10 @@ async fn write_all(
             (None, Tracker::Mal, Some(anilist)) if loud => {
                 match look_up(trackers, ctx, target, anilist).await {
                     Ok(Some(id)) => id,
-                    Ok(None) => continue,
+                    Ok(None) => {
+                        missed = true;
+                        continue;
+                    }
                     Err(e) => {
                         outcomes.push(failed(ctx, t, target, action, loud, &e));
                         continue;
@@ -1148,36 +1153,48 @@ async fn write_all(
             .await,
         );
     }
+    // A write that went nowhere because MAL's search found nothing says so,
+    // or the job would read as done. Beside another tracker's outcome the
+    // miss stays quiet, since that write did land.
+    if outcomes.is_empty() && missed {
+        outcomes.push(TrackerOutcome {
+            tracker: Tracker::Mal,
+            ok: false,
+            progress: None,
+            reason: Some(Refusal::NoMatch),
+            message: None,
+        });
+    }
     Ok(outcomes)
 }
 
 /// The MAL id MAL's own search finds for a show AniList gave none for,
-/// said once in the developer log when it is first looked up.
+/// said in the developer log when a search was made.
 async fn look_up(
     trackers: &Trackers,
     ctx: &Arc<JobCtx>,
     target: &Targets,
     anilist: u64,
 ) -> Result<Option<u64>, CoreError> {
-    let first = trackers
+    let saved = trackers
         .services
         .store
-        .write_async(move |c| Ok(mal_lookup::saved(c, anilist)?.is_none()))
-        .await?;
+        .read(|c| mal_lookup::saved(c, anilist))?;
+    if let Some(answer) = saved {
+        return Ok(answer);
+    }
     let token = accounts::access_token(trackers, Tracker::Mal)
         .await?
         .ok_or_else(|| accounts::tracker_error(Tracker::Mal, no_token()))?;
     let found = mal_lookup::resolve(trackers, anilist, &token).await?;
-    if first {
-        ctx.emit(
-            Level::Debug,
-            match found {
-                Some(id) => format!("mal search found {id} for {}", target.folder_name),
-                None => format!("mal search found nothing sure for {}", target.folder_name),
-            },
-            EventBody::Notice,
-        );
-    }
+    ctx.emit(
+        Level::Debug,
+        match found {
+            Some(id) => format!("mal search found {id} for {}", target.folder_name),
+            None => format!("mal search found nothing sure for {}", target.folder_name),
+        },
+        EventBody::Notice,
+    );
     Ok(found)
 }
 

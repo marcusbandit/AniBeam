@@ -4,8 +4,9 @@
 //! was skipped without a word. A write to a connected MAL account for such
 //! a show asks MAL's own search once, with the AniList titles, and takes
 //! the one result whose title, year and type all agree. Anything less
-//! certain is no answer. The answer is kept in `mal_lookups` either way,
-//! so a show is searched once and never again.
+//! certain is no answer. The answer is kept in `mal_lookups` either way:
+//! a hit for good, and a miss for a week, since a new show is often marked
+//! before MAL lists it.
 //!
 //! One search per show, at its first write, through the shared limiter:
 //! never a sweep over the library, since MAL is strict about bursts.
@@ -14,6 +15,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Trackers;
 use anibeam_contract::*;
+use anibeam_foundation::percent::encode;
 use anibeam_foundation::time;
 
 /// MAL's list API, the same address the writes go to.
@@ -23,18 +25,27 @@ const MAL_API: &str = "https://api.myanimelist.net/v2";
 /// characters.
 const QUERY_LIMIT: usize = 64;
 
+/// How long a search that found nothing stands before the show may be
+/// searched again: a new show is often marked before MAL lists it.
+const MISS_STANDS: i64 = 7 * 24 * 3600;
+
 /// What `mal_lookups` holds for an AniList id: `None` when it was never
-/// looked up, `Some(None)` when the search found nothing it could be sure
-/// of, and `Some(Some(id))` for a hit.
+/// looked up or its miss is older than [`MISS_STANDS`], `Some(None)` when
+/// the search found nothing it could be sure of, and `Some(Some(id))` for
+/// a hit.
 pub(crate) fn saved(conn: &Connection, anilist_id: u64) -> Result<Option<Option<u64>>, CoreError> {
-    Ok(conn
+    let row = conn
         .query_row(
-            "SELECT mal_id FROM mal_lookups WHERE anilist_id = ?1",
+            "SELECT mal_id, looked_at FROM mal_lookups WHERE anilist_id = ?1",
             params![anilist_id as i64],
-            |r| r.get::<_, Option<i64>>(0),
+            |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)),
         )
-        .optional()?
-        .map(|id| id.map(|id| id as u64)))
+        .optional()?;
+    Ok(match row {
+        Some((Some(id), _)) => Some(Some(id as u64)),
+        Some((None, at)) if at > time::now_secs() - MISS_STANDS => Some(None),
+        _ => None,
+    })
 }
 
 /// Whether a write may still look this AniList id up: it never was, and
@@ -49,7 +60,9 @@ pub(crate) fn can_look_up(conn: &Connection, anilist_id: u64) -> Result<bool, Co
 struct Wanted {
     query: Option<String>,
     titles: Vec<String>,
-    year: Option<i64>,
+    /// AniList's season year and the year of its start date, which differ
+    /// for a show that starts in December and counts as the next winter.
+    years: Vec<i64>,
     format: Option<String>,
 }
 
@@ -61,10 +74,11 @@ fn wanted(conn: &Connection, anilist_id: u64) -> Result<Wanted, CoreError> {
         String,
         Option<i64>,
         Option<String>,
+        Option<String>,
     );
     let row: Option<Row> = conn
         .query_row(
-            "SELECT title_romaji, title_english, title_native, synonyms, year, format
+            "SELECT title_romaji, title_english, title_native, synonyms, year, format, start_date
                FROM anilist_media WHERE id = ?1",
             params![anilist_id as i64],
             |r| {
@@ -75,11 +89,12 @@ fn wanted(conn: &Connection, anilist_id: u64) -> Result<Wanted, CoreError> {
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
+                    r.get(6)?,
                 ))
             },
         )
         .optional()?;
-    let Some((romaji, english, native, synonyms, year, format)) = row else {
+    let Some((romaji, english, native, synonyms, year, format, start)) = row else {
         return Ok(Wanted::default());
     };
     let synonyms: Vec<String> = serde_json::from_str(&synonyms).unwrap_or_default();
@@ -100,12 +115,21 @@ fn wanted(conn: &Connection, anilist_id: u64) -> Result<Wanted, CoreError> {
         .flatten()
         .chain(synonyms)
         .collect();
+    let years = year
+        .into_iter()
+        .chain(start.as_deref().and_then(year_of))
+        .collect();
     Ok(Wanted {
         query,
         titles,
-        year,
+        years,
         format,
     })
+}
+
+/// The year a `YYYY-MM-DD` date (or a bare `YYYY`) starts with.
+fn year_of(date: &str) -> Option<i64> {
+    date.get(..4).and_then(|y| y.parse().ok())
 }
 
 /// A title reduced to its letters and digits, lowercased, so punctuation,
@@ -118,21 +142,45 @@ fn fold(title: &str) -> String {
         .collect()
 }
 
+/// The kind of thing a show is, as far as telling two results apart
+/// needs: a film, a music video, or episodes of some sort. AniList and MAL
+/// often file one OVA, special or web series under different types, so
+/// those all count as one kind; a film and a series of the same name do
+/// not.
+#[derive(PartialEq)]
+enum Kind {
+    Film,
+    Music,
+    Episodes,
+}
+
+fn kind_of_format(format: &str) -> Option<Kind> {
+    match format {
+        "MOVIE" => Some(Kind::Film),
+        "MUSIC" => Some(Kind::Music),
+        "TV" | "TV_SHORT" | "OVA" | "ONA" | "SPECIAL" => Some(Kind::Episodes),
+        _ => None,
+    }
+}
+
+fn kind_of_media_type(media_type: &str) -> Option<Kind> {
+    match media_type {
+        "movie" => Some(Kind::Film),
+        "music" => Some(Kind::Music),
+        "tv" | "ova" | "ona" | "special" | "tv_special" => Some(Kind::Episodes),
+        _ => None,
+    }
+}
+
 /// Whether AniList's format and MAL's media type name the same kind of
 /// show. Either side unknown is no evidence against it.
 fn same_kind(format: Option<&str>, media_type: Option<&str>) -> bool {
-    let (Some(format), Some(media_type)) = (format, media_type) else {
-        return true;
-    };
-    match media_type {
-        "unknown" | "" => true,
-        "tv" => matches!(format, "TV" | "TV_SHORT"),
-        "movie" => format == "MOVIE",
-        "ova" => format == "OVA",
-        "ona" => format == "ONA",
-        "special" | "tv_special" => format == "SPECIAL",
-        "music" => format == "MUSIC",
-        _ => false,
+    match (
+        format.and_then(kind_of_format),
+        media_type.and_then(kind_of_media_type),
+    ) {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
     }
 }
 
@@ -166,12 +214,9 @@ fn pick(wanted: &Wanted, body: &serde_json::Value) -> Option<u64> {
                 .map(fold)
                 .filter(|t| !t.is_empty());
             let named = theirs.into_iter().any(|t| ours.contains(&t));
-            let year = node["start_date"]
-                .as_str()
-                .and_then(|d| d.get(..4))
-                .and_then(|y| y.parse::<i64>().ok());
-            let same_year = match (wanted.year, year) {
-                (Some(a), Some(b)) => a == b,
+            let year = node["start_date"].as_str().and_then(year_of);
+            let same_year = match year {
+                Some(y) if !wanted.years.is_empty() => wanted.years.contains(&y),
                 _ => true,
             };
             named && same_year && same_kind(wanted.format.as_deref(), node["media_type"].as_str())
@@ -179,21 +224,6 @@ fn pick(wanted: &Wanted, body: &serde_json::Value) -> Option<u64> {
         .filter_map(|node| node["id"].as_u64());
     let first = hits.next()?;
     hits.all(|id| id == first).then_some(first)
-}
-
-/// Percent-encoding of one query value, RFC 3986 unreserved characters
-/// left alone.
-fn encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char)
-            }
-            other => out.push_str(&format!("%{other:02X}")),
-        }
-    }
-    out
 }
 
 /// The MAL id for this AniList id: the saved answer when there is one,
@@ -219,7 +249,7 @@ pub(crate) async fn resolve(
         return Ok(None);
     };
     let url = format!(
-        "{MAL_API}/anime?q={}&limit=10&fields=alternative_titles,start_date,media_type",
+        "{MAL_API}/anime?q={}&limit=10&nsfw=true&fields=alternative_titles,start_date,media_type",
         encode(query)
     );
     let response = trackers.net.mal.get(&url, token).await?;
@@ -255,7 +285,7 @@ mod tests {
                 "Sousou no Frieren".into(),
                 "Frieren: Beyond Journey's End".into(),
             ],
-            year: Some(2023),
+            years: vec![2023],
             format: Some("TV".into()),
         }
     }
@@ -313,14 +343,25 @@ mod tests {
     #[test]
     fn an_unknown_year_or_type_on_either_side_is_no_evidence_against() {
         let mut w = wanted();
-        w.year = None;
+        w.years = Vec::new();
         w.format = None;
         let body = json!({ "data": [node(7, "Sousou no Frieren", "", "unknown")] });
         assert_eq!(pick(&w, &body), Some(7));
     }
 
     #[test]
-    fn a_query_value_is_percent_encoded() {
-        assert_eq!(encode("Re:Zero kara"), "Re%3AZero%20kara");
+    fn an_ova_on_one_side_and_a_special_on_the_other_is_the_same_show() {
+        let mut w = wanted();
+        w.format = Some("OVA".into());
+        let body = json!({ "data": [node(3, "Sousou no Frieren", "2023-09-29", "special")] });
+        assert_eq!(pick(&w, &body), Some(3));
+    }
+
+    #[test]
+    fn a_december_start_matches_either_year_anilist_gives() {
+        let mut w = wanted();
+        w.years = vec![2024, 2023];
+        let body = json!({ "data": [node(4, "Sousou no Frieren", "2023-12-28", "tv")] });
+        assert_eq!(pick(&w, &body), Some(4));
     }
 }

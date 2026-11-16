@@ -620,11 +620,7 @@ fn emit_series_changed(
 fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreError> {
     let sql = match t {
         Some(Tracker::Anilist) => "SELECT id FROM series WHERE anilist_id IS NOT NULL ORDER BY id",
-        Some(Tracker::Mal) => {
-            "SELECT id FROM series WHERE mal_id IS NOT NULL
-                OR anilist_id IN (SELECT anilist_id FROM mal_lookups WHERE mal_id IS NOT NULL)
-              ORDER BY id"
-        }
+        Some(Tracker::Mal) => "SELECT id FROM series WHERE mal_id IS NOT NULL ORDER BY id",
         None => "SELECT id FROM series WHERE provider IS NOT NULL ORDER BY id",
     };
     let mut stmt = conn.prepare(sql)?;
