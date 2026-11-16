@@ -788,7 +788,7 @@ FocusScope {
     // foot (Home's tracker nudge) to lift it clear: up from the page's bottom edge and in from
     // its right edge, both 0 while the island is away (#1093)
     readonly property real islandRise: updateNotice.visible ? Math.max(0, content.y + page.y + page.height - overlay.y - updateNotice.y) : 0
-    readonly property real islandReach: updateNotice.visible ? Math.max(0, content.x + page.x + page.width - overlay.x - updateNotice.x) : 0
+    readonly property real islandReach: updateNotice.visible ? updateNotice.width + updateNotice.anchors.rightMargin : 0
 
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
     // episode, a card), the page's own rows, and deleting a card's files last
