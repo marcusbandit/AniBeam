@@ -66,8 +66,10 @@ impl AnirssHome {
         Some(self.dir()?.join("Downloads").join("Anime"))
     }
 
-    /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows) and the four
-    /// XDG homes inside it, made first so the child finds them. Python's user site stays
+    /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows), made first so
+    /// the child finds it, and the four XDG homes inside it. anirss itself reads none of the
+    /// XDG variables (#610); they keep anything else the child runs, such as an endpoint's
+    /// on-demand start command, out of the person's own XDG folders. Python's user site stays
     /// where it was, so an anirss installed with `pip --user` still imports. Nothing changes
     /// for the person's own home.
     pub fn apply(&self, cmd: &mut Command) {
