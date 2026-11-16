@@ -13,7 +13,9 @@
 #   .github/local-ci.sh --all        clippy and test every crate, not only the changed ones
 #
 # Clippy and the tests cover the crates changed since the merge base with origin/main, plus
-# every crate that builds on them (.github/affected-crates.py, #1075). A copy without .git
+# every crate that builds on them (.github/affected-crates.py, #1075); a file only one test
+# target reads runs that target alone (#1086). The tests run under cargo-nextest when it is
+# installed, as in CI, and under cargo test when not. A copy without .git
 # reads the changed files from LOCAL_CI_FILES, one per line, which localci sets on the box
 # with the history; without that either, it checks every crate.
 #
@@ -93,15 +95,25 @@ if [ $cargo -eq 1 ]; then
   step "affected crates" python3 .github/affected-crates.py "${pick[@]}" --output "$picked"
   # A failed selection, which its step reports, checks every crate rather than none.
   grep -q '^crates=' "$picked" || python3 .github/affected-crates.py --all --output "$picked" >/dev/null
-  crates=() alone=() core=false packages=()
+  crates=() alone=() core=false packages=() targets=() docs=()
   if grep -q '^crates=' "$picked"; then
     read -ra crates <<<"$(sed -n 's/^crates=//p' "$picked")"
     read -ra alone <<<"$(sed -n 's/^alone=//p' "$picked")"
+    read -ra targets <<<"$(sed -n 's/^tests=//p' "$picked")"
+    read -ra doc <<<"$(sed -n 's/^doc=//p' "$picked")"
     core="$(sed -n 's/^core=//p' "$picked")"
     for crate in "${crates[@]}"; do packages+=(-p "$crate"); done
+    for crate in "${doc[@]}"; do docs+=(-p "$crate"); done
   else
     # Not even cargo metadata worked: let cargo say why.
-    packages=(--workspace) core=true
+    packages=(--workspace) docs=(--workspace) core=true
+  fi
+  if cargo nextest --version >/dev/null 2>&1; then
+    run_tests=(cargo nextest run --locked --profile ci)
+  else
+    echo "local-ci: cargo-nextest is not installed, so the tests run under cargo test, one binary at a time"
+    run_tests=(cargo test --locked)
+    docs=()
   fi
   rm -f "$picked"
   if [ ${#packages[@]} -gt 0 ]; then
@@ -122,10 +134,16 @@ if [ $cargo -eq 1 ]; then
     if [ ${#crates[@]} -eq 0 ] || [[ " ${crates[*]} " == *" anibeam-playback "* ]]; then
       step "clippy playback with cast" cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
     fi
-    step test cargo test --locked "${packages[@]}"
-  else
+    step test "${run_tests[@]}" "${packages[@]}"
+    # nextest skips doctests; cargo test ran them with the rest.
+    [ ${#docs[@]} -gt 0 ] && step doctests cargo test --locked --doc "${docs[@]}"
+  elif [ ${#targets[@]} -eq 0 ]; then
     echo "== no crate changed: clippy and the tests have nothing to check"
   fi
+  # A test target picked by itself, such as the core's changelog test for a patch note.
+  for t in "${targets[@]}"; do
+    step "test ${t%%:*} --test ${t#*:}" "${run_tests[@]}" -p "${t%%:*}" --test "${t#*:}"
+  done
   [ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
 fi
 

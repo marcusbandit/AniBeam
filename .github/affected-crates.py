@@ -13,13 +13,15 @@ it; cargo never builds a dev-dependency for the user's own users. The crates, th
   affected-crates.py --self-test       the cases at the bottom of this file
 
   --skip NAME       leave a crate out of the answer, e.g. one the machine cannot build
-  --output FILE     also write crates=, alone= and core= lines to FILE
+  --output FILE     also write crates=, alone=, core=, tests= and doc= lines to FILE
   --github-output   the same into $GITHUB_OUTPUT
 
 Prints one crate per line on stdout, dependencies first, and why each was picked (and what
 was skipped) on stderr. `alone` is the picked crates another crate builds on: clippy runs on
 each of those by itself too, since one cargo call over several crates merges their features
-and hides a use the crate does not turn on itself.
+and hides a use the crate does not turn on itself. `doc` is the picked crates whose library has a
+doctest, a Rust block in a doc comment, for `cargo test --doc`: that compiles every library it
+names even to run nothing, and naming only binary-only crates fails.
 
 How a changed file maps to crates:
   1. Workspace-wide files (WORKSPACE_WIDE below): every crate.
@@ -27,9 +29,16 @@ How a changed file maps to crates:
      tests read is declared in that crate's manifest, relative to its folder:
          [package.metadata.ci]
          reads = ["../i18n"]
-  3. A file no crate owns or reads that sits under NO_CRATE below (docs, the site, the phone's
+  3. A file outside the crate that only one of its test targets reads picks that target and
+     nothing else: no clippy, no other test, no crate above it. `tests=` lists them as
+     crate:target. The core's patch note test is one (#1086):
+         [package.metadata.ci]
+         test-reads = { changelog = ["../apps/linux/changes"] }
+  4. Cargo.lock, when the lock it is compared with is at hand (--base): the workspace crates
+     that use a package whose entry changed, directly or not. Without it, every crate.
+  5. A file no crate owns or reads that sits under NO_CRATE below (docs, the site, the phone's
      own workspace, other workflows): none.
-  4. Anything else: every crate. An unknown file is never taken to be harmless.
+  6. Anything else: every crate. An unknown file is never taken to be harmless.
 """
 
 import argparse
@@ -39,9 +48,11 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 
 # Files every crate builds with, so a change to one checks everything. The CI files are here so
-# a change to the selection itself is checked against the whole workspace.
+# a change to the selection itself is checked against the whole workspace. Cargo.lock is too,
+# unless select() is handed what its change reaches (lock_users below).
 WORKSPACE_WIDE = [
     "Cargo.toml",
     "Cargo.lock",
@@ -53,6 +64,7 @@ WORKSPACE_WIDE = [
     ".github/affected-crates.py",
     ".github/workflows/ci.yml",
     ".github/local-ci.sh",
+    ".config/nextest.toml",
 ]
 
 # Paths no workspace crate builds from or reads. A crate that starts reading one declares it in
@@ -91,7 +103,8 @@ class Workspace:
 
     def __init__(self, crates):
         # crates: {name: {"dir": "core", "reads": ["apps/linux/packaging/"], "uses": {names},
-        #                 "dev": {names only its tests use}}}
+        #                 "dev": {names only its tests use},
+        #                 "test_reads": {"changelog": ["apps/linux/changes/"]}}}
         self.crates = crates
         self.users = {name: set() for name in crates}
         self.dev_users = {name: set() for name in crates}
@@ -112,10 +125,21 @@ class Workspace:
                 continue
             d = os.path.relpath(os.path.dirname(p["manifest_path"]), root)
             by_dir[os.path.normpath(os.path.dirname(p["manifest_path"]))] = p["name"]
-            reads = ((p.get("metadata") or {}).get("ci") or {}).get("reads") or []
-            reads = [os.path.relpath(os.path.normpath(os.path.join(root, d, r)), root) for r in reads]
-            reads = [r + "/" if os.path.isdir(os.path.join(root, r)) else r for r in reads]
-            crates[p["name"]] = {"dir": d, "reads": reads, "deps": p["dependencies"]}
+            ci = (p.get("metadata") or {}).get("ci") or {}
+
+            def from_root(paths):
+                paths = [os.path.relpath(os.path.normpath(os.path.join(root, d, r)), root)
+                         for r in paths]
+                return [r + "/" if os.path.isdir(os.path.join(root, r)) else r for r in paths]
+
+            crates[p["name"]] = {
+                "dir": d,
+                "reads": from_root(ci.get("reads") or []),
+                "test_reads": {t: from_root(rs) for t, rs in (ci.get("test-reads") or {}).items()},
+                "doctests": any(has_doctest(t["src_path"]) for t in p["targets"]
+                                if set(t["kind"]) & {"lib", "rlib", "dylib", "proc-macro"}),
+                "deps": p["dependencies"],
+            }
         for c in crates.values():
             local = [(by_dir[os.path.normpath(dep["path"])], dep.get("kind"))
                      for dep in c.pop("deps")
@@ -153,6 +177,12 @@ class Workspace:
     def readers(self, path):
         return sorted(n for n, c in self.crates.items() if any(matches(path, r) for r in c["reads"]))
 
+    def test_readers(self, path):
+        """(crate, test target) for each test target that declares it reads the file."""
+        return sorted((n, t) for n, c in self.crates.items()
+                      for t, rs in c.get("test_reads", {}).items()
+                      if any(matches(path, r) for r in rs))
+
     def users_of(self, names):
         """The crates that build on any of these, directly or not, plus the direct users whose
         tests use one of them, or a crate built on one, as a dev-dependency."""
@@ -167,16 +197,25 @@ class Workspace:
         return out - set(names)
 
 
-def select(ws, files, everything=False, skip=()):
-    """Returns (crates, alone, why). why is a list of lines for a log reader."""
+def select(ws, files, everything=False, skip=(), lock=None):
+    """Returns (crates, alone, tests, why). tests is crate:target for a test target to run by
+    itself; why is a list of lines for a log reader. lock is the set of crates the Cargo.lock
+    change reaches (lock_users), or None when it is not known."""
     why = []
     picked = {}  # crate: the first file that picked it
+    tests = {}  # (crate, target): the first file that picked it
     if everything:
         why.append("every crate: asked for all")
         picked = {n: None for n in ws.crates}
     for f in files:
         if everything:
             break
+        if f == "Cargo.lock" and lock is not None:
+            if not lock:
+                why.append("no crate: Cargo.lock changes no package a crate uses")
+            for n in sorted(lock):
+                picked.setdefault(n, "Cargo.lock")
+            continue
         wide = next((p for p in WORKSPACE_WIDE if matches(f, p)), None)
         if wide:
             why.append(f"every crate: {f} is workspace-wide")
@@ -187,9 +226,14 @@ def select(ws, files, everything=False, skip=()):
         o = ws.owner(f)
         if o:
             owners.add(o)
-        if owners:
-            for n in sorted(owners):
-                picked.setdefault(n, f)
+        # A file can be a crate's own and read by another's test too: a patch note is the
+        # shell's, and the core's changelog test reads it.
+        targets = ws.test_readers(f)
+        for t in targets:
+            tests.setdefault(t, f)
+        for n in sorted(owners):
+            picked.setdefault(n, f)
+        if owners or targets:
             continue
         if any(matches(f, p) for p in NO_CRATE):
             why.append(f"no crate: {f}")
@@ -212,23 +256,140 @@ def select(ws, files, everything=False, skip=()):
     for n in sorted(set(skip) & set(picked)):
         why.append(f"left out: {n}, skipped on this machine")
     names = set(picked) - set(skip)
-    unpicked = sorted(set(ws.crates) - set(picked))
+    # A crate checked in full runs every test target anyway.
+    alone_tests = []
+    for (n, t), f in sorted(tests.items()):
+        if n in picked or n in skip:
+            continue
+        why.append(f"{n} --test {t} only: {f} changed")
+        alone_tests.append(f"{n}:{t}")
+    tested = {t.split(":")[0] for t in alone_tests}
+    unpicked = sorted(set(ws.crates) - set(picked) - tested)
     if unpicked:
         why.append("not checked: " + ", ".join(unpicked))
     crates = ws.order(names)
     alone = [n for n in crates if ws.users[n] or ws.dev_users[n]]
-    return crates, alone, why
+    return crates, alone, alone_tests, why
+
+
+def lock_users(old_text, new_text, members):
+    """The workspace members a Cargo.lock change reaches: each one whose own entry changed, or
+    that uses a package whose entry changed, directly or not, in the old lock or the new one.
+    A package counts as changed when it came, went, or its checksum or what it uses changed.
+    Returns None when either lock cannot be read or something besides the packages changed,
+    so the caller checks every crate. Only the members' own crates are named; select() adds
+    the crates above them."""
+    try:
+        old, new = tomllib.loads(old_text), tomllib.loads(new_text)
+    except (tomllib.TOMLDecodeError, TypeError):
+        return None
+    if {k: v for k, v in old.items() if k != "package"} != \
+            {k: v for k, v in new.items() if k != "package"}:
+        return None
+
+    def graph(lock):
+        pkgs = lock.get("package") or []
+        ids = [(p["name"], p.get("version", ""), p.get("source", "")) for p in pkgs]
+        by_name = {}
+        for i in ids:
+            by_name.setdefault(i[0], []).append(i)
+
+        def resolve(spec):
+            # "name", "name version" or "name version (source)", as Cargo.lock spells a use.
+            m = re.fullmatch(r"(\S+)(?: (\S+))?(?: \((.+)\))?", spec)
+            if not m:
+                return ("?", spec, "")
+            name, version, source = m.groups()
+            found = [i for i in by_name.get(name, [])
+                     if (version is None or i[1] == version) and (source is None or i[2] == source)]
+            return found[0] if len(found) == 1 else ("?", spec, "")
+
+        uses = {}
+        sign = {}
+        for i, p in zip(ids, pkgs):
+            uses[i] = {resolve(d) for d in p.get("dependencies") or []}
+            sign[i] = (p.get("checksum"), tuple(sorted(uses[i])))
+        return uses, sign
+
+    try:
+        old_uses, old_sign = graph(old)
+        new_uses, new_sign = graph(new)
+    except (KeyError, TypeError, AttributeError):
+        return None
+    changed = {i for i in set(old_sign) | set(new_sign) if old_sign.get(i) != new_sign.get(i)}
+    reached = set()
+    for uses in (old_uses, new_uses):
+        users = {}
+        for i, ds in uses.items():
+            for d in ds:
+                users.setdefault(d, set()).add(i)
+        todo = [i for i in changed if i in uses]
+        seen = set(todo)
+        while todo:
+            i = todo.pop()
+            for u in users.get(i, ()):
+                if u not in seen:
+                    seen.add(u)
+                    todo.append(u)
+        reached |= seen
+    # A member is a package with no source; a path dependency outside the workspace has none
+    # either, and its users are reached through it.
+    return {i[0] for i in reached if not i[2] and i[0] in members}
+
+
+# A doc comment line that opens or closes a fenced block, and the info strings rustdoc compiles
+# and runs as a doctest.
+FENCE = re.compile(r"^\s*//[/!]\s?\s*(```+|~~~+)\s*([^\s`]*)")
+NOT_RUST = {"text", "ignore", "sh", "bash", "console", "json", "toml", "yaml", "md", "markdown",
+            "html", "css", "sql", "diff", "ini", "xml", "qml", "kotlin", "swift", "c", "cpp",
+            "python", "js", "ts"}
+
+
+def doc_blocks(text):
+    """The info string of each fenced block opened in a doc comment."""
+    out, open_fence = [], None
+    for line in text.splitlines():
+        m = FENCE.match(line)
+        if not m:
+            continue
+        if open_fence is None:
+            open_fence = m.group(1)
+            out.append(m.group(2))
+        elif m.group(1).startswith(open_fence[0] * len(open_fence)) and not m.group(2):
+            open_fence = None
+    return out
+
+
+def is_doctest(info):
+    words = [w for w in re.split(r"[,\s]+", info) if w]
+    return not words or not any(w in NOT_RUST for w in words)
+
+
+def has_doctest(lib_root):
+    """Whether any .rs file in the library's folder has a block rustdoc runs. Over-counts a file
+    the library never includes, which only runs cargo test --doc for nothing."""
+    top = os.path.dirname(lib_root)
+    for here, subdirs, files in os.walk(top):
+        subdirs[:] = [d for d in subdirs if d != "target"]
+        for f in files:
+            if f.endswith(".rs"):
+                with open(os.path.join(here, f), errors="replace") as fh:
+                    if any(is_doctest(i) for i in doc_blocks(fh.read())):
+                        return True
+    return False
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", root, *args], check=True, capture_output=True,
+                          text=True).stdout
 
 
 def changed_files(root, base):
-    def git(*args):
-        return subprocess.run(["git", "-C", root, *args], check=True, capture_output=True,
-                              text=True).stdout
-    mb = git("merge-base", "HEAD", base).strip()
+    mb = git(root, "merge-base", "HEAD", base).strip()
     # NUL-separated, so a path with any character in it comes back as it is, unquoted. Renames
     # show as a delete and an add, so the crate a file left is checked too.
-    files = git("diff", "-z", "--name-only", "--no-renames", "--relative", mb).split("\0")
-    files += git("ls-files", "-z", "--others", "--exclude-standard").split("\0")
+    files = git(root, "diff", "-z", "--name-only", "--no-renames", "--relative", mb).split("\0")
+    files += git(root, "ls-files", "-z", "--others", "--exclude-standard").split("\0")
     return sorted(set(f for f in files if f)), mb
 
 
@@ -256,24 +417,36 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ws = Workspace.from_metadata(metadata(root))
     files = []
+    lock = None
     if a.base:
         files, mb = changed_files(root, a.base)
         print(f"affected: {len(files)} files changed since {mb[:10]}", file=sys.stderr)
+        if "Cargo.lock" in files:
+            try:
+                old = git(root, "show", f"{mb}:Cargo.lock")
+                with open(os.path.join(root, "Cargo.lock")) as f:
+                    lock = lock_users(old, f.read(), set(ws.crates))
+            except (subprocess.CalledProcessError, OSError):
+                lock = None
     elif a.files is not None:
         files = a.files
-    crates, alone, why = select(ws, files, everything=a.all, skip=a.skip)
+    crates, alone, tests, why = select(ws, files, everything=a.all, skip=a.skip, lock=lock)
     for line in why:
         print(f"affected: {line}", file=sys.stderr)
-    if not crates:
+    if not crates and not tests:
         print("affected: nothing to clippy or test", file=sys.stderr)
     for n in crates:
         print(n)
+    for t in tests:
+        print(f"{t} (that test only)")
     out = os.environ["GITHUB_OUTPUT"] if a.github_output else a.output
     if out:
         with open(out, "a") as f:
             f.write(f"crates={' '.join(crates)}\n")
             f.write(f"alone={' '.join(alone)}\n")
             f.write(f"core={'true' if 'anibeam-core' in crates else 'false'}\n")
+            f.write(f"tests={' '.join(tests)}\n")
+            f.write(f"doc={' '.join(n for n in crates if ws.crates[n].get('doctests', True))}\n")
     return 0
 
 
@@ -298,6 +471,7 @@ def undeclared_reads(ws, root):
                     todo.append(d)
         dirs = [ws.crates[n]["dir"] for n in below | {name}]
         top = os.path.join(root, c["dir"])
+        tests_dir = os.path.join(c["dir"], "tests")
         for here, subdirs, files in os.walk(top):
             subdirs[:] = [d for d in subdirs if d != "target"
                           and not os.path.exists(os.path.join(here, d, "Cargo.toml"))]
@@ -320,8 +494,15 @@ def undeclared_reads(ws, root):
                     if any(matches(rel, r) for r in c["reads"]):
                         continue
                     src = os.path.relpath(os.path.join(here, f), root)
+                    # A test target's declared reads cover its own file or folder in tests/.
+                    if any(src in (os.path.join(tests_dir, t + ".rs"),)
+                           or src.startswith(os.path.join(tests_dir, t) + "/")
+                           for t, rs in c.get("test_reads", {}).items()
+                           if any(matches(rel, r) for r in rs)):
+                        continue
                     problems.append(f"{src} reads {spelled} ({rel}), which {name} does not "
-                                    "declare under [package.metadata.ci] reads")
+                                    "declare under [package.metadata.ci] reads (or test-reads, "
+                                    "for the test target that reads it)")
     return problems
 
 
@@ -338,7 +519,8 @@ FAKE = {
     "metadata": {"dir": "metadata", "reads": [], "uses": {"library"}},
     "trackers": {"dir": "trackers", "reads": [], "uses": {"metadata"}},
     "relay": {"dir": "apps/relay", "reads": [], "uses": {"room"}},
-    "core": {"dir": "core", "reads": ["apps/linux/packaging/", "apps/*/changes/*"],
+    "core": {"dir": "core", "reads": ["apps/linux/packaging/"],
+             "test_reads": {"changelog": ["apps/*/changes/*", "apps/android/CHANGELOG.md"]},
              "uses": {"trackers", "room"}, "dev": {"relay"}},
     "cli": {"dir": "apps/cli", "reads": [], "uses": {"core"}},
     "shell": {"dir": "apps/linux", "reads": [], "uses": {"core"}},
@@ -363,7 +545,9 @@ CASES = [
     # Files outside a crate that it declares it reads.
     (["i18n/en/core.ftl"], ALL - {"host-api", "room", "relay"}),
     (["apps/linux/packaging/linux/appimage.sh"], {"shell", "core", "cli"}),
-    (["apps/android/changes/12-x.md"], {"core", "cli", "shell"}),
+    # A patch note: the shell builds its own in, the core only tests them (TEST_CASES).
+    (["apps/linux/changes/12-x.md"], {"shell"}),
+    (["apps/android/changes/12-x.md"], set()),
     # Touches no crate.
     (["docs/agents/triage.md"], set()),
     (["README.md", "site/index.html", ".github/workflows/site.yml"], set()),
@@ -380,33 +564,133 @@ CASES = [
 ]
 
 
+# Files a test target reads by itself: the crates to check in full, and the targets to run.
+TEST_CASES = [
+    (["apps/android/changes/12-x.md"], set(), ["core:changelog"]),
+    (["apps/linux/changes/12-x.md"], {"shell"}, ["core:changelog"]),
+    (["apps/linux/changes/12-x.md", "apps/android/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
+    # The core checked in full runs the target anyway.
+    (["apps/android/changes/12-x.md", "trackers/src/a.rs"], {"trackers", "core", "cli", "shell"},
+     []),
+    (["docs/x.md"], set(), []),
+]
+
+# Cargo.lock: what each change reaches, from a lock shaped like the real one.
+LOCK = """version = 4
+
+[[package]]
+name = "core"
+version = "0.1.0"
+dependencies = ["serde", "trackers"]
+
+[[package]]
+name = "trackers"
+version = "0.1.0"
+dependencies = ["serde", "url"]
+
+[[package]]
+name = "shell"
+version = "0.1.0"
+dependencies = ["core", "qt"]
+
+[[package]]
+name = "qt"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa"
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb"
+
+[[package]]
+name = "url"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc"
+dependencies = ["idna"]
+
+[[package]]
+name = "idna"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd"
+"""
+LOCK_MEMBERS = {"core", "trackers", "shell"}
+SHELL_DEP = LOCK.replace('dependencies = ["core", "qt"]', 'dependencies = ["core", "icns", "qt"]') + """
+[[package]]
+name = "icns"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee"
+"""
+LOCK_CASES = [
+    # A dependency only the shell takes reaches the shell alone.
+    (SHELL_DEP, {"shell"}),
+    # A bump deep down reaches every member that uses it, through the packages between.
+    (LOCK.replace('checksum = "dd"', 'checksum = "d2"'), {"trackers", "core", "shell"}),
+    (LOCK.replace('checksum = "bb"', 'checksum = "b2"'), {"trackers", "core", "shell"}),
+    (LOCK, set()),
+    # A second version of a package renames the plain uses of the first, which still reach the
+    # same package; nothing uses the new one yet.
+    (LOCK.replace('dependencies = ["core", "qt"]', 'dependencies = ["core", "qt 1.0.0"]')
+     + '\n[[package]]\nname = "qt"\nversion = "2.0.0"\nsource = "x"\nchecksum = "ff"\n',
+     set()),
+    # The lock's own version, or a lock that does not parse: unknown, so every crate.
+    (LOCK.replace("version = 4", "version = 5"), None),
+    ("not [ toml", None),
+]
+
+
 def self_test():
     ws = Workspace(FAKE)
     bad = 0
     for files, want in CASES:
-        got, alone, _ = select(ws, files)
+        got, alone, _, _ = select(ws, files)
         if set(got) != want:
             bad += 1
             print(f"self-test: {files}: got {sorted(got)}, want {sorted(want)}", file=sys.stderr)
         if any(not (ws.users[n] or ws.dev_users[n]) for n in alone) or any(n not in got for n in alone):
             bad += 1
             print(f"self-test: {files}: alone {alone} has a crate nothing builds on", file=sys.stderr)
+    for files, want, want_tests in TEST_CASES:
+        got, _, tests, _ = select(ws, files)
+        if set(got) != want or tests != want_tests:
+            bad += 1
+            print(f"self-test: {files}: got {sorted(got)} and {tests}, want {sorted(want)} and "
+                  f"{want_tests}", file=sys.stderr)
+    for new, want in LOCK_CASES:
+        got = lock_users(LOCK, new, LOCK_MEMBERS)
+        if got != want:
+            bad += 1
+            print(f"self-test: lock change: got {got}, want {want}", file=sys.stderr)
+    # The lock's reach feeds select(): the crates above it come along, and none means none.
+    got, _, _, _ = select(ws, ["Cargo.lock"], lock={"trackers"})
+    if set(got) != {"trackers", "core", "cli", "shell"}:
+        bad += 1
+        print(f"self-test: Cargo.lock reaching trackers picks {got}", file=sys.stderr)
+    got, _, _, _ = select(ws, ["Cargo.lock"], lock=set())
+    if got:
+        bad += 1
+        print(f"self-test: Cargo.lock reaching nothing picks {got}", file=sys.stderr)
     # Skipping leaves the rest, and dependencies come first.
-    got, _, _ = select(ws, ["foundation/x.rs"], skip=["shell"])
+    got, _, _, _ = select(ws, ["foundation/x.rs"], skip=["shell"])
     if "shell" in got or got.index("foundation") > got.index("core"):
         bad += 1
         print(f"self-test: skip or order wrong: {got}", file=sys.stderr)
-    got, _, _ = select(ws, [], everything=True)
+    got, _, _, _ = select(ws, [], everything=True)
     if set(got) != ALL:
         bad += 1
         print("self-test: --all does not pick every crate", file=sys.stderr)
-    total = len(CASES) + 2
+    total = len(CASES) + len(TEST_CASES) + len(LOCK_CASES) + 4
     # The real workspace: a declared read that names no file would silently check nothing, and
     # a change at the bottom has to reach the crates the shells build on.
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     real = Workspace.from_metadata(metadata(root))
     for name, c in sorted(real.crates.items()):
-        for r in c["reads"]:
+        for r in c["reads"] + [r for rs in c["test_reads"].values() for r in rs]:
             total += 1
             if not any(ch in r for ch in "*?[") and not os.path.exists(os.path.join(root, r)):
                 bad += 1
@@ -417,12 +701,23 @@ def self_test():
         print(f"self-test: {problem}", file=sys.stderr)
     bad += 1 if problems else 0
     total += 1
-    got, _, _ = select(real, ["foundation/src/x.rs"])
+    got, _, _, _ = select(real, ["foundation/src/x.rs"])
     want = {"anibeam-foundation", "anibeam-net", "anibeam-library", "anibeam-trackers",
             "anibeam-core", "anibeam-cli", "anibeam"}
     if not want <= set(got) or "anibeam-contract" in got:
         bad += 1
         print(f"self-test: a change in foundation/ picks {got}", file=sys.stderr)
+    # Which fenced doc blocks rustdoc runs.
+    blocks = doc_blocks("/// ```\n/// a\n/// ```\n//! ```text\n//! x\n//! ```\n"
+                        "/// ```rust,no_run\n/// b\n/// ```\n/// ```ignore\n/// ```\n")
+    total += 1
+    if [is_doctest(b) for b in blocks] != [True, False, True, False]:
+        bad += 1
+        print(f"self-test: doc blocks read as {blocks}", file=sys.stderr)
+    total += 1
+    if real.crates["anibeam-cli"].get("doctests"):
+        bad += 1
+        print("self-test: the cli has no library, so no doctests", file=sys.stderr)
     print(f"self-test: {total - bad} of {total} passed", file=sys.stderr)
     return 1 if bad else 0
 

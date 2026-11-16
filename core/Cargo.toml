@@ -8,11 +8,12 @@ repository.workspace = true
 description = "Anibeam's app team: the Core every shell opens, its call router, launch and update, and the uniffi export, over the team crates"
 build = "build.rs"
 
-# Files outside this folder the tests read, so a change to one checks the core and what builds
-# on it (.github/affected-crates.py): the apps' patch notes and their versions
-# (tests/changelog.rs). The anirss pins in the packaging are the downloads crate's.
-[package.metadata.ci]
-reads = [
+# Files outside this folder that only tests/changelog.rs reads: the apps' patch notes and their
+# versions. A change to one runs that test alone, not the core's clippy, its other tests or what
+# builds on it (.github/affected-crates.py, #1086). The anirss pins in the packaging are the
+# downloads crate's.
+[package.metadata.ci.test-reads]
+changelog = [
   "../.github/changelog-fold.sh",
   "../apps/linux/CHANGELOG.md",
   "../apps/linux/changes",

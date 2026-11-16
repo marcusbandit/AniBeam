@@ -280,8 +280,13 @@ Work on one platform at a time and check it locally with
 
 CI and `.github/local-ci.sh` clippy and test only the crates a change touches and every
 crate that builds on them; `.github/affected-crates.py` prints what it picked and why. A
-change to the root manifest, the lock file or the toolchain checks every crate, and
-`.github/local-ci.sh --all` or a CI run by hand does too.
+patch note runs only the core's changelog test. A lock file change checks the crates that use
+a package it changed, and a change to the root manifest or the toolchain checks every crate,
+as `.github/local-ci.sh --all` or a CI run by hand does too.
+
+The tests run under [cargo-nextest](https://nexte.st), which runs every test binary at once;
+install it (`cargo install --locked cargo-nextest`) and local-ci uses it too, or it falls back
+to `cargo test`.
 
 When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
 and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
