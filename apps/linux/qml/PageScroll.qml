@@ -29,6 +29,21 @@ Flickable {
     function scrollTo(y) { wheel.scrollTo(y) }
     readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
+    // Scrolls an item into view the way the arrow keys do; a LazyTile asks for the card it built
+    function reveal(item) { gridKeys.reveal(item) }
+    // Tab or Shift+Tab onto anything in the page scrolls it into view too, a card that was
+    // built ahead of the view as much as one a LazyTile built (#627). It listens only while
+    // a Tab press is being handled, and the binding makes Keyboard watch from the start
+    Connections {
+        target: root.Window.window
+        enabled: Keyboard.tab !== 0
+        function onActiveFocusItemChanged() {
+            var it = root.Window.window.activeFocusItem
+            if (!it) return
+            for (var p = it.parent; p; p = p.parent)
+                if (p === root.contentItem) { gridKeys.reveal(it); return }
+        }
+    }
 
     // LazyTile's bookkeeping (#289). A budget of one viewport of card area,
     // refilled after every painted frame: tiles made while it lasts build at once. The
