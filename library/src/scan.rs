@@ -386,6 +386,7 @@ pub fn reconcile_source(
         let mut files = s.files.clone();
         let format = readings::record_format(tx, id)?;
         readings::apply(format.as_deref(), &mut files, &fixes);
+        separate_shared_keys(&s.path, &mut files);
 
         let mut old: HashMap<String, OldRow> = HashMap::new();
         {
@@ -613,6 +614,47 @@ fn never_attempted(conn: &Connection, ids: &[u64]) -> Result<Vec<u64>, CoreError
         r.get::<_, i64>(0).map(|v| v as u64)
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Extras of one name in two folders of a show key apart (#1085). The folder
+/// that comes first, the show's own before any below it and then by name,
+/// keeps the bare key, so the history the name already had stays with one
+/// file; a copy in any other folder keys with its folder in front,
+/// `Season 2/NCOP1.mkv`. A name in one folder only keeps the bare key, as
+/// every extra's was. Episodes key by number and are left alone: two files of
+/// one number are two releases of it.
+fn separate_shared_keys(series: &str, files: &mut [walk::ScannedFile]) {
+    let mut by_key: HashMap<String, Vec<(usize, String)>> = HashMap::new();
+    for (i, f) in files.iter().enumerate() {
+        if f.classified.extra.is_some() {
+            by_key
+                .entry(f.episode_key.clone())
+                .or_default()
+                .push((i, crate::classifier::folder_below(series, &f.path)));
+        }
+    }
+    let depth = |folder: &str| {
+        if folder.is_empty() {
+            0
+        } else {
+            folder.matches('/').count() + 1
+        }
+    };
+    for (key, found) in by_key {
+        let Some(first) = found
+            .iter()
+            .map(|(_, folder)| folder.as_str())
+            .min_by(|a, b| depth(a).cmp(&depth(b)).then(a.cmp(b)))
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        for (i, folder) in found {
+            if folder != first {
+                files[i].episode_key = crate::classifier::key_in_folder(&folder, &key);
+            }
+        }
+    }
 }
 
 /// An extra's number column is NULL; an episode's is its number.
@@ -2206,6 +2248,104 @@ mod tests {
         assert_eq!(keys, vec!["Show - SP01.mkv", "Show - SP01.mkv"]);
         assert_eq!(completed, vec!["Show - SP01.mkv 7"]);
         assert_eq!(resume, vec!["Show - SP01.mkv 300"]);
+        store.close();
+    }
+
+    /// A show with an NCOP of one name in two season folders, as the walk
+    /// reads it from disk: two files, two histories (#1085). History from
+    /// before, when the two shared the bare name, stays with the first
+    /// folder's file, which keeps that key.
+    #[test]
+    fn same_named_extras_in_two_season_folders_key_apart() {
+        let lib = tempfile::tempdir().unwrap();
+        let show = lib.path().join("Show");
+        for file in [
+            show.join("Show - 01.mkv"),
+            show.join("Show - 02.mkv"),
+            show.join("Season 1").join("NCOP1.mkv"),
+            show.join("Season 2").join("NCOP1.mkv"),
+        ] {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"x").unwrap();
+        }
+        let walked = walk::scan_source(lib.path()).unwrap();
+        assert_eq!(walked.len(), 1, "one show");
+        // The keys as a scan before #1085 wrote them: the name alone.
+        let mut before = walked.clone();
+        for f in &mut before[0].files {
+            if f.classified.extra.is_some() {
+                f.episode_key = "NCOP1.mkv".to_string();
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(tx, 1, &before, None, 10)?;
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, 'NCOP1.mkv', 5)",
+                    params![r.added[0] as i64],
+                )?;
+                Ok(r.added[0] as i64)
+            })
+            .unwrap();
+        store
+            .tx(move |tx| reconcile_source(tx, 1, &walked, None, 20))
+            .unwrap();
+        let rows = |sql: &'static str| -> Vec<String> {
+            store
+                .read(move |c| {
+                    let mut stmt = c.prepare(sql)?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            rows("SELECT episode_key FROM files WHERE kind = 'extra' ORDER BY path"),
+            vec!["NCOP1.mkv", "Season 2/NCOP1.mkv"]
+        );
+        assert_eq!(
+            rows("SELECT episode_key FROM files WHERE kind = 'episode' ORDER BY path"),
+            vec!["1", "2"]
+        );
+        assert_eq!(rows("SELECT episode_key FROM completed"), vec!["NCOP1.mkv"]);
+
+        // Each copy now takes its own finish.
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, 'Season 2/NCOP1.mkv', 30)",
+                    params![series],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            rows("SELECT episode_key || ' ' || at FROM completed ORDER BY episode_key"),
+            vec!["NCOP1.mkv 5", "Season 2/NCOP1.mkv 30"]
+        );
+
+        // With the first season's copy gone, the other is the only one of its
+        // name: it takes the bare key back, and its history follows it there.
+        std::fs::remove_file(show.join("Season 1").join("NCOP1.mkv")).unwrap();
+        let walked = walk::scan_source(lib.path()).unwrap();
+        store
+            .tx(move |tx| reconcile_source(tx, 1, &walked, None, 40))
+            .unwrap();
+        assert_eq!(
+            rows("SELECT episode_key FROM files WHERE kind = 'extra'"),
+            vec!["NCOP1.mkv"]
+        );
+        assert_eq!(
+            rows("SELECT episode_key || ' ' || at FROM completed"),
+            vec!["NCOP1.mkv 30"]
+        );
         store.close();
     }
 
