@@ -475,11 +475,6 @@ impl qobject::Shell {
                     return nothing(String::new());
                 };
                 if let Some(command) = install::repo_command(*manager, package) {
-                    let from = match manager {
-                        install::Manager::Apt => "apt",
-                        install::Manager::Dnf => "dnf",
-                        install::Manager::Pacman => "",
-                    };
                     match anibeam_core::update::check_repos(&http, &current).await {
                         Ok(Some(version)) => offer(
                             &version,
@@ -489,7 +484,7 @@ impl qobject::Shell {
                             ),
                             "command",
                             command,
-                            from,
+                            manager.source(),
                         ),
                         Ok(None) => nothing(String::new()),
                         Err(e) => nothing(e.to_string()),
@@ -509,7 +504,7 @@ impl qobject::Shell {
                             &format!("https://aur.archlinux.org/packages/{package}"),
                             "command",
                             command,
-                            "aur",
+                            manager.source(),
                         )
                     }
                     Ok(None) => nothing(String::new()),

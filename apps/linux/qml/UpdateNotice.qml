@@ -134,7 +134,7 @@ Frost {
         root.url = url
         root.how = how
         root.command = command
-        root.from = from || ""
+        root.from = from
         root.phase = "offer"
         root.copied = false
         root.pending = true
@@ -178,8 +178,8 @@ Frost {
         if (phase === "downloading") return words.t("update-notice-downloading", { version: version })
         if (phase === "ready") return words.t("update-notice-ready", { version: version })
         if (phase === "failed") return words.t("update-notice-failed")
-        if (how === "command" && from === "aur") return words.t("update-notice-on-aur", { version: version })
-        if (how === "command" && (from === "apt" || from === "dnf")) return words.t("update-notice-in-repo", { version: version, manager: from })
+        if (from === "aur") return words.t("update-notice-on-aur", { version: version })
+        if (from !== "") return words.t("update-notice-in-repo", { version: version, manager: from })
         return title ? words.t("update-notice-out-titled", { version: version, title: title }) : words.t("update-notice-out", { version: version })
     }
     readonly property string detail: {
