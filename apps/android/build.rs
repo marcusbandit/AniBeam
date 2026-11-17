@@ -25,7 +25,12 @@ fn main() {
     let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
         Ok("android") => android_mpv(&manifest),
-        Ok("ios") => ios_mpv(&manifest),
+        Ok("ios") => {
+            ios_mpv(&manifest);
+            // platform/ios.rs shows sign-in pages and links in these frameworks' sheets.
+            println!("cargo:rustc-link-lib=framework=AuthenticationServices");
+            println!("cargo:rustc-link-lib=framework=SafariServices");
+        }
         _ => {}
     }
     // A debug build, the tests' among them, keeps each element's name, which lets a test find

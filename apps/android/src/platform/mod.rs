@@ -30,11 +30,11 @@ use other as target;
 
 // The platform calls. A new call goes in this list and in every platform file.
 pub use target::{
-    app_icon, ask_notifications, bars, brightness, copy_text, crease, episode_ready, fold,
-    give_audio_focus, line_colours, log, multicast, notification_settings, notifications_allowed,
-    open_url, pick_file, player_awake, player_screen, relocalize, set_app_icon, set_brightness,
-    set_volume, start_service, stop_service, system_dark, system_locale, take_audio_focus,
-    unmetered, update_service, volume, window_up,
+    app_icon, ask_notifications, bars, brightness, close_sign_in, copy_text, crease, episode_ready,
+    fold, give_audio_focus, line_colours, log, multicast, notification_settings,
+    notifications_allowed, open_sign_in, open_url, pick_file, player_awake, player_screen,
+    relocalize, set_app_icon, set_brightness, set_volume, start_service, stop_service, system_dark,
+    system_locale, take_audio_focus, unmetered, update_service, volume, window_up,
 };
 // Only the player calls these, and it links libmpv only where libmpv was fetched.
 #[cfg_attr(not(libmpv), allow(unused_imports))]
