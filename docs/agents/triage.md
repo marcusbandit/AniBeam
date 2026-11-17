@@ -42,10 +42,15 @@ cannot filter webhook deliveries yet, so every label change would start a run.
 | `needs-triage` | the issue forms, or the owner by hand before a first pass | waiting for a triage pass; the pass takes it off |
 | `needs more info` | triage | waiting on the reporter; `stale-needs-more-info.yml` closes the issue after 7 days with no comment since the label went on |
 | `via-triage` | the triage report form | filed by the reporter's own coding agent, which already looked at their machine |
+| `agent-ready` | the agent loop | a coding agent can take it alone; the loop hands it to an issue agent |
+| `needs-human` | the agent loop | the owner has to decide or do something before an agent can go on |
+| `unclear` | the agent loop | the issue does not say what is wrong or what done looks like |
+| `duplicate` | the agent loop | an open issue already asks for the same change |
+| `risky` | the agent loop | a PR that waits for the owner instead of merging on a clean review |
 | `bug`, `enhancement`, `question`, `documentation` | triage, or the bug form for `bug` | the one category an open issue carries |
 
-Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates a
-triage label when someone deletes it.
+Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates any of
+these labels when someone deletes it.
 
 ## Reproducing in Anibeam
 
