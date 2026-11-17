@@ -39,8 +39,8 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=SCRIPTDIR/download.sh
-. "$here/download.sh"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 prefix="$1"
 : "${QMAKE:?QMAKE names the qmake of the Qt that install-qt-action put in place}"
 FFMPEG_VERSION=6.1.6
@@ -60,16 +60,14 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$prefix"
 
 echo "== libva $LIBVA_VERSION"
-download "$work/libva.tar.bz2" "https://github.com/intel/libva/releases/download/$LIBVA_VERSION/libva-$LIBVA_VERSION.tar.bz2"
-echo "$LIBVA_SHA  $work/libva.tar.bz2" | sha256sum -c --quiet -
+download_checked "$work/libva.tar.bz2" "$LIBVA_SHA" "https://github.com/intel/libva/releases/download/$LIBVA_VERSION/libva-$LIBVA_VERSION.tar.bz2"
 tar -xjf "$work/libva.tar.bz2" -C "$work"
 meson setup "$work/libva-build" "$work/libva-$LIBVA_VERSION" --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dwith_x11=yes -Dwith_wayland=yes -Dwith_glx=no -Ddriverdir=/usr/lib/x86_64-linux-gnu/dri
 meson install -C "$work/libva-build"
 
 echo "== FFmpeg $FFMPEG_VERSION"
-download "$work/ffmpeg.tar.xz" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
-echo "$FFMPEG_SHA  $work/ffmpeg.tar.xz" | sha256sum -c --quiet -
+download_checked "$work/ffmpeg.tar.xz" "$FFMPEG_SHA" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
 tar -xJf "$work/ffmpeg.tar.xz" -C "$work"
 mkdir -p "$work/ffmpeg-build"
 # --disable-autodetect keeps configure from picking up whatever else the runner has
@@ -88,8 +86,7 @@ make -C "$work/ffmpeg-build" -j"$(nproc)"
 make -C "$work/ffmpeg-build" install
 
 echo "== libmpv $MPV_VERSION"
-download "$work/mpv.tar.gz" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
-echo "$MPV_SHA  $work/mpv.tar.gz" | sha256sum -c --quiet -
+download_checked "$work/mpv.tar.gz" "$MPV_SHA" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
 tar -xzf "$work/mpv.tar.gz" -C "$work"
 meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \
@@ -110,8 +107,7 @@ echo "== extra-cmake-modules $ECM_VERSION"
 # download.kde.org redirects to a mirror near the runner, and on #952 that mirror never
 # answered; MIT's mirror is the fixed second source. The checksum is KDE's own .sha256.
 ecm_path="stable/frameworks/${ECM_VERSION%.*}/extra-cmake-modules-$ECM_VERSION.tar.xz"
-download "$work/ecm.tar.xz" "https://download.kde.org/$ecm_path" "https://mirrors.mit.edu/kde/$ecm_path"
-echo "$ECM_SHA  $work/ecm.tar.xz" | sha256sum -c --quiet -
+download_checked "$work/ecm.tar.xz" "$ECM_SHA" "https://download.kde.org/$ecm_path" "https://mirrors.mit.edu/kde/$ecm_path"
 tar -xJf "$work/ecm.tar.xz" -C "$work"
 cmake -S "$work/extra-cmake-modules-$ECM_VERSION" -B "$work/ecm-build" -G Ninja \
   -DCMAKE_INSTALL_PREFIX="$prefix" -DBUILD_TESTING=OFF -DBUILD_HTML_DOCS=OFF -DBUILD_MAN_DOCS=OFF -DBUILD_QTHELP_DOCS=OFF

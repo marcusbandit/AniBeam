@@ -43,8 +43,8 @@ pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-d
 
 # download.sh's fetch puts each pinned file in $downloads, retrying a host that times out
 # or answers 504 (#953).
-# shellcheck source=SCRIPTDIR/download.sh
-. "$here/download.sh"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 
 
 echo "== tools"
