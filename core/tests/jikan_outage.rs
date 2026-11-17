@@ -233,13 +233,9 @@ fn a_failure_on_jikans_second_page_keeps_the_first_and_deletes_nothing() {
     let series = releasing(&core, src, "One Piece", 1, 1001);
 
     let now = time::now_secs();
-    fixtures::insert_episode(
-        &core,
-        1,
-        150,
-        Some("Only Jikan knew"),
-        Some(now + 30 * 86_400),
-    );
+    // Untitled, so the refresh still reads from Jikan's first page
+    // (#1105) and reaches the page that fails.
+    fixtures::insert_episode(&core, 1, 150, None, Some(now + 30 * 86_400));
 
     let nodes = [(1, now - 2 * 86_400), (2, now - 86_400)];
     http.push_for(
@@ -443,6 +439,52 @@ fn the_first_jikan_reply_after_an_outage_fills_what_it_left_owed() {
     );
     assert!(owed(&core).is_empty());
     assert_eq!(jikan_requests(&http), 3, "{:#?}", http.requests());
+
+    core.shutdown();
+}
+
+/// A long show an outage left owed Jikan's titles reads Jikan from the
+/// first page, not from past its highest stored title (#1105): its holes
+/// may sit anywhere, and only a whole read crosses it off.
+#[test]
+fn an_owed_series_reads_jikan_from_the_first_page() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "One Piece", 1, 21);
+
+    let now = time::now_secs();
+    fixtures::insert_episode(&core, 1, 1050, Some("Stored"), Some(now - 86_400));
+    core.store()
+        .tx(|tx| anibeam_core::metadata::owed::mark(tx, 1, true))
+        .unwrap();
+    assert_eq!(owed(&core), vec![1]);
+
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((1051, now + 86_400)), &[]).to_string(),
+    );
+    http.push_for(
+        "jikan.moe",
+        200,
+        jikan_page(&[(1, "Romance Dawn"), (1050, "Stored")]),
+    );
+
+    let job = started(&core, Call::RefreshAiring { series });
+    common::wait_job(&c, job);
+    let jikan: Vec<String> = http
+        .requests()
+        .into_iter()
+        .map(|r| r.url)
+        .filter(|u| u.contains("jikan.moe"))
+        .collect();
+    assert_eq!(
+        jikan,
+        vec!["https://api.jikan.moe/v4/anime/21/episodes".to_string()]
+    );
+    assert!(owed(&core).is_empty());
+    assert_eq!(rows(&core, 1)[0].1.as_deref(), Some("Romance Dawn"));
 
     core.shutdown();
 }

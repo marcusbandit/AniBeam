@@ -18,7 +18,7 @@ use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
 use anibeam_library::Library;
 use anibeam_net::Net;
-use anibeam_net::jikan::JikanEpisodes;
+use anibeam_net::jikan::{JIKAN_MAX_PAGES, JikanCap, JikanEpisodes};
 
 pub struct Metadata {
     pub services: Arc<Services>,
@@ -117,10 +117,17 @@ impl Metadata {
     /// window has passed is Jikan back, and starts the walk over the
     /// titles the outage still owes (#1065).
     pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> JikanEpisodes {
+        self.jikan_episodes_from(mal_id, 1).await
+    }
+
+    /// `jikan_episodes` from the page holding episode `from` on, for a
+    /// caller that holds everything before it already (#1105). A read that
+    /// stopped at the page cap or its budget says so in one log line.
+    pub(crate) async fn jikan_episodes_from(&self, mal_id: u64, from: u32) -> JikanEpisodes {
         if self.jikan_down() {
             return JikanEpisodes::default();
         }
-        let read = match self.net.jikan.episodes(mal_id).await {
+        let read = match self.net.jikan.episodes_from(mal_id, from).await {
             Ok(read) => read,
             Err(e) => JikanEpisodes {
                 stopped: Some(e),
@@ -132,6 +139,20 @@ impl Metadata {
             Some(_) => {}
             None if read.whole => self.jikan_back(),
             None => {}
+        }
+        if let Some(cap) = read.capped {
+            let why = match cap {
+                JikanCap::Pages => format!("at {JIKAN_MAX_PAGES} pages"),
+                JikanCap::Budget => "at its time limit".to_string(),
+            };
+            self.services.bus.info(
+                Stage::Metadata,
+                format!(
+                    "Jikan's episode list for MAL {mal_id} stopped {why}, {} episodes read",
+                    read.episodes.len()
+                ),
+                EventBody::Notice,
+            );
         }
         read
     }

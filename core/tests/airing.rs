@@ -391,3 +391,126 @@ fn a_transport_failure_ends_the_sweep_and_stamps_nothing() {
     assert_eq!(stamped, 0, "an outage stamped a series as refreshed");
     core.shutdown();
 }
+
+/// One page of Jikan's episode list: episodes `first..=last`, titled,
+/// saying whether another page follows.
+fn jikan_page(first: u32, last: u32, has_next: bool) -> String {
+    let data: Vec<serde_json::Value> = (first..=last)
+        .map(|n| serde_json::json!({ "mal_id": n, "episode": n, "title": format!("Episode title {n}"), "aired": serde_json::Value::Null }))
+        .collect();
+    serde_json::json!({ "pagination": { "has_next_page": has_next }, "data": data }).to_string()
+}
+
+/// A long show's refresh asks Jikan only from the page that holds the
+/// first episode it can still learn about (#1105): past the highest
+/// stored title, or the first future row if one comes sooner. What it
+/// read is whole from there on, so a dropped future row still goes.
+#[test]
+fn a_long_show_asks_jikan_only_from_the_page_it_can_still_learn_from() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "One Piece", 1, 21);
+
+    let now = time::now_secs();
+    fixtures::insert_episode(
+        &core,
+        1,
+        1,
+        Some("Romance Dawn"),
+        Some(now - 9_000 * 86_400),
+    );
+    fixtures::insert_episode(
+        &core,
+        1,
+        1050,
+        Some("Stored long ago"),
+        Some(now - 3 * 86_400),
+    );
+    // Scheduled once, since dropped by AniList, and not on Jikan either.
+    fixtures::insert_episode(&core, 1, 1060, None, Some(now + 30 * 86_400));
+
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(
+            1,
+            Some((1053, now + 86_400)),
+            &[(1051, now - 2 * 86_400), (1052, now - 86_400)],
+        )
+        .to_string(),
+    );
+    http.push_for("episodes?page=11", 200, jikan_page(1001, 1052, false));
+
+    let job = started(&core, Call::RefreshAiring { series });
+    let done = common::wait_job(&c, job);
+    assert_eq!(
+        done.body,
+        EventBody::AiringRefreshed {
+            series,
+            updated: true
+        }
+    );
+    let jikan: Vec<String> = http
+        .requests()
+        .into_iter()
+        .map(|r| r.url)
+        .filter(|u| u.contains("jikan.moe"))
+        .collect();
+    assert_eq!(
+        jikan,
+        vec!["https://api.jikan.moe/v4/anime/21/episodes?page=11".to_string()]
+    );
+
+    let rows = episodes(&core, 1);
+    let get = |n: i64| rows.iter().find(|(m, _, _)| *m == n).cloned();
+    // Stored titles stay; the new episode gets Jikan's.
+    assert_eq!(get(1050).unwrap().1.as_deref(), Some("Stored long ago"));
+    assert_eq!(get(1051).unwrap().1.as_deref(), Some("Episode title 1051"));
+    assert_eq!(get(1053).unwrap().2, Some(now + 86_400));
+    // The read was whole from page 11 on, so the dropped future row went.
+    assert!(get(1060).is_none(), "{rows:?}");
+
+    core.shutdown();
+}
+
+/// A read that stops at its time limit leaves one line in the log, not
+/// one per page, and what it read is not whole, so no future row goes.
+#[test]
+fn a_jikan_read_cut_short_says_so_once() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_jikan_budget(Duration::ZERO);
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "One Piece", 1, 21);
+
+    let now = time::now_secs();
+    fixtures::insert_episode(&core, 1, 150, None, Some(now + 30 * 86_400));
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((3, now + 86_400)), &[(1, now - 86_400)]).to_string(),
+    );
+    http.push_for("jikan.moe", 200, jikan_page(1, 100, true));
+
+    let job = started(&core, Call::RefreshAiring { series });
+    common::wait_job(&c, job);
+    assert_eq!(http.requests().len(), 2, "{:#?}", http.requests());
+
+    let lines: Vec<String> = c
+        .events()
+        .into_iter()
+        .filter(|e| e.message.starts_with("Jikan's episode list"))
+        .map(|e| e.message)
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            "Jikan's episode list for MAL 21 stopped at its time limit, 100 episodes read"
+                .to_string()
+        ]
+    );
+    assert!(episodes(&core, 1).iter().any(|(n, _, _)| *n == 150));
+
+    core.shutdown();
+}

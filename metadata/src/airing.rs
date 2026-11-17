@@ -18,6 +18,10 @@
 //! either. A refresh without Jikan's half deletes no future row, since the
 //! one the schedule leaves out may be an episode only Jikan knew of.
 //!
+//! Jikan is a request per hundred episodes, so this job asks only from the
+//! page that holds the first episode it can still learn about
+//! (`jikan_from`, #1105); a long show costs a page or two, not all of them.
+//!
 //! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
 //! `AIRING_REFRESH_TTL_MS`, carried over.
 //!
@@ -209,7 +213,13 @@ async fn refresh_anilist(
 ) -> Result<bool, CoreError> {
     let schedule = metadata.net.anilist.schedule(anilist_id).await?;
     let jikan = match mal_id {
-        Some(mal_id) => metadata.jikan_episodes(mal_id).await,
+        Some(mal_id) => {
+            let from = metadata
+                .services
+                .store
+                .read(move |c| jikan_from(c, anilist_id, now))?;
+            metadata.jikan_episodes_from(mal_id, from).await
+        }
         None => JikanEpisodes::whole(Vec::new()),
     };
     let whole = jikan.whole;
@@ -238,6 +248,31 @@ async fn refresh_anilist(
             Ok(status_changed || before != stored(tx, anilist_id)?)
         })
         .await
+}
+
+/// The first episode Jikan can still tell this refresh anything about
+/// (#1105). `keep_titles` means a stored title never changes here, so
+/// nothing up to the highest titled row is worth asking for again, except
+/// a row still in the future: Jikan's silence about one is what drops it,
+/// so the read must reach it. A row with no title below the highest
+/// titled one is left to the full fetch, which reads every page. With no
+/// rows at all the read starts at episode one, and so does a series an
+/// outage left owed Jikan's titles (#1065): its holes may sit anywhere,
+/// and a whole read is what crosses it off.
+fn jikan_from(conn: &Connection, anilist_id: u64, now: i64) -> Result<u32, CoreError> {
+    if crate::owed::owed(conn)?.contains(&anilist_id) {
+        return Ok(1);
+    }
+    let (titled, future): (Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT max(CASE WHEN title IS NOT NULL THEN number END),
+                min(CASE WHEN aired_at > ?2 THEN number END)
+         FROM anilist_episodes WHERE anilist_id = ?1",
+        params![anilist_id as i64, now],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let after_titled = titled.map_or(1, |n| n.saturating_add(1));
+    let from = future.map_or(after_titled, |n| n.min(after_titled));
+    Ok(u32::try_from(from.max(1)).unwrap_or(1))
 }
 
 /// A TVmaze show's turn: the whole show fetched again and written whole,
