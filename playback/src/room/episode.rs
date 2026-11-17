@@ -142,19 +142,98 @@ pub fn find_local(conn: &Connection, e: &proto::EpisodeRef) -> Result<Local, Cor
         }
     }
     if let Some((series, (file, key))) = found {
-        let opening = skip::cached(conn, series, &key, anibeam_foundation::time::now_secs())?
-            .and_then(|windows| opening_of(&windows));
-        return Ok(Local {
-            series: Some(series),
-            file: Some(file as u64),
-            opening,
-        });
+        return found_at(conn, series, file, &key);
     }
     Ok(Local {
         series: candidates.first().copied(),
         file: None,
         opening: None,
     })
+}
+
+/// The episode's file in one series, with where its opening starts.
+fn found_at(conn: &Connection, series: u64, file: i64, key: &str) -> Result<Local, CoreError> {
+    let opening = skip::cached(conn, series, key, anibeam_foundation::time::now_secs())?
+        .and_then(|windows| opening_of(&windows));
+    Ok(Local {
+        series: Some(series),
+        file: Some(file as u64),
+        opening,
+    })
+}
+
+/// What the library holds at a download's path: the file itself, or the files
+/// of the folder it made. The file is the download's own when the path is a
+/// file, else the one in the folder with the episode's history key, else by
+/// its number as `by_number` picks one. With no such file yet, the series of
+/// the folder's first file, so a show that has the folder is still named.
+/// None while the library holds nothing there.
+pub fn at_path(
+    conn: &Connection,
+    content: &str,
+    e: &proto::EpisodeRef,
+) -> Result<Option<Local>, CoreError> {
+    let path = content.replace('\\', "/");
+    let folder = format!("{}/", path.trim_end_matches('/'));
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, series_id, path, episode_key, kind, number, season FROM files
+         WHERE path = ?1 OR substr(path, 1, length(?2)) = ?2 ORDER BY id",
+    )?;
+    let files = stmt
+        .query_map(params![path, folder], |r| {
+            Ok(Here {
+                id: r.get(0)?,
+                series: r.get::<_, i64>(1)? as u64,
+                path: r.get(2)?,
+                key: r.get(3)?,
+                episode: r.get::<_, String>(4)? == "episode",
+                number: r.get(5)?,
+                season: r.get(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let Some(first) = files.first() else {
+        return Ok(None);
+    };
+    let by_number = || {
+        let number = e.number.filter(|n| n.is_finite())?;
+        let fits: Vec<&Here> = files
+            .iter()
+            .filter(|f| f.episode && f.number.is_some_and(|n| (n - number).abs() < 0.001))
+            .collect();
+        let want = season_of(&e.episode_key);
+        if let Some(f) = fits.iter().find(|f| want.is_some() && f.season == want) {
+            return Some(*f);
+        }
+        match fits.as_slice() {
+            [one] => Some(*one),
+            _ => None,
+        }
+    };
+    let file = files
+        .iter()
+        .find(|f| f.path == path)
+        .or_else(|| files.iter().find(|f| f.key == e.episode_key))
+        .or_else(by_number);
+    Ok(Some(match file {
+        Some(f) => found_at(conn, f.series, f.id, &f.key)?,
+        None => Local {
+            series: Some(first.series),
+            file: None,
+            opening: None,
+        },
+    }))
+}
+
+/// A file `at_path` reads.
+struct Here {
+    id: i64,
+    series: u64,
+    path: String,
+    key: String,
+    episode: bool,
+    number: Option<f64>,
+    season: Option<i64>,
 }
 
 /// The season a history key names: 3 for `S03E06`, None for a bare number,
