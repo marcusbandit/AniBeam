@@ -5,7 +5,10 @@
 // `removeAccepted` once the question is answered yes. The path takes the room the glyph, the
 // chip and the buttons leave and elides in the middle, so the chip stays in sight (#665).
 // The buttons drop under the path only once it would get less than `minPath` beside them,
-// the same threshold `SettingRow` uses for its label against its control.
+// the same threshold `SettingRow` uses for its label against its control. Stacked in a row
+// too narrow for the labelled buttons, the buttons show their glyphs alone and say their
+// words in a tip (#1123). The rules read the labelled width off an unseen ruler, so a button
+// losing its label never moves the stacking threshold it was decided by.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -28,9 +31,19 @@ Item {
     readonly property real glyphPart: folderIcon.width + lead.spacing
     readonly property real chipPart: chip.visible ? pathLine.spacing + chip.width : 0
     readonly property real minPath: Math.min(pathText.implicitWidth, theme.space(60))
-    readonly property bool stacked: width < glyphPart + Math.max(chipPart + minPath, metaText.implicitWidth) + controls.width + gutter
+    readonly property var actions: [
+        { msg: "action-open", icon: "folder-open", fires: "open" },
+        { msg: "source-row-rescan", icon: "refresh-cw", fires: "rescan" },
+        { msg: "action-remove", icon: "trash-2", fires: "remove" }
+    ]
+    // How wide the controls stand with their labels on, whatever they show now
+    readonly property real controlsWide: confirming ? confirm.implicitWidth : ruler.implicitWidth
+    // A confirm that put its question over its buttons wants the whole row under the path
+    readonly property bool stacked: (confirming && confirm.split)
+                                    || width < glyphPart + Math.max(chipPart + minPath, metaText.implicitWidth) + controlsWide + gutter
+    readonly property bool glyphsOnly: stacked && ruler.implicitWidth > width
     // What the lead may span: the whole row when stacked, else the part left of the buttons
-    readonly property real leadRoom: Math.max(0, (stacked ? width : width - controls.width - gutter) - glyphPart)
+    readonly property real leadRoom: Math.max(0, (stacked ? width : width - controlsWide - gutter) - glyphPart)
     readonly property real pathRoom: Math.max(0, leadRoom - chipPart)
 
     width: parent.width
@@ -97,15 +110,35 @@ Item {
         Row {
             visible: !root.confirming
             spacing: theme.space(1)
-            Button { msg: "action-open"; icon: "folder-open"; flat: true; onClicked: root.open() }
-            Button { msg: "source-row-rescan"; icon: "refresh-cw"; flat: true; onClicked: root.rescan() }
-            Button { msg: "action-remove"; icon: "trash-2"; flat: true; onClicked: root.remove() }
+            Repeater {
+                model: root.actions
+                Button {
+                    required property var modelData
+                    msg: root.glyphsOnly ? "" : modelData.msg
+                    icon: modelData.icon
+                    flat: true
+                    onClicked: root[modelData.fires]()
+                    Tooltip { msg: root.glyphsOnly ? modelData.msg : "" }
+                }
+            }
         }
         InlineConfirm {
+            id: confirm
+            maxWidth: root.width
             visible: root.confirming
             question: words.t("source-row-remove-question", { name: Fmt.baseName(root.source.path || ""), count: root.source.series_count || 0 })
             onAccepted: root.removeAccepted()
             onKept: root.confirming = false
+        }
+    }
+    // The labelled buttons, never shown: what `stacked` and `glyphsOnly` measure
+    Row {
+        id: ruler
+        visible: false
+        spacing: theme.space(1)
+        Repeater {
+            model: root.actions
+            Button { required property var modelData; msg: modelData.msg; icon: modelData.icon; flat: true; takesFocus: false; Accessible.ignored: true }
         }
     }
 }
