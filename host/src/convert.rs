@@ -441,14 +441,12 @@ impl Converter {
     }
 
     /// The bytes of one piece, converting as needed. None when it cannot be
-    /// had: no encoder, ffmpeg failed, or the piece is past the end. A listed
-    /// piece past the last video frame comes back empty.
+    /// had: no encoder, ffmpeg failed, or the piece is past the end. The last
+    /// listed piece comes back empty when ffmpeg finished without it.
     pub async fn piece(&self, key: &Key, source: &Source, i: u32) -> Option<Vec<u8>> {
         // A length no playlist lists (none, broken, or past a day) never
         // reaches ffmpeg.
-        if !wire::hls_pieces(source.probe.duration).is_some_and(|n| i < n) {
-            return None;
-        }
+        let count = wire::hls_pieces(source.probe.duration).filter(|&n| i < n)?;
         let enc = encoder().await?;
         let job = self.job(key);
         let deadline = Instant::now() + WAIT;
@@ -466,17 +464,25 @@ impl Converter {
             let written = written(&j.dir, from.unwrap_or(i)).await;
             let alive = j.run.as_mut().is_some_and(Run::alive);
             let covers = from.is_some_and(|f| f <= i);
-            if covers && !alive && j.run.as_ref().and_then(|r| r.ended) == Some(true) {
-                // ffmpeg finished the episode without this piece. It starts a
-                // piece only on a video frame, so one the file's length lists
-                // past the last frame never comes: audio that runs past the
-                // picture, or a slow frame rate. What is left of the episode
-                // went into the piece before, and this one is empty.
-                return Some(Vec::new());
-            }
             if covers && !alive {
-                // This ffmpeg failed before writing the piece. Starting it
-                // again would only fail again.
+                // ffmpeg may have put the piece in place just before it ended.
+                if let Ok(bytes) = tokio::fs::read(&file).await {
+                    return Some(bytes);
+                }
+                let clean = j.run.as_ref().and_then(|r| r.ended) == Some(true);
+                if clean && i + 1 == count {
+                    // ffmpeg starts a piece only on a video frame, so a last
+                    // piece the file's length lists past the last frame never
+                    // comes: audio that runs past the picture, or a slow frame
+                    // rate. The rest of the episode went into the piece before.
+                    tracing::info!(
+                        "conversion of file {} ended before its last piece {i}; it is empty",
+                        key.file
+                    );
+                    return Some(Vec::new());
+                }
+                // This ffmpeg failed, or the file is shorter than its probe
+                // said. Starting it again would only fail again.
                 let said = std::fs::read_to_string(j.dir.join(LOG)).unwrap_or_default();
                 let last = said.lines().last().unwrap_or("nothing");
                 tracing::warn!(
@@ -963,11 +969,47 @@ mod tests {
                 audio: None,
                 burn: None,
             };
-            for i in 0..count {
+            for i in 0..count - 1 {
                 let piece = converter.piece(&key, &source, i).await;
-                assert!(piece.is_some(), "{name} gave no piece {i}");
+                assert!(
+                    piece.is_some_and(|p| !p.is_empty()),
+                    "{name} gave no piece {i}"
+                );
             }
+            let last = converter.piece(&key, &source, count - 1).await;
+            assert_eq!(last, Some(Vec::new()), "{name}'s last piece");
         }
+    }
+
+    #[tokio::test]
+    async fn a_file_shorter_than_its_probe_or_a_failed_run_gives_no_piece() {
+        if !runs(Encoder::X264) {
+            eprintln!("skipped: no ffmpeg with libx264 here");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = episode(dir.path(), "short.mkv", "testsrc=s=256x144:r=24:d=12", 12.0)
+            .expect("ffmpeg made the episode");
+        let converter = Converter::new(dir.path());
+        let key = |file| Key {
+            file,
+            height: 480,
+            audio: None,
+            burn: None,
+        };
+        // A probe that says 30 s of a 12 s file, as a cut-off download might:
+        // only the last of the five pieces it lists may come back empty.
+        let mut probe = probe(&path).await.expect("ffprobe read it");
+        probe.duration = 30.0;
+        let short = Source { path, probe };
+        assert!(converter.piece(&key(1), &short, 1).await.is_some());
+        assert_eq!(converter.piece(&key(1), &short, 2).await, None);
+        // A file ffmpeg cannot open fails, whichever piece is asked for.
+        let gone = Source {
+            path: dir.path().join("gone.mkv"),
+            probe: short.probe.clone(),
+        };
+        assert_eq!(converter.piece(&key(2), &gone, 4).await, None);
     }
 
     #[tokio::test]
