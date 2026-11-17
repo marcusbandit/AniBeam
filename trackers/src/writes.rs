@@ -24,7 +24,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tokio::sync::watch;
 
 use crate::Trackers;
-use crate::{TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold};
+use crate::{
+    TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, mal_lookup, no_token, on_hold,
+};
 use anibeam_contract::i18n::{Arg, tr};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
@@ -180,6 +182,12 @@ pub fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
         });
     }
     let anilist = anilist.map(|id| id as u64);
+    // A match AniList gave no MAL id goes by the one MAL's search found.
+    let mal = match (mal, anilist) {
+        (Some(id), _) => Some(id as u64),
+        (None, Some(a)) => mal_lookup::saved(conn, a)?.flatten(),
+        (None, None) => None,
+    };
     // A total of nought is AniList saying it does not know yet, the same as
     // a NULL, so it must never complete a list on the first episode.
     let total = match anilist {
@@ -198,7 +206,7 @@ pub fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
     Ok(Targets {
         series,
         anilist,
-        mal: mal.map(|id| id as u64),
+        mal,
         total,
         folder_name,
     })
@@ -221,7 +229,7 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
         ));
     }
     let episode = episode.floor() as u32;
-    let main = guard(&trackers.services, &target)?;
+    let (main, reach) = guard_reach(&trackers.services, &target, true)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover. A second mark of the same finish finds
     // the slot taken and answers with the first mark's job, so the shell
@@ -248,15 +256,16 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     };
     let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
-    // far the main tracker says the user has got, so a mark it covers is
-    // refused without a request. The job checks again against the tracker
-    // itself, which is what actually decides.
+    // far each tracker says the user has got, so a mark every tracker it
+    // reaches already covers is refused without a request. One tracker
+    // behind is enough for the job (#782): MAL connected after AniList, or
+    // a list moved elsewhere, still gets its write. The job checks again
+    // against each tracker itself, which is what actually decides.
     if !again
         && trackers
             .services
             .store
-            .read(|c| cached_progress(c, &target, main))?
-            .is_some_and(|current| current >= episode)
+            .read(|c| covered(c, &target, &reach, episode))?
     {
         return Err(CoreError::Refused {
             reason: Refusal::NotNewer,
@@ -586,7 +595,7 @@ pub fn set_score(
             ),
         ));
     }
-    if kept_here(&trackers.services, &target)? {
+    if kept_here(&trackers.services, &target, true)? {
         let now = time::now_secs();
         // Nought is unrated here as it is on a tracker.
         let rated = (score > 0.0).then_some(score);
@@ -618,7 +627,7 @@ pub fn set_list_status(
         ));
     }
     let target = trackers.services.store.read(|c| targets(c, series))?;
-    if kept_here(&trackers.services, &target)? {
+    if kept_here(&trackers.services, &target, true)? {
         let now = time::now_secs();
         trackers
             .services
@@ -680,7 +689,10 @@ fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError
     Ok(Targets {
         series: 0,
         anilist: Some(anilist_id),
-        mal: m["idMal"].as_u64().or(lib_mal.map(|id| id as u64)),
+        mal: match m["idMal"].as_u64().or(lib_mal.map(|id| id as u64)) {
+            Some(id) => Some(id),
+            None => mal_lookup::saved(conn, anilist_id)?.flatten(),
+        },
         total: m["episodes"]
             .as_u64()
             .or(lib_eps.map(|e| e as u64))
@@ -763,8 +775,9 @@ pub fn set_show_score(
 /// Whether a status or a score stays on this device: the series has no
 /// tracker match, or no account is connected behind the ids it has. A
 /// hidden series is still refused, since hiding is about its tracker sync
-/// and a person who hid it asked for nothing to go out.
-fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
+/// and a person who hid it asked for nothing to go out. `lookup` is
+/// `guard_reach`'s: a write to one series may look a missing MAL id up.
+fn kept_here(services: &Services, target: &Targets, lookup: bool) -> Result<bool, CoreError> {
     // `guard` answers NoMatch before it looks at the hidden flag, which a
     // series with no ids has nothing else to say about.
     let hidden = services.store.read(|c| {
@@ -779,7 +792,7 @@ fn kept_here(services: &Services, target: &Targets) -> Result<bool, CoreError> {
             reason: Refusal::Hidden,
         });
     }
-    match guard(services, target) {
+    match guard_reach(services, target, lookup) {
         Ok(_) => Ok(false),
         Err(CoreError::Refused {
             reason: Refusal::NoMatch,
@@ -881,7 +894,7 @@ pub fn start_many(
     let now = time::now_secs();
     for &id in series {
         let target = trackers.services.store.read(|c| targets(c, id))?;
-        match kept_here(&trackers.services, &target) {
+        match kept_here(&trackers.services, &target, false) {
             Ok(false) => reachable.push(target),
             Ok(true) => {
                 trackers.services.store.write(move |c| match write {
@@ -1054,8 +1067,19 @@ fn sites_of(landed: impl Iterator<Item = Tracker>) -> Option<&'static str> {
 /// The guards every write shares, in the order the shell expects them:
 /// nothing to write to, a series the user hid, and no account behind
 /// either id. Answers with the main tracker, which is the one the
-/// `NotConnected` refusal names and the one the monotonic guard reads.
+/// `NotConnected` refusal names and the one a rewatch is judged by.
 fn guard(services: &Services, target: &Targets) -> Result<Tracker, CoreError> {
+    guard_reach(services, target, true).map(|(main, _)| main)
+}
+
+/// `guard`, with the trackers the write reaches (`reach`). `lookup` says
+/// whether this write may look a missing MAL id up, which only a write to
+/// one series does.
+fn guard_reach(
+    services: &Services,
+    target: &Targets,
+    lookup: bool,
+) -> Result<(Tracker, Vec<Tracker>), CoreError> {
     services.store.read(|c| {
         if !target.matched() {
             return Err(CoreError::Refused {
@@ -1072,40 +1096,62 @@ fn guard(services: &Services, target: &Targets) -> Result<Tracker, CoreError> {
             }
         }
         let main = prefs::load_main_tracker(c)?;
-        let mut connected = false;
-        for t in [Tracker::Anilist, Tracker::Mal] {
-            if target.id_for(t).is_some()
-                && accounts::load_row(c, t)?.is_some_and(|row| row.connected_at.is_some())
-            {
-                connected = true;
-            }
-        }
-        if !connected {
+        let reach = reach(c, target, lookup)?;
+        if reach.is_empty() {
             return Err(CoreError::NotConnected { tracker: main });
         }
-        Ok(main)
+        Ok((main, reach))
     })
 }
 
-/// What the cache says the main tracker's progress is, by the id the match
-/// carries for it. A match with no id for the main tracker is read off the
-/// other one instead, which is the rule a card's own number follows.
-fn cached_progress(
+/// The trackers a write to this target goes to: every connected one the
+/// match carries an id for, and a connected MAL whose id the write may
+/// still look up (`mal_lookup`).
+fn reach(conn: &Connection, target: &Targets, lookup: bool) -> Result<Vec<Tracker>, CoreError> {
+    let mut reach = Vec::new();
+    for t in [Tracker::Anilist, Tracker::Mal] {
+        if !accounts::load_row(conn, t)?.is_some_and(|row| row.connected_at.is_some()) {
+            continue;
+        }
+        let found = match (t, target.id_for(t), target.anilist) {
+            (_, Some(_), _) => true,
+            (Tracker::Mal, None, Some(anilist)) if lookup => {
+                mal_lookup::can_look_up(conn, anilist)?
+            }
+            _ => false,
+        };
+        if found {
+            reach.push(t);
+        }
+    }
+    Ok(reach)
+}
+
+/// Whether every tracker in `reach` already has this episode in the
+/// cache. A tracker with no id yet or no cached entry has not, since
+/// there is nothing to say it is that far.
+fn covered(
     conn: &Connection,
     target: &Targets,
-    main: Tracker,
-) -> Result<Option<u32>, CoreError> {
-    let Some((t, id)) = cached_id(target, main) else {
-        return Ok(None);
-    };
-    let progress = conn
-        .query_row(
-            "SELECT progress FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
-            params![t.as_str(), id as i64],
-            |r| r.get::<_, i64>(0),
-        )
-        .optional()?;
-    Ok(progress.map(|p| u32::try_from(p).unwrap_or(0)))
+    reach: &[Tracker],
+    episode: u32,
+) -> Result<bool, CoreError> {
+    for &t in reach {
+        let Some(id) = target.id_for(t) else {
+            return Ok(false);
+        };
+        let progress = conn
+            .query_row(
+                "SELECT progress FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+                params![t.as_str(), id as i64],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?;
+        if !progress.is_some_and(|p| u32::try_from(p).unwrap_or(0) >= episode) {
+            return Ok(false);
+        }
+    }
+    Ok(!reach.is_empty())
 }
 
 fn other(t: Tracker) -> Tracker {
@@ -1201,13 +1247,10 @@ async fn write_all(
     loud: bool,
 ) -> Result<Vec<TrackerOutcome>, CoreError> {
     let mut outcomes: Vec<TrackerOutcome> = Vec::new();
+    let mut missed = false;
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
-        // A tracker the match carries no id for has nothing to write to,
-        // and one with no account behind it is not this write's business.
-        let Some(media_id) = target.id_for(t) else {
-            continue;
-        };
+        // A tracker with no account behind it is not this write's business.
         let row = trackers
             .services
             .store
@@ -1217,6 +1260,26 @@ async fn write_all(
         if row.connected_at.is_none() {
             continue;
         }
+        // A tracker the match carries no id for has nothing to write to,
+        // unless it is MAL and its search finds the show (#782). A write
+        // over several series never searches, so a pick is never a sweep.
+        let media_id = match (target.id_for(t), t, target.anilist) {
+            (Some(id), _, _) => id,
+            (None, Tracker::Mal, Some(anilist)) if loud => {
+                match look_up(trackers, ctx, target, anilist).await {
+                    Ok(Some(id)) => id,
+                    Ok(None) => {
+                        missed = true;
+                        continue;
+                    }
+                    Err(e) => {
+                        outcomes.push(failed(ctx, t, target, action, loud, &e));
+                        continue;
+                    }
+                }
+            }
+            _ => continue,
+        };
         outcomes.push(
             write_one(
                 trackers,
@@ -1231,7 +1294,49 @@ async fn write_all(
             .await,
         );
     }
+    // A write that went nowhere because MAL's search found nothing says so,
+    // or the job would read as done. Beside another tracker's outcome the
+    // miss stays quiet, since that write did land.
+    if outcomes.is_empty() && missed {
+        outcomes.push(TrackerOutcome {
+            tracker: Tracker::Mal,
+            ok: false,
+            progress: None,
+            reason: Some(Refusal::NoMatch),
+            message: None,
+        });
+    }
     Ok(outcomes)
+}
+
+/// The MAL id MAL's own search finds for a show AniList gave none for,
+/// said in the developer log when a search was made.
+async fn look_up(
+    trackers: &Trackers,
+    ctx: &Arc<JobCtx>,
+    target: &Targets,
+    anilist: u64,
+) -> Result<Option<u64>, CoreError> {
+    let saved = trackers
+        .services
+        .store
+        .read(|c| mal_lookup::saved(c, anilist))?;
+    if let Some(answer) = saved {
+        return Ok(answer);
+    }
+    let token = accounts::access_token(trackers, Tracker::Mal)
+        .await?
+        .ok_or_else(|| accounts::tracker_error(Tracker::Mal, no_token()))?;
+    let found = mal_lookup::resolve(trackers, anilist, &token).await?;
+    ctx.emit(
+        Level::Debug,
+        match found {
+            Some(id) => format!("mal search found {id} for {}", target.folder_name),
+            None => format!("mal search found nothing sure for {}", target.folder_name),
+        },
+        EventBody::Notice,
+    );
+    Ok(found)
 }
 
 /// The terminal's level. A write that reached a tracker and was refused by
@@ -1385,49 +1490,49 @@ async fn write_one(
 ) -> TrackerOutcome {
     match attempt(trackers, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome,
-        Err(e) if !loud => {
-            ctx.emit(
-                Level::Debug,
-                format!(
-                    "{} {} failed for {}: {}",
-                    t.as_str(),
-                    action.verb(),
-                    target.folder_name,
-                    message_of(&e)
-                ),
-                EventBody::Notice,
-            );
-            TrackerOutcome {
-                tracker: t,
-                ok: false,
-                progress: None,
-                reason: None,
-                message: Some(sanitize_error(t, &e)),
-            }
-        }
-        Err(e) => {
-            ctx.say(
-                Level::Error,
-                anibeam_contract::words!(
-                    "core-trackers-update-failed",
-                    site = super::oauth::site_name(t)
-                ),
-                format!(
-                    "{} {} failed: {}",
-                    t.as_str(),
-                    action.verb(),
-                    message_of(&e)
-                ),
-                EventBody::Notice,
-            );
-            TrackerOutcome {
-                tracker: t,
-                ok: false,
-                progress: None,
-                reason: None,
-                message: Some(sanitize_error(t, &e)),
-            }
-        }
+        Err(e) => failed(ctx, t, target, action, loud, &e),
+    }
+}
+
+/// A tracker's failed write: a line the user can act on in the outcome, the
+/// whole message in the log, loud or kept to the developer log.
+fn failed(
+    ctx: &Arc<JobCtx>,
+    t: Tracker,
+    target: &Targets,
+    action: &Action,
+    loud: bool,
+    e: &CoreError,
+) -> TrackerOutcome {
+    if loud {
+        ctx.say(
+            Level::Error,
+            anibeam_contract::words!(
+                "core-trackers-update-failed",
+                site = super::oauth::site_name(t)
+            ),
+            format!("{} {} failed: {}", t.as_str(), action.verb(), message_of(e)),
+            EventBody::Notice,
+        );
+    } else {
+        ctx.emit(
+            Level::Debug,
+            format!(
+                "{} {} failed for {}: {}",
+                t.as_str(),
+                action.verb(),
+                target.folder_name,
+                message_of(e)
+            ),
+            EventBody::Notice,
+        );
+    }
+    TrackerOutcome {
+        tracker: t,
+        ok: false,
+        progress: None,
+        reason: None,
+        message: Some(sanitize_error(t, e)),
     }
 }
 
@@ -2156,7 +2261,7 @@ fn list_status_url(media_id: u64) -> String {
 /// MAL's failure with the `message` field it usually carries lifted out of
 /// the body: the body is JSON, and a truncated blob of it reads as nothing
 /// at all in a toast.
-fn mal_failure(response: &HttpResponse) -> CoreError {
+pub(crate) fn mal_failure(response: &HttpResponse) -> CoreError {
     let text = response.text();
     let message = response
         .json::<serde_json::Value>()
