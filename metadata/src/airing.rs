@@ -214,7 +214,7 @@ async fn refresh_anilist(
     };
     let whole = jikan.whole;
     // Only a refresh that asked Jikan has a say in what is still owed.
-    let owed = mal_id.map(|_| !whole && metadata.jikan_down());
+    let owed = mal_id.map(|_| crate::team::owes_titles(&jikan));
     let jikan = jikan.episodes;
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.

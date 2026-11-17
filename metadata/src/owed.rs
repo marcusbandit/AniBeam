@@ -66,6 +66,9 @@ pub fn start(metadata: &Arc<Metadata>) -> Option<u64> {
     if !any || metadata.owed_walking.swap(true, Ordering::SeqCst) {
         return None;
     }
+    // Lowered when the job body is dropped, however it ends: done, failed,
+    // cancelled or panicked. A flag left up would stop every later walk.
+    let walking = Walking(metadata.clone());
     let owner = metadata.clone();
     Some(
         metadata
@@ -73,9 +76,8 @@ pub fn start(metadata: &Arc<Metadata>) -> Option<u64> {
             .jobs
             .clone()
             .start(JobKind::RefreshAiring, move |ctx| async move {
-                let walked = walk(&owner, &ctx).await;
-                owner.owed_walking.store(false, Ordering::SeqCst);
-                let filled = walked?;
+                let _walking = walking;
+                let filled = walk(&owner, &ctx).await?;
                 Ok(Finished {
                     plain: None,
                     level: if filled == 0 {
@@ -88,6 +90,15 @@ pub fn start(metadata: &Arc<Metadata>) -> Option<u64> {
                 })
             }),
     )
+}
+
+/// Holds `owed_walking` up for as long as the walk's job body lives.
+struct Walking(Arc<Metadata>);
+
+impl Drop for Walking {
+    fn drop(&mut self) {
+        self.0.owed_walking.store(false, Ordering::SeqCst);
+    }
 }
 
 /// One owed series as the walk reads it: its MAL id, when it still has one,
@@ -133,7 +144,7 @@ fn read_owed(conn: &Connection) -> Result<Vec<Owed>, CoreError> {
 }
 
 /// Every owed series, one at a time, paced by the limiter. Returns how many
-/// got titles they did not have.
+/// gained a title, a date or a row they did not have.
 async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> {
     let work = metadata
         .services
@@ -146,15 +157,29 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
         ctx.checkpoint()?;
         ctx.progress(done as u64, Some(total), &item.name);
         let anilist_id = item.anilist_id;
-        // A media row without a MAL id has nothing to ask Jikan about, and
-        // a later match may have moved it on; either way nothing is owed.
-        let Some(mal_id) = item.mal_id else {
-            metadata
-                .services
-                .store
-                .tx_async(move |tx| mark(tx, anilist_id, false))
-                .await?;
+        // Asked again right before Jikan is: a fetch that ran beside the
+        // walk, the one whose reply started it or the launch's airing
+        // sweep, may have got the titles already and crossed it off.
+        let still = metadata
+            .services
+            .store
+            .read(move |c| Ok(owed(c)?.contains(&anilist_id)))?;
+        if !still {
             continue;
+        }
+        // A media row without a MAL id has nothing to ask Jikan about, and
+        // one no series is matched to any more is shown nowhere; either
+        // way nothing is owed.
+        let mal_id = match item.mal_id {
+            Some(mal_id) if !item.series.is_empty() => mal_id,
+            _ => {
+                metadata
+                    .services
+                    .store
+                    .tx_async(move |tx| mark(tx, anilist_id, false))
+                    .await?;
+                continue;
+            }
         };
         let jikan = metadata.jikan_episodes(mal_id).await;
         // Down again: what came back is kept, and this series and the rest
@@ -165,12 +190,13 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
             .services
             .store
             .tx_async(move |tx| {
-                let before = titled(tx, anilist_id)?;
+                let before = stored(tx, anilist_id)?;
                 fill(tx, anilist_id, &rows)?;
-                // A reply that was not whole and not an outage is this
-                // series' own bad answer, which asking again will not mend.
+                // Anything short of an outage crosses the series off: a
+                // bad answer will not mend, and a read cut short by its
+                // budget has had its one more try.
                 mark(tx, anilist_id, down)?;
-                Ok(titled(tx, anilist_id)? != before)
+                Ok(stored(tx, anilist_id)? != before)
             })
             .await?;
         if changed {
@@ -188,13 +214,18 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
     Ok(filled)
 }
 
-/// How many rows behind `anilist_id` carry a title.
-fn titled(tx: &Transaction, anilist_id: u64) -> Result<i64, CoreError> {
-    Ok(tx.query_row(
-        "SELECT count(*) FROM anilist_episodes WHERE anilist_id = ?1 AND title IS NOT NULL",
-        params![as_i64(anilist_id)],
-        |r| r.get(0),
-    )?)
+/// One stored row: its number, title and date.
+type StoredRow = (i64, Option<String>, Option<i64>);
+
+/// The rows behind `anilist_id`, in episode order.
+fn stored(tx: &Transaction, anilist_id: u64) -> Result<Vec<StoredRow>, CoreError> {
+    let mut stmt = tx.prepare(
+        "SELECT number, title, aired_at FROM anilist_episodes WHERE anilist_id = ?1 ORDER BY number",
+    )?;
+    let rows = stmt.query_map(params![as_i64(anilist_id)], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 /// Jikan's rows where the table has nothing: a new row goes in whole, and a

@@ -111,21 +111,24 @@ impl Metadata {
     /// being down opens the window; one series' bad answer costs that
     /// series its titles and nothing else.
     ///
-    /// The first whole reply after the window has passed is Jikan back, and
-    /// starts the walk over the titles the outage still owes (#1065).
+    /// The failure that cut the read short, on the first page or a later
+    /// one, is left in `stopped`, which is how `owes_titles` tells an
+    /// outage from one series' bad answer. The first whole reply after the
+    /// window has passed is Jikan back, and starts the walk over the
+    /// titles the outage still owes (#1065).
     pub(crate) async fn jikan_episodes(&self, mal_id: u64) -> JikanEpisodes {
         if self.jikan_down() {
             return JikanEpisodes::default();
         }
-        let (read, failure) = match self.net.jikan.episodes(mal_id).await {
-            Ok(mut read) => {
-                let stopped = read.stopped.take();
-                (read, stopped)
-            }
-            Err(e) => (JikanEpisodes::default(), Some(e)),
+        let read = match self.net.jikan.episodes(mal_id).await {
+            Ok(read) => read,
+            Err(e) => JikanEpisodes {
+                stopped: Some(e),
+                ..JikanEpisodes::default()
+            },
         };
-        match failure {
-            Some(e) if is_outage(&e) => self.report_jikan_outage(&message_of(&e)),
+        match &read.stopped {
+            Some(e) if is_outage(e) => self.report_jikan_outage(&message_of(e)),
             Some(_) => {}
             None if read.whole => self.jikan_back(),
             None => {}
@@ -184,6 +187,14 @@ impl Metadata {
     }
 }
 
+/// Whether a read leaves its series owed Jikan's titles (#1065): it is not
+/// whole, and not because of that series' own bad answer, which asking
+/// again will not mend. A read skipped inside the outage window, one that
+/// met the outage, and one cut short by its page budget all are.
+pub(crate) fn owes_titles(read: &JikanEpisodes) -> bool {
+    !read.whole && read.stopped.as_ref().is_none_or(is_outage)
+}
+
 /// Whether a Jikan failure says Jikan is down rather than that one series'
 /// answer was bad: no answer at all (a timeout or a dropped connection), a
 /// rate limit the limiter already waited out, or a server error.
@@ -213,5 +224,22 @@ mod tests {
         assert!(is_outage(&provider(Some(504))));
         assert!(!is_outage(&provider(Some(400))));
         assert!(!is_outage(&provider(Some(403))));
+    }
+
+    /// A read leaves its series owed titles unless it was whole or the
+    /// series' own bad answer cut it short (#1065).
+    #[test]
+    fn only_a_read_short_of_a_bad_answer_owes_titles() {
+        let read = |whole: bool, stopped: Option<CoreError>| JikanEpisodes {
+            whole,
+            stopped,
+            ..JikanEpisodes::default()
+        };
+        assert!(!owes_titles(&read(true, None)));
+        // Skipped inside the window, or cut short by the page budget.
+        assert!(owes_titles(&read(false, None)));
+        assert!(owes_titles(&read(false, Some(provider(Some(504))))));
+        assert!(owes_titles(&read(false, Some(provider(None)))));
+        assert!(!owes_titles(&read(false, Some(provider(Some(400))))));
     }
 }

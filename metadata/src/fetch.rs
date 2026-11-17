@@ -71,7 +71,7 @@ pub async fn fetch_and_write(
         None => JikanEpisodes::whole(Vec::new()),
     };
     let whole = jikan.whole;
-    let owed = mal_id.is_some() && !whole && metadata.jikan_down();
+    let owed = mal_id.is_some() && crate::team::owes_titles(&jikan);
     let jikan = jikan.episodes;
 
     let write = record::build(&media, Some(&enrichment));
