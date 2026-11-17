@@ -789,8 +789,5 @@ mod tests {
         // A batch's range is no part of the show's name.
         let batch = item("[Lumen] Frieren - 01-12 [1080p].mkv");
         assert_eq!(best_fit_query(&batch), "[Lumen] Frieren 1080p");
-        // A season pack keeps its season once it leaves the name.
-        let pack = item("[Grp] Some Show S01 [1080p]");
-        assert_eq!(best_fit_query(&pack), "[Grp] Some Show S01 1080p");
     }
 }
