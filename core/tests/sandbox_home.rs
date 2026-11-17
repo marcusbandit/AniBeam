@@ -41,13 +41,12 @@ fn snapshot(dir: &Path) -> BTreeMap<PathBuf, (u64, SystemTime)> {
 }
 
 /// What the fake wrote, once it has: FakeHttp answers the sidecar's health check
-/// without the script having run.
+/// without the script having run. The fake renames a finished file into place, so the
+/// file is whole the moment it exists (#976).
 fn captured(path: &Path) -> String {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        if let Ok(text) = std::fs::read_to_string(path)
-            && !text.is_empty()
-        {
+        if let Ok(text) = std::fs::read_to_string(path) {
             return text;
         }
         assert!(
@@ -95,7 +94,9 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
         std::fs::create_dir_all(own.path().join(sub)).unwrap();
     }
 
-    // A fake anirss that writes down the home it was given
+    // A fake anirss that writes down the home it was given. A shell's printf may write in
+    // more than one go, so it writes a name of its own and renames the whole file into
+    // place: the test never reads half of it (#976).
     let bin = tempfile::tempdir().unwrap();
     let capture = bin.path().join("env");
     let anirss = bin.path().join("anirss");
@@ -104,7 +105,7 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
         format!(
             "#!/bin/sh\nprintf '%s\\n%s\\n%s\\n%s\\n%s\\n%s' \"$HOME\" \"$XDG_CONFIG_HOME\" \
              \"$XDG_STATE_HOME\" \"$XDG_DATA_HOME\" \"$XDG_CACHE_HOME\" \"$ANIRSS_QBT_PASSWORD\" \
-             > '{}'\nexec sleep 300\n",
+             > '{0}.$$'\nmv -f '{0}.$$' '{0}'\nexec sleep 300\n",
             capture.display()
         ),
     )
