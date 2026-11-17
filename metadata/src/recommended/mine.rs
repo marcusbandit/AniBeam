@@ -240,4 +240,24 @@ mod tests {
         assert!(!barely_started(1, Some(3)), "a third of a short show");
         assert!(!barely_started(3, Some(24)));
     }
+
+    /// A friend's connected account is not the owner's: with only the
+    /// friend signed in, the recommender reads no tracker list (#863).
+    #[test]
+    fn only_the_owners_account_counts_as_connected() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO tracker_accounts (profile_id, tracker, user_id, connected_at) VALUES
+                 (1, 'anilist', 1, NULL), (2, 'anilist', 2, 1);",
+        )
+        .unwrap();
+        assert_eq!(connected(&c, Tracker::Anilist).unwrap(), None);
+        c.execute(
+            "UPDATE tracker_accounts SET connected_at = 1 WHERE profile_id = 1",
+            [],
+        )
+        .unwrap();
+        assert_eq!(connected(&c, Tracker::Anilist).unwrap(), Some(Some(1)));
+    }
 }

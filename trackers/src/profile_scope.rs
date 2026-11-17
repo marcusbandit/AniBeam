@@ -145,3 +145,43 @@ fn move_up_offers_each_series_once_against_the_owners_entry() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0].tracker_status, Some(ListStatus::Watching));
 }
+
+#[test]
+fn a_disconnect_signs_out_only_the_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let running =
+        anibeam_foundation::testing::Running::open(dir.path(), anibeam_net::FakeHttp::new());
+    let services = running.services.clone();
+    services
+        .store
+        .write(|c| {
+            c.execute_batch(
+                "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+                 INSERT INTO tracker_accounts (profile_id, tracker, user_id, username, connected_at) VALUES
+                     (1, 'anilist', 1, 'owner', 1), (2, 'anilist', 2, 'friend', 1);
+                 INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
+                     (1, 'anilist', 10, 'watching', 0), (2, 'anilist', 10, 'completed', 0),
+                     (2, 'anilist', 20, 'watching', 0);",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    accounts::disconnect(&services, Tracker::Anilist).unwrap();
+    let (owner_entries, friend_entries, friend_user): (i64, i64, Option<String>) = services
+        .store
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT (SELECT count(*) FROM tracker_entries WHERE profile_id = 1),
+                        (SELECT count(*) FROM tracker_entries WHERE profile_id = 2),
+                        (SELECT username FROM tracker_accounts WHERE profile_id = 2)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(
+        (owner_entries, friend_entries, friend_user.as_deref()),
+        (0, 2, Some("friend"))
+    );
+    running.shutdown();
+}
