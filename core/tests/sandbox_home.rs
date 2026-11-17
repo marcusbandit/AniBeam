@@ -105,7 +105,7 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
         format!(
             "#!/bin/sh\nprintf '%s\\n%s\\n%s\\n%s\\n%s\\n%s' \"$HOME\" \"$XDG_CONFIG_HOME\" \
              \"$XDG_STATE_HOME\" \"$XDG_DATA_HOME\" \"$XDG_CACHE_HOME\" \"$ANIRSS_QBT_PASSWORD\" \
-             > '{0}.$$'\nmv -f '{0}.$$' '{0}'\nexec sleep 300\n",
+             > '{0}'.$$ && mv -f '{0}'.$$ '{0}'\nexec sleep 300\n",
             capture.display()
         ),
     )
