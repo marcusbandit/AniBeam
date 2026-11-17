@@ -16,8 +16,8 @@
 //!
 //! While it downloads, the member's status carries its progress and time left,
 //! which is all the relay and the others see. Once done, the playback waits for the
-//! library to take the file in, points the show at the room's match when it
-//! arrived as a show the library did not know, and says `RoomEpisode` with the
+//! library to take the file in, points the show at the room's match unless the
+//! user matched that show themselves, and says `RoomEpisode` with the
 //! file, so the shell opens it and the member is ready.
 //!
 //! A member can ask for the whole show with the episode (#922). The episode
@@ -700,7 +700,7 @@ fn progress_at(fraction: f64, eta: i64) -> Option<Progress> {
 }
 
 /// Waits for the library to take the download in, and points the show it came
-/// in as at the room's match when the library did not have that show. Nothing
+/// in as at the room's match unless the user matched that show themselves. Nothing
 /// is polled: the library is read again when a scan, a series or a match says
 /// it changed, and when the watcher has not brought the file in by
 /// `SCAN_AFTER`, the download's own path is scanned, once.
@@ -786,7 +786,7 @@ impl ShowMatch {
         if self.tries >= MATCH_TRIES {
             return;
         }
-        let (Some(series), Some(target)) = (series_holding(rooms, content), target(offer, e))
+        let (Some(series), Some(target)) = (series_to_match(rooms, content), target(offer, e))
         else {
             return;
         };
@@ -838,8 +838,12 @@ impl EventListener for Arrivals {
 }
 
 /// The library series that holds the download, by its content path: the file
-/// itself, or a file in the folder it made.
-fn series_holding(rooms: &Rooms, content: &str) -> Option<u64> {
+/// itself, or a file in the folder it made. None when the user matched that
+/// series themselves (#1116): a download that lands in a folder the user
+/// pointed at another season keeps the user's match. A match the auto-match
+/// guessed is the library's own and takes the room's, since the auto-match
+/// can reach a new folder while the episode is still coming in.
+fn series_to_match(rooms: &Rooms, content: &str) -> Option<u64> {
     let path = content.replace('\\', "/");
     let folder = format!("{}/", path.trim_end_matches('/'));
     rooms
@@ -847,16 +851,17 @@ fn series_holding(rooms: &Rooms, content: &str) -> Option<u64> {
         .store
         .read(move |c| {
             Ok(c.query_row(
-                "SELECT series_id FROM files WHERE path = ?1 OR substr(path, 1, length(?2)) = ?2
-                 ORDER BY id LIMIT 1",
+                "SELECT f.series_id, s.confirmed FROM files f JOIN series s ON s.id = f.series_id
+                 WHERE f.path = ?1 OR substr(f.path, 1, length(?2)) = ?2
+                 ORDER BY f.id LIMIT 1",
                 rusqlite::params![path, folder],
-                |r| r.get::<_, i64>(0),
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? == 1)),
             )
             .ok())
         })
         .ok()
         .flatten()
-        .map(|s| s as u64)
+        .and_then(|(series, users)| (!users).then_some(series as u64))
 }
 
 /// The match the host's show has, as `ApplyMatch` takes it.
@@ -1802,6 +1807,69 @@ mod tests {
         assert_eq!(matched.job, None);
         assert_eq!(started.len(), usize::from(MATCH_TRIES));
         drop(listening);
+        drop(rooms);
+        running.shutdown();
+    }
+
+    #[test]
+    fn a_show_the_user_matched_keeps_its_match() {
+        let dir = tempfile::tempdir().unwrap();
+        // The auto-matched folder's match job asks TVmaze, which has no such show.
+        let http = anibeam_net::FakeHttp::new();
+        http.push_for("tvmaze", 404, "");
+        let (running, rooms) = rooms_over(dir.path(), http);
+        let services = running.services.clone();
+        // The download lands in a folder the user matched to another show,
+        // season two, say, while the room plays season one.
+        services
+            .store
+            .tx(|tx| {
+                tx.execute_batch(
+                    "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0);
+                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at, provider, tvmaze_id, confirmed)
+                         VALUES (7, 1, 'show', '/lib/Show', 'Show', 0, 'tvmaze', 3, 1);
+                     INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, seen_at)
+                         VALUES (7, '/lib/Show/05.mkv', 1, 0, 'episode', 5, '5', '5', 0);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let offer = Offer {
+            anilist_id: None,
+            tvmaze_id: Some(9),
+            ..offer("[Group] Show - 05 [1080p]")
+        };
+        let e = proto::EpisodeRef {
+            anilist_id: None,
+            ..ep(5.0)
+        };
+        let failed = Failed::default();
+        let mut matched = ShowMatch::default();
+        matched.try_apply(&rooms, "/lib/Show", &offer, &e, &failed);
+        assert_eq!(matched.job, None, "the user's match is left alone");
+        assert_eq!(matched.tries, 0);
+        let kept = services
+            .store
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT tvmaze_id, confirmed FROM series WHERE id = 7",
+                    [],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(kept, (3, 1));
+        // A match the auto-match guessed is the library's, not the user's:
+        // the room's match replaces it.
+        services
+            .store
+            .tx(|tx| {
+                tx.execute("UPDATE series SET confirmed = 0 WHERE id = 7", [])?;
+                Ok(())
+            })
+            .unwrap();
+        matched.try_apply(&rooms, "/lib/Show", &offer, &e, &failed);
+        assert!(matched.job.is_some(), "an auto-match gets the room's match");
         drop(rooms);
         running.shutdown();
     }
