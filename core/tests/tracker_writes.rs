@@ -1027,6 +1027,56 @@ fn finishing_a_completed_show_again_counts_a_rewatch() {
     assert_eq!(detail.rewatch_count, Some(2));
 }
 
+/// Two marks of one rewatch finish (the rule at the end and the player's
+/// button, say) count one rewatch: the second finds the first still writing
+/// and answers with its job, or, once that job is done, finds the list
+/// covering the finish and is refused. The cached progress sits below the
+/// last episode, so a plain mark would not be covered and its write would
+/// race the rewatch's (#1042).
+#[test]
+fn a_second_mark_of_one_rewatch_finish_counts_one_rewatch() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 11, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    fixtures::insert_completed(&core, series, "1", anibeam_core::time::now_secs());
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":11,"status":"COMPLETED","repeat":1,"startedAt":{"year":2025},"completedAt":{"year":2025}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":12,"status":"COMPLETED"}}}"#,
+    );
+
+    let mark = Call::MarkEpisode {
+        series,
+        episode: 12.0,
+    };
+    let job = started(&core, mark.clone());
+    let second = core.call(mark);
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::Marked { .. }), "{done:?}");
+    match second {
+        Ok(Reply::Started { job: same }) => assert_eq!(same, job, "the first mark's job"),
+        Err(CoreError::Refused {
+            reason: Refusal::NotNewer,
+        }) => {}
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "repeat": 2 })
+        ]
+    );
+}
+
 /// Playing only the last episode of a completed show again is not a
 /// rewatch: the mark is refused before a request, as any covered mark is.
 #[test]

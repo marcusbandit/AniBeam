@@ -223,12 +223,28 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     let main = guard(&trackers.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover. A second mark of the same finish finds
-    // the slot taken and is judged as a plain mark.
+    // the slot taken and answers with the first mark's job, so the shell
+    // hears how that one went: judged as a plain mark, its own write would
+    // race the rewatch's for the list's status and count (#1042).
     let finished = trackers
         .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?;
-    let slot = finished.then(|| trackers.rewatching.hold(series)).flatten();
+    let slot = if finished {
+        match trackers.rewatching.hold(series) {
+            Ok(slot) => Some(slot),
+            Err(Some(job)) => return Ok(job),
+            // The first mark is between taking the slot and starting its
+            // job, so there is no job to answer with yet.
+            Err(None) => {
+                return Err(CoreError::Refused {
+                    reason: Refusal::NotNewer,
+                });
+            }
+        }
+    } else {
+        None
+    };
     let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
@@ -308,17 +324,30 @@ fn finished_again(
 /// team, so two cores in one process never share a slot (#776). Two marks of
 /// one finish (the rule at the end and the player's button, say) both read the
 /// list before either has written, so the second finds the series held here
-/// and is not counted as a rewatch at all.
+/// and answers with the first's job, leaving the one rewatch to it. Each held
+/// series keeps the id of the job writing it, once that job has started.
 #[derive(Clone, Default)]
-pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
+pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashMap<u64, JobCell>>>);
+
+/// The id of the job a rewatch slot belongs to, set once the job starts.
+type JobCell = Arc<std::sync::OnceLock<u64>>;
 
 impl Rewatching {
-    /// The series' slot, or None while another mark holds it.
-    fn hold(&self, series: u64) -> Option<RewatchSlot> {
-        recover(&self.0).insert(series).then(|| RewatchSlot {
-            set: self.clone(),
-            series,
-        })
+    /// The series' slot, or, while another mark holds it, that mark's job
+    /// (None until its job has started).
+    fn hold(&self, series: u64) -> Result<RewatchSlot, Option<u64>> {
+        use std::collections::hash_map::Entry;
+        match recover(&self.0).entry(series) {
+            Entry::Occupied(held) => Err(held.get().get().copied()),
+            Entry::Vacant(free) => {
+                let job = free.insert(JobCell::default()).clone();
+                Ok(RewatchSlot {
+                    set: self.clone(),
+                    series,
+                    job,
+                })
+            }
+        }
     }
 }
 
@@ -327,6 +356,7 @@ impl Rewatching {
 struct RewatchSlot {
     set: Rewatching,
     series: u64,
+    job: JobCell,
 }
 
 impl Drop for RewatchSlot {
@@ -1027,10 +1057,15 @@ fn start_holding(
 ) -> Result<u64, CoreError> {
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
-    Ok(jobs.start(kind, move |ctx| async move {
+    let cell = slot.as_ref().map(|s| s.job.clone());
+    let job = jobs.start(kind, move |ctx| async move {
         let _slot = slot;
         run(owner, ctx, target, action).await
-    }))
+    });
+    if let Some(cell) = cell {
+        let _ = cell.set(job);
+    }
+    Ok(job)
 }
 
 async fn run(
@@ -2168,14 +2203,24 @@ mod tests {
     fn a_rewatch_slot_is_held_once_and_freed_when_dropped() {
         let set = Rewatching::default();
         let slot = set.hold(7).expect("a free series gives its slot");
-        assert!(set.hold(7).is_none(), "a held series refuses a second hold");
-        assert!(set.hold(8).is_some(), "another series is free");
+        assert_eq!(
+            set.hold(7).err(),
+            Some(None),
+            "a held series refuses a second hold"
+        );
+        slot.job.set(31).unwrap();
+        assert_eq!(
+            set.hold(7).err(),
+            Some(Some(31)),
+            "and names its job once started"
+        );
+        assert!(set.hold(8).is_ok(), "another series is free");
         assert!(
-            Rewatching::default().hold(7).is_some(),
+            Rewatching::default().hold(7).is_ok(),
             "another team's set never shares the slot"
         );
         drop(slot);
-        assert!(set.hold(7).is_some(), "a dropped slot frees the series");
+        assert!(set.hold(7).is_ok(), "a dropped slot frees the series");
     }
 
     /// The status is read first, whatever the provider said, because a 429
