@@ -1028,12 +1028,13 @@ fn finishing_a_completed_show_again_counts_a_rewatch() {
 }
 
 /// Two marks of one rewatch finish (the rule at the end and the player's
-/// button, say) count one rewatch: the second finds the first still writing,
-/// or the list already covering the finish, and is refused either way. The
-/// cached progress sits below the last episode, so a plain mark would not
-/// be covered and its write would race the rewatch's (#1042).
+/// button, say) count one rewatch: the second finds the first still writing
+/// and answers with its job, or, once that job is done, finds the list
+/// covering the finish and is refused. The cached progress sits below the
+/// last episode, so a plain mark would not be covered and its write would
+/// race the rewatch's (#1042).
 #[test]
-fn a_second_mark_of_one_rewatch_finish_is_refused() {
+fn a_second_mark_of_one_rewatch_finish_counts_one_rewatch() {
     let http = FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let series = library(&core);
@@ -1058,15 +1059,16 @@ fn a_second_mark_of_one_rewatch_finish_is_refused() {
         episode: 12.0,
     };
     let job = started(&core, mark.clone());
-    let second = core.call(mark).map(|_| ());
+    let second = core.call(mark);
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::Marked { .. }), "{done:?}");
-    assert_eq!(
-        second,
+    match second {
+        Ok(Reply::Started { job: same }) => assert_eq!(same, job, "the first mark's job"),
         Err(CoreError::Refused {
-            reason: Refusal::NotNewer
-        })
-    );
+            reason: Refusal::NotNewer,
+        }) => {}
+        other => panic!("{other:?}"),
+    }
     assert_eq!(
         graphql_variables(&http, "SaveMediaListEntry"),
         vec![
