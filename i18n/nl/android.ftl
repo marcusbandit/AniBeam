@@ -889,6 +889,7 @@ player-tracked = Bijgewerkt
 player-not-tracked = Niet bijgewerkt
 player-track-update-failed = Je lijst bijwerken mislukt
 player-not-tracked-why = Niet bijgewerkt: { $reason }.
+phone-player-refusal-no-match = de serie is nog niet gekoppeld, tik op Koppeling op de pagina
 player-track-ok-at = { $tracker } bij { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }

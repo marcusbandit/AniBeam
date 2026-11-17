@@ -959,6 +959,7 @@ player-tracked = Zapisano
 player-not-tracked = Nie zapisano
 player-track-update-failed = Nie udało się zaktualizować listy
 player-not-tracked-why = Nie zapisano: { $reason }.
+phone-player-refusal-no-match = serial nie jest jeszcze dopasowany, dotknij Dopasuj na jego stronie
 player-track-ok-at = { $tracker }: { $progress }
 player-track-ok = { $tracker }: OK
 player-track-note = { $tracker }: { $note }

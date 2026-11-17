@@ -1054,8 +1054,10 @@ player-marked-watched = Marked watched
 player-tracked = Tracked
 player-not-tracked = Not tracked
 player-track-update-failed = Could not update your list
-# { $reason } is one of the player-refusal lines.
+# { $reason } is a refusal line from core.ftl, or phone-player-refusal-no-match.
 player-not-tracked-why = Not tracked: { $reason }.
+# Why a mark was not tracked: the show has no match. The phone matches from the show's page, not Show info.
+phone-player-refusal-no-match = the show is not matched yet, tap Match on its page
 # { $tracker } is AniList or MyAnimeList, { $progress } the episode number.
 player-track-ok-at = { $tracker } at { $progress }
 player-track-ok = { $tracker } ok

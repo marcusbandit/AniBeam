@@ -887,6 +887,7 @@ player-tracked = Tracciato
 player-not-tracked = Non tracciato
 player-track-update-failed = Impossibile aggiornare la lista
 player-not-tracked-why = Non tracciato: { $reason }.
+phone-player-refusal-no-match = la serie non è ancora abbinata, tocca Abbina nella sua pagina
 player-track-ok-at = { $tracker }, ep. { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }

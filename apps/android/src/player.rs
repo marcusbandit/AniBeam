@@ -195,7 +195,8 @@ fn refusal_word(r: &anibeam_core::Refusal) -> String {
     use anibeam_core::Refusal::*;
     match r {
         Hidden => tr!("refusal-hidden"),
-        NoMatch => tr!("refusal-no-match"),
+        // The phone matches from the show's page; the shared words name the desktop's Show info
+        NoMatch => tr!("phone-player-refusal-no-match"),
         NotNewer => tr!("refusal-not-newer"),
         Extra => tr!("refusal-extra"),
         Unmatched => tr!("refusal-unmatched"),
@@ -2452,6 +2453,18 @@ mod tests {
         assert_eq!(
             outcome_line(&[refused]),
             "Not tracked: MyAnimeList: your list is already past this episode"
+        );
+        // The phone's own no-match words, with no semicolon to read as a second entry
+        let unmatched = TrackerOutcome {
+            tracker: Tracker::Mal,
+            ok: false,
+            progress: None,
+            reason: Some(anibeam_core::Refusal::NoMatch),
+            message: None,
+        };
+        assert_eq!(
+            outcome_line(&[unmatched]),
+            "Not tracked: MyAnimeList: the show is not matched yet, tap Match on its page"
         );
     }
 

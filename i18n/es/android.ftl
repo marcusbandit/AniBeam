@@ -889,6 +889,7 @@ player-tracked = Registrado
 player-not-tracked = Sin registrar
 player-track-update-failed = No se pudo actualizar tu lista
 player-not-tracked-why = Sin registrar: { $reason }.
+phone-player-refusal-no-match = la serie aún no está asociada, toca Asociar en su página
 player-track-ok-at = { $tracker } en { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }

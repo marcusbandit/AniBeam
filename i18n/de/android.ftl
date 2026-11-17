@@ -889,6 +889,7 @@ player-tracked = Erfasst
 player-not-tracked = Nicht erfasst
 player-track-update-failed = Liste konnte nicht aktualisiert werden
 player-not-tracked-why = Nicht erfasst: { $reason }.
+phone-player-refusal-no-match = die Serie ist noch nicht zugeordnet, tippe auf ihrer Seite auf Zuordnen
 player-track-ok-at = { $tracker } bei { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }

@@ -947,6 +947,7 @@ player-tracked = Учтено
 player-not-tracked = Не учтено
 player-track-update-failed = Не удалось обновить список
 player-not-tracked-why = Не учтено: { $reason }.
+phone-player-refusal-no-match = сериал ещё не привязан, нажмите «Привязка» на его странице
 player-track-ok-at = { $tracker }: серия { $progress }
 player-track-ok = { $tracker }: ок
 player-track-note = { $tracker }: { $note }

@@ -637,15 +637,18 @@ FocusScope {
     // A refusal is a rule the core applied, not something that went wrong, so it reads as a
     // sentence and the line it lands in does not say error. The bare enum name is what the
     // core sends and is not for anyone to read.
-    readonly property var refusalWords: ({
-        Hidden: "refusal-hidden",
-        NoMatch: "refusal-no-match",
-        NotNewer: "refusal-not-newer",
-        Extra: "refusal-extra",
-        Unmatched: "refusal-unmatched",
-        OnDisk: "refusal-on-disk"
-    })
-    function refusalWord(r) { return refusalWords[r] ? words.t(refusalWords[r]) : String(r) }
+    // Each ID spelled out in a words.t call, so the strings check sees every one
+    function refusalWord(r) {
+        switch (r) {
+        case "Hidden": return words.t("refusal-hidden")
+        case "NoMatch": return words.t("refusal-no-match")
+        case "NotNewer": return words.t("refusal-not-newer")
+        case "Extra": return words.t("refusal-extra")
+        case "Unmatched": return words.t("refusal-unmatched")
+        case "OnDisk": return words.t("refusal-on-disk")
+        default: return String(r)
+        }
+    }
     function errorLine(e) { return e.kind === "Refused" ? words.t("player-not-tracked-because", { reason: refusalWord(e.reason) }) : e.message }
     function markWatched() {
         if (!canMark) return

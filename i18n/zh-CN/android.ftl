@@ -800,6 +800,7 @@ player-tracked = 已记录
 player-not-tracked = 未记录
 player-track-update-failed = 无法更新你的列表
 player-not-tracked-why = 未记录：{ $reason }。
+phone-player-refusal-no-match = 这部番剧还没有匹配，请在它的页面点“匹配”
 player-track-ok-at = { $tracker } 已更新到 { $progress }
 player-track-ok = { $tracker } 正常
 player-track-note = { $tracker }：{ $note }

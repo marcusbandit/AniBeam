@@ -889,6 +889,7 @@ player-tracked = Synket
 player-not-tracked = Ikke synket
 player-track-update-failed = Kunne ikke opdatere din liste
 player-not-tracked-why = Ikke synket: { $reason }.
+phone-player-refusal-no-match = serien er ikke matchet endnu, tryk Match på dens side
 player-track-ok-at = { $tracker } ved { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }

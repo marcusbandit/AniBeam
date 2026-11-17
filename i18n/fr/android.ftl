@@ -889,6 +889,7 @@ player-tracked = Suivi
 player-not-tracked = Non suivi
 player-track-update-failed = Impossible de mettre à jour votre liste
 player-not-tracked-why = Non suivi : { $reason }.
+phone-player-refusal-no-match = la série n'est pas encore associée, touchez Associer sur sa page
 player-track-ok-at = { $tracker } à { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker } : { $note }

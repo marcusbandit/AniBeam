@@ -844,6 +844,7 @@ player-tracked = 기록됨
 player-not-tracked = 기록 안 됨
 player-track-update-failed = 목록을 업데이트하지 못했어요
 player-not-tracked-why = 기록 안 됨: { $reason }.
+phone-player-refusal-no-match = 아직 매칭되지 않은 작품이에요. 작품 페이지에서 매칭을 누르세요
 player-track-ok-at = { $tracker } { $progress }화
 player-track-ok = { $tracker } 정상
 player-track-note = { $tracker }: { $note }

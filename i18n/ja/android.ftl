@@ -797,6 +797,7 @@ player-tracked = 記録済み
 player-not-tracked = 未記録
 player-track-update-failed = リストを更新できませんでした
 player-not-tracked-why = 記録しませんでした: { $reason }。
+phone-player-refusal-no-match = 作品がまだ照合されていません。作品のページで「照合」をタップしてください
 player-track-ok-at = { $tracker } { $progress }話
 player-track-ok = { $tracker } OK
 player-track-note = { $tracker }: { $note }
