@@ -593,14 +593,14 @@ impl qobject::Shell {
         let v = crate::json::from_qjson_object(episode);
         let title = v["title"].as_str().unwrap_or_default().to_string();
         let number = v["episode"].as_u64().unwrap_or(0) as u32;
-        if args.root.is_some() || args.shoot.is_some() || args.drive.is_some() {
+        let sandbox = args.root.is_some() || args.shoot.is_some() || args.drive.is_some();
+        if sandbox {
             eprintln!(
                 "anibeam: notifications: a sandbox run shows none: episode {number} of {title}"
             );
-            return;
         }
         #[cfg(not(any(target_os = "macos", windows)))]
-        {
+        if !sandbox {
             use crate::dbus::notify::{Notifier, Target};
             static NOTIFIER: std::sync::OnceLock<tokio::sync::Mutex<Notifier>> =
                 std::sync::OnceLock::new();
