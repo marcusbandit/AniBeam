@@ -42,6 +42,11 @@ pub static SEASON_EP_RE: LazyLock<Regex> =
     LazyLock::new(|| re(r"\b[Ss](\d{1,2})[Ee]\d{1,4}(?:v\d+)?\b"));
 static SEASON_EP_FULL_RE: LazyLock<Regex> =
     LazyLock::new(|| re(r"\A\b[Ss](\d{1,2})[Ee]\d{1,4}(?:v\d+)?\b\z"));
+/// A season with no episode after it, as a season pack names it: "Show S01 [1080p]",
+/// "Show.S02.1080p". A separator before it keeps a name that starts with one whole; the
+/// form is the one `facts` reads as a season pack.
+static SEASON_PACK_RE: LazyLock<Regex> =
+    LazyLock::new(|| re(r"[\s._][Ss](\d{1,2})(?:[\s._\[(]|\z)"));
 static META_RE: LazyLock<Regex> = LazyLock::new(|| re(r"\s*\["));
 
 /// `title` without a trailing `.ext` of two to four word characters.
@@ -71,6 +76,9 @@ pub fn show_name(title: &str) -> String {
     if let Some(m) = SEASON_EP_RE.find(&name) {
         cuts.push(m.start());
     }
+    if let Some(m) = SEASON_PACK_RE.find(&name) {
+        cuts.push(m.start());
+    }
     if let Some(m) = META_RE.find(&name)
         && m.start() > 0
     {
@@ -83,9 +91,16 @@ pub fn show_name(title: &str) -> String {
     name.trim().trim_matches([' ', '-']).to_string()
 }
 
-/// Canonical `Sxx` from the first SxxEyy marker in the title, else None.
+/// Canonical `Sxx` from the first SxxEyy marker in the title, else from a season pack's
+/// bare `Sxx`, else None.
 pub fn season_of(title: &str) -> Option<String> {
-    SEASON_EP_RE.captures(title).map(|c| format!("S{}", &c[1]))
+    if let Some(c) = SEASON_EP_RE.captures(title) {
+        return Some(format!("S{}", &c[1]));
+    }
+    let name = POSTER_RE.replace(title, "");
+    SEASON_PACK_RE
+        .captures(name.trim())
+        .map(|c| format!("S{}", &c[1]))
 }
 
 /// The words of a title that can narrow a search: poster, extension and episode numbers
@@ -176,10 +191,25 @@ mod tests {
     }
 
     #[test]
+    fn show_name_cuts_at_a_season_packs_bare_season() {
+        assert_eq!(show_name("[Grp] Show S01 [1080p]"), "Show");
+        assert_eq!(show_name("[Grp] Some Show S2 (Batch) [1080p]"), "Some Show");
+        assert_eq!(show_name("[Grp] Some Show s03"), "Some Show");
+        assert_eq!(show_name("Some.Show.S01.1080p.WEB-DL"), "Some.Show");
+        assert_eq!(show_name("[Grp] Show S2 - 03 [1080p]"), "Show");
+        // A name that starts with one, or a longer number, is part of the name.
+        assert_eq!(show_name("[Grp] S01 Project - 04 [1080p]"), "S01 Project");
+        assert_eq!(show_name("[Grp] Show S100 [1080p]"), "Show S100");
+        assert_eq!(show_name("[Grp] Show S01x [1080p]"), "Show S01x");
+    }
+
+    #[test]
     fn season_of_reads_the_first_marker() {
         assert_eq!(season_of("Show S02E05 [1080p]"), Some("S02".into()));
         assert_eq!(season_of("Show s1e2"), Some("S1".into()));
         assert_eq!(season_of("Show - 05"), None);
+        assert_eq!(season_of("[Grp] Show S01 [1080p]"), Some("S01".into()));
+        assert_eq!(season_of("[Grp] S01 Project - 04"), None);
     }
 
     #[test]

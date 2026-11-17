@@ -448,6 +448,17 @@ mod tests {
     }
 
     #[test]
+    fn a_season_pack_lands_in_its_show_folder() {
+        let pack: Release = serde_json::from_value(serde_json::json!({
+            "title": "[Grp] Some Show S01 [1080p]",
+            "link": "magnet:?xt=urn:btih:0000000000000000000000000000000000000002",
+            "source": "feed",
+        }))
+        .unwrap();
+        assert_eq!(name_for(None, &[pack], "Downloads").unwrap(), "Some Show");
+    }
+
+    #[test]
     fn a_name_is_one_folder() {
         assert_eq!(validate_name("  Show ").unwrap(), "Show");
         for bad in ["", "a/b", "a\\b", "..", "a\nb"] {
