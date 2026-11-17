@@ -415,6 +415,11 @@ pub enum Call {
         limit: u64,
     },
     ClearEvents,
+    /// The machine woke from a suspend, which stopped the clock the core's timers sleep on.
+    /// The episode out alarm is set again at once, so an episode that aired during the
+    /// suspend is said now, not when the alarm would have woken (#594). Answers Ok, and does
+    /// nothing on a core that is not started.
+    Resumed,
     ListJobs,
     CancelJob {
         job: u64,

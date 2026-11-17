@@ -245,43 +245,17 @@ mod tests {
         F: FnOnce(Connection, Connection, Seen) -> Fut,
         Fut: std::future::Future<Output = ()>,
     {
-        let dir = tempfile::tempdir().unwrap();
-        let address = format!("unix:path={}", dir.path().join("bus").display());
-        let mut daemon = std::process::Command::new("dbus-daemon")
-            .args([
-                "--session",
-                "--nofork",
-                "--nopidfile",
-                &format!("--address={address}"),
-            ])
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("dbus-daemon runs");
+        let bus = crate::dbus::testbus::PrivateBus::start();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let connect = || async {
-                for _ in 0..100 {
-                    if let Ok(c) = zbus::connection::Builder::address(address.as_str())
-                        .unwrap()
-                        .build()
-                        .await
-                    {
-                        return c;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-                panic!("the private bus never came up")
-            };
-            let server = connect().await;
+            let server = bus.connect().await;
             let fake = Daemon::default();
             let got = fake.got.clone();
             server.object_server().at(PATH, fake).await.unwrap();
             server.request_name(NAME).await.unwrap();
-            let client = connect().await;
+            let client = bus.connect().await;
             body(server, client, got).await;
         });
-        let _ = daemon.kill();
-        let _ = daemon.wait();
     }
 
     #[test]

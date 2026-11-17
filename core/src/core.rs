@@ -617,6 +617,10 @@ impl Core {
             Call::About => app::about(&self.services),
             Call::RecentEvents { limit } => app::recent_events(&self.services, limit),
             Call::ClearEvents => app::clear_events(&self.services),
+            Call::Resumed => {
+                crate::aired::resumed(&self.metadata);
+                Ok(Reply::Ok)
+            }
             Call::ListJobs => app::list_jobs(&self.services),
             Call::CancelJob { job } => app::cancel_job(&self.services, job),
             Call::GetPreferences => app::preferences(&self.services),
