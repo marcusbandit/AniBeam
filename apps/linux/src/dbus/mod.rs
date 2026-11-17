@@ -12,3 +12,5 @@ pub mod mpris;
 pub mod notify;
 #[cfg(not(any(target_os = "macos", windows)))]
 pub mod wake;
+#[cfg(all(test, not(any(target_os = "macos", windows))))]
+mod testbus;

@@ -167,6 +167,10 @@ pub(crate) fn arm(metadata: &Arc<Metadata>) {
     // Held until the alarm is set, so a second arm with an older answer for
     // the next broadcast cannot replace a newer alarm.
     let _one = recover(&metadata.aired.saying);
+    // A core that stopped, or never started, says nothing and sets no alarm.
+    if !listening(metadata) {
+        return;
+    }
     let next = match announce(&metadata.services) {
         Ok(next) => next,
         Err(e) => {
@@ -177,6 +181,11 @@ pub(crate) fn arm(metadata: &Arc<Metadata>) {
     let mut alarm = recover(&metadata.aired.alarm);
     if let Some(old) = alarm.take() {
         old.abort();
+    }
+    // Checked again under the alarm's lock: a `stop` since the first check has aborted
+    // the alarm already, so a new one would outlive it.
+    if !listening(metadata) {
+        return;
     }
     let Some(at) = next else { return };
     let wait = Duration::from_secs((at - time::now_secs()).max(0) as u64 + 1).min(LONGEST_SLEEP);
@@ -206,18 +215,24 @@ pub fn listen(metadata: &Arc<Metadata>) {
     });
     *recover(&metadata.aired.listener) =
         Some(Listening::new(metadata.services.bus.clone(), listener));
+    arm_soon(metadata);
+}
+
+/// After a suspend: the alarm slept on a clock that stopped, so it is set again now, which
+/// says whatever aired meanwhile. Nothing on a core that is not started (`arm` checks).
+pub fn resumed(metadata: &Arc<Metadata>) {
+    arm_soon(metadata);
+}
+
+/// `arm` off the caller's thread: it reads and writes the store.
+fn arm_soon(metadata: &Arc<Metadata>) {
     let owner = metadata.clone();
     metadata.services.handle.spawn_blocking(move || arm(&owner));
 }
 
-/// After a suspend: the alarm slept on a clock that stopped, so it is set again now, which
-/// says whatever aired meanwhile. Only on a started core, where `listen` set one.
-pub fn resumed(metadata: &Arc<Metadata>) {
-    if recover(&metadata.aired.listener).is_none() {
-        return;
-    }
-    let owner = metadata.clone();
-    metadata.services.handle.spawn_blocking(move || arm(&owner));
+/// Whether `listen` ran and `stop` has not.
+fn listening(metadata: &Metadata) -> bool {
+    recover(&metadata.aired.listener).is_some()
 }
 
 pub fn stop(metadata: &Metadata) {

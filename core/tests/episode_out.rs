@@ -139,6 +139,24 @@ fn a_hidden_show_is_not_followed() {
     assert_eq!(ids, vec![2]);
 }
 
+/// Waits until no job runs and a re-arm a finished job queued has had its turn, so the
+/// alarm is set for what the store says now and nothing else wakes it.
+fn wait_quiet(core: &Core) {
+    let until = std::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let Reply::Jobs { jobs } = core.call(Call::ListJobs).unwrap() else {
+            panic!("ListJobs answers jobs")
+        };
+        if jobs.is_empty() {
+            break;
+        }
+        assert!(std::time::Instant::now() < until, "jobs still running: {jobs:#?}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // The calendar's settle window, one second, plus room for the re-arm itself.
+    std::thread::sleep(Duration::from_millis(1500));
+}
+
 #[test]
 fn a_resume_says_at_once_what_aired_during_the_suspend() {
     // A suspend stops the clock the alarm sleeps on, so an episode that aired meanwhile is
@@ -149,10 +167,8 @@ fn a_resume_says_at_once_what_aired_during_the_suspend() {
     let now = anibeam_core::time::now_secs();
     shows(&core, now + 3600);
     core.start().unwrap();
-    core.call(Call::GetPreferences).unwrap();
-    std::thread::sleep(Duration::from_millis(1100));
-    let aired = anibeam_core::time::now_secs();
-    fixtures::insert_airing(&core, 1, 7, aired);
+    wait_quiet(&core);
+    fixtures::insert_airing(&core, 1, 7, anibeam_core::time::now_secs() - 1);
     std::thread::sleep(Duration::from_millis(1100));
     assert!(outs(&c).is_empty(), "nothing wakes the alarm yet");
 
@@ -167,11 +183,34 @@ fn a_resume_says_at_once_what_aired_during_the_suspend() {
 }
 
 #[test]
-fn a_resume_before_start_does_nothing() {
+fn a_resume_before_start_leaves_the_launch_to_say_it() {
+    // A launch says what aired since the last run. A `Resumed` before the core starts must
+    // neither say it early nor move the mark past it.
     let (_dir, core, c) = common::open_core();
     let now = anibeam_core::time::now_secs();
-    shows(&core, now - 5);
+    let mark = now - 600;
+    core.store()
+        .write(move |c| {
+            anibeam_core::store::settings::set(
+                c,
+                anibeam_core::store::settings::EPISODES_OUT_AT,
+                &mark,
+            )
+        })
+        .unwrap();
+    shows(&core, now - 60);
     core.call(Call::Resumed).unwrap();
     std::thread::sleep(Duration::from_millis(500));
-    assert!(outs(&c).is_empty(), "a core never started says nothing");
+    assert!(outs(&c).is_empty(), "a core not started says nothing");
+
+    core.start().unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::EpisodeOut { .. }),
+        Duration::from_secs(5),
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let mut ids: Vec<u64> = outs(&c).iter().map(|o| o.anilist_id).collect();
+    ids.sort();
+    assert_eq!(ids, vec![1, 2], "the launch says both followed shows");
 }
