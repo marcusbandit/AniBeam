@@ -60,6 +60,8 @@
  "But we support Tailscale": "でも Tailscale に対応しています",
  "iPhone": "iPhone",
  "Unsigned, for sideloading": "未署名、サイドロード用",
+ "macOS 15+, Apple silicon": "macOS 15+、Appleシリコン",
+ "iOS 17+, unsigned, for sideloading": "iOS 17+、未署名、サイドロード用",
  "Every platform": "すべてのプラットフォーム",
  "Installer": "インストーラー",
  "From a terminal": "ターミナルから",

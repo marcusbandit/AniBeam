@@ -60,6 +60,8 @@
  "But we support Tailscale": "Ma supportiamo Tailscale",
  "iPhone": "iPhone",
  "Unsigned, for sideloading": "Non firmato, per il sideloading",
+ "macOS 15+, Apple silicon": "macOS 15+, Chip Apple",
+ "iOS 17+, unsigned, for sideloading": "iOS 17+, non firmato, per il sideloading",
  "Every platform": "Tutte le piattaforme",
  "Installer": "Programma di installazione",
  "From a terminal": "Da un terminale",
