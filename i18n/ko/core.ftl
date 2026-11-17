@@ -105,6 +105,13 @@ core-error-refused-not-newer = 할 수 없어요: 목록이 이미 이 에피소
 core-error-refused-extra = 할 수 없어요: 번외 에피소드예요.
 core-error-refused-unmatched = 할 수 없어요: 이 파일은 에피소드에 매칭되지 않았어요.
 core-error-refused-on-disk = 할 수 없어요: 디스크에만 있는 파일이에요.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = 숨긴 작품이에요
+refusal-no-match = 아직 매칭되지 않은 작품이에요. 작품 정보에서 매칭하세요
+refusal-not-newer = 목록이 이미 이 에피소드 이후까지 기록돼 있어요
+refusal-extra = 번외 에피소드예요
+refusal-unmatched = 이 파일은 에피소드에 매칭되지 않았어요
+refusal-on-disk = 디스크에만 있는 파일이에요
 core-error-provider = { $provider }에서 응답이 없어요: { $message }
 core-error-io = 파일을 읽거나 쓰지 못했어요: { $message }
 core-error-storage = 라이브러리를 저장하지 못했어요: { $message }

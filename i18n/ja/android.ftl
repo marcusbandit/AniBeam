@@ -797,17 +797,12 @@ player-tracked = 記録済み
 player-not-tracked = 未記録
 player-track-update-failed = リストを更新できませんでした
 player-not-tracked-why = 記録しませんでした: { $reason }。
+phone-player-refusal-no-match = 作品がまだ照合されていません。作品のページで「照合」をタップしてください
 player-track-ok-at = { $tracker } { $progress }話
 player-track-ok = { $tracker } OK
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker }を更新できませんでした
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = 作品が非表示です
-phone-player-refusal-no-match = 作品がトラッカーと照合されていません
-phone-player-refusal-not-newer = トラッカーはすでにこの話より先まで進んでいます
-phone-player-refusal-extra = 特典映像です
-phone-player-refusal-unmatched = ファイルがエピソードに照合されていません
-phone-player-refusal-on-disk = ファイルはディスク上のみです
 
 ## Subtitles
 

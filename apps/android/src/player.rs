@@ -194,12 +194,13 @@ fn tracker_name(t: &Tracker) -> String {
 fn refusal_word(r: &anibeam_core::Refusal) -> String {
     use anibeam_core::Refusal::*;
     match r {
-        Hidden => tr!("phone-player-refusal-hidden"),
+        Hidden => tr!("refusal-hidden"),
+        // The phone matches from the show's page; the shared words name the desktop's Show info
         NoMatch => tr!("phone-player-refusal-no-match"),
-        NotNewer => tr!("phone-player-refusal-not-newer"),
-        Extra => tr!("phone-player-refusal-extra"),
-        Unmatched => tr!("phone-player-refusal-unmatched"),
-        OnDisk => tr!("phone-player-refusal-on-disk"),
+        NotNewer => tr!("refusal-not-newer"),
+        Extra => tr!("refusal-extra"),
+        Unmatched => tr!("refusal-unmatched"),
+        OnDisk => tr!("refusal-on-disk"),
     }
 }
 
@@ -2447,11 +2448,23 @@ mod tests {
         );
         assert_eq!(
             outcome_line(&[ok, refused.clone()]),
-            "Tracked: AniList at 12; MyAnimeList: the tracker is already past this episode"
+            "Tracked: AniList at 12; MyAnimeList: your list is already past this episode"
         );
         assert_eq!(
             outcome_line(&[refused]),
-            "Not tracked: MyAnimeList: the tracker is already past this episode"
+            "Not tracked: MyAnimeList: your list is already past this episode"
+        );
+        // The phone's own no-match words, with no semicolon to read as a second entry
+        let unmatched = TrackerOutcome {
+            tracker: Tracker::Mal,
+            ok: false,
+            progress: None,
+            reason: Some(anibeam_core::Refusal::NoMatch),
+            message: None,
+        };
+        assert_eq!(
+            outcome_line(&[unmatched]),
+            "Not tracked: MyAnimeList: the show is not matched yet, tap Match on its page"
         );
     }
 

@@ -844,17 +844,12 @@ player-tracked = 기록됨
 player-not-tracked = 기록 안 됨
 player-track-update-failed = 목록을 업데이트하지 못했어요
 player-not-tracked-why = 기록 안 됨: { $reason }.
+phone-player-refusal-no-match = 아직 매칭되지 않은 작품이에요. 작품 페이지에서 매칭을 누르세요
 player-track-ok-at = { $tracker } { $progress }화
 player-track-ok = { $tracker } 정상
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } 업데이트 실패
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = 숨긴 작품
-phone-player-refusal-no-match = 트래커에 매칭되지 않은 작품
-phone-player-refusal-not-newer = 트래커가 이미 이 에피소드 이후까지 기록함
-phone-player-refusal-extra = 번외 에피소드
-phone-player-refusal-unmatched = 에피소드에 매칭되지 않은 파일
-phone-player-refusal-on-disk = 디스크에만 있는 파일
 
 ## Subtitles
 

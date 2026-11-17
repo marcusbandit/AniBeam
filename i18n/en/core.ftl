@@ -119,6 +119,13 @@ core-error-refused-not-newer = Cannot do that: your list is already past this ep
 core-error-refused-extra = Cannot do that: this is an extra.
 core-error-refused-unmatched = Cannot do that: the file is not matched to an episode.
 core-error-refused-on-disk = Cannot do that: the file is only on disk.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = the show is hidden
+refusal-no-match = the show is not matched yet; match it on Show info
+refusal-not-newer = your list is already past this episode
+refusal-extra = this is an extra
+refusal-unmatched = the file is not matched to an episode
+refusal-on-disk = the file is only on disk
 core-error-provider = { $provider } did not respond: { $message }
 core-error-io = Could not read or write a file: { $message }
 core-error-storage = Could not save your library: { $message }

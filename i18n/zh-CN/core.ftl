@@ -99,6 +99,13 @@ core-error-refused-not-newer = 无法执行：你的列表进度已超过这一�
 core-error-refused-extra = 无法执行：这是附加内容。
 core-error-refused-unmatched = 无法执行：这个文件没有匹配到剧集。
 core-error-refused-on-disk = 无法执行：这个文件只在磁盘上。
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = 这部番剧已隐藏
+refusal-no-match = 这部番剧尚未匹配，请在“番剧信息”中匹配
+refusal-not-newer = 你的列表进度已超过这一集
+refusal-extra = 这是附加内容
+refusal-unmatched = 这个文件没有匹配到剧集
+refusal-on-disk = 这个文件只在磁盘上
 core-error-provider = { $provider } 没有响应：{ $message }
 core-error-io = 无法读写文件：{ $message }
 core-error-storage = 无法保存媒体库：{ $message }

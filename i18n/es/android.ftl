@@ -889,17 +889,12 @@ player-tracked = Registrado
 player-not-tracked = Sin registrar
 player-track-update-failed = No se pudo actualizar tu lista
 player-not-tracked-why = Sin registrar: { $reason }.
+phone-player-refusal-no-match = la serie aún no está asociada, toca Asociar en su página
 player-track-ok-at = { $tracker } en { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = No se pudo actualizar { $tracker }
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = la serie está oculta
-phone-player-refusal-no-match = la serie no tiene coincidencia en el tracker
-phone-player-refusal-not-newer = el tracker ya está más allá de este episodio
-phone-player-refusal-extra = es un extra
-phone-player-refusal-unmatched = el archivo no está asociado a un episodio
-phone-player-refusal-on-disk = el archivo solo está en disco
 
 ## Subtitles
 

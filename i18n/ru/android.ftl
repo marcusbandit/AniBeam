@@ -947,17 +947,12 @@ player-tracked = Учтено
 player-not-tracked = Не учтено
 player-track-update-failed = Не удалось обновить список
 player-not-tracked-why = Не учтено: { $reason }.
+phone-player-refusal-no-match = сериал ещё не привязан, нажмите «Привязка» на его странице
 player-track-ok-at = { $tracker }: серия { $progress }
 player-track-ok = { $tracker }: ок
 player-track-note = { $tracker }: { $note }
 player-track-failed = Не удалось обновить { $tracker }
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = сериал скрыт
-phone-player-refusal-no-match = у сериала нет привязки к трекеру
-phone-player-refusal-not-newer = трекер уже дальше этой серии
-phone-player-refusal-extra = это экстра
-phone-player-refusal-unmatched = файл не сопоставлен с серией
-phone-player-refusal-on-disk = файл есть только на диске
 
 ## Субтитры
 

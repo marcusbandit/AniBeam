@@ -107,6 +107,13 @@ core-error-refused-not-newer = Impossibile: la tua lista è già oltre questo ep
 core-error-refused-extra = Impossibile: questo è un extra.
 core-error-refused-unmatched = Impossibile: il file non è abbinato a un episodio.
 core-error-refused-on-disk = Impossibile: il file è solo su disco.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = la serie è nascosta
+refusal-no-match = la serie non è ancora abbinata; abbinala in Info serie
+refusal-not-newer = la tua lista è già oltre questo episodio
+refusal-extra = è un extra
+refusal-unmatched = il file non è abbinato a un episodio
+refusal-on-disk = il file è solo su disco
 core-error-provider = { $provider } non ha risposto: { $message }
 core-error-io = Impossibile leggere o scrivere un file: { $message }
 core-error-storage = Impossibile salvare la tua libreria: { $message }

@@ -109,6 +109,13 @@ core-error-refused-not-newer = Impossible : votre liste a déjà dépassé cet 
 core-error-refused-extra = Impossible : c'est un bonus.
 core-error-refused-unmatched = Impossible : le fichier n'est associé à aucun épisode.
 core-error-refused-on-disk = Impossible : le fichier n'existe que sur le disque.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = la série est masquée
+refusal-no-match = la série n'est pas encore associée ; associez-la dans Infos de la série
+refusal-not-newer = votre liste a déjà dépassé cet épisode
+refusal-extra = c'est un bonus
+refusal-unmatched = le fichier n'est associé à aucun épisode
+refusal-on-disk = le fichier n'existe que sur le disque
 core-error-provider = { $provider } n'a pas répondu : { $message }
 core-error-io = Impossible de lire ou d'écrire un fichier : { $message }
 core-error-storage = Impossible d'enregistrer votre bibliothèque : { $message }
