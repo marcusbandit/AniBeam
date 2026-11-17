@@ -16,6 +16,7 @@ use super::home::AnirssHome;
 use anibeam_contract::*;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::store::settings;
+use anibeam_foundation::sync::recover;
 use anibeam_releases::BestfitConfig;
 use anibeam_trackers::Secrets;
 
@@ -358,7 +359,7 @@ fn remembered(
     now: Instant,
     lookup: impl FnOnce(&str) -> Option<Vec<IpAddr>>,
 ) -> Option<Vec<IpAddr>> {
-    let last = cache.lock().ok()?.get(name).cloned();
+    let last = recover(cache).get(name).cloned();
     if let Some((at, addrs)) = &last
         && now.duration_since(*at) < LOOKUP_FOR
     {
@@ -366,9 +367,7 @@ fn remembered(
     }
     match lookup(name) {
         Some(addrs) => {
-            if let Ok(mut cache) = cache.lock() {
-                cache.insert(name.to_string(), (now, addrs.clone()));
-            }
+            recover(cache).insert(name.to_string(), (now, addrs.clone()));
             Some(addrs)
         }
         None => last.map(|(_, addrs)| addrs),

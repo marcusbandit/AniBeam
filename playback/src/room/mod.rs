@@ -1328,6 +1328,11 @@ fn find(rooms: &Rooms, serial: u64, e: proto::EpisodeRef) {
             episode::Local::default()
         }
     };
+    show(rooms, serial, e, local);
+}
+
+/// Says `RoomEpisode` with what this library has of the room's episode.
+fn show(rooms: &Rooms, serial: u64, e: proto::EpisodeRef, local: episode::Local) {
     let mut out = Vec::new();
     {
         let mut slot = rooms.lock();

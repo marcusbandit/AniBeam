@@ -22,6 +22,7 @@ use anibeam_contract::*;
 use anibeam_foundation::jobs::Finished;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
 use anibeam_foundation::time;
 use anibeam_foundation::titles::{self, fallback_title};
 use anibeam_net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
@@ -112,10 +113,10 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
         s.format, s.episodes, s.average_score, s.site_url, s.next_episode, s.next_at, i.path,
         (SELECT se.id FROM series se WHERE se.anilist_id = s.anilist_id AND se.missing_since IS NULL ORDER BY se.id LIMIT 1),
         COALESCE(
-          (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
-            WHERE t.tracker = 'anilist' AND t.media_id = s.anilist_id AND a.connected_at IS NOT NULL),
-          (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
-            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL),
+          (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker AND a.profile_id = t.profile_id
+            WHERE t.tracker = 'anilist' AND t.media_id = s.anilist_id AND t.profile_id = 1 AND a.connected_at IS NOT NULL),
+          (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker AND a.profile_id = t.profile_id
+            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND t.profile_id = 1 AND a.connected_at IS NOT NULL),
           (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = s.anilist_id ORDER BY ls.id LIMIT 1)),
         b.path, s.trending, s.favourites, s.duration, s.start_date
      FROM season_shows s
@@ -289,7 +290,7 @@ pub fn list_call(metadata: &Metadata, pick: SeasonPick) -> Result<Reply, CoreErr
 /// This season's read while it is still running.
 fn running(metadata: &Metadata, pick: SeasonPick) -> Option<u64> {
     let key = season_of(pick, time::now_secs()).key;
-    let id = *metadata.airing_reads.lock().unwrap().get(&key)?;
+    let id = *recover(&metadata.airing_reads).get(&key)?;
     metadata
         .services
         .jobs
@@ -323,7 +324,7 @@ pub fn refresh_call(
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let mut reads = metadata.airing_reads.lock().unwrap();
+    let mut reads = recover(&metadata.airing_reads);
     if let Some(id) = reads.get(&key).copied()
         && metadata
             .services
@@ -909,5 +910,31 @@ mod tests {
         assert_eq!(rows[0].mal_id, Some(11));
         assert_eq!(rows[0].title_romaji.as_deref(), Some("A"));
         assert!(!has_next(&data));
+    }
+
+    /// A show only a friend has listed is off the owner's list here, and
+    /// the owner's own status is the one shown, whichever account joined
+    /// the read (#863).
+    #[test]
+    fn a_show_carries_the_owners_list_status_only() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO tracker_accounts (profile_id, tracker, connected_at) VALUES
+                 (1, 'anilist', 1), (2, 'anilist', 1), (2, 'mal', 1);
+             INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji) VALUES
+                 ('NOW', 10, 1, 110, 'Owner show'), ('NOW', 20, 2, 120, 'Friend show');
+             INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
+                 (1, 'anilist', 10, 'watching', 0), (2, 'anilist', 10, 'completed', 0),
+                 (2, 'anilist', 20, 'completed', 0), (2, 'mal', 120, 'dropped', 0);",
+        )
+        .unwrap();
+        let now = list(&c, Path::new("/images"), SeasonPick::Now, OCTOBER).unwrap();
+        let statuses: Vec<(u64, Option<ListStatus>)> = now
+            .shows
+            .iter()
+            .map(|s| (s.anilist_id, s.list_status))
+            .collect();
+        assert_eq!(statuses, vec![(10, Some(ListStatus::Watching)), (20, None)]);
     }
 }

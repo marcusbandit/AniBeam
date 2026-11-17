@@ -34,17 +34,25 @@
 # Qt itself comes from install-qt-action: noble's 6.4 is too old, MpvQt needs 6.9 or newer.
 # The caller exports QMAKE (the Qt root's bin/qmake). The workflow caches <prefix> on a key
 # made from this file, which names FFmpeg's version and flags, and the apt versions of what
-# FFmpeg and libmpv link, libplacebo among them.
+# FFmpeg and libmpv link, libplacebo among them. Every download goes through download.sh,
+# which retries and falls back to a second source where one serves the same bytes (#953).
 set -euo pipefail
 
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 prefix="$1"
 : "${QMAKE:?QMAKE names the qmake of the Qt that install-qt-action put in place}"
 FFMPEG_VERSION=6.1.6
 FFMPEG_SHA=d4fcb164028dd3beee5d92c0ac72e46aac6973c75ea12dc14de07bf8f407370a
 MPV_VERSION=0.41.0
+MPV_SHA=ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
 LIBVA_VERSION=2.24.1
+LIBVA_SHA=eec6050b52876f229bd35e9df17cd31a06785e18e6f7990c445b584628483d67
 MPVQT_VERSION=v1.2.0
+MPVQT_COMMIT=edb1e3213e45aeec7dfcb74b1f5e722264af6636
 ECM_VERSION=6.20.0
+ECM_SHA=3711de8572db5da618efe3f28cc094ca25a1abb0bddffc63dced12c4f8caae5f
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 work="$(mktemp -d)"
@@ -52,14 +60,14 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$prefix"
 
 echo "== libva $LIBVA_VERSION"
-curl -fsSL "https://github.com/intel/libva/releases/download/$LIBVA_VERSION/libva-$LIBVA_VERSION.tar.bz2" | tar -xj -C "$work"
+download_checked "$work/libva.tar.bz2" "$LIBVA_SHA" "https://github.com/intel/libva/releases/download/$LIBVA_VERSION/libva-$LIBVA_VERSION.tar.bz2"
+tar -xjf "$work/libva.tar.bz2" -C "$work"
 meson setup "$work/libva-build" "$work/libva-$LIBVA_VERSION" --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dwith_x11=yes -Dwith_wayland=yes -Dwith_glx=no -Ddriverdir=/usr/lib/x86_64-linux-gnu/dri
 meson install -C "$work/libva-build"
 
 echo "== FFmpeg $FFMPEG_VERSION"
-curl -fsSL "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz" -o "$work/ffmpeg.tar.xz"
-echo "$FFMPEG_SHA  $work/ffmpeg.tar.xz" | sha256sum -c --quiet -
+download_checked "$work/ffmpeg.tar.xz" "$FFMPEG_SHA" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
 tar -xJf "$work/ffmpeg.tar.xz" -C "$work"
 mkdir -p "$work/ffmpeg-build"
 # --disable-autodetect keeps configure from picking up whatever else the runner has
@@ -78,7 +86,8 @@ make -C "$work/ffmpeg-build" -j"$(nproc)"
 make -C "$work/ffmpeg-build" install
 
 echo "== libmpv $MPV_VERSION"
-curl -fsSL "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz" | tar -xz -C "$work"
+download_checked "$work/mpv.tar.gz" "$MPV_SHA" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
+tar -xzf "$work/mpv.tar.gz" -C "$work"
 meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dlibmpv=true -Dcplayer=false -Dtests=false -Dbuild-date=false \
@@ -95,7 +104,11 @@ meson compile -C "$work/mpv-build"
 meson install -C "$work/mpv-build"
 
 echo "== extra-cmake-modules $ECM_VERSION"
-curl -fsSL "https://download.kde.org/stable/frameworks/${ECM_VERSION%.*}/extra-cmake-modules-$ECM_VERSION.tar.xz" | tar -xJ -C "$work"
+# download.kde.org redirects to a mirror near the runner, and on #952 that mirror never
+# answered; MIT's mirror is the fixed second source. The checksum is KDE's own .sha256.
+ecm_path="stable/frameworks/${ECM_VERSION%.*}/extra-cmake-modules-$ECM_VERSION.tar.xz"
+download_checked "$work/ecm.tar.xz" "$ECM_SHA" "https://download.kde.org/$ecm_path" "https://mirrors.mit.edu/kde/$ecm_path"
+tar -xJf "$work/ecm.tar.xz" -C "$work"
 cmake -S "$work/extra-cmake-modules-$ECM_VERSION" -B "$work/ecm-build" -G Ninja \
   -DCMAKE_INSTALL_PREFIX="$prefix" -DBUILD_TESTING=OFF -DBUILD_HTML_DOCS=OFF -DBUILD_MAN_DOCS=OFF -DBUILD_QTHELP_DOCS=OFF
 cmake --install "$work/ecm-build"
@@ -103,7 +116,9 @@ cmake --install "$work/ecm-build"
 echo "== MpvQt $MPVQT_VERSION"
 # FindLibmpv hands CMake <prefix>/include/mpv while the sources say <mpv/client.h>; on Arch
 # /usr/include covers the difference, here the flag below does.
-git clone --quiet --depth 1 --branch "$MPVQT_VERSION" https://invent.kde.org/libraries/mpvqt.git "$work/mpvqt"
+# KDE's GitHub mirror is the second source; clone checks the tag is still MPVQT_COMMIT.
+clone "$work/mpvqt" "$MPVQT_VERSION" "$MPVQT_COMMIT" \
+  https://invent.kde.org/libraries/mpvqt.git https://github.com/KDE/mpvqt.git
 qtroot="$("$QMAKE" -query QT_INSTALL_PREFIX)"
 cmake -S "$work/mpvqt" -B "$work/mpvqt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \

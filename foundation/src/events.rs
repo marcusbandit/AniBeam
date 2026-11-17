@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use rusqlite::params;
 
 use crate::store::Store;
+use crate::sync::{recover, recover_read, recover_write};
 use crate::time;
 use anibeam_contract::*;
 
@@ -74,20 +75,20 @@ impl EventBus {
 
     /// Sets the hook every `SeriesChanged` passes through.
     pub fn set_cards_hook(&self, hook: CardsHook) {
-        *self.cards_hook.write().unwrap() = Some(hook);
+        *recover_write(&self.cards_hook) = Some(hook);
     }
 
     /// Adds a hook for the life of the bus. `Core::open` sets one per team
     /// that listens, holding its team by a `Weak`, so the bus never keeps a
     /// team alive.
     pub fn on_signal(&self, hook: SignalHook) {
-        self.signal_hooks.write().unwrap().push(hook);
+        recover_write(&self.signal_hooks).push(hook);
     }
 
     /// Tells every hook, in the order they were set, and returns once they
     /// all have. The list is copied out first, so a hook may set another.
     pub fn signal(&self, signal: Signal) {
-        let hooks: Vec<SignalHook> = self.signal_hooks.read().unwrap().clone();
+        let hooks: Vec<SignalHook> = recover_read(&self.signal_hooks).clone();
         for hook in hooks {
             hook(signal);
         }
@@ -123,7 +124,7 @@ impl EventBus {
         mut body: EventBody,
     ) -> Event {
         if let EventBody::SeriesChanged { series } = &mut body {
-            let hook = self.cards_hook.read().unwrap().clone();
+            let hook = recover_read(&self.cards_hook).clone();
             if let Some(hook) = hook {
                 hook(series);
             }
@@ -174,10 +175,7 @@ impl EventBus {
         // Snapshot the listener list and drop the lock before calling out,
         // so a listener that turns around and subscribes or unsubscribes
         // never deadlocks on `listeners`.
-        let listeners: Vec<Arc<dyn EventListener>> = self
-            .listeners
-            .read()
-            .unwrap()
+        let listeners: Vec<Arc<dyn EventListener>> = recover_read(&self.listeners)
             .iter()
             .map(|(_, l)| l.clone())
             .collect();
@@ -271,12 +269,12 @@ impl EventBus {
 
     pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> u64 {
         let id = self.next_listener.fetch_add(1, Ordering::SeqCst);
-        self.listeners.write().unwrap().push((id, listener));
+        recover_write(&self.listeners).push((id, listener));
         id
     }
 
     pub fn unsubscribe(&self, id: u64) {
-        self.listeners.write().unwrap().retain(|(i, _)| *i != id);
+        recover_write(&self.listeners).retain(|(i, _)| *i != id);
     }
 
     /// Oldest first. A row whose level, stage, job kind, job phase or body
@@ -401,7 +399,7 @@ pub struct Collector {
 
 impl Collector {
     pub fn events(&self) -> Vec<Event> {
-        self.events.lock().unwrap().clone()
+        recover(&self.events).clone()
     }
 
     pub fn bodies(&self) -> Vec<EventBody> {
@@ -413,7 +411,7 @@ impl Collector {
     /// sleep-poll.
     pub fn wait_for(&self, pred: impl Fn(&[Event]) -> bool, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
-        let mut guard = self.events.lock().unwrap();
+        let mut guard = recover(&self.events);
         loop {
             if pred(&guard) {
                 return true;
@@ -421,7 +419,10 @@ impl Collector {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 return false;
             };
-            let (next, result) = self.condvar.wait_timeout(guard, remaining).unwrap();
+            let (next, result) = self
+                .condvar
+                .wait_timeout(guard, remaining)
+                .unwrap_or_else(|e| e.into_inner());
             guard = next;
             if result.timed_out() {
                 return pred(&guard);
@@ -432,7 +433,7 @@ impl Collector {
 
 impl EventListener for Collector {
     fn on_event(&self, event: Event) {
-        self.events.lock().unwrap().push(event);
+        recover(&self.events).push(event);
         self.condvar.notify_all();
     }
 }
@@ -487,6 +488,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
         (dir, EventBus::new(store).unwrap())
+    }
+
+    #[test]
+    fn a_poisoned_listener_list_still_subscribes_and_delivers() {
+        // A panic while the list is held poisons it; the bus goes on (#923).
+        let (_dir, bus) = bus();
+        std::thread::scope(|s| {
+            let held = s.spawn(|| {
+                let _held = bus.listeners.write().unwrap();
+                panic!("boom, with the listener list held");
+            });
+            assert!(held.join().is_err());
+        });
+        assert!(bus.listeners.read().is_err(), "the list really is poisoned");
+        let c = Arc::new(Collector::default());
+        let id = bus.subscribe(c.clone());
+        bus.debug(Stage::System, "heard", EventBody::Notice);
+        bus.unsubscribe(id);
+        bus.debug(Stage::System, "not heard", EventBody::Notice);
+        assert_eq!(c.events().len(), 1);
     }
 
     #[test]

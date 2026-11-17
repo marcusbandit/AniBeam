@@ -13,6 +13,8 @@ pub mod move_up;
 pub mod oauth;
 pub mod on_hold;
 pub mod plan_to_watch;
+#[cfg(test)]
+mod profile_scope;
 mod team;
 pub mod watching;
 pub mod writes;

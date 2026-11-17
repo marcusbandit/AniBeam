@@ -11,7 +11,7 @@ use anibeam_contract::*;
 use anibeam_foundation::names::title_key;
 use anibeam_library::snapshot::Snapshot;
 use rusqlite::Connection;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -248,8 +248,11 @@ pub fn show_with_numbers(
                 .collect()
         })
         .unwrap_or_default();
-    let numbers: Vec<f64> = files.iter().map(|(_, n, _)| *n).collect();
-    Ok(Some((show_of(&card, &numbers), files)))
+    let episodes: Vec<(Option<u32>, f64)> = files.iter().map(|(s, n, _)| (*s, *n)).collect();
+    Ok(Some((
+        show_of(&card, &episodes, &snap.season_lengths(id)),
+        files,
+    )))
 }
 
 /// The files that are a release's episode: the number alike, and the season
@@ -287,37 +290,76 @@ pub fn shows(
     let mut out = HashMap::new();
     for id in wanted {
         let Some(card) = snap.card(id) else { continue };
-        let numbers: Vec<f64> = snap
+        let episodes: Vec<(Option<u32>, f64)> = snap
             .files
             .get(&id)
             .map(|files| {
                 files
                     .iter()
                     .filter(|f| f.is_episode)
-                    .map(|f| f.number)
+                    .map(|f| (f.season, f.number))
                     .collect()
             })
             .unwrap_or_default();
-        out.insert(id, show_of(&card, &numbers));
+        out.insert(id, show_of(&card, &episodes, &snap.season_lengths(id)));
     }
     Ok(out)
 }
 
-/// A card and its episode files' numbers as a `ShowLink`.
-pub fn show_of(card: &SeriesCard, numbers: &[f64]) -> ShowLink {
-    let distinct: BTreeSet<u64> = numbers
-        .iter()
-        .filter(|n| n.is_finite() && **n >= 1.0 && n.fract() == 0.0)
-        .map(|n| *n as u64)
-        .collect();
+/// A card and its episode files' (season, number) as a `ShowLink`.
+/// `lengths` is how long each season on disk runs, for a show numbered by
+/// season (`Snapshot::season_lengths`); empty when the numbers carry no
+/// season, and then every file counts against the one total. A file that
+/// names no season is read as season 1.
+pub fn show_of(
+    card: &SeriesCard,
+    episodes: &[(Option<u32>, f64)],
+    lengths: &BTreeMap<u32, u32>,
+) -> ShowLink {
+    let mut by_season: BTreeMap<u32, BTreeSet<u32>> = BTreeMap::new();
+    for (season, n) in episodes {
+        if n.is_finite() && *n >= 1.0 && n.fract() == 0.0 && *n <= f64::from(u32::MAX) {
+            by_season
+                .entry(season.unwrap_or(1))
+                .or_default()
+                .insert(*n as u32);
+        }
+    }
+    let gaps = |numbers: Option<&BTreeSet<u32>>, total: u32| -> Vec<u32> {
+        (1..=total)
+            .filter(|n| numbers.is_none_or(|have| !have.contains(n)))
+            .collect()
+    };
     let known_total = card
         .total_episodes
         .filter(|t| *t > 0 && !card.total_is_estimate);
-    let missing: Vec<u32> = match known_total {
-        Some(total) => (1..=total)
-            .filter(|n| !distinct.contains(&(*n as u64)))
-            .collect(),
-        None => Vec::new(),
+    // A show numbered by season counts each season against its own length:
+    // S02E03 is no stand-in for S01E03, and S02E01 is not episode 11 of a
+    // run of 18 (#1091). `missing` lists the earliest season with a gap,
+    // else the card's own, the latest on disk; every season on disk must
+    // have a known length and be whole for the show to be complete.
+    let (missing, missing_season, whole, on_disk) = match (known_total, card.count_season) {
+        (Some(_), Some(card_season)) if !lengths.is_empty() => {
+            let holes: Vec<(u32, Vec<u32>)> = lengths
+                .iter()
+                .map(|(s, len)| (*s, gaps(by_season.get(s), *len)))
+                .filter(|(_, g)| !g.is_empty())
+                .collect();
+            let unlisted = by_season.keys().any(|s| !lengths.contains_key(s));
+            let whole = holes.is_empty() && !unlisted;
+            let (season, missing) = holes
+                .into_iter()
+                .next()
+                .unwrap_or((card_season, Vec::new()));
+            let on_disk = by_season.values().map(|n| n.len() as u64).sum();
+            (missing, Some(season), whole, on_disk)
+        }
+        (total, _) => {
+            let pooled: BTreeSet<u32> = by_season.values().flatten().copied().collect();
+            let missing = total.map(|t| gaps(Some(&pooled), t)).unwrap_or_default();
+            let whole = total.is_some() && missing.is_empty();
+            (missing, None, whole, pooled.len() as u64)
+        }
     };
     let finished = matches!(
         card.status,
@@ -325,7 +367,7 @@ pub fn show_of(card: &SeriesCard, numbers: &[f64]) -> ShowLink {
     );
     let complete = match card.kind {
         SeriesKind::Movie => !card.missing,
-        SeriesKind::Show => finished && known_total.is_some() && missing.is_empty(),
+        SeriesKind::Show => finished && known_total.is_some() && whole,
     };
     ShowLink {
         series_id: card.id,
@@ -334,12 +376,13 @@ pub fn show_of(card: &SeriesCard, numbers: &[f64]) -> ShowLink {
         path: card.path.clone(),
         poster: card.poster.clone(),
         status: card.status,
-        episodes_on_disk: distinct.len() as u64,
+        episodes_on_disk: on_disk,
         total_episodes: card.total_episodes,
         total_is_estimate: card.total_is_estimate,
         next_airing: card.next_airing.clone(),
         complete,
         missing,
+        missing_season,
         cubes: card.cubes.clone(),
     }
 }
@@ -457,22 +500,26 @@ mod tests {
 
     #[test]
     fn complete_means_finished_and_every_number_on_disk() {
-        let all: Vec<f64> = (1..=12).map(|n| n as f64).collect();
+        let all: Vec<(Option<u32>, f64)> = (1..=12).map(|n| (None, n as f64)).collect();
         let finished = card(
             SeriesKind::Show,
             Some(AiringStatus::Finished),
             Some(12),
             false,
         );
-        let s = show_of(&finished, &all);
+        let none = BTreeMap::new();
+        let s = show_of(&finished, &all, &none);
         assert!(s.complete);
         assert_eq!(s.episodes_on_disk, 12);
         assert!(s.missing.is_empty());
 
         // a v2 beside its v1 and a recap .5 do not stand in for episode 7
-        let mut gap: Vec<f64> = (1..=12).filter(|n| *n != 7).map(|n| n as f64).collect();
-        gap.extend([6.0, 6.5]);
-        let s = show_of(&finished, &gap);
+        let mut gap: Vec<(Option<u32>, f64)> = (1..=12)
+            .filter(|n| *n != 7)
+            .map(|n| (None, n as f64))
+            .collect();
+        gap.extend([(None, 6.0), (None, 6.5)]);
+        let s = show_of(&finished, &gap, &none);
         assert!(!s.complete);
         assert_eq!(s.missing, vec![7]);
         assert_eq!(s.episodes_on_disk, 11);
@@ -483,7 +530,7 @@ mod tests {
             Some(12),
             false,
         );
-        assert!(!show_of(&airing, &all).complete, "still airing");
+        assert!(!show_of(&airing, &all, &none).complete, "still airing");
         let estimated = card(
             SeriesKind::Show,
             Some(AiringStatus::Finished),
@@ -491,11 +538,11 @@ mod tests {
             true,
         );
         assert!(
-            !show_of(&estimated, &all).complete,
+            !show_of(&estimated, &all, &none).complete,
             "an estimated total proves nothing"
         );
         let unknown = card(SeriesKind::Show, Some(AiringStatus::Finished), None, false);
-        assert!(!show_of(&unknown, &all).complete);
+        assert!(!show_of(&unknown, &all, &none).complete);
         let cancelled = card(
             SeriesKind::Show,
             Some(AiringStatus::Cancelled),
@@ -503,11 +550,80 @@ mod tests {
             false,
         );
         assert!(
-            show_of(&cancelled, &all).complete,
+            show_of(&cancelled, &all, &none).complete,
             "cancelled is as final as finished"
         );
         let film = card(SeriesKind::Movie, None, None, false);
-        assert!(show_of(&film, &[]).complete, "a film on disk is complete");
+        assert!(
+            show_of(&film, &[], &none).complete,
+            "a film on disk is complete"
+        );
+    }
+
+    #[test]
+    fn a_show_numbered_by_season_counts_each_season_on_its_own() {
+        // S01E01-10 and S02E01-08 of a finished run of 18 (#1091)
+        let mut show = card(
+            SeriesKind::Show,
+            Some(AiringStatus::Finished),
+            Some(18),
+            false,
+        );
+        show.count_season = Some(2);
+        let lengths = BTreeMap::from([(1, 10), (2, 8)]);
+        let mut files: Vec<(Option<u32>, f64)> = (1..=10).map(|n| (Some(1), n as f64)).collect();
+        files.extend((1..=8).map(|n| (Some(2), n as f64)));
+        let s = show_of(&show, &files, &lengths);
+        assert!(s.missing.is_empty(), "nothing is missing: {:?}", s.missing);
+        assert_eq!(s.missing_season, Some(2));
+        assert_eq!(s.episodes_on_disk, 18);
+        assert!(s.complete);
+
+        // a gap in the season the card is at is listed by its own number
+        let gap: Vec<_> = files
+            .iter()
+            .copied()
+            .filter(|f| *f != (Some(2), 5.0))
+            .collect();
+        let s = show_of(&show, &gap, &lengths);
+        assert_eq!(s.missing, vec![5]);
+        assert_eq!(s.missing_season, Some(2));
+        assert!(!s.complete);
+
+        // S02E03 is no stand-in for S01E03: an earlier season with a hole
+        // is not complete, though it pools to every number up to 10
+        let hole: Vec<_> = files
+            .iter()
+            .copied()
+            .filter(|f| *f != (Some(1), 3.0))
+            .collect();
+        let s = show_of(&show, &hole, &lengths);
+        assert!(!s.complete, "season 1 lacks episode 3");
+        assert_eq!((s.missing.clone(), s.missing_season), (vec![3], Some(1)));
+        assert_eq!(s.episodes_on_disk, 17);
+
+        // a season on disk with no known length proves nothing whole
+        let mut stray = files.clone();
+        stray.push((Some(3), 1.0));
+        let s = show_of(&show, &stray, &lengths);
+        assert!(!s.complete, "season 3's length is unknown");
+        assert!(s.missing.is_empty());
+    }
+
+    #[test]
+    fn numbers_without_seasons_count_once_against_the_one_total() {
+        // an AniList show: a file naming season 2 is no second run of 12
+        let show = card(
+            SeriesKind::Show,
+            Some(AiringStatus::Finished),
+            Some(12),
+            false,
+        );
+        let mut files: Vec<(Option<u32>, f64)> = (1..=12).map(|n| (None, n as f64)).collect();
+        files.extend((1..=12).map(|n| (Some(2), n as f64)));
+        let s = show_of(&show, &files, &BTreeMap::new());
+        assert!(s.complete);
+        assert_eq!((s.episodes_on_disk, s.missing_season), (12, None));
     }
 
     #[test]

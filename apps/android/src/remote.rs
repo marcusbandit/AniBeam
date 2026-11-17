@@ -137,22 +137,11 @@ pub fn series(
         }
     };
 
-    // Aired, listed by the rule as missing, and not on disk. The host sends bare numbers;
-    // `missing_season` says which season they are in (#1087).
-    let on_disk: Vec<(u32, u32)> = page
-        .episodes
-        .iter()
-        .filter(|e| e.number.fract() == 0.0)
-        .map(|e| (e.season.unwrap_or(1), e.number as u32))
-        .collect();
-    let season = missing_season(&page.episodes, page.upcoming.first());
-    let next_number = page.upcoming.first().map(|a| a.episode);
-    let missing: Vec<u32> = page
-        .subscription
-        .iter()
-        .flat_map(|s| s.missing.iter().copied())
-        .filter(|n| !on_disk.contains(&(season, *n)) && next_number.is_none_or(|next| *n < next))
-        .collect();
+    let (season, missing) = missing_episodes(
+        page.subscription.as_ref(),
+        &page.episodes,
+        page.upcoming.first(),
+    );
 
     let head = SeriesHead {
         id: id(Some(series_id)),
@@ -294,10 +283,37 @@ pub fn series(
     Some((head, lines))
 }
 
-/// The season the host's missing numbers belong to: the one airing next, the way its row
-/// is coded, else the one season every file is in. Files across several seasons, or none,
-/// leave them in the first, since the host counts every season's numbers together.
-/// Specials (season 0) never decide it.
+/// The season and numbers the rule lists as missing, aired and not on disk. The host names
+/// the season its numbers are in (#1091); from an older host, `missing_season` works it out
+/// (#1087). Only a next airing in that same season cuts the list short.
+fn missing_episodes(
+    sub: Option<&library::SubscriptionInfo>,
+    episodes: &[library::DiskEpisode],
+    next: Option<&Airing>,
+) -> (u32, Vec<u32>) {
+    let on_disk: Vec<(u32, u32)> = episodes
+        .iter()
+        .filter(|e| e.number.fract() == 0.0)
+        .map(|e| (e.season.unwrap_or(1), e.number as u32))
+        .collect();
+    let season = sub
+        .and_then(|s| s.missing_season)
+        .unwrap_or_else(|| missing_season(episodes, next));
+    let next_number = next
+        .filter(|a| a.season.unwrap_or(1) == season)
+        .map(|a| a.episode);
+    let missing = sub
+        .iter()
+        .flat_map(|s| s.missing.iter().copied())
+        .filter(|n| !on_disk.contains(&(season, *n)) && next_number.is_none_or(|next| *n < next))
+        .collect();
+    (season, missing)
+}
+
+/// The season the missing numbers of a host that does not name it belong to: the one airing
+/// next, the way its row is coded, else the one season every file is in. Files across
+/// several seasons, or none, leave them in the first, since such a host counts every
+/// season's numbers together. Specials (season 0) never decide it.
 fn missing_season(episodes: &[library::DiskEpisode], next: Option<&Airing>) -> u32 {
     if let Some(a) = next {
         return a.season.unwrap_or(1);
@@ -417,6 +433,51 @@ mod tests {
             at: 0,
         };
         assert_eq!(missing_season(&files, Some(&next)), 1);
+    }
+
+    fn rule(missing: Vec<u32>, missing_season: Option<u32>) -> library::SubscriptionInfo {
+        library::SubscriptionInfo {
+            name: "Two Seasons".into(),
+            query: String::new(),
+            enabled: true,
+            complete: false,
+            files: 0,
+            missing,
+            missing_season,
+        }
+    }
+
+    #[test]
+    fn the_hosts_season_places_the_missing_numbers() {
+        // S01E01-10 and S02E01-04 on disk; the host says 5 is missing in season 2
+        let mut files: Vec<_> = (1..=10).map(|n| on_disk(Some(1), n as f64)).collect();
+        files.extend((1..=4).map(|n| on_disk(Some(2), n as f64)));
+        let sub = rule(vec![5], Some(2));
+        assert_eq!(missing_episodes(Some(&sub), &files, None), (2, vec![5]));
+        // a next airing in another season does not cut season 2's list
+        let next = Airing {
+            episode: 1,
+            season: Some(3),
+            at: 0,
+        };
+        assert_eq!(
+            missing_episodes(Some(&sub), &files, Some(&next)),
+            (2, vec![5])
+        );
+        // one in the same season drops what has not aired yet
+        let sub = rule(vec![5, 6, 7], Some(2));
+        let next = Airing {
+            episode: 7,
+            season: Some(2),
+            at: 0,
+        };
+        assert_eq!(
+            missing_episodes(Some(&sub), &files, Some(&next)),
+            (2, vec![5, 6])
+        );
+        // an older host names no season: the guess decides, as before
+        let sub = rule(vec![5], None);
+        assert_eq!(missing_episodes(Some(&sub), &files, None), (1, Vec::new()));
     }
 
     #[test]

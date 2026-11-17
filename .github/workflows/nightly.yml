@@ -80,6 +80,8 @@ jobs:
         run: |
           # What each app is built from, and the workflows that build it: a change to either
           # means a build of main no longer covers main.
+          # `affected-crates.py --self-test` in ci.yml fails when a crate an app builds on is missing
+          # from these (#974).
           desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
           desktop_build=(.github/workflows/nightly.yml .github/workflows/macos.yml .github/workflows/linux.yml .github/workflows/windows.yml .github/workflows/arch.yml)
           phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)

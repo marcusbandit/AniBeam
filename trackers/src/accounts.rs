@@ -114,7 +114,7 @@ pub fn load_row(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError>
     let row = conn
         .query_row(
             "SELECT user_id, username, client_id, expires_at, connected_at, synced_at, progress_fetched_at, secret_store
-             FROM tracker_accounts WHERE tracker = ?1",
+             FROM tracker_accounts WHERE tracker = ?1 AND profile_id = 1",
             params![t.as_str()],
             |r| {
                 Ok(Row {
@@ -286,7 +286,7 @@ pub fn set_credentials(
         // wrote none must not claim to have moved them.
         if let Some(store) = store {
             tx.execute(
-                "UPDATE tracker_accounts SET secret_store = ?2 WHERE tracker = ?1",
+                "UPDATE tracker_accounts SET secret_store = ?2 WHERE tracker = ?1 AND profile_id = 1",
                 params![t.as_str(), store.as_str()],
             )?;
         }
@@ -304,10 +304,13 @@ pub fn disconnect(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
         tx.execute(
             "UPDATE tracker_accounts SET user_id = NULL, username = NULL, expires_at = NULL, connected_at = NULL,
                     synced_at = NULL, progress_fetched_at = NULL
-             WHERE tracker = ?1",
+             WHERE tracker = ?1 AND profile_id = 1",
             params![t.as_str()],
         )?;
-        tx.execute("DELETE FROM tracker_entries WHERE tracker = ?1", params![t.as_str()])?;
+        tx.execute(
+            "DELETE FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1",
+            params![t.as_str()],
+        )?;
         Ok(())
     })?;
     let secrets = services.secrets();
@@ -409,7 +412,7 @@ async fn refresh_mal(trackers: &Trackers, refresh: &str) -> Result<String, CoreE
         .store
         .write_async(move |c| {
             c.execute(
-                "UPDATE tracker_accounts SET expires_at = ?2, secret_store = ?3 WHERE tracker = ?1",
+                "UPDATE tracker_accounts SET expires_at = ?2, secret_store = ?3 WHERE tracker = ?1 AND profile_id = 1",
                 params![Tracker::Mal.as_str(), expires_at, store.as_str()],
             )?;
             Ok(())

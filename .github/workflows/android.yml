@@ -7,7 +7,8 @@ name: Android
 # emulator's target, which does. The runner image ships the Android SDK and NDK.
 # scripts/build.sh sets the NDK's linkers and C compilers; ANIBEAM_BUILD_SCOPED skips its
 # systemd memory cap, which a runner has no user session for. Runs on main too, so rust-cache
-# keeps a cache every pull request can restore.
+# keeps a cache every pull request can restore. The paths name every crate the phone builds
+# on, which `affected-crates.py --self-test` in ci.yml holds to the workspace (#974).
 on:
   push:
     branches: [main]
@@ -26,6 +27,8 @@ on:
       - 'core/**'
       - 'host-api/**'
       - 'recs/**'
+      - 'room/**'
+      - 'i18n/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
@@ -46,6 +49,8 @@ on:
       - 'core/**'
       - 'host-api/**'
       - 'recs/**'
+      - 'room/**'
+      - 'i18n/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'

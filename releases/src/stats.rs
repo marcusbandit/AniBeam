@@ -28,6 +28,7 @@ use tokio::net::UdpSocket;
 
 use super::endpoints::{quote, split_url, unquote_plus};
 use anibeam_contract::Release;
+use anibeam_foundation::sync::recover;
 use anibeam_net::{BoxFuture, Http, HttpRequest};
 
 // Every number here is anirss's, from `stats.py` as of anirss 0.7.1, and has to stay so: the
@@ -773,7 +774,7 @@ enum Cached {
 impl StatsCache {
     /// `Ok` or `Fail` for a fresh entry, `None` for a miss.
     fn get(&self, url: &str) -> Option<Cached> {
-        let map = self.map.lock().unwrap();
+        let map = recover(&self.map);
         let (ts, stats) = map.get(url)?;
         if now_secs() - ts >= CACHE_TTL.as_secs_f64() {
             return None;
@@ -785,7 +786,7 @@ impl StatsCache {
     }
 
     fn put(&self, url: &str, ts: f64, stats: Option<Stats>) {
-        let mut map = self.map.lock().unwrap();
+        let mut map = recover(&self.map);
         map.retain(|_, (t, _)| now_secs() - *t < CACHE_TTL.as_secs_f64());
         map.insert(url.to_string(), (ts, stats));
     }

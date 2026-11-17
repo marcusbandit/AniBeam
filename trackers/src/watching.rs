@@ -54,7 +54,7 @@ const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.upda
      FROM tracker_entries t
      LEFT JOIN anilist_media m ON m.id = t.media_id
      LEFT JOIN images i ON i.url = m.cover_url
-     WHERE t.tracker = ?1 AND t.status IN ({statuses})
+     WHERE t.tracker = ?1 AND t.profile_id = 1 AND t.status IN ({statuses})
        AND NOT EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = t.media_id AND s.hidden = 1)";
 
 /// The next broadcast of everything on the list, in one query rather than
@@ -62,7 +62,7 @@ const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.upda
 const AIRING_SQL: &str = "SELECT e.anilist_id, e.number, e.aired_at
      FROM anilist_episodes e
      WHERE e.aired_at > ?1
-       AND e.anilist_id IN (SELECT media_id FROM tracker_entries WHERE tracker = ?2 AND status IN ({statuses}))
+       AND e.anilist_id IN (SELECT media_id FROM tracker_entries WHERE tracker = ?2 AND profile_id = 1 AND status IN ({statuses}))
      ORDER BY e.aired_at";
 
 /// The whole page off the database: no request, no waiting, whatever the
@@ -489,7 +489,7 @@ fn write(tx: &Transaction, rows: &[Row], now: i64, started: i64) -> Result<(), C
     let kept: Vec<String> = rows.iter().map(|r| r.media_id.to_string()).collect();
     tx.execute(
         &format!(
-            "DELETE FROM tracker_entries WHERE tracker = ?1 AND fetched_at <= ?2 AND media_id NOT IN ({})",
+            "DELETE FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1 AND fetched_at <= ?2 AND media_id NOT IN ({})",
             // SQLite takes an empty list, and NOT IN () is every row
             kept.join(", ")
         ),
