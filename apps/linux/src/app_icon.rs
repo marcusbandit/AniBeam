@@ -12,11 +12,26 @@ use crate::theme::config::AppIcon;
 /// blueprint, by what kind of build this is (build.rs decides).
 pub const DEFAULT_FILE: &str = env!("ANIBEAM_ICON_FILE");
 
-/// The 512 PNG the window shows; the Rail and Appearance read the same files.
+/// The same mark on the Mac grid (a 824 tile in the 1024 canvas, assets/mac/), which is what
+/// the Dock should show beside other apps; the full-bleed file would look oversized there.
+#[cfg(target_os = "macos")]
+const MAC_DEFAULT_FILE: &str = env!("ANIBEAM_MAC_ICON_FILE");
+
+/// The 512 PNG the window shows; the Rail and Appearance read the same files. On a Mac it is
+/// the Mac-grid one, so the running Dock icon matches the bundle's.
+#[cfg(not(target_os = "macos"))]
 pub fn qrc(icon: AppIcon) -> String {
     match icon {
         AppIcon::Default => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{DEFAULT_FILE}"),
         AppIcon::Dark => ":/qt/qml/com/marcusrosado/Anibeam/assets/icon-dark.png".to_string(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn qrc(icon: AppIcon) -> String {
+    match icon {
+        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{MAC_DEFAULT_FILE}"),
+        AppIcon::Dark => ":/qt/qml/com/marcusrosado/Anibeam/assets/mac/icon-dark.png".to_string(),
     }
 }
 
@@ -153,7 +168,7 @@ mod macos {
 
     use super::AppIcon;
 
-    const DARK: &[u8] = include_bytes!("../assets/icon-dark.png");
+    const DARK: &[u8] = include_bytes!("../assets/mac/icon-dark.png");
 
     /// The .app folder the running executable sits in (`X.app/Contents/MacOS/anibeam`), or
     /// None for a cargo build, which has no bundle to give an icon to.

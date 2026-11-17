@@ -41,13 +41,27 @@ sed -e "s/@SHORT_VERSION@/$short/" -e "s/@BUILD_VERSION@/$short/" -e "s/@MIN_MAC
 plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
-# Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws.
+# Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws on
+# the Mac grid. The mark is the channel's, picked the way apps/linux/build.rs picks the
+# window's: a nightly or a pull request's build is not mistaken for a release.
+case "${ANIBEAM_ICON:-}" in
+  release) mark=icon-1024 ;;
+  nightly) mark=icon-1024-nightly ;;
+  dev) mark=icon-1024-dev ;;
+  "")
+    case "${ANIBEAM_RELEASE_VERSION:-}" in
+      ""|*-pr.*) mark=icon-1024-dev ;;
+      *-nightly*) mark=icon-1024-nightly ;;
+      *) mark=icon-1024 ;;
+    esac ;;
+  *) echo "ANIBEAM_ICON is ${ANIBEAM_ICON}; it takes release, nightly or dev" >&2; exit 1 ;;
+esac
 iconset="$(mktemp -d)/Anibeam.iconset"
 mkdir -p "$iconset"
 for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+  sips -z "$size" "$size" "$here/$mark.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -z "$double" "$double" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+  sips -z "$double" "$double" "$here/$mark.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/Anibeam.icns"
 

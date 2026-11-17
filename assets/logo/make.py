@@ -28,10 +28,13 @@ res = android / "android/res"
 
 YELLOW = "#FDC901"
 INK = "#0D0E11"
-# The icon's rounded square inside the 1024 canvas.
-SQUARE = '<rect x="14" y="14" width="996" height="996" rx="225" fill="{}"/>'
-# The tile's side in the Mac icon's 1024 canvas.
+# The icon's rounded square inside the 1024 canvas: TILE wide, centred.
+TILE = 996
+SQUARE = f'<rect x="{(1024 - TILE) / 2:g}" y="{(1024 - TILE) / 2:g}" width="{TILE}" height="{TILE}" rx="225" fill="{{}}"/>'
+# The tile's side in the Mac icons' 1024 canvas: Apple's grid puts it at 824, a 100 px
+# transparent margin all round, where a full-bleed icon looks oversized in the Dock.
 MAC_TILE = 824
+MAC_SCALE = MAC_TILE / TILE
 # The outline's width in the glyph's 1024 units: about 2 dp on Android's 108 dp canvas.
 LINE = 32
 
@@ -44,22 +47,29 @@ LINE_SCALE = 0.058
 LINE_MIDDLE = (489, 576)
 
 
-def icon(ground: str, ink: str) -> str:
+def fit(scale: float) -> str:
+    """An SVG transform shrinking a 1024 drawing about the canvas's middle."""
+    return f"translate(512 512) scale({scale:.6f}) translate(-512 -512)"
+
+
+def icon(ground: str, ink: str, scale: float = 1.0) -> str:
+    """The icon; `scale` shrinks it about the canvas's middle, for the Mac grid."""
+    body = SQUARE.format(ground) + f'<path fill="{ink}" d="{glyph}"/>'
+    if scale != 1.0:
+        body = f'<g transform="{fit(scale)}">{body}</g>'
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
-        + SQUARE.format(ground)
-        + f'<path fill="{ink}" d="{glyph}"/></svg>\n'
+        + body
+        + "</svg>\n"
     )
 
 
-def mac_icon(ground: str, ink: str) -> str:
-    """The icon at macOS's size: Apple's grid puts the tile at 824 of the 1024 canvas, 100 px
-    of transparent margin all round, where the full-bleed icon would look oversized in the Dock."""
-    scale = MAC_TILE / (1024 - 2 * 14)
-    inner = SQUARE.format(ground) + f'<path fill="{ink}" d="{glyph}"/>'
+def mac_grid(svg: str) -> str:
+    """Another logo's svg (a viewBox, no size) put on the Mac grid, nested whole."""
+    inner = re.sub(r"<svg ", '<svg width="1024" height="1024" ', svg.strip(), count=1)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
-        f'<g transform="translate(512 512) scale({scale}) translate(-512 -512)">{inner}</g></svg>\n'
+        f'<g transform="{fit(MAC_SCALE)}">{inner}</g></svg>\n'
     )
 
 
@@ -104,8 +114,19 @@ for kind in ("nightly", "dev"):
 # The desktop shows the nightly's or dev's mark on those builds (apps/linux/build.rs).
 for kind in ("nightly", "dev"):
     shutil.copyfile(here / f"logo-{kind}.png", linux / f"assets/icon-{kind}.png")
-# The Mac's icns takes a 1024 for its 512@2x slot, drawn at macOS's tile size.
-png(mac_icon(YELLOW, INK), linux / "packaging/macos/icon-1024.png", 1024)
+# ---- Mac: every icon the Mac shows on the Mac grid. The window's Dock icon and the Dark
+# bundle icon take the 512s in assets/mac/ (build.rs puts them in the qrc on a Mac); the
+# bundle's icns takes the 1024s, the one for the channel being built (bundle.sh).
+# MAC-BEGIN
+mac_default = icon(YELLOW, INK, MAC_SCALE)
+mac_dark = icon(INK, YELLOW, MAC_SCALE)
+mac_nightly = mac_grid((here / "logo-nightly.svg").read_text())
+mac_dev = mac_grid((here / "logo-dev.svg").read_text())
+for name, svg in (("icon", mac_default), ("icon-dark", mac_dark), ("icon-nightly", mac_nightly), ("icon-dev", mac_dev)):
+    png(svg, linux / f"assets/mac/{name}.png", 512)
+for name, svg in (("icon-1024", mac_default), ("icon-1024-nightly", mac_nightly), ("icon-1024-dev", mac_dev)):
+    png(svg, linux / f"packaging/macos/{name}.png", 1024)
+# MAC-END
 # Every hicolor size, for the packages to install and for the app to lay the dark set over
 # them in the user's own icon folder when Dark is picked.
 for size in (16, 24, 32, 48, 64, 128, 256, 512):

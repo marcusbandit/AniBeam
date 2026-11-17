@@ -8,7 +8,8 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     changes();
-    let icon = format!("assets/{}", app_icon());
+    let app_icon_file = app_icon();
+    let icon = format!("assets/{app_icon_file}");
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -313,6 +314,12 @@ fn main() {
     // still untouched here, which is how this script reaches the cc crate with no
     // dependency of its own. The frameworks are linked from src/macnp.rs.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        // The icons on the Mac grid, for the Dock and the Dark bundle icon: the other
+        // platforms keep the full-bleed ones above.
+        builder = builder.qrc_resources([
+            format!("assets/mac/{}", app_icon_file).as_str(),
+            "assets/mac/icon-dark.png",
+        ]);
         println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
         // SAFETY: only copies cxx-qt's cc::Build; the original is left as it was.
         builder = unsafe {
@@ -396,5 +403,8 @@ fn app_icon() -> String {
         kind => format!("icon-{kind}.png"),
     };
     println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    // The same mark on the Mac grid (assets/logo/make.py), which the Dock and the bundle's
+    // custom icon show on a Mac.
+    println!("cargo:rustc-env=ANIBEAM_MAC_ICON_FILE=mac/{file}");
     file
 }
