@@ -41,13 +41,22 @@ sed -e "s/@SHORT_VERSION@/$short/" -e "s/@BUILD_VERSION@/$short/" -e "s/@MIN_MAC
 plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
-# Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws.
+# Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws on
+# the Mac grid. The mark is the channel the binary was built as, read back out of it (build.rs
+# decides, app_icon.rs keeps it), so the icns can never disagree with the Dock icon the
+# binary sets itself.
+kind="$(LC_ALL=C strings -a "$bin" | sed -n 's/^anibeam-icon-mark=\([a-z]*\)$/\1/p' | head -n 1)"
+case "$kind" in
+  release) mark=icon-1024 ;;
+  nightly | dev) mark="icon-1024-$kind" ;;
+  *) echo "$bin does not say which icon it was built with" >&2; exit 1 ;;
+esac
 iconset="$(mktemp -d)/Anibeam.iconset"
 mkdir -p "$iconset"
 for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+  sips -z "$size" "$size" "$here/$mark.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -z "$double" "$double" "$here/icon-1024.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+  sips -z "$double" "$double" "$here/$mark.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/Anibeam.icns"
 

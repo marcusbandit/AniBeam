@@ -12,11 +12,26 @@ use crate::theme::config::AppIcon;
 /// blueprint, by what kind of build this is (build.rs decides).
 pub const DEFAULT_FILE: &str = env!("ANIBEAM_ICON_FILE");
 
-/// The 512 PNG the window shows; the Rail and Appearance read the same files.
+/// Where the window's PNGs live under assets/. A Mac takes the Mac-grid twins (a 824 tile in
+/// the 1024 canvas, assets/mac/), because the full-bleed ones look oversized in the Dock; the
+/// Rail and Appearance read the full-bleed files either way.
+#[cfg(target_os = "macos")]
+const DIR: &str = "mac/";
+#[cfg(not(target_os = "macos"))]
+const DIR: &str = "";
+
+/// The channel this binary was built as (release, nightly or dev), kept as a delimited string
+/// in the binary so the Mac bundle step can read it back and draw the icns for the same
+/// channel (packaging/macos/bundle.sh).
+#[cfg(target_os = "macos")]
+#[used]
+static MARK: &str = concat!("\0anibeam-icon-mark=", env!("ANIBEAM_ICON_KIND"), "\0");
+
+/// The 512 PNG the window shows.
 pub fn qrc(icon: AppIcon) -> String {
     match icon {
-        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{DEFAULT_FILE}"),
-        AppIcon::Dark => ":/qt/qml/com/marcusrosado/Anibeam/assets/icon-dark.png".to_string(),
+        AppIcon::Default => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{DIR}{DEFAULT_FILE}"),
+        AppIcon::Dark => format!(":/qt/qml/com/marcusrosado/Anibeam/assets/{DIR}icon-dark.png"),
     }
 }
 
@@ -153,7 +168,7 @@ mod macos {
 
     use super::AppIcon;
 
-    const DARK: &[u8] = include_bytes!("../assets/icon-dark.png");
+    const DARK: &[u8] = include_bytes!("../assets/mac/icon-dark-1024.png");
 
     /// The .app folder the running executable sits in (`X.app/Contents/MacOS/anibeam`), or
     /// None for a cargo build, which has no bundle to give an icon to.

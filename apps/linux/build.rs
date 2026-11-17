@@ -8,7 +8,8 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     changes();
-    let icon = format!("assets/{}", app_icon());
+    let app_icon_file = app_icon();
+    let icon = format!("assets/{app_icon_file}");
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -313,6 +314,12 @@ fn main() {
     // still untouched here, which is how this script reaches the cc crate with no
     // dependency of its own. The frameworks are linked from src/macnp.rs.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        // The icons on the Mac grid, for the Dock and the Dark bundle icon: the other
+        // platforms keep the full-bleed ones above.
+        builder = builder.qrc_resources([
+            format!("assets/mac/{app_icon_file}").as_str(),
+            "assets/mac/icon-dark.png",
+        ]);
         println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
         // SAFETY: only copies cxx-qt's cc::Build; the original is left as it was.
         builder = unsafe {
@@ -372,8 +379,9 @@ fn changes() {
 }
 
 /// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
-/// under assets/ and the only one of the three in the qrc: the release mark, the nightly's graph paper, or the dev blueprint, so a
-/// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// under assets/ (the one of the three that is in the qrc; a Mac also carries its Mac-grid
+/// twin under assets/mac/): the release mark, the nightly's graph paper, or the dev blueprint,
+/// so a nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
 /// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
 /// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
 /// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
@@ -396,5 +404,7 @@ fn app_icon() -> String {
         kind => format!("icon-{kind}.png"),
     };
     println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    // The channel itself, which the Mac bundle step reads back out of the binary.
+    println!("cargo:rustc-env=ANIBEAM_ICON_KIND={icon}");
     file
 }
