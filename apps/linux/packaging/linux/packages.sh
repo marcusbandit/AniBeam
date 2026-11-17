@@ -26,17 +26,11 @@ NFPM_SHA=2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7
 
 pkgver="${version//-/\~}"
 
+# download.sh's fetch puts each pinned file in $downloads, retrying a host that times out
+# or answers 504 (#953).
 # shellcheck source=SCRIPTDIR/download.sh
 . "$here/download.sh"
 
-# fetch <url> <sha256> <name>: into the downloads directory, checked every time. download
-# retries a release host that times out or answers 504 (#953).
-fetch() {
-  local file="$downloads/$3"
-  mkdir -p "$downloads"
-  [ -f "$file" ] || download "$file" "$1"
-  echo "$2  $file" | sha256sum -c --quiet - || { echo "checksum mismatch for $3" >&2; rm -f "$file"; exit 1; }
-}
 
 echo "== nfpm $NFPM_VERSION"
 fetch "https://github.com/goreleaser/nfpm/releases/download/v$NFPM_VERSION/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \

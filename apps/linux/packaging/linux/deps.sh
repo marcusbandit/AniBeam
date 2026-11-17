@@ -46,9 +46,11 @@ prefix="$1"
 FFMPEG_VERSION=6.1.6
 FFMPEG_SHA=d4fcb164028dd3beee5d92c0ac72e46aac6973c75ea12dc14de07bf8f407370a
 MPV_VERSION=0.41.0
+MPV_SHA=ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
 LIBVA_VERSION=2.24.1
+LIBVA_SHA=eec6050b52876f229bd35e9df17cd31a06785e18e6f7990c445b584628483d67
 MPVQT_VERSION=v1.2.0
-MPVQT_COMMIT=af05b9af30f57ef8fb9a692def0d05a76ea39042
+MPVQT_COMMIT=edb1e3213e45aeec7dfcb74b1f5e722264af6636
 ECM_VERSION=6.20.0
 ECM_SHA=3711de8572db5da618efe3f28cc094ca25a1abb0bddffc63dced12c4f8caae5f
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -59,6 +61,7 @@ mkdir -p "$prefix"
 
 echo "== libva $LIBVA_VERSION"
 download "$work/libva.tar.bz2" "https://github.com/intel/libva/releases/download/$LIBVA_VERSION/libva-$LIBVA_VERSION.tar.bz2"
+echo "$LIBVA_SHA  $work/libva.tar.bz2" | sha256sum -c --quiet -
 tar -xjf "$work/libva.tar.bz2" -C "$work"
 meson setup "$work/libva-build" "$work/libva-$LIBVA_VERSION" --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dwith_x11=yes -Dwith_wayland=yes -Dwith_glx=no -Ddriverdir=/usr/lib/x86_64-linux-gnu/dri
@@ -86,6 +89,7 @@ make -C "$work/ffmpeg-build" install
 
 echo "== libmpv $MPV_VERSION"
 download "$work/mpv.tar.gz" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
+echo "$MPV_SHA  $work/mpv.tar.gz" | sha256sum -c --quiet -
 tar -xzf "$work/mpv.tar.gz" -C "$work"
 meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \

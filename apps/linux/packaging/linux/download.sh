@@ -11,10 +11,13 @@ download() {
   for url in "$@"; do
     # --connect-timeout: a dead mirror took 135 s to fail the first try on #952.
     # --speed-limit/--speed-time: a transfer that hangs at under 1 KB/s for a minute counts
-    # as failed and is retried. -o truncates the part file on every retry.
+    # as failed and is retried. --max-time caps one try and --retry-max-time the retries,
+    # a long Retry-After included. --retry-all-errors retries a 404 too, which costs half a
+    # minute on a mistyped version and saves a build from a release host's passing 404.
+    # -o truncates the part file on every retry.
     if curl -fL --no-progress-meter --connect-timeout 20 \
-        --speed-limit 1024 --speed-time 60 \
-        --retry 5 --retry-all-errors \
+        --speed-limit 1024 --speed-time 60 --max-time 900 \
+        --retry 5 --retry-all-errors --retry-max-time 300 \
         -o "$file.part" "$url"; then
       mv -f "$file.part" "$file"
       return 0
@@ -26,15 +29,26 @@ download() {
   return 1
 }
 
+# fetch <url> <sha256> <name>: into the caller's $downloads directory, checked every time, so
+# a cached file that went bad is fetched again on the next run.
+fetch() {
+  local file="${downloads:?fetch needs the caller to set downloads}/$3"
+  mkdir -p "$downloads"
+  [ -f "$file" ] || download "$file" "$1"
+  echo "$2  $file" | sha256sum -c --quiet - || { echo "checksum mismatch for $3" >&2; rm -f "$file"; exit 1; }
+}
+
 # clone <dir> <tag> <commit> <url> [<fallback url>...]: a shallow clone of <tag>, three tries
-# per source, checked to be <commit> so a fallback cannot hand over other code.
+# per source, checked to be <commit> so a fallback cannot hand over other code. A try that
+# moves under 1 KB/s for a minute, or runs past five minutes, fails.
 clone() {
   local dir="$1" tag="$2" commit="$3" url try
   shift 3
   for url in "$@"; do
     for try in 1 2 3; do
       rm -rf "$dir"
-      if git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" "$url" "$dir"; then
+      if timeout 300 git -c advice.detachedHead=false -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
+          clone --quiet --depth 1 --branch "$tag" "$url" "$dir"; then
         if [ "$(git -C "$dir" rev-parse HEAD)" = "$commit" ]; then
           return 0
         fi
