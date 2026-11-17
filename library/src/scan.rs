@@ -386,7 +386,6 @@ pub fn reconcile_source(
         let mut files = s.files.clone();
         let format = readings::record_format(tx, id)?;
         readings::apply(format.as_deref(), &mut files, &fixes);
-        separate_shared_keys(&s.path, &mut files);
 
         let mut old: HashMap<String, OldRow> = HashMap::new();
         {
@@ -417,10 +416,13 @@ pub fn reconcile_source(
             }
         }
 
+        separate_shared_keys(&s.path, &mut files, &old);
+
         let mut file_changed = false;
         // Files whose key changed: their history follows them once every row
         // carries its new key.
         let mut moves: Vec<history::Move> = Vec::new();
+        let mut adopted: Vec<history::Move> = Vec::new();
         let new_paths: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
         for (path, row) in &old {
             if !new_paths.contains(path.as_str()) {
@@ -489,6 +491,22 @@ pub fn reconcile_source(
                         tx.execute("DELETE FROM files WHERE path = ?1", params![f.path])?;
                         lost_a_file.insert(other);
                     }
+                    let folder = crate::classifier::folder_below(&s.path, &f.path);
+                    let adopts = (f.classified.extra.is_some()
+                        && !folder.is_empty()
+                        && !f.episode_key.contains('/'))
+                    .then(|| crate::classifier::key_in_folder(&folder, &f.episode_key))
+                    .map(|from| -> Result<_, CoreError> {
+                        let waiting: bool = tx.prepare_cached(
+                            "SELECT EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2)
+                                 OR EXISTS (SELECT 1 FROM resume_points WHERE series_id = ?1 AND episode_key = ?2)
+                                 OR EXISTS (SELECT 1 FROM views WHERE series_id = ?1 AND episode_key = ?2)",
+                        )?
+                        .query_row(params![id as i64, from], |r| r.get(0))?;
+                        Ok(waiting.then_some(from))
+                    })
+                    .transpose()?
+                    .flatten();
                     tx.execute(
                         "INSERT INTO files (series_id, path, size, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars, seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                         params![
@@ -507,10 +525,22 @@ pub fn reconcile_source(
                             now
                         ],
                     )?;
+                    // A new copy that keys by its name alone may have history
+                    // waiting under its folder's key: an import names a copy
+                    // in a later folder that way (#1085), and so did this
+                    // library while another copy of the name was there.
+                    if let Some(from) = adopts {
+                        adopted.push(history::Move {
+                            file: tx.last_insert_rowid() as u64,
+                            from,
+                            to: f.episode_key.clone(),
+                        });
+                    }
                 }
             }
         }
         history::follow(tx, id, &moves)?;
+        history::follow(tx, id, &adopted)?;
 
         if is_new {
             out.added.push(id);
@@ -616,14 +646,20 @@ fn never_attempted(conn: &Connection, ids: &[u64]) -> Result<Vec<u64>, CoreError
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-/// Extras of one name in two folders of a show key apart (#1085). The folder
-/// that comes first, the show's own before any below it and then by name,
-/// keeps the bare key, so the history the name already had stays with one
-/// file; a copy in any other folder keys with its folder in front,
-/// `Season 2/NCOP1.mkv`. A name in one folder only keeps the bare key, as
-/// every extra's was. Episodes key by number and are left alone: two files of
-/// one number are two releases of it.
-fn separate_shared_keys(series: &str, files: &mut [walk::ScannedFile]) {
+/// Extras of one name in two folders of a show key apart (#1085). One copy
+/// keeps the bare key, so the history the name already had stays with a
+/// file: the copy whose row holds it already, so a copy added later never
+/// takes it over, or else the first folder, the show's own before any below
+/// it and then by name, `Season 2` before `Season 10`. Every other copy keys
+/// with its folder in front, `Season 2/NCOP1.mkv`, or `./NCOP1.mkv` in the
+/// show's own folder. A name in one folder only
+/// keeps the bare key, as every extra's was. Episodes key by number and are
+/// left alone: two files of one number are two releases of it.
+fn separate_shared_keys(
+    series: &str,
+    files: &mut [walk::ScannedFile],
+    old: &HashMap<String, OldRow>,
+) {
     let mut by_key: HashMap<String, Vec<(usize, String)>> = HashMap::new();
     for (i, f) in files.iter().enumerate() {
         if f.classified.extra.is_some() {
@@ -633,28 +669,76 @@ fn separate_shared_keys(series: &str, files: &mut [walk::ScannedFile]) {
                 .push((i, crate::classifier::folder_below(series, &f.path)));
         }
     }
-    let depth = |folder: &str| {
-        if folder.is_empty() {
-            0
-        } else {
-            folder.matches('/').count() + 1
-        }
+    let first = |folders: &mut dyn Iterator<Item = &String>| {
+        folders
+            .min_by(|a, b| {
+                folder_depth(a)
+                    .cmp(&folder_depth(b))
+                    .then(natural_order(a, b))
+            })
+            .cloned()
     };
     for (key, found) in by_key {
-        let Some(first) = found
-            .iter()
-            .map(|(_, folder)| folder.as_str())
-            .min_by(|a, b| depth(a).cmp(&depth(b)).then(a.cmp(b)))
-            .map(str::to_string)
-        else {
+        if found.iter().all(|(_, folder)| *folder == found[0].1) {
             continue;
-        };
+        }
+        let holds = |i: usize| old.get(&files[i].path).is_some_and(|row| row.key == key);
+        let keeper = first(&mut found.iter().filter(|(i, _)| holds(*i)).map(|(_, d)| d))
+            .or_else(|| first(&mut found.iter().map(|(_, d)| d)))
+            .unwrap_or_default();
         for (i, folder) in found {
-            if folder != first {
-                files[i].episode_key = crate::classifier::key_in_folder(&folder, &key);
+            if folder != keeper {
+                // The show's own folder has no name to put in front: `./`
+                // stands for it, a path that still finds the file.
+                let folder = if folder.is_empty() { "." } else { &folder };
+                files[i].episode_key = crate::classifier::key_in_folder(folder, &key);
             }
         }
     }
+}
+
+/// How many folders deep below its show a file's folder is.
+fn folder_depth(folder: &str) -> usize {
+    if folder.is_empty() {
+        0
+    } else {
+        folder.matches('/').count() + 1
+    }
+}
+
+/// Names in the order a person reads them: a run of digits compares as a
+/// number, so `Season 2` comes before `Season 10`.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    fn runs(s: &str) -> Vec<&str> {
+        let mut out = Vec::new();
+        let mut start = 0;
+        let mut digits = None;
+        for (i, c) in s.char_indices() {
+            let d = c.is_ascii_digit();
+            if digits.is_some_and(|was| was != d) {
+                out.push(&s[start..i]);
+                start = i;
+            }
+            digits = Some(d);
+        }
+        if start < s.len() {
+            out.push(&s[start..]);
+        }
+        out
+    }
+    let number = |r: &str| r.starts_with(|c: char| c.is_ascii_digit());
+    for (x, y) in runs(a).into_iter().zip(runs(b)) {
+        let order = if number(x) && number(y) {
+            let (x, y) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
+            x.len().cmp(&y.len()).then(x.cmp(y))
+        } else {
+            x.cmp(y)
+        };
+        if order != std::cmp::Ordering::Equal {
+            return order;
+        }
+    }
+    a.len().cmp(&b.len()).then(a.cmp(b))
 }
 
 /// An extra's number column is NULL; an episode's is its number.
@@ -2347,6 +2431,97 @@ mod tests {
             vec!["NCOP1.mkv 30"]
         );
         store.close();
+    }
+
+    /// The copy that holds the bare key keeps it whatever comes in beside
+    /// it, folders sort the way a person reads them, and a copy that comes
+    /// in alone takes over the history an import left under its folder's
+    /// key (#1085).
+    #[test]
+    fn the_copy_with_the_bare_key_keeps_it_and_a_new_one_adopts_its_folders() {
+        let lib = tempfile::tempdir().unwrap();
+        let show = lib.path().join("Show");
+        let put = |rel: &str| {
+            let file = show.join(rel);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"x").unwrap();
+        };
+        put("Show - 01.mkv");
+        put("Show - 02.mkv");
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let reconcile = |now: i64| {
+            let walked = walk::scan_source(lib.path()).unwrap();
+            store
+                .tx(move |tx| reconcile_source(tx, 1, &walked, None, now))
+                .unwrap()
+        };
+        store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let series = reconcile(10).added[0] as i64;
+        // An import, before the copy was on disk, named it in its folder.
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, 'Season 10/NCOP1.mkv', 5)",
+                    params![series],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let rows = |sql: &'static str| -> Vec<String> {
+            store
+                .read(move |c| {
+                    let mut stmt = c.prepare(sql)?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        let keys = || rows("SELECT episode_key FROM files WHERE kind = 'extra' ORDER BY path");
+
+        // Alone, the copy keys by its name and takes that history over.
+        put("Season 10/NCOP1.mkv");
+        reconcile(20);
+        assert_eq!(keys(), vec!["NCOP1.mkv"]);
+        assert_eq!(
+            rows("SELECT episode_key || ' ' || at FROM completed"),
+            vec!["NCOP1.mkv 5"]
+        );
+
+        // Copies that come in later, in folders that sort before it, key by
+        // their folders: the bare key and its history stay where they were.
+        put("Season 2/NCOP1.mkv");
+        put("NCOP1.mkv");
+        reconcile(30);
+        // By path: the show's own folder, Season 10, Season 2.
+        assert_eq!(
+            keys(),
+            vec!["./NCOP1.mkv", "NCOP1.mkv", "Season 2/NCOP1.mkv"]
+        );
+        assert_eq!(
+            rows("SELECT episode_key || ' ' || at FROM completed"),
+            vec!["NCOP1.mkv 5"]
+        );
+        store.close();
+    }
+
+    /// Two folders of one depth sort by their numbers, not as text.
+    #[test]
+    fn folders_sort_the_way_a_person_reads_them() {
+        use std::cmp::Ordering::*;
+        assert_eq!(natural_order("Season 2", "Season 10"), Less);
+        assert_eq!(natural_order("Season 10", "Season 9"), Greater);
+        assert_eq!(natural_order("Season 02", "Season 2"), Greater);
+        assert_eq!(natural_order("Extras", "Season 1"), Less);
+        assert_eq!(natural_order("Season 1", "Season 1"), Equal);
     }
 
     /// A record of OVAs landing turns the series' numbered specials into its

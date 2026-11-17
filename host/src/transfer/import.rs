@@ -795,23 +795,20 @@ impl HistorySeries {
     }
 
     /// The key a file of this show carries. The library's own row says it
-    /// when the library has the file. Otherwise the name gives it, with the
-    /// folder in front when a file of the show already keys that way: two
-    /// extras of one name in two folders key apart (#1085), and an export
-    /// names the second one by that folder. A name no row knows keys alone,
-    /// as every extra's did.
+    /// when the library has the file at that path. Otherwise the path does:
+    /// the name, with the folder below the show in front when there is one.
+    /// An export names a copy in a later folder that way, since two extras of
+    /// one name in two folders key apart (#1085), and writes any other extra
+    /// straight in the show's folder, under its bare name. A copy the scan
+    /// later finds alone in its folder takes that history over.
     fn file_key(&self, file: &str) -> String {
         if let Some(key) = self.files.get(file) {
             return key.clone();
         }
-        let name = classifier::key_of_file_name(&file_name(file));
-        let in_folder =
-            classifier::key_in_folder(&classifier::folder_below(&self.path, file), &name);
-        if in_folder != name && self.files.values().any(|k| *k == in_folder) {
-            in_folder
-        } else {
-            name
-        }
+        classifier::key_in_folder(
+            &classifier::folder_below(&self.path, file),
+            &classifier::key_of_file_name(&file_name(file)),
+        )
     }
 }
 
@@ -1186,8 +1183,12 @@ mod tests {
             key("/lib/Show/Season 2/NCOP1 [A1B2C3D4].mkv").unwrap(),
             "Season 2/NCOP1.mkv"
         );
-        // A name in a folder no file keys by keys by the name alone.
-        assert_eq!(key("/lib/Show/Extras/NCED.mkv").unwrap(), "NCED.mkv");
+        // A file the library does not hold keys by the folder the document
+        // names: on a fresh library, before its first scan, every one.
+        assert_eq!(
+            key("/lib/Show/Extras/NCED1.mkv").unwrap(),
+            "Extras/NCED1.mkv"
+        );
 
         let mut series = HashMap::new();
         series.insert(show.path.clone(), show);
