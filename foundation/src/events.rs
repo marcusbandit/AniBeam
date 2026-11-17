@@ -419,7 +419,10 @@ impl Collector {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 return false;
             };
-            let (next, result) = self.condvar.wait_timeout(guard, remaining).unwrap();
+            let (next, result) = self
+                .condvar
+                .wait_timeout(guard, remaining)
+                .unwrap_or_else(|e| e.into_inner());
             guard = next;
             if result.timed_out() {
                 return pred(&guard);

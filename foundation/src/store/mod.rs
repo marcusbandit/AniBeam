@@ -225,7 +225,9 @@ impl Store {
     /// Drops the sender so the thread drains and exits, then joins it.
     pub fn close(&self) {
         recover(&self.tx).take();
-        if let Some(t) = recover(&self.thread).take() {
+        // Taken out first, so a second close never waits on the lock for this join.
+        let thread = recover(&self.thread).take();
+        if let Some(t) = thread {
             let _ = t.join();
         }
     }
