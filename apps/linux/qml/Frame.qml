@@ -922,6 +922,51 @@ FocusScope {
     // ---- The removal sheet: every removal on the downloads page asks through it
     readonly property bool removalOpen: removeSheet.visible
     function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
+    // Why a torrent the client stopped cannot go on, from the core's `problem` (#1190):
+    // { kind, icon, short, heading, base, note, settings }, or null for a torrent that is fine. `short` is
+    // the words on the error's button; the rest fill the sheet it opens.
+    function torrentProblem(t) {
+        var p = t ? t.problem : null
+        if (!p) return null
+        var kind = typeof p === "string" ? p : Object.keys(p)[0]
+        var v = typeof p === "string" ? {} : p[kind] || {}
+        var r = torrentProblemWords(t, kind, v)
+        r.icon = kind === "FolderMissing" ? "hard-drive" : kind === "FolderElsewhere" ? "folder-x" : "circle-alert"
+        return r
+    }
+    function torrentProblemWords(t, kind, v) {
+        if (kind === "FolderMissing" && v.drive)
+            return { kind: kind, short: words.t("frame-torrent-problem-drive-short"), heading: words.t("frame-torrent-problem-drive-heading"),
+                     base: words.t("frame-torrent-problem-drive-base", { drive: v.drive }), note: words.t("frame-torrent-problem-saves-to", { folder: v.folder }) }
+        if (kind === "FolderElsewhere")
+            return { kind: kind, short: words.t("frame-torrent-problem-elsewhere-short"), heading: words.t("frame-torrent-problem-elsewhere-heading"),
+                     base: words.t("frame-torrent-problem-elsewhere-base", { folder: v.folder }), note: "", settings: true }
+        if (kind === "FolderMissing")
+            return { kind: kind, short: words.t("frame-torrent-problem-folder-short"), heading: words.t("frame-torrent-problem-folder-heading"),
+                     base: words.t("frame-torrent-problem-folder-base", { folder: v.folder }), note: "" }
+        if (kind === "FilesMissing")
+            return { kind: kind, short: words.t("frame-torrent-problem-files-short"), heading: words.t("frame-torrent-problem-files-heading"),
+                     base: words.t("frame-torrent-problem-files-base"), note: t.save_path ? words.t("frame-torrent-problem-saves-to", { folder: t.save_path }) : "" }
+        return { kind: kind, short: words.t("frame-torrent-problem-error-short"), heading: words.t("frame-torrent-problem-error-heading"),
+                 base: words.t("frame-torrent-problem-error-base"), note: t.save_path ? words.t("frame-torrent-problem-saves-to", { folder: t.save_path }) : "" }
+    }
+    // The sheet a broken torrent's error button opens: what went wrong, what to do, and
+    // Retry, which runs `retry`. A folder from another computer cannot be retried into, so
+    // its sheet opens the downloads settings instead. Placed by the button the way a
+    // removal is.
+    function askTorrentProblem(anchor, t, retry) {
+        var p = torrentProblem(t)
+        if (!p) return
+        removeSheet.openAt(anchor, {
+            heading: p.heading, base: p.base, note: p.note, rule: false, torrentCount: 0, canFiles: false,
+            confirmText: p.settings ? words.t("action-open-settings") : words.t("frame-torrent-problem-retry"),
+            confirmIcon: p.settings ? "settings" : "refresh-cw", calm: true,
+            keepText: words.t("frame-torrent-problem-close")
+        }, function() {
+            if (p.settings) frame.go("settings", { tab: "downloads" })
+            else if (retry) retry()
+        })
+    }
 
     // ---- Deleting a series' files from its card (#236). A card or a week row under the
     // pointer names itself here, and the right-click menu then offers its watched episodes

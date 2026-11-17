@@ -1159,6 +1159,7 @@ impl Find {
             follow,
             replace: false,
             roll: None,
+            problem: None,
         });
         ask(Call::GetRollingSettings, |f, answer| {
             if let Ok(Reply::RollingSettings { rolling }) = answer {

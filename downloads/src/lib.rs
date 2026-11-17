@@ -42,6 +42,7 @@ pub mod rolling;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod trouble;
 pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -125,6 +126,10 @@ struct State {
     /// When the torrents were last read, so a library read can ask for a
     /// fresh look without asking on every read.
     torrents_at: Option<std::time::Instant>,
+    /// The torrents last read stopped because their save folder is missing,
+    /// by hash: each is tried again once a read finds its folder back
+    /// (`trouble::back`).
+    folder_missing: std::collections::HashSet<String>,
 }
 
 impl Downloads {
@@ -2305,6 +2310,11 @@ pub fn control(
                         "Set first and last pieces first off for"
                     }
                 }
+                TorrentAction::Retry => {
+                    let here = settings::files_here(&settings::read(&owner.services)?);
+                    trouble::retry(&client, &hashes, here).await?;
+                    "Retried"
+                }
             };
             let n = hashes.len() as u64;
             let said = match &action {
@@ -2321,6 +2331,10 @@ pub fn control(
                 )),
                 TorrentAction::Delete { files: false } => Some(anibeam_contract::words!(
                     "core-downloads-removed-from-list",
+                    count = n
+                )),
+                TorrentAction::Retry => Some(anibeam_contract::words!(
+                    "core-downloads-retried",
                     count = n
                 )),
                 TorrentAction::Sequential { .. } | TorrentAction::FirstLastPieces { .. } => None,
@@ -2557,6 +2571,32 @@ pub fn list_rules(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
     Ok(Reply::Ok)
 }
 
+/// Tries again the torrents whose save folder is back after a read found
+/// it missing: a drive plugged back in (#1190). Said in the log once, as
+/// the change it is; a failure leaves them stopped for the button. The read
+/// that found the folders back has just looked, so they are not looked at again.
+async fn retry_back(owner: &Arc<Downloads>, client: &QbtClient, hashes: &[String]) {
+    let n = hashes.len() as u64;
+    match trouble::retry(client, hashes, false).await {
+        Ok(()) => {
+            owner.services.bus.say(
+                Level::Info,
+                Stage::Downloads,
+                anibeam_contract::words!("core-downloads-retried-folder-back", count = n),
+                format!(
+                    "Retried {}: the save folder is back",
+                    plural(n, "torrent", "torrents")
+                ),
+                EventBody::TorrentsControlled {
+                    hashes: hashes.to_vec(),
+                    action: TorrentAction::Retry,
+                },
+            );
+        }
+        Err(e) => tracing::debug!("torrents not retried: {e}"),
+    }
+}
+
 /// Not a job either: the page polls this while it is open.
 pub fn list_torrents(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
     let owner = downloads.clone();
@@ -2564,6 +2604,18 @@ pub fn list_torrents(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
         let outcome = async {
             let client = qbt_client(&owner).await?;
             let mut torrents = client.torrents().await?;
+            // Why a stopped torrent cannot go on, and a retry for one whose
+            // drive was plugged back in since the last read (#1190)
+            let here = settings::read(&owner.services)
+                .map(|s| settings::files_here(&s))
+                .unwrap_or(false);
+            trouble::annotate(&mut torrents, here);
+            if here {
+                let back = trouble::back(&torrents, &mut owner.state().folder_missing);
+                if !back.is_empty() && owner.unattended_allowed() {
+                    retry_back(&owner, &client, &back).await;
+                }
+            }
             // Which torrent each library file came from (#241); a failure
             // only leaves them for the next read
             if let Err(e) = origins::record_from(&owner.services, Some(&client), &torrents).await {

@@ -1476,6 +1476,7 @@ impl qobject::Door {
                     TorrentAction::Sequential { on: false } => "Unsequential",
                     TorrentAction::FirstLastPieces { on: true } => "FirstLast",
                     TorrentAction::FirstLastPieces { on: false } => "UnFirstLast",
+                    TorrentAction::Retry => "Retry",
                 };
                 self.as_mut()
                     .torrents_controlled(arr("hashes"), QString::from(word))
@@ -2071,6 +2072,7 @@ impl qobject::Door {
             "Unsequential" => Ok(TorrentAction::Sequential { on: false }),
             "FirstLast" => Ok(TorrentAction::FirstLastPieces { on: true }),
             "UnFirstLast" => Ok(TorrentAction::FirstLastPieces { on: false }),
+            "Retry" => Ok(TorrentAction::Retry),
             other => Err(CoreError::invalid(
                 "action",
                 tr("door-not-a-torrent-action", &[("value", other.into())]),

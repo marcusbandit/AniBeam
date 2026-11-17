@@ -2137,3 +2137,125 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     assert_eq!(form_of(&delete), "hashes=aa&deleteFiles=false");
     core.shutdown();
 }
+
+/// A torrent whose save folder is on a drive that is not plugged in reads as
+/// that, a retry is refused while the folder is still missing, and once a read
+/// finds the folder back the core tries the torrent again by itself (#1190).
+#[test]
+fn a_download_on_an_unplugged_drive_says_so_and_retries_when_it_is_back() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    // A client on this machine, so its save folders can be looked at from here
+    save(&core, settings("anirss"), None, None);
+    let folder = dir.path().join("drive").join("Frieren");
+    let folder_s = folder.to_string_lossy().to_string();
+    let erred = |state: &str| {
+        json!([{"hash": "d1", "name": "[Lumen] Sousou no Frieren - 03", "state": state,
+                "progress": 0.0, "size": 100, "save_path": folder_s, "content_path": "",
+                "added_on": 1, "completion_on": -1}])
+        .to_string()
+    };
+    let read = |problem: fn(&Option<TorrentProblem>) -> bool| {
+        assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+        let event = common::wait_for(
+            &c,
+            |e| matches!(&e.body, EventBody::TorrentsRead { torrents, .. } if torrents.len() == 1 && problem(&torrents[0].problem)),
+            Duration::from_secs(10),
+        );
+        let EventBody::TorrentsRead { torrents, .. } = event.body else {
+            unreachable!()
+        };
+        torrents[0].problem.clone()
+    };
+
+    // The drive is gone: the problem names the folder
+    http.push_for("torrents/info", 200, erred("error"));
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    let problem = read(|p| matches!(p, Some(TorrentProblem::FolderMissing { .. })));
+    assert_eq!(
+        problem,
+        Some(TorrentProblem::FolderMissing {
+            folder: folder_s.clone(),
+            drive: String::new(),
+        })
+    );
+
+    // Retry by hand while it is still gone: refused, and nothing reaches the client
+    http.push_for("torrents/info", 200, erred("error"));
+    let job = common::started(
+        &core,
+        Call::ControlTorrents {
+            hashes: vec!["d1".into()],
+            action: TorrentAction::Retry,
+        },
+    );
+    let done = common::wait_job(&c, job);
+    let EventBody::JobFailed { error, .. } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(
+        error,
+        &CoreError::Unavailable {
+            path: folder_s.clone()
+        }
+    );
+    assert!(!http.requests().iter().any(|r| r.url.contains("recheck")));
+
+    // The drive is back: the next read tries it again by itself, once
+    std::fs::create_dir_all(&folder).unwrap();
+    http.push_for("torrents/info", 200, erred("error"));
+    http.push_for("torrents/recheck", 200, "");
+    http.push_for("torrents/start", 200, "");
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(
+        read(|p| matches!(p, Some(TorrentProblem::ClientError))),
+        Some(TorrentProblem::ClientError)
+    );
+    common::wait_for(
+        &c,
+        |e| {
+            matches!(
+                &e.body,
+                EventBody::TorrentsControlled {
+                    action: TorrentAction::Retry,
+                    ..
+                }
+            )
+        },
+        Duration::from_secs(10),
+    );
+    let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+    let recheck = sent.iter().position(|u| u.contains("torrents/recheck"));
+    let start = sent.iter().position(|u| u.contains("torrents/start"));
+    assert!(recheck.is_some() && recheck < start, "{sent:?}");
+
+    // Retry by hand with the folder there: checked and started
+    http.push_for("torrents/info", 200, erred("missingFiles"));
+    http.push_for("torrents/recheck", 200, "");
+    http.push_for("torrents/start", 200, "");
+    let job = common::started(
+        &core,
+        Call::ControlTorrents {
+            hashes: vec!["d1".into()],
+            action: TorrentAction::Retry,
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            &done.body,
+            EventBody::TorrentsControlled {
+                action: TorrentAction::Retry,
+                ..
+            }
+        ),
+        "{:?}",
+        done.body
+    );
+    let rechecks = http
+        .requests()
+        .iter()
+        .filter(|r| r.url.contains("torrents/recheck"))
+        .count();
+    assert_eq!(rechecks, 2);
+}

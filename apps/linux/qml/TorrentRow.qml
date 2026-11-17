@@ -11,6 +11,8 @@ Item {
     signal stop()
     signal start()
     signal removeAsked(Item anchor)
+    // Try a torrent the client stopped with an error again (#1190)
+    signal retry()
 
     readonly property var t: torrent || ({})
     readonly property string state: String(t.state || "")
@@ -67,14 +69,28 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             Label {
-                width: parent.width - stateLabel.width - parent.spacing
+                width: parent.width - (problemButton.visible ? problemButton.width : stateLabel.width) - parent.spacing
                 text: root.t.name || ""
                 role: "ui"
                 elide: Text.ElideMiddle
                 anchors.verticalCenter: parent.verticalCenter
             }
+            // The error as a button: what went wrong, what to do, and Retry
+            Button {
+                id: problemButton
+                objectName: "torrent-problem"
+                readonly property var problem: frame.torrentProblem(root.t)
+                visible: root.erred && !!problem
+                anchors.verticalCenter: parent.verticalCenter
+                text: problem ? problem.short : ""
+                icon: problem ? problem.icon : ""
+                danger: true
+                small: true
+                onClicked: frame.askTorrentProblem(problemButton, root.t, function() { root.retry() })
+            }
             Label {
                 id: stateLabel
+                visible: !problemButton.visible
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.stateText
                 role: "ledger"

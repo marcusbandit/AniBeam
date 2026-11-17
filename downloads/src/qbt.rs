@@ -693,6 +693,7 @@ fn torrent(v: &Value) -> Torrent {
         resolution: String::new(),
         provider: String::new(),
         roll: None,
+        problem: None,
     }
 }
 

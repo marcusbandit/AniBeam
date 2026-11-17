@@ -353,9 +353,27 @@ Item {
                 spacing: theme.space(2)
                 Label { id: sizeText; text: line.done ? words.bytes(line.t.size || 0) : words.t("activity-column-size-of", { got: words.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))), total: words.bytes(line.t.size || 0) }); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
                 // Stopped needs no word: the play button says it
+                // A broken torrent's error is a button: it opens what went wrong, what to do
+                // and Retry (#1190); a group retries each of its broken torrents
+                Button {
+                    id: problemButton
+                    objectName: "activity-problem"
+                    readonly property var brokenMembers: line.members.filter(function(m) { return !!m.problem })
+                    readonly property var problem: brokenMembers.length ? frame.torrentProblem(brokenMembers[0]) : null
+                    visible: line.broken && !!problem
+                    text: problem ? problem.short : ""
+                    icon: problem ? problem.icon : ""
+                    danger: true
+                    small: true
+                    busy: line.waiting === "Retry"
+                    onClicked: {
+                        var hashes = brokenMembers.map(function(m) { return m.hash })
+                        frame.askTorrentProblem(problemButton, brokenMembers[0], function() { root.controlAll(hashes, "Retry") })
+                    }
+                }
                 Label {
                     id: leftText
-                    visible: text !== ""
+                    visible: text !== "" && !problemButton.visible
                     text: line.broken ? words.t("activity-column-files-missing") : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), words.t("activity-column-time-format"))
                         : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: words.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? words.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
                     role: line.broken ? "ui" : "figure"

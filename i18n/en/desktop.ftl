@@ -250,6 +250,28 @@ frame-delete-extras = { $count ->
 frame-delete-and = { $first } and { $second }
 frame-delete-heading = Delete { $what } of { $title }?
 frame-delete-base = The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.
+frame-torrent-problem-drive-short = Drive not connected
+frame-torrent-problem-drive-heading = The drive this download saves to is not connected
+# $drive is the drive's folder, such as /Volumes/Anime
+frame-torrent-problem-drive-base = Plug in { $drive }, then retry. Once Anibeam sees the drive again, it retries by itself.
+# $folder is a path
+frame-torrent-problem-saves-to = Saves to { $folder }
+frame-torrent-problem-folder-short = Folder missing
+frame-torrent-problem-folder-heading = The folder this download saves to is missing
+# $folder is a path
+frame-torrent-problem-folder-base = { $folder } is not there. Plug in its drive or put the folder back, then retry.
+frame-torrent-problem-elsewhere-short = Folder not on this computer
+frame-torrent-problem-elsewhere-heading = This download saves to a folder on another computer
+# $folder is a path
+frame-torrent-problem-elsewhere-base = { $folder } is not a folder on this computer. Pick a download folder in Settings, then remove this download and get it again.
+frame-torrent-problem-files-short = Files missing
+frame-torrent-problem-files-heading = What this download saved is missing
+frame-torrent-problem-files-base = Its files were moved or deleted. Retry checks what is left and downloads the rest.
+frame-torrent-problem-error-short = Error
+frame-torrent-problem-error-heading = The torrent client stopped this download with an error
+frame-torrent-problem-error-base = Often the disk is full or cannot be written to. Make room or check the folder, then retry.
+frame-torrent-problem-retry = Retry
+frame-torrent-problem-close = Close
 frame-delete-confirm = Move to trash
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
