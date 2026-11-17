@@ -180,6 +180,10 @@ struct App {
     held: Option<bool>,
     /// The hold on its way to the core: one at a time, so they land in order.
     hold_asked: Option<bool>,
+    /// When a hold the core refused is asked again.
+    hold_retry: HoldRetry,
+    /// The hold is for the network: Wi-Fi only, and off Wi-Fi.
+    held_for_network: bool,
     /// Goes up with every hold sent, so a list read started before one does not count as
     /// showing it.
     hold_epoch: u32,
@@ -700,7 +704,6 @@ impl App {
                 .into(),
             );
         }
-        self.follow_work();
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
         }
@@ -729,11 +732,6 @@ impl App {
             self.mark_note = None;
             self.show_mark();
         }
-        // Every second while Wi-Fi only keeps an eye on a download, so leaving Wi-Fi holds it
-        // before mobile data carries much.
-        if self.ticks.is_multiple_of(5) || (self.prefs.wifi_only && self.service.is_some()) {
-            self.hold_for_network();
-        }
         if self.ticks.is_multiple_of(STORAGE_EVERY) {
             self.storage();
         }
@@ -742,6 +740,18 @@ impl App {
     /// The clock's second: the pages, then the count the timed lines and polls go by. Only
     /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
     fn second(&mut self) {
+        // The work's state and the network are Java and binder round trips: read once a
+        // second here, never on a tick a tap or a reply asks for.
+        self.follow_work();
+        // Every second while Wi-Fi only keeps an eye on a download, so leaving Wi-Fi holds it
+        // before mobile data carries much, and while a hold the core refused waits to be
+        // asked again.
+        if self.ticks.is_multiple_of(5)
+            || (self.prefs.wifi_only && self.service.is_some())
+            || self.hold_retry.waiting()
+        {
+            self.hold_for_network();
+        }
         self.tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
@@ -1206,9 +1216,8 @@ impl App {
         };
         // The rows read Paused while the work is stopped: going on with one ends the stop,
         // which lifts the hold the rest wait on too.
-        if action == PhoneAction::Resume && self.work.stopped() {
-            crate::platform::service_go_on();
-            self.follow_work();
+        if action == PhoneAction::Resume {
+            self.go_on();
         }
         let _ = std::thread::Builder::new()
             .name("torrent".into())
@@ -1456,7 +1465,7 @@ impl App {
         torrents.extend(demo_torrents());
         // Held for Wi-Fi, which the rows and the note say; held because the work is stopped,
         // they read Paused.
-        let waiting = held && !self.work.stopped();
+        let waiting = held && self.held_for_network && !self.work.stopped();
         // The service is for torrents that are working: one in error, finished or paused
         // does not keep a notification up. One looking for peers does: Android lets the app
         // start the work again only while it is open, so dropping it for a stall would end
@@ -1466,7 +1475,7 @@ impl App {
             .iter()
             .map(|t| download_row(t, waiting, self.torrent_show(t), &self.art))
             .collect();
-        let moving: Vec<notify::Moving> = torrents
+        let working: Vec<notify::Moving> = torrents
             .iter()
             .zip(&rows)
             .filter(|(t, _)| {
@@ -1517,7 +1526,16 @@ impl App {
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
-        self.data().set_moving_count(moving.len() as i32);
+        // The head shows a rate only for what really moves, not a torrent looking for peers.
+        let moving = torrents
+            .iter()
+            .filter(|t| {
+                real(t)
+                    && t.progress < 1.0
+                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+            })
+            .count();
+        self.data().set_moving_count(moving as i32);
 
         // The work runs while something downloads, its notification saying what and how far
         // along, with the numbers Downloads shows. Not while it is stopped: the downloads are
@@ -1529,7 +1547,7 @@ impl App {
             .iter()
             .filter(|t| real(t) && t.progress < 1.0)
             .collect();
-        let mut text = notify::ongoing(&moving, format::bytes);
+        let mut text = notify::ongoing(&working, format::bytes);
         // Held off mobile data while the work is up: it stays up and says so. Android lets
         // the app start it again only while the app is open, so ending it here would leave
         // the downloads stopped back on Wi-Fi with the screen off.
@@ -1619,7 +1637,10 @@ impl App {
         if self.work.state == crate::platform::WorkState::Idle && self.service.is_none() {
             return;
         }
-        let now = crate::platform::work_state();
+        // A failed read says nothing: the last state stands until one succeeds.
+        let Some(now) = crate::platform::work_state() else {
+            return;
+        };
         if now == self.work {
             return;
         }
@@ -1648,6 +1669,15 @@ impl App {
         }
     }
 
+    /// The person asked for downloads to run (going on with a row, starting one): a stop by
+    /// Android or by them ends, and with it the hold the downloads wait on.
+    fn go_on(&mut self) {
+        if self.work.stopped() {
+            crate::platform::service_go_on();
+            self.follow_work();
+        }
+    }
+
     /// Holds downloads off Wi-Fi when the person wants Wi-Fi only, and while the download
     /// work is stopped. The state is noted once the core took it, so a refusal is tried
     /// again on the next look.
@@ -1656,8 +1686,8 @@ impl App {
             return;
         };
         // One hold at a time, so they land in the order asked; the one on its way looks
-        // again when it lands.
-        if self.hold_asked.is_some() {
+        // again when it lands. One the core refused is asked again once its wait is over.
+        if self.hold_asked.is_some() || !self.hold_retry.due(self.ticks) {
             return;
         }
         let answer = crate::platform::unmetered();
@@ -1672,7 +1702,8 @@ impl App {
                 .ran_at
                 .is_some_and(|at| self.ticks.wrapping_sub(at) < NETWORK_GRACE_TICKS);
         let free = answer.or(self.free.filter(|_| hidden));
-        let held = self.work.stopped() || (self.prefs.wifi_only && free != Some(true));
+        self.held_for_network = self.prefs.wifi_only && free != Some(true);
+        let held = self.work.stopped() || self.held_for_network;
         if self.held == Some(held) {
             return;
         }
@@ -1683,20 +1714,31 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("hold".into())
             .spawn(move || {
-                let took = match core.call(Call::SetPhoneHeld { held }) {
-                    Ok(_) => true,
-                    Err(e) => {
-                        crate::local::log(&format!("could not hold downloads: {e}"));
-                        false
-                    }
-                };
+                let answer = core.call(Call::SetPhoneHeld { held });
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
                         app.hold_asked = None;
-                        if took {
-                            app.held = Some(held);
-                            // What was asked may have moved on while this was on its way.
-                            app.hold_for_network();
+                        let tries = app.hold_retry.tries;
+                        match answer {
+                            Ok(_) => {
+                                if tries > 0 {
+                                    crate::local::log(&format!(
+                                        "downloads held as asked after {} tries",
+                                        tries + 1
+                                    ));
+                                }
+                                app.hold_retry = HoldRetry::default();
+                                app.held = Some(held);
+                                // What was asked may have moved on while this was on its way.
+                                app.hold_for_network();
+                            }
+                            Err(e) => {
+                                // Once per run of refusals: the retries say nothing new.
+                                if tries == 0 {
+                                    crate::local::log(&format!("could not hold downloads: {e}"));
+                                }
+                                app.hold_retry.refused(app.ticks);
+                            }
                         }
                     })
                 });
@@ -1856,6 +1898,9 @@ impl App {
     /// The core took a download or a subscription: the first one explains the notification
     /// before Android asks, once, unless onboarding already did.
     fn download_started(&mut self) {
+        // Starting a download asks for downloads to run, as going on with a paused row does:
+        // a stop the person made from the list of running apps ends with it.
+        self.go_on();
         if notify::offer_on_download(self.notify(), self.prefs.notify_offered) {
             self.prefs.notify_offered = true;
             self.save_prefs();
@@ -2173,6 +2218,42 @@ fn demo_notifies() -> bool {
 pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
+/// When a hold the core refused is asked again: after 2 seconds, then twice as long each
+/// time, at most a minute apart. One a refusal left unasked would leave every list read
+/// unsettled, so the work could never end or rest.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct HoldRetry {
+    /// Refusals in a row.
+    tries: u32,
+    /// The tick it may be asked again from.
+    at: Option<u32>,
+}
+
+impl HoldRetry {
+    const FIRST: u32 = 2;
+    const MOST: u32 = 60;
+
+    /// A refusal at tick `now`.
+    fn refused(&mut self, now: u32) {
+        self.tries = self.tries.saturating_add(1);
+        let wait = Self::FIRST
+            .saturating_mul(1 << (self.tries - 1).min(6))
+            .min(Self::MOST);
+        self.at = Some(now.wrapping_add(wait));
+    }
+
+    /// A refused hold waits to be asked again.
+    fn waiting(&self) -> bool {
+        self.at.is_some()
+    }
+
+    /// Whether a hold may be asked at tick `now`.
+    fn due(&self, now: u32) -> bool {
+        // Ticks wrap: a wait not yet over is less than half the range ahead.
+        self.at.is_none_or(|at| now.wrapping_sub(at) < u32::MAX / 2)
+    }
+}
+
 /// How long nothing moves with the app away before the download work rests: 15 minutes.
 const REST_TICKS: u32 = 15 * 60;
 /// How long after Android runs the download work again a missing network is taken to be
@@ -2758,6 +2839,8 @@ pub fn run(
         rolling_loaded: false,
         held: None,
         hold_asked: None,
+        hold_retry: HoldRetry::default(),
+        held_for_network: false,
         hold_epoch: 0,
         free: None,
         work: crate::platform::Work::NONE,
@@ -2858,7 +2941,29 @@ pub fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::mark_line;
+    use super::{HoldRetry, mark_line};
+
+    #[test]
+    fn a_refused_hold_is_asked_again_later_and_later() {
+        let mut r = HoldRetry::default();
+        assert!(r.due(0) && !r.waiting());
+        r.refused(100);
+        assert!(r.waiting());
+        assert!(!r.due(100) && !r.due(101) && r.due(102));
+        r.refused(102);
+        assert!(!r.due(105) && r.due(106));
+        r.refused(106);
+        assert!(!r.due(113) && r.due(114));
+        for _ in 0..20 {
+            r.refused(1000);
+        }
+        // At most a minute apart, however many refusals.
+        assert!(!r.due(1059) && r.due(1060));
+        // Across the tick count wrapping.
+        let mut r = HoldRetry::default();
+        r.refused(u32::MAX);
+        assert!(!r.due(u32::MAX) && !r.due(0) && r.due(1));
+    }
 
     #[test]
     fn a_mark_says_so_only_when_it_moves_more_than_one_episode() {

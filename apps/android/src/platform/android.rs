@@ -500,8 +500,15 @@ pub fn service_go_on() {
     service_void("goOn", "the download work did not go on");
 }
 
+/// A read of the work's state failed since the last one that worked, so the next failure
+/// is not logged again.
+static STATE_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Where the download work stands (`TorrentService.state`). Opening the app ends a stop.
-pub fn work_state() -> super::Work {
+/// None when the read failed: that says nothing about the work, so the app keeps what it
+/// last read. A run of failures is logged once.
+pub fn work_state() -> Option<super::Work> {
+    use std::sync::atomic::Ordering;
     let r = service(4, |env, app, class| {
         Ok(env
             .call_static_method(
@@ -512,7 +519,18 @@ pub fn work_state() -> super::Work {
             )?
             .i()?)
     });
-    super::Work::from_bits(r.unwrap_or(0))
+    match r {
+        Ok(bits) => {
+            STATE_FAILED.store(false, Ordering::Relaxed);
+            Some(super::Work::from_bits(bits))
+        }
+        Err(e) => {
+            if !STATE_FAILED.swap(true, Ordering::Relaxed) {
+                crate::local::log(&format!("could not read the download work's state: {e}"));
+            }
+            None
+        }
+    }
 }
 
 /// Says the downloads are paused, `title` being what they are (`TorrentService.paused`).
@@ -539,41 +557,47 @@ pub fn downloads_paused(title: &str, text: &str) {
 /// Whether the network in use costs nothing per byte (Wi-Fi, Ethernet): `None` when the
 /// phone has no network, or Android would not say.
 pub fn unmetered() -> Option<bool> {
-    with_env(|env, app| {
-        use jni::objects::JValue;
-        let name = env.new_string("connectivity")?;
-        let cm = env
-            .call_method(
-                app,
-                "getSystemService",
-                "(Ljava/lang/String;)Ljava/lang/Object;",
-                &[JValue::Object(&name)],
-            )?
-            .l()?;
-        let network = env
-            .call_method(&cm, "getActiveNetwork", "()Landroid/net/Network;", &[])?
-            .l()?;
-        if network.is_null() {
-            return Ok(None);
-        }
-        let caps = env
-            .call_method(
-                &cm,
-                "getNetworkCapabilities",
-                "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;",
-                &[JValue::Object(&network)],
-            )?
-            .l()?;
-        if caps.is_null() {
-            return Ok(None);
-        }
-        // NET_CAPABILITY_NOT_METERED is 11.
-        let free = env
-            .call_method(&caps, "hasCapability", "(I)Z", &[JValue::Int(11)])?
-            .z()?;
-        Ok(Some(free))
-    })
-    .unwrap_or(None)
+    // In a frame of its own: it runs every second on the UI thread, which stays attached,
+    // so its references would never be freed otherwise.
+    with_env(|env, app| env.with_local_frame(8, |env| unmetered_in(env, app))).unwrap_or(None)
+}
+
+fn unmetered_in(
+    env: &mut jni::JNIEnv,
+    app: &jni::objects::JObject,
+) -> Result<Option<bool>, Box<dyn std::error::Error>> {
+    use jni::objects::JValue;
+    let name = env.new_string("connectivity")?;
+    let cm = env
+        .call_method(
+            app,
+            "getSystemService",
+            "(Ljava/lang/String;)Ljava/lang/Object;",
+            &[JValue::Object(&name)],
+        )?
+        .l()?;
+    let network = env
+        .call_method(&cm, "getActiveNetwork", "()Landroid/net/Network;", &[])?
+        .l()?;
+    if network.is_null() {
+        return Ok(None);
+    }
+    let caps = env
+        .call_method(
+            &cm,
+            "getNetworkCapabilities",
+            "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;",
+            &[JValue::Object(&network)],
+        )?
+        .l()?;
+    if caps.is_null() {
+        return Ok(None);
+    }
+    // NET_CAPABILITY_NOT_METERED is 11.
+    let free = env
+        .call_method(&caps, "hasCapability", "(I)Z", &[JValue::Int(11)])?
+        .z()?;
+    Ok(Some(free))
 }
 
 /// Asks for the notification permission Android 13 and later want before a service may

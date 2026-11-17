@@ -84,16 +84,16 @@ pub fn rest_service() {
 pub fn service_go_on() {}
 
 /// Up from `start_service` to `stop_service`, never stopped by anything else.
-pub fn work_state() -> super::Work {
+pub fn work_state() -> Option<super::Work> {
     let up = UP.load(std::sync::atomic::Ordering::Relaxed);
-    super::Work {
+    Some(super::Work {
         state: if up {
             super::WorkState::Running
         } else {
             super::WorkState::Idle
         },
         ..super::Work::NONE
-    }
+    })
 }
 
 /// No notification to post.
