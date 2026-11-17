@@ -451,6 +451,24 @@ impl Core {
     pub fn downloads(&self) -> &Arc<Downloads> {
         &self.downloads
     }
+
+    /// The library team, for the tests that start its scans directly.
+    #[doc(hidden)]
+    pub fn library(&self) -> &Arc<Library> {
+        &self.library
+    }
+
+    /// Rescans where the phone's downloads deleted files, so their episodes leave the
+    /// library now rather than at the next launch: the watcher is not told of a deletion
+    /// everywhere (iOS). Run after the removal whether it went through or stopped partway,
+    /// since what it did delete is gone either way. A `Paths` scan reconciles the series
+    /// at or under each path against the disk, so a gone file loses its row and a gone
+    /// folder's series goes missing.
+    pub(crate) fn rescan_removed(&self, paths: Vec<String>) {
+        if !paths.is_empty() {
+            scan::start(&self.library, scan::ScanScope::Paths(paths));
+        }
+    }
 }
 
 #[uniffi::export]
@@ -966,12 +984,26 @@ impl Core {
             } => phone::subscribe(&self.downloads, query, endpoint, items, name),
             Call::PhoneRules => phone::rules(&self.downloads),
             Call::PhoneUnsubscribe { names, files } => {
-                phone::unsubscribe(&self.downloads, names, files)
+                let gone = if files {
+                    phone::rule_paths(&self.downloads, &names)
+                } else {
+                    Vec::new()
+                };
+                let reply = phone::unsubscribe(&self.downloads, names, files);
+                self.rescan_removed(gone);
+                reply
             }
             Call::PhoneTorrents => phone::torrents(&self.downloads),
             Call::PhoneNetCheck => phone::check::run_call(&self.downloads),
             Call::PhoneControl { hashes, action } => {
-                phone::control(&self.downloads, hashes, action)
+                let gone = if action == PhoneAction::Remove {
+                    phone::torrent_paths(&self.downloads, &hashes)
+                } else {
+                    Vec::new()
+                };
+                let reply = phone::control(&self.downloads, hashes, action);
+                self.rescan_removed(gone);
+                reply
             }
             Call::SetPhoneHeld { held } => phone::set_held(&self.downloads, held),
 

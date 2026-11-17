@@ -815,3 +815,56 @@ fn move_source_keeps_its_series_at_the_new_folder() {
         Err(CoreError::Invalid { .. })
     ));
 }
+
+/// The episodes on disk of the series named `name`, or None when it is not listed.
+fn on_disk(core: &Core, name: &str) -> Option<u64> {
+    common::cards(core, Tab::All, true)
+        .into_iter()
+        .find(|c| c.title == name)
+        .map(|c| c.episodes_on_disk)
+}
+
+/// The phone removes a download's files where no watcher may tell the library (iOS), and
+/// rescans the removed torrents' paths after. A `Paths` scan of a deleted file takes its
+/// episode off the card, and one of a deleted folder takes its series' episodes, with no
+/// watcher running and no restart.
+#[test]
+fn a_paths_scan_after_files_are_deleted_drops_their_episodes() {
+    let (dir, core, c) = common::open_core();
+    let lib = dir.path().join("lib");
+    for n in 1..=3 {
+        touch(&lib.join("Show A").join(format!("Show A - {n:02}.mkv")));
+    }
+    for n in 1..=2 {
+        touch(&lib.join("Show B").join(format!("Show B - {n:02}.mkv")));
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    let first = first_scan(&c);
+    common::wait_job(&c, first);
+    assert_eq!(on_disk(&core, "Show A"), Some(3));
+    assert_eq!(on_disk(&core, "Show B"), Some(2));
+
+    // What a removed single-file torrent and a removed batch leave behind.
+    let file = lib.join("Show A").join("Show A - 03.mkv");
+    let folder = lib.join("Show B");
+    fs::remove_file(&file).unwrap();
+    fs::remove_dir_all(&folder).unwrap();
+    // Nothing tells the library yet: no watcher runs in this core.
+    assert_eq!(on_disk(&core, "Show A"), Some(3));
+
+    let job = library::scan::start(
+        core.library(),
+        library::scan::ScanScope::Paths(vec![
+            file.to_string_lossy().into_owned(),
+            folder.to_string_lossy().into_owned(),
+        ]),
+    );
+    assert_ne!(job, first);
+    common::wait_job(&c, job);
+    assert_eq!(on_disk(&core, "Show A"), Some(2));
+    assert_eq!(on_disk(&core, "Show B").unwrap_or(0), 0);
+    core.shutdown();
+}

@@ -1100,6 +1100,55 @@ pub fn control(
     Ok(Reply::Ok)
 }
 
+/// Where the torrents `hashes` keep their files: each one's content path (its file, or
+/// its folder when it holds several), else its save folder. Read before a removal so the
+/// library can be rescanned there once the files are gone: the watcher is not told of a
+/// deletion everywhere (iOS), and without the rescan the episodes stay listed.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn paths_of(torrents: &[Torrent], hashes: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = torrents
+        .iter()
+        .filter(|t| hashes.contains(&t.hash))
+        .map(|t| {
+            if t.content_path.is_empty() {
+                t.save_path.clone()
+            } else {
+                t.content_path.clone()
+            }
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// [`paths_of`] the engine's torrents `hashes`; empty when the engine cannot be opened.
+#[cfg(feature = "phone")]
+pub fn torrent_paths(downloads: &std::sync::Arc<Downloads>, hashes: &[String]) -> Vec<String> {
+    downloads.services.handle.block_on(async {
+        match engine(downloads).await {
+            Ok(engine) => paths_of(&engine.list().await, hashes),
+            Err(_) => Vec::new(),
+        }
+    })
+}
+
+/// The save folders of the subscriptions `names`: where unsubscribing with their files
+/// deletes, so where the library is rescanned after.
+#[cfg(feature = "phone")]
+pub fn rule_paths(downloads: &Downloads, names: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = rules_store(&downloads.services)
+        .load()
+        .into_iter()
+        .filter(|r| names.contains(&r.name) && !r.save_path.is_empty())
+        .map(|r| r.save_path)
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 #[cfg(feature = "phone")]
 pub fn set_held(downloads: &std::sync::Arc<Downloads>, held: bool) -> Result<Reply, CoreError> {
     downloads
@@ -1156,6 +1205,16 @@ pub fn torrents(_: &Downloads) -> Result<Reply, CoreError> {
 #[cfg(not(feature = "phone"))]
 pub fn control(_: &Downloads, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreError> {
     Err(unsupported())
+}
+
+#[cfg(not(feature = "phone"))]
+pub fn torrent_paths(_: &Downloads, _: &[String]) -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(not(feature = "phone"))]
+pub fn rule_paths(_: &Downloads, _: &[String]) -> Vec<String> {
+    Vec::new()
 }
 
 #[cfg(not(feature = "phone"))]
@@ -1225,5 +1284,37 @@ mod feed_tests {
             "old"
         ));
         assert!(is_json_feed(&from, "https://feed.example/json?q=Show", ""));
+    }
+}
+
+#[cfg(test)]
+mod removed_paths_tests {
+    use super::*;
+
+    fn torrent(hash: &str, save: &str, content: &str) -> Torrent {
+        Torrent {
+            hash: hash.into(),
+            save_path: save.into(),
+            content_path: content.into(),
+            ..crate::qbt::tests_torrent()
+        }
+    }
+
+    /// A removal rescans where each removed torrent kept its files: its file or folder,
+    /// else its save folder, and never a torrent that stays.
+    #[test]
+    fn a_removal_rescans_where_the_removed_torrents_kept_their_files() {
+        let torrents = [
+            torrent("a", "/lib/Show", "/lib/Show/Show - 01.mkv"),
+            torrent("b", "/lib/Batch", ""),
+            torrent("c", "/lib/Kept", "/lib/Kept/Kept - 01.mkv"),
+            torrent("d", "/lib/Show", "/lib/Show/Show - 01.mkv"),
+        ];
+        let hashes = ["a", "b", "d", "gone"].map(String::from);
+        assert_eq!(
+            paths_of(&torrents, &hashes),
+            ["/lib/Batch", "/lib/Show/Show - 01.mkv"]
+        );
+        assert!(paths_of(&torrents, &[]).is_empty());
     }
 }
