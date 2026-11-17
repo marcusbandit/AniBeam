@@ -41,6 +41,9 @@ struct PaceState {
     last_sent: Option<Instant>,
     /// The gap the last reported limit asks for, nought until a reply says.
     live_gap: Duration,
+    /// When the request whose reply set `live_gap` went out. A reply to an
+    /// older request that lands later is stale and never undoes it.
+    live_from: Option<Instant>,
     /// No request goes out before this: the provider said none are left.
     hold_until: Option<Instant>,
 }
@@ -54,10 +57,11 @@ impl Pace {
         }
     }
 
-    /// Waits for this caller's turn and takes it. The turn is worked out
-    /// again on every wake, so a reply that lowered the limit or emptied
-    /// the budget while this caller slept still holds it back.
-    async fn turn(&self) {
+    /// Waits for this caller's turn, takes it and says when it was. The
+    /// turn is worked out again on every wake, so a reply that lowered the
+    /// limit or emptied the budget while this caller slept still holds it
+    /// back.
+    async fn turn(&self) -> Instant {
         loop {
             let when = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -69,7 +73,7 @@ impl Pace {
                 }
                 if when <= now {
                     st.last_sent = Some(now);
-                    return;
+                    return now;
                 }
                 when
             };
@@ -77,12 +81,14 @@ impl Pace {
         }
     }
 
-    /// Reads the live limit off a reply. `X-RateLimit-Limit` sets the pace
-    /// to the window over that limit, with headroom; `X-RateLimit-Remaining`
-    /// at nought holds every caller until `X-RateLimit-Reset`, or a whole
-    /// window when the reply gives no reset. A header that does not parse
+    /// Reads the live limit off the reply to a request sent at `sent_at`.
+    /// `X-RateLimit-Limit` sets the pace to the window over that limit, with
+    /// headroom, unless a newer request's reply already spoke.
+    /// `X-RateLimit-Remaining` at nought holds every caller for the reply's
+    /// `Retry-After`, else until its `X-RateLimit-Reset`, else a whole
+    /// window, never longer than the window. A header that does not parse
     /// changes nothing.
-    fn observe(&self, r: &HttpResponse) {
+    fn observe(&self, sent_at: Instant, r: &HttpResponse) {
         let Some(window) = self.window else {
             return;
         };
@@ -92,12 +98,22 @@ impl Pace {
             return;
         }
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(limit) = limit {
+        if let Some(limit) = limit
+            && st.live_from.is_none_or(|t| sent_at >= t)
+        {
             st.live_gap = window.mul_f64(LIVE_HEADROOM) / u32::try_from(limit).unwrap_or(u32::MAX);
+            st.live_from = Some(sent_at);
         }
         if remaining == Some(0) {
-            let wait = header_u64(r, "x-ratelimit-reset")
-                .map(|reset| reset_in(reset, unix_now()))
+            // Retry-After is a length, so no clock skew can shorten it; a
+            // reset that reads as already past is skew too, and a skewed
+            // reset must never send the next request straight into a 429.
+            let wait = retry_after(r)
+                .map(|s| Duration::from_secs_f64(s.max(0.0)))
+                .or_else(|| {
+                    header_u64(r, "x-ratelimit-reset")
+                        .and_then(|reset| reset_in(reset, anibeam_foundation::time::now_secs()))
+                })
                 .unwrap_or(window)
                 .min(window);
             let hold = Instant::now() + wait;
@@ -110,22 +126,18 @@ fn header_u64(r: &HttpResponse, name: &str) -> Option<u64> {
     r.header(name).and_then(|s| s.trim().parse::<u64>().ok())
 }
 
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// How long until an `X-RateLimit-Reset` comes round. AniList sends a Unix
 /// time; a value too small to be one is read as seconds from now, which is
-/// what some providers send instead. A reset already past is nought.
-fn reset_in(reset: u64, now_unix: u64) -> Duration {
+/// what some providers send instead. A reset that is not ahead says nothing
+/// about when the budget comes back, so it is `None`.
+fn reset_in(reset: u64, now_unix: i64) -> Option<Duration> {
     const A_UNIX_TIME: u64 = 1_000_000_000;
-    if reset >= A_UNIX_TIME {
-        Duration::from_secs(reset.saturating_sub(now_unix))
+    let secs = if reset >= A_UNIX_TIME {
+        u64::try_from(i64::try_from(reset).ok()?.checked_sub(now_unix)?).ok()?
     } else {
-        Duration::from_secs(reset)
-    }
+        reset
+    };
+    (secs > 0).then(|| Duration::from_secs(secs))
 }
 
 pub struct ProviderClient {
@@ -259,7 +271,7 @@ impl ProviderClient {
         per_attempt: Option<Duration>,
     ) -> Result<HttpResponse, CoreError> {
         let attempt = || async {
-            self.pace.turn().await;
+            let sent_at = self.pace.turn().await;
             let sent = match per_attempt {
                 Some(d) => match tokio::time::timeout(d, self.http.send(req.clone())).await {
                     Ok(sent) => sent,
@@ -276,7 +288,7 @@ impl ProviderClient {
                 None => self.http.send(req.clone()).await,
             };
             if let Ok(r) = &sent {
-                self.pace.observe(r);
+                self.pace.observe(sent_at, r);
             }
             match sent {
                 Ok(r) if is_rate_limited(&r) => Err(Attempt::Limited(Box::new(r))),
@@ -565,8 +577,9 @@ mod tests {
     }
 
     /// A server that keeps the limit AniList does: `limit` requests in any
-    /// `window`, said on every reply in `X-RateLimit-Limit` and
-    /// `X-RateLimit-Remaining`, and a 429 for the one past it.
+    /// `window`, said on every reply in `X-RateLimit-Limit`, and a 429 for
+    /// the one past it. It never says what remains, so a client that stays
+    /// under it does so on the pace alone, never on a hold.
     struct Limited {
         limit: usize,
         window: Duration,
@@ -600,11 +613,7 @@ mod tests {
             } else {
                 seen.push(now);
             }
-            let remaining = self.limit - seen.len();
-            let headers = vec![
-                ("X-RateLimit-Limit".to_string(), self.limit.to_string()),
-                ("X-RateLimit-Remaining".to_string(), remaining.to_string()),
-            ];
+            let headers = vec![("X-RateLimit-Limit".to_string(), self.limit.to_string())];
             Box::pin(async move {
                 Ok(HttpResponse {
                     status: if over { 429 } else { 200 },
@@ -688,7 +697,8 @@ mod tests {
     }
 
     /// The pace follows the limit both ways: a degraded 30 widens it, and a
-    /// limit back at 90 lets it close again, never below the floor.
+    /// limit back at 90 lets it close again, never below the floor. Only a
+    /// reply to a newer request moves it.
     #[test]
     fn the_live_gap_follows_the_reported_limit() {
         let mut pace = Pace::new(Duration::from_millis(800));
@@ -701,29 +711,85 @@ mod tests {
             ],
             body: vec![],
         };
-        pace.observe(&reply("30"));
+        pace.observe(Instant::now().into(), &reply("30"));
         let gap = pace.state.lock().unwrap().live_gap;
         assert_eq!(
             gap,
             Duration::from_millis(2200),
             "30 a minute with headroom"
         );
-        pace.observe(&reply("90"));
+        pace.observe(Instant::now().into(), &reply("90"));
         let gap = pace.state.lock().unwrap().live_gap;
         assert!(gap < pace.floor, "{gap:?}");
-        pace.observe(&reply("not a number"));
+        pace.observe(Instant::now().into(), &reply("not a number"));
         let gap = pace.state.lock().unwrap().live_gap;
         assert!(
             gap < pace.floor,
             "a bad header keeps the last limit: {gap:?}"
         );
+
+        // Two requests in flight as AniList degrades: the newer one's reply
+        // says 30 and lands first, the older one's says 90 and lands after.
+        let older: tokio::time::Instant = Instant::now().into();
+        let newer = older + Duration::from_millis(5);
+        pace.observe(newer, &reply("30"));
+        pace.observe(older, &reply("90"));
+        let gap = pace.state.lock().unwrap().live_gap;
+        assert_eq!(
+            gap,
+            Duration::from_millis(2200),
+            "a stale reply undid the newer limit"
+        );
     }
 
     #[test]
     fn a_reset_reads_as_a_unix_time_or_as_seconds_from_now() {
-        let now = 1_800_000_000;
-        assert_eq!(reset_in(now + 42, now), Duration::from_secs(42));
-        assert_eq!(reset_in(now - 5, now), Duration::ZERO, "already past");
-        assert_eq!(reset_in(17, now), Duration::from_secs(17));
+        let now: i64 = 1_800_000_000;
+        assert_eq!(
+            reset_in(now as u64 + 42, now),
+            Some(Duration::from_secs(42))
+        );
+        assert_eq!(reset_in(now as u64 - 5, now), None, "already past");
+        assert_eq!(reset_in(now as u64, now), None, "now is not ahead");
+        assert_eq!(reset_in(17, now), Some(Duration::from_secs(17)));
+    }
+
+    /// A reset that reads as already past is clock skew, so the hold falls
+    /// back to the window rather than to nothing; a Retry-After, which no
+    /// skew can move, wins over the reset.
+    #[tokio::test]
+    async fn a_skewed_reset_holds_the_window_and_retry_after_wins_over_it() {
+        let window = Duration::from_millis(300);
+        let past = vec![
+            ("X-RateLimit-Limit".to_string(), "1000".to_string()),
+            ("X-RateLimit-Remaining".to_string(), "0".to_string()),
+            ("X-RateLimit-Reset".to_string(), "1000000001".to_string()),
+        ];
+        let http = FakeHttp::new();
+        http.push_with_headers(200, "a", past.clone());
+        http.push(200, "b");
+        let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1))
+            .with_live_limit(window);
+        let start = Instant::now();
+        client.send(get("https://x/")).await.unwrap();
+        client.send(get("https://x/")).await.unwrap();
+        assert!(start.elapsed() >= window, "{:?}", start.elapsed());
+
+        let window = Duration::from_secs(5);
+        let mut asked = past;
+        asked.push(("Retry-After".to_string(), "0.1".to_string()));
+        let http = FakeHttp::new();
+        http.push_with_headers(200, "a", asked);
+        http.push(200, "b");
+        let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1))
+            .with_live_limit(window);
+        let start = Instant::now();
+        client.send(get("https://x/")).await.unwrap();
+        client.send(get("https://x/")).await.unwrap();
+        let took = start.elapsed();
+        assert!(
+            took >= Duration::from_millis(100) && took < Duration::from_secs(2),
+            "{took:?}"
+        );
     }
 }
