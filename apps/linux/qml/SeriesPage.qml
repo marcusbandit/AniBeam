@@ -885,6 +885,7 @@ Item {
                     }
                     // The phone's Get episodes: primary when there is nothing to play
                     Button {
+                        id: getButton
                         objectName: "series-get"
                         visible: !!page.detail && !page.isMovie
                         primary: page.playEpisode === null
@@ -894,23 +895,29 @@ Item {
                         msg: "series-get-episodes"
                         onClicked: page.getEpisodes()
                     }
-                    // The cubes and the words, never wider than the band: the cubes give up
-                    // room to the words first, down to a short run, then the words elide
+                    // The cubes and the words, never wider than the band. Beside the buttons
+                    // when they fit there with the cubes at their shortest run, else on a line
+                    // of their own; either way the cubes give up room to the words first, then
+                    // the words elide
                     Item {
                         id: progressBox
                         objectName: "series-progress-box"
                         visible: !!page.detail
+                        readonly property bool hasCubes: cubes.codes.length > 0
                         readonly property real gap: theme.space(3)
                         readonly property real wordsW: progressLabel.implicitWidth
-                        readonly property real cubesW: cubes.visible
-                            ? Math.max(Math.min(cubes.implicitWidth, theme.space(24)),
-                                       Math.min(cubes.implicitWidth, theme.space(70), playRow.width - gap - wordsW))
+                        readonly property real cubesLeast: hasCubes ? Math.min(cubes.implicitWidth, theme.space(24)) + gap : 0
+                        readonly property real beside: playRow.width - continueButton.width - playRow.spacing
+                            - (page.detail && !page.isMovie ? getButton.width + playRow.spacing : 0)
+                        readonly property real room: beside >= cubesLeast + wordsW ? beside : playRow.width
+                        readonly property real cubesW: hasCubes
+                            ? Math.min(cubes.implicitWidth, Math.max(theme.space(24), Math.min(theme.space(70), room - gap - wordsW)))
                             : 0
-                        width: Math.min(playRow.width, cubesW + (cubes.visible ? gap : 0) + wordsW)
+                        width: Math.min(room, cubesW + (hasCubes ? gap : 0) + wordsW)
                         height: Math.max(continueButton.height, cubes.height, progressLabel.height)
                         EpisodeCubes {
                             id: cubes
-                            visible: codes.length > 0
+                            visible: progressBox.hasCubes
                             anchors.verticalCenter: parent.verticalCenter
                             width: progressBox.cubesW
                             height: implicitHeight
@@ -922,8 +929,8 @@ Item {
                             id: progressLabel
                             objectName: "series-progress"
                             anchors.verticalCenter: parent.verticalCenter
-                            x: cubes.visible ? progressBox.cubesW + progressBox.gap : 0
-                            width: Math.min(implicitWidth, progressBox.width - x)
+                            x: progressBox.hasCubes ? progressBox.cubesW + progressBox.gap : 0
+                            width: Math.max(0, Math.min(implicitWidth, progressBox.width - x))
                             text: page.progressText
                             role: "ledger"
                             color: page.inkDim
