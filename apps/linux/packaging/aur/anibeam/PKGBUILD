@@ -20,6 +20,9 @@ optdepends=(
 # link step never asks for LTO, so the GCC LTO objects come back as undefined C++ bridge
 # symbols. Rust's own LTO is a Cargo profile matter, not a makepkg one.
 options=(!lto)
+# The Discord application the release builds show presence as, the same one CI's secret
+# names. Every presence carries its id, so it is public; the AUR cannot read CI's secrets.
+_discord_client_id=1570603971393880194
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -41,9 +44,7 @@ build() {
   export GIT_CEILING_DIRECTORIES="$srcdir"
   # A release built from source: the release icon, not the dev one a checkout gets.
   export ANIBEAM_ICON=release
-  # The Discord application the release builds show presence as. Every presence carries
-  # its id, so it is public and lives here: the AUR cannot read CI's secret.
-  export ANIBEAM_DISCORD_CLIENT_ID=1570603971393880194
+  export ANIBEAM_DISCORD_CLIENT_ID=$_discord_client_id
   cargo build --frozen --release -p anibeam
 }
 
@@ -53,7 +54,7 @@ check() {
   export CARGO_TARGET_DIR=target
   export GIT_CEILING_DIRECTORIES="$srcdir"
   export ANIBEAM_ICON=release
-  export ANIBEAM_DISCORD_CLIENT_ID=1570603971393880194
+  export ANIBEAM_DISCORD_CLIENT_ID=$_discord_client_id
   cargo test --frozen --release -p anibeam
 }
 
