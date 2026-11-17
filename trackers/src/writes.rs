@@ -133,7 +133,7 @@ pub struct Targets {
 }
 
 impl Targets {
-    fn id_for(&self, t: Tracker) -> Option<u64> {
+    pub(crate) fn id_for(&self, t: Tracker) -> Option<u64> {
         match t {
             Tracker::Anilist => self.anilist,
             Tracker::Mal => self.mal,
@@ -438,7 +438,10 @@ impl WriteLine {
 }
 
 /// A write's place in its entries' lines. The writes after it may start
-/// once this is dropped, which is when the job holding it ends.
+/// once this is dropped: when the job holding it ends, or for a job that
+/// writes many entries, once it has written the one this place is for. A
+/// job holding several places waits for them in the order it took them, so
+/// two such jobs never wait on each other.
 pub(crate) struct Turn {
     line: WriteLine,
     entries: Vec<ListEntry>,

@@ -7,6 +7,7 @@
 //! here stay as they are: the tracker's entry wins on every read from then
 //! on, and an export still carries them.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rusqlite::{Connection, params};
@@ -33,6 +34,12 @@ pub fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError>
 /// overwrite it. A show that any hidden folder shares a match with is left
 /// out, the way every tracker write leaves it out.
 pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError> {
+    offered(conn, t, None)
+}
+
+/// The preview's rows, or with `only` the one row of that series, when it
+/// is still offered.
+fn offered(conn: &Connection, t: Tracker, only: Option<u64>) -> Result<Vec<MoveRow>, CoreError> {
     let (id_column, bare) = match t {
         Tracker::Anilist => ("s.anilist_id", "anilist_id"),
         Tracker::Mal => ("s.mal_id", "mal_id"),
@@ -48,12 +55,13 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
          WHERE {id_column} IS NOT NULL AND s.hidden = 0 AND s.missing_since IS NULL
            AND (e.updated_at IS NULL OR l.updated_at > e.updated_at)
            AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1 AND h.{bare} = {id_column})
+           AND (?2 IS NULL OR s.id = ?2)
          ORDER BY s.folder_name COLLATE NOCASE"
     );
     let mut stmt = conn.prepare(&sql)?;
     let status = |raw: Option<String>| raw.and_then(|s| ListStatus::from_column(&s));
     let rows = stmt
-        .query_map(params![t.as_str()], |r| {
+        .query_map(params![t.as_str(), only.map(|s| s as i64)], |r| {
             let folder: String = r.get(1)?;
             let (romaji, english, native): (Option<String>, Option<String>, Option<String>) =
                 (r.get(6)?, r.get(7)?, r.get(8)?);
@@ -113,25 +121,17 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
     // order picked, so a write to one of them asked for after the move
     // waits until the move has written it, and one asked for before goes
     // first (#1136).
-    let mut picked: Vec<u64> = Vec::new();
-    for s in series {
-        if !picked.contains(&s) {
-            picked.push(s);
-        }
-    }
-    let mut turns = Vec::new();
+    let mut seen = HashSet::new();
+    let picked: Vec<u64> = series.into_iter().filter(|s| seen.insert(*s)).collect();
+    let mut turns = HashMap::new();
     trackers.services.store.read(|c| {
         for &s in &picked {
             // A series gone already is the job's to count as failed.
             let Ok(target) = writes::targets(c, s) else {
                 continue;
             };
-            let id = match t {
-                Tracker::Anilist => target.anilist,
-                Tracker::Mal => target.mal,
-            };
-            if let Some(id) = id {
-                turns.push((s, trackers.write_line.join_entries(vec![(t, id)])));
+            if let Some(id) = target.id_for(t) {
+                turns.insert(s, (id, trackers.write_line.join_entries(vec![(t, id)])));
             }
         }
         Ok(())
@@ -143,9 +143,10 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
     }))
 }
 
-/// Each picked series in turn, read afresh from the preview so a row the
-/// tracker already matches, or one that left the list kept here, sends
-/// nothing. A status goes first and a score second, each through the write
+/// Each picked series in turn, read afresh from the preview once its turn
+/// has come, so a row the tracker already matches, one a write ahead of it
+/// in the line made the tracker's newer, or one that left the list kept
+/// here, sends nothing. A status goes first and a score second, each through the write
 /// the menus use, to this tracker alone; one the tracker refuses is that
 /// series' failure, never the job's. The picks go in the order picked, the
 /// order their places in the write line were taken, each waiting its turn
@@ -155,19 +156,21 @@ async fn run(
     ctx: Arc<JobCtx>,
     t: Tracker,
     picked: Vec<u64>,
-    mut turns: Vec<(u64, writes::Turn)>,
+    mut turns: HashMap<u64, (u64, writes::Turn)>,
 ) -> Result<Finished, CoreError> {
+    let order: HashMap<u64, usize> = picked.iter().enumerate().map(|(i, s)| (*s, i)).collect();
     let mut rows: Vec<MoveRow> = trackers
         .services
         .store
         .write_async(move |c| preview(c, t))
         .await?
         .into_iter()
-        .filter(|r| picked.contains(&r.series))
+        .filter(|r| order.contains_key(&r.series))
         .collect();
-    rows.sort_by_key(|r| picked.iter().position(|s| *s == r.series));
+    rows.sort_by_key(|r| order[&r.series]);
     // A pick the move will not write needs no place.
-    turns.retain(|(s, _)| rows.iter().any(|r| r.series == *s));
+    let kept: HashSet<u64> = rows.iter().map(|r| r.series).collect();
+    turns.retain(|s, _| kept.contains(s));
     let user_id = trackers
         .services
         .store
@@ -176,17 +179,22 @@ async fn run(
         .and_then(|row| row.user_id);
     let total = rows.len() as u64;
     let (mut moved, mut failed) = (0u32, 0u32);
-    for (n, row) in rows.iter().enumerate() {
+    for (n, listed) in rows.iter().enumerate() {
         ctx.checkpoint()?;
-        ctx.progress(n as u64, Some(total), &row.title);
-        let series = row.series;
-        let _turn = match turns.iter().position(|(s, _)| *s == series) {
-            Some(i) => {
-                let (_, mut turn) = turns.remove(i);
-                turn.come().await;
-                Some(turn)
-            }
-            None => None,
+        ctx.progress(n as u64, Some(total), &listed.title);
+        let series = listed.series;
+        let mut turn = turns.remove(&series);
+        if let Some((_, turn)) = turn.as_mut() {
+            turn.come().await;
+        }
+        let Some(row) = trackers
+            .services
+            .store
+            .write_async(move |c| offered(c, t, Some(series)))
+            .await?
+            .pop()
+        else {
+            continue;
         };
         // A series gone since the preview is that series' failure alone.
         let Ok(target) = trackers
@@ -198,11 +206,19 @@ async fn run(
             failed += 1;
             continue;
         };
-        let Some(media_id) = (match t {
-            Tracker::Anilist => target.anilist,
-            Tracker::Mal => target.mal,
-        }) else {
+        let Some(media_id) = target.id_for(t) else {
             continue;
+        };
+        // Matched to another show since the move was asked for: that
+        // show's line is the one to wait in. The old place goes first, so
+        // the move never waits while holding one.
+        let _rematched = if turn.as_ref().is_none_or(|(id, _)| *id != media_id) {
+            drop(turn.take());
+            let mut place = trackers.write_line.join_entries(vec![(t, media_id)]);
+            place.come().await;
+            Some(place)
+        } else {
+            None
         };
         // A status first, a score after. Whatever landed counts the show as
         // moved; a part the tracker refused says so in the log on its own.

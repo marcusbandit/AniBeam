@@ -217,6 +217,36 @@ fn a_status_set_after_a_move_up_lands_after_it() {
     assert_eq!(anilist.status().as_deref(), Some("DROPPED"));
 }
 
+/// Dropped from the menu, then a move up of the same show while Dropped is
+/// still being saved: the tracker's Dropped is newer than the On hold kept
+/// here by the time the move's turn comes, so the move leaves it.
+#[test]
+fn a_move_up_after_a_status_set_leaves_it() {
+    let mut anilist = StandIn::new(1, None);
+    anilist.hold_save = Some("DROPPED");
+    let anilist = Arc::new(anilist);
+    let (_dir, core, c) = common::open_core_with_http(anilist.clone());
+    let series = show(&core, 1);
+    core.call(Call::SetListStatus {
+        series,
+        status: ListStatus::Paused,
+    })
+    .unwrap();
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+
+    let status = dropped(&core, series);
+    let moved = started(
+        &core,
+        Call::MoveLists {
+            tracker: Tracker::Anilist,
+            series: vec![series],
+        },
+    );
+    common::wait_job(&c, status);
+    common::wait_job(&c, moved);
+    assert_eq!(anilist.status().as_deref(), Some("DROPPED"));
+}
+
 /// Plan to watch has read the list live when Dropped is asked for from the
 /// menu: Planning lands first.
 #[test]
