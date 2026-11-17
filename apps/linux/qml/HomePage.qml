@@ -1443,7 +1443,10 @@ Item {
         objectName: "home-tracker-nudge"
         visible: page.libraryEmpty && wanted
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
+        anchors.bottom: parent.bottom
+        // Over the update island when the two share the page's right side, never under it (#1093)
+        readonly property bool underIsland: frame.islandReach > 0 && x + width > page.width - frame.islandReach
+        anchors.bottomMargin: underIsland ? Math.max(theme.space(10), frame.islandRise + theme.space(4)) : theme.space(10)
         width: Math.min(parent.width - theme.space(16), theme.space(220))
         height: implicitHeight
     }
