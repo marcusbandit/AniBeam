@@ -16,6 +16,8 @@ use anibeam_foundation::services::Services;
 
 /// The gap each upstream is paced to, from its published limit.
 const ANILIST_GAP: Duration = Duration::from_millis(800);
+/// The window AniList's `X-RateLimit-Limit` counts over.
+const ANILIST_WINDOW: Duration = Duration::from_secs(60);
 const JIKAN_GAP: Duration = Duration::from_millis(1100);
 const ANISKIP_GAP: Duration = Duration::from_millis(250);
 const MAL_GAP: Duration = Duration::from_millis(500);
@@ -52,11 +54,13 @@ impl Net {
             services.paths.images_dir(),
             http.clone(),
         );
-        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
-            Upstream::Anilist,
-            http.clone(),
-            ANILIST_GAP,
-        )));
+        // AniList reports its live limit on every reply, and it moves: 90 a
+        // minute normally, 30 while degraded. The gap is the floor; the
+        // replies widen it (#732).
+        let anilist = Arc::new(AnilistClient::new(
+            ProviderClient::new(Upstream::Anilist, http.clone(), ANILIST_GAP)
+                .with_live_limit(ANILIST_WINDOW),
+        ));
         // A match waits on Jikan, so its requests are capped the same way:
         // a Jikan that has stopped answering costs one timeout, not a hang.
         let jikan = Arc::new(JikanClient::new(
