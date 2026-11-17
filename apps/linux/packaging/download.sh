@@ -1,7 +1,9 @@
-# Sourced by deps.sh, appimage.sh and packages.sh: downloads that outlive one bad mirror (#953).
-# A mirror that never answers, a 504 from a release host or a transfer that stalls fails one
-# attempt, never the build. Each source is tried six times, curl waiting 1, 2, 4, 8 and 16
-# seconds between them, and then the next source is tried the same way.
+# Sourced by every platform's packaging scripts: downloads that outlive one bad mirror (#953,
+# #1140). A mirror that never answers, a 504 from a release host or a transfer that stalls
+# fails one attempt, never the build. Each source is tried six times, curl waiting 1, 2, 4, 8
+# and 16 seconds between them, and then the next source is tried the same way.
+# It runs under bash on Linux, on macOS with BSD tools and in Git Bash on Windows, so it uses
+# nothing GNU-only without a fallback: the checksum tool and timeout are looked up below.
 # shellcheck shell=bash
 
 # download <file> <url> [<fallback url>...]: writes <file> only once a download finished.
@@ -29,13 +31,49 @@ download() {
   return 1
 }
 
+# sha256_of <file>: the file's sha256 in hex. macOS has shasum but no sha256sum. Reading
+# stdin keeps a Windows path out of the output, which sha256sum would escape.
+sha256_of() {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum < "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 < "$1" | cut -d' ' -f1
+  fi
+}
+
+# verify <file> <sha256>: fails, and removes the file, when it is not the pinned one.
+verify() {
+  local got
+  got="$(sha256_of "$1")"
+  [ "$got" = "$2" ] && return 0
+  echo "checksum mismatch for $(basename "$1"): got $got, want $2" >&2
+  rm -f "$1"
+  return 1
+}
+
 # fetch <url> <sha256> <name>: into the caller's $downloads directory, checked every time, so
 # a cached file that went bad is fetched again on the next run.
 fetch() {
   local file="${downloads:?fetch needs the caller to set downloads}/$3"
   mkdir -p "$downloads"
   [ -f "$file" ] || download "$file" "$1"
-  echo "$2  $file" | sha256sum -c --quiet - || { echo "checksum mismatch for $3" >&2; rm -f "$file"; exit 1; }
+  verify "$file" "$2" || exit 1
+}
+
+# with_timeout <seconds> <command>...: runs the command, killed after <seconds> where a GNU
+# timeout exists. macOS has none unless Homebrew's coreutils put gtimeout there, and Windows'
+# own timeout.exe is a different program, so each is tried before it is trusted. Without one
+# the command runs uncapped; git's low-speed limit still ends a stalled clone.
+with_timeout() {
+  local secs="$1"
+  shift
+  if timeout 1 true > /dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif gtimeout 1 true > /dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
 }
 
 # clone <dir> <tag> <commit> <url> [<fallback url>...]: a shallow clone of <tag>, three tries
@@ -47,7 +85,7 @@ clone() {
   for url in "$@"; do
     for try in 1 2 3; do
       rm -rf "$dir"
-      if timeout 300 git -c advice.detachedHead=false -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
+      if with_timeout 300 git -c advice.detachedHead=false -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
           clone --quiet --depth 1 --branch "$tag" "$url" "$dir"; then
         if [ "$(git -C "$dir" rev-parse HEAD)" = "$commit" ]; then
           return 0

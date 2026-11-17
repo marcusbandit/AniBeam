@@ -39,8 +39,8 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=SCRIPTDIR/download.sh
-. "$here/download.sh"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 prefix="$1"
 : "${QMAKE:?QMAKE names the qmake of the Qt that install-qt-action put in place}"
 FFMPEG_VERSION=6.1.6

@@ -28,8 +28,8 @@ pkgver="${version//-/\~}"
 
 # download.sh's fetch puts each pinned file in $downloads, retrying a host that times out
 # or answers 504 (#953).
-# shellcheck source=SCRIPTDIR/download.sh
-. "$here/download.sh"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 
 
 echo "== nfpm $NFPM_VERSION"

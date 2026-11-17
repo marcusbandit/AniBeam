@@ -10,17 +10,24 @@
 #   qbittorrent-nox  qBittorrent has no headless build for Windows, so it is built here the
 #                way its own Windows CI builds the GUI one, with the GUI off: OpenSSL and zlib
 #                static from vcpkg, boost headers, libtorrent static.
+# Every download and clone goes through ../download.sh, which retries and falls back to a
+# second source where one serves the same bytes (#1140).
 set -euo pipefail
 # Git Bash rewrites anything that looks like a path, /nologo and /def:x included. Its tar
 # reads C:/... as a remote host, hence --force-local below.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$(dirname "$0")/../download.sh"
 
 MPV_RELEASE=20261021
 MPV_ASSET=mpv-dev-x86_64-20261021-git-e471496c56.7z
 MPV_SHA256=efc719eff3dc5954b4a5efc800632808bcec01cc9034940dd14e5eb7fe9ea633
 ECM_VERSION=v6.31.0
+ECM_COMMIT=2958379fb49c71129f119ec17f88df0b5ea21550
 MPVQT_VERSION=v1.2.0
+MPVQT_COMMIT=edb1e3213e45aeec7dfcb74b1f5e722264af6636
 BOOST_VERSION=1.91.0
+BOOST_SHA256=5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463
 LIBTORRENT_VERSION=2.0.15
 LIBTORRENT_SHA256=5e2e79129823b7ea48721164c32b5aaf83d3fd733b5502100f6705b29f27bb02
 QBT_VERSION=5.2.4
@@ -36,14 +43,9 @@ work="$(cygpath -m -l "$(mktemp -d)")"
 mkdir -p "$prefix/bin" "$prefix/lib" "$prefix/include"
 qt="$(cygpath -m "${QT_ROOT_DIR:?QT_ROOT_DIR names the Qt install-qt-action set up}")"
 
-fetch() { # url sha256 out
-  curl -fsSL --retry 3 -o "$3" "$1"
-  echo "$2  $3" | sha256sum -c -
-}
-
 echo "== libmpv ($MPV_ASSET)"
-fetch "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$MPV_RELEASE/$MPV_ASSET" \
-  "$MPV_SHA256" "$work/mpv.7z"
+download "$work/mpv.7z" "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$MPV_RELEASE/$MPV_ASSET"
+verify "$work/mpv.7z" "$MPV_SHA256"
 7z x -y -o"$work/mpv" "$work/mpv.7z" > /dev/null
 cp -R "$work/mpv/include/mpv" "$prefix/include/"
 cp "$work/mpv/libmpv-2.dll" "$prefix/bin/"
@@ -57,7 +59,10 @@ grep -q mpv_render_context_create "$work/mpv.def"
 lib /nologo /def:"$work/mpv.def" /machine:x64 /out:"$prefix/lib/mpv.lib"
 
 echo "== extra-cmake-modules $ECM_VERSION"
-git clone --quiet --depth 1 --branch "$ECM_VERSION" https://invent.kde.org/frameworks/extra-cmake-modules.git "$work/ecm"
+# KDE's GitHub mirrors are the second source for this and MpvQt; clone checks each tag is
+# still the pinned commit.
+clone "$work/ecm" "$ECM_VERSION" "$ECM_COMMIT" \
+  https://invent.kde.org/frameworks/extra-cmake-modules.git https://github.com/KDE/extra-cmake-modules.git
 cmake -S "$work/ecm" -B "$work/ecm-build" -G Ninja -DCMAKE_INSTALL_PREFIX="$prefix" \
   -DBUILD_TESTING=OFF -DBUILD_HTML_DOCS=OFF -DBUILD_MAN_DOCS=OFF -DBUILD_QTHELP_DOCS=OFF
 cmake --install "$work/ecm-build"
@@ -65,7 +70,8 @@ cmake --install "$work/ecm-build"
 echo "== MpvQt $MPVQT_VERSION"
 # FindLibmpv hands CMake <prefix>/include/mpv while the sources say <mpv/client.h>, so the
 # prefix's include directory goes in by hand, as on the Mac.
-git clone --quiet --depth 1 --branch "$MPVQT_VERSION" https://invent.kde.org/libraries/mpvqt.git "$work/mpvqt"
+clone "$work/mpvqt" "$MPVQT_VERSION" "$MPVQT_COMMIT" \
+  https://invent.kde.org/libraries/mpvqt.git https://github.com/KDE/mpvqt.git
 cmake -S "$work/mpvqt" -B "$work/mpvqt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$prefix" \
@@ -90,14 +96,18 @@ toolchain="$VCPKG/scripts/buildsystems/vcpkg.cmake"
 
 echo "== boost $BOOST_VERSION headers"
 boost_tar="boost_${BOOST_VERSION//./_}"
-curl -fsSL --retry 3 -o "$work/boost.tar.gz" \
-  "https://archives.boost.io/release/$BOOST_VERSION/source/$boost_tar.tar.gz"
+# SourceForge carries the same tarball; the sha256 is the one archives.boost.io publishes.
+download "$work/boost.tar.gz" \
+  "https://archives.boost.io/release/$BOOST_VERSION/source/$boost_tar.tar.gz" \
+  "https://sourceforge.net/projects/boost/files/boost/$BOOST_VERSION/$boost_tar.tar.gz/download"
+verify "$work/boost.tar.gz" "$BOOST_SHA256"
 tar --force-local -xzf "$work/boost.tar.gz" -C "$work"
 boost="$work/$boost_tar"
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
-fetch "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz" \
-  "$LIBTORRENT_SHA256" "$work/libtorrent.tar.gz"
+download "$work/libtorrent.tar.gz" \
+  "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz"
+verify "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256"
 tar --force-local -xzf "$work/libtorrent.tar.gz" -C "$work"
 cmake -S "$work/libtorrent-rasterbar-$LIBTORRENT_VERSION" -B "$work/libtorrent-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
@@ -113,8 +123,8 @@ cmake --build "$work/libtorrent-build"
 cmake --install "$work/libtorrent-build"
 
 echo "== qBittorrent $QBT_VERSION (nox)"
-fetch "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz" \
-  "$QBT_SHA256" "$work/qbittorrent.tar.gz"
+download "$work/qbittorrent.tar.gz" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
+verify "$work/qbittorrent.tar.gz" "$QBT_SHA256"
 tar --force-local -xzf "$work/qbittorrent.tar.gz" -C "$work"
 cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
