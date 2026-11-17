@@ -441,7 +441,8 @@ impl Converter {
     }
 
     /// The bytes of one piece, converting as needed. None when it cannot be
-    /// had: no encoder, ffmpeg failed, or the piece is past the end.
+    /// had: no encoder, ffmpeg failed, or the piece is past the end. A listed
+    /// piece past the last video frame comes back empty.
     pub async fn piece(&self, key: &Key, source: &Source, i: u32) -> Option<Vec<u8>> {
         // A length no playlist lists (none, broken, or past a day) never
         // reaches ffmpeg.
@@ -465,10 +466,17 @@ impl Converter {
             let written = written(&j.dir, from.unwrap_or(i)).await;
             let alive = j.run.as_mut().is_some_and(Run::alive);
             let covers = from.is_some_and(|f| f <= i);
+            if covers && !alive && j.run.as_ref().and_then(|r| r.ended) == Some(true) {
+                // ffmpeg finished the episode without this piece. It starts a
+                // piece only on a video frame, so one the file's length lists
+                // past the last frame never comes: audio that runs past the
+                // picture, or a slow frame rate. What is left of the episode
+                // went into the piece before, and this one is empty.
+                return Some(Vec::new());
+            }
             if covers && !alive {
-                // This ffmpeg ended without writing the piece: it failed, or
-                // the file is shorter than its probe said. Starting it again
-                // would only fail again.
+                // This ffmpeg failed before writing the piece. Starting it
+                // again would only fail again.
                 let said = std::fs::read_to_string(j.dir.join(LOG)).unwrap_or_default();
                 let last = said.lines().last().unwrap_or("nothing");
                 tracing::warn!(
@@ -910,6 +918,56 @@ mod tests {
             .stdin(Stdio::null())
             .output()
             .is_ok_and(|o| o.status.success())
+    }
+
+    /// Makes a test episode from ffmpeg's own sources, or None without ffmpeg.
+    fn episode(dir: &Path, name: &str, video: &str, audio_secs: f64) -> Option<PathBuf> {
+        let path = dir.join(name);
+        let made = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-nostdin", "-y"])
+            .args(["-f", "lavfi", "-i", video, "-f", "lavfi", "-i"])
+            .arg(format!("sine=d={audio_secs}"))
+            .args(["-c:v", "libx264", "-c:a", "aac"])
+            .arg(&path)
+            .stdin(Stdio::null())
+            .output()
+            .is_ok_and(|o| o.status.success());
+        made.then_some(path)
+    }
+
+    #[tokio::test]
+    async fn every_listed_piece_is_answered_when_the_picture_ends_before_the_file() {
+        // The HLS muxer starts a piece only on a video frame, so a piece the
+        // file's length lists past the last frame is never written (#1120):
+        // audio that runs past the picture, and a slow frame rate whose last
+        // frame starts before the last piece's boundary.
+        if !runs(Encoder::X264) {
+            eprintln!("skipped: no ffmpeg with libx264 here");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let cases = [
+            ("long-audio.mkv", "testsrc=s=256x144:r=24:d=11.96"),
+            ("slow.mkv", "testsrc=s=256x144:r=5:d=12"),
+        ];
+        let converter = Converter::new(dir.path());
+        for (n, (name, video)) in cases.into_iter().enumerate() {
+            let path = episode(dir.path(), name, video, 12.4).expect("ffmpeg made the episode");
+            let probe = probe(&path).await.expect("ffprobe read it");
+            let count = wire::hls_pieces(probe.duration).unwrap();
+            assert_eq!(count, 3, "{name} lists a third piece past its picture");
+            let source = Source { path, probe };
+            let key = Key {
+                file: n as u64,
+                height: 480,
+                audio: None,
+                burn: None,
+            };
+            for i in 0..count {
+                let piece = converter.piece(&key, &source, i).await;
+                assert!(piece.is_some(), "{name} gave no piece {i}");
+            }
+        }
     }
 
     #[tokio::test]
