@@ -1,6 +1,7 @@
 // The Mac's tracker sign-in window (#1176): the authorize page in an
-// ASWebAuthenticationSession, a window of the system's own with Safari's engine and
-// cookies, rather than a tab in the default browser. src/signin.rs is the Rust half and the
+// ASWebAuthenticationSession, a window of its own rather than a tab. macOS lets the default
+// browser serve the session when it can (Zen did, on the machine this was tried on), else
+// Safari does, so the user's existing sign-in to the tracker carries over either way. src/signin.rs is the Rust half and the
 // only caller, always on the Qt thread, which on the Mac is the main thread AppKit wants.
 // Built with ARC beside cpp/nowplaying.mm, see build.rs.
 //
@@ -86,7 +87,7 @@ bool anibeam_signin_start(const char *url) {
         started = s;
         if (!anchor) anchor = [[AnibeamSignInAnchor alloc] init];
         s.presentationContextProvider = anchor;
-        // Safari's cookies, so a provider already signed in there only asks to allow.
+        // The browser's cookies, so a provider already signed in there only asks to allow.
         s.prefersEphemeralWebBrowserSession = NO;
         session = s;
         if (![s start]) {

@@ -1,5 +1,5 @@
 //! The Mac's tracker sign-in window (#1176): the authorize page in an
-//! ASWebAuthenticationSession rather than the default browser. Every AppKit object lives in
+//! ASWebAuthenticationSession window rather than a browser tab. Every AppKit object lives in
 //! cpp/signin.mm; this side hands it the url. Compiled on macOS only, and called from the
 //! Shell invokables only, so always on the Qt thread, which on the Mac is the main thread.
 
