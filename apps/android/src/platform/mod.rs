@@ -33,8 +33,9 @@ pub use target::{
     app_icon, ask_notifications, bars, brightness, copy_text, crease, downloads_paused,
     episode_ready, fold, give_audio_focus, line_colours, log, multicast, notification_settings,
     notifications_allowed, open_url, pick_file, player_awake, player_screen, relocalize,
-    set_app_icon, set_brightness, set_volume, start_service, stop_service, stopped_by_system,
-    system_dark, system_locale, take_audio_focus, unmetered, update_service, volume, window_up,
+    rest_service, service_go_on, set_app_icon, set_brightness, set_volume, start_service,
+    stop_service, system_dark, system_locale, take_audio_focus, unmetered, update_service, volume,
+    window_up, work_state,
 };
 // Only the player calls these, and it links libmpv only where libmpv was fetched.
 #[cfg_attr(not(libmpv), allow(unused_imports))]
@@ -50,6 +51,68 @@ pub enum FocusAsk {
     Refused,
     /// The request could not be made, so focus changes would never arrive.
     Unavailable,
+}
+
+/// Where the work that keeps downloads going with the screen off stands, as the platform
+/// says (`TorrentService.state` on Android). The platform sees every start, stop and cancel,
+/// so the app reads this rather than guessing from what the downloads look like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Work {
+    pub state: WorkState,
+    /// Goes up on every change of state, so a stop and a rerun between two looks still show.
+    pub generation: u32,
+    /// The app is in front, not only kept up by the work.
+    pub on_screen: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkState {
+    /// None: never started, ended by the app, or dropped because the app was opened.
+    Idle,
+    Running,
+    /// Scheduled, and the platform has not run it yet.
+    Waiting,
+    /// Stopped by the platform, or rested by the app; it goes on when the app is opened.
+    Stopped,
+    /// Stopped by the person from the phone's list of running apps: it goes on once the app
+    /// was away and is opened again.
+    StoppedByUser,
+}
+
+impl Work {
+    /// What a process starts with.
+    pub const NONE: Work = Work {
+        state: WorkState::Idle,
+        generation: 0,
+        on_screen: true,
+    };
+
+    /// `TorrentService.state`'s answer: the generation from bit 4 up, bit 3 for on screen,
+    /// the state below.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn from_bits(bits: i32) -> Work {
+        let state = match bits & 7 {
+            1 => WorkState::Running,
+            2 => WorkState::Waiting,
+            3 => WorkState::Stopped,
+            4 => WorkState::StoppedByUser,
+            _ => WorkState::Idle,
+        };
+        Work {
+            state,
+            generation: (bits as u32) >> 4,
+            on_screen: bits & 8 != 0,
+        }
+    }
+
+    /// Running or about to: what the app asks of it is a change in place.
+    pub fn up(&self) -> bool {
+        matches!(self.state, WorkState::Running | WorkState::Waiting)
+    }
+
+    pub fn stopped(&self) -> bool {
+        matches!(self.state, WorkState::Stopped | WorkState::StoppedByUser)
+    }
 }
 
 /// Bytes free and in total on the filesystem that holds `dir`.
@@ -72,4 +135,21 @@ pub fn used(dir: &std::path::Path) -> u64 {
         }
     }
     total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_work_state_reads_as_java_packs_it() {
+        let w = Work::from_bits((7 << 4) | 8 | 3);
+        assert_eq!(w.state, WorkState::Stopped);
+        assert_eq!(w.generation, 7);
+        assert!(w.on_screen && w.stopped() && !w.up());
+        let w = Work::from_bits((1 << 4) | 2);
+        assert_eq!(w.state, WorkState::Waiting);
+        assert!(!w.on_screen && w.up());
+        assert_eq!(Work::from_bits(4).state, WorkState::StoppedByUser);
+    }
 }

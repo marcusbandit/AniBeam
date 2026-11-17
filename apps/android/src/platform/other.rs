@@ -48,9 +48,14 @@ pub fn emulator() -> bool {
 /// No notification channels to rename.
 pub fn relocalize() {}
 
+/// Whether the stand-in work is up: `start_service` and `stop_service` move it, so the app
+/// sees the same states it would on a phone that never stops it.
+static UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// No download service: it counts as started.
 pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     let _ = shown;
+    UP.store(true, std::sync::atomic::Ordering::Relaxed);
     true
 }
 
@@ -66,11 +71,29 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
 }
 
 /// No download service to stop.
-pub fn stop_service() {}
+pub fn stop_service() {
+    UP.store(false, std::sync::atomic::Ordering::Relaxed);
+}
 
-/// No download service for the system to stop.
-pub fn stopped_by_system() -> bool {
-    false
+/// No download service to rest: it ends.
+pub fn rest_service() {
+    stop_service();
+}
+
+/// Nothing stops the stand-in work, so nothing goes on.
+pub fn service_go_on() {}
+
+/// Up from `start_service` to `stop_service`, never stopped by anything else.
+pub fn work_state() -> super::Work {
+    let up = UP.load(std::sync::atomic::Ordering::Relaxed);
+    super::Work {
+        state: if up {
+            super::WorkState::Running
+        } else {
+            super::WorkState::Idle
+        },
+        ..super::Work::NONE
+    }
 }
 
 /// No notification to post.

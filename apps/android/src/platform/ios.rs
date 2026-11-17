@@ -39,8 +39,8 @@ use crate::worker::Command;
 pub use super::other::{
     ask_notifications, bars, brightness, copy_text, downloads_paused, episode_ready, line_colours,
     log, multicast, notification_settings, notifications_allowed, open_url, pick_file, relocalize,
-    set_brightness, set_volume, start_service, stop_service, stopped_by_system, unmetered,
-    update_service, volume,
+    rest_service, service_go_on, set_brightness, set_volume, start_service, stop_service,
+    unmetered, update_service, volume, work_state,
 };
 
 /// Called by `main.rs`: runs the app over its data directory in the app's container.

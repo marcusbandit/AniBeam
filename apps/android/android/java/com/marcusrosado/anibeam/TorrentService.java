@@ -20,11 +20,12 @@ import android.util.Log;
  * Rust, in the core's torrent engine, and this only gives the process a notification Android
  * counts as foreground work, so it does not cut the network when the screen goes off. The
  * app calls `start` with what to show, `update` as it changes, and `stop` when nothing is
- * downloading. A finished episode gets a notification of its own, `ready`.
+ * downloading, and `state` tells it where the work stands. A finished episode gets a
+ * notification of its own, `ready`.
  *
  * On Android 14 and later the work is a user-initiated data transfer job (DownloadJob),
  * which has no daily limit; before that, this class is a dataSync foreground service, which
- * has none there either. When Android stops the work all the same, `stopped` says so: the
+ * has none there either. When Android stops the work all the same, `state` says so: the
  * app pauses the downloads and posts `paused`, and they go on when the work runs again or
  * the app is opened.
  *
@@ -51,8 +52,39 @@ public class TorrentService extends Service {
     static volatile int shownProgress = -1;
     /** The app's native side called `start` in this process, so downloads run in it. */
     static volatile boolean live;
-    /** Android stopped the work: set by the job or the service, cleared once it goes on. */
-    static volatile boolean stopped;
+
+    /**
+     * What the download work is doing, as `state` tells Rust. Java sees every start, stop
+     * and cancel, so Rust reads this instead of guessing from what the downloads look like.
+     */
+    static final int IDLE = 0;
+    /** The job runs, or the service is up. */
+    static final int RUNNING = 1;
+    /** The job is scheduled and Android has not run it yet. */
+    static final int WAITING = 2;
+    /** Android stopped the work, or the app rested it; it goes on when the app is opened. */
+    static final int STOPPED = 3;
+    /** Stopped from the phone's list of running apps: stopped until the app is opened again. */
+    static final int STOPPED_BY_USER = 4;
+    static final Object LOCK = new Object();
+    private static int work = IDLE;
+    /** Goes up on every change of `work`, so Rust sees a stop and a rerun between two looks. */
+    private static int generation;
+    /** The app was seen away from the screen since the person stopped the work. */
+    private static boolean away;
+
+    /** Android or the person stopped the work. Called with LOCK held. */
+    static boolean stoppedNow() {
+        return work == STOPPED || work == STOPPED_BY_USER;
+    }
+
+    /** Moves the work to `state`. Called with LOCK held. */
+    static void set(int state) {
+        if (state == work) return;
+        work = state;
+        generation++;
+        away = false;
+    }
 
     /** Android 14 and later run downloads as a user-initiated data transfer job. */
     private static boolean jobs() {
@@ -75,14 +107,19 @@ public class TorrentService extends Service {
         live = true;
         takeWords(channelDownloads, channelReady, fallback);
         keep(title, text, progress);
-        if (jobs()) return DownloadJob.ensure(context);
-        Intent intent = new Intent().setClassName(context, TorrentService.class.getName());
-        try {
-            context.startForegroundService(intent);
-            return true;
-        } catch (RuntimeException e) {
-            Log.w(TAG, "the download service did not start", e);
-            return false;
+        // Downloads run in this process now, so a Paused left by one that died goes.
+        cancelPaused(context);
+        synchronized (LOCK) {
+            if (jobs()) return DownloadJob.ensure(context, true);
+            Intent intent = new Intent().setClassName(context, TorrentService.class.getName());
+            try {
+                context.startForegroundService(intent);
+                set(RUNNING);
+                return true;
+            } catch (RuntimeException e) {
+                Log.w(TAG, "the download service did not start", e);
+                return false;
+            }
         }
     }
 
@@ -153,7 +190,11 @@ public class TorrentService extends Service {
      */
     public static boolean update(Context context, String title, String text, int progress) {
         keep(title, text, progress);
-        if (jobs()) return DownloadJob.ensure(context);
+        if (jobs()) {
+            synchronized (LOCK) {
+                return DownloadJob.ensure(context, false);
+            }
+        }
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return true;
         nm.notify(NOTIFICATION, ongoing(context, title, text, progress));
@@ -162,36 +203,86 @@ public class TorrentService extends Service {
 
     /** Ends the work: nothing is downloading. */
     public static void stop(Context context) {
-        stopped = false;
         keep(null, null, -1);
+        synchronized (LOCK) {
+            end(context);
+            set(IDLE);
+        }
+        cancelPaused(context);
+    }
+
+    /**
+     * Ends the work the way Android stopping it does: nothing moved for a long while with the
+     * app closed, so the downloads pause until it is opened instead of keeping the phone
+     * awake for a torrent nobody seeds.
+     */
+    public static void rest(Context context) {
+        synchronized (LOCK) {
+            end(context);
+            set(STOPPED);
+        }
+    }
+
+    /** The person asked a paused download to go on: a stop ends here. */
+    public static void goOn(Context context) {
+        synchronized (LOCK) {
+            if (stoppedNow()) {
+                if (jobs()) DownloadJob.cancel(context);
+                set(IDLE);
+            }
+        }
+        cancelPaused(context);
+    }
+
+    /** Cancels the job or stops the service, whichever this Android runs. LOCK is held. */
+    private static void end(Context context) {
         if (jobs()) {
             DownloadJob.cancel(context);
         } else {
             context.stopService(new Intent().setClassName(context, TorrentService.class.getName()));
         }
-        NotificationManager nm = context.getSystemService(NotificationManager.class);
-        if (nm != null) nm.cancel(PAUSED);
     }
 
     /**
-     * Whether Android stopped the work and it has not gone on since. Opening the app counts
-     * as going on: then this clears and says false, and the app starts the work again.
+     * The work's state for Rust: the generation in the bits from 4 up, 8 while the app is on
+     * the screen, and IDLE to STOPPED_BY_USER below. Opening the app is when a stop ends:
+     * a stop by Android at once, a stop by the person once the app was away and came back.
+     * The job Android holds back after a stop then goes (it backs off, and after a few
+     * timeouts a day it waits for hours), and the app starts a fresh one.
      */
-    public static boolean stoppedBySystem(Context context) {
-        if (!stopped) return false;
-        ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
-        ActivityManager.getMyMemoryState(info);
-        if (info.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) return true;
-        // The job Android stopped waits to run again, and Android may hold it back for hours
-        // after a few stops. It goes, so the app schedules a fresh one now that it is open.
-        if (jobs()) DownloadJob.cancel(context);
-        goOn(context);
-        return false;
+    public static int state(Context context) {
+        boolean shown = onScreen();
+        boolean lifted = false;
+        int out;
+        synchronized (LOCK) {
+            if (work == STOPPED && shown) {
+                if (jobs()) DownloadJob.cancel(context);
+                set(IDLE);
+                lifted = true;
+            } else if (work == STOPPED_BY_USER) {
+                if (!shown) {
+                    away = true;
+                } else if (away) {
+                    if (jobs()) DownloadJob.cancel(context);
+                    set(IDLE);
+                    lifted = true;
+                }
+            }
+            out = (generation << 4) | (shown ? 8 : 0) | work;
+        }
+        if (lifted) cancelPaused(context);
+        return out;
     }
 
-    /** The work runs again: "Paused" comes down. */
-    static void goOn(Context context) {
-        stopped = false;
+    /** The app is in front: on the screen, not only kept up by the job or the service. */
+    static boolean onScreen() {
+        ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
+        ActivityManager.getMyMemoryState(info);
+        return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+    }
+
+    /** "Paused" comes down: the downloads go on. */
+    static void cancelPaused(Context context) {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm != null) nm.cancel(PAUSED);
     }
@@ -300,7 +391,9 @@ public class TorrentService extends Service {
      */
     @Override
     public void onTimeout(int startId, int fgsType) {
-        stopped = true;
+        synchronized (LOCK) {
+            set(STOPPED);
+        }
         stopSelf();
     }
 
