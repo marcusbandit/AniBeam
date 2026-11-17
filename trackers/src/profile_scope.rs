@@ -149,11 +149,6 @@ fn move_up_offers_each_series_once_against_the_owners_entry() {
 #[test]
 fn the_mark_guard_reads_only_the_owners_progress() {
     let c = two_profiles();
-    c.execute(
-        "DELETE FROM tracker_entries WHERE profile_id = 1 AND media_id = 10",
-        [],
-    )
-    .unwrap();
     let target = writes::Targets {
         series: 1,
         anilist: Some(10),
@@ -161,10 +156,18 @@ fn the_mark_guard_reads_only_the_owners_progress() {
         total: Some(12),
         folder_name: "Shared show".into(),
     };
-    // The friend is at 12, the owner has no entry: episode 5 is still the
-    // owner's to mark.
-    assert!(!writes::covered(&c, &target, &[Tracker::Anilist], 5).unwrap());
-    guest_untouched(&c);
+    let covered = |episode| writes::covered(&c, &target, &[Tracker::Anilist], episode).unwrap();
+    // The owner is at 3 and the friend at 12: the owner's 3 is covered, and
+    // the friend's 12 says nothing about the owner's 5.
+    assert!(covered(3));
+    assert!(!covered(5));
+    // With no entry of the owner's, the friend's covers nothing either.
+    c.execute(
+        "DELETE FROM tracker_entries WHERE profile_id = 1 AND media_id = 10",
+        [],
+    )
+    .unwrap();
+    assert!(!covered(5));
 }
 
 #[test]
