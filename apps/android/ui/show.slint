@@ -6,6 +6,7 @@ import { Theme } from "theme.slint";
 import { Tr } from "tr.slint";
 import { Button, Chip } from "widgets.slint";
 import { Fold } from "fold.slint";
+import { Typing } from "typing.slint";
 import { Tile } from "data.slint";
 
 // A related show or one tapped in a sheet: the AniList id, the library series that holds it
@@ -115,7 +116,7 @@ export component ShowSheet inherits Rectangle {
     in property <float> reach: 0.62;
     callback dismissed();
     background: #000000b0;
-    TouchArea { clicked => { root.dismissed(); } }
+    TouchArea { clicked => { Typing.done += 1; root.dismissed(); } }
     panel := Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -125,7 +126,7 @@ export component ShowSheet inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        TouchArea { clicked => { Typing.done += 1; } }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
