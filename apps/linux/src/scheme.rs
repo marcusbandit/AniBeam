@@ -237,6 +237,32 @@ pub(crate) mod linux {
         Some(dir.join(name))
     }
 
+    /// The user's own applications folder, where a hidden entry of the app's own goes.
+    pub fn user_applications() -> Option<PathBuf> {
+        applications()
+    }
+
+    /// The entry a package installed (`/usr/share/applications`, say), for an install
+    /// that left none in the user's folder (#1167).
+    pub fn system_entry() -> Option<PathBuf> {
+        let dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_default();
+        system_entry_in(&dirs)
+    }
+
+    /// The app's entry in the first of `dirs` (a `$XDG_DATA_DIRS` value) that has one; an
+    /// empty value means the spec's default, `/usr/local/share:/usr/share`.
+    pub(crate) fn system_entry_in(dirs: &str) -> Option<PathBuf> {
+        let dirs = if dirs.trim().is_empty() {
+            "/usr/local/share:/usr/share"
+        } else {
+            dirs
+        };
+        dirs.split(':')
+            .filter(|d| !d.is_empty())
+            .map(|d| Path::new(d).join("applications").join(MAIN))
+            .find(|p| p.is_file())
+    }
+
     /// Puts `text` in the file at `path`: written beside the file and moved over it, so a
     /// reader never sees half a file. An entry that is a symlink (into a dotfiles checkout,
     /// say) gets its target written and stays a link.
@@ -356,6 +382,21 @@ mod tests {
         assert!(linux::replace(&plain, "again\n"));
         assert_eq!(std::fs::read_to_string(&plain).unwrap(), "again\n");
         assert!(!linux::replace(&apps.join("missing.desktop"), "x"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_package_s_entry_is_found_in_the_data_dirs() {
+        let root = tempfile::tempdir().unwrap();
+        let empty = root.path().join("empty");
+        let share = root.path().join("share");
+        std::fs::create_dir_all(share.join("applications")).unwrap();
+        std::fs::create_dir_all(&empty).unwrap();
+        let dirs = format!("{}::{}", empty.display(), share.display());
+        assert_eq!(linux::system_entry_in(&dirs), None);
+        let entry = share.join("applications/com.marcusrosado.Anibeam.desktop");
+        std::fs::write(&entry, "[Desktop Entry]\nExec=anibeam %u\n").unwrap();
+        assert_eq!(linux::system_entry_in(&dirs), Some(entry));
     }
 
     #[test]

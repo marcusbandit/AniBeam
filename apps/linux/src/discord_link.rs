@@ -4,6 +4,11 @@
 //! does, and becomes the handler when nothing else is. The join itself then comes over
 //! Discord's socket once the app is up.
 //!
+//! An AppImage install has a launcher entry in the user's own folder, and the hidden entry
+//! goes beside it. A package (AUR, deb, rpm) installs its entry under `/usr/share`, which the
+//! app cannot write, so the hidden entry goes in the user's folder and runs what the
+//! package's entry runs (#1167).
+//!
 //! Only the user's own files are touched, never with a sandbox root, a drive or a shot, and
 //! nothing when the build has no Discord application.
 
@@ -59,12 +64,19 @@ fn main_exec(entry: &str) -> Option<String> {
 mod linux {
     use std::process::{Command, Stdio};
 
-    use crate::scheme::linux::{launcher_entry, quiet};
+    use crate::scheme::linux::{launcher_entry, quiet, system_entry, user_applications};
 
     pub fn ensure(id: &str) {
-        let Some(own) = launcher_entry() else { return };
-        let Some(dir) = own.parent().map(|d| d.to_path_buf()) else {
-            return;
+        // The user's own entry, else the one a package installed
+        let (dir, own) = match launcher_entry() {
+            Some(own) => match own.parent() {
+                Some(dir) => (dir.to_path_buf(), own),
+                None => return,
+            },
+            None => match (user_applications(), system_entry()) {
+                (Some(dir), Some(own)) => (dir, own),
+                _ => return,
+            },
         };
         let Some(exec) = std::fs::read_to_string(&own)
             .ok()
@@ -72,6 +84,9 @@ mod linux {
         else {
             return;
         };
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
         let name = format!("discord-{id}.desktop");
         let path = dir.join(&name);
         let want = super::entry(id, &exec);
