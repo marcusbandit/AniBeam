@@ -335,26 +335,31 @@ pub fn show_of(
         .filter(|t| *t > 0 && !card.total_is_estimate);
     // A show numbered by season counts each season against its own length:
     // S02E03 is no stand-in for S01E03, and S02E01 is not episode 11 of a
-    // run of 18 (#1091). `missing` lists the card's own season, the latest
-    // on disk, as its cubes do; every season must be whole to be complete.
-    let (missing, missing_season, whole) = match (known_total, card.count_season) {
-        (Some(_), Some(season)) if !lengths.is_empty() => {
-            let missing = gaps(
-                by_season.get(&season),
-                lengths.get(&season).copied().unwrap_or(0),
-            );
-            let whole = lengths
+    // run of 18 (#1091). `missing` lists the earliest season with a gap,
+    // else the card's own, the latest on disk; every season on disk must
+    // have a known length and be whole for the show to be complete.
+    let (missing, missing_season, whole, on_disk) = match (known_total, card.count_season) {
+        (Some(_), Some(card_season)) if !lengths.is_empty() => {
+            let holes: Vec<(u32, Vec<u32>)> = lengths
                 .iter()
-                .all(|(s, len)| gaps(by_season.get(s), *len).is_empty());
-            (missing, Some(season), whole)
+                .map(|(s, len)| (*s, gaps(by_season.get(s), *len)))
+                .filter(|(_, g)| !g.is_empty())
+                .collect();
+            let unlisted = by_season.keys().any(|s| !lengths.contains_key(s));
+            let whole = holes.is_empty() && !unlisted;
+            let (season, missing) = holes
+                .into_iter()
+                .next()
+                .unwrap_or((card_season, Vec::new()));
+            let on_disk = by_season.values().map(|n| n.len() as u64).sum();
+            (missing, Some(season), whole, on_disk)
         }
-        (Some(total), _) => {
+        (total, _) => {
             let pooled: BTreeSet<u32> = by_season.values().flatten().copied().collect();
-            let missing = gaps(Some(&pooled), total);
-            let whole = missing.is_empty();
-            (missing, None, whole)
+            let missing = total.map(|t| gaps(Some(&pooled), t)).unwrap_or_default();
+            let whole = total.is_some() && missing.is_empty();
+            (missing, None, whole, pooled.len() as u64)
         }
-        (None, _) => (Vec::new(), None, false),
     };
     let finished = matches!(
         card.status,
@@ -371,7 +376,7 @@ pub fn show_of(
         path: card.path.clone(),
         poster: card.poster.clone(),
         status: card.status,
-        episodes_on_disk: by_season.values().map(|n| n.len() as u64).sum(),
+        episodes_on_disk: on_disk,
         total_episodes: card.total_episodes,
         total_is_estimate: card.total_is_estimate,
         next_airing: card.next_airing.clone(),
@@ -594,8 +599,31 @@ mod tests {
             .collect();
         let s = show_of(&show, &hole, &lengths);
         assert!(!s.complete, "season 1 lacks episode 3");
-        assert!(s.missing.is_empty(), "season 2 is whole");
+        assert_eq!((s.missing.clone(), s.missing_season), (vec![3], Some(1)));
         assert_eq!(s.episodes_on_disk, 17);
+
+        // a season on disk with no known length proves nothing whole
+        let mut stray = files.clone();
+        stray.push((Some(3), 1.0));
+        let s = show_of(&show, &stray, &lengths);
+        assert!(!s.complete, "season 3's length is unknown");
+        assert!(s.missing.is_empty());
+    }
+
+    #[test]
+    fn numbers_without_seasons_count_once_against_the_one_total() {
+        // an AniList show: a file naming season 2 is no second run of 12
+        let show = card(
+            SeriesKind::Show,
+            Some(AiringStatus::Finished),
+            Some(12),
+            false,
+        );
+        let mut files: Vec<(Option<u32>, f64)> = (1..=12).map(|n| (None, n as f64)).collect();
+        files.extend((1..=12).map(|n| (Some(2), n as f64)));
+        let s = show_of(&show, &files, &BTreeMap::new());
+        assert!(s.complete);
+        assert_eq!((s.episodes_on_disk, s.missing_season), (12, None));
     }
 
     #[test]

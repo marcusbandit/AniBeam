@@ -1193,8 +1193,46 @@ fn a_multi_season_show_links_to_downloads_whole_per_season() {
         .unwrap();
     let show = link(&core);
     assert!(!show.complete, "S01E03 is gone");
-    assert_eq!(show.missing, Vec::<u32>::new(), "season 2 is whole");
+    assert_eq!((show.missing, show.missing_season), (vec![3], Some(1)));
     assert_eq!(show.episodes_on_disk, 17);
+    core.shutdown();
+}
+
+/// A count set by hand for a running show's season stands for that
+/// season's length (#283): three of season 2's eight on disk lists 4 to 8
+/// in season 2, with season 1 whole.
+#[test]
+fn a_count_set_by_hand_is_its_seasons_length_on_the_downloads_link() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s2: Vec<i64> = (0..3).map(|i| now - (3 - i) * DAY).collect();
+    insert_show(&core, 903, "Running", &[(1, long_ago(10)), (2, s2)]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=3).map(|n| (2, n)));
+    let series = tv_series(&core, 903, &files);
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET episodes_set = 8, episodes_set_season = 2 WHERE id = ?1",
+                params![series as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let images = core.services().paths.images_dir();
+    let show = core
+        .store()
+        .read(|c| downloads::link::shows(c, &images, time::now(), &[series]))
+        .unwrap()
+        .remove(&series)
+        .expect("the series links");
+    assert_eq!(
+        (show.total_episodes, show.total_is_estimate),
+        (Some(18), false)
+    );
+    assert_eq!(show.missing, vec![4, 5, 6, 7, 8]);
+    assert_eq!(show.missing_season, Some(2));
+    assert!(!show.complete, "still running");
     core.shutdown();
 }
 
