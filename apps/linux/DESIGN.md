@@ -1,6 +1,6 @@
 # The Linux shell's design direction: flat, home first
 
-AniBeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
+Anibeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
 portrait panel, a local folder of series, mpv in the window, AniList on the side. Its first job
 is getting from launch to the next episode in one click. Its second is keeping the library
 tidy.
@@ -73,7 +73,7 @@ below where they disagree:
   one line saying how anirss and the torrent client stand, the two as chips that open
   the Downloads settings), the search row (the field, the endpoint, Search), and with a
   search up: the query line (Back, the query, the count, what anirss said); while it runs,
-  a panel naming the phase (Starting 1337x, Searching nyaa), the seconds, why it takes that
+  a panel naming the phase (Starting <endpoint>, Searching <endpoint>), the seconds, why it takes that
   long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
   and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
   the rest behind More filters); Narrow and Best match; the library series the query names,
@@ -187,8 +187,8 @@ The killed idioms (below) still hold.
   (4x) and section headings `typeHeading` (2.2x).
 - **Downloads is shows first (#69).** The field suggests shows as you type and searches release
   names on Return, asking every source that is on; a Sources row of chips (lit on, grey off)
-  switches providers, and 1337x is on only while it runs. Clicking it while it is down opens a
-  sheet asking whether to start Jackett, and AniBeam starts it only on that confirm. A release
+  switches providers, and a site reached through a search proxy is on only while it runs. Clicking it while it is down opens a
+  sheet asking whether to start Jackett, and Anibeam starts it only on that confirm. A release
   list opened from a show's grid has Back to the grid (and Escape). Four lenses (Gaps, Airing, Following, Downloaded) and
   an Activity column at the right. A show opens `GetShow.qml`: its providers, a click fetches
   one, the releases as a grid of cubes a group to a row under the library's own row, and a plan
@@ -226,7 +226,6 @@ dark, since it is a dark room either way.
 
 List statuses are quiet too: the accent for Watching and Rewatching, greys for the rest. The
 other hues stay in the palette for the accent picker and for themes, not for surfaces.
-`Fmt.posterTone` is kept but no surface uses it.
 
 Type: **Archivo**, one variable family (`wdth` 62 to 125, `wght` 100 to 900):
 
@@ -340,8 +339,9 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
   opens the series when nothing is next). A series is a hero once on the wall.
 - **Arrange: the wall is boxes.** The owner's ask, after SpaceSniffer (its grouping, not
   its colours): related shows in one labelled box. The header's Arrange control picks
-  Related (the default), Type (TV; Movie; OVA, ONA and specials; Music; Unknown), Genre
-  (the first genre), Watch state (Watching, Not started, Caught up) or None, and it is a
+  None (the default, first in the menu and set apart by a rule), Related, Type (TV; Movie;
+  OVA, ONA and specials; Music; Unknown), Genre (the first genre) or Watch state (Watching,
+  Not started, Caught up), and it is a
   preference (`library_arrange`). Related groups by the core's franchise tag on each card
   (the connected franchise among library series); a group of one is a plain tile, no box.
   Type, Genre and Watch state box every group, one included, since there the label is the

@@ -5,6 +5,7 @@
 //! groups.
 
 mod common;
+use common::started;
 
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
@@ -32,23 +33,6 @@ fn settings(engine: DownloadsEngine) -> DownloadSettings {
     }
 }
 
-/// No case reads the machine's own anirss config: its saved best fit would rank these. The
-/// homes are set once for the whole binary, before any case opens a core, so no case reads
-/// the environment while another writes it.
-fn isolate() {
-    static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-    HOME.get_or_init(|| {
-        let dir =
-            std::env::temp_dir().join(format!("anibeam-native-engine-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &dir);
-            std::env::set_var("XDG_STATE_HOME", &dir);
-        }
-        dir
-    });
-}
-
 fn save(core: &Core, settings: DownloadSettings) {
     let reply = core
         .call(Call::SetDownloadSettings {
@@ -60,13 +44,6 @@ fn save(core: &Core, settings: DownloadSettings) {
     assert_eq!(reply, Reply::Ok);
 }
 
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
 fn stored_engine(core: &Core) -> DownloadsEngine {
     match core.call(Call::GetDownloads).unwrap() {
         Reply::Downloads { status } => status.settings.engine,
@@ -76,41 +53,51 @@ fn stored_engine(core: &Core) -> DownloadsEngine {
 
 // The setting ------------------------------------------------------------------------------
 
+/// The native engine is the default (#552): settings stored before the
+/// choice existed run on it, and settings that name anirss keep anirss.
 #[test]
-fn settings_saved_before_the_engine_existed_read_as_anirss() {
-    let mut blob = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
+fn settings_saved_before_the_engine_existed_read_as_native() {
+    let mut blob = serde_json::to_value(settings(DownloadsEngine::Anirss)).unwrap();
     blob.as_object_mut().unwrap().remove("engine");
+    let read: DownloadSettings = serde_json::from_value(blob.clone()).unwrap();
+    assert_eq!(read.engine, DownloadsEngine::Native);
+    blob["engine"] = json!("Anirss");
     let read: DownloadSettings = serde_json::from_value(blob).unwrap();
     assert_eq!(read.engine, DownloadsEngine::Anirss);
 }
 
 #[test]
-fn an_unknown_engine_reads_as_anirss_and_keeps_the_rest() {
-    let mut blob = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
+fn an_unknown_engine_reads_as_native_and_keeps_the_rest() {
+    let mut blob = serde_json::to_value(settings(DownloadsEngine::Anirss)).unwrap();
     blob["engine"] = json!("Telepathy");
     blob["prune_finished_feeds"] = json!(false);
     let read: DownloadSettings = serde_json::from_value(blob).unwrap();
-    assert_eq!(read.engine, DownloadsEngine::Anirss);
+    assert_eq!(read.engine, DownloadsEngine::Native);
     assert!(!read.prune_finished_feeds);
 }
 
 #[test]
 fn the_native_engine_round_trips_through_the_settings() {
-    isolate();
     let (_dir, core, c) = common::open_core();
+    // A fresh install runs on the native engine (#552)
+    assert_eq!(stored_engine(&core), DownloadsEngine::Native);
+    save(&core, settings(DownloadsEngine::Anirss));
     assert_eq!(stored_engine(&core), DownloadsEngine::Anirss);
+    // The switch is a state change, so it reaches the activity log.
+    common::wait_for(
+        &c,
+        |e| e.level == Level::Info && e.message.contains("now runs on anirss"),
+        std::time::Duration::from_secs(5),
+    );
     save(&core, settings(DownloadsEngine::Native));
     assert_eq!(stored_engine(&core), DownloadsEngine::Native);
     let json = serde_json::to_value(settings(DownloadsEngine::Native)).unwrap();
     assert_eq!(json["engine"], json!("Native"));
-    // The switch is a state change, so it reaches the activity log.
     common::wait_for(
         &c,
-        |e| e.level == Level::Info && e.message.contains("AniBeam's own engine"),
+        |e| e.level == Level::Info && e.message.contains("Anibeam's own engine"),
         std::time::Duration::from_secs(5),
     );
-    save(&core, settings(DownloadsEngine::Anirss));
-    assert_eq!(stored_engine(&core), DownloadsEngine::Anirss);
 }
 
 // One feed ---------------------------------------------------------------------------------
@@ -160,7 +147,6 @@ fn native_core() -> (
     std::sync::Arc<FakeHttp>,
 ) {
     let http = FakeHttp::new();
-    isolate();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     save(&core, settings(DownloadsEngine::Native));
     core.call(Call::AddCustomEndpoint {
@@ -278,7 +264,7 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
 #[test]
 fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_anirss_alone() {
     let (dir, core, c, http) = native_core();
-    // AniBeam runs anirss itself, through a command that leaves a mark if it is ever
+    // Anibeam runs anirss itself, through a command that leaves a mark if it is ever
     // started: the case "never starts anirss" is about.
     let mark = dir.path().join("anirss-started");
     let command = dir.path().join("anirss");
@@ -305,7 +291,7 @@ fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_a
         Reply::Downloads { status } => assert_eq!(status.endpoints.len(), 1),
         other => panic!("{other:?}"),
     }
-    assert!(done.message.contains("AniBeam itself"), "{}", done.message);
+    assert!(done.message.contains("Anibeam itself"), "{}", done.message);
     assert_eq!(status.endpoints.len(), 1);
     assert!(
         !matches!(
@@ -372,7 +358,6 @@ fn the_same_feed_gives_the_same_releases_and_groups_on_either_engine() {
     let native = search(&ncore, &nc, "Show");
 
     let http = FakeHttp::new();
-    isolate();
     let (_adir, acore, ac) = common::open_core_with_http(http.clone());
     save(&acore, settings(DownloadsEngine::Anirss));
     let items: Vec<Value> = (0..4).map(release_json).collect();

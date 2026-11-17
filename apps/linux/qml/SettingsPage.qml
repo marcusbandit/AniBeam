@@ -1,42 +1,43 @@
-// Settings: the head row (the title in the display cut, the settings search at the right),
-// then the index at the left and the open section beside it. The index is a status board
-// as much as a menu: each entry is a glyph, the section's name and one live line on how
-// it stands now (who is signed in, which theme, whether the torrent client answered), so
-// the page answers "is everything set up" before anything is clicked. The entries sit in
-// four runs with a gap between them: the library and its accounts; how things look and
-// play; downloads and the phone; the app itself. Typing in the search swaps the section
-// for the settings whose names or words match; picking one opens its section, scrolls the
-// row into view and lights it for a moment. The section and each one's scroll are session
-// state kept on the frame, by section id.
+// Settings: the index at the left with the settings search on top of it, and the open
+// section beside it. The index is a plain menu: each entry is a glyph and the section's
+// name, with a red dot at its right when the section wants attention (a folder gone, an
+// update waiting). Typing in the search swaps the section for the
+// settings whose names or words match; picking one opens its section, scrolls the row into
+// view and lights it for a moment. The section and each one's scroll are session state
+// kept on the frame, by section id. Section ids that have since moved into another
+// section (subtitles, phone, storage, help) still open the section that took them.
+// One page sits under a section without an entry of its own: `hidden`, the shows hidden from
+// Airing now, which Library opens and which keeps Library lit; Escape goes back to Library.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
     objectName: "settings-page"
     property var props: ({})
-    property string title: "Settings"
+    property string title: words.t("settings-title")
     property real scrollY: 0
 
-    // ---- The sections, in index order; `run` starts a new run of the index
+    // ---- The sections, in index order
     readonly property var sections: [
-        { id: "library", name: "Library", icon: "folder", run: 0 },
-        { id: "accounts", name: "Accounts", icon: "user-check", run: 0 },
-        { id: "appearance", name: "Appearance", icon: "palette", run: 1 },
-        { id: "playback", name: "Playback", icon: "play", run: 1 },
-        { id: "subtitles", name: "Subtitles", icon: "captions", run: 1 },
-        { id: "keys", name: "Keyboard", icon: "keyboard", run: 1 },
-        { id: "downloads", name: "Downloads", icon: "download", run: 2 },
-        { id: "phone", name: "Phone app", icon: "radio", run: 2 },
-        { id: "storage", name: "Storage and backup", icon: "hard-drive", run: 3 },
-        { id: "help", name: "Help", icon: "circle-question-mark", run: 3 },
-        { id: "about", name: "About", icon: "info", run: 3 }
-    ].concat(frame.devOn ? [{ id: "developer", name: "Developer", icon: "bug", run: 3 }] : [])
+        { id: "library", name: words.t("settings-section-library"), icon: "folder" },
+        { id: "accounts", name: words.t("settings-section-accounts"), icon: "user-check" },
+        { id: "appearance", name: words.t("settings-section-appearance"), icon: "palette" },
+        { id: "playback", name: words.t("settings-section-playback"), icon: "play" },
+        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download" },
+        { id: "keys", name: words.t("settings-section-keys"), icon: "keyboard" },
+        { id: "about", name: words.t("settings-section-about"), icon: "info" }
+    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug" }] : [])
     // Old tab names still open the section that took their place
-    readonly property var aliases: ({ data: "storage", trackers: "accounts" })
+    readonly property var aliases: ({ subtitles: "playback", phone: "accounts", storage: "about", data: "about", help: "about", trackers: "accounts" })
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
-    property string current: sectionIndex(frame.settingsTab) >= 0 ? frame.settingsTab : "library"
-    onCurrentChanged: frame.settingsTab = current
+    property string current: sectionIndex(aliases[frame.settingsTab] || frame.settingsTab) >= 0 ? (aliases[frame.settingsTab] || frame.settingsTab) : "library"
+    // The trail remembers the section, so the rail comes back to it; the hidden sub-page comes
+    // back as Library, the section that opens it
+    onCurrentChanged: {
+        frame.settingsTab = current
+        frame.nav.current.props = Object.assign({}, frame.nav.current.props, { tab: current === "hidden" ? "library" : current })
+    }
     // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
     // a beat in every case: a section just loaded, or one coming back from behind the search
     // results, has not laid out yet. Unsaved Downloads edits ride along on the frame
@@ -60,205 +61,161 @@ FocusScope {
         want = aliases[want] || want
         // The focus first: when `tab` names the section already loaded, nothing reloads and
         // the reveal has to be started here
-        if (props.focus) pendingFocus = props.focus === "not-interested" ? "Hidden from Airing now" : props.focus
-        if (sectionIndex(want) >= 0) current = want
+        // The shows hidden from Airing now are Library's own page, opened by name or by the old
+        // focus Airing used to send
+        if (props.focus === "not-interested") want = "hidden"
+        else if (props.focus) pendingFocus = props.focus
+        if (sectionIndex(want) >= 0 || want === "hidden") current = want
         if (pendingFocus !== "") focusLater.restart()
         forceActiveFocus()
     }
     function focusSearch() { search.focusInput() }
     // Named escapePressed, not escape: QML's compiler reserves "escape" and refuses it as a
     // property, method or signal name on any object.
-    function escapePressed() { if (query !== "") { clearSearch(); return true } return false }
-
-    // ---- What each index entry says about its section, read live
-    property var srcs: []
-    property var downloads: null
-    property var storage: null
-    function readStatus() {
-        var s = Door.listSources(); if (!s.error) srcs = s.reply.sources
-        var d = Door.getDownloads(); if (!d.error) downloads = d.reply.status
-        var g = Door.getStorage(); if (!g.error) storage = g.reply
+    function escapePressed() {
+        if (query !== "") { clearSearch(); return true }
+        if (current === "hidden") { open("library"); return true }
+        return false
     }
-    Timer { id: statusDebounce; interval: 300; onTriggered: page.readStatus() }
+
+    // ---- Which index entries want attention, read live
+    property var srcs: []
+    function readSources() { var s = Door.listSources(); if (!s.error) srcs = s.reply.sources }
+    Timer { id: sourcesDebounce; interval: 300; onTriggered: page.readSources() }
     Connections {
         target: Door
-        function onSourceChanged(s) { statusDebounce.restart() }
-        function onSourceRemoved(s) { statusDebounce.restart() }
-        function onScanFinished(s, a, c, r) { statusDebounce.restart() }
-        function onDownloadsStatusChanged(status) { page.downloads = status }
-        function onImagesCleared(removed) { statusDebounce.restart() }
+        function onSourceChanged(s) { sourcesDebounce.restart() }
+        function onSourceRemoved(s) { sourcesDebounce.restart() }
+        function onScanFinished(s, a, c, r) { sourcesDebounce.restart() }
     }
-    Timer { interval: 0; running: true; onTriggered: page.readStatus() }
-
-    function tracked(k) { return !!(Door.trackers[k] && Door.trackers[k].connected) }
-    function statusOf(id) {
-        if (id === "library") {
-            var n = 0, gone = 0
-            srcs.forEach(function(s) { n += s.series_count || 0; if (s.available === false) gone++ })
-            if (!srcs.length) return "No folders yet"
-            return (gone ? Fmt.plural(gone, "folder", "folders") + " not found, " : "")
-                   + Fmt.plural(n, "series", "series") + " in " + Fmt.plural(srcs.length, "folder", "folders")
-        }
-        if (id === "accounts") {
-            var on = []
-            if (tracked("anilist")) on.push("AniList")
-            if (tracked("mal")) on.push("MyAnimeList")
-            return on.length ? "Syncing to " + on.join(" and ") : "No list connected"
-        }
-        if (id === "appearance") {
-            var mode = Theme.mode === "system" ? "Follows the system" : Theme.mode === "light" ? "Light" : "Dark"
-            return mode + ", " + (Theme.source === "theme" ? "theme colours" : "desktop colours")
-        }
-        if (id === "playback") {
-            var sk = Door.settings.auto_skip || {}
-            var langs = (Door.settings.subtitle_defaults || {}).audio_languages || []
-            return (sk.intro && sk.outro ? "Skips intros and outros" : sk.intro ? "Skips intros" : sk.outro ? "Skips outros" : "Plays everything through")
-                   + (langs.length ? ", audio " + langs.join(", ") : "")
-        }
-        if (id === "subtitles") {
-            var sd = Door.settings.subtitle_defaults || {}
-            var mode = ({ AsScripted: "styled files as made", ScaleOnly: "styled files keep their look", Force: "your style on every file" })[sd.ass_override || "ScaleOnly"]
-            return "Size " + Math.round((sd.scale || 1) * 100) + " percent, " + mode
-        }
-        if (id === "keys") return "Every key AniBeam answers to"
-        if (id === "downloads") {
-            if (!downloads) return "Not read yet"
-            var t = downloads.torrent || {}
-            if (t.connected) return "qBittorrent answered"
-            var a = downloads.anirss || {}
-            if (a.state === "Missing") return "Search helper not installed"
-            return "Not connected yet"
-        }
-        if (id === "phone") return Door.preferences.share_over_tailscale ? "Shared on your tailnet" : "Not shared"
-        if (id === "storage") return storage ? Fmt.bytes(storage.image_bytes || 0) + " of images cached" : "Images, export and import"
-        if (id === "help") return "Answers to what people ask most"
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? "Version " + frame.updatePanel.version + " is out" : Shell.build
-        if (id === "developer") return frame.devRecorder.last ? frame.devRecorder.last.label + " built in " + Math.round(frame.devRecorder.last.built) + " ms" : "Timing every page"
-        return ""
+    Timer { interval: 0; running: true; onTriggered: page.readSources() }
+    // Downloads' state, for its dot: searches can run and there is nothing to search, no source
+    // list added yet (#1003)
+    property var downloads: null
+    function readDownloads() { var d = Door.getDownloads(); if (!d.error) downloads = d.reply.status }
+    Timer { interval: 0; running: true; onTriggered: page.readDownloads() }
+    Connections { target: Door; function onDownloadsStatusChanged(status) { page.downloads = status } }
+    function noSources() {
+        if (!downloads) return false
+        var native = !!downloads.settings && downloads.settings.engine === "Native"
+        var ready = native || (!!downloads.anirss && downloads.anirss.state === "Ready")
+        return ready && (downloads.endpoints || []).length === 0
     }
-    // An entry that wants attention: a folder gone, downloads not set up
+    // An entry that wants attention: a folder gone, no source list to search, an update
+    // waiting. A step the person skipped (no list connected) is not one: the dot would never clear
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown
+        if (id === "downloads") return noSources()
+        if (id === "about") return frame.updatePanel.pending
         return false
     }
 
     // ---- The search: every row and group, by its name and the words a person might type
     // for it. `label` is the row's own label (or the group's title), so reveal finds it.
-    readonly property var searchIndex: [
-        ["library", "Folders", "add folder scan rescan remove source path collection"],
-        ["library", "Matching", "metadata show info provider anilist tvmaze order match"],
-        ["library", "Show hidden shows", "hidden reveal"],
-        ["library", "Hidden from Airing now", "not interested airing show again"],
-        ["library", "Airing times in a calendar", "calendar ics ical airing schedule subscribe"],
-        ["accounts", "Your anime lists", "anilist myanimelist mal sign in connect login account disconnect tracker"],
-        ["accounts", "Main list", "progress cards primary tracker", "Your anime lists"],
-        ["accounts", "Sync now", "refresh progress lists tracker", "Your anime lists"],
-        ["accounts", "Move to On hold", "on hold paused inactive untouched days", "Your anime lists"],
-        ["appearance", "Mode", "dark light system theme night"],
-        ["appearance", "Colours from", "terminal desktop system theme source kitty"],
-        ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
-        ["appearance", "Light theme", "colour scheme base16", "Colours from"],
-        ["appearance", "Accent", "colour highlight"],
-        ["appearance", "Text size", "font type words bigger smaller larger zoom scale read accessibility"],
-        ["appearance", "Density", "compact comfortable spacing size"],
-        ["appearance", "Poster size", "cards small medium large"],
-        ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
-        ["appearance", "Out now cards", "airing out now grid columns rows layout", "Out now on Airing"],
-        ["appearance", "Reduce motion", "animation accessibility"],
-        ["appearance", "App icon", "logo launcher dock taskbar window dark"],
-        ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
-        ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
-        ["playback", "Use my mpv settings", "mpv.conf config advanced"],
-        ["playback", "Show what you watch on Discord", "discord rich presence status profile"],
-        ["playback", "Name the next episode", "next button title autoplay end"],
-        ["playback", "Subtitle languages", "language track subs"],
-        ["playback", "Audio languages", "language track dub japanese"],
-        ["subtitles", "Start over", "reset default subtitle style"],
-        ["subtitles", "Size", "scale subtitle"],
-        ["subtitles", "Position", "height margin subtitle"],
-        ["subtitles", "Styled subtitles", "ass override force"],
-        ["subtitles", "Font", "typeface"],
-        ["subtitles", "Text colour", "color"],
-        ["subtitles", "Outline", "border stroke"],
-        ["subtitles", "Shadow", ""],
-        ["subtitles", "Background box", "box opacity"],
-        ["subtitles", "Bold", "weight"],
-        ["keys", "In the player", "keyboard shortcuts keys hotkeys"],
-        ["keys", "Getting around the player", "keyboard shortcuts fullscreen next previous episode back"],
-        ["keys", "Getting around", "keyboard shortcuts back forward right-click menu fullscreen"],
-        ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
-        ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
-        ["downloads", "Search helper", "anirss rss feeds token command server advanced"],
-        ["downloads", "Keep the next few ready", "rolling roll episodes ahead delete watched keep disk space"],
-        ["downloads", "Unsubscribe from finished shows", "prune feeds finished"],
-        ["downloads", "Keep the last search", "downloads query remember"],
-        ["downloads", "Search sources", "endpoints feeds config anirss"],
-        ["downloads", "Source lists", "repo repos endpoint signed endpoints jackett prowlarr"],
-        ["phone", "Share over Tailscale", "phone android tailnet remote host"],
-        ["phone", "Stream episodes", "stream play cast episodes phone files"],
-        ["phone", "Devices on your tailnet", "trust trusted switch off block device tailscale"],
-        ["storage", "Back up the library", "export backup file json"],
-        ["storage", "Restore from a backup", "import restore file json"],
-        ["storage", "Image cache", "posters clear images disk cache"],
-        ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
-        ["help", "How should my folders look?", "help folder layout naming episodes seasons movies files structure"],
-        ["help", "Why didn't my show get recognised?", "help match wrong show not found unmatched recognised"],
-        ["help", "How do I connect AniList?", "help anilist myanimelist mal sign in connect login tracker"],
-        ["help", "Why is Downloads empty?", "help downloads empty sources nothing torrent qbittorrent"],
-        ["help", "Where is my data?", "help data files backup database privacy"],
-        ["help", "Something else?", "help setup onboarding walkthrough report bug problem issue"],
-        ["about", "Version", "build what's new changelog"],
-        ["about", "Setup", "first run walkthrough onboarding run setup again"],
-        ["about", "Updates", "stable nightly channel check"],
-        ["about", "Developer options", "debug timing", "", "unforced"],
-        ["about", "Ratings", "imdb credit"]
-    ]
+    // Built only when a query is typed: it is some 140 catalog lookups nobody else reads.
+    function searchIndex() { return [
+        ["library", words.t("settings-library-folders"), words.t("settings-find-folders.words")],
+        ["library", words.t("settings-library-matching"), words.t("settings-find-matching.words")],
+        ["library", words.t("settings-library-show-hidden"), words.t("settings-find-hidden-shows.words")],
+        ["library", words.t("settings-library-hidden-from-airing"), words.t("settings-find-hidden-airing.words")],
+        ["library", words.t("settings-library-calendar-feed"), words.t("settings-find-calendar.words")],
+        ["accounts", words.t("settings-accounts-lists"), words.t("settings-find-anime-lists.words")],
+        ["accounts", words.t("settings-accounts-main-list"), words.t("settings-find-main-list.words"), words.t("settings-accounts-lists")],
+        ["accounts", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
+        ["accounts", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
+        ["appearance", words.t("settings-appearance-language"), words.t("settings-find-language.words")],
+        ["appearance", words.t("settings-appearance-title-language"), words.t("settings-find-title-language.words")],
+        ["appearance", words.t("settings-appearance-mode"), words.t("settings-find-mode.words")],
+        ["appearance", words.t("settings-appearance-colours-from"), words.t("settings-find-colours-from.words")],
+        ["appearance", words.t("settings-appearance-dark-theme"), words.t("settings-find-dark-theme.words"), words.t("settings-appearance-colours-from")],
+        ["appearance", words.t("settings-appearance-light-theme"), words.t("settings-find-light-theme.words"), words.t("settings-appearance-colours-from")],
+        ["appearance", words.t("settings-appearance-accent"), words.t("settings-find-accent.words")],
+        ["appearance", words.t("settings-appearance-text-size"), words.t("settings-find-text-size.words")],
+        ["appearance", words.t("settings-appearance-density"), words.t("settings-find-density.words")],
+        ["appearance", words.t("settings-appearance-poster-size"), words.t("settings-find-poster-size.words")],
+        ["appearance", words.t("settings-appearance-out-now"), words.t("settings-find-out-now.words")],
+        ["appearance", words.t("settings-appearance-out-now-grid"), words.t("settings-find-out-now-cards.words"), words.t("settings-appearance-out-now")],
+        ["appearance", words.t("settings-appearance-reduce-motion"), words.t("settings-find-reduce-motion.words")],
+        ["appearance", words.t("settings-appearance-app-icon"), words.t("settings-find-app-icon.words")],
+        ["playback", words.t("settings-playback-skip-intros"), words.t("settings-find-skip-intros.words")],
+        ["playback", words.t("settings-playback-skip-outros"), words.t("settings-find-skip-outros.words")],
+        ["playback", words.t("settings-playback-my-mpv"), words.t("settings-find-mpv-settings.words")],
+        ["playback", words.t("settings-playback-discord"), words.t("settings-find-discord.words")],
+        ["playback", words.t("settings-playback-name-next"), words.t("settings-find-next-episode.words")],
+        ["playback", words.t("settings-playback-subtitle-languages"), words.t("settings-find-subtitle-languages.words")],
+        ["playback", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
+        ["playback", words.t("settings-playback-room-name"), words.t("settings-find-room-name.words")],
+        ["playback", words.t("settings-playback-room-relay"), words.t("settings-find-room-relay.words")],
+        ["playback", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
+        ["playback", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
+        ["playback", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
+        ["playback", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
+        ["playback", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
+        ["playback", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
+        ["playback", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
+        ["playback", words.t("settings-subtitles-shadow"), ""],
+        ["playback", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
+        ["playback", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
+        ["keys", words.t("settings-keys-player"), words.t("settings-find-keys-player.words")],
+        ["keys", words.t("settings-keys-player-around"), words.t("settings-find-keys-player-around.words")],
+        ["keys", words.t("settings-keys-around"), words.t("settings-find-keys-around.words")],
+        ["keys", words.t("settings-keys-anywhere"), words.t("settings-find-keys-anywhere.words")],
+        ["downloads", words.t("settings-downloads-torrent-title"), words.t("settings-find-torrent-client.words")],
+        ["downloads", words.t("settings-downloads-search-helper"), words.t("settings-find-search-helper.words")],
+        ["downloads", words.t("settings-downloads-roll-title"), words.t("settings-find-next-few.words")],
+        ["downloads", words.t("settings-downloads-prune"), words.t("settings-find-unsubscribe.words")],
+        ["downloads", words.t("settings-downloads-last-search"), words.t("settings-find-last-search.words")],
+        ["downloads", words.t("settings-downloads-sources-title"), words.t("settings-find-search-sources.words")],
+        ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-source-lists.words")],
+        ["accounts", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
+        ["accounts", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
+        ["accounts", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
+        ["about", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
+        ["about", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
+        ["about", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
+        ["about", words.t("settings-data-files"), words.t("settings-find-files.words")],
+        ["about", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
+        ["about", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
+        ["about", words.t("settings-about-version"), words.t("settings-find-version.words")],
+        ["about", words.t("settings-about-setup"), words.t("settings-find-setup.words")],
+        ["about", words.t("settings-about-updates"), words.t("settings-find-updates.words")],
+        ["about", words.t("settings-about-developer"), words.t("settings-find-developer-options.words"), "", "unforced"],
+        ["about", words.t("settings-about-ratings"), words.t("settings-find-ratings.words")]
+    ] }
     property string query: ""
     readonly property var results: {
         var q = query.trim().toLowerCase()
         if (q === "") return []
-        var words = q.split(/\s+/)
+        var terms = q.split(/\s+/)
         var out = []
-        searchIndex.forEach(function(e) {
+        searchIndex().forEach(function(e) {
             if (sectionIndex(e[0]) < 0) return
             // The switch ANIBEAM_DEV=1 hides
             if (e[4] === "unforced" && Dev.forced) return
             var hay = (e[1] + " " + e[2] + " " + sections[sectionIndex(e[0])].name).toLowerCase()
             var named = e[1].toLowerCase().indexOf(q) >= 0
-            if (words.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })
+            if (terms.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })
         })
         out.sort(function(a, b) { return (b.named ? 1 : 0) - (a.named ? 1 : 0) })
         return out
     }
 
-    // ---- Geometry: the page's centred column, the index at its left
-    readonly property real sideInset: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
+    // ---- Geometry: the index and the section side by side, the pair centred in the page (#1012)
+    // with the same margin on both sides, the search on top of the index. The section's column
+    // is the measure SettingsTab sets its rows to; the stage itself runs on to the window's right
+    // edge, so the wheel scrolls the section from the margin and its scroll bar sits at the edge.
     readonly property real topInset: theme.space(7)
     readonly property real indexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
     readonly property real columnGap: theme.space(14)
+    readonly property real sectionWidth: Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
+    readonly property real sideInset: Math.max(theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
 
-    // ---- The head: the title, the search at the right of the index's column
-    Item {
-        id: head
-        x: page.sideInset
-        y: page.topInset
-        width: page.width - page.sideInset * 2
-        height: theme.space(20)
-        Label {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Settings"
-            role: "display"
-            font.pointSize: theme.typePage
-        }
-    }
     // ---- The index
     Flickable {
         id: indexPane
         objectName: "settings-index"
         x: page.sideInset
-        y: head.y + head.height + theme.space(4)
+        y: page.topInset
         width: page.indexWidth
         height: page.height - y
         contentHeight: indexCol.height + theme.space(10)
@@ -272,84 +229,66 @@ FocusScope {
                 id: search
                 objectName: "settings-search"
                 width: parent.width
-                placeholder: "Search settings"
+                placeholder: words.t("settings-search-placeholder")
                 hint: "/"
                 onTextChanged: page.query = text
                 onAccepted: if (page.results.length) page.openResult(page.results[0])
             }
-            Item { width: 1; height: theme.space(5) }
+            Item { width: 1; height: theme.space(4) }
             Repeater {
                 model: page.sections
-                Item {
+                Rectangle {
                     id: entry
                     required property var modelData
-                    required property int index
-                    readonly property bool active: page.query === "" && page.current === modelData.id
-                    readonly property bool runStart: index > 0 && page.sections[index - 1].run !== modelData.run
+                    // Library stays lit on its own sub-page, the shows hidden from Airing now
+                    readonly property bool active: page.query === "" && (page.current === modelData.id || (page.current === "hidden" && modelData.id === "library"))
                     objectName: "settings-tabs-" + modelData.id
                     width: indexCol.width
-                    height: theme.space(15) + (runStart ? theme.space(4) : 0)
+                    height: theme.space(11)
+                    radius: theme.radiusTile
+                    color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
+                    border.width: entry.active ? 1 : 0
+                    border.color: theme.accentEdge
+                    Icon {
+                        id: glyph
+                        x: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: entry.modelData.icon
+                        size: theme.space(5)
+                        color: entry.active ? theme.accent : theme.text
+                    }
+                    Label {
+                        anchors.left: glyph.right
+                        anchors.leftMargin: theme.space(3.5)
+                        anchors.right: dot.left
+                        anchors.rightMargin: theme.space(2)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: entry.modelData.name
+                        role: "title"
+                        font.pointSize: theme.typeNormal
+                        color: entry.active ? theme.accent : theme.text
+                        elide: Text.ElideRight
+                    }
+                    // The section wants attention
                     Rectangle {
-                        id: plate
-                        y: entry.runStart ? theme.space(4) : 0
-                        width: parent.width
-                        height: theme.space(15)
-                        radius: theme.radiusTile
-                        color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
-                        border.width: entry.active ? 1 : 0
-                        border.color: theme.accentEdge
-                        Icon {
-                            id: glyph
-                            x: theme.space(4)
-                            anchors.verticalCenter: parent.verticalCenter
-                            glyph: entry.modelData.icon
-                            size: theme.space(5)
-                            color: entry.active ? theme.accent : theme.text
-                        }
-                        Column {
-                            anchors.left: glyph.right
-                            anchors.leftMargin: theme.space(3.5)
-                            anchors.right: parent.right
-                            anchors.rightMargin: theme.space(3)
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: theme.space(0.5)
-                            Label {
-                                width: parent.width
-                                text: entry.modelData.name
-                                role: "title"
-                                font.pointSize: theme.typeNormal
-                                color: entry.active ? theme.accent : theme.text
-                                elide: Text.ElideRight
-                            }
-                            Row {
-                                width: parent.width
-                                spacing: theme.space(1.5)
-                                Rectangle {
-                                    visible: page.warns(entry.modelData.id)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: theme.space(1.5); height: width; radius: width / 2
-                                    color: theme.yellow
-                                }
-                                Label {
-                                    width: parent.width - (page.warns(entry.modelData.id) ? theme.space(3) : 0)
-                                    text: page.statusOf(entry.modelData.id)
-                                    role: "ui"
-                                    font.pointSize: theme.typeSmall
-                                    color: theme.textDim
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                        MouseArea {
-                            Accessible.role: Accessible.Button
-                            Accessible.onPressAction: page.open(entry.modelData.id)
-                            Accessible.name: theme.nameNear(parent)
-                            id: hover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: page.open(entry.modelData.id)
-                        }
+                        id: dot
+                        objectName: "settings-tabs-" + entry.modelData.id + "-dot"
+                        visible: page.warns(entry.modelData.id)
+                        anchors.right: parent.right
+                        anchors.rightMargin: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: theme.space(2); height: width; radius: width / 2
+                        color: theme.red
+                    }
+                    MouseArea {
+                        Accessible.role: Accessible.Button
+                        Accessible.onPressAction: page.open(entry.modelData.id)
+                        Accessible.name: theme.nameNear(parent)
+                        id: hover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: page.open(entry.modelData.id)
                     }
                 }
             }
@@ -360,7 +299,7 @@ FocusScope {
         id: stage
         x: indexPane.x + indexPane.width + page.columnGap
         y: indexPane.y
-        width: page.width - x - page.sideInset + theme.space(6)
+        width: page.width - x
         height: page.height - y
         Loader {
             id: content
@@ -369,8 +308,8 @@ FocusScope {
             // under the results
             opacity: page.query === "" ? 1 : 0
             enabled: page.query === ""
-            source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback", subtitles: "Subtitles",
-                                     keys: "Keys", downloads: "Downloads", phone: "Phone", storage: "Data", help: "Help", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
+            source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback",
+                                     downloads: "Downloads", keys: "Keys", about: "About", developer: "Developer", hidden: "HiddenAiring" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()
@@ -401,15 +340,9 @@ FocusScope {
                 width: Math.min(found.width - theme.space(6), theme.space(210))
                 spacing: theme.space(2)
                 Label {
-                    text: page.results.length ? Fmt.plural(page.results.length, "setting", "settings") + " match" + (page.results.length === 1 ? "es" : "") : "Nothing matches"
+                    text: page.results.length ? words.t("settings-results", { count: page.results.length }) : words.t("settings-results-none")
                     role: "display"
                     font.pointSize: theme.typeHeading
-                }
-                Label {
-                    width: parent.width
-                    text: page.results.length ? "Return opens the first one." : "Try a plainer word: theme, subtitles, tracker, password, folder."
-                    color: theme.textDim
-                    role: "ui"
                     bottomPadding: theme.space(6)
                 }
                 Rectangle {

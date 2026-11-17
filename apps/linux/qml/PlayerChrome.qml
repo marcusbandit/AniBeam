@@ -13,7 +13,7 @@
 // PlayerPage forces its tokens dark, so this reads the same on a light theme.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -59,6 +59,35 @@ Item {
                 Label { id: episodeLine; width: parent.width; elide: Text.ElideRight; role: "ui"; text: page.episodeLine }
                 Label { id: codeLine; width: parent.width; elide: Text.ElideRight; role: "ledger"; color: theme.textDim; text: page.session ? page.session.code : "" }
             }
+        }
+    }
+
+    // ---- Watch together (#846): the header's mirror at the top right. Its button opens the
+    // room panel, and once in a room it names the room and how many are in it.
+    readonly property Item roomAnchor: roomTile
+    Tile {
+        id: roomTile
+        objectName: "player-room-tile"
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(1.5)
+        anchors.right: parent.right; anchors.top: parent.top
+        anchors.rightMargin: theme.grout; anchors.topMargin: theme.grout
+        width: roomButton.implicitWidth + padding * 2; height: roomButton.implicitHeight + padding * 2
+        opacity: page.chromeVisible ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -roomTile.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
+        Button {
+            id: roomButton
+            objectName: "player-room"
+            anchors.centerIn: parent
+            flat: !frame.room.inRoom
+            icon: "users"
+            text: frame.room.inRoom ? words.t("player-chrome-room", { code: frame.room.info.code, count: frame.room.info.members.length })
+                                    : words.t("player-chrome-watch-together")
+            takesFocus: false
+            onClicked: page.openRoomPanel()
         }
     }
 
@@ -116,18 +145,20 @@ Item {
     readonly property bool fullscreen: frame.hostWindow.visibility === Window.FullScreen
     readonly property var group: [
         // Shown with no tracks to choose as well: one audio track can still be out of sync.
-        { name: "player-delays", glyph: () => "clock", tip: () => "Subtitle and audio delay", shown: () => true,
+        { name: "player-delays", glyph: () => "clock", tip: () => words.t("player-chrome-delays"), shown: () => true,
           active: () => page.subDelay !== 0 || page.audioDelay !== 0, run: anchor => page.openDelays(anchor) },
-        { name: "player-audio", glyph: () => "audio-lines", tip: () => "Audio track", shown: () => page.audioTracks.length > 1,
+        { name: "player-audio", glyph: () => "audio-lines", tip: () => words.t("player-chrome-audio"), shown: () => page.audioTracks.length > 1,
           active: () => false, run: anchor => page.openAudioPicker(anchor) },
-        { name: "player-subs", glyph: () => "captions", tip: () => page.sid >= 0 ? "Subtitles" : "Subtitles off", shown: () => page.subTracks.length > 0,
+        { name: "player-subs", glyph: () => "captions", tip: () => page.sid >= 0 ? words.t("player-chrome-subtitles") : words.t("player-chrome-subtitles-off"), shown: () => page.subTracks.length > 0,
           active: () => page.sid >= 0, run: anchor => page.openSubPicker(anchor) },
-        { name: "player-mark", glyph: () => "check-check", tip: () => "Mark watched", shown: () => page.canMark,
+        { name: "player-cast", glyph: () => "cast", tip: () => page.casting ? words.t("player-chrome-casting-to", { device: page.castDevice.name }) : words.t("player-chrome-cast"), label: () => page.casting ? words.t("player-chrome-casting-to", { device: page.castDevice.name }) : words.t("player-chrome-cast"),
+          shown: () => true, active: () => page.casting, run: anchor => page.openCastPicker(anchor) },
+        { name: "player-mark", glyph: () => "check-check", tip: () => words.t("player-chrome-mark-watched"), shown: () => page.canMark,
           active: () => false, run: () => page.markWatched() },
-        { name: "player-help", glyph: () => "keyboard", tip: () => "Keyboard shortcuts", shown: () => true,
+        { name: "player-help", glyph: () => "keyboard", tip: () => words.t("player-chrome-shortcuts"), shown: () => true,
           active: () => false, run: () => page.showHelp() },
-        { name: "player-fullscreen", glyph: () => root.fullscreen ? "minimize" : "maximize", tip: () => "Fullscreen",
-          label: () => root.fullscreen ? "Exit fullscreen" : "Fullscreen", shown: () => true,
+        { name: "player-fullscreen", glyph: () => root.fullscreen ? "minimize" : "maximize", tip: () => words.t("player-chrome-fullscreen"),
+          label: () => root.fullscreen ? words.t("player-chrome-exit-fullscreen") : words.t("player-chrome-fullscreen"), shown: () => true,
           active: () => false, run: () => page.toggleFullscreen() }
     ]
     readonly property var shownGroup: group.filter(e => e.shown())
@@ -200,7 +231,7 @@ Item {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             height: elapsed.implicitHeight
             Label { id: elapsed; objectName: "player-elapsed"; anchors.left: parent.left; role: "ledger"; text: Fmt.clock(page.timePos) }
-            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1; text: page.speedLine(page.speed) }
+            Label { id: speedNote; objectName: "player-speed"; anchors.horizontalCenter: parent.horizontalCenter; role: "ledger"; color: theme.accent; visible: page.speed !== 1 && !page.roomed; text: page.speedLine(page.speed) }
             Label { id: total; anchors.right: parent.right; role: "ledger"; color: theme.textDim; text: Fmt.clock(page.duration) }
         }
         // The bar is above the island's own hover MouseArea, so the hover that keeps the
@@ -268,7 +299,7 @@ Item {
         Row {
             id: nextRow
             spacing: theme.space(1.5)
-            Button { anchors.verticalCenter: parent.verticalCenter; text: "Stay"; flat: true; takesFocus: false; onClicked: page.stay() }
+            Button { anchors.verticalCenter: parent.verticalCenter; msg: "player-chrome-stay"; flat: true; takesFocus: false; onClicked: page.stay() }
             Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 width: nextLabel.implicitWidth + theme.space(8); height: theme.controlHeight
@@ -303,10 +334,32 @@ Item {
         width: skipButton.implicitWidth + padding * 2; height: skipButton.implicitHeight + padding * 2
         MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -skipTile.padding }
         Button { id: skipButton; objectName: root.skipping && root.skipping.kind === "Outro" ? "player-skip-outro" : "player-skip-intro"; anchors.centerIn: parent
-            text: root.skipping && root.skipping.kind === "Outro" ? "Skip outro" : "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
+            text: root.skipping && root.skipping.kind === "Outro" ? words.t("player-chrome-skip-outro") : words.t("player-chrome-skip-intro"); icon: "chevrons-right"; primary: true; takesFocus: false
             onClicked: page.skipAndHide(root.skipping, page.mapFromItem(null, skipHover.point.scenePosition))
             // Where the pointer is for the click, so the page knows the spot it then rests on.
             HoverHandler { id: skipHover } }
+    }
+
+    // ---- Casting (#756): the picture is on the TV, so the middle says where it went
+    Tile {
+        id: castTile
+        objectName: "player-cast-tile"
+        visible: page.casting
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(5)
+        anchors.centerIn: parent
+        width: castCol.implicitWidth + padding * 2; height: castCol.implicitHeight + padding * 2
+        MouseArea { anchors.fill: parent; anchors.margins: -castTile.padding }
+        Column {
+            id: castCol
+            anchors.centerIn: parent
+            spacing: theme.space(2)
+            Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "cast"; size: theme.space(10) }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-device"; role: "title"; font.pointSize: theme.typeNormal
+                text: page.casting ? words.t("player-chrome-playing-on", { device: page.castDevice.name }) : "" }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-line"; role: "ui"; color: theme.textDim; text: page.castLine }
+        }
     }
 
     // ---- Replay: the last frame is still on screen because keep-open holds it, so this sits
@@ -315,7 +368,7 @@ Item {
         objectName: "player-replay"
         visible: page.replayVisible
         anchors.centerIn: parent
-        primary: true; icon: "rotate-ccw"; text: "Replay"; takesFocus: false
+        primary: true; icon: "rotate-ccw"; msg: "player-chrome-replay"; takesFocus: false
         onClicked: frame.nav.replace("player", { file: page.props.file }, page.title)
     }
 }

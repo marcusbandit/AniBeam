@@ -12,7 +12,7 @@ ColorImage {
     property string glyph: ""
     property real size: theme.space(5)
 
-    source: glyph !== "" ? "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icons/" + glyph + ".svg" : ""
+    source: glyph !== "" ? "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icons/" + glyph + ".svg" : ""
     color: theme.text
     sourceSize: Qt.size(size, size)
     width: size

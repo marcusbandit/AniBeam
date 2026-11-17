@@ -9,7 +9,7 @@
   "wait": 6000
  },
  {
-  "eval": "var p = frame.item.pageItem; var c = p.libCards.filter(function(c) { return /^[dlw]{6}/.test(c.cubes || '') })[0]; p.openGet(p.showFromCard(c)); var items = [], facts = []; for (var n = 1; n <= 26; n += (n === 9 ? 16 : 1)) { items.push({ title: '[Erai-raws] ' + c.title + ' - 0' + n + ' [1080p]', link: 'magnet:?xt=urn:btih:' + n, seeders: 20 + n, leechers: 1, size: '400 MB' }); facts.push({ episode: n, batch: false, group: 'Erai-raws', resolution: '1080p', size_bytes: 419430400 }) } items.push({ title: '[Erai-raws] ' + c.title + ' (01-08) [1080p] [Batch]', link: 'magnet:?xt=urn:btih:99', seeders: 9, size: '3 GB' }); facts.push({ batch: true, first_episode: 1, last_episode: 8, group: 'Erai-raws', resolution: '1080p', size_bytes: 3221225472 }); p.getActive = 'erai'; p.setResult('erai', { state: 'done', query: c.title, items: items, facts: facts }); c.title + ' ' + c.cubes + ' id ' + c.id",
+  "eval": "var p = frame.item.pageItem; var c = p.libCards.filter(function(c) { return /^[dlw]{6}/.test(c.cubes || '') })[0]; p.openGet(p.showFromCard(c)); var items = [], facts = []; for (var n = 1; n <= 26; n += (n === 9 ? 16 : 1)) { items.push({ title: '[Kumo] ' + c.title + ' - 0' + n + ' [1080p]', link: 'magnet:?xt=urn:btih:' + n, seeders: 20 + n, leechers: 1, size: '400 MB' }); facts.push({ episode: n, batch: false, group: 'Kumo', resolution: '1080p', size_bytes: 419430400 }) } items.push({ title: '[Kumo] ' + c.title + ' (01-08) [1080p] [Batch]', link: 'magnet:?xt=urn:btih:99', seeders: 9, size: '3 GB' }); facts.push({ batch: true, first_episode: 1, last_episode: 8, group: 'Kumo', resolution: '1080p', size_bytes: 3221225472 }); p.getActive = 'keyed'; p.setResult('keyed', { state: 'done', query: c.title, items: items, facts: facts }); c.title + ' ' + c.cubes + ' id ' + c.id",
   "as": "show"
  },
  {
@@ -66,7 +66,7 @@
   "shot": "replace-03-batch"
  },
  {
-  "eval": "var g = driver.item.findItem('downloads-get'); var p = frame.item.pageItem; g.clearPicks(); p.torrents = [{ hash: 'ff00', name: '[Erai-raws] x - 25 [1080p].mkv', state: 'downloading', progress: 0.4, size: 400000000, dlspeed: 1500000, upspeed: 0, eta: 300, num_seeds: 5, num_leechs: 1, ratio: 0, save_path: '/mnt/media/x', content_path: '/mnt/media/x/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: p.getShow.seriesId, episode: 25, batch: false, files: [], seq_dl: false, f_l_piece_prio: false, tracker: 't.example', group: 'Erai-raws', resolution: '1080p', provider: 'erai' }]; g.toggleCube(g.rows[0], 25); g.toggleCube(g.rows[0], 2); g.replaceOn = true; JSON.stringify([g.hadOnTheWay.length, g.hadOnDisk.length, g.replacing, JSON.stringify(g.options())])",
+  "eval": "var g = driver.item.findItem('downloads-get'); var p = frame.item.pageItem; g.clearPicks(); p.torrents = [{ hash: 'ff00', name: '[Kumo] x - 25 [1080p].mkv', state: 'downloading', progress: 0.4, size: 400000000, dlspeed: 1500000, upspeed: 0, eta: 300, num_seeds: 5, num_leechs: 1, ratio: 0, save_path: '/mnt/media/x', content_path: '/mnt/media/x/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: p.getShow.seriesId, episode: 25, batch: false, files: [], seq_dl: false, f_l_piece_prio: false, tracker: 't.example', group: 'Kumo', resolution: '1080p', provider: 'keyed' }]; g.toggleCube(g.rows[0], 25); g.toggleCube(g.rows[0], 2); g.replaceOn = true; JSON.stringify([g.hadOnTheWay.length, g.hadOnDisk.length, g.replacing, JSON.stringify(g.options())])",
   "as": "flight"
  },
  {

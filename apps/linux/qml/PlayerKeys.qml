@@ -4,7 +4,7 @@
 // gets a line there.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 QtObject {
     id: root

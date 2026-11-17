@@ -1,0 +1,159 @@
+[
+  {
+    "log": "Watch together, the host side (#846). Run against a root whose library holds the episode in --props {\"file\": <id>} and whose room_relay points at a local anibeam-relay, with no room_name set. Start rooms-guest.json on a second root once this prints the room code (the DRIVE EVAL after the room starts); it joins with that code."
+  },
+  {
+    "eval": "frame.item.go('player', { file: JSON.parse(Shell.props).file }); true"
+  },
+  {
+    "until": "driver.item.pageReady('player') && frame.item.pageItem.loaded === true && frame.item.pageItem.duration > 100",
+    "timeout": 20000
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "click": "player-room"
+  },
+  {
+    "until": "frame.item.pageItem.openMenus > 0"
+  },
+  {
+    "wait": 400
+  },
+  {
+    "shot": "room-a-1-panel"
+  },
+  {
+    "click": "room-panel-start"
+  },
+  {
+    "until": "driver.item.findItem('room-panel-name-field') !== null"
+  },
+  {
+    "wait": 300
+  },
+  {
+    "shot": "room-a-2-name"
+  },
+  {
+    "click": "room-panel-name-field"
+  },
+  {
+    "type": "Ada"
+  },
+  {
+    "eval": "driver.item.findItem('room-panel-name-field').text"
+  },
+  {
+    "click": "room-panel-name-save"
+  },
+  {
+    "eval": "[frame.item.room.name, frame.item.room.busy, frame.item.room.error].join(' | ')"
+  },
+  {
+    "until": "frame.item.room.inRoom === true",
+    "timeout": 25000
+  },
+  {
+    "eval": "frame.item.room.info.code",
+    "as": "code"
+  },
+  {
+    "eval": "'ROOM CODE ' + frame.item.room.info.code"
+  },
+  {
+    "until": "frame.item.room.info.members.length === 2 && frame.item.room.info.members.every(function(m) { return m.ready === 'Ready' })",
+    "timeout": 90000
+  },
+  {
+    "wait": 1200
+  },
+  {
+    "shot": "room-a-3-in-room"
+  },
+  {
+    "key": "Escape"
+  },
+  {
+    "until": "frame.item.pageItem.openMenus === 0"
+  },
+  {
+    "wait": 2000
+  },
+  {
+    "log": "pause and seek to 60 s; the guest follows"
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); true"
+  },
+  {
+    "click": "player-play"
+  },
+  {
+    "until": "frame.item.pageItem.paused === true"
+  },
+  {
+    "eval": "frame.item.pageItem.seekTo(60); true"
+  },
+  {
+    "until": "Math.abs(frame.item.pageItem.timePos - 60) < 0.5",
+    "timeout": 5000
+  },
+  {
+    "wait": 800
+  },
+  {
+    "shot": "room-a-4-paused-at-60"
+  },
+  {
+    "wait": 9000
+  },
+  {
+    "log": "play again; the guest plays too"
+  },
+  {
+    "eval": "frame.item.pageItem.togglePause(); true"
+  },
+  {
+    "until": "frame.item.pageItem.paused === false"
+  },
+  {
+    "wait": 9000
+  },
+  {
+    "eval": "'AT ' + Date.now() + ' ' + frame.item.pageItem.timePos.toFixed(2)"
+  },
+  {
+    "shot": "room-a-5-playing"
+  },
+  {
+    "log": "the host moves on to the next episode; the room follows"
+  },
+  {
+    "eval": "frame.item.pageItem.openNext(); true"
+  },
+  {
+    "until": "driver.item.pageReady('player') && frame.item.pageItem.session !== null && frame.item.pageItem.session.file !== JSON.parse(Shell.props).file && frame.item.pageItem.roomed === true",
+    "timeout": 15000
+  },
+  {
+    "until": "frame.item.room.info.episode.episode_key !== '1' && frame.item.room.info.members.every(function(m) { return m.ready === 'Ready' })",
+    "timeout": 30000
+  },
+  {
+    "wait": 1500
+  },
+  {
+    "eval": "frame.item.pageItem.showChrome(); frame.item.pageItem.openRoomPanel(); true"
+  },
+  {
+    "wait": 600
+  },
+  {
+    "shot": "room-a-6-next-episode"
+  },
+  {
+    "wait": 4000
+  }
+]

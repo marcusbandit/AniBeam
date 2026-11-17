@@ -14,15 +14,21 @@
 //! bug by far.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::downloads::Downloads;
+use crate::events::Subscription;
 use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
-use crate::metadata::{airing, apply, automatch, imdb};
-use crate::trackers::cache;
+use crate::metadata::{Metadata, airing, apply, automatch, imdb, owed};
+use crate::sync::recover;
+use crate::trackers::{Trackers, cache};
+
+/// Where `Core` keeps the launch's one-shot listener while it waits.
+pub(crate) type Slot = Mutex<Option<Arc<Subscription>>>;
 
 /// The catch-up walk, and the one-shot listener that turns its end into the
 /// rest of the launch. Called by `Core::start` once the watcher is up.
@@ -32,26 +38,47 @@ use crate::trackers::cache;
 ///
 /// Nothing here says the machine has no keyring: whichever caller finishes
 /// the probe writes that line, and `Core::start`'s warm-up is one of them.
-pub fn start(core: &Arc<Core>) -> Result<(), CoreError> {
+pub fn start(core: &Core, slot: &Arc<Slot>) -> Result<(), CoreError> {
     // Registered before the scan starts, not after: a library with no
     // sources at all has nothing to walk, so its scan can be over before
     // `scan::start` has even returned an id here, and a listener added
     // afterwards would have missed the one event it exists for.
     let listener = Arc::new(AfterScan {
-        core: Arc::downgrade(core),
+        slot: Arc::downgrade(slot),
+        metadata: Arc::downgrade(&core.metadata),
+        trackers: Arc::downgrade(&core.trackers),
+        downloads: Arc::downgrade(&core.downloads),
         scan: AtomicU64::new(0),
         fired: AtomicBool::new(false),
     });
-    core.set_launch_listener(core.subscribe(listener.clone()));
-    listener.latch(scan::start(core, ScanScope::All));
+    *recover(slot) = Some(Subscription::new(
+        core.services.bus.clone(),
+        listener.clone(),
+    ));
+    listener.latch(scan::start(&core.library, ScanScope::All));
     Ok(())
 }
 
+/// Takes the launch listener out and drops it, which unsubscribes it.
+/// Called by the listener itself once it has fired, and by `shutdown`
+/// for the launch that never got its scan.
+pub(crate) fn take(slot: &Slot) {
+    // Taken out of the mutex and dropped by this `let` rather than
+    // inside the lock's own statement: the drop unsubscribes, which
+    // takes the bus's listener lock, and that should never happen with
+    // this one held.
+    let sub = recover(slot).take();
+    drop(sub);
+}
+
 /// Waits for the catch-up scan to end and then runs the list, once. It holds
-/// a `Weak`, so a core that goes away mid-scan takes this with it rather
+/// `Weak`s, so a core that goes away mid-scan takes this with it rather
 /// than keeping itself alive through the bus.
 struct AfterScan {
-    core: Weak<Core>,
+    slot: Weak<Slot>,
+    metadata: Weak<Metadata>,
+    trackers: Weak<Trackers>,
+    downloads: Weak<Downloads>,
     /// The catch-up scan's id, latched the instant `scan::start` returns it.
     /// Zero until then, since job ids start at one.
     scan: AtomicU64,
@@ -96,13 +123,20 @@ impl EventListener for AfterScan {
         if self.fired.swap(true, Ordering::SeqCst) {
             return;
         }
-        let Some(core) = self.core.upgrade() else {
+        let Some(slot) = self.slot.upgrade() else {
             return;
         };
         // Dropping the handle unsubscribes, so the bus stops calling this
         // the moment the launch has had its one scan.
-        core.take_launch_listener();
-        after_scan(&core);
+        take(&slot);
+        let (Some(metadata), Some(trackers), Some(downloads)) = (
+            self.metadata.upgrade(),
+            self.trackers.upgrade(),
+            self.downloads.upgrade(),
+        ) else {
+            return;
+        };
+        after_scan(&metadata, &trackers, &downloads);
     }
 }
 
@@ -110,22 +144,24 @@ impl EventListener for AfterScan {
 /// it: they run one at a time per kind and pace themselves against their own
 /// upstream, so the order is the order they get their turn in, not a queue
 /// anything blocks on.
-fn after_scan(core: &Arc<Core>) {
-    automatch::start(core);
-    apply::backfill_stubs(core);
-    crawl::start_gap_crawl(core);
-    airing::start_refresh_library(core);
-    imdb::start_refresh(core);
-    cache::start_refresh(core, None, false);
-    images::start_fill(core);
+fn after_scan(metadata: &Arc<Metadata>, trackers: &Arc<Trackers>, downloads: &Arc<Downloads>) {
+    automatch::start(metadata);
+    apply::backfill_stubs(metadata);
+    crawl::start_gap_crawl(metadata);
+    airing::start_refresh_library(metadata);
+    // The titles a Jikan outage left owed, asked for again (#1065).
+    owed::start(metadata);
+    imdb::start_refresh(&metadata.services);
+    cache::start_refresh(trackers, None, false);
+    images::start_fill(&metadata.net);
     // The followed shows' next episodes, from the rules last read (#215)
-    crate::downloads::watch::arm(core);
+    crate::downloads::watch::arm(downloads);
 
     // The sweep is bookkeeping rather than a job: one transaction over the
     // rows and one walk of the image directory, so it goes on the runtime
     // with nothing waiting on it.
-    let owner = core.clone();
-    core.handle.spawn(async move {
-        images::sweep_after(&owner, "a launch").await;
+    let net = metadata.net.clone();
+    metadata.services.handle.spawn(async move {
+        images::sweep_after(&net, "a launch").await;
     });
 }

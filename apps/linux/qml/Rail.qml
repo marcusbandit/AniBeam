@@ -1,151 +1,119 @@
-// The sidebar: one flat column a step up from the ground. The brand at the top, then the
-// places the app is for, Home, Library and Airing, each a glyph over its name. The rest of the app
-// (Feed, Watching, Stats, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
-// foot, named by their tips, and the foot itself holds the title-language switch and the
-// version, which opens What's new. The active place takes the soft accent; nothing else is lit.
+// The sidebar (#1012): one flat column a step up from the ground, holding four places and two
+// round buttons, glyphs only, each named by its tip. The brand at the top, then Home, Library,
+// Airing and Downloads as square tiles, and at the foot Join room and Settings. The column is
+// one tile wide plus the same gap on each side as between the tiles, so a lit tile sits with
+// an even margin all round. The pages that used to have glyphs of their own live inside a
+// place: the feed opens from Home's week, and Watching, Stats and Show info are tabs of
+// Library, so the rail lights Library while one of them is open. The title language is a
+// row in Settings, Appearance, and the version with What's new is in Settings, About. The
+// active place takes the soft accent; nothing else is lit.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
-    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads,
-    // settings, stats (last, so the older indexes kept their numbers)
-    property int active: 0
+    // The page open now, or the rail page the trail last passed through; the rail lights the
+    // place that holds it
+    property string page: "home"
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
-    signal picked(int index)
-    signal versionClicked()
+    // An update waits: a red dot on Settings until it is installed, and its line in the tip
+    property bool settingsBadge: false
+    property string settingsNote: ""
+    // A place picked, by the page it opens
+    signal picked(string page)
+    // Watch together (#846): lit while in a room or while its panel is up
+    property bool inRoom: false
+    property bool roomOpen: false
+    signal roomClicked()
 
-    readonly property var primary: [
-        { index: 0, text: "Home", icon: "house" }, { index: 1, text: "Library", icon: "layers" },
-        { index: 2, text: "Airing", icon: "radio" }
+    // `key` names the --drive target (rail-<key>) and the page it opens, `msg` the words
+    readonly property var places: [
+        { key: "home", msg: "rail-home", icon: "house" },
+        { key: "library", msg: "rail-library", icon: "layers" },
+        { key: "airing", msg: "rail-airing", icon: "radio" },
+        { key: "downloads", msg: "rail-downloads", icon: "download" }
     ]
-    readonly property var secondary: [
-        { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
-        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Show info", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
-        { index: 7, text: "Settings", icon: "settings" }
-    ]
+    // Which place holds each page that is not a place itself. Library's three must match the
+    // pages in LibraryTabs.qml
+    readonly property var holders: ({ feed: "home", watching: "library", stats: "library", metadata: "library" })
+    readonly property string lit: holders[page] || page
+
+    // One gap everywhere: beside the tiles, between them and above the brand
     readonly property real pad: theme.space(2)
-    readonly property real itemWidth: Math.max(theme.space(18), labels.implicitWidth + pad * 2, lang.implicitWidth + pad)
+    readonly property real itemWidth: theme.space(12)
     width: itemWidth + pad * 2
     // The frame cuts its status strip to this, so the two share one band along the foot
     readonly property real footHeight: theme.space(9)
-
-    // The labels at the size the items set them, never shown: their widest sets the column
-    Column {
-        id: labels
-        visible: false
-        Repeater { model: root.primary; Label { required property var modelData; role: "title"; font.pointSize: theme.typeSmall; text: modelData.text } }
+    readonly property real roundSize: itemWidth
+    // A short window shrinks the place tiles before they run under the round buttons at the
+    // foot; a tall one leaves them square. Upper: the brand, a gap and four tiles, a gap between
+    // each; lower: two round buttons over the bottom gap.
+    readonly property real tileSize: {
+        var brand = itemWidth - theme.space(2)
+        var free = height - (pad + theme.space(1)) - brand - pad * 6 - pad - (roundSize * 2 + pad * 2)
+        return Math.max(theme.space(8), Math.min(itemWidth, Math.floor(free / 4)))
     }
 
     Rectangle { anchors.fill: parent; color: theme.tile }
     Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
 
     Column {
+        id: upper
         x: root.pad
-        y: theme.space(4)
-        spacing: theme.space(2)
+        // The brand sits as far from the top as from the sides
+        y: root.pad + theme.space(1)
+        spacing: root.pad
 
         Image {
             x: (root.itemWidth - width) / 2
-            width: theme.space(10); height: width
-            source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : "icon.png")
+            width: root.itemWidth - theme.space(2); height: width
+            source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/" + (Theme.appIcon === "dark" ? "icon-dark.png" : Shell.defaultIcon)
             sourceSize: Qt.size(96, 96)
             // Decoded off the Qt thread, not inside the frame's first build
             asynchronous: true
             smooth: true
         }
-        Item { width: 1; height: theme.space(3) }
+        Item { width: 1; height: root.pad }
 
         Repeater {
-            model: root.primary
+            model: root.places
             Rectangle {
                 id: entry
                 required property var modelData
-                objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
-                readonly property bool on: modelData.index === root.active
+                objectName: "rail-" + modelData.key   // a --drive target
+                readonly property bool on: modelData.key === root.lit
+                readonly property int badge: modelData.key === "downloads" ? root.downloadsBadge : 0
                 Accessible.role: Accessible.PageTab
-                Accessible.name: modelData.text
+                Accessible.name: badge > 0 ? words.t("rail-downloads-complete", { count: badge }) : words.t(modelData.msg)
                 Accessible.selected: on
-                Accessible.onPressAction: root.picked(modelData.index)
+                Accessible.onPressAction: root.picked(modelData.key)
                 width: root.itemWidth
-                height: theme.space(17)
+                height: root.tileSize
                 radius: theme.radiusTile
                 color: on ? theme.accentSoft : m.containsMouse ? theme.raised : "transparent"
                 border.color: entry.activeFocus ? theme.focusRing : "transparent"
                 border.width: 1
                 scale: theme.reducedMotion ? 1 : (m.pressed ? 0.97 : 1)
                 activeFocusOnTab: true
-                Keys.onReturnPressed: root.picked(modelData.index)
-                Keys.onSpacePressed: root.picked(modelData.index)
-                Column {
-                    anchors.centerIn: parent
-                    spacing: theme.space(1.5)
-                    Icon {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        glyph: entry.modelData.icon
-                        size: theme.space(6)
-                        color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
-                    }
-                    Label {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: entry.modelData.text
-                        role: "title"
-                        font.pointSize: theme.typeSmall
-                        color: entry.on || m.containsMouse ? theme.text : theme.textDim
-                    }
-                }
-                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.modelData.index) }
-            }
-        }
-    }
-
-    // The rest of the app, and the foot
-    Column {
-        id: lower
-        x: root.pad
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: theme.space(4)
-        spacing: theme.space(1.5)
-
-        Repeater {
-            model: root.secondary
-            Rectangle {
-                id: minor
-                required property var modelData
-                objectName: "rail-" + modelData.text.toLowerCase()
-                readonly property bool on: modelData.index === root.active
-                Accessible.role: Accessible.PageTab
-                Accessible.name: modelData.text
-                Accessible.selected: on
-                Accessible.onPressAction: root.picked(modelData.index)
-                x: (root.itemWidth - width) / 2
-                width: theme.space(11); height: width
-                radius: width / 2
-                color: on ? theme.accentSoft : mm.containsMouse ? theme.raised : "transparent"
-                border.color: minor.activeFocus ? theme.focusRing : "transparent"
-                border.width: 1
-                scale: theme.reducedMotion ? 1 : (mm.pressed ? 0.95 : 1)
-                activeFocusOnTab: true
-                Keys.onReturnPressed: root.picked(modelData.index)
-                Keys.onSpacePressed: root.picked(modelData.index)
+                Keys.onReturnPressed: root.picked(modelData.key)
+                Keys.onSpacePressed: root.picked(modelData.key)
                 Icon {
                     anchors.centerIn: parent
-                    glyph: minor.modelData.icon
-                    size: theme.space(5)
-                    color: minor.on ? theme.accent : (mm.containsMouse ? theme.text : theme.textFaint)
+                    glyph: entry.modelData.icon
+                    size: theme.space(6)
+                    color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
                 }
-                MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
-                Tooltip { text: minor.badge > 0 ? minor.modelData.text + ": " + minor.badge + (minor.badge === 1 ? " subscription is" : " subscriptions are") + " complete" : minor.modelData.text }
-                readonly property int badge: modelData.text === "Downloads" ? root.downloadsBadge : 0
-                // The badge: red, its count in it, over the glyph's top right
+                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.modelData.key) }
+                Tooltip { text: entry.Accessible.name }
+                // Complete subscriptions on Downloads: a red count over the glyph's top right
                 Rectangle {
                     objectName: "rail-downloads-badge"
-                    visible: minor.badge > 0
+                    visible: entry.badge > 0
                     height: theme.space(4.5)
                     width: Math.max(height, badgeText.implicitWidth + theme.space(2))
                     radius: height / 2
-                    x: minor.width - width * 0.7
+                    x: entry.width - width * 0.8
                     y: -height * 0.2
                     color: theme.red
                     border.color: theme.tile
@@ -153,7 +121,7 @@ Item {
                     Label {
                         id: badgeText
                         anchors.centerIn: parent
-                        text: minor.badge > 99 ? "99+" : String(minor.badge)
+                        text: entry.badge > 99 ? "99+" : String(entry.badge)
                         role: "ledger"
                         font.pointSize: theme.typeSmall * 0.85
                         font.weight: 600
@@ -162,61 +130,82 @@ Item {
                 }
             }
         }
+    }
 
-        Item { width: 1; height: theme.space(3) }
+    // The foot: Join room and Settings, round and named by their tips
+    Column {
+        id: lower
+        x: root.pad
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.pad
+        spacing: root.pad
 
-        // The title language: one pill naming the current one; a click goes to the next
+        // Watch together (#888): not a page, a panel; Ctrl+J opens it too
         Rectangle {
-            id: lang
-            objectName: "title-language"
+            id: roomEntry
+            objectName: "rail-room"
+            readonly property bool on: root.inRoom || root.roomOpen
             Accessible.role: Accessible.Button
-            Accessible.name: "Title language: " + lang.names[lang.current] + ". Press for the next one"
-            Accessible.onPressAction: langMouse.clicked(null)
-            readonly property var order: ["Romaji", "English", "Native"]
-            readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
-            readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"
+            Accessible.name: words.t(root.inRoom ? "rail-in-room" : "rail-join-room")
+            Accessible.onPressAction: root.roomClicked()
             x: (root.itemWidth - width) / 2
-            implicitWidth: langWidest.implicitWidth + theme.space(4)
-            width: implicitWidth
-            height: theme.textSpace(6)
-            radius: height / 2
-            color: langMouse.containsMouse ? theme.raisedHover : theme.raised
-            scale: theme.reducedMotion ? 1 : (langMouse.pressed ? 0.98 : 1)
-            Label {
+            width: root.roundSize; height: width
+            radius: width / 2
+            color: on ? theme.accentSoft : rm.containsMouse ? theme.raised : "transparent"
+            border.color: roomEntry.activeFocus ? theme.focusRing : "transparent"
+            border.width: 1
+            scale: theme.reducedMotion ? 1 : (rm.pressed ? 0.95 : 1)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.roomClicked()
+            Keys.onSpacePressed: root.roomClicked()
+            Icon {
                 anchors.centerIn: parent
-                text: lang.names[lang.current]
-                role: "ui"
-                font.pointSize: theme.typeSmall
+                glyph: "users"
+                size: theme.space(5)
+                color: roomEntry.on ? theme.accent : (rm.containsMouse ? theme.text : theme.textDim)
             }
-            // the widest of them, so the pill does not change width when switched
-            Label { id: langWidest; visible: false; text: "English"; role: "ui"; font.pointSize: theme.typeSmall }
-            MouseArea {
-                id: langMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    var p = JSON.parse(JSON.stringify(Door.preferences))
-                    p.title_language = lang.order[(lang.order.indexOf(lang.current) + 1) % lang.order.length]
-                    Door.setPreferences(p)
-                }
-            }
-            Tooltip { text: "Title language: Romaji, English or Japanese" }
+            MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.roomClicked() }
+            Tooltip { text: root.inRoom ? words.t("rail-room-in") : words.t("rail-room") }
         }
-        // The version: a click opens What's new
-        Label {
-            objectName: "rail-version"
-            width: root.itemWidth
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            text: Shell.release
-            role: "ledger"
-            color: versionMouse.containsMouse ? theme.text : theme.textFaint
-            Accessible.role: Accessible.Button
-            Accessible.name: "What's new in " + Shell.release
-            Accessible.onPressAction: root.versionClicked()
-            MouseArea { id: versionMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.versionClicked() }
-            Tooltip { text: "What's new" }
+
+        Rectangle {
+            id: settingsEntry
+            objectName: "rail-settings"
+            readonly property bool on: root.lit === "settings"
+            Accessible.role: Accessible.PageTab
+            Accessible.name: words.t("rail-settings")
+            Accessible.selected: on
+            Accessible.onPressAction: root.picked("settings")
+            x: (root.itemWidth - width) / 2
+            width: root.roundSize; height: width
+            radius: width / 2
+            color: on ? theme.accentSoft : sm.containsMouse ? theme.raised : "transparent"
+            border.color: settingsEntry.activeFocus ? theme.focusRing : "transparent"
+            border.width: 1
+            scale: theme.reducedMotion ? 1 : (sm.pressed ? 0.95 : 1)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.picked("settings")
+            Keys.onSpacePressed: root.picked("settings")
+            Icon {
+                anchors.centerIn: parent
+                glyph: "settings"
+                size: theme.space(5)
+                color: settingsEntry.on ? theme.accent : (sm.containsMouse ? theme.text : theme.textDim)
+            }
+            MouseArea { id: sm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked("settings") }
+            Tooltip { text: root.settingsBadge && root.settingsNote !== "" ? words.t("rail-settings-note", { note: root.settingsNote }) : words.t("rail-settings") }
+            // An update waits: a red dot over the glyph's top right
+            Rectangle {
+                objectName: "rail-settings-badge"
+                visible: root.settingsBadge
+                width: theme.space(3.5); height: width
+                radius: width / 2
+                x: settingsEntry.width - width * 1.1
+                y: width * 0.1
+                color: theme.red
+                border.color: theme.tile
+                border.width: 2
+            }
         }
     }
 }

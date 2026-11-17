@@ -19,8 +19,8 @@ Copied from the spec. Every task's requirements include this section.
 - The shell is the package `anibeam` at `apps/linux/`, a member of the root workspace beside `core/` and `apps/cli/`. `main` stays green for both worlds: nothing here touches `src/`, `package.json` or the Electron build, and `bun run typecheck` must still pass before a merge. Work on a branch off `main`, `feat/shell-phase-2`, never on `main` directly; merge when the switch line's build is packaged and installed on the desktop.
 - The workspace version stays `2.0.0-dev` and `rust-version` stays `1.95`, both set by phase 1. `anibeam --version` prints the same describe string as `anibeam-cli --version`, computed in `build.rs` from `git describe --tags --dirty` with `CARGO_PKG_VERSION` as the fallback (spec 5.3).
 - The stack (spec 5.1): Qt 6.11 QML through cxx-qt 0.10.0, built with Cargo alone. `cxx-qt`, `cxx-qt-lib` and `cxx-qt-build` are pinned `=0.10.0`, never a caret. One `build.rs` calls `CxxQtBuilder::new_qml_module` once; there is no CMake anywhere. The `qt_minimal` feature stays off. The QML module is static. The link goes through lld, which is in the package's `makedepends`. Every Rust file that holds a `#[cxx_qt::bridge]` sits in one directory, `apps/linux/src/bridge/`, because cxx-qt panics on bridges spread across directories (QTBUG-93443). Integration tests under `apps/linux/tests/` do not link in a Cargo-only cxx-qt layout (cxx-qt issue 770), so every shell test is a unit test inside `src/`.
-- Names (spec 5.3): package `anibeam`, binary `/usr/bin/anibeam`, app id `com.marcusrosado.AniBeam` for the desktop file, `StartupWMClass`, `QGuiApplication::setDesktopFileName`, the hicolor icon, the D-Bus name and MPRIS's `DesktopEntry`. XDG directories are named `anibeam`: `~/.config/anibeam/` holds `theme.toml`, `player.toml`, `mpv.conf` and `themes/`; `~/.local/share/anibeam/` the database; `~/.cache/anibeam/` the image cache; `~/.local/state/anibeam/` logs. Built-in themes ship at `/usr/share/anibeam/themes/` and the bundled `mpv.conf` at `/usr/share/anibeam/mpv.conf`. The shell never creates a file or directory under those three XDG directories with one of Electron's names (`config.json`, `metadata.json`, `image-cache/`, `images/`, `thumbs/`, `logs/` under config, and the rest of the list in spec 5.3).
-- Process facts (spec 5.1, 4.5): the shell sets `QSG_RENDER_LOOP=threaded` and `QT_XCB_GL_INTEGRATION=xcb_egl` in its own environment before constructing `QGuiApplication`; calls `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)` before the first window; takes a flock under `$XDG_RUNTIME_DIR` before anything else; owns `com.marcusrosado.AniBeam` on the session bus and serves `org.freedesktop.Application` there; serves MPRIS as `org.mpris.MediaPlayer2.anibeam` on the same connection. No session bus means one line on stderr and no MPRIS; a second launch with no bus prints one line and exits 1. The desktop file has `StartupNotify=true` and no `DBusActivatable`.
+- Names (spec 5.3): package `anibeam`, binary `/usr/bin/anibeam`, app id `com.marcusrosado.Anibeam` for the desktop file, `StartupWMClass`, `QGuiApplication::setDesktopFileName`, the hicolor icon, the D-Bus name and MPRIS's `DesktopEntry`. XDG directories are named `anibeam`: `~/.config/anibeam/` holds `theme.toml`, `player.toml`, `mpv.conf` and `themes/`; `~/.local/share/anibeam/` the database; `~/.cache/anibeam/` the image cache; `~/.local/state/anibeam/` logs. Built-in themes ship at `/usr/share/anibeam/themes/` and the bundled `mpv.conf` at `/usr/share/anibeam/mpv.conf`. The shell never creates a file or directory under those three XDG directories with one of Electron's names (`config.json`, `metadata.json`, `image-cache/`, `images/`, `thumbs/`, `logs/` under config, and the rest of the list in spec 5.3).
+- Process facts (spec 5.1, 4.5): the shell sets `QSG_RENDER_LOOP=threaded` and `QT_XCB_GL_INTEGRATION=xcb_egl` in its own environment before constructing `QGuiApplication`; calls `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)` before the first window; takes a flock under `$XDG_RUNTIME_DIR` before anything else; owns `com.marcusrosado.Anibeam` on the session bus and serves `org.freedesktop.Application` there; serves MPRIS as `org.mpris.MediaPlayer2.anibeam` on the same connection. No session bus means one line on stderr and no MPRIS; a second launch with no bus prints one line and exits 1. The desktop file has `StartupNotify=true` and no `DBusActivatable`.
 - One application, one window (spec 4.4). Nothing opens a second window and no mpv process is launched. Playback continues while the window is not presented; the shell does nothing on expose changes. Scripts never load; mpv's OSD stays off; the shell draws every overlay itself and handles every key itself.
 - The bridge (spec 3.1 constraints 6 to 8, 5.1): enums with fields never cross. The `Door` singleton exposes one `#[qinvokable]` per call variant, with flat arguments or a `QJsonObject`, and one `#[qsignal]` per event body, and builds `Call` values on the Rust side. The core never sees a Qt type. Events cross from tokio threads through `CxxQtThread::queue`, coalesced: one queued closure per event, never one per file. A panic in any bridge function aborts the process, so bridge code catches and reports. A `rust_mut()` borrow ends before any signal is emitted. A QObject handed to QML has a parent or is created by QML. Every container instantiation that crosses gets its own alias line in the bridge.
 - Look (spec 4.2, 4.3): every colour, size, radius, spacing and duration is a token on the `Theme` singleton; nothing is set inline. One `Corner` primitive draws every rounded shape, a QtQuick.Shapes squircle in reach semantics with the CurveRenderer; a bare `Rectangle.radius` in the shell is a bug. Smoothing 0.6, plain rounding is smoothing 0 on the same primitive. The radius ladder is base 14 times 1.4 to the power i (14, 19.6, 27.4, 38.4) times density. The space unit is 4 px times density, density 0.75, 1 or 1.25. Poster width is S 140, M 180 or L 240 and never scales with density. Type is three sizes from the system font: normal is the application font's point size, small 0.85 of it, large 1.4; weights DemiBold for titles and the active tab, Medium for chips, Bold for the page title alone, nothing above 700. The general face carries text and the fixed face numbers. Motion is 120, 200 and 320 ms; anything tracking a target uses exponential smoothing at rate 12 to 14. Icons are Lucide SVGs tinted from the text token through a `ColorImage`, never an icon theme lookup.
@@ -36,8 +36,8 @@ The spec's "Left open" lists for 4.3, 4.4, 4.5 and 5.5 and the shell questions o
 
 | Section | Question | Decision |
 |---|---|---|
-| 5.5 | The QML module URI | `com.marcusrosado.AniBeam`, the app id, so there is one name. Resources sit at `qrc:/qt/qml/com/marcusrosado/AniBeam/<path>`; `Main.qml` is `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml`. |
-| 5.5 | Where the entry, the icon, `mpv.conf` and `themes/` sit inside `apps/linux/` | `apps/linux/com.marcusrosado.AniBeam.desktop`, `apps/linux/assets/icon.png`, `apps/linux/assets/icons/<name>.svg` for Lucide, `apps/linux/mpv.conf`, `apps/linux/themes/<name>.yaml`, `apps/linux/packaging/PKGBUILD` and `package.sh`. The PKGBUILD in spec 5.3 already names these paths. |
+| 5.5 | The QML module URI | `com.marcusrosado.Anibeam`, the app id, so there is one name. Resources sit at `qrc:/qt/qml/com/marcusrosado/Anibeam/<path>`; `Main.qml` is `qrc:/qt/qml/com/marcusrosado/Anibeam/qml/Main.qml`. |
+| 5.5 | Where the entry, the icon, `mpv.conf` and `themes/` sit inside `apps/linux/` | `apps/linux/com.marcusrosado.Anibeam.desktop`, `apps/linux/assets/icon.png`, `apps/linux/assets/icons/<name>.svg` for Lucide, `apps/linux/mpv.conf`, `apps/linux/themes/<name>.yaml`, `apps/linux/packaging/PKGBUILD` and `package.sh`. The PKGBUILD in spec 5.3 already names these paths. |
 | 5.5 | The Rust toolchain floor | 1.95, set by phase 1 on the workspace; unchanged. |
 | 5.5 | How `PlaybackSession.artwork` reaches `mpris:artUrl` | A `file://` URL of the cache path, percent-encoded per path segment. |
 | 4.3 | The hue slot for tv, music, novel, oneshot and vn | tv `cyan` (Electron `#6fd0e8`), music `green` (`#70d5a8`), novel `red` (`#f098bd`), oneshot `yellow` (`#e0cd70`), vn `purple` (`#da9aeb`): the nearest hue to Electron's value in each case. |
@@ -63,7 +63,7 @@ The spec's "Left open" lists for 4.3, 4.4, 4.5 and 5.5 and the shell questions o
 apps/linux/
   Cargo.toml                          package anibeam, binary anibeam
   build.rs                            one CxxQtBuilder call: the QML module, the C++ files, the resources, the MpvQt lines
-  com.marcusrosado.AniBeam.desktop    the entry from spec 5.3
+  com.marcusrosado.Anibeam.desktop    the entry from spec 5.3
   mpv.conf                            the bundled file from spec 5.4 (Task 10)
   assets/icon.png                     the current icon, copied from spikes/cxx-qt-pkgbuild/assets/icon.png
   assets/icons/<name>.svg             Lucide glyphs with a black stroke, plus LICENSE (ISC)
@@ -133,7 +133,7 @@ Test conventions used throughout:
 - Modify: `.gitignore` (add `apps/linux/captures/`)
 - Create: `apps/linux/Cargo.toml`
 - Create: `apps/linux/build.rs`
-- Create: `apps/linux/com.marcusrosado.AniBeam.desktop`
+- Create: `apps/linux/com.marcusrosado.Anibeam.desktop`
 - Create: `apps/linux/assets/icon.png` (copy of `spikes/cxx-qt-pkgbuild/assets/icon.png`)
 - Create: `apps/linux/cpp/helpers.h`, `apps/linux/cpp/helpers.cpp`
 - Create: `apps/linux/src/main.rs`, `apps/linux/src/args.rs`, `apps/linux/src/runtime.rs`, `apps/linux/src/paths.rs`
@@ -312,7 +312,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
+description = "Anibeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
 build = "build.rs"
 
 [[bin]]
@@ -353,7 +353,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     CxxQtBuilder::new_qml_module(
-        QmlModule::new("com.marcusrosado.AniBeam")
+        QmlModule::new("com.marcusrosado.Anibeam")
             .version(1, 0)
             .qml_file("qml/Main.qml"),
     )
@@ -363,7 +363,7 @@ fn main() {
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
     .include_dir("/usr/include/MpvQt")
     .cpp_files(["cpp/helpers.cpp"])
-    // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png
+    // qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icon.png
     .qrc_resources(["assets/icon.png"])
     .build();
 
@@ -508,8 +508,8 @@ mod runtime;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
-pub const APP_ID: &str = "com.marcusrosado.AniBeam";
-pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
+pub const APP_ID: &str = "com.marcusrosado.Anibeam";
+pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/Anibeam/qml/Main.qml";
 
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
@@ -557,14 +557,14 @@ fn main() {
 // is built once the window is settled and laid out once, at the compositor's size.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Window {
     id: window
     width: Shell.shootWidth > 0 ? Shell.shootWidth : 1280   // a hint; the compositor sizes the window
     height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
     visible: true
-    title: "AniBeam"
+    title: "Anibeam"
     color: "#101216"                                        // Task 5 binds this to theme.bg
 
     property bool firstFrame: false
@@ -578,7 +578,7 @@ Window {
     Text {
         visible: window.settled
         anchors.centerIn: parent
-        text: "AniBeam " + Shell.version
+        text: "Anibeam " + Shell.version
         color: "#e4e7ee"
     }
 
@@ -648,19 +648,19 @@ impl Default for ShellRust {
 }
 ```
 
-`apps/linux/com.marcusrosado.AniBeam.desktop`, verbatim from spec 5.3:
+`apps/linux/com.marcusrosado.Anibeam.desktop`, verbatim from spec 5.3:
 
 ```ini
 [Desktop Entry]
 Type=Application
-Name=AniBeam
+Name=Anibeam
 Comment=Browse, play, and track your local anime library
 Exec=anibeam
-Icon=com.marcusrosado.AniBeam
+Icon=com.marcusrosado.Anibeam
 Terminal=false
 Categories=AudioVideo;Video;Player;
 Keywords=anibeam;anime;media;video;
-StartupWMClass=com.marcusrosado.AniBeam
+StartupWMClass=com.marcusrosado.Anibeam
 StartupNotify=true
 ```
 
@@ -702,11 +702,11 @@ hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null; nap 0.3
 QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
   setsid nohup "$here/../../target/release/anibeam" "$@" > "$out/$name.log" 2>&1 &
 for i in $(seq 1 60); do
-  hyprctl clients -j | jq -e '.[] | select(.class=="com.marcusrosado.AniBeam" and .mapped==true)' >/dev/null 2>&1 && break
+  hyprctl clients -j | jq -e '.[] | select(.class=="com.marcusrosado.Anibeam" and .mapped==true)' >/dev/null 2>&1 && break
   nap 0.2
 done
 nap 2.5
-geom=$(hyprctl clients -j | jq -r '[.[] | select(.class=="com.marcusrosado.AniBeam")] | .[0] | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
+geom=$(hyprctl clients -j | jq -r '[.[] | select(.class=="com.marcusrosado.Anibeam")] | .[0] | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
 grim -g "$geom" "$out/$name.png" && echo "$name ok ($geom)"
 [ "$keep" = keep ] || pkill -x anibeam
 true
@@ -717,7 +717,7 @@ true
 `apps/linux/README.md`, the whole file:
 
 ```markdown
-# AniBeam Linux shell
+# Anibeam Linux shell
 
 Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec: chapters 4 and 5 of
 `docs/superpowers/specs/2026-09-04-native-line-design.md`; plan: `docs/superpowers/plans/2026-09-05-shell-phase-2.md`.
@@ -745,7 +745,7 @@ Run: `apps/linux/scripts/shoot.sh first`
 Expected: `first ok`; `apps/linux/captures/first.png` is a 1600 by 1000 image of the ground colour with the version centred.
 
 Run: `cargo build --release -p anibeam && apps/linux/scripts/bench.sh first-window 2`
-Expected: the window maps on workspace 2 with class `com.marcusrosado.AniBeam`, and `captures/first-window.png` shows it tiled at the compositor's size; the log has no QML errors. The portal line `Could not register app ID` is expected until Task 25 installs the entry.
+Expected: the window maps on workspace 2 with class `com.marcusrosado.Anibeam`, and `captures/first-window.png` shows it tiled at the compositor's size; the log has no QML errors. The portal line `Could not register app ID` is expected until Task 25 installs the entry.
 
 - [ ] **Step 5: Commit**
 
@@ -1615,7 +1615,7 @@ const DARK_GROUND: &str = "#101216";
 const LIGHT_GROUND: &str = "#f6f7fa";
 const DARK_TEXT: &str = "#e4e7ee";
 const LIGHT_TEXT: &str = "#1b1e26";
-/// The AniBeam teal, the seed when the portal has no accent.
+/// The Anibeam teal, the seed when the portal has no accent.
 const ANIBEAM_TEAL: &str = "#46e0c4";
 pub const SCRIM_ALPHA: f64 = 0.8;
 
@@ -2458,7 +2458,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
 }
 ```
 
-The thirty built-ins. Write the two AniBeam files from the prototype and fetch the rest at a pinned commit of tinted-theming/schemes, verbatim:
+The thirty built-ins. Write the two Anibeam files from the prototype and fetch the rest at a pinned commit of tinted-theming/schemes, verbatim:
 
 ```bash
 mkdir -p apps/linux/themes
@@ -3169,7 +3169,7 @@ and its declaration in `src/bridge/helpers.rs` inside the second `unsafe extern 
 // forced, so a preview renders the other mode with the same components. Colours come from
 // the Rust Theme singleton; the sizes are arithmetic on its settings.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -3250,7 +3250,7 @@ Item {
 The primitives. Copy these twelve files from `spikes/home-grid-qml/qml/` unchanged: `Corner.qml`, `Chip.qml`, `Seg.qml`, `Switch.qml`, `Button.qml`, `Field.qml`, `Dropdown.qml`, `Swatches.qml`, `SliderRow.qml`, `SettingRow.qml`, `Panel.qml`. Copy `Icon.qml` and change its one path line to:
 
 ```qml
-    source: glyph !== "" ? "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icons/" + glyph + ".svg" : ""
+    source: glyph !== "" ? "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icons/" + glyph + ".svg" : ""
 ```
 
 Every one of them refers to `theme` through the context chain, which `Main.qml` now provides. Nothing else in them changes.
@@ -3331,7 +3331,7 @@ Flickable {
         Row {
             spacing: theme.space(3)
             Field { placeholder: "A field" }
-            Dropdown { options: ["AniBeam Dark", "Catppuccin Mocha"]; index: 0 }
+            Dropdown { options: ["Anibeam Dark", "Catppuccin Mocha"]; index: 0 }
             Swatches { slot: 4 }
             SliderRow { from: 0; to: 150; value: 100 }
         }
@@ -3353,7 +3353,7 @@ Flickable {
 }
 ```
 
-`Main.qml` changes: `import com.marcusrosado.AniBeam` already present; add `Tokens { id: theme }` as the first child; bind `color: theme.bg`; replace the placeholder `Text` with a `Loader` that shows `TokensPage` when `Shell.page === "tokens"` (Task 7 turns this into the `Frame`):
+`Main.qml` changes: `import com.marcusrosado.Anibeam` already present; add `Tokens { id: theme }` as the first child; bind `color: theme.bg`; replace the placeholder `Text` with a `Loader` that shows `TokensPage` when `Shell.page === "tokens"` (Task 7 turns this into the `Frame`):
 
 ```qml
     Tokens { id: theme }
@@ -3367,7 +3367,7 @@ Flickable {
         sourceComponent: Shell.page === "tokens" ? tokensPage : placeholder
     }
     Component { id: tokensPage; TokensPage {} }
-    Component { id: placeholder; Text { anchors.centerIn: parent; text: "AniBeam " + Shell.version; color: theme.text } }
+    Component { id: placeholder; Text { anchors.centerIn: parent; text: "Anibeam " + Shell.version; color: theme.text } }
 ```
 
 and the shoot timer waits for `Theme.ready` as well: `onSettledChanged` becomes a function `maybeShoot()` called from both `onSettledChanged` and a `Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }`, starting the timer when `settled && Theme.ready && Shell.shoot !== ""`.
@@ -4812,7 +4812,7 @@ Item {
 }
 ```
 
-`Rail.qml`: copy the prototype's and make these edits: `property int active: 0` stays, add `signal picked(int index)`, change the entry's `onClicked: root.active = entry.index` to `onClicked: root.picked(entry.index)`, make each entry `activeFocusOnTab: true` with `Keys.onReturnPressed: root.picked(entry.index)` and `Keys.onSpacePressed: root.picked(entry.index)`, and a focus ring `borderColor: entry.activeFocus ? theme.focusRing : "transparent"; borderWidth: entry.activeFocus ? theme.space(0.5) : 0`; the icon path in the brand tile becomes `qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png`; the version text becomes `text: Shell.version`; the JP / EN switch reads and writes the core: `index: Door.preferences.title_language === "English" ? 1 : 0` and `onPicked: function(i) { var p = JSON.parse(JSON.stringify(Door.preferences)); p.title_language = i === 1 ? "English" : "Romaji"; Door.setPreferences(p) }`. Add `import com.marcusrosado.AniBeam` at the top. Remove `titleLang` and `langPicked`.
+`Rail.qml`: copy the prototype's and make these edits: `property int active: 0` stays, add `signal picked(int index)`, change the entry's `onClicked: root.active = entry.index` to `onClicked: root.picked(entry.index)`, make each entry `activeFocusOnTab: true` with `Keys.onReturnPressed: root.picked(entry.index)` and `Keys.onSpacePressed: root.picked(entry.index)`, and a focus ring `borderColor: entry.activeFocus ? theme.focusRing : "transparent"; borderWidth: entry.activeFocus ? theme.space(0.5) : 0`; the icon path in the brand tile becomes `qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icon.png`; the version text becomes `text: Shell.version`; the JP / EN switch reads and writes the core: `index: Door.preferences.title_language === "English" ? 1 : 0` and `onPicked: function(i) { var p = JSON.parse(JSON.stringify(Door.preferences)); p.title_language = i === 1 ? "English" : "Romaji"; Door.setPreferences(p) }`. Add `import com.marcusrosado.Anibeam` at the top. Remove `titleLang` and `langPicked`.
 
 `StatusStrip.qml`: copy the prototype's unchanged. The frame binds it.
 
@@ -4823,7 +4823,7 @@ Item {
 // rising from it, and an overlay for menus and tips. Everything in spec 4.1 unit 1 that
 // is not a page lives here. The player takes the whole window and hides the rest.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: frame
@@ -4832,7 +4832,7 @@ FocusScope {
     readonly property alias overlay: overlay
     readonly property alias escapeStack: escapeStack
     readonly property bool fullWindow: page.item ? (page.item.fullWindow === true) : false
-    readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - AniBeam"
+    readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - Anibeam"
 
     Nav { id: nav }
     QtObject {
@@ -4987,7 +4987,7 @@ FocusScope {
     }
     Component { id: frameComponent; Frame { window: window } }
     Component { id: tokensPage; TokensPage {} }
-    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "AniBeam"
+    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "Anibeam"
 ```
 
 and the shoot timer waits for `frame.status === Loader.Ready` too (`maybeShoot()` checks `frame.item`).
@@ -4997,13 +4997,13 @@ and the shoot timer waits for `frame.status === Loader.Ready` too (`maybeShoot()
 - [ ] **Step 2: Build and capture**
 
 Run: `cargo build -p anibeam && apps/linux/scripts/shoot.sh frame --page library`
-Expected: the rail with five entries and the JP / EN switch and the version at the foot, the placeholder "Library / Not built yet", the strip at the foot showing the core's Ready line ("AniBeam core ... ready") with the `system` chip and a time.
+Expected: the rail with five entries and the JP / EN switch and the version at the foot, the placeholder "Library / Not built yet", the strip at the foot showing the core's Ready line ("Anibeam core ... ready") with the `system` chip and a time.
 
 Run: `apps/linux/scripts/shoot.sh frame-settings --page settings`
 Expected: Settings lit on the rail, the title "Settings".
 
 Run on a monitor: `cargo build --release -p anibeam && apps/linux/scripts/bench.sh frame-live 2 keep`, then click through the rail, right-click and pick Back, press Escape with the menu open, Alt+Left, Tab through the rail entries and press Return, Ctrl+, and Ctrl+K
-Expected: the window title reads `Feed - AniBeam` after picking Feed; Back returns to the previous page; the menu closes on Escape; Tab moves a focus ring over the rail entries. `pkill -x anibeam` afterwards.
+Expected: the window title reads `Feed - Anibeam` after picking Feed; Back returns to the previous page; the menu closes on Escape; Tab moves a focus ring over the rail entries. `pkill -x anibeam` afterwards.
 
 - [ ] **Step 3: Commit**
 
@@ -5124,7 +5124,7 @@ The chips bind to these: the top left `Chip { text: root.epBadge }`, the top rig
 // RecordModel and reloads it, debounced, when the core says a series changed.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -5278,14 +5278,14 @@ Item {
         visible: page.libraryEmpty
         icon: "tv"
         title: "Your library is empty"
-        body: "Add a folder in Settings, or import an AniBeam export."
+        body: "Add a folder in Settings, or import an Anibeam export."
         Button { text: "Import"; icon: "download"; onClicked: importDialog.open() }
         Button { text: "Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings") }
     }
     FileDialog {
         id: importDialog
-        title: "Import an AniBeam export"
-        nameFilters: ["AniBeam export (*.json)", "All files (*)"]
+        title: "Import an Anibeam export"
+        nameFilters: ["Anibeam export (*.json)", "All files (*)"]
         onAccepted: { var r = Door.importLibrary(decodeURIComponent(String(selectedFile).replace("file://", ""))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
     }
 }
@@ -5295,7 +5295,7 @@ The `RecordModel` delegate reads `cards.at(index)` for the whole card rather tha
 
 - [ ] **Step 2: Build and capture against the real library**
 
-Run against a sandbox seeded with the real posters: `ANIBEAM_ROOT=/tmp/sandbox` where the sandbox was made by `mkdir -p /tmp/sandbox && anibeam-cli --root /tmp/sandbox call AddSource --json '{"path":"/mnt/wd_general/media/Anime"}' --wait && anibeam-cli --root /tmp/sandbox call RefreshAll --wait` (the second call fetches posters into the sandbox's own cache; it takes a while and needs the network; the sandbox is reused by every later task).
+Run against a sandbox seeded with the real posters: `ANIBEAM_ROOT=/tmp/sandbox` where the sandbox was made by `mkdir -p /tmp/sandbox && anibeam-cli --root /tmp/sandbox call AddSource --json '{"path":"/mnt/media/anime"}' --wait && anibeam-cli --root /tmp/sandbox call RefreshAll --wait` (the second call fetches posters into the sandbox's own cache; it takes a while and needs the network; the sandbox is reused by every later task).
 
 Run: `ANIBEAM_ROOT=/tmp/sandbox apps/linux/scripts/shoot.sh library --page library`
 Expected: the grid at medium posters, the count chip reading `45 series`, every card with its `EP NN` or `Movie` chip, the fraction chip coloured by state, the strip, the scores, the meta line; the Airing section above the grid when any series is releasing.
@@ -5333,7 +5333,7 @@ Spec 4.1 unit 3. One `GetSeries` reply draws the whole page; `seriesChanged` nam
 ```qml
 // A list-status dot: the status hue, pulsing for Watching.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     property string status: ""
@@ -5525,7 +5525,7 @@ Column {
 // the extras, characters, recommendations and Related. One GetSeries draws it all.
 import QtQuick
 import QtQuick.Effects
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 PageScroll {
     id: page
@@ -5822,7 +5822,7 @@ Spec 4.4 (the surface, mpv configuration, completion and the tick, volume) and 5
 - Consumes: MpvQt 1.2.0 (`MpvAbstractItem`, `MpvController`), `Door.openPlayback`, `Door.reportChapters`, `Door.tick`, `Door.closePlayback`, `paths::ShellPaths`, `Fmt`.
 - Produces:
   - The QML element `VideoItem` (C++): `enum Format { Flag, Int64, Double, String, Node }`; signals `loaded()`, `ended(string reason)`, `changed(string name, var value)`, `reconfigured()`, and the inherited `ready()`; invokables `observe(name, format)`, `include(path)`, and the inherited `setProperty`, `setPropertyAsync`, `getProperty`, `command`, `commandAsync`.
-  - `player_config::PlayerSettings { volume: f64 (100), mute: bool, use_my_mpv_conf: bool }` with `load(path)`, `save(path, &s)` through `toml_edit`; `player_config::owned_options() -> Vec<(&'static str, String)>` (the spec's list, minus the subtitle and volume ones, which the callers append); `player_config::preview_options() -> Vec<(&'static str, &'static str)>`; `player_config::config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf>` (bundled, then the user's when the toggle is on, then AniBeam's, existing files only).
+  - `player_config::PlayerSettings { volume: f64 (100), mute: bool, use_my_mpv_conf: bool }` with `load(path)`, `save(path, &s)` through `toml_edit`; `player_config::owned_options() -> Vec<(&'static str, String)>` (the spec's list, minus the subtitle and volume ones, which the callers append); `player_config::preview_options() -> Vec<(&'static str, &'static str)>`; `player_config::config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf>` (bundled, then the user's when the toggle is on, then Anibeam's, existing files only).
   - The QML singleton `Player`: properties `volume`, `mute`, `useMyMpvConf` (each with a `set*` invokable that persists: `setVolume(v)`, `setMute(b)`, `setUseMyMpvConf(b)`), `configLayers` (string list), `ownedOptions` (JSON array of `[name, value]`), `previewOptions` (JSON array).
   - `PlayerPage` with `props.file`, `fullWindow: true`, `title`, `escape()`, and internal state the next two tasks extend: `session` (the `PlaybackSession` JSON), `video` (the main `VideoItem`), `timePos`, `duration`, `paused`, `ended`, `chromeVisible`, `showChrome()`, `seekTo(secs)`, `togglePause()`, `openNeighbour(file)`, `leave()`.
 
@@ -5898,7 +5898,7 @@ Expected: compile errors.
 `apps/linux/mpv.conf`, verbatim from spec 5.4:
 
 ```conf
-# AniBeam's base mpv configuration. The user's own mpv.conf loads after this one when
+# Anibeam's base mpv configuration. The user's own mpv.conf loads after this one when
 # "Use my mpv.conf" is on, and ~/.config/anibeam/mpv.conf loads last. The shell re-sets
 # what it owns after every load. Scripts never load.
 
@@ -6188,7 +6188,7 @@ Corner {
 // rules; the shell sends ticks and shows what comes back.
 import QtQuick
 import QtQuick.Window
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
@@ -7401,8 +7401,8 @@ use zbus::zvariant::{OwnedValue, Value};
 
 use crate::bridge::shell::qobject::Shell;
 
-pub const BUS_NAME: &str = "com.marcusrosado.AniBeam";
-pub const OBJECT_PATH: &str = "/com/marcusrosado/AniBeam";
+pub const BUS_NAME: &str = "com.marcusrosado.Anibeam";
+pub const OBJECT_PATH: &str = "/com/marcusrosado/Anibeam";
 
 pub struct Lock(#[allow(dead_code)] File);
 
@@ -7435,7 +7435,7 @@ pub async fn hand_off(action: Option<&str>) -> Result<(), String> {
         Some(name) => conn.call_method(Some(BUS_NAME), OBJECT_PATH, Some("org.freedesktop.Application"), "ActivateAction", &(name, Vec::<Value>::new(), &data)).await,
         None => conn.call_method(Some(BUS_NAME), OBJECT_PATH, Some("org.freedesktop.Application"), "Activate", &(&data,)).await,
     };
-    result.map(|_| ()).map_err(|e| format!("could not reach the running AniBeam: {e}"))
+    result.map(|_| ()).map_err(|e| format!("could not reach the running Anibeam: {e}"))
 }
 
 pub struct AppInterface {
@@ -7539,7 +7539,7 @@ impl RootInterface for MprisPlayer {
     async fn can_set_fullscreen(&self) -> fdo::Result<bool> { Ok(false) }
     async fn can_raise(&self) -> fdo::Result<bool> { Ok(true) }
     async fn has_track_list(&self) -> fdo::Result<bool> { Ok(false) }
-    async fn identity(&self) -> fdo::Result<String> { Ok("AniBeam".into()) }
+    async fn identity(&self) -> fdo::Result<String> { Ok("Anibeam".into()) }
     async fn desktop_entry(&self) -> fdo::Result<String> { Ok(crate::APP_ID.into()) }
     async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> { Ok(vec![]) }
     async fn supported_mime_types(&self) -> fdo::Result<Vec<String>> { Ok(vec![]) }
@@ -7735,7 +7735,7 @@ and in `bridge/helpers.rs`: `include!("cxx-qt-lib/qobject.h"); type QObject = cx
             match result {
                 Ok(()) => std::process::exit(0),
                 Err(e) => {
-                    eprintln!("anibeam: another AniBeam is running and {e}");
+                    eprintln!("anibeam: another Anibeam is running and {e}");
                     std::process::exit(1);
                 }
             }
@@ -7797,7 +7797,7 @@ Run: `env -u DBUS_SESSION_BUS_ADDRESS target/release/anibeam; echo exit=$?`
 Expected: one line on stderr and exit 1.
 
 Run: play an episode, then `busctl --user introspect org.mpris.MediaPlayer2.anibeam /org/mpris/MediaPlayer2` and `playerctl -p anibeam metadata`
-Expected: `DesktopEntry` reads `com.marcusrosado.AniBeam`; the title and artist follow the spec's rule (an episode with a real title shows it as the title and `Series · Episode N` as the artist); `mpris:artUrl` is a `file://` URL; `playerctl -p anibeam play-pause`, `next`, `position 30` act on the player; the desktop's media keys pause and resume.
+Expected: `DesktopEntry` reads `com.marcusrosado.Anibeam`; the title and artist follow the spec's rule (an episode with a real title shows it as the title and `Series · Episode N` as the artist); `mpris:artUrl` is a `file://` URL; `playerctl -p anibeam play-pause`, `next`, `position 30` act on the player; the desktop's media keys pause and resume.
 
 - [ ] **Step 5: Commit**
 
@@ -7926,7 +7926,7 @@ From `spikes/home-grid-qml/qml/SettingsPage.qml`, lift these inline components i
 // Spec 4.5: Settings as four tabs in a segmented switch, each two panel columns that fill
 // the viewport. The tab and each tab's scroll are session state kept on the frame.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 FocusScope {
     id: page
@@ -7979,7 +7979,7 @@ FocusScope {
 // the Subscriptions row; and the Trackers panel.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -8045,15 +8045,15 @@ SettingsTab {
                             onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
                         }
                     }
-                    Text { visible: tab.sources.length === 0; text: "No folders yet. Click Add folder to point AniBeam at your collection."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal; padding: theme.space(3) }
+                    Text { visible: tab.sources.length === 0; text: "No folders yet. Click Add folder to point Anibeam at your collection."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal; padding: theme.space(3) }
                 }
             }
             foot: [
                 Row { spacing: theme.space(2)
                     Button { text: "Add folder"; icon: "folder-plus"; onClicked: folderDialog.open() }
                     Button { text: "Scan all"; icon: "refresh-cw"; enabled: tab.sources.length > 0; onClicked: { var r = Door.scan(-1); frame.toast(r.error ? r.error.message : "Scan started") } } },
-                Note { text: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
-                SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
+                Note { text: "Anibeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
+                SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until Anibeam closes."
                     Switch { checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } },
                 SettingRow { label: "Subscriptions"; helper: "The feeds anirss watches for you."
                     Button { text: "Open"; icon: "arrow-up-right"; flat: true; onClicked: frame.go("subscriptions") } }
@@ -8131,7 +8131,7 @@ Spec 4.5 (Appearance) and 4.3. Every knob writes through the `Theme` singleton; 
 // The Appearance tab: Colours (mode, colour source, the theme pair, the accent), Shape
 // (density, poster size, corners), and the two preview panes.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -8254,7 +8254,7 @@ Spec 4.5 (Playback) and 4.4 (subtitle defaults, Use my mpv.conf, auto-skip). The
 // The subtitle preview: the player's own item, paused on a frame, re-applying the
 // defaults on every change. A QML approximation is rejected by spec 4.5.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root
@@ -8298,7 +8298,7 @@ Corner {
 // The Playback tab: auto-skip, Use my mpv.conf, the language orders, the subtitle
 // defaults, and the preview rendered through mpv.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -8339,7 +8339,7 @@ SettingsTab {
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.intro); onToggled: function(on) { Door.setAutoSkip(on, !!(Door.settings.auto_skip && Door.settings.auto_skip.outro)) } } }
             SettingRow { label: "Auto-skip outro"; helper: "Jumps the outro when the file's chapters or AniSkip know where it is. Undo in the player turns it off for the session."
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.outro); onToggled: function(on) { Door.setAutoSkip(!!(Door.settings.auto_skip && Door.settings.auto_skip.intro), on) } } }
-            SettingRow { label: "Use my mpv.conf"; helper: "Loads ~/.config/mpv/mpv.conf under AniBeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
+            SettingRow { label: "Use my mpv.conf"; helper: "Loads ~/.config/mpv/mpv.conf under Anibeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.saveUseMyMpvConf(on) } } }
         }
     }
@@ -8357,7 +8357,7 @@ SettingsTab {
         id: subtitlePanel
         Panel {
             title: "Subtitle defaults"; icon: "captions"
-            helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
+            helper: "What every session starts from. Change tracks in the player and Anibeam remembers them per series."
             SettingRow { label: "Scale"
                 SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
             SettingRow { label: "ASS override"; helper: "Force applies the text style to styled subtitles and may break signs and karaoke."
@@ -8443,7 +8443,7 @@ Spec 4.5 (Data) and 4.1 unit 6 (Storage, Export, Import). Pickers are the shell'
 // Export and import; About.
 import QtQuick
 import QtQuick.Dialogs
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
@@ -8510,25 +8510,25 @@ SettingsTab {
                     title: "About"; icon: "info"
                     Row { spacing: theme.space(4)
                         Corner { width: theme.space(16); height: width; radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: theme.accentSoft
-                            Image { anchors.centerIn: parent; width: parent.width * 0.7; height: width; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png"; sourceSize: Qt.size(128, 128) } }
+                            Image { anchors.centerIn: parent; width: parent.width * 0.7; height: width; source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icon.png"; sourceSize: Qt.size(128, 128) } }
                         Column { spacing: theme.space(1); anchors.verticalCenter: parent.verticalCenter
                             Row { spacing: theme.space(2)
-                                Text { text: "AniBeam"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "Anibeam"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
                                 Chip { text: Shell.version; small: true; anchors.verticalCenter: parent.verticalCenter }
                                 Chip { text: "GPL-3.0-or-later"; small: true; mono: false; anchors.verticalCenter: parent.verticalCenter } }
                             Text { text: "Made by Marcus Rosado"; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
                             Text { text: "A local anime library: it scans folders, matches them against AniList, plays the files and keeps your trackers up to date."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; wrapMode: Text.Wrap; width: theme.space(100) }
                             Row { spacing: theme.space(2)
-                                Button { text: "Repository"; icon: "git-branch"; flat: true; small: true; onClicked: Qt.openUrlExternally("https://github.com/marcusbandit/AniBeam") }
+                                Button { text: "Repository"; icon: "git-branch"; flat: true; small: true; onClicked: Qt.openUrlExternally("https://github.com/marcusbandit/Anibeam") }
                                 Button { text: "marcusrosado.com"; icon: "globe"; flat: true; small: true; onClicked: Qt.openUrlExternally("https://marcusrosado.com") }
                                 Button { visible: !!(Door.trackers.anilist && Door.trackers.anilist.username); text: "AniList"; icon: "heart"; flat: true; small: true; onClicked: Qt.openUrlExternally("https://anilist.co/user/" + Door.trackers.anilist.username) } } } }
                 }
             ]
         }
     }
-    FileDialog { id: exportDialog; title: "Export the library"; fileMode: FileDialog.SaveFile; nameFilters: ["AniBeam export (*.json)"]; defaultSuffix: "json"
+    FileDialog { id: exportDialog; title: "Export the library"; fileMode: FileDialog.SaveFile; nameFilters: ["Anibeam export (*.json)"]; defaultSuffix: "json"
         onAccepted: { var r = Door.exportLibrary(tab.pathOf(selectedFile), tab.privateData); frame.toast(r.error ? r.error.message : "Export started") } }
-    FileDialog { id: importDialog; title: "Import an AniBeam export"; nameFilters: ["AniBeam export (*.json)", "All files (*)"]
+    FileDialog { id: importDialog; title: "Import an Anibeam export"; nameFilters: ["Anibeam export (*.json)", "All files (*)"]
         onAccepted: { var r = Door.importLibrary(tab.pathOf(selectedFile)); frame.toast(r.error ? r.error.message : "Import started") } }
 }
 ```
@@ -8573,7 +8573,7 @@ Spec 4.1 unit 7 (the table, the filters, Attach sources, Refresh all, the per-ro
 // One table row: thumbnail, title with the alternate beneath, the type pill, the source
 // chip, the files bar with an amber +N, and the actions. A missing row offers Forget.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Corner {
     id: root
@@ -8646,7 +8646,7 @@ Corner {
 // seeded from To Metadata, Attach sources, Refresh all with an inline confirm, the per-row
 // actions, Forget on missing rows, and the crawl bar.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -8824,7 +8824,7 @@ Item {
 ```qml
 // The match modal: AniList only. Search, or paste an AniList or MyAnimeList link.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Modal {
     id: modal
@@ -8946,7 +8946,7 @@ Spec 4.1 unit 8 (Feed) and 3.7. The core orders the cards and names the reason; 
 // episode, else the newest file, and says which; Coming soon lists scheduled series
 // soonest first, then everything else after a divider.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -9052,7 +9052,7 @@ Spec 4.1 unit 8 (Watching) and 3.7. The cached list paints at once, a refresh ru
 
 ```qml
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 Item {
     id: root
     property var entry: ({})
@@ -9089,7 +9089,7 @@ Item {
 ```qml
 // Spec 4.1 unit 8: the AniList watching and repeating list, most recently updated first.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
@@ -9199,7 +9199,7 @@ Spec 4.1 unit 11 and 3.7. A read-only view of anirss, reachable from Settings on
 ```qml
 // Spec 4.1 unit 11: what anirss watches, read-only. Refresh runs the job again.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 PageScroll {
     id: page
@@ -9222,7 +9222,7 @@ PageScroll {
     Text { text: "RSS feeds anirss is watching for you."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
     Text { visible: page.state === "loading"; text: "Reading anirss…"; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "Missing"; text: "anirss is not installed or not on PATH."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
-    Text { visible: page.state === "NeedsAuth"; text: "qBittorrent session needed. Run anirss -Sy in a terminal to log in to qBittorrent. AniBeam picks up the cached session."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; width: parent.width }
+    Text { visible: page.state === "NeedsAuth"; text: "qBittorrent session needed. Run anirss -Sy in a terminal to log in to qBittorrent. Anibeam picks up the cached session."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; width: parent.width }
     Text { visible: page.state === "Timeout"; text: "anirss timed out. Is qBittorrent reachable?"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "error"; text: "Couldn't read subscriptions: " + page.error; color: theme.red; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "ok" && page.feeds.length === 0; text: "No subscriptions yet. Run anirss in a terminal to subscribe to a feed."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
@@ -9282,7 +9282,7 @@ Spec 4.1 unit 9 and 3.6 (what the shell draws). Drawn once from the core's layou
 // draws it once. GraphNode.w and h are 180 by 420 layout units; the shell scales.
 import QtQuick
 import QtQuick.Shapes
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -9398,7 +9398,7 @@ Spec 5.3 and 1.5. The PKGBUILD builds the enclosing checkout with `pkgver` from 
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: `/usr/bin/anibeam`, `/usr/bin/anibeam-cli`, `/usr/share/applications/com.marcusrosado.AniBeam.desktop`, `/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png`, `/usr/share/anibeam/mpv.conf`, `/usr/share/anibeam/themes/*`, `/usr/share/licenses/anibeam/LICENSE`, and the `anibeam-debug` package.
+- Produces: `/usr/bin/anibeam`, `/usr/bin/anibeam-cli`, `/usr/share/applications/com.marcusrosado.Anibeam.desktop`, `/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png`, `/usr/share/anibeam/mpv.conf`, `/usr/share/anibeam/themes/*`, `/usr/share/licenses/anibeam/LICENSE`, and the `anibeam-debug` package.
 
 - [ ] **Step 1: Write the PKGBUILD and package.sh**
 
@@ -9413,7 +9413,7 @@ pkgver=2.0.0   # rewritten by pkgver() on every build
 pkgrel=1
 pkgdesc="Browse, play, and track your local anime library"
 arch=(x86_64)
-url="https://github.com/marcusbandit/AniBeam"
+url="https://github.com/marcusbandit/Anibeam"
 license=(GPL-3.0-or-later)
 depends=(qt6-base qt6-declarative qt6-svg mpvqt mpv gcc-libs glibc hicolor-icon-theme)
 optdepends=('xdg-desktop-portal: colour source fallback when no terminal config is found'
@@ -9450,10 +9450,10 @@ build() {
 package() {
   install -Dm755 "$_target/release/anibeam"     "$pkgdir/usr/bin/anibeam"
   install -Dm755 "$_target/release/anibeam-cli" "$pkgdir/usr/bin/anibeam-cli"
-  install -Dm644 "$_linux/com.marcusrosado.AniBeam.desktop" \
-    "$pkgdir/usr/share/applications/com.marcusrosado.AniBeam.desktop"
+  install -Dm644 "$_linux/com.marcusrosado.Anibeam.desktop" \
+    "$pkgdir/usr/share/applications/com.marcusrosado.Anibeam.desktop"
   install -Dm644 "$_linux/assets/icon.png" \
-    "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png"
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.Anibeam.png"
   install -Dm644 "$_linux/mpv.conf" "$pkgdir/usr/share/anibeam/mpv.conf"
   install -Dm644 -t "$pkgdir/usr/share/anibeam/themes" "$_linux"/themes/*.yaml
   install -Dm644 "$_repo/LICENSE" "$pkgdir/usr/share/licenses/anibeam/LICENSE"
@@ -9494,7 +9494,7 @@ The shell's plan is `docs/superpowers/plans/2026-09-05-shell-phase-2.md`; the sp
 
 - [ ] **Step 2: Build the package on the desktop and prove the launcher run**
 
-Run: `desktop-file-validate apps/linux/com.marcusrosado.AniBeam.desktop`
+Run: `desktop-file-validate apps/linux/com.marcusrosado.Anibeam.desktop`
 Expected: no output.
 
 Run: `cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all --check && bun run typecheck`
@@ -9503,17 +9503,17 @@ Expected: green; nothing under `src/` changed.
 Run: `script -qec apps/linux/packaging/package.sh /dev/null` (owner at the camera) or ask the owner to run it
 Expected: `makepkg` builds under `target/makepkg-cargo`, produces `anibeam-1.0.0.r<n>.g<hash>-1-x86_64.pkg.tar.zst` and its `-debug` sibling, and installs both; `pacman -Ql anibeam` lists the seven kinds of file above; `anibeam --version` and `anibeam-cli --version` agree with `pkgver`.
 
-Run: `gtk-launch com.marcusrosado.AniBeam`, then `journalctl --user -n 50 | grep -i anibeam`
+Run: `gtk-launch com.marcusrosado.Anibeam`, then `journalctl --user -n 50 | grep -i anibeam`
 Expected: the window maps with the icon from the entry, no `Could not register app ID` line, and the theme follows the terminal palette; a second `gtk-launch` raises the first window.
 
 - [ ] **Step 3: Install on the laptop**
 
-Run: `ssh kangaeru 'cd ~/Projects/WebApps/AniBeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh kangaeru gtk-launch com.marcusrosado.AniBeam`
+Run: `ssh <laptop-host> 'cd ~/Projects/WebApps/Anibeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh <laptop-host> gtk-launch com.marcusrosado.Anibeam`
 Expected: the same package builds on the AMD laptop against its Qt 6.11.2; playback lands on `vaapi` (`hwdec-current`); the theme reads the laptop's kitty chain.
 
 - [ ] **Step 4: Hand the switch line to the owner**
 
-Post the checklist as one issue, "Switch line: units 1 to 4, 6 and 7 on both machines", with a checkbox per item of spec 4.1's switch line, two columns (desktop, laptop), and the install day steps from spec 5.3: run `package.sh`, rename the Electron entry's `Name` to `AniBeam (Electron)` in `~/.local/share/applications/anibeam.desktop`, and note that the wrapper's `^anibeam$` match keeps finding only Electron. When the owner marks every item green, `v2.0.0` is cut: set the workspace version to `2.0.0`, tag `v2.0.0` annotated on `main`, and rebuild so `pkgver` reads `2.0.0`.
+Post the checklist as one issue, "Switch line: units 1 to 4, 6 and 7 on both machines", with a checkbox per item of spec 4.1's switch line, two columns (desktop, laptop), and the install day steps from spec 5.3: run `package.sh`, rename the Electron entry's `Name` to `Anibeam (Electron)` in `~/.local/share/applications/anibeam.desktop`, and note that the wrapper's `^anibeam$` match keeps finding only Electron. When the owner marks every item green, `v2.0.0` is cut: set the workspace version to `2.0.0`, tag `v2.0.0` annotated on `main`, and rebuild so `pkgver` reads `2.0.0`.
 
 ```bash
 gh issue create --title "Switch line: units 1 to 4, 6 and 7 on both machines" --body-file apps/linux/captures/switch-line.md

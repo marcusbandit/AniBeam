@@ -6,11 +6,12 @@ import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { PageTitle, Segmented } from "widgets.slint";
 import { Fold } from "fold.slint";
+import { Tr } from "tr.slint";
 
 export component CalendarHead inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
-        title: "Calendar";
+        title: Tr.t("cal-title");
         note: AppData.airing-view ? "" : AppData.cal-note;
     }
     property <int> airing-index: AppData.devices.length;
@@ -28,7 +29,7 @@ export component CalendarHead inherits VerticalLayout {
     }
     // Unfolded, the week as a board or as days; half folded it is always days.
     if Fold.posture == 1 && !AppData.airing-view && !AppData.series-open: Segmented {
-        options: ["Week", "Days"];
+        options: [Tr.t("cal-week"), Tr.t("cal-days")];
         picked: AppData.cal-days ? 1 : 0;
         pick(i) => { AppData.set-cal-days(i == 1); }
     }

@@ -1,0 +1,362 @@
+use super::*;
+use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct JobRef {
+    pub id: u64,
+    pub kind: JobKind,
+    pub phase: JobPhase,
+}
+
+/// Every event is one envelope. `message` is the activity log line, written
+/// by the core once; the shell never composes log text. `plain` is the same
+/// moment told to someone who has never read the code: no ids, paths, job
+/// names or provider internals. A line without one is for developers only,
+/// and the plain activity log leaves it out. `plain_words` is that line as a catalog ID
+/// and its arguments (#792), for a shell to show in the language it speaks now; `plain` is
+/// the same words in the language the core spoke when it said them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Event {
+    pub seq: u64,
+    pub at: SystemTime,
+    pub level: Level,
+    pub stage: Stage,
+    pub message: String,
+    #[serde(default)]
+    pub plain: Option<String>,
+    #[serde(default)]
+    pub plain_words: Option<Words>,
+    pub job: Option<JobRef>,
+    pub body: EventBody,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum EventBody {
+    Ready,
+    Notice,
+    JobStarted {
+        kind: JobKind,
+    },
+    JobProgress {
+        done: u64,
+        total: Option<u64>,
+        label: String,
+    },
+    JobFailed {
+        error: CoreError,
+    },
+    JobCancelled,
+    SourceChanged {
+        source: Source,
+    },
+    SourceRemoved {
+        source: u64,
+    },
+    SeriesChanged {
+        series: Vec<SeriesCard>,
+    },
+    SeriesRemoved {
+        ids: Vec<u64>,
+    },
+    ScanFinished {
+        source: Option<u64>,
+        added: u64,
+        changed: u64,
+        removed: u64,
+    },
+    SearchFinished {
+        results: Vec<SearchResult>,
+    },
+    LinkResolved {
+        target: MatchTarget,
+    },
+    MatchApplied {
+        series: u64,
+    },
+    RefreshFinished {
+        refreshed: u64,
+        failed: u64,
+    },
+    AutoMatchFinished {
+        backfilled: u64,
+        matched: u64,
+        unmatched: u64,
+    },
+    AiringRefreshed {
+        series: u64,
+        updated: bool,
+    },
+    ImagesCleared {
+        removed: u64,
+    },
+    TrackersChanged {
+        state: TrackerState,
+    },
+    AuthUrlReady {
+        tracker: Tracker,
+        open_url: String,
+        redirect_url: String,
+    },
+    TrackerConnected {
+        tracker: Tracker,
+        username: String,
+    },
+    Marked {
+        series: u64,
+        episode: u32,
+        outcomes: Vec<TrackerOutcome>,
+    },
+    ProgressSet {
+        series: u64,
+        progress: u32,
+        outcomes: Vec<TrackerOutcome>,
+    },
+    Scored {
+        series: u64,
+        score: Option<f64>,
+        outcomes: Vec<TrackerOutcome>,
+    },
+    /// Something the schedule agent said or did on the way (#419): a line of
+    /// its text, or a search or a page it read.
+    AgentSaid {
+        series: u64,
+        text: String,
+    },
+    /// The schedule agent's answer, for the schedule sheet's paste box.
+    AgentAnswered {
+        series: u64,
+        text: String,
+    },
+    /// A status from the menu, with what each tracker made of it.
+    ListStatusSet {
+        series: u64,
+        status: ListStatus,
+        outcomes: Vec<TrackerOutcome>,
+    },
+    /// The list kept on this device moved up to a tracker (#580): how many
+    /// series landed and how many the tracker refused.
+    ListsMoved {
+        tracker: Tracker,
+        moved: u32,
+        failed: u32,
+    },
+    /// The series' notes as written, None when cleared, with what each
+    /// tracker made of them (#211).
+    NotesSet {
+        series: u64,
+        notes: Option<String>,
+        outcomes: Vec<TrackerOutcome>,
+    },
+    ProgressRefreshed {
+        tracker: Tracker,
+    },
+    WatchingRefreshed {
+        list: WatchingList,
+    },
+    /// An episode of a show on the Watching list aired (#212), said once.
+    EpisodeOut {
+        episode: EpisodeOut,
+    },
+    /// A season of Airing now was read afresh; `ListAiringNow` has it.
+    AiringNowRefreshed {
+        season: SeasonPick,
+    },
+    /// The recommender read AniList and fitted again; `ListRecommended`
+    /// has it.
+    RecommendedRefreshed,
+    /// The show page's read of one show landed; `GetShowPage` has it.
+    ShowPageRead {
+        anilist_id: u64,
+    },
+    GraphChanged {
+        root: u64,
+    },
+    CrawlFinished {
+        fetched: u64,
+        deferred: u64,
+    },
+    CastDevicesChanged {
+        devices: Vec<CastDevice>,
+    },
+    /// A cast session moved: a new state, or a new position about once a second.
+    CastChanged {
+        state: CastState,
+    },
+    /// The watch together room changed: someone joined or left, a ready state, the
+    /// offset, the connection. None once this member is out of it (#846).
+    RoomChanged {
+        room: Option<RoomInfo>,
+    },
+    /// The episode the room watches, for a member to open: `file` is this library's copy,
+    /// None when it lacks one, and `series` the matching series when there is one.
+    RoomEpisode {
+        episode: EpisodeRef,
+        series: Option<u64>,
+        file: Option<u64>,
+    },
+    /// What the player of `session` does to keep up with the room: pause or play, seek
+    /// when `seek_to` is set, and play at `speed`. The shell applies it without sending
+    /// anything back.
+    RoomApply {
+        session: u64,
+        playing: bool,
+        seek_to: Option<f64>,
+        speed: f64,
+    },
+    SkipWindowsReady {
+        session: u64,
+        windows: Vec<SkipWindow>,
+    },
+    ResumePointChanged {
+        file: u64,
+        position: Option<f64>,
+    },
+    Viewed {
+        series: u64,
+        episode: String,
+    },
+    PreferencesChanged {
+        preferences: Preferences,
+    },
+    SettingsChanged,
+    /// The tailnet host started, stopped, or found a different state
+    /// (Tailscale came up, the port was taken).
+    HostChanged {
+        status: HostStatus,
+    },
+    /// A fresh read of the tailnet's devices for Settings, which
+    /// `ListTailnetDevices` starts and does not wait for.
+    TailnetDevicesChanged {
+        devices: Vec<TailnetDevice>,
+        #[serde(default)]
+        people: Vec<TailnetPerson>,
+    },
+    /// Discord rich presence connected, or let the connection go: Discord
+    /// closed, stopped answering, or the switch went off. Also said when only
+    /// `problem` changed: no Discord found, or Discord refused (#1029).
+    PresenceChanged {
+        connected: bool,
+        #[serde(default)]
+        problem: Option<PresenceProblem>,
+    },
+    /// Someone pressed Ask to Join on this person's Discord profile (#966), and this
+    /// person has never said no to them: the shell asks whether to let them in, and
+    /// answers with `DiscordAnswer`. `in_room` says whether a room is open to let them
+    /// into, or one would start. Said once per ask that stands.
+    DiscordJoinAsk {
+        user_id: String,
+        name: String,
+        avatar: Option<String>,
+        in_room: bool,
+    },
+    /// An ask is over: answered, or Discord let it go.
+    DiscordAskGone {
+        user_id: String,
+    },
+    /// This person pressed Join on Discord or accepted an invite into a room: the shell
+    /// takes it with `DiscordTakeJoin`, so a window that opens later still gets it, and
+    /// joins it as it would an `anibeam://room/<code>` link.
+    DiscordJoin {
+        code: String,
+    },
+    ExportFinished {
+        path: String,
+    },
+    ImportFinished {
+        summary: ImportSummary,
+    },
+    // Downloads
+    DownloadsStatusChanged {
+        status: DownloadsStatus,
+    },
+    ReleasesFound {
+        search: ReleaseSearch,
+    },
+    ReleasesRefined {
+        refinement: Refinement,
+    },
+    SubscriptionPreviewed {
+        spec: SubscriptionSpec,
+    },
+    /// A subscription made. Its `feed_url` is always empty: the event is stored, and
+    /// a feed's address can hold a login and a key, so the feed is read from the rule
+    /// list instead (#478).
+    Subscribed {
+        result: Subscribed,
+    },
+    TorrentsAdded {
+        result: AddedTorrents,
+    },
+    SubscriptionsRead {
+        rules: Vec<SubscriptionRule>,
+    },
+    TorrentsRead {
+        torrents: Vec<Torrent>,
+        transfer: TransferRate,
+        /// The library series the torrents' `series_id`s name, once each.
+        shows: Vec<ShowLink>,
+    },
+    /// What the endpoint's own feed says about a search's releases (the
+    /// date each was posted, the counts a feed carries that anirss drops),
+    /// read after the search answered. Joined to the releases by link,
+    /// else title.
+    ReleasesEnriched {
+        query: String,
+        endpoint: String,
+        entries: Vec<FeedEntry>,
+    },
+    RuleRead {
+        rule: RuleView,
+    },
+    /// A subscription mended: what the rule keeps, and how many releases
+    /// its feed held when read. The feed itself is in the rule, never here:
+    /// its address can hold a login and a key (#472).
+    SubscriptionRepaired {
+        name: String,
+        must_contain: String,
+        found: u64,
+    },
+    /// A subscription's feed, read for the page, under the `tag` the
+    /// `ReadFeed` call passed. It never names the feed, whose address can
+    /// hold a login and a key (#472).
+    FeedRead {
+        tag: String,
+        entries: Vec<FeedEntry>,
+    },
+    /// A release's torrent file, read for its contents: the whole episode
+    /// numbers its video files carry and how many files it lists. Both
+    /// empty when the link had no file list (a magnet) or could not be read.
+    ReleaseInspected {
+        link: String,
+        episodes: Vec<u32>,
+        files: u64,
+    },
+    /// A read that is not a job could not be made: which read, and why.
+    DownloadsUnavailable {
+        what: String,
+        error: CoreError,
+    },
+    SubscriptionRemoved {
+        name: String,
+    },
+    /// What `RemoveShow` took: the rule when it had one, the torrents it
+    /// took out of the client, the paths it moved to the trash.
+    ShowRemoved {
+        title: String,
+        rule: Option<String>,
+        hashes: Vec<String>,
+        trashed: Vec<String>,
+    },
+    TorrentsControlled {
+        hashes: Vec<String>,
+        action: TorrentAction,
+    },
+}
+
+/// The listener a shell hands to `subscribe`. Called by value on whatever
+/// tokio thread produced the event; the shell owns the hop to its UI thread.
+#[uniffi::export(foreign)]
+pub trait EventListener: Send + Sync {
+    fn on_event(&self, event: Event);
+}

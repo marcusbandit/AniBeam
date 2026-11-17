@@ -1,8 +1,6 @@
-//! The library: every series as a tile, one series in full, what is on disk, and the
-//! torrents.
+//! The library: every series as a tile, and one series in full.
 
-use crate::api::{Airing, Kind, Series, Snapshot};
-use crate::format::{self, Tone};
+use crate::api::{Airing, EpisodeVersion, Kind, Series};
 use crate::schedule;
 use crate::store::{AniListCache, Cache};
 
@@ -17,33 +15,29 @@ pub struct DiskEpisode {
     /// The host's file for it, for streaming; the first copy when there are two. None
     /// from a host older than streaming.
     pub file: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DiskSeries {
-    pub id: u64,
-    pub title: String,
-    /// "7 of 12 on disk, 6 watched".
-    pub summary: String,
-    pub episodes: Vec<DiskEpisode>,
+    /// Every file of the episode when the host keeps it in more than one release, each
+    /// named by its release; empty for one file, or a host older than versions.
+    pub versions: Vec<EpisodeVersion>,
 }
 
 /// One entry per episode, in the host's order. The host lists every file, so an episode
-/// kept in two releases comes twice; it counts as watched when either copy is.
+/// kept in two releases comes twice; it counts as watched when either copy is. Copies are
+/// one episode by season and number, a missing season read as the first, the way the host
+/// groups their versions.
 fn episodes(series: &Series) -> Vec<DiskEpisode> {
-    let mut out: Vec<(Option<u32>, &str, DiskEpisode)> = Vec::new();
+    let mut out: Vec<((u32, u64), DiskEpisode)> = Vec::new();
     for e in &series.episodes {
-        match out
-            .iter_mut()
-            .find(|(season, key, _)| *season == e.season && *key == e.key)
-        {
-            Some((_, _, seen)) => {
+        let key = (e.season.unwrap_or(1), e.number.to_bits());
+        match out.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, seen)) => {
                 seen.watched |= e.watched;
                 seen.file = seen.file.or(e.file);
+                if seen.versions.is_empty() {
+                    seen.versions = e.versions.clone();
+                }
             }
             None => out.push((
-                e.season,
-                &e.key,
+                key,
                 DiskEpisode {
                     season: e.season,
                     number: e.number,
@@ -52,62 +46,12 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
                     title: e.title.clone(),
                     aired_at: e.aired_at,
                     file: e.file,
+                    versions: e.versions.clone(),
                 },
             )),
         }
     }
-    out.into_iter().map(|(_, _, e)| e).collect()
-}
-
-fn summary(series: &Series, episodes: &[DiskEpisode]) -> String {
-    let watched = episodes.iter().filter(|e| e.watched).count();
-    // The host's own count is of files; without a file list it is all there is.
-    let on_disk = if episodes.is_empty() {
-        series.episodes_on_disk
-    } else {
-        episodes.len() as u64
-    };
-    if series.kind == Kind::Movie {
-        return if watched > 0 {
-            "On disk, watched".into()
-        } else {
-            "On disk, not watched yet".into()
-        };
-    }
-    let have = match series.total_episodes {
-        Some(total) if u64::from(total) > on_disk => format!("{on_disk} of {total} on disk"),
-        _ => format!("{on_disk} on disk"),
-    };
-    let seen = if watched == 0 {
-        "none watched".to_string()
-    } else if watched == episodes.len() {
-        "all watched".to_string()
-    } else {
-        format!("{watched} watched")
-    };
-    format!("{have}, {seen}")
-}
-
-/// Every series with something on disk, the most recently active first.
-pub fn on_disk(snapshot: &Snapshot) -> Vec<DiskSeries> {
-    let mut series: Vec<&Series> = snapshot
-        .series
-        .iter()
-        .filter(|s| s.episodes_on_disk > 0 || !s.episodes.is_empty())
-        .collect();
-    series.sort_by_key(|s| std::cmp::Reverse(s.latest_activity_at));
-    series
-        .into_iter()
-        .map(|s| {
-            let episodes = episodes(s);
-            DiskSeries {
-                id: s.id,
-                title: s.title.clone(),
-                summary: summary(s, &episodes),
-                episodes,
-            }
-        })
-        .collect()
+    out.into_iter().map(|(_, e)| e).collect()
 }
 
 /// One poster in the library grid.
@@ -185,6 +129,8 @@ pub struct SubscriptionInfo {
     pub files: u64,
     /// Aired episodes the rule has not found, as the host saw it.
     pub missing: Vec<u32>,
+    /// The season the host counted `missing` in, when it says (#1091).
+    pub missing_season: Option<u32>,
 }
 
 /// One series in full, for its page.
@@ -196,6 +142,8 @@ pub struct Detail {
     pub alt_title: Option<String>,
     /// "TV", "2026", "Fall 2026", "Airing", "12 episodes".
     pub facts: Vec<String>,
+    /// A film, so its page says Watched or Not watched yet instead of listing episodes.
+    pub movie: bool,
     /// Still to air, soonest first.
     pub upcoming: Vec<Airing>,
     pub watched: u32,
@@ -204,21 +152,24 @@ pub struct Detail {
     pub subscription: Option<SubscriptionInfo>,
 }
 
-fn status_word(status: &str) -> &str {
+fn status_word(status: &str) -> String {
     match status {
-        "Releasing" => "Airing",
-        "NotYetReleased" => "Not yet aired",
-        other => other,
+        "Releasing" => tr!("clib-status-airing"),
+        "NotYetReleased" => tr!("clib-status-not-yet"),
+        "Finished" => tr!("series-status-finished"),
+        "Cancelled" => tr!("series-status-cancelled"),
+        "Hiatus" => tr!("series-status-hiatus"),
+        other => other.to_string(),
     }
 }
 
 fn format_word(format: &str) -> String {
     match format {
         "TV" | "OVA" | "ONA" => format.to_string(),
-        "TV_SHORT" => "TV short".to_string(),
-        "MOVIE" => "Movie".to_string(),
-        "SPECIAL" => "Special".to_string(),
-        "MUSIC" => "Music".to_string(),
+        "TV_SHORT" => tr!("clib-format-tv-short"),
+        "MOVIE" => tr!("clib-format-movie"),
+        "SPECIAL" => tr!("clib-format-special"),
+        "MUSIC" => tr!("clib-format-music"),
         other => other.to_string(),
     }
 }
@@ -230,9 +181,9 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
     let mut facts = Vec::new();
     facts.extend(s.format.as_deref().map(format_word));
     facts.extend(s.season.clone().or_else(|| s.year.map(|y| y.to_string())));
-    facts.extend(s.status.as_deref().map(|st| status_word(st).to_string()));
+    facts.extend(s.status.as_deref().map(status_word));
     if let Some(total) = s.total_episodes.filter(|t| *t > 1) {
-        facts.push(format!("{total} episodes"));
+        facts.push(tr!("common-episodes", count = total));
     }
     let alt_title = s
         .titles
@@ -250,12 +201,14 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
             complete: sub.complete,
             files: sub.file_count,
             missing: sub.missing.clone(),
+            missing_season: sub.missing_season,
         });
     Some(Detail {
         id,
         title: s.title.clone(),
         alt_title,
         facts,
+        movie: s.format.as_deref() == Some("MOVIE"),
         upcoming: schedule::schedule_for(s, cache.synced_at, anilist)
             .into_iter()
             .filter(|a| a.at > now)
@@ -267,79 +220,80 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
     })
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct TorrentLine {
-    pub name: String,
-    pub state: &'static str,
-    pub tone: Tone,
-    /// 0 to 1.
-    pub progress: f32,
-    pub facts: String,
-}
-
-/// The torrents still moving first, then the newest. `None` when the host could not
-/// read its torrent client, which is not the same as an empty list.
-pub fn torrents(snapshot: &Snapshot, limit: usize) -> Option<Vec<TorrentLine>> {
-    let mut all: Vec<_> = snapshot.torrents.as_ref()?.iter().collect();
-    all.sort_by_key(|t| {
-        let (_, tone) = format::torrent_state(&t.state);
-        let moving = t.progress < 1.0 && tone != Tone::Quiet;
-        (std::cmp::Reverse(moving), std::cmp::Reverse(t.added_on))
-    });
-    Some(
-        all.into_iter()
-            .take(limit)
-            .map(|t| {
-                let (state, tone) = format::torrent_state(&t.state);
-                TorrentLine {
-                    name: t.name.clone(),
-                    state,
-                    tone,
-                    progress: t.progress.clamp(0.0, 1.0) as f32,
-                    facts: format::torrent_facts(t.progress, t.size, t.download_speed, t.eta),
-                }
-            })
-            .collect(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::Torrent;
+    use crate::api::Snapshot;
 
     fn fixture() -> Snapshot {
         serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap()
     }
 
+    /// The fixture's Frieren, found by title so a reordered fixture cannot swap the series
+    /// these tests are about.
+    fn frieren() -> crate::api::Series {
+        fixture()
+            .series
+            .into_iter()
+            .find(|s| s.title == "Sousou no Frieren 2nd Season")
+            .unwrap()
+    }
+
     #[test]
-    fn series_on_disk_newest_first_with_a_summary() {
-        let rows = on_disk(&fixture());
-        let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
-        assert_eq!(
-            titles,
-            vec!["Sousou no Frieren 2nd Season", "Perfect Blue", "Mushishi"]
-        );
-        assert_eq!(rows[0].summary, "7 of 12 on disk, 6 watched");
-        assert_eq!(rows[1].summary, "On disk, not watched yet");
-        assert_eq!(rows[2].summary, "26 on disk, all watched");
-        assert_eq!(rows[0].episodes[6].code, "E07");
-        assert!(!rows[0].episodes[6].watched);
-        assert_eq!(rows[0].episodes[6].aired_at, Some(1_791_205_200));
+    fn episodes_keep_the_fields_the_host_sent() {
+        let rows = episodes(&frieren());
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[6].code, "E07");
+        assert!(!rows[6].watched);
+        assert_eq!(rows[6].aired_at, Some(1_791_205_200));
     }
 
     #[test]
     fn an_episode_kept_twice_is_one_episode() {
-        let mut snapshot = fixture();
-        let frieren = &mut snapshot.series[0];
+        let mut frieren = frieren();
         let mut copy = frieren.episodes[6].clone();
         copy.watched = true;
         frieren.episodes.push(copy);
         frieren.episodes_on_disk = 8;
-        let rows = on_disk(&snapshot);
-        assert_eq!(rows[0].episodes.len(), 7);
-        assert!(rows[0].episodes[6].watched, "the watched copy counts");
-        assert_eq!(rows[0].summary, "7 of 12 on disk, all watched");
+        let rows = episodes(&frieren);
+        assert_eq!(rows.len(), 7);
+        assert!(rows[6].watched, "the watched copy counts");
+    }
+
+    #[test]
+    fn an_episode_kept_twice_carries_its_versions_once() {
+        let mut frieren = frieren();
+        let versions = vec![
+            EpisodeVersion {
+                file: 70,
+                label: "Group A, 1080p".into(),
+            },
+            EpisodeVersion {
+                file: 71,
+                label: "Group B, 720p".into(),
+            },
+        ];
+        frieren.episodes[6].file = Some(70);
+        frieren.episodes[6].versions = versions.clone();
+        let mut copy = frieren.episodes[6].clone();
+        copy.file = Some(71);
+        frieren.episodes.push(copy);
+        let rows = episodes(&frieren);
+        let seventh = &rows[6];
+        assert_eq!(rows.len(), 7);
+        assert_eq!(seventh.file, Some(70), "the first copy plays");
+        assert_eq!(seventh.versions, versions);
+        assert!(rows[0].versions.is_empty());
+    }
+
+    #[test]
+    fn a_copy_with_no_season_and_one_in_the_first_are_one_episode() {
+        let mut frieren = frieren();
+        frieren.episodes[6].season = None;
+        let mut copy = frieren.episodes[6].clone();
+        copy.season = Some(1);
+        frieren.episodes.push(copy);
+        assert_eq!(episodes(&frieren).len(), 7);
     }
 
     fn cache() -> Cache {
@@ -368,6 +322,7 @@ mod tests {
 
     #[test]
     fn a_series_page_has_facts_episodes_and_its_rule() {
+        crate::i18n::set_lang(crate::i18n::Lang::En);
         let cache = cache();
         let page = detail(&cache, &AniListCache::default(), 12, cache.synced_at + 60).unwrap();
         assert_eq!(page.facts, vec!["TV", "Fall 2026", "Airing", "12 episodes"]);
@@ -379,29 +334,5 @@ mod tests {
         assert_eq!(page.episodes.len(), 7);
         assert_eq!(page.subscription.as_ref().map(|s| s.files), Some(7));
         assert!(detail(&cache, &AniListCache::default(), 999, 0).is_none());
-    }
-
-    #[test]
-    fn moving_torrents_come_first() {
-        let mut snapshot = fixture();
-        snapshot.torrents.as_mut().unwrap().push(Torrent {
-            hash: "b".into(),
-            name: "older but downloading".into(),
-            state: "downloading".into(),
-            progress: 0.5,
-            size: 1_000_000_000,
-            download_speed: 2_000_000,
-            eta: Some(250),
-            added_on: 1,
-            ..Default::default()
-        });
-        let lines = torrents(&snapshot, 10).unwrap();
-        assert_eq!(lines[0].name, "older but downloading");
-        assert_eq!(lines[0].state, "Downloading");
-        assert_eq!(lines[1].state, "Seeding");
-        assert_eq!(lines[1].facts, "1.4 GB");
-
-        snapshot.torrents = None;
-        assert!(torrents(&snapshot, 10).is_none());
     }
 }

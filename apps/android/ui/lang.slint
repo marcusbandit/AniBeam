@@ -1,0 +1,90 @@
+// Language (#793): the phone's own language by default, or any of the 13 the catalog has. A
+// pick re-words every page where it stands; More and onboarding both show this list.
+
+import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
+import { ListGroup } from "widgets.slint";
+
+export struct LangChoice {
+    // The language's name in itself: Dansk, 日本語.
+    name: string,
+    // The same name in the language the app speaks now, when the two differ.
+    note: string,
+}
+
+export global LangData {
+    // The 13, in the catalog's order.
+    in property <[LangChoice]> langs;
+    // -1 follows the phone, else an index into langs.
+    in property <int> pick: -1;
+    // The phone's own language, as its name in itself.
+    in property <string> phone;
+    callback pick-lang(int);
+}
+
+component LangRow inherits Rectangle {
+    in property <string> name;
+    in property <string> note;
+    in property <bool> picked;
+    in property <bool> last;
+    callback clicked();
+    height: Math.max(12 * Theme.unit, column.preferred-height + 5 * Theme.unit);
+    background: touch.pressed ? Theme.raised : transparent;
+    touch := TouchArea { clicked => { root.clicked(); } }
+    column := VerticalLayout {
+        x: Theme.pad;
+        width: parent.width - 2 * Theme.pad - 6 * Theme.unit;
+        alignment: center;
+        spacing: Theme.unit / 2;
+        Text {
+            text: root.name;
+            color: Theme.text;
+            font-family: root.picked ? Theme.strong-face : Theme.face;
+            overflow: elide;
+        }
+        if root.note != "": Text {
+            text: root.note;
+            color: Theme.dim;
+            font-size: Theme.small;
+            overflow: elide;
+        }
+    }
+    if root.picked: Rectangle {
+        x: parent.width - Theme.pad - self.width;
+        y: (parent.height - self.height) / 2;
+        width: 3 * Theme.unit;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+    }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// Same as the phone first, then the 13.
+export component LangList inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    ListGroup {
+        LangRow {
+            name: Tr.t("lang-follow-phone");
+            note: LangData.phone;
+            picked: LangData.pick < 0;
+            last: true;
+            clicked => { LangData.pick-lang(-1); }
+        }
+    }
+    ListGroup {
+        for l[i] in LangData.langs: LangRow {
+            name: l.name;
+            note: l.note;
+            picked: LangData.pick == i;
+            last: i == LangData.langs.length - 1;
+            clicked => { LangData.pick-lang(i); }
+        }
+    }
+}

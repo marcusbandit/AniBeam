@@ -1,9 +1,14 @@
 import { Theme } from "theme.slint";
-import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { Tr } from "tr.slint";
+import { LangChoice, LangData } from "lang.slint";
+import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, EpisodeVersionLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
 import { Ask, MorePage, SettingHit, Settings } from "more.slint";
+import { SubtitleData } from "subtitles.slint";
+import { FeedData } from "feed.slint";
+import { DiskData, DiskSheet, HiddenRow } from "disk.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
 import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
@@ -11,19 +16,63 @@ import { DownloadsPage } from "downloads.slint";
 import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
+import { StatBar, StatRank, StatsData } from "stats.slint";
+import { BackupData } from "backup.slint";
+import { ActivityData, LogRow } from "activity.slint";
+import { MoveData, MoveLine, MoveSheet } from "listmove.slint";
+import { LookData, LookTheme } from "look.slint";
 import { CalendarPage } from "calendar.slint";
-import { AiringSheet } from "airing.slint";
+import { AiringPick, AiringSheet, SeasonSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
+import { NotifyQuestion } from "notify.slint";
+import { Sheet } from "sheet.slint";
+import { ShowCard, ShowData, ShowPerson } from "show.slint";
+import { MatchData, MatchRow } from "show-match.slint";
+import { DateTile, ScheduleData } from "show-dates.slint";
+import { ShowSheets } from "show-sheets.slint";
 
-export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { Theme, Tr, LangChoice, LangData }
+export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
+export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, DateTile, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, ScheduleData, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
-component MobileDataQuestion inherits Rectangle {
+component MobileDataQuestion inherits Sheet {
+    dismissed => { Ask.mobile = false; }
+    Text {
+        text: Tr.t("app-mobile-title");
+        color: Theme.text;
+        font-size: Theme.section;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    Text {
+        text: Tr.t("app-mobile-note");
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    Rectangle { height: Theme.unit; }
+    Button {
+        text: Tr.t("app-mobile-keep");
+        primary: true;
+        clicked => { Ask.mobile = false; }
+    }
+    Button {
+        text: Tr.t("app-mobile-use");
+        clicked => {
+            Ask.mobile = false;
+            AppData.set-wifi-only(false);
+        }
+    }
+}
+
+// An episode kept in more than one release: which one plays, each named by its release.
+component VersionsMenu inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { Ask.mobile = false; } }
-    sheet := Rectangle {
+    TouchArea { clicked => { Ask.versions-open = false; } }
+    Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
         y: parent.height - self.height - root.inset-bottom - Theme.grout;
@@ -38,30 +87,44 @@ component MobileDataQuestion inherits Rectangle {
             padding-top: Theme.pad + Theme.unit;
             spacing: Theme.unit * 3;
             Text {
-                text: "Download over mobile data?";
+                text: Ask.versions-title;
                 color: Theme.text;
                 font-size: Theme.section;
                 font-family: Theme.display-face;
                 wrap: word-wrap;
             }
             Text {
-                text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
+                text: Tr.n("app-versions-note", "count", Ask.versions.length);
                 color: Theme.dim;
                 font-size: Theme.small + 1px;
                 wrap: word-wrap;
             }
             Rectangle { height: Theme.unit; }
-            Button {
-                text: "Keep Wi-Fi only";
-                primary: true;
-                clicked => { Ask.mobile = false; }
+            // Many releases scroll inside the sheet rather than push it off the screen.
+            Flickable {
+                height: Math.min(list.preferred-height, root.height * 0.5);
+                content-height: list.preferred-height;
+                interactive: list.preferred-height > self.height;
+                list := VerticalLayout {
+                    spacing: Theme.unit * 3;
+                    // The release the row plays now is the primary one.
+                    for v in Ask.versions: Button {
+                        text: v.file == Ask.versions-current ? Tr.s("app-versions-plays-now", "release", v.label) : v.label;
+                        primary: v.file == Ask.versions-current;
+                        clicked => {
+                            Ask.versions-open = false;
+                            if (Ask.versions-remote) {
+                                AppData.play-remote(v.file);
+                            } else {
+                                AppData.play(v.file);
+                            }
+                        }
+                    }
+                }
             }
             Button {
-                text: "Use mobile data too";
-                clicked => {
-                    Ask.mobile = false;
-                    AppData.set-wifi-only(false);
-                }
+                text: Tr.t("common-cancel");
+                clicked => { Ask.versions-open = false; }
             }
         }
     }
@@ -95,7 +158,7 @@ component ShowMenu inherits Rectangle {
             }
             Rectangle { height: Theme.unit; }
             Button {
-                text: "Get episodes";
+                text: Tr.t("app-menu-get");
                 icon: @image-url("icons/download.svg");
                 has-icon: true;
                 primary: true;
@@ -106,7 +169,14 @@ component ShowMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Delete episodes";
+                text: Tr.t("common-hide");
+                clicked => {
+                    DiskData.hide(Ask.menu-id);
+                    Ask.menu-id = -1;
+                }
+            }
+            Button {
+                text: Tr.t("app-menu-delete");
                 danger: true;
                 clicked => {
                     AppData.open-series(Ask.menu-id);
@@ -115,15 +185,60 @@ component ShowMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 clicked => { Ask.menu-id = -1; }
             }
         }
     }
 }
 
+// An episode held down: its mark, the desktop's words for the cube's click.
+component MarkMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.mark-open = false; } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.mark-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: Ask.mark-watched ? AppData.mark-unwatched-label : AppData.mark-watched-label;
+                icon: @image-url("icons/check-check.svg");
+                has-icon: true;
+                primary: true;
+                clicked => {
+                    AppData.mark(Ask.mark-number, Ask.mark-season, Ask.mark-watched);
+                    Ask.mark-open = false;
+                }
+            }
+            Button {
+                text: AppData.mark-cancel-label;
+                clicked => { Ask.mark-open = false; }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
-    title: "AniBeam";
+    title: Tr.t("app-title");
     background: Theme.ground;
     default-font-size: Theme.normal;
     default-font-family: Theme.face;
@@ -132,11 +247,11 @@ export component AppWindow inherits Window {
 
     // Each tab, in the order the bar shows them, with the page it opens.
     property <[{icon: image, label: string, page: int}]> destinations: [
-        { icon: @image-url("icons/house.svg"), label: "Home", page: 0 },
-        { icon: @image-url("icons/calendar-days.svg"), label: "Calendar", page: 4 },
-        { icon: @image-url("icons/layers.svg"), label: "Library", page: 1 },
-        { icon: @image-url("icons/download.svg"), label: "Downloads", page: 2 },
-        { icon: @image-url("icons/ellipsis.svg"), label: "More", page: 3 },
+        { icon: @image-url("icons/house.svg"), label: Tr.t("phone-nav-home"), page: 0 },
+        { icon: @image-url("icons/calendar-days.svg"), label: Tr.t("nav-calendar"), page: 4 },
+        { icon: @image-url("icons/layers.svg"), label: Tr.t("phone-nav-library"), page: 1 },
+        { icon: @image-url("icons/download.svg"), label: Tr.t("phone-nav-downloads"), page: 2 },
+        { icon: @image-url("icons/ellipsis.svg"), label: Tr.t("nav-more"), page: 3 },
     ];
 
     // The system bars draw over the window; keep touch targets out from under them.
@@ -274,12 +389,40 @@ export component AppWindow inherits Window {
                 Ask.mobile = false;
                 return accept;
             }
+            if (AppData.notify-ask) {
+                AppData.notify-ask = false;
+                return accept;
+            }
             if (Ask.menu-id >= 0) {
                 Ask.menu-id = -1;
                 return accept;
             }
+            if (Ask.mark-open) {
+                Ask.mark-open = false;
+                return accept;
+            }
+            if (Ask.versions-open) {
+                Ask.versions-open = false;
+                return accept;
+            }
+            if (ShowData.sheet != 0) {
+                ShowData.close();
+                return accept;
+            }
             if (AppData.airing-menu.show) {
                 AppData.airing-close();
+                return accept;
+            }
+            if (AiringPick.open) {
+                AiringPick.open = false;
+                return accept;
+            }
+            if (DiskData.sheet != 0) {
+                DiskData.sheet = 0;
+                return accept;
+            }
+            if (MoveData.open) {
+                MoveData.later();
                 return accept;
             }
             if (AppData.onboarding && AppData.step > 0) {
@@ -422,11 +565,39 @@ export component AppWindow inherits Window {
             inset-bottom: root.inset-bottom;
         }
 
+        if AppData.notify-ask: NotifyQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
         if Ask.menu-id >= 0: ShowMenu {
             inset-bottom: root.inset-bottom;
         }
 
+        if Ask.mark-open: MarkMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.versions-open: VersionsMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        ShowSheets {
+            inset-bottom: root.inset-bottom;
+        }
+
         if AppData.airing-menu.show: AiringSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AiringPick.open: SeasonSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if DiskData.sheet != 0: DiskSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if MoveData.open: MoveSheet {
             inset-bottom: root.inset-bottom;
         }
 

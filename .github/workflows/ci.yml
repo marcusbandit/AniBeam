@@ -1,9 +1,12 @@
 name: CI
 
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
-# the tests for the core and the terminal shell. The Qt shell (apps/linux, package
+# the tests for the crates the pull request changed and every crate that builds on them
+# (.github/affected-crates.py, #1075). A file only one test target reads, such as a patch
+# note, runs that target alone (#1086). The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
-# tests and clippy run in linux.yml, which sets those up for the AppImage. Runs on main
+# tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
+# (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
@@ -46,7 +49,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
 
       - run: cargo fmt --all --check
 
@@ -70,20 +76,114 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge commit and its first parent, the base it merges into, for the crates
+          # the pull request changed.
+          fetch-depth: 2
 
       - name: Rust toolchain
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
+
+      # Only the crates this pull request changed and every crate that builds on them (#1075).
+      # The log lists what was picked, why, and what was not checked. Main and a run by hand
+      # check every crate, so main keeps the full signal and a cache every PR can restore. The
+      # Qt shell (anibeam) needs Qt, which this runner lacks; local-ci.sh checks it.
+      - name: Affected crates
+        id: affected
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 .github/affected-crates.py --self-test
+          if [ "$EVENT" = pull_request ]; then pick=(--base HEAD^1); else pick=(--all); fi
+          python3 .github/affected-crates.py "${pick[@]}" --skip anibeam --github-output
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
+        with:
+          # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
+          # longer push the repo past its 10 GB and evict the ones every PR needs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
-        run: cargo clippy --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
+        if: steps.affected.outputs.crates != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.crates }}
+        run: cargo clippy --locked $(printf -- '-p %s ' $CRATES) --all-targets -- -D warnings
+
+      # Each picked crate another one builds on, by itself: one cargo call over several crates
+      # merges their features, and would hide a use the crate does not turn on itself, such as
+      # rusqlite in the contract, whose sqlite feature only the core turns on.
+      - name: Clippy (each crate alone)
+        if: steps.affected.outputs.alone != ''
+        env:
+          ALONE: ${{ steps.affected.outputs.alone }}
+        run: |
+          status=0
+          for crate in $ALONE; do
+            echo "::group::$crate alone"
+            cargo clippy --locked -p "$crate" --all-targets -- -D warnings || { status=1; echo "::error::clippy $crate alone failed"; }
+            echo "::endgroup::"
+          done
+          exit $status
 
       # Only the phone build compiles the core's phone and cast features, and no other
       # workflow builds the phone, so without this a desktop change can break the APK and
       # stay green (#309). The host target is enough: these features need no NDK.
       - name: Clippy (phone features)
+        if: steps.affected.outputs.core == 'true'
         run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
 
+      # The phone's torrent engine and its tests sit behind the downloads crate's own `phone`
+      # feature. The core's `phone` turns it on for the library only, so without this nothing
+      # compiles those tests, which the step above did while they were in the core.
+      - name: Clippy (downloads with phone)
+        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-downloads ')
+        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
+
+      # Casting and its tests sit behind the playback crate's own `cast` feature, for the same
+      # reason.
+      - name: Clippy (playback with cast)
+        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-playback ')
+        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
+
+      # cargo-nextest runs every test binary at once, where cargo test runs them one after
+      # another (#1086). .config/nextest.toml holds its ci profile.
+      - uses: taiki-e/install-action@v2
+        if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
+        with:
+          tool: cargo-nextest@0.9.151
+
       - name: Test
-        run: cargo test --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli
+        if: steps.affected.outputs.crates != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.crates }}
+        run: cargo nextest run --locked --profile ci $(printf -- '-p %s ' $CRATES)
+
+      # nextest skips doctests. Only a crate with a library has any.
+      - name: Doctests
+        if: steps.affected.outputs.doc != ''
+        env:
+          CRATES: ${{ steps.affected.outputs.doc }}
+        run: cargo test --locked --doc $(printf -- '-p %s ' $CRATES)
+
+      # A test target picked by itself, such as the core's changelog test for a patch note: no
+      # clippy, since no Rust changed, and none of the crate's other tests (#1086).
+      - name: Test (single targets)
+        if: steps.affected.outputs.tests != ''
+        env:
+          TESTS: ${{ steps.affected.outputs.tests }}
+        run: |
+          status=0
+          for t in $TESTS; do
+            cargo nextest run --locked --profile ci -p "${t%%:*}" --test "${t#*:}" || { status=1; echo "::error::$t failed"; }
+          done
+          exit $status
+
+      # A lock change that reaches no crate runs no cargo step above, so --locked never checks
+      # it against the manifests. This does, without building anything.
+      - name: Lock is current
+        if: steps.affected.outputs.lock == 'true'
+        run: cargo metadata --locked --format-version 1 >/dev/null
