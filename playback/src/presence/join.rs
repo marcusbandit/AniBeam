@@ -20,8 +20,8 @@ use std::time::Instant;
 use anibeam_room::proto::MAX_MEMBERS;
 
 use super::{
-    ASK_SECRET, ASK_STANDS, Activity, Ask, Incoming, Inner, LISTEN, Party, ROOM_SECRET, RoomShow,
-    field,
+    ASK_SECRET, ASK_STANDS, Activity, Ask, Incoming, Inner, LISTEN, Party, Post, ROOM_SECRET,
+    RoomShow, field,
 };
 use crate::Playback;
 use anibeam_contract::*;
@@ -38,14 +38,18 @@ static SERIAL: AtomicU64 = AtomicU64::new(0);
 /// The party and the idle activity for what the core knows now, handed to
 /// the worker. Does nothing before the switch first went on.
 pub(super) fn post_party(inner: &Inner) {
-    let Some(worker) = &inner.worker else {
-        return;
-    };
+    if let Some(worker) = &inner.worker {
+        worker.post(party_post(inner));
+    }
+}
+
+/// The party and the room's idle activity, as a change to the desired state.
+pub(super) fn party_post(inner: &Inner) -> Post {
     let (party, idle) = party_of(inner);
-    worker.post(move |d| {
+    Box::new(move |d| {
         d.party = Some(party);
         d.idle = idle;
-    });
+    })
 }
 
 fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
