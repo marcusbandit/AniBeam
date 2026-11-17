@@ -1,14 +1,15 @@
-//! One limiter per upstream: a governor cell that paces every request to
-//! the provider's published gap, and backon's schedule on top of it for a
-//! 429. The gap is the floor, the 429 schedule is the ceiling, and nothing
-//! else in the core ever calls a provider directly.
+//! One limiter per upstream: a pace that spaces every request by the
+//! provider's published gap, or wider when the provider's replies report a
+//! lower live limit (AniList's 30 a minute while degraded, #732), and
+//! backon's schedule on top of it for a 429. The pace keeps a run under the
+//! limit on its own, the 429 schedule is the ceiling for when it does not,
+//! and nothing else in the core ever calls a provider directly.
 
-use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable};
-use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
+use tokio::time::Instant;
 
 use super::{Http, HttpRequest, HttpResponse, Upstream};
 use anibeam_contract::CoreError;
@@ -18,10 +19,119 @@ use anibeam_contract::CoreError;
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 const DEFAULT_MAX_ATTEMPTS: usize = 6;
 
+/// How far under a reported limit the live pace sits: 10% more time per
+/// request than the limit allows, so a run never sits right on the line.
+const LIVE_HEADROOM: f64 = 1.1;
+
+/// The pacing one client shares between every caller. Every request waits
+/// for the gap after the one before it, and the gap is the larger of the
+/// published floor and what the provider's own replies say it allows now.
+struct Pace {
+    /// The published gap, the floor that holds whatever the replies say.
+    floor: Duration,
+    /// The window an upstream's `X-RateLimit-Limit` counts over, for an
+    /// upstream that reports one; `None` ignores the headers.
+    window: Option<Duration>,
+    state: Mutex<PaceState>,
+}
+
+#[derive(Default)]
+struct PaceState {
+    /// When the last request went out.
+    last_sent: Option<Instant>,
+    /// The gap the last reported limit asks for, nought until a reply says.
+    live_gap: Duration,
+    /// No request goes out before this: the provider said none are left.
+    hold_until: Option<Instant>,
+}
+
+impl Pace {
+    fn new(floor: Duration) -> Pace {
+        Pace {
+            floor,
+            window: None,
+            state: Mutex::new(PaceState::default()),
+        }
+    }
+
+    /// Waits for this caller's turn and takes it. The turn is worked out
+    /// again on every wake, so a reply that lowered the limit or emptied
+    /// the budget while this caller slept still holds it back.
+    async fn turn(&self) {
+        loop {
+            let when = {
+                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let now = Instant::now();
+                let gap = self.floor.max(st.live_gap);
+                let mut when = st.last_sent.map_or(now, |t| t + gap);
+                if let Some(hold) = st.hold_until {
+                    when = when.max(hold);
+                }
+                if when <= now {
+                    st.last_sent = Some(now);
+                    return;
+                }
+                when
+            };
+            tokio::time::sleep_until(when).await;
+        }
+    }
+
+    /// Reads the live limit off a reply. `X-RateLimit-Limit` sets the pace
+    /// to the window over that limit, with headroom; `X-RateLimit-Remaining`
+    /// at nought holds every caller until `X-RateLimit-Reset`, or a whole
+    /// window when the reply gives no reset. A header that does not parse
+    /// changes nothing.
+    fn observe(&self, r: &HttpResponse) {
+        let Some(window) = self.window else {
+            return;
+        };
+        let limit = header_u64(r, "x-ratelimit-limit").filter(|&n| n > 0);
+        let remaining = header_u64(r, "x-ratelimit-remaining");
+        if limit.is_none() && remaining.is_none() {
+            return;
+        }
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(limit) = limit {
+            st.live_gap = window.mul_f64(LIVE_HEADROOM) / u32::try_from(limit).unwrap_or(u32::MAX);
+        }
+        if remaining == Some(0) {
+            let wait = header_u64(r, "x-ratelimit-reset")
+                .map(|reset| reset_in(reset, unix_now()))
+                .unwrap_or(window)
+                .min(window);
+            let hold = Instant::now() + wait;
+            st.hold_until = Some(st.hold_until.map_or(hold, |h| h.max(hold)));
+        }
+    }
+}
+
+fn header_u64(r: &HttpResponse, name: &str) -> Option<u64> {
+    r.header(name).and_then(|s| s.trim().parse::<u64>().ok())
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// How long until an `X-RateLimit-Reset` comes round. AniList sends a Unix
+/// time; a value too small to be one is read as seconds from now, which is
+/// what some providers send instead. A reset already past is nought.
+fn reset_in(reset: u64, now_unix: u64) -> Duration {
+    const A_UNIX_TIME: u64 = 1_000_000_000;
+    if reset >= A_UNIX_TIME {
+        Duration::from_secs(reset.saturating_sub(now_unix))
+    } else {
+        Duration::from_secs(reset)
+    }
+}
+
 pub struct ProviderClient {
     upstream: Upstream,
     http: Arc<dyn Http>,
-    limiter: DefaultDirectRateLimiter,
+    pace: Pace,
     min_delay: Duration,
     max_attempts: usize,
     /// A cap on one request, never on the whole call. A timeout around the
@@ -79,13 +189,15 @@ impl ProviderClient {
     pub fn new(upstream: Upstream, http: Arc<dyn Http>, gap: Duration) -> ProviderClient {
         // A zero gap would be no pacing at all, which no provider wants;
         // one per second is the safe reading of a caller's mistake.
-        let quota = Quota::with_period(gap)
-            .unwrap_or_else(|| Quota::per_second(NonZeroU32::MIN))
-            .allow_burst(NonZeroU32::MIN);
+        let gap = if gap.is_zero() {
+            Duration::from_secs(1)
+        } else {
+            gap
+        };
         ProviderClient {
             upstream,
             http,
-            limiter: RateLimiter::direct(quota),
+            pace: Pace::new(gap),
             min_delay: Duration::from_secs(1),
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             attempt_timeout: None,
@@ -117,6 +229,15 @@ impl ProviderClient {
         self
     }
 
+    /// Paces by the limit the provider's replies report as well as by the
+    /// gap: `X-RateLimit-Limit` requests in every `window`, and none at all
+    /// once `X-RateLimit-Remaining` reaches nought. For an upstream whose
+    /// limit moves, as AniList's drops to 30 a minute while it is degraded.
+    pub fn with_live_limit(mut self, window: Duration) -> Self {
+        self.pace.window = Some(window);
+        self
+    }
+
     pub async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
         self.send_capped(req, self.attempt_timeout).await
     }
@@ -138,7 +259,7 @@ impl ProviderClient {
         per_attempt: Option<Duration>,
     ) -> Result<HttpResponse, CoreError> {
         let attempt = || async {
-            self.limiter.until_ready().await;
+            self.pace.turn().await;
             let sent = match per_attempt {
                 Some(d) => match tokio::time::timeout(d, self.http.send(req.clone())).await {
                     Ok(sent) => sent,
@@ -154,6 +275,9 @@ impl ProviderClient {
                 },
                 None => self.http.send(req.clone()).await,
             };
+            if let Ok(r) = &sent {
+                self.pace.observe(r);
+            }
             match sent {
                 Ok(r) if is_rate_limited(&r) => Err(Attempt::Limited(Box::new(r))),
                 Ok(r) => Ok(r),
@@ -438,5 +562,168 @@ mod tests {
             Err(CoreError::Provider { status: None, .. })
         ));
         assert_eq!(http.requests().len(), 1);
+    }
+
+    /// A server that keeps the limit AniList does: `limit` requests in any
+    /// `window`, said on every reply in `X-RateLimit-Limit` and
+    /// `X-RateLimit-Remaining`, and a 429 for the one past it.
+    struct Limited {
+        limit: usize,
+        window: Duration,
+        seen: std::sync::Mutex<Vec<Instant>>,
+        refused: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Limited {
+        fn new(limit: usize, window: Duration) -> Arc<Limited> {
+            Arc::new(Limited {
+                limit,
+                window,
+                seen: std::sync::Mutex::new(vec![]),
+                refused: std::sync::atomic::AtomicUsize::new(0),
+            })
+        }
+    }
+
+    impl Http for Limited {
+        fn send(
+            &self,
+            _req: HttpRequest,
+        ) -> crate::BoxFuture<'_, Result<HttpResponse, crate::HttpError>> {
+            let now = Instant::now();
+            let mut seen = self.seen.lock().unwrap();
+            seen.retain(|t| now.duration_since(*t) < self.window);
+            let over = seen.len() >= self.limit;
+            if over {
+                self.refused
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            } else {
+                seen.push(now);
+            }
+            let remaining = self.limit - seen.len();
+            let headers = vec![
+                ("X-RateLimit-Limit".to_string(), self.limit.to_string()),
+                ("X-RateLimit-Remaining".to_string(), remaining.to_string()),
+            ];
+            Box::pin(async move {
+                Ok(HttpResponse {
+                    status: if over { 429 } else { 200 },
+                    headers,
+                    body: b"{}".to_vec(),
+                })
+            })
+        }
+    }
+
+    /// A Sync of many shows against AniList's degraded limit (30 a minute,
+    /// here 5 in 400 ms) never gets a 429: the client reads the limit off
+    /// the first reply and slows to it on its own, rather than running at
+    /// its own gap and leaning on the backoff.
+    #[tokio::test]
+    async fn a_long_run_stays_under_the_limit_the_replies_report() {
+        let window = Duration::from_millis(400);
+        let server = Limited::new(5, window);
+        let client =
+            ProviderClient::new(Upstream::Anilist, server.clone(), Duration::from_millis(1))
+                .with_live_limit(window)
+                .with_min_delay(Duration::from_millis(1));
+        for _ in 0..16 {
+            client
+                .send(get("https://graphql.anilist.co"))
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            server.refused.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the client ran past the limit the replies reported"
+        );
+    }
+
+    /// A reply that says nothing is left holds the next request until the
+    /// budget comes back: the reset when the reply gives one, a whole
+    /// window when it does not.
+    #[tokio::test]
+    async fn none_remaining_holds_the_next_request_for_the_window() {
+        let window = Duration::from_millis(300);
+        let http = FakeHttp::new();
+        let spent = vec![
+            ("X-RateLimit-Limit".to_string(), "1000".to_string()),
+            ("X-RateLimit-Remaining".to_string(), "0".to_string()),
+        ];
+        http.push_with_headers(200, "a", spent);
+        http.push(200, "b");
+        let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1))
+            .with_live_limit(window);
+        let start = Instant::now();
+        client.send(get("https://x/")).await.unwrap();
+        client.send(get("https://x/")).await.unwrap();
+        assert!(
+            start.elapsed() >= window,
+            "the second request went out with nothing left: {:?}",
+            start.elapsed()
+        );
+    }
+
+    /// An upstream not built with a live limit ignores the headers, so a
+    /// provider whose numbers mean something else is never held by them.
+    #[tokio::test]
+    async fn without_a_live_limit_the_headers_change_nothing() {
+        let http = FakeHttp::new();
+        let spent = vec![
+            ("X-RateLimit-Limit".to_string(), "1".to_string()),
+            ("X-RateLimit-Remaining".to_string(), "0".to_string()),
+        ];
+        http.push_with_headers(200, "a", spent);
+        http.push(200, "b");
+        let client = ProviderClient::new(Upstream::Jikan, http.clone(), Duration::from_millis(1));
+        let start = Instant::now();
+        client.send(get("https://x/")).await.unwrap();
+        client.send(get("https://x/")).await.unwrap();
+        assert!(
+            start.elapsed() < Duration::from_millis(200),
+            "{:?}",
+            start.elapsed()
+        );
+    }
+
+    /// The pace follows the limit both ways: a degraded 30 widens it, and a
+    /// limit back at 90 lets it close again, never below the floor.
+    #[test]
+    fn the_live_gap_follows_the_reported_limit() {
+        let mut pace = Pace::new(Duration::from_millis(800));
+        pace.window = Some(Duration::from_secs(60));
+        let reply = |limit: &str| HttpResponse {
+            status: 200,
+            headers: vec![
+                ("X-RateLimit-Limit".to_string(), limit.to_string()),
+                ("X-RateLimit-Remaining".to_string(), "20".to_string()),
+            ],
+            body: vec![],
+        };
+        pace.observe(&reply("30"));
+        let gap = pace.state.lock().unwrap().live_gap;
+        assert_eq!(
+            gap,
+            Duration::from_millis(2200),
+            "30 a minute with headroom"
+        );
+        pace.observe(&reply("90"));
+        let gap = pace.state.lock().unwrap().live_gap;
+        assert!(gap < pace.floor, "{gap:?}");
+        pace.observe(&reply("not a number"));
+        let gap = pace.state.lock().unwrap().live_gap;
+        assert!(
+            gap < pace.floor,
+            "a bad header keeps the last limit: {gap:?}"
+        );
+    }
+
+    #[test]
+    fn a_reset_reads_as_a_unix_time_or_as_seconds_from_now() {
+        let now = 1_800_000_000;
+        assert_eq!(reset_in(now + 42, now), Duration::from_secs(42));
+        assert_eq!(reset_in(now - 5, now), Duration::ZERO, "already past");
+        assert_eq!(reset_in(17, now), Duration::from_secs(17));
     }
 }

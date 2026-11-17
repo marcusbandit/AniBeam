@@ -287,7 +287,6 @@ dependencies = [
  "anibeam-foundation",
  "backon",
  "flate2",
- "governor",
  "rand 0.10.2",
  "reqwest",
  "rusqlite",
