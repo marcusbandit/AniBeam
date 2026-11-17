@@ -99,6 +99,22 @@ cp -R "$app" "$stage/"
 ln -s /Applications "$stage/Applications"
 dmg="$out/Anibeam-$pkgver-macos-arm64.dmg"
 rm -f "$dmg"
-hdiutil create -volname Anibeam -srcfolder "$stage" -ov -format UDZO "$dmg"
+# On GitHub's runners hdiutil sometimes fails with "Resource busy" while something still holds
+# the stage or the new image (#1092). That error gets five tries in all, a little further apart
+# each time; any other failure stops the build at once.
+hdiutil_log="$(mktemp)"
+for try in 1 2 3 4 5; do
+  if hdiutil create -volname Anibeam -srcfolder "$stage" -ov -format UDZO "$dmg" 2>&1 \
+    | tee "$hdiutil_log"; then
+    break
+  fi
+  if [ "$try" -eq 5 ] || ! grep -q 'Resource busy' "$hdiutil_log"; then
+    exit 1
+  fi
+  echo "hdiutil was busy, trying again in $((try * 5))s"
+  sleep $((try * 5))
+  rm -f "$dmg"
+done
+rm -f "$hdiutil_log"
 du -sh "$app" "$dmg"
 echo "$dmg"
