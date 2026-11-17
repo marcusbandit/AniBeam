@@ -26,11 +26,15 @@ NFPM_SHA=2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7
 
 pkgver="${version//-/\~}"
 
-# fetch <url> <sha256> <name>: into the downloads directory, checked every time.
+# shellcheck source=SCRIPTDIR/download.sh
+. "$here/download.sh"
+
+# fetch <url> <sha256> <name>: into the downloads directory, checked every time. download
+# retries a release host that times out or answers 504 (#953).
 fetch() {
   local file="$downloads/$3"
   mkdir -p "$downloads"
-  [ -f "$file" ] || curl -fsSL "$1" -o "$file"
+  [ -f "$file" ] || download "$file" "$1"
   echo "$2  $file" | sha256sum -c --quiet - || { echo "checksum mismatch for $3" >&2; rm -f "$file"; exit 1; }
 }
 
