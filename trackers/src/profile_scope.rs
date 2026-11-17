@@ -6,7 +6,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, params};
 
-use crate::{accounts, cache, move_up, watching};
+use crate::{accounts, cache, move_up, watching, writes};
 use anibeam_contract::*;
 
 /// The owner and a friend, both with an AniList account and an entry for
@@ -144,6 +144,27 @@ fn move_up_offers_each_series_once_against_the_owners_entry() {
     let rows = move_up::preview(&c, Tracker::Anilist).unwrap();
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0].tracker_status, Some(ListStatus::Watching));
+}
+
+#[test]
+fn the_mark_guard_reads_only_the_owners_progress() {
+    let c = two_profiles();
+    c.execute(
+        "DELETE FROM tracker_entries WHERE profile_id = 1 AND media_id = 10",
+        [],
+    )
+    .unwrap();
+    let target = writes::Targets {
+        series: 1,
+        anilist: Some(10),
+        mal: None,
+        total: Some(12),
+        folder_name: "Shared show".into(),
+    };
+    // The friend is at 12, the owner has no entry: episode 5 is still the
+    // owner's to mark.
+    assert!(!writes::covered(&c, &target, &[Tracker::Anilist], 5).unwrap());
+    guest_untouched(&c);
 }
 
 #[test]

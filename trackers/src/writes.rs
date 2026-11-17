@@ -1130,7 +1130,7 @@ fn reach(conn: &Connection, target: &Targets, lookup: bool) -> Result<Vec<Tracke
 /// Whether every tracker in `reach` already has this episode in the
 /// cache. A tracker with no id yet or no cached entry has not, since
 /// there is nothing to say it is that far.
-fn covered(
+pub(crate) fn covered(
     conn: &Connection,
     target: &Targets,
     reach: &[Tracker],
@@ -1142,7 +1142,7 @@ fn covered(
         };
         let progress = conn
             .query_row(
-                "SELECT progress FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+                "SELECT progress FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
                 params![t.as_str(), id as i64],
                 |r| r.get::<_, i64>(0),
             )
