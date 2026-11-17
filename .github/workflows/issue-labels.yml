@@ -1,8 +1,9 @@
 name: Issue labels
 
-# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml, pr-build.yml, pr-issue.yml, pr-labels.yml and the agent loop use, with these colours
-# and descriptions, and puts them back when the forms or this list change on main, or when one
-# of them is deleted.
+# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml,
+# pr-build.yml, pr-issue.yml, pr-labels.yml and the agent loop use, with these colours and
+# descriptions, and puts them back when the forms or this list change on main, or when one of
+# them is deleted.
 on:
   push:
     branches: [main]
