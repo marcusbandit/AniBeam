@@ -175,29 +175,55 @@ pub fn hls_path(file: u64, height: u32, audio: Option<usize>, burn: Option<usize
 /// on a keyframe the host forces at its start.
 pub const HLS_PIECE: f64 = 6.0;
 
-/// How many pieces an episode `duration` seconds long comes in: one at least.
-pub fn hls_pieces(duration: f64) -> u32 {
-    (duration / HLS_PIECE).ceil().max(1.0) as u32
+/// The longest episode the host converts: a day. A probe that says more read
+/// a broken header, and listing its pieces would run the host out of memory.
+pub const HLS_LONGEST: f64 = 86_400.0;
+
+/// A last piece of this long or less is folded into the one before it. The
+/// probe's length runs a hair past the last frame's start, so a piece that
+/// short holds no frame and ffmpeg never writes it.
+pub const HLS_SLIVER: f64 = 0.1;
+
+/// Whether an episode `duration` seconds long can be listed as pieces: a
+/// finite, positive length of [`HLS_LONGEST`] at most. A probe that found no
+/// duration reads as 0.
+pub fn hls_converts(duration: f64) -> bool {
+    duration.is_finite() && duration > 0.0 && duration <= HLS_LONGEST
+}
+
+/// How many pieces an episode `duration` seconds long comes in, one at least,
+/// or None when [`hls_converts`] refuses the length.
+pub fn hls_pieces(duration: f64) -> Option<u32> {
+    if !hls_converts(duration) {
+        return None;
+    }
+    Some(((duration - HLS_SLIVER) / HLS_PIECE).ceil().max(1.0) as u32)
 }
 
 /// The playlist [`hls_path`] answers for an episode `duration` seconds long:
 /// every piece of the whole episode up front, so a player seeks it like a
 /// file. Piece `n` is `seg<n>.ts` with `query` after it, so each piece asks
 /// for the same conversion the playlist did. A computer casting a conversion
-/// to a TV reads the pieces back out of this text.
-pub fn hls_playlist(duration: f64, query: &str) -> String {
-    let count = hls_pieces(duration);
+/// to a TV reads the pieces back out of this text. None when
+/// [`hls_converts`] refuses the length.
+pub fn hls_playlist(duration: f64, query: &str) -> Option<String> {
+    let count = hls_pieces(duration)?;
     let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
     out.push_str(&format!(
         "#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n",
         HLS_PIECE.ceil() as u32
     ));
     for i in 0..count {
-        let len = (duration - f64::from(i) * HLS_PIECE).min(HLS_PIECE);
+        // The last piece keeps a sliver past it, so the lengths add up.
+        let len = if i + 1 == count {
+            duration - f64::from(i) * HLS_PIECE
+        } else {
+            HLS_PIECE
+        };
         out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
     }
     out.push_str("#EXT-X-ENDLIST\n");
-    out
+    Some(out)
 }
 
 /// `GET /api/v1/hello`.
@@ -499,6 +525,11 @@ pub struct Subscription {
     /// Aired episode numbers that are not on disk.
     #[serde(default)]
     pub missing: Vec<u32>,
+    /// The season those numbers are in, when the show numbers by season
+    /// (#1091). None from a host that predates it, or for numbers that
+    /// carry no season.
+    #[serde(default)]
+    pub missing_season: Option<u32>,
 }
 
 /// One torrent in the client.
@@ -533,12 +564,38 @@ mod tests {
 
     #[test]
     fn the_playlist_covers_the_whole_episode() {
-        let list = hls_playlist(14.5, "?audio=1");
+        let list = hls_playlist(14.5, "?audio=1").unwrap();
         assert!(list.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
         assert!(list.contains("#EXTINF:6.000,\nseg0.ts?audio=1\n"));
         assert!(list.contains("#EXTINF:2.500,\nseg2.ts?audio=1\n"));
         assert!(!list.contains("seg3.ts"));
         assert!(list.ends_with("#EXT-X-ENDLIST\n"));
+    }
+
+    #[test]
+    fn a_length_that_is_not_a_sane_one_lists_nothing() {
+        for d in [0.0, -6.0, f64::NAN, f64::INFINITY, HLS_LONGEST + 1.0, 1e12] {
+            assert_eq!(hls_pieces(d), None, "{d}");
+            assert_eq!(hls_playlist(d, ""), None, "{d}");
+        }
+        assert_eq!(hls_pieces(HLS_LONGEST), Some(14_400));
+        assert_eq!(hls_pieces(0.04), Some(1));
+    }
+
+    #[test]
+    fn a_sliver_past_the_last_piece_is_no_piece_of_its_own() {
+        assert_eq!(hls_pieces(1440.0), Some(240));
+        assert_eq!(hls_pieces(1440.0004), Some(240));
+        assert_eq!(hls_pieces(1440.5), Some(241));
+        let list = hls_playlist(1440.0004, "").unwrap();
+        assert!(!list.contains("seg240.ts"));
+        assert!(list.contains("#EXTINF:6.000,\nseg239.ts\n"));
+        let total: f64 = list
+            .lines()
+            .filter_map(|l| l.strip_prefix("#EXTINF:"))
+            .map(|l| l.trim_end_matches(',').parse::<f64>().unwrap())
+            .sum();
+        assert!((total - 1440.0).abs() < 0.01, "{total}");
     }
 
     #[test]

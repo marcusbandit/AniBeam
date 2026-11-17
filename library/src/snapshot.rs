@@ -1039,6 +1039,28 @@ impl Snapshot {
             .map(|list| Self::clip(row, Some(season), list))
     }
 
+    /// How long each season a TVmaze folder holds runs, by season: the
+    /// lengths its total adds up (`fill_tvmaze_totals`, `apply_episodes_set`),
+    /// so a file is counted against its own season's numbers rather than
+    /// against every season pooled (#1091). A count set by hand stands for
+    /// its season while it is in force. Empty for every other provider,
+    /// whose numbers carry no season, and for an unknown series.
+    pub fn season_lengths(&self, id: u64) -> BTreeMap<u32, u32> {
+        let Some(row) = self.row(id) else {
+            return BTreeMap::new();
+        };
+        if row.provider != Some(Provider::Tvmaze) {
+            return BTreeMap::new();
+        }
+        self.seasons_on_disk(row)
+            .into_iter()
+            .filter_map(|s| {
+                let listed = self.tv_season(row, s).map(|eps| eps.len() as u32);
+                self.season_set(row, s).or(listed).map(|n| (s, n))
+            })
+            .collect()
+    }
+
     /// Every season of a TVmaze match's show, each as `tv_season` reads it.
     pub fn tv_seasons_of<'a>(
         &'a self,

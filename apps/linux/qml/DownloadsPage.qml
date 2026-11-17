@@ -457,8 +457,9 @@ Item {
         page.searchFirst = false
         page.fetchGet(on[0].name)
     }
-    // The sources may arrive after the page opens on a show: the search waits for them
-    onEnabledEndpointsChanged: fetchFirst()
+    // The sources may arrive after the page opens on a show: the search waits for them. A
+    // source switched on also clears the line that said none was
+    onEnabledEndpointsChanged: { page.clearAllOff(); page.fetchFirst() }
     function closeGet() { page.searchFirst = false; page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
     function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
     function fetchGet(name) {
@@ -560,9 +561,16 @@ Item {
     // The search error's Details and its button: { detail, label, act }
     property var searchFix: ({})
     // A search error in plain words, with the button that does the fix (#538)
-    function sayOnSearch(text, detail, label, act) {
-        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null }
+    // `allOff` marks an error that says no source is on: whichever control switches one on
+    // clears it
+    function sayOnSearch(text, detail, label, act, allOff) {
+        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null, allOff: !!allOff }
         page.searchError = text
+    }
+    function clearAllOff() {
+        if (page.searchError === "" || !page.searchFix.allOff || page.enabledEndpoints.length === 0) return
+        page.searchError = ""
+        page.searchFix = ({})
     }
     property var selected: ({})
     property int hoveredGroup: -1
@@ -773,8 +781,8 @@ Item {
                     page.setSource(first, true)
                     // A source that runs now searches at once; one to start asks first
                     if (page.sourceOn(first)) page.runSearch()
-                })
-            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) })
+                }, true)
+            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) }, true)
             return
         }
         page.closeGet()

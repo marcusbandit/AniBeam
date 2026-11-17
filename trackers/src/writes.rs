@@ -21,6 +21,7 @@
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
+use tokio::sync::watch;
 
 use crate::Trackers;
 use crate::{
@@ -231,12 +232,28 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     let (main, reach) = guard_reach(&trackers.services, &target, true)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover. A second mark of the same finish finds
-    // the slot taken and is judged as a plain mark.
+    // the slot taken and answers with the first mark's job, so the shell
+    // hears how that one went: judged as a plain mark, its own write would
+    // race the rewatch's for the list's status and count (#1042).
     let finished = trackers
         .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?;
-    let slot = finished.then(|| trackers.rewatching.hold(series)).flatten();
+    let slot = if finished {
+        match trackers.rewatching.hold(series) {
+            Ok(slot) => Some(slot),
+            Err(Some(job)) => return Ok(job),
+            // The first mark is between taking the slot and starting its
+            // job, so there is no job to answer with yet.
+            Err(None) => {
+                return Err(CoreError::Refused {
+                    reason: Refusal::NotNewer,
+                });
+            }
+        }
+    } else {
+        None
+    };
     let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far each tracker says the user has got, so a mark every tracker it
@@ -288,7 +305,7 @@ fn finished_again(
     };
     let entry = conn
         .query_row(
-            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
             params![t.as_str(), id as i64],
             |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
         )
@@ -317,17 +334,30 @@ fn finished_again(
 /// team, so two cores in one process never share a slot (#776). Two marks of
 /// one finish (the rule at the end and the player's button, say) both read the
 /// list before either has written, so the second finds the series held here
-/// and is not counted as a rewatch at all.
+/// and answers with the first's job, leaving the one rewatch to it. Each held
+/// series keeps the id of the job writing it, once that job has started.
 #[derive(Clone, Default)]
-pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
+pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashMap<u64, JobCell>>>);
+
+/// The id of the job a rewatch slot belongs to, set once the job starts.
+type JobCell = Arc<std::sync::OnceLock<u64>>;
 
 impl Rewatching {
-    /// The series' slot, or None while another mark holds it.
-    fn hold(&self, series: u64) -> Option<RewatchSlot> {
-        recover(&self.0).insert(series).then(|| RewatchSlot {
-            set: self.clone(),
-            series,
-        })
+    /// The series' slot, or, while another mark holds it, that mark's job
+    /// (None until its job has started).
+    fn hold(&self, series: u64) -> Result<RewatchSlot, Option<u64>> {
+        use std::collections::hash_map::Entry;
+        match recover(&self.0).entry(series) {
+            Entry::Occupied(held) => Err(held.get().get().copied()),
+            Entry::Vacant(free) => {
+                let job = free.insert(JobCell::default()).clone();
+                Ok(RewatchSlot {
+                    set: self.clone(),
+                    series,
+                    job,
+                })
+            }
+        }
     }
 }
 
@@ -336,11 +366,106 @@ impl Rewatching {
 struct RewatchSlot {
     set: Rewatching,
     series: u64,
+    job: JobCell,
 }
 
 impl Drop for RewatchSlot {
     fn drop(&mut self) {
         recover(&self.set.0).remove(&self.series);
+    }
+}
+
+/// Each list entry's writes in the order they were asked for, one set of
+/// lines per trackers team as [`Rewatching`] is. A write reads the entry
+/// before it writes, so two writes of one entry at once would both read the
+/// same list and the one that landed last would decide it: a status set
+/// while a rewatch is being written could leave the rewatch's Completed over
+/// it (#1112). Each write takes its place when it is asked for and starts
+/// once every write asked for before it on the same entries has ended,
+/// however that one ended. Lines go by entry rather than by series, so two
+/// series matched to one show, or a show the library does not have, share
+/// theirs.
+#[derive(Clone, Default)]
+pub(crate) struct WriteLine(Arc<LineInner>);
+
+#[derive(Default)]
+struct LineInner {
+    next: std::sync::atomic::AtomicU64,
+    /// Each entry's writes still in line, oldest first.
+    waiting: std::sync::Mutex<std::collections::HashMap<ListEntry, Vec<Waiting>>>,
+}
+
+/// One list entry: a tracker and its media id.
+type ListEntry = (Tracker, u64);
+
+/// A write still in line: its ticket, and the end the writes after it wait on.
+type Waiting = (u64, watch::Receiver<()>);
+
+impl WriteLine {
+    /// A place at the back of the line of every entry the target writes to.
+    fn join(&self, target: &Targets) -> Turn {
+        let entries: Vec<ListEntry> = [Tracker::Anilist, Tracker::Mal]
+            .into_iter()
+            .filter_map(|t| target.id_for(t).map(|id| (t, id)))
+            .collect();
+        let ticket = self
+            .0
+            .next
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (done, end) = watch::channel(());
+        let mut waiting = recover(&self.0.waiting);
+        let mut before = Vec::new();
+        for entry in &entries {
+            let line = waiting.entry(*entry).or_default();
+            before.extend(line.iter().map(|(_, end)| end.clone()));
+            line.push((ticket, end.clone()));
+        }
+        Turn {
+            line: self.clone(),
+            entries,
+            ticket,
+            before,
+            _done: done,
+        }
+    }
+}
+
+/// A write's place in its entries' lines. The writes after it may start
+/// once this is dropped, which is when the job holding it ends.
+struct Turn {
+    line: WriteLine,
+    entries: Vec<ListEntry>,
+    ticket: u64,
+    /// The ends of every write ahead of this one. Each write waits on all of
+    /// them rather than only the last, so one that leaves the line before
+    /// its own turn came lets nobody past the ones still ahead of it.
+    before: Vec<watch::Receiver<()>>,
+    _done: watch::Sender<()>,
+}
+
+impl Turn {
+    /// Waits for every write ahead of this one to end. Dropping the wait
+    /// keeps the place, so the next wait picks up where it stopped.
+    async fn come(&mut self) {
+        while let Some(end) = self.before.last_mut() {
+            // Nothing is ever sent: the sender dropping is how a write ends.
+            let _ = end.changed().await;
+            self.before.pop();
+        }
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        let mut waiting = recover(&self.line.0.waiting);
+        for entry in &self.entries {
+            if let Some(line) = waiting.get_mut(entry) {
+                line.retain(|(t, _)| *t != self.ticket);
+                if line.is_empty() {
+                    waiting.remove(entry);
+                }
+            }
+        }
     }
 }
 
@@ -807,8 +932,12 @@ pub fn start_many(
     };
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
+    let turns = reachable
+        .iter()
+        .map(|target| owner.write_line.join(target))
+        .collect();
     Ok(Some(jobs.start(kind, move |ctx| async move {
-        run_many(owner, ctx, reachable, action, left_out).await
+        run_many(owner, ctx, reachable, turns, action, left_out).await
     })))
 }
 
@@ -816,6 +945,7 @@ async fn run_many(
     trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     targets: Vec<Targets>,
+    turns: Vec<Turn>,
     action: Action,
     left_out: LeftOut,
 ) -> Result<Finished, CoreError> {
@@ -824,7 +954,11 @@ async fn run_many(
     let mut named = None;
     let mut landed: Vec<Tracker> = Vec::new();
     let mut reason: Option<String> = None;
-    for (i, target) in targets.iter().enumerate() {
+    // Every pick's place was taken when the write was asked for, so a
+    // write to one of them asked for later waits until this loop has
+    // written it. Each place is given up as soon as its pick is written.
+    for ((i, target), mut turn) in targets.iter().enumerate().zip(turns) {
+        turn.come().await;
         ctx.checkpoint()?;
         ctx.progress(i as u64, Some(total), &target.folder_name);
         let outcomes = write_all(&trackers, &ctx, target, &action, false).await?;
@@ -1073,10 +1207,17 @@ fn start_holding(
 ) -> Result<u64, CoreError> {
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
-    Ok(jobs.start(kind, move |ctx| async move {
+    let cell = slot.as_ref().map(|s| s.job.clone());
+    let mut turn = owner.write_line.join(&target);
+    let job = jobs.start(kind, move |ctx| async move {
         let _slot = slot;
+        turn.come().await;
         run(owner, ctx, target, action).await
-    }))
+    });
+    if let Some(cell) = cell {
+        let _ = cell.set(job);
+    }
+    Ok(job)
 }
 
 async fn run(
@@ -2232,7 +2373,7 @@ pub(crate) async fn record_status(
 
 fn mark_synced(conn: &Connection, t: Tracker, now: i64) -> Result<(), CoreError> {
     conn.execute(
-        "UPDATE tracker_accounts SET synced_at = ?2 WHERE tracker = ?1",
+        "UPDATE tracker_accounts SET synced_at = ?2 WHERE tracker = ?1 AND profile_id = 1",
         params![t.as_str(), now],
     )?;
     Ok(())
@@ -2273,14 +2414,59 @@ mod tests {
     fn a_rewatch_slot_is_held_once_and_freed_when_dropped() {
         let set = Rewatching::default();
         let slot = set.hold(7).expect("a free series gives its slot");
-        assert!(set.hold(7).is_none(), "a held series refuses a second hold");
-        assert!(set.hold(8).is_some(), "another series is free");
+        assert_eq!(
+            set.hold(7).err(),
+            Some(None),
+            "a held series refuses a second hold"
+        );
+        slot.job.set(31).unwrap();
+        assert_eq!(
+            set.hold(7).err(),
+            Some(Some(31)),
+            "and names its job once started"
+        );
+        assert!(set.hold(8).is_ok(), "another series is free");
         assert!(
-            Rewatching::default().hold(7).is_some(),
+            Rewatching::default().hold(7).is_ok(),
             "another team's set never shares the slot"
         );
         drop(slot);
-        assert!(set.hold(7).is_some(), "a dropped slot frees the series");
+        assert!(set.hold(7).is_ok(), "a dropped slot frees the series");
+    }
+
+    #[tokio::test]
+    async fn a_write_waits_for_every_write_ahead_of_it_on_its_entries_only() {
+        let line = WriteLine::default();
+        let target = |series, anilist| Targets {
+            series,
+            anilist: Some(anilist),
+            mal: None,
+            total: None,
+            folder_name: String::new(),
+        };
+        async fn waits(turn: &mut Turn) -> bool {
+            let soon = std::time::Duration::from_millis(50);
+            tokio::time::timeout(soon, turn.come()).await.is_err()
+        }
+        let first = line.join(&target(1, 100));
+        let cancelled = line.join(&target(1, 100));
+        // Another series matched to the same show shares its line.
+        let mut third = line.join(&target(2, 100));
+        let mut elsewhere = line.join(&target(3, 300));
+        assert!(!waits(&mut elsewhere).await, "another show does not wait");
+        assert!(waits(&mut third).await, "a later write waits");
+        drop(cancelled);
+        assert!(
+            waits(&mut third).await,
+            "a write leaving the line lets nobody past the one still ahead"
+        );
+        drop(first);
+        assert!(!waits(&mut third).await);
+        drop((third, elsewhere));
+        assert!(
+            recover(&line.0.waiting).is_empty(),
+            "an empty line is forgotten"
+        );
     }
 
     /// The status is read first, whatever the provider said, because a 429

@@ -110,10 +110,7 @@ impl Store {
     }
 
     fn send_task(&self, task: Task) -> Result<(), CoreError> {
-        let sender = self
-            .tx
-            .lock()
-            .unwrap()
+        let sender = recover(&self.tx)
             .clone()
             .ok_or_else(|| CoreError::internal("store is closed"))?;
         sender
@@ -227,8 +224,10 @@ impl Store {
 
     /// Drops the sender so the thread drains and exits, then joins it.
     pub fn close(&self) {
-        self.tx.lock().unwrap().take();
-        if let Some(t) = self.thread.lock().unwrap().take() {
+        recover(&self.tx).take();
+        // Taken out first, so a second close never waits on the lock for this join.
+        let thread = recover(&self.thread).take();
+        if let Some(t) = thread {
             let _ = t.join();
         }
     }

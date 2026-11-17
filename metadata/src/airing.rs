@@ -18,6 +18,10 @@
 //! either. A refresh without Jikan's half deletes no future row, since the
 //! one the schedule leaves out may be an episode only Jikan knew of.
 //!
+//! Jikan is a request per hundred episodes, so this job asks only from the
+//! page that holds the first episode it can still learn about
+//! (`jikan_from`, #1105); a long show costs a page or two, not all of them.
+//!
 //! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
 //! `AIRING_REFRESH_TTL_MS`, carried over.
 //!
@@ -40,6 +44,7 @@ use anibeam_foundation::events::Signal;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::services::Services;
 use anibeam_foundation::time;
+use anibeam_net::jikan::JikanEpisodes;
 use anibeam_net::tvmaze;
 
 /// How long a series' schedule is taken to be current. Electron's
@@ -207,12 +212,27 @@ async fn refresh_anilist(
     now: i64,
 ) -> Result<bool, CoreError> {
     let schedule = metadata.net.anilist.schedule(anilist_id).await?;
-    let jikan = match mal_id {
-        Some(mal_id) => metadata.jikan_episodes(mal_id).await,
-        None => Some(Vec::new()),
+    let from = match mal_id {
+        Some(_) => metadata
+            .services
+            .store
+            .read(move |c| jikan_from(c, anilist_id, now))?,
+        None => 1,
     };
-    let whole = jikan.is_some();
-    let jikan = jikan.unwrap_or_default();
+    let jikan = match mal_id {
+        Some(mal_id) => metadata.jikan_episodes_from(mal_id, from).await,
+        None => JikanEpisodes::whole(Vec::new()),
+    };
+    let whole = jikan.whole;
+    // Only a refresh that asked Jikan has a say in what is still owed. One
+    // that read from a later page may write a series owed, but never cross
+    // one off: the holes an outage left may sit before its first page, and
+    // the owed walk's whole read is what fills them.
+    let owed = mal_id.and_then(|_| {
+        let owes = crate::team::owes_titles(&jikan);
+        (owes || from == 1).then_some(owes)
+    });
+    let jikan = jikan.episodes;
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
@@ -227,11 +247,45 @@ async fn refresh_anilist(
             } else {
                 record::upsert_episodes(tx, anilist_id, &rows, true)?;
             }
+            if let Some(owed) = owed {
+                crate::owed::mark(tx, anilist_id, owed)?;
+            }
             let status_changed = write_status(tx, anilist_id, status.as_deref())?;
             stamp(tx, anilist_id, now)?;
             Ok(status_changed || before != stored(tx, anilist_id)?)
         })
         .await
+}
+
+/// How far back an untitled episode is still worth asking Jikan about.
+/// Jikan often lists a new episode before it has a title and adds the
+/// title days later, sometimes after the next episode's.
+const LATE_TITLE: i64 = 30 * 86_400;
+
+/// The first episode Jikan can still tell this refresh anything about
+/// (#1105). `keep_titles` means a stored title never changes here, so
+/// nothing up to the highest titled row is worth asking for again, with
+/// two exceptions the read must reach: a row still in the future, since
+/// Jikan's silence about one is what drops it, and an untitled row that
+/// aired inside `LATE_TITLE`, whose title may still come. An older
+/// untitled row below the highest titled one is left to the full fetch
+/// and the owed walk, which read every page. With no rows at all the
+/// read starts at episode one.
+fn jikan_from(conn: &Connection, anilist_id: u64, now: i64) -> Result<u32, CoreError> {
+    let (titled, future, late): (Option<i64>, Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT max(CASE WHEN title IS NOT NULL THEN number END),
+                min(CASE WHEN aired_at > ?2 THEN number END),
+                min(CASE WHEN title IS NULL AND aired_at > ?3 THEN number END)
+         FROM anilist_episodes WHERE anilist_id = ?1",
+        params![anilist_id as i64, now, now.saturating_sub(LATE_TITLE)],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let after_titled = titled.map_or(1, |n| n.saturating_add(1));
+    let from = [future, late]
+        .into_iter()
+        .flatten()
+        .fold(after_titled, i64::min);
+    Ok(u32::try_from(from.max(1)).unwrap_or(1))
 }
 
 /// A TVmaze show's turn: the whole show fetched again and written whole,

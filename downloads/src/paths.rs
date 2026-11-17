@@ -309,7 +309,7 @@ pub(crate) fn validate_name(name: &str) -> Result<String, CoreError> {
 }
 
 /// The folder for releases: the name given, else the show's from the first
-/// title, else `fallback`, as anirss names a download or a subscription.
+/// title (a season pack's without its season), else `fallback`, as anirss names a download or a subscription.
 pub(crate) fn name_for(
     name: Option<&str>,
     items: &[Release],
@@ -320,7 +320,7 @@ pub(crate) fn name_for(
         None => {
             let shown = items
                 .first()
-                .map(|i| anibeam_releases::titles::show_name(&i.title))
+                .map(|i| anibeam_releases::titles::folder_name(&i.title))
                 .unwrap_or_default();
             validate_name(if shown.is_empty() { fallback } else { &shown })
         }
@@ -445,6 +445,17 @@ mod tests {
             name_for(None, &[batch], "Downloads").unwrap(),
             "Cowboy Bebop"
         );
+    }
+
+    #[test]
+    fn a_season_pack_lands_in_its_show_folder() {
+        let pack: Release = serde_json::from_value(serde_json::json!({
+            "title": "[Grp] Some Show S01 [1080p]",
+            "link": "magnet:?xt=urn:btih:0000000000000000000000000000000000000002",
+            "source": "feed",
+        }))
+        .unwrap();
+        assert_eq!(name_for(None, &[pack], "Downloads").unwrap(), "Some Show");
     }
 
     #[test]

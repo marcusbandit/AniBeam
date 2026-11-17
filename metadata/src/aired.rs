@@ -38,10 +38,10 @@ pub const LONGEST_SLEEP: Duration = Duration::from_secs(30 * 60);
 /// entries, and a MAL entry through the library series that carries both ids.
 /// A show the library hides is not followed.
 const FOLLOWED: &str = "SELECT media_id FROM tracker_entries
-        WHERE tracker = 'anilist' AND status IN ('watching', 'repeating')
+        WHERE tracker = 'anilist' AND profile_id = 1 AND status IN ('watching', 'repeating')
      UNION
      SELECT s.anilist_id FROM tracker_entries t JOIN series s ON s.mal_id = t.media_id
-        WHERE t.tracker = 'mal' AND t.status IN ('watching', 'repeating') AND s.anilist_id IS NOT NULL";
+        WHERE t.tracker = 'mal' AND t.profile_id = 1 AND t.status IN ('watching', 'repeating') AND s.anilist_id IS NOT NULL";
 
 fn followed_filter() -> String {
     format!(
@@ -241,5 +241,30 @@ impl EventListener for AfterChange {
             let handle = metadata.services.handle.clone();
             let _ = handle.spawn_blocking(move || arm(&metadata)).await;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only the owner's Watching list is followed: a friend's, on either
+    /// tracker, never wakes the owner's computer for a broadcast (#863).
+    #[test]
+    fn a_friends_watching_list_is_not_followed() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO anilist_media (id, mal_id, media_type, title_romaji) VALUES (10, 110, 'ANIME', 'Owner show'), (20, 120, 'ANIME', 'Friend show');
+             INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id, mal_id)
+                 VALUES (1, 1, 'show', '/tv/Friend show', 'Friend show', 0, 20, 120);
+             INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
+                 (1, 'anilist', 10, 'watching', 0),
+                 (2, 'anilist', 20, 'watching', 0), (2, 'mal', 120, 'watching', 0);
+             INSERT INTO anilist_episodes (anilist_id, number, aired_at) VALUES (10, 1, 2000), (20, 1, 1500);",
+        )
+        .unwrap();
+        assert_eq!(next_at(&c, 1000).unwrap(), Some(2000));
     }
 }

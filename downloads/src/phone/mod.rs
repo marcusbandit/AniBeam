@@ -17,6 +17,8 @@ use crate::Downloads;
 use crate::paths::name_for;
 use anibeam_contract::*;
 use anibeam_foundation::services::Services;
+#[cfg(feature = "phone")]
+use anibeam_foundation::sync::recover;
 
 /// The library folder the phone downloads into, beside the core's own folders. The app
 /// registers the same folder as its one library source.
@@ -975,13 +977,7 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
             anibeam_releases::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url)
         else {
             // Its endpoint was removed, or its credentials were: said once, not every round.
-            if downloads
-                .phone
-                .stopped
-                .lock()
-                .unwrap()
-                .insert(rule.name.clone())
-            {
+            if recover(&downloads.phone.stopped).insert(rule.name.clone()) {
                 downloads.services.bus.say(
                     Level::Warn,
                     Stage::Downloads,
@@ -995,7 +991,7 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
             }
             continue;
         };
-        downloads.phone.stopped.lock().unwrap().remove(&rule.name);
+        recover(&downloads.phone.stopped).remove(&rule.name);
         let items = match feed(&downloads.services, &url, &rule.name, &rule.endpoint, &from).await {
             Ok(items) => items,
             Err(e) => {

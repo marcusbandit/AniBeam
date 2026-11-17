@@ -1000,6 +1000,10 @@ pub enum Reply {
         /// The room this person is in can be joined from Discord without asking.
         #[serde(default)]
         room_open: bool,
+        /// Why Discord shows nothing, while the switch is on and the last try
+        /// to reach it failed (#1029). None while it shows, or nothing was tried.
+        #[serde(default)]
+        problem: Option<PresenceProblem>,
     },
     DiscordBlocked {
         people: Vec<DiscordPerson>,

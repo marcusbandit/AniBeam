@@ -26,6 +26,9 @@ base64 = "0.23"
 time = { version = "0.3", features = ["parsing"] }
 tracing = "0.1"
 
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 # The phone's build, where On hold does not run (on_hold.rs). The core's `phone` turns it on.
 phone = []
