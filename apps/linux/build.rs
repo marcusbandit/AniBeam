@@ -317,7 +317,7 @@ fn main() {
         // The icons on the Mac grid, for the Dock and the Dark bundle icon: the other
         // platforms keep the full-bleed ones above.
         builder = builder.qrc_resources([
-            format!("assets/mac/{}", app_icon_file).as_str(),
+            format!("assets/mac/{app_icon_file}").as_str(),
             "assets/mac/icon-dark.png",
         ]);
         println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
@@ -379,8 +379,9 @@ fn changes() {
 }
 
 /// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
-/// under assets/ and the only one of the three in the qrc: the release mark, the nightly's graph paper, or the dev blueprint, so a
-/// nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// under assets/ (the one of the three that is in the qrc; a Mac also carries its Mac-grid
+/// twin under assets/mac/): the release mark, the nightly's graph paper, or the dev blueprint,
+/// so a nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
 /// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
 /// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
 /// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
@@ -403,8 +404,7 @@ fn app_icon() -> String {
         kind => format!("icon-{kind}.png"),
     };
     println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
-    // The same mark on the Mac grid (assets/logo/make.py), which the Dock and the bundle's
-    // custom icon show on a Mac.
-    println!("cargo:rustc-env=ANIBEAM_MAC_ICON_FILE=mac/{file}");
+    // The channel itself, which the Mac bundle step reads back out of the binary.
+    println!("cargo:rustc-env=ANIBEAM_ICON_KIND={icon}");
     file
 }

@@ -28,13 +28,12 @@ res = android / "android/res"
 
 YELLOW = "#FDC901"
 INK = "#0D0E11"
-# The icon's rounded square inside the 1024 canvas: TILE wide, centred.
-TILE = 996
-SQUARE = f'<rect x="{(1024 - TILE) / 2:g}" y="{(1024 - TILE) / 2:g}" width="{TILE}" height="{TILE}" rx="225" fill="{{}}"/>'
-# The tile's side in the Mac icons' 1024 canvas: Apple's grid puts it at 824, a 100 px
-# transparent margin all round, where a full-bleed icon looks oversized in the Dock.
-MAC_TILE = 824
-MAC_SCALE = MAC_TILE / TILE
+# The icon's rounded square inside the 1024 canvas.
+SQUARE = '<rect x="14" y="14" width="996" height="996" rx="225" fill="{}"/>'
+# The Mac icons are these drawings shrunk onto Apple's grid, a tile 824 wide in the 1024
+# canvas (100 px of transparent margin all round) where a full-bleed icon looks oversized in
+# the Dock. 996 is the tile above, which nightly.py and dev.py draw at as well.
+MAC_SCALE = 824 / 996
 # The outline's width in the glyph's 1024 units: about 2 dp on Android's 108 dp canvas.
 LINE = 32
 
@@ -52,21 +51,19 @@ def fit(scale: float) -> str:
     return f"translate(512 512) scale({scale:.6f}) translate(-512 -512)"
 
 
-def icon(ground: str, ink: str, scale: float = 1.0) -> str:
-    """The icon; `scale` shrinks it about the canvas's middle, for the Mac grid."""
-    body = SQUARE.format(ground) + f'<path fill="{ink}" d="{glyph}"/>'
-    if scale != 1.0:
-        body = f'<g transform="{fit(scale)}">{body}</g>'
+def icon(ground: str, ink: str) -> str:
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
-        + body
-        + "</svg>\n"
+        + SQUARE.format(ground)
+        + f'<path fill="{ink}" d="{glyph}"/></svg>\n'
     )
 
 
 def mac_grid(svg: str) -> str:
-    """Another logo's svg (a viewBox, no size) put on the Mac grid, nested whole."""
-    inner = re.sub(r"<svg ", '<svg width="1024" height="1024" ', svg.strip(), count=1)
+    """A 1024 logo's svg put on the Mac grid, nested whole."""
+    root = re.match(r"<svg[^>]*>", svg.strip()).group(0)
+    sized = re.sub(r'\s(width|height)="[^"]*"', "", root).replace("<svg ", '<svg width="1024" height="1024" ', 1)
+    inner = sized + svg.strip()[len(root):]
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
         f'<g transform="{fit(MAC_SCALE)}">{inner}</g></svg>\n'
@@ -116,17 +113,20 @@ for kind in ("nightly", "dev"):
     shutil.copyfile(here / f"logo-{kind}.png", linux / f"assets/icon-{kind}.png")
 # ---- Mac: every icon the Mac shows on the Mac grid. The window's Dock icon and the Dark
 # bundle icon take the 512s in assets/mac/ (build.rs puts them in the qrc on a Mac); the
-# bundle's icns takes the 1024s, the one for the channel being built (bundle.sh).
-# MAC-BEGIN
-mac_default = icon(YELLOW, INK, MAC_SCALE)
-mac_dark = icon(INK, YELLOW, MAC_SCALE)
-mac_nightly = mac_grid((here / "logo-nightly.svg").read_text())
-mac_dev = mac_grid((here / "logo-dev.svg").read_text())
-for name, svg in (("icon", mac_default), ("icon-dark", mac_dark), ("icon-nightly", mac_nightly), ("icon-dev", mac_dev)):
-    png(svg, linux / f"assets/mac/{name}.png", 512)
-for name, svg in (("icon-1024", mac_default), ("icon-1024-nightly", mac_nightly), ("icon-1024-dev", mac_dev)):
-    png(svg, linux / f"packaging/macos/{name}.png", 1024)
-# MAC-END
+# bundle's icns takes the 1024s, the one for the channel being built (bundle.sh), and the
+# Dark bundle icon has a 1024 of its own.
+for name, svg in (
+    ("icon", default),
+    ("icon-dark", dark),
+    ("icon-nightly", (here / "logo-nightly.svg").read_text()),
+    ("icon-dev", (here / "logo-dev.svg").read_text()),
+):
+    png(mac_grid(svg), linux / f"assets/mac/{name}.png", 512)
+    if name != "icon-dark":
+        png(mac_grid(svg), linux / f"packaging/macos/{name.replace('icon', 'icon-1024')}.png", 1024)
+    else:
+        # NSWorkspace sets the Dark bundle icon from this, so it is drawn at the icns's size.
+        png(mac_grid(svg), linux / "assets/mac/icon-dark-1024.png", 1024)
 # Every hicolor size, for the packages to install and for the app to lay the dark set over
 # them in the user's own icon folder when Dark is picked.
 for size in (16, 24, 32, 48, 64, 128, 256, 512):

@@ -42,19 +42,14 @@ plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
 # Every size an icns carries, scaled down from the 1024 px PNG assets/logo/make.py draws on
-# the Mac grid. The mark is the channel's, picked the way apps/linux/build.rs picks the
-# window's: a nightly or a pull request's build is not mistaken for a release.
-case "${ANIBEAM_ICON:-}" in
+# the Mac grid. The mark is the channel the binary was built as, read back out of it (build.rs
+# decides, app_icon.rs keeps it), so the icns can never disagree with the Dock icon the
+# binary sets itself.
+kind="$(LC_ALL=C strings -a "$bin" | sed -n 's/^anibeam-icon-mark=\([a-z]*\)$/\1/p' | head -n 1)"
+case "$kind" in
   release) mark=icon-1024 ;;
-  nightly) mark=icon-1024-nightly ;;
-  dev) mark=icon-1024-dev ;;
-  "")
-    case "${ANIBEAM_RELEASE_VERSION:-}" in
-      ""|*-pr.*) mark=icon-1024-dev ;;
-      *-nightly*) mark=icon-1024-nightly ;;
-      *) mark=icon-1024 ;;
-    esac ;;
-  *) echo "ANIBEAM_ICON is ${ANIBEAM_ICON}; it takes release, nightly or dev" >&2; exit 1 ;;
+  nightly | dev) mark="icon-1024-$kind" ;;
+  *) echo "$bin does not say which icon it was built with" >&2; exit 1 ;;
 esac
 iconset="$(mktemp -d)/Anibeam.iconset"
 mkdir -p "$iconset"
