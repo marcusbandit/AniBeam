@@ -866,12 +866,16 @@ Item {
                     }
                 }
                 Item { width: 1; height: theme.space(1.5) }
-                // Continue, with the progress beside it
-                Row {
+                // Continue, with the progress beside it. A Flow, so on a band too narrow for
+                // all of it the progress drops under the buttons instead of running past the
+                // band's edge (#783)
+                Flow {
+                    id: playRow
+                    width: parent.width
                     spacing: theme.space(4)
                     Button {
+                        id: continueButton
                         objectName: "series-continue"
-                        anchors.verticalCenter: parent.verticalCenter
                         primary: true
                         tint: page.inkAccent
                         icon: page.caughtUp && !page.waitingOnDownload ? "rotate-ccw" : "play"
@@ -883,7 +887,6 @@ Item {
                     Button {
                         objectName: "series-get"
                         visible: !!page.detail && !page.isMovie
-                        anchors.verticalCenter: parent.verticalCenter
                         primary: page.playEpisode === null
                         ghost: page.playEpisode !== null
                         tint: page.inkAccent
@@ -891,25 +894,40 @@ Item {
                         msg: "series-get-episodes"
                         onClicked: page.getEpisodes()
                     }
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: theme.space(3)
+                    // The cubes and the words, never wider than the band: the cubes give up
+                    // room to the words first, down to a short run, then the words elide
+                    Item {
+                        id: progressBox
+                        objectName: "series-progress-box"
                         visible: !!page.detail
+                        readonly property real gap: theme.space(3)
+                        readonly property real wordsW: progressLabel.implicitWidth
+                        readonly property real cubesW: cubes.visible
+                            ? Math.max(Math.min(cubes.implicitWidth, theme.space(24)),
+                                       Math.min(cubes.implicitWidth, theme.space(70), playRow.width - gap - wordsW))
+                            : 0
+                        width: Math.min(playRow.width, cubesW + (cubes.visible ? gap : 0) + wordsW)
+                        height: Math.max(continueButton.height, cubes.height, progressLabel.height)
                         EpisodeCubes {
+                            id: cubes
                             visible: codes.length > 0
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, theme.space(70))
+                            width: progressBox.cubesW
                             height: implicitHeight
                             codes: page.card && page.card.cubes ? page.card.cubes : ""
                             cubeSize: theme.space(2.25)
                             maxRows: 2
                         }
                         Label {
+                            id: progressLabel
                             objectName: "series-progress"
                             anchors.verticalCenter: parent.verticalCenter
+                            x: cubes.visible ? progressBox.cubesW + progressBox.gap : 0
+                            width: Math.min(implicitWidth, progressBox.width - x)
                             text: page.progressText
                             role: "ledger"
                             color: page.inkDim
+                            elide: Text.ElideRight
                         }
                     }
                 }
