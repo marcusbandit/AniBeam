@@ -8,9 +8,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Wi-Fi or mobile data: downloads wait for Wi-Fi unless the person allowed data. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- The download service: a foreground dataSync service and its notification. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Downloads the person started keep going with the screen off: on Android 14 and
+         later as a user-initiated data transfer job (DownloadJob.java), before that as a
+         dataSync foreground service (TorrentService.java). Both hold the download
+         notification. The service never runs on 14 and later, so it asks for no foreground
+         service permission there, and FOREGROUND_SERVICE_DATA_SYNC, which only 14 and later
+         know, is not asked for at all. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" android:maxSdkVersion="33" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Casting: finding Chromecasts and TVs on the Wi-Fi with mDNS and SSDP. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -77,8 +82,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <!-- The download service: it only holds a notification so Android keeps the process,
-             and the downloads in it, running with the screen off. -->
+        <!-- The download work: it only holds a notification so Android keeps the process,
+             and the downloads in it, running with the screen off. The job on Android 14 and
+             later (DownloadJob.java), the service before that. -->
+        <service
+            android:name="com.marcusrosado.anibeam.DownloadJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <service
             android:name="com.marcusrosado.anibeam.TorrentService"
             android:exported="false"

@@ -68,6 +68,16 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
 /// No download service to stop.
 pub fn stop_service() {}
 
+/// No download service for the system to stop.
+pub fn stopped_by_system() -> bool {
+    false
+}
+
+/// No notification to post.
+pub fn downloads_paused(title: &str, text: &str) {
+    let _ = (title, text);
+}
+
 /// The network counts as free.
 pub fn unmetered() -> Option<bool> {
     Some(true)

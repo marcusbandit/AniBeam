@@ -177,6 +177,12 @@ struct App {
     /// The rolling settings were asked for.
     rolling_loaded: bool,
     held: Option<bool>,
+    /// Android stopped the download work: the downloads are held until it runs again or
+    /// the app is opened (`follow_stops`).
+    stopped: bool,
+    /// Android ran or ended the work on its own since the app last started or stopped it,
+    /// so the next look does one or the other whatever the notification says.
+    service_unsure: bool,
     service: Option<notify::Ongoing>,
     /// The downloads seen not yet whole, so each one that finishes is told once.
     unfinished: HashSet<String>,
@@ -684,6 +690,7 @@ impl App {
                 .into(),
             );
         }
+        self.follow_stops();
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
         }
@@ -1419,12 +1426,15 @@ impl App {
 
     fn show_torrents(&mut self, mut torrents: Vec<Torrent>, held: bool) {
         torrents.extend(demo_torrents());
+        // Held for Wi-Fi, which the rows and the note say; held because Android stopped the
+        // work, they read Paused.
+        let waiting = held && !self.stopped;
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
         let real = |t: &Torrent| !is_demo(&t.hash) || demo_notifies();
         let rows: Vec<DownloadRow> = torrents
             .iter()
-            .map(|t| download_row(t, held, self.torrent_show(t), &self.art))
+            .map(|t| download_row(t, waiting, self.torrent_show(t), &self.art))
             .collect();
         let moving: Vec<notify::Moving> = torrents
             .iter()
@@ -1458,7 +1468,7 @@ impl App {
             }
         }
         update(&self.downloads, rows);
-        let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
+        let note = if waiting && torrents.iter().any(|t| t.progress < 1.0) {
             tr!("dl-note-waiting")
         } else if torrents.is_empty() {
             tr!("dl-note-nothing")
@@ -1480,9 +1490,16 @@ impl App {
         self.data().set_moving_count(moving.len() as i32);
 
         // The service runs while something downloads, its notification saying what and how
-        // far along, with the numbers Downloads shows.
+        // far along, with the numbers Downloads shows. Not while Android has it stopped:
+        // the downloads are held then, and the work goes on as `follow_stops` says.
+        if self.stopped {
+            return;
+        }
         let text = notify::ongoing(&moving, format::bytes);
-        if text != self.service {
+        // Only a look taken with the hold where it was asked to be: one from before it was
+        // lifted shows nothing moving, and would end the work Android just ran again.
+        let forced = self.service_unsure && self.held == Some(held);
+        if text != self.service || forced {
             let done = match (&text, &self.service) {
                 // Running: the notification changes in place. Starting the service again
                 // on every look would be refused once the app is in the background.
@@ -1496,6 +1513,7 @@ impl App {
             if done {
                 self.service_shown = text.is_some() && crate::platform::notifications_allowed();
                 self.service = text;
+                self.service_unsure = false;
             }
         } else if let Some(t) = &self.service
             && !self.service_shown
@@ -1506,16 +1524,42 @@ impl App {
         }
     }
 
-    /// Holds downloads off Wi-Fi when the person wants Wi-Fi only. The state is noted once
-    /// the core took it, so a refusal is tried again on the next look.
+    /// Android stopped the download work: its runtime cap, the battery, the network gone.
+    /// The downloads are paused through the core's hold, so what they have is saved and
+    /// nothing runs on in a process Android may freeze, and a notification says so. They go
+    /// on when Android runs the work again or the person opens the app.
+    fn follow_stops(&mut self) {
+        let stopped = crate::platform::stopped_by_system();
+        if stopped == self.stopped {
+            return;
+        }
+        self.stopped = stopped;
+        if stopped {
+            crate::local::log("Android stopped the download work; downloads paused");
+            // The work is gone: what goes on starts it again rather than changing it.
+            if let Some(shown) = self.service.take() {
+                crate::platform::downloads_paused(&shown.called, &tr!("dl-state-paused"));
+            }
+            self.service_shown = false;
+        }
+        self.service_unsure = true;
+        self.hold_for_network();
+    }
+
+    /// Holds downloads off Wi-Fi when the person wants Wi-Fi only, and while Android has
+    /// the download work stopped. The state is noted once the core took it, so a refusal is
+    /// tried again on the next look.
     fn hold_for_network(&mut self) {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let held = self.prefs.wifi_only && crate::platform::unmetered() != Some(true);
+        let held =
+            self.stopped || (self.prefs.wifi_only && crate::platform::unmetered() != Some(true));
         if self.held == Some(held) {
             return;
         }
+        // Unknown until the core took it, so no look taken meanwhile counts as settled.
+        self.held = None;
         let _ = std::thread::Builder::new()
             .name("hold".into())
             .spawn(move || match core.call(Call::SetPhoneHeld { held }) {
@@ -2577,6 +2621,8 @@ pub fn run(
         polling: false,
         rolling_loaded: false,
         held: None,
+        stopped: false,
+        service_unsure: false,
         service: None,
         unfinished: HashSet::new(),
         service_shown: false,

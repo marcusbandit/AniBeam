@@ -295,23 +295,6 @@ fn with_env<R>(
     out
 }
 
-fn service_intent<'a>(
-    env: &mut jni::JNIEnv<'a>,
-) -> Result<jni::objects::JObject<'a>, Box<dyn std::error::Error>> {
-    use jni::objects::JValue;
-    let intent = env.new_object("android/content/Intent", "()V", &[])?;
-    let pkg = env.new_string("com.marcusrosado.anibeam")?;
-    let class = env.new_string("com.marcusrosado.anibeam.TorrentService")?;
-    // setClassName: a class lookup from a native thread would miss the app's own classes.
-    env.call_method(
-        &intent,
-        "setClassName",
-        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-        &[JValue::Object(&pkg), JValue::Object(&class)],
-    )?;
-    Ok(intent)
-}
-
 /// The words the download service shows through Android, which Java cannot read from the
 /// catalog: the two channel names and the title it falls back to. They go to the service
 /// translated; its English is only for a call that carries none.
@@ -362,81 +345,87 @@ pub fn relocalize() {
     }
 }
 
-/// Starts the download service with `shown` as its notification. False when Android
-/// refused, as it does for an app in the background on Android 12 and later; the caller
-/// tries again on its next look. A running service's notification changes through
-/// `update_service` instead.
+/// Starts the work that keeps downloads going with the screen off, with `shown` as its
+/// notification: a user-initiated data transfer job on Android 14 and later, a foreground
+/// service before that (`TorrentService.start`). False when Android refused, as it does for
+/// an app in the background; the caller tries again on its next look. A running one's
+/// notification changes through `update_service` instead.
 pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     // The UI thread stays attached, so the call's local references go with a frame.
     let r = with_env(|env, app| {
-        env.with_local_frame(32, |env| -> Result<(), Box<dyn std::error::Error>> {
+        env.with_local_frame(32, |env| -> Result<bool, Box<dyn std::error::Error>> {
             use jni::objects::JValue;
-            let intent = service_intent(env)?;
+            let class = app_class(env, app, "TorrentService")?;
             let words = service_words();
-            let mut extras: Vec<(&str, &String)> =
-                vec![("title", &shown.title), ("text", &shown.text)];
-            extras.extend(words.iter().map(|(key, value)| (*key, value)));
-            for (key, value) in extras {
-                let key = env.new_string(key)?;
-                let value = env.new_string(value)?;
-                env.call_method(
-                    &intent,
-                    "putExtra",
-                    "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                    &[JValue::Object(&key), JValue::Object(&value)],
-                )?;
-            }
-            let key = env.new_string("progress")?;
-            env.call_method(
-                &intent,
-                "putExtra",
-                "(Ljava/lang/String;I)Landroid/content/Intent;",
-                &[JValue::Object(&key), JValue::Int(shown.progress)],
-            )?;
-            env.call_method(
-                app,
-                "startForegroundService",
-                "(Landroid/content/Intent;)Landroid/content/ComponentName;",
-                &[JValue::Object(&intent)],
-            )?;
-            Ok(())
+            let title = env.new_string(&shown.title)?;
+            let text = env.new_string(&shown.text)?;
+            let downloads = env.new_string(&words[0].1)?;
+            let ready = env.new_string(&words[1].1)?;
+            let fallback = env.new_string(&words[2].1)?;
+            Ok(env
+                .call_static_method(
+                    &class,
+                    "start",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I\
+                     Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z",
+                    &[
+                        JValue::Object(app),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                        JValue::Int(shown.progress),
+                        JValue::Object(&downloads),
+                        JValue::Object(&ready),
+                        JValue::Object(&fallback),
+                    ],
+                )?
+                .z()?)
         })
     });
-    if let Err(e) = r {
-        crate::local::log(&format!("the download service did not start: {e}"));
-        return false;
+    match r {
+        Ok(true) => true,
+        Ok(false) => {
+            crate::local::log("the download work did not start");
+            false
+        }
+        Err(e) => {
+            crate::local::log(&format!("the download work did not start: {e}"));
+            false
+        }
     }
-    true
 }
 
-/// Changes the running download service's notification to `shown`, in place
-/// (`TorrentService.update`). False when the call failed, so the next look tries again.
+/// Changes the running download work's notification to `shown`, in place
+/// (`TorrentService.update`). False when the call failed, or the job Android ended while the
+/// app was open could not be scheduled again, so the next look tries again.
 pub fn update_service(shown: &crate::notify::Ongoing) -> bool {
     let r = with_env(|env, app| {
-        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+        env.with_local_frame(8, |env| -> Result<bool, Box<dyn std::error::Error>> {
             use jni::objects::JValue;
             let class = app_class(env, app, "TorrentService")?;
             let title = env.new_string(&shown.title)?;
             let text = env.new_string(&shown.text)?;
-            env.call_static_method(
-                &class,
-                "update",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)V",
-                &[
-                    JValue::Object(app),
-                    JValue::Object(&title),
-                    JValue::Object(&text),
-                    JValue::Int(shown.progress),
-                ],
-            )?;
-            Ok(())
+            Ok(env
+                .call_static_method(
+                    &class,
+                    "update",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)Z",
+                    &[
+                        JValue::Object(app),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                        JValue::Int(shown.progress),
+                    ],
+                )?
+                .z()?)
         })
     });
-    if let Err(e) = r {
-        crate::local::log(&format!("the download notification did not change: {e}"));
-        return false;
+    match r {
+        Ok(done) => done,
+        Err(e) => {
+            crate::local::log(&format!("the download notification did not change: {e}"));
+            false
+        }
     }
-    true
 }
 
 /// Posts "<show> episode 7 is ready" for a download that finished, under `id`, on the
@@ -476,21 +465,70 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
     }
 }
 
-/// Stops the download service once nothing is downloading.
+/// Ends the download work once nothing is downloading (`TorrentService.stop`).
 pub fn stop_service() {
     let r = with_env(|env, app| {
-        use jni::objects::JValue;
-        let intent = service_intent(env)?;
-        env.call_method(
-            app,
-            "stopService",
-            "(Landroid/content/Intent;)Z",
-            &[JValue::Object(&intent)],
-        )?;
-        Ok(())
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            use jni::objects::JValue;
+            let class = app_class(env, app, "TorrentService")?;
+            env.call_static_method(
+                &class,
+                "stop",
+                "(Landroid/content/Context;)V",
+                &[JValue::Object(app)],
+            )?;
+            Ok(())
+        })
     });
     if let Err(e) = r {
-        crate::local::log(&format!("the download service did not stop: {e}"));
+        crate::local::log(&format!("the download work did not stop: {e}"));
+    }
+}
+
+/// Whether Android stopped the download work and it has not gone on since
+/// (`TorrentService.stoppedBySystem`). Opening the app counts as going on.
+pub fn stopped_by_system() -> bool {
+    // Read every second on a thread that stays attached: a frame of its own.
+    let r = with_env(|env, app| {
+        env.with_local_frame(4, |env| -> Result<bool, Box<dyn std::error::Error>> {
+            use jni::objects::JValue;
+            let class = app_class(env, app, "TorrentService")?;
+            Ok(env
+                .call_static_method(
+                    &class,
+                    "stoppedBySystem",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(app)],
+                )?
+                .z()?)
+        })
+    });
+    r.unwrap_or(false)
+}
+
+/// Says the downloads are paused, `title` being what they are (`TorrentService.paused`).
+pub fn downloads_paused(title: &str, text: &str) {
+    let r = with_env(|env, app| {
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            use jni::objects::JValue;
+            let class = app_class(env, app, "TorrentService")?;
+            let title = env.new_string(title)?;
+            let text = env.new_string(text)?;
+            env.call_static_method(
+                &class,
+                "paused",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V",
+                &[
+                    JValue::Object(app),
+                    JValue::Object(&title),
+                    JValue::Object(&text),
+                ],
+            )?;
+            Ok(())
+        })
+    });
+    if let Err(e) = r {
+        crate::local::log(&format!("could not say downloads are paused: {e}"));
     }
 }
 
