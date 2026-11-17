@@ -9,7 +9,6 @@ import com.marcusrosado.Anibeam
 
 Column {
     id: root
-    anchors.centerIn: parent
     spacing: theme.space(3)
 
     property var sources: []

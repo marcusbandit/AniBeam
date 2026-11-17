@@ -1431,9 +1431,8 @@ Item {
         id: homeEmpty
         objectName: "home-empty"
         visible: page.libraryEmpty
-        anchors.centerIn: undefined
         anchors.horizontalCenter: parent.horizontalCenter
-        readonly property real room: nudge.shown ? nudge.topY - theme.space(4) : page.height
+        readonly property real room: nudge.shown ? nudge.y - theme.space(4) : page.height
         y: Math.max(0, (room - height) / 2)
     }
     EmptyState {
@@ -1449,10 +1448,7 @@ Item {
     TrackerNudge {
         id: nudge
         objectName: "home-tracker-nudge"
-        // Where its top edge sits, from the margin and its own height, so the empty state can
-        // centre above it without reading back its y
-        readonly property real topY: page.height - anchors.bottomMargin - height
-        readonly property bool shown: page.libraryEmpty && wanted && homeEmpty.height + theme.space(8) <= topY
+        readonly property bool shown: page.libraryEmpty && wanted && homeEmpty.height + theme.space(8) <= y
         visible: shown
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
