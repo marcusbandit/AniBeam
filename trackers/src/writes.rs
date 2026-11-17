@@ -279,7 +279,7 @@ fn finished_again(
     };
     let entry = conn
         .query_row(
-            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
             params![t.as_str(), id as i64],
             |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
         )
@@ -2127,7 +2127,7 @@ pub(crate) async fn record_status(
 
 fn mark_synced(conn: &Connection, t: Tracker, now: i64) -> Result<(), CoreError> {
     conn.execute(
-        "UPDATE tracker_accounts SET synced_at = ?2 WHERE tracker = ?1",
+        "UPDATE tracker_accounts SET synced_at = ?2 WHERE tracker = ?1 AND profile_id = 1",
         params![t.as_str(), now],
     )?;
     Ok(())

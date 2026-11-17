@@ -49,7 +49,7 @@ fn status_of(s: ListStatus) -> Status {
 fn connected(conn: &Connection, t: Tracker) -> Result<Option<Option<u64>>, CoreError> {
     let user = conn
         .query_row(
-            "SELECT user_id FROM tracker_accounts WHERE tracker = ?1 AND connected_at IS NOT NULL",
+            "SELECT user_id FROM tracker_accounts WHERE tracker = ?1 AND profile_id = 1 AND connected_at IS NOT NULL",
             params![t.as_str()],
             |r| r.get::<_, Option<i64>>(0),
         )
