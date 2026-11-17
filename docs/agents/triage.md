@@ -50,7 +50,8 @@ cannot filter webhook deliveries yet, so every label change would start a run.
 | `bug`, `enhancement`, `question`, `documentation` | triage, or the bug form for `bug` | the one category an open issue carries |
 
 Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates any of
-these labels when someone deletes it.
+these labels when someone deletes it. The agent loop's five copy the text its `jev-label.py`
+and `jev-risk.py` force on every pass, so change a description there first.
 
 ## Reproducing in Anibeam
 
