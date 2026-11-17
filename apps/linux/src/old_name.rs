@@ -20,9 +20,10 @@ pub fn adopt() {
     }
 }
 
-/// The old id, and the folder name the old builds saved screenshots in.
+/// The old id.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 const OLD_ID: &str = concat!("com.marcusrosado.Ani", "Beam");
+/// The folder name the old builds saved screenshots in.
 #[cfg(target_os = "linux")]
 const OLD_FOLDER: &str = concat!("Ani", "Beam");
 
