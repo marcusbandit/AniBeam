@@ -179,7 +179,7 @@ pub const HLS_PIECE: f64 = 6.0;
 /// a broken header, and listing its pieces would run the host out of memory.
 pub const HLS_LONGEST: f64 = 86_400.0;
 
-/// A last piece shorter than this is folded into the one before it. The
+/// A last piece of this long or less is folded into the one before it. The
 /// probe's length runs a hair past the last frame's start, so a piece that
 /// short holds no frame and ffmpeg never writes it.
 pub const HLS_SLIVER: f64 = 0.1;
@@ -214,12 +214,11 @@ pub fn hls_playlist(duration: f64, query: &str) -> Option<String> {
         HLS_PIECE.ceil() as u32
     ));
     for i in 0..count {
-        let left = duration - f64::from(i) * HLS_PIECE;
         // The last piece keeps a sliver past it, so the lengths add up.
         let len = if i + 1 == count {
-            left
+            duration - f64::from(i) * HLS_PIECE
         } else {
-            left.min(HLS_PIECE)
+            HLS_PIECE
         };
         out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
     }

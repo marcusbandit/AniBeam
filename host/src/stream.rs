@@ -60,6 +60,15 @@ fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "not found")
 }
 
+/// A file whose probed length is missing, broken or past a day, which no
+/// playlist lists.
+fn unconvertible() -> Response {
+    error(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the file's length is missing or past a day, so it cannot be converted",
+    )
+}
+
 /// By extension, for the players that care.
 fn video_type(path: &std::path::Path) -> &'static str {
     match path
@@ -152,7 +161,11 @@ async fn probe_of(st: &Served, id: u64) -> Option<(PathBuf, Arc<wire::Probe>)> {
         return Some((path, p.clone()));
     }
     let p = Arc::new(convert::probe(&path).await?);
-    remember(&st.streams.probes, id, p.clone());
+    // A length no playlist lists may only mean the file is still arriving,
+    // so it is read again next time rather than kept.
+    if wire::hls_converts(p.duration) {
+        remember(&st.streams.probes, id, p.clone());
+    }
     Some((path, p))
 }
 
@@ -265,10 +278,7 @@ pub async fn hls(
         return not_found();
     };
     if !wire::hls_converts(probe.duration) {
-        return error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "the file does not say how long it is, so it cannot be converted",
-        );
+        return unconvertible();
     }
     if !convert::available().await {
         return error(
@@ -285,7 +295,7 @@ pub async fn hls(
     }
     if name == "index.m3u8" {
         let Some(list) = wire::hls_playlist(probe.duration, &query_of(audio, burn)) else {
-            return not_found();
+            return unconvertible();
         };
         return (
             [
