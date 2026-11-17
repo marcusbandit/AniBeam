@@ -702,7 +702,7 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 .term-lines code { padding-top: 7px; white-space: pre; line-height: 1.9; }
 .term-lines .prompt { padding: 0; }
 
-.dl-more { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 72px; }
+.dl-more { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 72px; padding-bottom: 3em; }
 .dl-more svg { width: 18px; height: 18px; }
 .dl-more svg.ic-b { fill: currentColor; }
 .dl-more svg.ic { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
