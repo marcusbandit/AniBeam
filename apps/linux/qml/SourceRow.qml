@@ -5,7 +5,9 @@
 // `removeAccepted` once the question is answered yes. When the row is too narrow for the
 // path and the three buttons side by side (a stacked settings tab at a narrow window), the
 // buttons drop under the path instead of overlapping it, the same rule `SettingRow` uses
-// for its own label-versus-control width.
+// for its own label-versus-control width. A path longer than the room left elides in the
+// middle, so the Unavailable chip after it stays in sight (#665); the buttons only drop
+// once the path would get less than `minPath` beside them.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -25,7 +27,12 @@ Item {
             ? words.t("source-row-counts-movies", { count: source.series_count || 0, movies: source.movie_folders.length })
             : words.t("source-row-counts", { count: source.series_count || 0 })
     readonly property real gutter: theme.space(6)
-    readonly property bool stacked: width < lead.width + controls.width + gutter
+    // What the lead needs besides the path: the glyph, and the chip when it shows
+    readonly property real leadFixed: folderIcon.width + lead.spacing + (chip.visible ? pathLine.spacing + chip.width : 0)
+    readonly property real minPath: Math.min(pathText.implicitWidth, theme.space(60))
+    readonly property real leadMin: Math.max(leadFixed + minPath, folderIcon.width + lead.spacing + metaText.implicitWidth)
+    readonly property bool stacked: width < leadMin + controls.width + gutter
+    readonly property real pathRoom: Math.max(0, (stacked ? width : width - controls.width - gutter) - leadFixed)
 
     width: parent.width
     height: stacked ? theme.space(3) + lead.height + theme.space(2) + controls.height + theme.space(3)
@@ -37,6 +44,7 @@ Item {
         y: root.stacked ? theme.space(3) : Math.round((root.height - height) / 2)
         spacing: theme.space(3)
         Icon {
+            id: folderIcon
             anchors.verticalCenter: parent.verticalCenter
             glyph: root.available ? "folder" : "folder-x"
             color: root.available ? theme.text : theme.textDim
@@ -45,15 +53,21 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
             Row {
+                id: pathLine
                 spacing: theme.space(2)
                 Text {
+                    id: pathText
                     anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, root.pathRoom)
+                    elide: Text.ElideMiddle
                     text: root.source.path || ""
                     color: root.available ? theme.text : theme.textDim
                     font.family: theme.fontUi
                     font.pointSize: theme.typeNormal
+                    Tooltip { text: parent.truncated ? parent.text : "" }
                 }
                 Chip {
+                    id: chip
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !root.available
                     msg: "source-row-unavailable"
@@ -66,6 +80,7 @@ Item {
                 }
             }
             Text {
+                id: metaText
                 visible: root.meta !== ""
                 text: root.meta
                 color: theme.textDim
