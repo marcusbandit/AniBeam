@@ -531,6 +531,144 @@ def undeclared_reads(ws, root):
     return problems
 
 
+# The lists outside ci.yml that say which paths an app is built from (#974): nightly.yml's change
+# checks and android.yml's path filters. Unlike the crates above they are written out by hand, so
+# the self-test holds them to the workspace: each names every crate the app builds, at any depth,
+# and every file outside those crates that one of them reads, or a change that touches only that
+# crate (room/, recs/) skips the build though the binary differs. The desktop apps are workspace
+# members; the phone is its own workspace, so its crates come from the path dependencies in its
+# manifests. ios.yml leaves the shared crates out on purpose and is not checked.
+DESKTOP_APPS = ["apps/linux", "apps/cli"]
+PHONE_APP = "apps/android"
+# Reads only a crate's own tests make, which no app build compiles in.
+TEST_ONLY_READS = {
+    "apps/linux/packaging/": "downloads/src/anirss.rs checks the packaging scripts in a test",
+}
+# Root files every app's build reads besides the crates.
+ROOT_FILES = ["Cargo.toml", "rust-toolchain.toml"]
+APP_LISTS = [
+    # (workflow, list name, app)
+    (".github/workflows/nightly.yml", "desktop_paths", "desktop"),
+    (".github/workflows/nightly.yml", "phone_paths", "phone"),
+    (".github/workflows/android.yml", "push", "phone"),
+    (".github/workflows/android.yml", "pull_request", "phone"),
+]
+
+
+def phone_uses(ws, root):
+    """The workspace crates the phone's own manifests name by path, any kind of dependency."""
+    by_dir = {c["dir"]: n for n, c in ws.crates.items()}
+    found = set()
+    for here, subdirs, files in os.walk(os.path.join(root, PHONE_APP)):
+        subdirs[:] = [d for d in subdirs if d not in ("target", "vendor", ".gradle", "build")]
+        if "Cargo.toml" not in files:
+            continue
+        with open(os.path.join(here, "Cargo.toml"), "rb") as f:
+            manifest = tomllib.load(f)
+        tables = [manifest]
+        tables += list((manifest.get("target") or {}).values())
+        for t in tables:
+            for kind in ("dependencies", "dev-dependencies", "build-dependencies"):
+                for dep in (t.get(kind) or {}).values():
+                    if isinstance(dep, dict) and dep.get("path"):
+                        d = os.path.relpath(os.path.normpath(os.path.join(here, dep["path"])), root)
+                        if d in by_dir:
+                            found.add(by_dir[d])
+    return found
+
+
+def app_needs(ws, root, app):
+    """The paths a change to which changes the app: its own folders, every crate it builds on,
+    the files those read outside themselves, and the root manifest and toolchain."""
+    if app == "desktop":
+        tops = {n for n, c in ws.crates.items() if c["dir"] in DESKTOP_APPS}
+        own = list(DESKTOP_APPS)
+    else:
+        tops = phone_uses(ws, root)
+        own = [PHONE_APP]
+    below, todo = set(tops), list(tops)
+    while todo:
+        for d in ws.crates[todo.pop()]["uses"]:
+            if d not in below:
+                below.add(d)
+                todo.append(d)
+    need = {p: "the app itself" for p in own}
+    for n in sorted(below):
+        need.setdefault(ws.crates[n]["dir"], f"{n} builds into it")
+        for r in ws.crates[n]["reads"]:
+            if r not in TEST_ONLY_READS:
+                need.setdefault(r.rstrip("/"), f"{n} reads it")
+    for f in ROOT_FILES:
+        need.setdefault(f, "every build reads it")
+    return need
+
+
+def workflow_list(text, name):
+    """The entries of one list: a bash array `name=(a b c)`, or the `paths:` under the trigger
+    `name:` in a workflow. None when the list is not there."""
+    m = re.search(rf"^\s*{re.escape(name)}=\(([^)]*)\)", text, re.M)
+    if m:
+        return m.group(1).split()
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not re.fullmatch(rf"  {re.escape(name)}:\s*", line):
+            continue
+        out, inside = [], False
+        for line in lines[i + 1:]:
+            s = line.strip()
+            if not inside:
+                if s == "paths:":
+                    inside = True
+                elif s and not s.startswith("#") and not line.startswith("    "):
+                    break
+                continue
+            if not s or s.startswith("#"):
+                continue
+            m = re.fullmatch(r"-\s*(['\"]?)(.+)\1", s)
+            if not m:
+                break
+            out.append(m.group(2))
+        return out if inside else None
+    return None
+
+
+def covers(entry, path):
+    """Whether a list entry takes in a path: a folder or file by name (`room`), or a glob
+    (`room/**`). Only the simple forms the lists use are understood."""
+    e = entry[:-3] if entry.endswith("/**") else entry
+    if e == "**":
+        return True
+    if any(ch in e for ch in "*?["):
+        return fnmatch.fnmatch(path, e)
+    return path == e or path.startswith(e + "/")
+
+
+def unlisted(ws, root, texts=None):
+    """Problems with the app lists: a path an app needs that a list leaves out or excludes."""
+    problems = []
+    for wf, name, app in APP_LISTS:
+        if texts is not None:
+            text = texts.get(wf, "")
+        else:
+            with open(os.path.join(root, wf)) as f:
+                text = f.read()
+        entries = workflow_list(text, name)
+        if entries is None:
+            problems.append(f"{wf}: no list {name}")
+            continue
+        for path, why in sorted(app_needs(ws, root, app).items()):
+            # GitHub reads the patterns in order and the last one that matches wins.
+            state = None
+            for e in entries:
+                if covers(e.removeprefix("!"), path):
+                    state = not e.startswith("!")
+            if state is None:
+                problems.append(f"{wf}: {name} leaves out {path} ({why})")
+            elif not state:
+                problems.append(f"{wf}: {name} excludes {path} ({why})")
+    return problems
+
+
 # The self-test: a small workspace shaped like the real one, and change lists with the crates
 # they must pick. Run by ci.yml and local-ci.sh --quick.
 
@@ -727,6 +865,54 @@ def self_test():
                 print(f"self-test: {name} reads {r}, which does not exist", file=sys.stderr)
     total += 1
     problems = undeclared_reads(real, root)
+    for problem in problems:
+        print(f"self-test: {problem}", file=sys.stderr)
+    bad += 1 if problems else 0
+    # The app lists' parser, on lists shaped like the real ones.
+    flow = ("on:\n  push:\n    branches: [main]\n    paths:\n      - 'a/**'\n      # note\n"
+            "      - \"b/**\"\n  pull_request:\n    paths:\n      - '**'\n      - '!c/**'\n"
+            "  workflow_dispatch:\n")
+    for text, name, want in [
+        ("  x=(contract room Cargo.toml)\n", "x", ["contract", "room", "Cargo.toml"]),
+        (flow, "push", ["a/**", "b/**"]),
+        (flow, "pull_request", ["**", "!c/**"]),
+        (flow, "workflow_dispatch", None),
+        (flow, "x", None),
+    ]:
+        total += 1
+        if workflow_list(text, name) != want:
+            bad += 1
+            print(f"self-test: list {name} reads as {workflow_list(text, name)}, want {want}",
+                  file=sys.stderr)
+    for entry, path, want in [("room", "room", True), ("room/**", "room", True),
+                              ("room/**", "roomy", False), ("**", "x/y", True),
+                              ("core", "core/tests/a.json", True), ("i18n", "i18n", True),
+                              ("apps/*/changes/**", "apps/linux/changes", True)]:
+        total += 1
+        if covers(entry, path) != want:
+            bad += 1
+            print(f"self-test: {entry} covering {path} should be {want}", file=sys.stderr)
+    # A list that leaves a crate out, or excludes it again, is caught.
+    lists = {wf: "" for wf, _, _ in APP_LISTS}
+    total += 1
+    problems = unlisted(real, root, lists)
+    if len(problems) != len(APP_LISTS):
+        bad += 1
+        print(f"self-test: missing lists read as {problems}", file=sys.stderr)
+    with open(os.path.join(root, ".github/workflows/android.yml")) as f:
+        lists[".github/workflows/android.yml"] = f.read().replace("      - 'room/**'\n", "", 1) \
+            .replace("      - 'recs/**'\n", "      - 'recs/**'\n      - '!recs/**'\n") \
+            .replace("      - 'i18n/**'\n", "      - '!i18n/**'\n      - 'i18n/**'\n")
+    total += 1
+    problems = [p for p in unlisted(real, root, lists) if "android.yml" in p]
+    want = {".github/workflows/android.yml: push leaves out room (anibeam-room builds into it)",
+            ".github/workflows/android.yml: push excludes recs (anibeam-recs builds into it)",
+            ".github/workflows/android.yml: pull_request excludes recs (anibeam-recs builds into it)"}
+    if set(problems) != want:
+        bad += 1
+        print(f"self-test: a list without room/ reads as {problems}", file=sys.stderr)
+    total += 1
+    problems = unlisted(real, root)
     for problem in problems:
         print(f"self-test: {problem}", file=sys.stderr)
     bad += 1 if problems else 0
