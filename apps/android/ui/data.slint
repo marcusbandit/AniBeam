@@ -1,5 +1,7 @@
 // Everything the pages show, set from Rust, and the actions they send back.
 
+import { Tr } from "tr.slint";
+
 // One poster in a grid: Home's shelves, the calendar's day and the library all use it.
 export struct Tile {
     // The series it opens; -1 for none.
@@ -71,6 +73,8 @@ export struct CalDay {
     date: string,
     // "Today", "Tomorrow", "Yesterday", "Thursday".
     title: string,
+    // Days from today: -1 yesterday, 1 tomorrow.
+    offset: int,
     // "Thursday 5 November".
     full: string,
     today: bool,
@@ -88,6 +92,8 @@ export struct SeriesHead {
     alt-title: string,
     // "TV  Fall 2026  Airing  12 episodes".
     facts: string,
+    // "Average score 8.1  IMDb 8.6 from 12,345 votes  Rewatched 2 times", or empty.
+    scores: string,
     poster: image,
     has-poster: bool,
     initials: string,
@@ -107,6 +113,12 @@ export struct SeriesHead {
     play-remote: bool,
 }
 
+// One release of an episode kept more than once: the file it plays and its name.
+export struct EpisodeVersionLine {
+    file: int,
+    label: string,
+}
+
 // One episode row on a series page.
 export struct EpisodeLine {
     code: string,
@@ -115,6 +127,8 @@ export struct EpisodeLine {
     date: string,
     // "Next up", "Missing", "Downloading 34%", or empty.
     note: string,
+    // The note's kind, for its colour: 1 next up, 2 missing, 0 any other.
+    note-kind: int,
     // Theme.cube's code.
     cube: int,
     // The file a tap plays; zero for an episode that is not whole on the phone.
@@ -123,6 +137,15 @@ export struct EpisodeLine {
     picked: bool,
     // file is the other device's: a tap streams it from there.
     remote: bool,
+    // The episode's releases when it is on disk more than once; empty for one file. The
+    // row plays `file`, and its versions chip offers the others.
+    versions: [EpisodeVersionLine],
+    // Held, it offers Mark watched up to here, or Mark unwatched from here: with a tracker
+    // any aired episode, without one an episode on this phone, as on the desktop.
+    markable: bool,
+    watched: bool,
+    number: float,
+    season: int,
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -144,7 +167,7 @@ export struct DownloadRow {
     amount: string,
     // "3.2 MB/s, 5m left", or empty.
     speed: string,
-    // "SubsPlease, 1080p", or empty.
+    // "Lumen, 1080p", or empty.
     release: string,
     // The folder it saves to, its last part.
     folder: string,
@@ -160,6 +183,13 @@ export struct DownloadRow {
     poster: image,
     has-poster: bool,
     initials: string,
+    // A rolling download, held to a window of episodes: its id, -1 when it does not roll.
+    roll: int,
+    // "Keeping 12 ready: episodes 13 to 24 of 170, 12 watched".
+    roll-line: string,
+    roll-ahead: int,
+    // Episodes past the window, which Get all fetches.
+    roll-left: int,
 }
 
 // One line of the connection check.
@@ -219,8 +249,8 @@ export global AppData {
     // next season's, with the ones marked not interested left out.
     in-out property <bool> airing-view;
     // The Calendar's switch: the devices, then Airing now.
-    in property <[string]> cal-views: ["This phone", "Airing now"];
-    in property <[string]> airing-seasons: ["This season", "Next season"];
+    in property <[string]> cal-views: [Tr.t("lib-this-phone"), Tr.t("cal-view-airing")];
+    in property <[string]> airing-seasons: [Tr.t("airing-this-season"), Tr.t("airing-next-season")];
     in property <int> airing-season;
     // "Everything 48", "On my lists 6", "In my library 3".
     in property <[string]> airing-filters;
@@ -239,6 +269,8 @@ export global AppData {
     callback airing-tap(int);
     callback airing-close();
     callback airing-plan(int);
+    // Get episodes for a show the library does not have, by its AniList id.
+    callback airing-get(int);
     callback airing-dismiss(int);
     callback airing-take-back();
 
@@ -268,18 +300,23 @@ export global AppData {
     in-out property <float> limit-gb: 18;
     in property <float> disk-gb: 128;
     // "18 GB", "31.5 GB".
-    in property <string> limit-label: "18 GB";
+    in property <string> limit-label;
     in property <string> storage-line;
-    // The same as figures: what AniBeam's episodes take, and what the phone has free.
+    // The same as figures: what Anibeam's episodes take, and what the phone has free.
     in property <string> used-figure;
     in property <string> free-figure;
     in property <string> free-line;
     in property <string> trackers-line;
     in property <string> version;
+    // About's IMDb row, from the catalog: its name and IMDb's credit line.
+    in property <string> ratings-label;
+    in property <string> ratings-credit;
     // Devices: the host address and what the last test said.
     in-out property <string> host-address;
     in property <string> host-result;
     in property <int> host-tone: 2;
+    // Whose progress the computer shows here, "Alex Doe's progress", or empty.
+    in property <string> host-person;
 
     // Onboarding, over everything until it is done.
     in property <bool> onboarding;
@@ -290,13 +327,17 @@ export global AppData {
     in property <string> mal-state;
     // The last sign-in to AniList or MAL failed.
     in property <bool> sign-in-failed;
+    // The download notification: 0 on, 1 never asked, 2 turned down.
+    in property <int> notify;
+    // The first download's question about the notification is up.
+    in-out property <bool> notify-ask;
 
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
     in property <string> downloads-note;
     // The rates across every download, "3.2 MB/s".
-    in property <string> rate-down: "0 B/s";
-    in property <string> rate-up: "0 B/s";
+    in property <string> rate-down;
+    in property <string> rate-up;
     // Not finished, whatever their state; and of those, the ones actually moving.
     in property <int> downloading-count;
     in property <int> moving-count;
@@ -347,6 +388,18 @@ export global AppData {
     callback confirm-delete();
     // Opens the player on a file of this phone's.
     callback play(int);
+    // An episode's mark: its number, its season, and whether it is watched now, so the mark
+    // takes it and those before it, or it and those after it, the other way.
+    callback mark(float, int, bool);
+    // The mark menu's buttons, from the catalog.
+    in property <string> mark-watched-label;
+    in property <string> mark-unwatched-label;
+    in property <string> mark-cancel-label;
+    // What the last mark did, "Watched up to Episode 5", for a few seconds, and whether
+    // Undo can put it back.
+    in property <string> mark-line;
+    in property <bool> mark-undo;
+    callback mark-take-back();
     // Opens the player on a file of the other device's, streamed.
     callback play-remote(int);
     // How a stream from the other device plays: Auto, Original, 1080p, 720p, 480p.
@@ -368,12 +421,26 @@ export global AppData {
     callback set-limit(bool, float);
     callback connect-tracker(int);
     callback finish-onboarding();
+    // Android's notification dialog the first time, the app's notification settings after.
+    callback allow-notifications();
     callback restart-onboarding();
     callback test-host(string);
     callback save-host(string);
     callback refresh();
+    // How downloads roll, the desktop's Keep the next few ready, as the core holds it; the
+    // app fills these and the most a roll may keep ahead at start.
+    in property <bool> roll-big;
+    in property <int> roll-ahead;
+    in property <int> roll-over;
+    in property <bool> roll-delete;
+    in property <int> roll-keep;
+    in property <int> roll-max-ahead;
+    callback set-roll(bool, int, int, bool, int);
     // 0 pause, 1 resume, 2 cancel and delete, 3 take a finished one off the list.
     callback torrent-action(string, int);
+    // A rolling download's controls: 0 keeps the given number ahead, 1 fetches that many
+    // more now, 2 stops rolling and fetches the rest.
+    callback roll-action(int, int, int);
     callback remove-source(int);
     callback run-check();
     callback copy-check();

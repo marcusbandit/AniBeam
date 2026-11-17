@@ -1,4 +1,6 @@
-// Appearance: Colours (mode, where the colours come from, the theme pair, the accent), then
+// Appearance: Language (the app's language, then which title a series shows: romaji,
+// English or Japanese, the same preference the series pages read), Colours (mode, where
+// the colours come from, the theme pair, the accent), then
 // the preview right under them (the same sample page drawn once per mode, so the pair being
 // chosen is what is shown, in view of the knobs that change it), then Size and motion
 // (density, poster size, reduced motion). Every knob writes through the Theme singleton's pick*
@@ -7,15 +9,14 @@
 import QtQuick
 import QtQuick.Layouts
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     // The text sizes, as theme.toml names them and as the row says them
-    readonly property var textSizes: [{ id: "smaller", text: "Smaller" }, { id: "normal", text: "Normal" }, { id: "large", text: "Large" },
-                                      { id: "larger", text: "Larger" }, { id: "largest", text: "Largest" }]
+    readonly property var textSizes: [{ id: "smaller", msg: "settings-appearance-text-smaller" }, { id: "normal", msg: "settings-appearance-text-normal" }, { id: "large", msg: "settings-appearance-text-large" },
+                                      { id: "larger", msg: "settings-appearance-text-larger" }, { id: "largest", msg: "settings-appearance-text-largest" }]
     id: tab
-    title: "Appearance"
-    lead: "Changes show at once, here and on every page. They live in ~/.config/anibeam/theme.toml, which you can edit by hand too."
+    title: words.t("settings-appearance-title")
     readonly property var darkThemes: Theme.themes.filter(function(t) { return t.mode === "dark" })
     readonly property var lightThemes: Theme.themes.filter(function(t) { return t.mode === "light" })
     function indexOf(list, stem) { for (var i = 0; i < list.length; i++) if (list[i].stem === stem) return i; return 0 }
@@ -24,6 +25,17 @@ SettingsTab {
     // reads the same keys
     Settings { id: airingKept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayouts: ["3x2", "4x2", "5x2", "4x3"]
+    // Which title a series shows, as the core names the choice; a stored value it does not
+    // know reads as Romaji, the default
+    readonly property var titleLanguages: ["Romaji", "English", "Native"] // i18n: none
+    // Romaji and 日本語 name themselves in every language; English is a word
+    readonly property var titleLanguageNames: ["Romaji", words.t("settings-appearance-title-language-english"), "日本語"] // i18n: none
+    function setTitleLanguage(v) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.title_language = v
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setTitleLanguage(v) })
+    }
 
     // The preview's sample cards carry relative labels (last-viewed, countdowns); this
     // tick keeps them fresh. It only runs while this section exists.
@@ -31,21 +43,33 @@ SettingsTab {
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
 
     Panel {
-        title: "Colours"
-        SettingRow { label: "Mode"
-            Seg { options: [{ text: "Dark", icon: "moon" }, { text: "Light", icon: "sun" }, { text: "System", icon: "monitor" }]
+        title: words.t("settings-appearance-language")
+        SettingRow { label: words.t("settings-appearance-language")
+            Dropdown {
+                objectName: "language"
+                options: words.pickNames()
+                index: Math.max(0, words.pickCodes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(words.pickCodes[i]) }
+            }
+        }
+        SettingRow { label: words.t("settings-appearance-title-language")
+            Seg { objectName: "title-language"; options: tab.titleLanguageNames; index: Math.max(0, tab.titleLanguages.indexOf(Door.preferences.title_language))
+                  onPicked: function(i) { tab.setTitleLanguage(tab.titleLanguages[i]) } } }
+    }
+    Panel {
+        title: words.t("settings-appearance-colours")
+        SettingRow { label: words.t("settings-appearance-mode")
+            Seg { options: [{ text: words.t("settings-appearance-mode-dark"), icon: "moon" }, { text: words.t("settings-appearance-mode-light"), icon: "sun" }, { text: words.t("settings-appearance-mode-system"), icon: "monitor" }]
                 index: ["dark", "light", "system"].indexOf(Theme.mode); onPicked: function(i) { Theme.pickMode(["dark", "light", "system"][i]) } } }
-        SettingRow { label: "Colours from"
-            helper: tab.fromTheme ? "The theme pair below, one for dark and one for light."
-                                  : "Your terminal's colours, else the desktop's colour scheme and accent."
-            Seg { objectName: "colour-source"; options: ["Desktop", "Theme"]; index: tab.fromTheme ? 1 : 0; onPicked: function(i) { Theme.pickSource(i === 1 ? "theme" : "system") } } }
-        SettingRow { visible: tab.fromTheme; label: "Dark theme"
+        SettingRow { label: words.t("settings-appearance-colours-from")
+            Seg { objectName: "colour-source"; options: [words.t("settings-appearance-from-desktop"), words.t("settings-appearance-from-theme")]; index: tab.fromTheme ? 1 : 0; onPicked: function(i) { Theme.pickSource(i === 1 ? "theme" : "system") } } }
+        SettingRow { visible: tab.fromTheme; label: words.t("settings-appearance-dark-theme")
             Dropdown { objectName: "theme-dark"; options: tab.darkThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.darkThemes, Theme.themeDark)
                 onPicked: function(i) { Theme.pickTheme("dark", tab.darkThemes[i].stem) } } }
-        SettingRow { visible: tab.fromTheme; label: "Light theme"; helper: "Theme files you drop in ~/.config/anibeam/themes show up in both lists."
+        SettingRow { visible: tab.fromTheme; label: words.t("settings-appearance-light-theme")
             Dropdown { objectName: "theme-light"; options: tab.lightThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.lightThemes, Theme.themeLight)
                 onPicked: function(i) { Theme.pickTheme("light", tab.lightThemes[i].stem) } } }
-        SettingRow { label: "Accent"; helper: "Marks what is selected, playing or new."
+        SettingRow { label: words.t("settings-appearance-accent")
             Swatches { slot: Theme.accent; onPicked: function(s) { Theme.pickAccent(s) } } }
     }
     Panel {
@@ -53,12 +77,12 @@ SettingsTab {
         stretch: LookPreview { nowMs: tab.nowMs }
     }
     Panel {
-        title: "Icon"
-        SettingRow { label: "App icon"; helper: "The window's, the taskbar's and the launcher's. Dark swaps the yellow and the black."
+        title: words.t("settings-appearance-icon")
+        SettingRow { label: words.t("settings-appearance-app-icon")
             Row {
                 spacing: theme.space(3)
                 Repeater {
-                    model: [{ id: "default", text: "Default", file: "icon.png" }, { id: "dark", text: "Dark", file: "icon-dark.png" }]
+                    model: [{ id: "default", msg: "settings-appearance-icon-default", nameMsg: "settings-appearance-icon-default-name", file: Shell.defaultIcon }, { id: "dark", msg: "settings-appearance-icon-dark", nameMsg: "settings-appearance-icon-dark-name", file: "icon-dark.png" }]
                     Column {
                         id: pick
                         required property var modelData
@@ -80,14 +104,14 @@ SettingsTab {
                             Image {
                                 anchors.fill: parent
                                 anchors.margins: theme.space(1.5)
-                                source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + pick.modelData.file
+                                source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/" + pick.modelData.file
                                 sourceSize: Qt.size(128, 128)
                                 smooth: true
                             }
                             MouseArea {
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.onPressAction: Theme.pickAppIcon(pick.modelData.id)
-                                Accessible.name: pick.modelData.text + " app icon"
+                                Accessible.name: words.t(pick.modelData.nameMsg)
                                 Accessible.checkable: true
                                 Accessible.checked: pick.on
                                 id: m
@@ -99,7 +123,7 @@ SettingsTab {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: pick.modelData.text
+                            text: words.t(pick.modelData.msg)
                             color: pick.on ? theme.text : theme.textDim
                             font.family: theme.fontUi
                             font.pointSize: theme.typeSmall
@@ -110,20 +134,20 @@ SettingsTab {
         }
     }
     Panel {
-        title: "Size and motion"
-        SettingRow { label: "Text size"; helper: "How big the words are everywhere in AniBeam, on top of your system's own size."
-            Seg { objectName: "text-size"; options: tab.textSizes.map(function(s) { return s.text })
+        title: words.t("settings-appearance-size-motion")
+        SettingRow { label: words.t("settings-appearance-text-size")
+            Seg { objectName: "text-size"; options: tab.textSizes.map(function(s) { return words.t(s.msg) })
                   index: Math.max(0, tab.textSizes.map(function(s) { return s.id }).indexOf(Theme.textSize))
                   onPicked: function(i) { Theme.pickTextSize(tab.textSizes[i].id) } } }
-        SettingRow { label: "Density"; helper: "The room around everything, from tight to airy."
-            Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
-        SettingRow { label: "Poster size"; helper: "How big a series is in the library and on Home."
-            Seg { options: ["Small", "Medium", "Large"]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-        SettingRow { label: "Out now on Airing"; helper: "Cards with each show's banner, or a list of small posters and titles, three rows deep."
-            Seg { objectName: "out-now-style"; options: ["Cards", "List"]; index: airingKept.outStyle === "list" ? 1 : 0; onPicked: function(i) { airingKept.outStyle = i === 1 ? "list" : "cards" } } }
-        SettingRow { visible: airingKept.outStyle !== "list"; label: "Out now cards"; helper: "How many cards show, columns by rows, before All opens the rest."
-            Seg { objectName: "out-now-layout"; options: ["3 × 2", "4 × 2", "5 × 2", "4 × 3"]; index: Math.max(0, tab.outLayouts.indexOf(airingKept.outLayout)); onPicked: function(i) { airingKept.outLayout = tab.outLayouts[i] } } }
-        SettingRow { label: "Reduce motion"; helper: "Skips the library's opening sweep and other movement that is only for show."
+        SettingRow { label: words.t("settings-appearance-density")
+            Seg { options: [words.t("settings-appearance-density-compact"), words.t("settings-appearance-density-normal"), words.t("settings-appearance-density-comfortable")]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
+        SettingRow { label: words.t("settings-appearance-poster-size")
+            Seg { options: [words.t("settings-appearance-poster-small"), words.t("settings-appearance-poster-medium"), words.t("settings-appearance-poster-large")]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
+        SettingRow { label: words.t("settings-appearance-out-now")
+            Seg { objectName: "out-now-style"; options: [words.t("settings-appearance-out-now-cards"), words.t("settings-appearance-out-now-list")]; index: airingKept.outStyle === "list" ? 1 : 0; onPicked: function(i) { airingKept.outStyle = i === 1 ? "list" : "cards" } } }
+        SettingRow { visible: airingKept.outStyle !== "list"; label: words.t("settings-appearance-out-now-grid")
+            Seg { objectName: "out-now-layout"; options: tab.outLayouts.map(function(l) { var cr = l.split("x"); return words.t("settings-appearance-grid", { columns: Number(cr[0]), rows: Number(cr[1]) }) }); index: Math.max(0, tab.outLayouts.indexOf(airingKept.outLayout)); onPicked: function(i) { airingKept.outLayout = tab.outLayouts[i] } } }
+        SettingRow { label: words.t("settings-appearance-reduce-motion")
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
     }
 }

@@ -4,7 +4,7 @@
 // far a download has come, and the row's one action at the right (Unsubscribe, Remove),
 // which opens the removal sheet. A click elsewhere opens the show.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -21,7 +21,7 @@ Item {
     property string cubes: ""
     property string progressCode: "d"
     property color progressColor: theme.accent
-    property string actionText: "Remove"
+    property string actionText: words.t("action-remove")
     property string actionIcon: "x"
     property string glyph: "rss"
     property bool busy: false

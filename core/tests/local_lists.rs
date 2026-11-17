@@ -12,17 +12,11 @@ fn library(core: &Core) -> u64 {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_file(core, series, "/lib/Bebop/01.mkv", 1.0, None, "episode", now);
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::insert_episode_file(core, series, "/lib/Bebop/01.mkv", 1.0, now);
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(12)
+        .score(86)
+        .insert(core);
     fixtures::match_series(core, series, Some(1), Some(21));
     series
 }
@@ -89,15 +83,7 @@ fn an_unmatched_show_keeps_them_here_with_an_account_connected() {
         "/lib/Home Video",
         "Home Video",
     );
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Home Video/01.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Home Video/01.mkv", 1.0, now);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
 
     assert_eq!(
@@ -233,15 +219,7 @@ fn a_hidden_unmatched_series_is_refused() {
         "/lib/Home Video",
         "Home Video",
     );
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Home Video/01.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Home Video/01.mkv", 1.0, now);
     core.call(Call::SetHidden {
         series,
         hidden: true,

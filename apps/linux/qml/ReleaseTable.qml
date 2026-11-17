@@ -12,7 +12,7 @@
 // carried them, else from the core's own read of the same feed (`extras`, by link), which
 // is also where the dates come from; until that read lands the Released column waits.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -117,15 +117,15 @@ Item {
     readonly property real wTitle: Math.max(theme.space(40), width - wCheck - wGroup - wRes - wRip - wEp - wSize - wSeed - wLeech - wDl - wDate)
     readonly property real rowHeight: theme.space(14)
     readonly property var columns: [
-        { key: "group", text: "Group", w: wGroup, left: true },
-        { key: "resolution", text: "Res", w: wRes },
-        { key: "rip", text: "Rip", w: wRip },
-        { key: "episode", text: "Ep", w: wEp },
-        { key: "size", text: "Size", w: wSize },
-        { key: "seeders", text: "Seeders", w: wSeed },
-        { key: "leechers", text: "Leechers", w: wLeech },
-        { key: "downloads", text: "Downloads", w: wDl },
-        { key: "released", text: "Released", w: wDate }
+        { key: "group", text: words.t("release-table-col-group"), w: wGroup, left: true },
+        { key: "resolution", text: words.t("release-table-col-res"), w: wRes },
+        { key: "rip", text: words.t("release-table-col-rip"), w: wRip },
+        { key: "episode", text: words.t("release-table-col-ep"), w: wEp },
+        { key: "size", text: words.t("release-table-col-size"), w: wSize },
+        { key: "seeders", text: words.t("release-table-col-seeders"), w: wSeed },
+        { key: "leechers", text: words.t("release-table-col-leechers"), w: wLeech },
+        { key: "downloads", text: words.t("release-table-col-downloads"), w: wDl },
+        { key: "released", text: words.t("release-table-col-released"), w: wDate }
     ]
 
     implicitHeight: head.height + body.implicitHeight + (more.visible ? more.height : 0)
@@ -142,9 +142,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             on: root.allSelected
             onClicked: root.toggledAll(!root.allSelected)
-            Tooltip { text: root.allSelected ? "Untick every release" : "Tick every release" }
+            Tooltip { text: root.allSelected ? words.t("release-table-untick-all") : words.t("release-table-tick-all") }
         }
-        HeadCell { x: root.wCheck; width: root.wTitle; key: "title"; text: "Release"; alignRight: false }
+        HeadCell { x: root.wCheck; width: root.wTitle; key: "title"; text: words.t("release-table-col-release"); alignRight: false }
         Row {
             x: root.wCheck + root.wTitle
             Repeater {
@@ -206,14 +206,14 @@ Item {
                     }
                     Row {
                         spacing: theme.space(1.25)
-                        Tag { visible: row.fact.on_disk === true; text: "On disk"; dot: theme.accent }
-                        Tag { visible: row.fact.other_on_disk === true; text: "Other release on disk"; dot: theme.textFaint }
-                        Tag { visible: row.fact.batch === true; text: row.fact.season ? "Season " + row.fact.season + " batch" : "Batch"; dot: theme.orange }
+                        Tag { visible: row.fact.on_disk === true; text: words.t("release-table-on-disk"); dot: theme.accent }
+                        Tag { visible: row.fact.other_on_disk === true; text: words.t("release-table-other-on-disk"); dot: theme.textFaint }
+                        Tag { visible: row.fact.batch === true; text: row.fact.season ? words.t("release-table-season-batch", { season: row.fact.season }) : words.t("release-table-batch"); dot: theme.orange }
                         Tag { visible: !!row.item.infomkv; text: row.item.infomkv || "" }
                         Label {
                             visible: !!row.item.source
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "via " + row.item.source
+                            text: words.t("release-table-via", { source: row.item.source })
                             role: "ledger"
                             font.pointSize: theme.typeSmall
                             color: theme.textFaint
@@ -242,10 +242,12 @@ Item {
                     Cell { width: root.wRip; ink: theme.textDim; text: row.fact.rip || "" }
                     Cell {
                         width: root.wEp
-                        text: row.fact.episode !== null && row.fact.episode !== undefined
-                              ? (row.fact.season && row.fact.season > 1 ? "S" + row.fact.season + " " : "") + row.fact.episode : ""
+                        // A batch names its range when its title gives one (#1004)
+                        readonly property string ep: row.fact.episode !== null && row.fact.episode !== undefined ? String(row.fact.episode)
+                              : row.fact.batch && row.fact.first_episode ? words.t("release-table-episode-range", { first: row.fact.first_episode, last: row.fact.last_episode || row.fact.first_episode }) : ""
+                        text: ep !== "" && row.fact.season && row.fact.season > 1 ? words.t("release-table-season-episode", { season: row.fact.season, episode: ep }) : ep
                     }
-                    Cell { width: root.wSize; text: { var b = root.bytes(row.i); return b ? Fmt.bytes(b) : (row.item.size || "") } }
+                    Cell { width: root.wSize; text: { var b = root.bytes(row.i); return b ? words.bytes(b) : (row.item.size || "") } }
                     Cell {
                         width: root.wSeed
                         text: row.seeders === null ? "" : String(row.seeders)
@@ -257,9 +259,9 @@ Item {
                         width: root.wDate
                         readonly property var at: root.published(row.i)
                         opacity: rowHover.hovered ? 0 : 1
-                        text: at ? Fmt.relative(at, root.nowMs / 1000) : (root.datesState === "loading" ? "..." : "")
+                        text: at ? words.relative(at, root.nowMs / 1000) : (root.datesState === "loading" ? "..." : "")
                         ink: at ? theme.textDim : theme.textFaint
-                        Tooltip { visible: !!parent.at; text: parent.at ? new Date(parent.at * 1000).toLocaleString(Qt.locale(), "d MMMM yyyy, HH:mm") : "" }
+                        Tooltip { visible: !!parent.at; text: parent.at ? new Date(parent.at * 1000).toLocaleString(Qt.locale(), words.t("release-table-date-format")) : "" }
                     }
                 }
                 Button {
@@ -267,7 +269,7 @@ Item {
                     anchors.rightMargin: theme.space(2)
                     anchors.verticalCenter: parent.verticalCenter
                     visible: rowHover.hovered
-                    text: "Download"
+                    msg: "release-table-download"
                     icon: "download"
                     flat: true
                     small: true
@@ -283,7 +285,7 @@ Item {
         y: head.height + body.implicitHeight
         topPadding: theme.space(2)
         height: implicitHeight
-        text: "and " + (root.items.length - root.cap) + " more. Narrow the list or sort it to see others first."
+        text: words.t("release-table-more", { count: root.items.length - root.cap })
         role: "ui"
         color: theme.textDim
     }
@@ -361,7 +363,7 @@ Item {
         border.color: on ? theme.accent : checkMouse.containsMouse ? theme.text : theme.lineStrong
         border.width: 1.5
         Icon { visible: parent.on; anchors.centerIn: parent; glyph: "check"; size: theme.space(3.25); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 3 ? "#ffffff" : "#0d0e11" }
-        MouseArea { id: checkMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked(); Accessible.role: Accessible.CheckBox; Accessible.name: "Pick this release"; Accessible.checkable: true; Accessible.checked: parent.on
+        MouseArea { id: checkMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked(); Accessible.role: Accessible.CheckBox; Accessible.name: words.t("release-table-pick"); Accessible.checkable: true; Accessible.checked: parent.on
             Accessible.onPressAction: parent.clicked() }
     }
 }

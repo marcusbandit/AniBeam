@@ -1,0 +1,42 @@
+// A related or recommended show this phone does not hold: Get its episodes, or read about it
+// on AniList. One it does hold opens its own page instead, without this sheet.
+
+import { Theme } from "theme.slint";
+import { AppData, Nav } from "data.slint";
+import { Button } from "widgets.slint";
+import { FindData } from "find.slint";
+import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
+
+export component EntrySheet inherits ShowSheet {
+    title: ShowData.entry.title;
+    line: ShowData.entry.line != "" && ShowData.entry.status != "" ? Tr.s2("show-entry-line", "line", ShowData.entry.line, "status", ShowData.entry.status) : ShowData.entry.line + ShowData.entry.status;
+    dismissed => { ShowData.close(); }
+    Button {
+        text: Tr.t("show-entry-get");
+        icon: @image-url("icons/download.svg");
+        has-icon: true;
+        primary: true;
+        clicked => {
+            FindData.open("");
+            FindData.text = ShowData.entry.title;
+            FindData.suggest(ShowData.entry.title);
+            ShowData.close();
+            AppData.close-series();
+            Nav.page = 2;
+        }
+    }
+    Button {
+        text: Tr.t("show-entry-open-anilist");
+        icon: @image-url("icons/globe.svg");
+        has-icon: true;
+        clicked => {
+            ShowData.open-link(ShowData.entry.url);
+            ShowData.close();
+        }
+    }
+    Button {
+        text: Tr.t("common-cancel");
+        clicked => { ShowData.close(); }
+    }
+}

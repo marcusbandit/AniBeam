@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: anirss.sh <AniBeam.app>
+# usage: anirss.sh <Anibeam.app>
 # Puts anirss and a Python to run it into <app>/Contents/Resources/anirss:
 #   python/      python-build-standalone 3.13.16 (release 20261013), the install_only_stripped
 #                build for Apple silicon, minus what anirss never imports (Tk, IDLE, pip, the
@@ -27,15 +27,14 @@ trap 'rm -rf "$work"' EXIT
 rm -rf "$dest"
 mkdir -p "$dest/bin" "$dest/app"
 
-fetch() { # url sha256 out
-  curl -fsSL -o "$3" "$1"
-  echo "$2  $3" | shasum -a 256 -c -
-}
+# Downloads go through ../download.sh: retries, a time cap and a sha256 check (#1140).
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$(dirname "$0")/../download.sh"
 
 echo "== Python $PBS_PYTHON (python-build-standalone $PBS_RELEASE)"
 pbs="cpython-$PBS_PYTHON+$PBS_RELEASE-aarch64-apple-darwin-install_only_stripped.tar.gz"
-fetch "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}" \
-  "$PBS_SHA256" "$work/python.tar.gz"
+download_checked "$work/python.tar.gz" "$PBS_SHA256" \
+  "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}"
 tar -xz -C "$work" -f "$work/python.tar.gz"
 mv "$work/python" "$dest/python"
 
@@ -53,8 +52,7 @@ rm -rf "$py/include" "$py/share" "$py/lib/pkgconfig" \
 rm -rf "$lib"/site-packages/*
 
 echo "== anirss $ANIRSS_VERSION"
-fetch "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz" \
-  "$ANIRSS_SHA256" "$work/anirss.tar.gz"
+download_checked "$work/anirss.tar.gz" "$ANIRSS_SHA256" "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz"
 tar -xz -C "$work" -f "$work/anirss.tar.gz"
 src="$work/anirss-$ANIRSS_VERSION"
 cp "$src/anirss" "$dest/app/anirss"
@@ -62,7 +60,7 @@ cp -R "$src/anirss_lib" "$dest/app/anirss_lib"
 chmod 755 "$dest/app/anirss"
 cat > "$dest/bin/anirss" <<'SH'
 #!/bin/sh
-# AniBeam's own anirss: the release it was built with, on the Python beside it.
+# Anibeam's own anirss: the release it was built with, on the Python beside it.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$here/python/bin/python3" "$here/app/anirss" "$@"
 SH

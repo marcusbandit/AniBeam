@@ -6,9 +6,9 @@
 // wide field: typing lists shows (the library's first, then AniList's), Return searches
 // release names the old way (the table, filters, Subscribe), asking every source that is
 // switched on. Under the field the sources: a chip per provider, lit when on and greyed when
-// off, a click flips it. A plain endpoint is on by default; an on-demand one (1337x, a pod
-// behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
-// small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
+// off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
+// through a pod behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
+// small sheet, whether to start Jackett; Anibeam starts it on that confirm and never before,
 // and the core refuses a search that would start it behind your back.
 //
 // With nothing searched the page is four lenses: Gaps in your library (aired episodes not
@@ -27,13 +27,13 @@
 // two seconds while something is downloading and the page is up, every fifteen while
 // nothing is, and not at all while the removal sheet is open.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
     objectName: "downloads-page"
     property var props: ({})
-    property string title: "Downloads"
+    property string title: words.t("downloads-title")
     property alias scrollY: scroll.contentY
     // Escape closes the show, then the search; out of a release list that came from a show's
     // grid, it goes back to the grid
@@ -45,7 +45,8 @@ Item {
         if (page.state !== null || page.searchError !== "") { page.clearSearch(); return true }
         return false
     }
-    function focusSearch() { scroll.contentY = 0; search.focusInput() }
+    // With no source yet the search field is hidden, and the field that adds a list stands in
+    function focusSearch() { scroll.contentY = 0; if (page.noSources) noSourcesAttach.focusInput(); else search.focusInput() }
 
     // ---- The connection
     property var status: null
@@ -53,12 +54,15 @@ Item {
     readonly property var torrent: status ? status.torrent : null
     readonly property bool anirssReady: !!anirss && anirss.state === "Ready"
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
-    // AniBeam itself searches: nothing waits on the search helper (#549)
+    // Anibeam itself searches: nothing waits on the search helper (#549)
     readonly property bool nativeEngine: !!status && !!status.settings && status.settings.engine === "Native"
     // Searches, subscriptions and the rules list can go ahead
     readonly property bool searchReady: nativeEngine || anirssReady
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
+    // Searches could run and there is nothing to search: no source list added yet. The search
+    // field gives way to the one step that adds one (#1003)
+    readonly property bool noSources: searchReady && endpoints.length === 0
     // Whether the search's source has a feed a subscription can follow (#507)
     readonly property bool followable: {
         var name = page.state ? page.state.endpoint : ""
@@ -70,11 +74,11 @@ Item {
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
     readonly property bool remoteAnirss: !nativeEngine && !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
-    // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
+    // tell apart (the saved ones and Anibeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
         var s = status ? status.settings : null
         if (!s || savedClients.length === 0) return clientName
-        if (s.torrent_mode === "Managed") return "Built-in client"
+        if (s.torrent_mode === "Managed") return words.t("downloads-builtin-client")
         if (savedClients.length < 2) return clientName
         for (var i = 0; i < savedClients.length; i++) if (savedClients[i].id === s.active_client) return savedClients[i].name
         return clientName
@@ -112,11 +116,11 @@ Item {
     property real checkJob: -1
     function checkSources() {
         var r = Door.call("CheckEndpoints", {})
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, page.checkSources); return }
         page.checkJob = r.reply.job
     }
 
-    // ---- Starting a source's service (Jackett, behind 1337x): ask, then the core starts it
+    // ---- Starting an on-demand source's service: ask, then the core starts it
     property real startJob: -1
     property string startName: ""
     function askStart(name) {
@@ -128,10 +132,11 @@ Item {
     }
     function startService(name) {
         var r = Door.call("StartEndpoint", { name: name })
-        if (r.error) { startSheet.error = page.errorWords(r.error); return }
+        if (r.error) { startSheet.error = page.errorWords(r.error); startSheet.detail = page.detailOf(r.error); return }
         page.startJob = r.reply.job
         page.startName = name
         startSheet.error = ""
+        startSheet.detail = ""
         startSheet.busy = true
     }
     function startDone(ok, error) {
@@ -142,9 +147,9 @@ Item {
         if (ok) {
             page.storeSource(name, true)
             startSheet.close()
-            frame.toast(name + " is running and switched on")
-        } else if (startSheet.visible) startSheet.error = page.errorWords(error)
-        else frame.toast(page.errorWords(error), 6)
+            frame.toast(words.t("downloads-start-done", { name: name }))
+        } else if (startSheet.visible) { startSheet.error = page.errorWords(error); startSheet.detail = page.detailOf(error) }
+        else frame.fail(error, function() { page.askStart(name) })
     }
 
     // ---- The library, for the lenses and the suggestions
@@ -185,9 +190,10 @@ Item {
     readonly property real finishedBytes: finishedCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
     // A show's line in Downloaded: how many episodes, how big, how much of it is watched
     function diskLedger(c) {
-        var n = c.kind === "Movie" ? "Film" : Fmt.plural(c.episodes_on_disk || 0, "episode", "episodes")
-        var w = c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk ? ", " + Fmt.bytes(c.watched_bytes) + " watched" : c.watched_bytes > 0 ? ", all watched" : ""
-        return n + ", " + Fmt.bytes(c.bytes_on_disk || 0) + w
+        var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), words.bytes(c.bytes_on_disk || 0)]
+        if (c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk) parts.push(words.t("downloads-disk-watched", { size: words.bytes(c.watched_bytes) }))
+        else if (c.watched_bytes > 0) parts.push(words.t("downloads-disk-all-watched"))
+        return parts.join(", ")
     }
 
     // ---- Delete watched (#266): every watched episode, or every show confirmed done with,
@@ -195,31 +201,30 @@ Item {
     function askDeleteWatched(anchor) {
         var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
         frame.openMenu(p.x, p.y, [
-            { text: "Every watched episode: " + Fmt.plural(page.watchedEpisodes, "episode", "episodes") + ", " + Fmt.bytes(page.watchedBytes), icon: "trash-2",
+            { text: words.t("downloads-delete-watched-menu", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }), icon: "trash-2",
               action: function() { page.confirmDeleteWatched(anchor, false) } },
-            { text: "Every finished show you watched: " + Fmt.plural(page.finishedCards.length, "show", "shows") + ", " + Fmt.bytes(page.finishedBytes), icon: "trash-2",
+            { text: words.t("downloads-delete-finished-menu", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }), icon: "trash-2",
               action: function() { page.confirmDeleteWatched(anchor, true) } }
         ])
     }
     function someTitles(cards) {
         var t = cards.slice().sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) }).map(function(c) { return c.title })
-        if (t.length <= 3) return t.length === 1 ? t[0] : t.slice(0, -1).join(", ") + " and " + t[t.length - 1]
-        return t.slice(0, 3).join(", ") + " and " + (t.length - 3) + " more"
+        if (t.length <= 3) return t.length === 1 ? t[0] : words.t("downloads-titles-and", { list: t.slice(0, -1).join(", "), last: t[t.length - 1] })
+        return words.t("downloads-titles-more", { list: t.slice(0, 3).join(", "), count: t.length - 3 })
     }
     function confirmDeleteWatched(anchor, finished) {
         if (finished ? !page.finishedCards.length : !page.watchedEpisodes) {
-            frame.toast(finished ? "No finished show is watched all the way through" : "Nothing watched is on disk")
+            frame.toast(finished ? words.t("downloads-delete-finished-none") : words.t("downloads-delete-watched-none"))
             return
         }
-        var torrentWords = " Their torrents leave " + page.clientName + " too, so they can be downloaded again."
         frame.askRemoval(anchor, finished ? {
-            heading: "Delete " + Fmt.plural(page.finishedCards.length, "finished show", "finished shows") + ", " + Fmt.bytes(page.finishedBytes) + "?",
-            base: page.someTitles(page.finishedCards) + ". Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them goes to the trash, extras too." + torrentWords,
-            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+            heading: words.t("downloads-delete-finished-heading", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }),
+            base: words.t("downloads-delete-finished-base", { titles: page.someTitles(page.finishedCards), client: page.clientName }),
+            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
         } : {
-            heading: "Delete " + Fmt.plural(page.watchedEpisodes, "watched episode", "watched episodes") + ", " + Fmt.bytes(page.watchedBytes) + "?",
-            base: "Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles go to the trash, so you can get them back from there." + torrentWords,
-            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+            heading: words.t("downloads-delete-watched-heading", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }),
+            base: words.t("downloads-delete-watched-base", { client: page.clientName }),
+            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
         }, function() { frame.deleteWatched(finished) })
     }
 
@@ -232,9 +237,17 @@ Item {
         else if (page.hoverGroupItem === item) { page.hoverGroupItem = null; page.hoverGroup = null }
     }
     function contextItems() {
+        // A line of the activity column (#1004): its torrent's folder
+        // Only for a client that keeps its files on this machine: another's paths are its own
+        var line = activity.visible ? activity.hoverTorrent : null
+        if (line) {
+            var here = !!page.status && !!page.status.save_folder && page.status.save_folder.here
+            var folder = here ? activity.saveFolderOf(line) : ""
+            return folder === "" ? [] : [{ text: words.t("frame-open-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(folder)) } }]
+        }
         var g = page.hoverGroup, anchor = page.hoverGroupItem
         if (!g || !anchor || !page.home || page.lens !== "downloaded") return []
-        return [{ text: g.torrents.length === 1 ? "Remove the torrent" : "Remove its " + g.torrents.length + " torrents", icon: "x",
+        return [{ text: words.t("downloads-remove-group-torrents", { count: g.torrents.length }), icon: "x",
                   action: function() { page.askRemoveGroup(anchor, g) } }]
     }
     function hasGap(c) {
@@ -249,18 +262,18 @@ Item {
         var parts = [], a = ns[0], b = ns[0]
         for (var i = 1; i <= ns.length; i++) {
             if (i < ns.length && ns[i] === b + 1) { b = ns[i]; continue }
-            parts.push(a === b ? String(a) : a + " to " + b)
+            parts.push(a === b ? String(a) : words.t("downloads-run-span", { from: a, to: b }))
             if (i < ns.length) { a = ns[i]; b = ns[i] }
         }
-        if (parts.length === 2) return parts[0] + " and " + parts[1]
+        if (parts.length === 2) return words.t("downloads-run-pair", { first: parts[0], second: parts[1] })
         return parts.join(", ")
     }
     function gapWords(c) {
         var s = String(c.cubes || ""), miss = [], tail = []
         for (var i = 0; i < s.length; i++) { if (s[i] === "m") miss.push(i + 1); else if (s[i] === "g") tail.push(i + 1) }
         var out = []
-        if (miss.length) out.push((miss.length === 1 ? "Episode " : "Episodes ") + page.runs(miss) + " missing")
-        if (tail.length) out.push((out.length ? "" : tail.length === 1 ? "Episode " : "Episodes ") + page.runs(tail) + " not downloaded")
+        if (miss.length) out.push(words.t("downloads-gap-missing", { count: miss.length, runs: page.runs(miss) }))
+        if (tail.length) out.push(out.length ? words.t("downloads-gap-then-not-downloaded", { runs: page.runs(tail) }) : words.t("downloads-gap-not-downloaded", { count: tail.length, runs: page.runs(tail) }))
         return out.join(", ")
     }
     property string lens: frame.downloadsLens
@@ -269,6 +282,9 @@ Item {
     // ---- The suggestions under the field: library shows, then AniList's
     property var aniHits: []
     property real aniJob: -1
+    // Index 0 is the release search row, there only while a source is on; the shows start at 1
+    readonly property bool canSearchReleases: enabledEndpoints.length > 0
+    readonly property int suggestFirst: canSearchReleases ? 0 : 1
     property int suggestIndex: 0
     property bool suggestClosed: false
     readonly property string query: search.text.trim()
@@ -345,6 +361,18 @@ Item {
     property bool getActing: false
     property string getLine: ""
     property string getError: ""
+    property string getErrorDetail: ""
+    // What the last Get sends again: its downloads, with its follow
+    property var getRetry: null
+    // The Get error's button: { label, act }
+    property var getFix: ({})
+    function failGet(e, retry) {
+        page.getError = e ? page.errorWords(e) : ""
+        page.getErrorDetail = e ? page.detailOf(e) : ""
+        page.getFix = e ? page.fixOf(e, retry) : ({})
+    }
+    // The follow a Get started, so a follow that fails alone is tried again alone
+    property var followPlan: null
     // The torrents that fill a show: linked to its series, or saved under a folder named
     // as it is (a show not scanned into the library yet)
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
@@ -363,7 +391,7 @@ Item {
         var t = c.titles || {}
         var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
         return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", here: c.episodes_here || null, total: c.total_episodes || 0,
-                 seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
+                 anilistId: c.match_info && c.match_info.anilist_id ? c.match_info.anilist_id : 0, seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
                  airing: c.status === "Releasing" || !!c.next_airing, folderName: Fmt.baseName(c.path || "") }
     }
     function showFromHit(h, typed) {
@@ -372,7 +400,7 @@ Item {
         // A show not in the library is saved under its own name, but never the native one:
         // the library links folders by their latin titles
         return { title: title, saveName: title === h.native ? (h.romaji || h.english || h.title) : title, query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
-                 seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
+                 anilistId: h.id || 0, seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
     }
     function showFromLink(s) {
         for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
@@ -404,20 +432,35 @@ Item {
         if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
         else page.openGet(page.showFromTorrent(t))
     }
-    function openGet(show) {
+    // `searchAtOnce` (a list entry's click, #734) asks the first source that is on for the
+    // releases without a click on it: one source, so the shared limiter sees one search.
+    function openGet(show, searchAtOnce) {
         page.getShow = show
         page.getResults = ({})
         page.getActive = ""
         page.getLine = ""
-        page.getError = ""
+        page.failGet(null)
         page.gridReturn = null
         page.dropSearches()
         page.state = null
         page.detail = null
         page.history = []
         scroll.contentY = 0
+        page.searchFirst = searchAtOnce === true
+        page.fetchFirst()
     }
-    function closeGet() { page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
+    property bool searchFirst: false
+    function fetchFirst() {
+        if (!page.searchFirst || !page.getShow) return
+        var on = page.enabledEndpoints
+        if (!on.length) return
+        page.searchFirst = false
+        page.fetchGet(on[0].name)
+    }
+    // The sources may arrive after the page opens on a show: the search waits for them. A
+    // source switched on also clears the line that said none was
+    onEnabledEndpointsChanged: { page.clearAllOff(); page.fetchFirst() }
+    function closeGet() { page.searchFirst = false; page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
     function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
     function fetchGet(name) {
         if (!page.getShow || !page.sourceOn(name)) return
@@ -430,9 +473,9 @@ Item {
     function searchGetAs(name, at) {
         var qs = page.getShow.queries || [page.getShow.query]
         var r = Door.searchReleases(qs[at], name)
-        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error) }); return }
+        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error), detail: page.detailOf(r.error) }); return }
         var j = Object.assign({}, page.getJobs); j[r.reply.job] = name; page.getJobs = j
-        page.setResult(name, { state: "searching", label: at > 0 ? "Trying " + qs[at] : "", elapsed: 0, start: Date.now(), at: at })
+        page.setResult(name, { state: "searching", label: at > 0 ? words.t("downloads-trying-query", { query: qs[at] }) : "", elapsed: 0, start: Date.now(), at: at })
     }
     Timer {
         interval: 500; repeat: true
@@ -447,7 +490,8 @@ Item {
     // the button has turned before anything waits on the client
     function getAndFollow(plan) {
         page.getLine = ""
-        page.getError = ""
+        page.failGet(null)
+        page.getRetry = function() { page.getAndFollow(plan) }
         page.getActing = true
         sendTimer.plan = plan
         sendTimer.restart()
@@ -462,7 +506,7 @@ Item {
             page.pendingFollow = plan.follow ? plan : null
             if (plan.items.length) {
                 var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
-                if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+                if (r.error) { page.getActing = false; page.failGet(r.error, page.getRetry); return }
                 page.getJob = r.reply.job
             } else if (plan.follow) page.follow(plan)
             else page.getActing = false
@@ -470,9 +514,10 @@ Item {
     }
     function follow(plan) {
         page.pendingFollow = null
+        page.followPlan = plan
         var series = plan.options && plan.options.series != null ? plan.options.series : -1
         var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "", series)
-        if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+        if (r.error) { page.getActing = false; page.failGet(r.error, function() { page.follow(plan) }); return }
         page.followJob = r.reply.job
         page.getActing = true
     }
@@ -513,6 +558,20 @@ Item {
     property bool searching: false
     property string notice: ""
     property string searchError: ""
+    // The search error's Details and its button: { detail, label, act }
+    property var searchFix: ({})
+    // A search error in plain words, with the button that does the fix (#538)
+    // `allOff` marks an error that says no source is on: whichever control switches one on
+    // clears it
+    function sayOnSearch(text, detail, label, act, allOff) {
+        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null, allOff: !!allOff }
+        page.searchError = text
+    }
+    function clearAllOff() {
+        if (page.searchError === "" || !page.searchFix.allOff || page.enabledEndpoints.length === 0) return
+        page.searchError = ""
+        page.searchFix = ({})
+    }
     property var selected: ({})
     property int hoveredGroup: -1
     property string nameText: ""
@@ -522,6 +581,28 @@ Item {
     property bool acting: false
     property string actionLine: ""
     property string actionError: ""
+    property string actionErrorDetail: ""
+    // What the last subscribe or download sends again
+    property var actionRetry: null
+    // The action error's button, taken when the error is shown: { label, act }
+    property var actionFix: ({})
+    function failAction(e, retry) {
+        page.actionError = e ? page.errorWords(e) : ""
+        page.actionErrorDetail = e ? page.detailOf(e) : ""
+        page.actionFix = e ? page.fixOf(e, retry) : ({})
+    }
+    // The button an error offers, read the way frame.fail reads it (#538): a settings fix
+    // opens that tab, a retry runs `retry` again, and an error with no fix offers nothing
+    function fixOf(e, retry) {
+        var fix = String(e && e.fix !== undefined ? e.fix : "retry")
+        if (fix.indexOf("settings:") === 0) {
+            var tab = fix.slice(9)
+            return { label: words.t("action-open-settings"), act: function() { frame.go("settings", { tab: tab }) } }
+        }
+        return fix === "retry" && retry ? { label: words.t("action-try-again"), act: retry } : ({})
+    }
+    // A search error from a call, with its button
+    function failSearch(e, retry) { var f = page.fixOf(e, retry); page.sayOnSearch(page.errorWords(e), page.detailOf(e), f.label, f.act) }
     readonly property var items: state && state.items ? state.items : []
     readonly property var groups: state && state.groups ? state.groups : []
     readonly property int selectedCount: { var n = 0; for (var k in selected) if (selected[k]) n++; return n }
@@ -580,6 +661,13 @@ Item {
     property var shows: ({})
     property bool torrentsRead: false
     property string torrentsError: ""
+    property string torrentsErrorDetail: ""
+    property var torrentsFix: ({})
+    function failTorrents(e) {
+        page.torrentsError = page.errorWords(e)
+        page.torrentsErrorDetail = page.detailOf(e)
+        page.torrentsFix = page.fixOf(e, page.pollTorrents)
+    }
     // What is being removed, by key: "r:" a rule name, "g:" a group key, "t:" a hash
     property var removing: ({})
     // Removals waiting their turn ({ target, choice }), and the one running
@@ -599,10 +687,10 @@ Item {
 
     function reload() {
         var r = Door.getDownloads()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         page.status = r.reply.status
     }
-    // The helper the settings point at is not the one AniBeam comes with: a remote server, or
+    // The helper the settings point at is not the one Anibeam comes with: a remote server, or
     // a command typed into Settings. When that one does not answer, the fix is going back.
     readonly property bool helperChanged: !!status && !!status.settings
         && (status.settings.anirss_mode === "Remote" || status.settings.anirss_command !== "anirss")
@@ -613,18 +701,18 @@ Item {
         s.anirss_mode = "Sidecar"
         s.anirss_command = "anirss"
         var r = Door.setDownloadSettings(s, {})
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.useBuiltInHelper); return }
         page.reload()
         page.connect()
     }
     function connect() {
         var r = Door.connectDownloads()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.connect); return }
         page.connectJob = r.reply.job !== undefined ? r.reply.job : -1
         page.connecting = true
     }
     function loadRules() { frame.readDownloadsRules() }
-    // The client chip's menu: every saved client and AniBeam's own, the one in use ticked,
+    // The client chip's menu: every saved client and Anibeam's own, the one in use ticked,
     // then the settings. A pick switches the downloads to it and reconnects.
     function clientMenu() {
         var s = page.status ? page.status.settings : null
@@ -635,13 +723,13 @@ Item {
             items.push({ text: c.name, icon: inUse ? "check" : "hard-drive", action: page.useClient.bind(null, c.id) })
         }
         var own = !!s && s.torrent_mode === "Managed"
-        items.push({ text: "Built-in client", icon: own ? "check" : "play", action: page.useClient.bind(null, "") })
-        items.push({ text: "Torrent client settings", icon: "settings", action: function() { frame.go("settings", { tab: "downloads" }) } })
+        items.push({ text: words.t("downloads-builtin-client"), icon: own ? "check" : "play", action: page.useClient.bind(null, "") })
+        items.push({ text: words.t("downloads-client-settings"), icon: "settings", action: function() { frame.go("settings", { tab: "downloads" }) } })
         return items
     }
     function useClient(id) {
         var r = Door.useTorrentClient(id)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, function() { page.useClient(id) }); return }
         frame.forgetDownloadsRules()
         page.torrents = []
         page.repoll = true
@@ -649,13 +737,19 @@ Item {
     }
     function pollTorrents() {
         var r = Door.listTorrents()
-        if (r.error) page.torrentsError = r.error.message
+        if (r.error) page.failTorrents(r.error)
     }
+    // A call error in plain words with what to do next (#538): the bridge's own sentences,
+    // never the core's message alone; that stays one click away, under Details
     function errorWords(e) {
+        if (e && e.plain) return e.plain + (e.next ? " " + e.next : "")
         var m = String(e && e.message ? e.message : "")
-        if (e && e.kind === "Service" && e.code === "qbt_auth_required") return "anirss cannot log in to " + page.clientName + ". Save its password in Settings."
-        if (e && e.kind === "Service" && e.code === "unauthorized") return m + ". Check the address and password in Settings."
-        return m === "" ? "Something went wrong." : m
+        return m === "" ? words.t("downloads-error-unknown") : m
+    }
+    // The core's own message for Details, when it says more than the plain words
+    function detailOf(e) {
+        var m = String(e && e.message ? e.message : "")
+        return m !== "" && m !== page.errorWords(e) ? m : ""
     }
 
     // ---- The search
@@ -680,8 +774,15 @@ Item {
         if (q === "") { search.focusInput(); return }
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
         if (!names.length) {
-            page.searchError = page.endpoints.length ? "Every source is switched off. Switch one on under the search."
-                : "There are no sources to search yet. Add a source list in Settings, under Downloads."
+            page.suggestClosed = true
+            if (page.endpoints.length) {
+                var first = page.endpoints[0].name
+                page.sayOnSearch(words.t("downloads-search-all-off"), "", words.t("downloads-turn-on", { name: first }), function() {
+                    page.setSource(first, true)
+                    // A source that runs now searches at once; one to start asks first
+                    if (page.sourceOn(first)) page.runSearch()
+                }, true)
+            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) }, true)
             return
         }
         page.closeGet()
@@ -692,13 +793,18 @@ Item {
         var jobs = {}, results = {}, failed = []
         for (var i = 0; i < names.length; i++) {
             var r = Door.searchReleases(q, names[i])
-            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error) }; failed.push(r.error.message); continue }
+            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error), detail: page.detailOf(r.error) }; failed.push(r.error); continue }
             jobs[r.reply.job] = names[i]
             results[names[i]] = { state: "searching" }
         }
         page.searchJobs = jobs
         page.searchResults = results
-        if (!Object.keys(jobs).length) { page.searchError = failed.join(" "); return }
+        if (!Object.keys(jobs).length) {
+            if (failed.length === 1) page.failSearch(failed[0], function() { page.runSearch(only) })
+            else page.sayOnSearch(words.t("downloads-search-none-started"),
+                failed.map(function(e) { return String(e.message || "") }).join("\n"), words.t("action-try-again"), function() { page.runSearch(only) })
+            return
+        }
         page.searching = true
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
@@ -743,7 +849,7 @@ Item {
         page.adoptedFrom = name
         page.history = []
         page.adopt(s, s.fetched_query || s.query)
-        page.notice = s.auto_resolution ? "Narrowed to " + s.auto_resolution + ", the sharpest on offer" : ""
+        page.notice = s.auto_resolution ? words.t("downloads-auto-resolution", { resolution: s.auto_resolution }) : ""
     }
     // After a source answers, fails or is cancelled: the first result with releases goes up
     // (in the sources' order), and when none has any, the first that answered
@@ -752,7 +858,7 @@ Item {
         for (var i = 0; i < page.endpoints.length; i++) {
             var n = page.endpoints[i].name, r = page.searchResults[n]
             if (!r) continue
-            if (r.state === "error") errors.push(n + ": " + r.error)
+            if (r.state === "error") errors.push(n + ": " + (r.detail || r.error))
             if (r.state !== "done") continue
             if (firstDone === "") firstDone = n
             if (withItems === "" && r.search.items.length > 0) withItems = n
@@ -761,18 +867,20 @@ Item {
         if (withItems !== "" && (cur === null || (cur.items.length === 0 && page.history.length === 0 && page.adoptedFrom !== withItems))) page.adoptFrom(withItems)
         else if (cur === null && pend === 0 && firstDone !== "") page.adoptFrom(firstDone)
         if (page.searchJob < 0 && (page.state !== null || pend === 0)) page.searching = false
-        if (page.state === null && pend === 0 && errors.length) page.searchError = errors.join(". ")
+        if (page.state === null && pend === 0 && errors.length)
+            page.sayOnSearch(errors.length === 1 ? words.t("downloads-search-one-failed", { name: errors[0].split(": ")[0] })
+                : words.t("downloads-search-all-failed"), errors.join("\n"), words.t("action-try-again"), function() { page.runSearch() })
         page.retarget()
     }
     function refine(op) {
         if (!page.state || page.searching) return
         var r = Door.refineReleases(page.state.query, page.state.endpoint, page.state.items, op)
-        if (r.error) { page.searchError = r.error.message; return }
+        if (r.error) { page.failSearch(r.error, function() { page.refine(op) }); return }
         page.searchJob = r.reply.job
         page.searching = true
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
-        page.searchLabel = "Narrowing on " + page.state.endpoint
+        page.searchLabel = words.t("downloads-narrowing-on", { name: page.state.endpoint })
         page.searchTotal = 0
         page.searchEndpoint = page.state.endpoint
         page.searchError = ""
@@ -852,10 +960,10 @@ Item {
         return out
     }
     function reasonWords(reason) {
-        if (reason === "zero_results") return "That would leave nothing, so the list stays as it is."
-        if (reason === "no_match") return "No release matches that term."
-        if (reason === "empty_term") return "Type a term to narrow by."
-        return "That would change nothing."
+        if (reason === "zero_results") return words.t("downloads-refine-zero")
+        if (reason === "no_match") return words.t("downloads-refine-no-match")
+        if (reason === "empty_term") return words.t("downloads-refine-empty")
+        return words.t("downloads-refine-no-change")
     }
     function toggle(item) {
         var s = JSON.parse(JSON.stringify(page.selected))
@@ -864,27 +972,33 @@ Item {
     }
     function selectedItems() { return page.items.filter(function(i) { return page.selected[i.link] === true }) }
     function act(r) {
-        if (r.error) { page.actionError = page.errorWords(r.error); return }
+        if (r.error) { page.failAction(r.error, page.actionRetry); return }
         page.actionJob = r.reply.job
         page.acting = true
         page.actionLine = ""
-        page.actionError = ""
+        page.failAction(null)
     }
     function subscribe() {
         if (!page.state) return
+        page.actionRetry = page.subscribe
         var wire = page.state.wireQuery && page.state.wireQuery !== page.state.query ? page.state.wireQuery : ""
         act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText, wire, -1))
     }
-    function download(items) { if (items.length) act(Door.downloadReleases(items, page.nameText)) }
+    function download(items) {
+        if (!items.length) return
+        page.actionRetry = function() { page.download(items) }
+        act(Door.downloadReleases(items, page.nameText))
+    }
     function movie() {
         var one = selectedItems()
-        if (one.length !== 1) { page.actionError = "Select exactly one release to download as a movie."; return }
+        if (one.length !== 1) { page.actionRetry = null; page.failAction(null); page.actionError = words.t("downloads-movie-tick-one"); return }
+        page.actionRetry = page.movie
         act(Door.downloadMovie(one[0].link))
     }
     function previewSubscription() {
         if (!page.state) return
         var r = Door.previewSubscription(page.state.query, page.state.endpoint, page.state.items)
-        if (r.error) { page.actionError = page.errorWords(r.error); return }
+        if (r.error) { page.failAction(r.error, page.previewSubscription); return }
         page.previewJob = r.reply.job
     }
 
@@ -948,11 +1062,11 @@ Item {
     readonly property var downloading: showGroups.filter(function(g) { return page.groupState(g) === "downloading" })
     readonly property var dlSections: {
         var defs = [
-            { key: "downloading", title: "Downloading", dot: theme.purple, line: "Moving now; Activity at the right has the detail." },
-            { key: "seeding", title: "Seeding", dot: theme.green, line: "Downloaded and still sharing." },
-            { key: "done", title: "Done", dot: theme.textDim, line: "Downloaded; the client is not sharing them." },
-            { key: "stopped", title: "Stopped", dot: theme.textFaint, line: "Stopped before they finished." },
-            { key: "broken", title: "Files missing", dot: theme.red, line: "The client cannot find their files: they point at a folder that is not there. Removing the torrents tidies the client." }
+            { key: "downloading", title: words.t("downloads-group-downloading"), dot: theme.purple, line: words.t("downloads-group-downloading-line") },
+            { key: "seeding", title: words.t("downloads-group-seeding"), dot: theme.green, line: words.t("downloads-group-seeding-line") },
+            { key: "done", title: words.t("downloads-group-done"), dot: theme.textDim, line: words.t("downloads-group-done-line") },
+            { key: "stopped", title: words.t("downloads-group-stopped"), dot: theme.textFaint, line: words.t("downloads-group-stopped-line") },
+            { key: "broken", title: words.t("downloads-group-broken"), dot: theme.red, line: words.t("downloads-group-broken-line") }
         ]
         var by = {}
         for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
@@ -975,11 +1089,11 @@ Item {
     readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
-            { key: "nofeed", title: "Cannot follow", dot: theme.red, line: "Their source answers searches but has no feed, so no new episodes arrive. Unsubscribe, then follow the show on a source with one." },
-            { key: "complete", title: "Complete", dot: theme.red, line: "Every episode is in the library and nothing more will air: these subscriptions have nothing left to do." },
-            { key: "airing", title: "Airing", dot: theme.accent, line: "New episodes still to come, the soonest first." },
-            { key: "incomplete", title: "Incomplete", dot: theme.orange, line: "Finished airing with episodes not here, or nothing says where the show stands." },
-            { key: "missing", title: "Not in the library", dot: theme.textFaint, line: "Their folder holds nothing the library has found: nothing has arrived yet, or it saves where the library does not look." }
+            { key: "nofeed", title: words.t("downloads-sub-nofeed"), dot: theme.red, line: words.t("downloads-sub-nofeed-line") },
+            { key: "complete", title: words.t("downloads-sub-complete"), dot: theme.red, line: words.t("downloads-sub-complete-line") },
+            { key: "airing", title: words.t("downloads-sub-airing"), dot: theme.accent, line: words.t("downloads-sub-airing-line") },
+            { key: "incomplete", title: words.t("downloads-sub-incomplete"), dot: theme.orange, line: words.t("downloads-sub-incomplete-line") },
+            { key: "missing", title: words.t("downloads-sub-missing"), dot: theme.textFaint, line: words.t("downloads-sub-missing-line") }
         ]
         var by = {}
         for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
@@ -994,20 +1108,31 @@ Item {
     // What a rule's card and row say
     function ruleLedger(r) {
         var s = r.show
-        if (!s) return Fmt.plural(r.torrent_count || 0, "torrent", "torrents")
-        if (s.kind === "Movie") return s.complete ? "Film, on disk" : "Film"
+        if (!s) return words.t("downloads-torrents", { count: r.torrent_count || 0 })
+        if (s.kind === "Movie") return s.complete ? words.t("downloads-rule-film-on-disk") : words.t("downloads-disk-film")
         var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0, have = s.episodes_on_disk || 0
-        if (s.complete) return "All " + total + " here"
-        if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) return "Ep " + s.next_airing.episode + (s.next_airing.through ? " to " + s.next_airing.through : "") + (s.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(s.next_airing.at - page.nowMs / 1000)
-        if (total > 0) return have + " of " + total + " here"
-        return Fmt.plural(have, "episode", "episodes") + " here"
+        if (s.complete) return words.t("downloads-rule-all-here", { total: total })
+        if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) {
+            var next = { episode: s.next_airing.episode, through: s.next_airing.through, predicted: s.next_airing.predicted ? "yes" : "no", time: words.countdown(s.next_airing.at - page.nowMs / 1000) }
+            return s.next_airing.through ? words.t("downloads-rule-next-span", next) : words.t("downloads-rule-next", next)
+        }
+        if (total > 0) return words.t("downloads-rule-have-of", { have: have, total: total })
+        return words.t("downloads-rule-have", { count: have })
     }
     function ruleTag(r) {
         var st = page.subState(r)
-        if (st === "nofeed") return "Cannot follow"
-        if (st === "complete") return "Complete"
-        if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
-        if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
+        if (st === "nofeed") return words.t("downloads-sub-nofeed")
+        if (st === "complete") return words.t("downloads-sub-complete")
+        if (st === "airing") return r.rule_enabled === false ? words.t("status-paused") : words.t("downloads-sub-airing")
+        // A show with no episode here was never downloaded, so it is not missing any (#735)
+        // Missing is a hole before an episode that is here; what comes after the last one is
+        // not downloaded yet (the show's cube row says which)
+        if (st === "incomplete") {
+            var cubes = String(r.show.cubes || ""), holes = (cubes.match(/m/g) || []).length
+            if (!(r.show.episodes_on_disk > 0)) return words.t("downloads-tag-not-downloaded")
+            if (holes > 0) return words.t("downloads-tag-missing", { count: holes })
+            return r.show.missing && r.show.missing.length ? words.t("downloads-tag-n-not-downloaded", { count: r.show.missing.length }) : words.t("downloads-tag-unknown")
+        }
         return ""
     }
     function ruleProgress(r) {
@@ -1018,17 +1143,17 @@ Item {
     function groupLedger(g) {
         if (page.groupState(g) === "downloading") {
             var parts = [Math.round(100 * g.have / Math.max(1, g.size)) + "%"]
-            if (g.dlspeed > 0) parts.push(Fmt.bytes(g.dlspeed) + "/s down")
-            if (g.eta > 0) parts.push(Fmt.countdown(g.eta) + " left")
+            if (g.dlspeed > 0) parts.push(words.t("downloads-speed-down", { speed: words.bytes(g.dlspeed) }))
+            if (g.eta > 0) parts.push(words.t("downloads-time-left", { time: words.countdown(g.eta) }))
             return parts.join(", ")
         }
-        return Fmt.plural(g.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(g.size)
+        return words.t("downloads-torrents", { count: g.torrents.length }) + ", " + words.bytes(g.size)
     }
     function stateDot(key) {
         return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
              : key === "incomplete" ? theme.orange : key === "seeding" ? theme.green : theme.textFaint
     }
-    function groupWord(key) { return key === "downloading" ? "Downloading" : key === "seeding" ? "Seeding" : key === "done" ? "Done" : key === "broken" ? "Files missing" : "Stopped" }
+    function groupWord(key) { return words.t(key === "downloading" ? "downloads-group-downloading" : key === "seeding" ? "downloads-group-seeding" : key === "done" ? "downloads-group-done" : key === "broken" ? "downloads-group-broken" : "downloads-group-stopped") }
 
     // ---- The show inside the page
     function openRule(r) {
@@ -1057,9 +1182,9 @@ Item {
     function repairRule() {
         if (page.detail === null || !page.detail.rule) return
         var r = Door.repairSubscription(page.detail.rule)
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, page.repairRule); return }
         page.repairJob = r.reply.job
-        page.repairLabel = "Trying shorter searches"
+        page.repairLabel = words.t("downloads-repair-trying")
     }
     property real watchUntil: 0
     property real subscribedAt: 0
@@ -1114,7 +1239,7 @@ Item {
         var tag = page.feedEpoch + "." + page.feedAsks
         page.feed = { url: url, tag: tag, entries: entries, loading: true, error: "" }
         var res = Door.readFeed(url, tag)
-        if (res.error) page.feed = { url: url, tag: tag, entries: [], loading: false, error: page.errorWords(res.error) }
+        if (res.error) page.feed = { url: url, tag: tag, entries: [], loading: false, error: page.errorWords(res.error), detail: page.detailOf(res.error) }
     }
     // A rule whose feed changed under the open show, a repair's shorter search say, is
     // read again from the rule the page holds, and so is one a repair just settled, once
@@ -1129,7 +1254,7 @@ Item {
     function downloadEntry(e) {
         var name = page.detailRule ? page.detailRule.name : Fmt.baseName(page.detail.folder || "")
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
-        frame.toast("Sent " + e.title + " to " + page.clientName)
+        frame.toast(words.t("downloads-sent-to-client", { title: e.title, client: page.clientName }))
     }
     function control(hash, action) { controlMany([hash], action) }
     // The lowest episode a torrent carries, skipped files aside, so the show view and
@@ -1149,7 +1274,7 @@ Item {
     function controlMany(hashes, action) {
         if (!hashes.length) return
         var r = Door.controlTorrents(hashes, action, false)
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, function() { page.controlMany(hashes, action) }); return }
         var p = Object.assign({}, page.pending), now = Date.now()
         hashes.forEach(function(h) { p[h] = { action: action, at: now } })
         page.pending = p
@@ -1203,14 +1328,16 @@ Item {
         return ["127.0.0.1", "localhost", "::1"].indexOf(host.toLowerCase()) >= 0
     }
     function filesWhere(t) {
-        var torrents = page.filesHere ? "what the torrents downloaded" : "what the torrents downloaded, deleted by " + page.activeClientName
-        return t.folder !== "" ? t.folder + " and " + torrents : torrents
+        var torrents = page.filesHere ? words.t("downloads-files-torrents") : words.t("downloads-files-torrents-remote", { client: page.activeClientName })
+        return t.folder !== "" ? words.t("downloads-files-folder-and", { folder: t.folder, torrents: torrents }) : torrents
     }
+    // A removal's sentence, with "The subscription stays." after it when the show has one
+    function subscriptionStays(base, has) { return has ? words.t("downloads-subscription-stays", { base: base }) : base }
     function askUnsubscribe(anchor, r) {
         var t = page.targetForRule(r)
         frame.askRemoval(anchor, {
-            heading: "Unsubscribe from " + t.title + "?",
-            base: "Its feed and download rule leave " + page.clientName + ", so nothing new arrives.",
+            heading: words.t("downloads-unsubscribe-heading", { title: t.title }),
+            base: words.t("downloads-unsubscribe-base", { client: page.clientName }),
             rule: true, torrentCount: t.hashes.length,
             canFiles: t.hashes.length > 0 || t.series >= 0,
             filesWhere: page.filesWhere(t)
@@ -1220,11 +1347,11 @@ Item {
         var ts = page.completeRules.map(page.targetForRule), n = 0
         for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
         frame.askRemoval(anchor, {
-            heading: "Unsubscribe from all " + ts.length + " complete shows?",
-            base: "Their feeds and download rules leave " + page.clientName + ". Every episode of them is in the library.",
+            heading: words.t("downloads-unsubscribe-complete-heading", { count: ts.length }),
+            base: words.t("downloads-unsubscribe-complete-base", { client: page.clientName }),
             rule: true, torrentCount: n, canFiles: true,
-            filesWhere: "their folders and what their torrents downloaded",
-            note: "They go one at a time; the page shows each as it goes."
+            filesWhere: words.t("downloads-files-folders-and-torrents"),
+            note: words.t("downloads-one-at-a-time")
         }, function(choice) { page.enqueue(ts, choice) })
     }
     function askRemoveGroup(anchor, g) {
@@ -1233,18 +1360,17 @@ Item {
         // goes with it unless unticked
         if (page.groupState(g) === "downloading") {
             frame.askRemoval(anchor, {
-                heading: "Cancel " + t.title + "?",
-                base: (t.hashes.length === 1 ? "Its download stops and leaves " : "Its " + t.hashes.length + " downloads stop and leave ") + page.clientName + "." + (g.rule ? " The subscription stays." : ""),
+                heading: words.t("downloads-cancel-heading", { title: t.title }),
+                base: page.subscriptionStays(words.t("downloads-cancel-group-base", { count: t.hashes.length, client: page.clientName }), !!g.rule),
                 rule: false, torrentCount: t.hashes.length, canFiles: true, filesOn: true,
-                filesWhere: "what it has downloaded so far",
-                confirmText: "Cancel the download", keepText: "Keep downloading"
+                filesWhere: words.t("downloads-files-so-far-it"),
+                confirmText: words.t("downloads-cancel-download"), keepText: words.t("downloads-keep-downloading")
             }, function(choice) { page.enqueue([t], choice) })
             return
         }
         frame.askRemoval(anchor, {
-            heading: "Remove " + t.title + "?",
-            base: (t.hashes.length === 1 ? "Its torrent leaves " : "Its " + t.hashes.length + " torrents leave ") + page.clientName + "; the files stay unless you tick below."
-                  + (g.rule ? " The subscription stays." : ""),
+            heading: words.t("downloads-remove-heading", { title: t.title }),
+            base: page.subscriptionStays(words.t("downloads-remove-group-base", { count: t.hashes.length, client: page.clientName }), !!g.rule),
             rule: false, torrentCount: t.hashes.length, canFiles: true,
             filesWhere: page.filesWhere(t)
         }, function(choice) { page.enqueue([t], choice) })
@@ -1253,19 +1379,19 @@ Item {
         var ts = groups.map(page.targetForGroup), n = 0
         for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
         frame.askRemoval(anchor, {
-            heading: "Remove the torrents of all " + ts.length + " shows with files missing?",
-            base: "Their " + n + " torrents leave " + page.clientName + ". They point at folders that are not there, so no file is touched; subscriptions stay.",
+            heading: words.t("downloads-remove-broken-heading", { count: ts.length }),
+            base: words.t("downloads-remove-broken-base", { count: n, client: page.clientName }),
             rule: false, torrentCount: n, canFiles: false,
-            note: "They go one at a time; the page shows each as it goes."
+            note: words.t("downloads-one-at-a-time")
         }, function(choice) { page.enqueue(ts, { torrents: true, files: false }) })
     }
     function askRemoveTorrent(anchor, torrent) {
         var t = page.targetForTorrent(torrent)
         frame.askRemoval(anchor, {
-            heading: "Remove this torrent?",
+            heading: words.t("downloads-remove-torrent-heading"),
             base: torrent.name,
             rule: false, torrentCount: 1, canFiles: true,
-            filesWhere: "what it downloaded"
+            filesWhere: words.t("downloads-files-it-downloaded")
         }, function(choice) { page.enqueue([t], choice) })
     }
     // Stopping a download part way: the torrent goes, and what it wrote so far with it
@@ -1273,21 +1399,21 @@ Item {
     function askCancelTorrent(anchor, torrent) {
         var t = page.targetForTorrent(torrent)
         frame.askRemoval(anchor, {
-            heading: "Cancel this download?",
+            heading: words.t("downloads-cancel-torrent-heading"),
             base: torrent.name,
             rule: false, torrentCount: 1, canFiles: true, filesOn: true,
-            filesWhere: "what it has downloaded so far",
-            confirmText: "Cancel the download", keepText: "Keep downloading"
+            filesWhere: words.t("downloads-files-so-far-it"),
+            confirmText: words.t("downloads-cancel-download"), keepText: words.t("downloads-keep-downloading")
         }, function(choice) { page.enqueue([t], choice) })
     }
     function askCancelTorrents(anchor, list) {
         if (list.length === 1) { page.askCancelTorrent(anchor, list[0]); return }
         frame.askRemoval(anchor, {
-            heading: "Cancel " + Fmt.plural(list.length, "download", "downloads") + "?",
-            base: "Every download of this show stops and leaves " + page.clientName + ".",
+            heading: words.t("downloads-cancel-many-heading", { count: list.length }),
+            base: words.t("downloads-cancel-many-base", { client: page.clientName }),
             rule: false, torrentCount: list.length, canFiles: true, filesOn: true,
-            filesWhere: "what they have downloaded so far",
-            confirmText: "Cancel them all", keepText: "Keep downloading"
+            filesWhere: words.t("downloads-files-so-far-they"),
+            confirmText: words.t("downloads-cancel-all"), keepText: words.t("downloads-keep-downloading")
         }, function(choice) { page.enqueue(list.map(function(x) { return page.targetForTorrent(x) }), choice) })
     }
     function askRemoveDetail(anchor) {
@@ -1296,8 +1422,8 @@ Item {
                   rkey: "", tkeys: ["g:" + page.detail.key].concat(page.detailTorrents.map(function(x) { return "t:" + x.hash })), size: page.sumSize(page.detailTorrents),
                   folder: page.detailShow ? page.detailShow.path : "" }
         frame.askRemoval(anchor, {
-            heading: "Remove " + t.title + "?",
-            base: "Its " + Fmt.plural(t.hashes.length, "torrent leaves", "torrents leave") + " " + page.clientName + "; the files stay unless you tick below." + (page.detailRule ? " The subscription stays." : ""),
+            heading: words.t("downloads-remove-heading", { title: t.title }),
+            base: page.subscriptionStays(words.t("downloads-remove-detail-base", { count: t.hashes.length, client: page.clientName }), !!page.detailRule),
             rule: false, torrentCount: t.hashes.length, canFiles: true, filesWhere: page.filesWhere(t)
         }, function(choice) { page.enqueue([t], choice) })
     }
@@ -1338,7 +1464,8 @@ Item {
         var t = next.target, c = next.choice
         var r = Door.removeShow(t.title, t.rule, t.hashes, c.torrents, c.files, t.series)
         if (r.error) {
-            frame.toast(page.errorWords(r.error))
+            // Nothing of it was removed; Try again asks for it once more
+            frame.fail(r.error, function() { page.queue = page.queue.concat([next]); page.mark(next.keys, true); page.startNext() })
             page.mark(next.keys, false)
             page.startNext()
             return
@@ -1358,16 +1485,16 @@ Item {
 
     // ---- The head's one line
     readonly property string summary: {
-        if (!page.status) return "Connecting."
-        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
+        if (!page.status) return words.t("downloads-summary-connecting")
+        var t = page.torrentOn ? words.t("downloads-summary-client-on", { client: page.activeClientName, version: page.torrent.version }) : words.t("downloads-summary-client-off", { client: page.activeClientName })
         // Until the first connect has asked the client, there is nothing to say about it
-        if (page.nativeEngine) return "AniBeam searches your sources itself." + (page.connecting ? "" : " " + t)
+        if (page.nativeEngine) return page.connecting ? words.t("downloads-summary-native") : words.t("downloads-summary-native-with", { client: t })
         // Until it runs, the line is in plain words: the helper's name means nothing yet
-        if (page.connecting && !page.anirssReady) return "Starting downloads."
+        if (page.connecting && !page.anirssReady) return words.t("downloads-summary-starting")
         var a = page.anirss
-        if (a.state === "Missing" || a.state === "Failed") return "Downloads is not running."
-        if (a.state === "Off") return "Downloads has not started yet."
-        return "The search helper " + a.version + " is ready. " + t
+        if (a.state === "Missing" || a.state === "Failed") return words.t("downloads-summary-not-running")
+        if (a.state === "Off") return words.t("downloads-summary-not-started")
+        return words.t("downloads-summary-helper-ready", { version: a.version, client: t })
     }
 
     Connections {
@@ -1447,20 +1574,20 @@ Item {
             if (job === page.followJob) {
                 page.followJob = -1
                 page.getActing = false
-                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Subscribed as " + result.name + "."
+                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + words.t("downloads-subscribed-as", { name: result.name })
                 page.loadRules()
                 return
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Subscribed as " + result.name + "."
+            page.actionLine = words.t("downloads-subscribed-as", { name: result.name })
             page.watchSubscription(result)
         }
         function onSubscriptionRepaired(job, name, mustContain, found) {
             if (job !== page.repairJob) return
             page.repairJob = -1
             page.repairLabel = ""
-            frame.toast("Repaired " + name + ": the feed finds " + Fmt.plural(found, "release", "releases") + (mustContain ? " and the rule keeps \u201c" + mustContain + "\u201d" : ""), 6)
+            frame.toast(mustContain ? words.t("downloads-repaired-keeps", { name: name, count: found, term: mustContain }) : words.t("downloads-repaired", { name: name, count: found }), 6)
             if (page.detail !== null && page.detail.rule === name) {
                 // The feed is read once the rule list after the repair arrives, from the rule.
                 page.feedAfterRules = true
@@ -1486,7 +1613,7 @@ Item {
         function onTorrentsAdded(job, result) {
             if (job === page.getJob) {
                 page.getJob = -1
-                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + "."
+                page.getLine = words.t("downloads-sent-torrents", { count: result.count, client: page.clientName })
                 page.pollTorrents()
                 if (page.pendingFollow) page.follow(page.pendingFollow)
                 else page.getActing = false
@@ -1494,7 +1621,7 @@ Item {
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + "."
+            page.actionLine = words.t("downloads-added-torrents", { count: result.count })
             page.selected = {}
             page.pollTorrents()
         }
@@ -1507,6 +1634,7 @@ Item {
             page.transfer = transfer
             page.torrentsRead = true
             page.torrentsError = ""
+            page.torrentsErrorDetail = ""
             page.settlePending()
         }
         function onFeedRead(tag, entries) {
@@ -1516,16 +1644,16 @@ Item {
         }
         function onDownloadsUnavailable(what, error) {
             if (what === "dates") { if (page.datesState === "loading") page.datesState = "none"; return }
-            if (what === "torrents") page.torrentsError = page.errorWords(error)
-            else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error) }
+            if (what === "torrents") page.failTorrents(error)
+            else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error), detail: page.detailOf(error) }
             // A fresh subscription whose rule could not be read has no feed to read yet. It
             // says so, and the other read, or the watch's next rule read, still fills it.
             else if ((what === "rule" || what === "subscriptions") && page.feedAfterRules && page.feed && page.feed.url === "")
-                page.feed = { url: "", tag: "", entries: [], loading: false, error: page.errorWords(error) }
+                page.feed = { url: "", tag: "", entries: [], loading: false, error: page.errorWords(error), detail: page.detailOf(error) }
         }
         function onShowRemoved(job, title, rule, hashes, trashed) {
             if (job !== page.runningJob) return
-            if (trashed.length) frame.toast(Fmt.plural(trashed.length, "path", "paths") + " of " + title + " moved to the trash")
+            if (trashed.length) frame.toast(words.t("downloads-trashed-paths", { count: trashed.length, title: title }))
             page.finishRunning(true)
             page.pollTorrents()
         }
@@ -1534,31 +1662,38 @@ Item {
             if (page.getJobs[job] !== undefined) {
                 var gn = page.getJobs[job]
                 var gj = Object.assign({}, page.getJobs); delete gj[job]; page.getJobs = gj
-                page.setResult(gn, { state: "error", error: page.errorWords(error) })
+                page.setResult(gn, { state: "error", error: page.errorWords(error), detail: page.detailOf(error) })
                 return
             }
-            if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.getError = page.errorWords(error); return }
-            if (job === page.checkJob) { page.checkJob = -1; frame.toast(page.errorWords(error)); return }
+            if (job === page.getJob || job === page.followJob) {
+                // A follow that failed after its downloads went through is tried again alone
+                var plan = page.followPlan, again = job === page.followJob && plan ? function() { page.follow(plan) } : page.getRetry
+                page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null
+                page.failGet(error, again)
+                return
+            }
+            if (job === page.checkJob) { page.checkJob = -1; frame.fail(error, page.checkSources); return }
             if (page.searchJobs[job] !== undefined) {
                 var fn = page.searchJobs[job]
                 var fj = Object.assign({}, page.searchJobs); delete fj[job]; page.searchJobs = fj
-                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error) }; page.searchResults = fr
+                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error), detail: page.detailOf(error) }; page.searchResults = fr
                 page.settleSearch()
                 return
             }
             if (job === page.startJob) { page.startDone(false, error); return }
-            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.searchError = page.errorWords(error) }
-            else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
-            else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
-            else if (job === page.previewJob) { page.previewJob = -1; frame.toast(page.errorWords(error)) }
-            else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.toast(page.errorWords(error), 6) }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.failSearch(error, function() { page.runSearch() }) }
+            else if (job === page.actionJob) { page.acting = false; page.failAction(error, page.actionRetry) }
+            else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
+            else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
+            else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
             else if (job === page.runningJob) {
-                frame.toast(page.errorWords(error))
+                // The run stops here, so nothing after it is removed; no retry on a guess
+                frame.fail(error)
                 // A failure stops the run: what is left is not removed on a guess
                 page.queue.forEach(function(q) { page.mark(q.keys, false) })
                 page.queue = []
                 page.finishRunning(false)
-            } else if (kind === "ControlTorrents") frame.toast(page.errorWords(error))
+            } else if (kind === "ControlTorrents") frame.fail(error)
         }
         function onJobCancelled(job, kind) {
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
@@ -1592,14 +1727,14 @@ Item {
             Qt.callLater(page.runSearch)
         }
         // A series page's Get episodes (#169): straight to that show's view
-        if (props.series !== undefined && props.series !== null) page.openSeries(props.series)
+        if (props.series !== undefined && props.series !== null) page.openSeries(props.series, props.search === true)
         // Airing now's Get episodes (#202) for a show the library does not have: its view
-        else if (props.hit) page.openGet(page.showFromHit(props.hit))
+        else if (props.hit) page.openGet(page.showFromHit(props.hit), props.search === true)
     }
-    function openSeries(id) {
+    function openSeries(id, searchAtOnce) {
         var r = Door.getSeries(id)
-        if (r.error || !r.reply || !r.reply.detail) { frame.toast("That show is no longer in the library"); return }
-        page.openGet(page.showFromCard(r.reply.detail.card))
+        if (r.error || !r.reply || !r.reply.detail) { frame.toast(words.t("downloads-show-gone")); return }
+        page.openGet(page.showFromCard(r.reply.detail.card), searchAtOnce)
     }
 
     // ---- The geometry
@@ -1607,7 +1742,11 @@ Item {
     readonly property real paneWidth: theme.space(90)
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
-    readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
+    readonly property real cardWidth: (scroll.innerWidth - tileGap * (cols - 1)) / cols
+    // The lens grids (Gaps, Airing, Following) are four columns across the whole width, fewer
+    // only when a window is too narrow to give each at least a poster's width (#686)
+    readonly property int lensCols: Math.max(1, Math.min(4, Math.floor((scroll.innerWidth + tileGap) / (theme.space(80) + tileGap))))
+    readonly property real lensCardWidth: (scroll.innerWidth - tileGap * (lensCols - 1)) / lensCols
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
 
     // ---- Activity at the right, while the window has the width for it. Narrower, it folds
@@ -1636,14 +1775,14 @@ Item {
                 icon: "activity"
                 primary: page.activityOpen
                 onClicked: page.activityOpen = !page.activityOpen
-                Tooltip { text: page.activityOpen ? "Hide activity" : "Activity" }
+                Tooltip { text: page.activityOpen ? words.t("downloads-activity-hide") : words.t("downloads-activity") }
             }
             Label {
                 visible: page.movingCount > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: String(page.movingCount)
                 role: "figure"; font.pointSize: theme.typeSmall; color: theme.textDim
-                Tooltip { text: Fmt.plural(page.movingCount, "download", "downloads") + " moving" }
+                Tooltip { text: words.t("downloads-moving", { count: page.movingCount }) }
             }
         }
     }
@@ -1668,6 +1807,7 @@ Item {
     }
     ActivityColumn {
         id: activity
+        onReconnect: page.connect()
         visible: page.activityShown || page.activityOpen
         z: 5
         anchors.right: page.activityShown ? parent.right : activityStrip.left
@@ -1695,7 +1835,9 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: page.activityShown ? activity.left : activityStrip.left
-        readonly property real innerWidth: width - theme.space(16)
+        // The column the content sits in, which stops at theme.contentMax on a wide window, so
+        // the grids are sized to it and not to the Flickable (#686)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: back (with a show open), the title, the two halves in plain words
         Item {
@@ -1713,14 +1855,14 @@ Item {
                 flat: true
                 onClicked: page.closeGet()
                 Icon { anchors.centerIn: parent; glyph: "chevron-left"; size: theme.space(8); color: theme.text }
-                Tooltip { text: "Back to Downloads" }
+                Tooltip { msg: "downloads-back" }
             }
             Label {
                 id: titleLabel
                 anchors.left: backButton.visible ? backButton.right : parent.left
                 anchors.leftMargin: backButton.visible ? theme.space(4) : 0
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Downloads"
+                msg: "downloads-title"
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -1732,18 +1874,20 @@ Item {
                 Label {
                     objectName: "downloads-anirss-chip"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.searchReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
+                    text: page.searchReady ? words.t("downloads-chip-search-ready") : page.connecting ? words.t("downloads-chip-search-starting") : words.t("downloads-chip-search-off")
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.searchReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
                     MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: frame.go("settings", { tab: "downloads" }) }
-                    Tooltip { text: page.nativeEngine ? page.summary : page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    Tooltip { text: page.nativeEngine ? page.summary : page.anirssReady ? words.t("downloads-chip-answers-at", { summary: page.summary, url: page.anirss.url }) : (page.anirss && page.anirss.state === "Missing" ? words.t("downloads-chip-helper-missing")
+                        : page.anirss && page.anirss.state === "Failed" ? words.t("downloads-chip-helper-failed")
+                        : words.t("downloads-chip-open-settings")) }
                 }
                 Label {
                     objectName: "downloads-client-chip"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.torrentOn ? page.activeClientName + " " + page.torrent.version : page.activeClientName + " off"
+                    text: page.torrentOn ? words.t("downloads-chip-client-on", { client: page.activeClientName, version: page.torrent.version }) : words.t("downloads-chip-client-off", { client: page.activeClientName })
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.torrentOn ? theme.textFaint : theme.red
                     MouseArea {
@@ -1758,10 +1902,10 @@ Item {
                             var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
                         }
                     }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA search helper you run yourself uses the client its own settings name" : "\nClick to switch clients") }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : words.t("downloads-chip-client-not-connected", { client: page.activeClientName })) + "\n" + (page.remoteAnirss ? words.t("downloads-chip-client-remote") : words.t("downloads-chip-client-switch")) }
                 }
                 Button {
-                    text: page.connecting ? "Connecting" : "Reconnect"
+                    text: page.connecting ? words.t("downloads-connecting") : words.t("downloads-reconnect")
                     icon: "refresh-cw"
                     flat: true
                     enabled: !page.connecting
@@ -1775,20 +1919,21 @@ Item {
         SearchField {
             id: search
             objectName: "downloads-search"
+            visible: !page.noSources
             large: true
             width: parent.width
-            placeholder: "Search for a show, or a release name"
+            placeholder: words.t("downloads-search-placeholder")
             hint: ""
             goButton: true
             goBusy: page.searching
-            goTip: page.enabledEndpoints.length ? "Search release names on " + page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "Every source is switched off."
+            goTip: page.enabledEndpoints.length ? words.t("downloads-search-go-tip", { names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") }) : words.t("downloads-search-go-off")
             onGo: page.runSearch()
             onAccepted: {
                 if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
                 else page.runSearch()
             }
-            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
-            onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(page.suggestFirst, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+            onTextChanged: { page.suggestClosed = false; page.suggestIndex = page.suggestFirst; aniDebounce.restart() }
             onCleared: { page.aniHits = [] }
         }
 
@@ -1796,7 +1941,8 @@ Item {
         Tile {
             id: suggestTile
             objectName: "downloads-suggestions"
-            visible: page.suggesting
+            // With no source on and no show matched yet there is nothing to offer
+            visible: page.suggesting && (page.suggestRows.length > 0 || page.canSearchReleases)
             width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
@@ -1851,8 +1997,12 @@ Item {
                                 text: {
                                     if (srow.c) {
                                         var parts = []
-                                        if (srow.c.next_airing) parts.push("Airing, " + Fmt.episodeSpan(srow.c.next_airing.episode, srow.c.next_airing.through || 0).toLowerCase() + (srow.c.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(srow.c.next_airing.at - page.nowMs / 1000))
-                                        else if (srow.c.status === "Finished") parts.push("Finished")
+                                        var na = srow.c.next_airing
+                                        if (na) {
+                                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
+                                            parts.push((na.through || 0) > na.episode ? words.t("downloads-suggest-airing-span", next) : words.t("downloads-suggest-airing", next))
+                                        }
+                                        else if (srow.c.status === "Finished") parts.push(words.t("downloads-suggest-finished"))
                                         var gw = page.gapWords(srow.c)
                                         if (gw) parts.push(gw)
                                         return parts.join(". ")
@@ -1860,7 +2010,7 @@ Item {
                                     var b = []
                                     if (srow.h.format) b.push(srow.h.format)
                                     if (srow.h.year) b.push(String(srow.h.year))
-                                    if (srow.h.episodes) b.push(srow.h.episodes + " episodes")
+                                    if (srow.h.episodes) b.push(words.t("downloads-suggest-episodes", { count: srow.h.episodes }))
                                     return b.join(", ")
                                 }
                                 role: "ui"; color: theme.textDim; elide: Text.ElideRight
@@ -1884,23 +2034,57 @@ Item {
                                 maxRows: 2
                                 tipLimit: 0
                             }
-                            Label { anchors.right: parent.right; text: srow.c ? "In your library" : "On AniList, not in your library"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                            Label { anchors.right: parent.right; text: srow.c ? words.t("downloads-suggest-in-library") : words.t("downloads-suggest-on-anilist"); role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                            // A hit on AniList can go on the list from here, without opening it (#734)
+                            Button {
+                                objectName: "suggest-plan"
+                                visible: !!srow.h
+                                anchors.right: parent.right
+                                small: true; flat: true; takesFocus: false
+                                msg: "downloads-plan-to-watch"; icon: "bookmark"
+                                onClicked: frame.planToWatch(srow.h.id, page.nameOfHit(srow.h, page.query))
+                            }
                         }
                     }
                 }
+                // Searching release names needs a source that is on; without one, Return
+                // closes the box and says which source to turn on
                 Item {
+                    objectName: "suggest-release-search"
+                    visible: page.canSearchReleases
                     width: parent.width
                     height: theme.space(14)
                     Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 || releaseRowMouse.containsMouse ? theme.glassFloat : "transparent" }
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Search release names for \u201c" + page.query + "\u201d on " + (page.enabledEndpoints.length ? page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "no source") + " instead"
+                        text: words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") })
                         role: "ui"; color: theme.textDim
                     }
-                    Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
+                    Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
                     MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: page.runSearch() }
+                }
+            }
+        }
+
+        // ---- No sources yet: said plainly, with the step that adds a list in place of the search
+        Tile {
+            objectName: "downloads-no-sources"
+            visible: page.noSources
+            width: parent.width
+            height: noSourcesWords.implicitHeight + padding * 2
+            padding: theme.space(7)
+            Column {
+                id: noSourcesWords
+                width: parent.width
+                spacing: theme.space(5)
+                Label { width: parent.width; msg: "downloads-no-sources"; role: "title"; font.pointSize: theme.typeLarge * 1.2; wrapMode: Text.Wrap }
+                SourceAttach {
+                    id: noSourcesAttach
+                    width: parent.width
+                    onAttached: page.reload()
+                    onSettingsAsked: frame.go("settings", { tab: "downloads" })
                 }
             }
         }
@@ -1914,7 +2098,7 @@ Item {
             spacing: theme.space(2)
             // Check stands as tall as the chips beside it
             readonly property real chipHeight: sourceChips.count > 0 && sourceChips.itemAt(0) ? sourceChips.itemAt(0).height : theme.space(7)
-            Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
+            Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; msg: "downloads-sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
             Repeater {
                 id: sourceChips
                 model: page.endpoints
@@ -1930,26 +2114,27 @@ Item {
                     selected: on
                     dimmed: !on
                     clickable: true
-                    hint: starting ? "starting" : down ? "not running" : ""
+                    hint: starting ? words.t("downloads-source-hint-starting") : down ? words.t("downloads-source-hint-down") : ""
                     onClicked: page.toggleSource(modelData.name)
                     Tooltip {
-                        text: src.down
-                            ? modelData.name + " needs a helper service that is not running. Click to start it."
-                            : (src.on ? "Searches ask " + modelData.name + ". Click to switch it off." : "Switched off. Click to ask " + modelData.name + " again.")
-                              + (modelData.on_demand ? "" : " " + modelData.url)
+                        text: {
+                            if (src.down) return words.t("downloads-source-tip-down", { name: modelData.name })
+                            var tip = src.on ? words.t("downloads-source-tip-on", { name: modelData.name }) : words.t("downloads-source-tip-off", { name: modelData.name })
+                            return modelData.on_demand ? tip : words.t("downloads-source-tip-url", { tip: tip, url: modelData.url })
+                        }
                     }
                 }
             }
             Button {
                 visible: page.endpoints.some(function(e) { return !!e.on_demand })
                 height: parent.chipHeight
-                text: page.checkJob >= 0 ? "Checking" : "Check"
+                text: page.checkJob >= 0 ? words.t("downloads-check-busy") : words.t("downloads-check")
                 icon: "refresh-cw"
                 flat: true
                 small: true
                 enabled: page.checkJob < 0
                 onClicked: page.checkSources()
-                Tooltip { text: "Asks whether each on-demand source is running. Starts nothing." }
+                Tooltip { msg: "downloads-check.tip" }
             }
         }
 
@@ -1966,18 +2151,26 @@ Item {
                 Button {
                     objectName: "downloads-back-to-grid"
                     visible: page.gridReturn !== null
-                    text: "Back to the grid"
+                    msg: "downloads-back-to-grid"
                     icon: "layout-grid"
                     small: true
                     anchors.verticalCenter: parent.verticalCenter
                     onClicked: page.backToGrid()
-                    Tooltip { text: page.gridReturn ? "Back to " + page.gridReturn.show.title + " and what each provider found. Escape does the same." : "" }
+                    Tooltip { text: page.gridReturn ? words.t("downloads-back-to-grid.tip", { title: page.gridReturn.show.title }) : "" }
                 }
-                Button { text: "Back"; icon: "arrow-left"; flat: true; small: true; enabled: page.history.length > 0; anchors.verticalCenter: parent.verticalCenter; onClicked: page.back() }
+                Button { msg: "action-back"; icon: "arrow-left"; flat: true; small: true; enabled: page.history.length > 0; anchors.verticalCenter: parent.verticalCenter; onClicked: page.back() }
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
-                Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
+                Label { visible: !!page.state; text: page.state ? words.t("downloads-releases-on", { count: page.items.length, name: page.state.endpoint }) : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
                 Label { visible: page.notice !== "" && !page.searching; text: page.notice; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
-                Label { visible: page.searchError !== ""; text: page.searchError; role: "ui"; color: theme.red; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
+            }
+            // On a line of its own: the words wrap and Details opens under them
+            ErrorLine {
+                objectName: "downloads-search-error"
+                width: parent.width
+                text: page.searchError
+                detail: page.searchFix.detail || ""
+                actionText: page.searchFix.label || ""
+                action: page.searchFix.act || null
             }
             // While it runs: what it is doing, for how long, and the ways out
             SearchProgress {
@@ -1997,7 +2190,7 @@ Item {
                 objectName: "downloads-search-sources"
                 visible: Object.keys(page.searchResults).length > 1 && (page.state !== null || page.searching)
                 spacing: theme.space(2)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Found on"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
+                Label { anchors.verticalCenter: parent.verticalCenter; msg: "downloads-found-on"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
                 Repeater {
                     model: page.endpoints.map(function(e) { return e.name }).filter(function(n) { return page.searchResults[n] !== undefined })
                     Chip {
@@ -2010,13 +2203,13 @@ Item {
                         small: true
                         selected: page.adoptedFrom === modelData && page.state !== null
                         dimmed: !res || res.state === "idle" || res.state === "error"
-                        // A failed source says why on the chip, cut short; the tip has it whole, and a
+                        // A failed source says so on the chip; the tip says why in plain words, and a
                         // click asks that source again
                         clickable: !!res && (res.state === "done" || res.state === "error")
                         readonly property string why: res && res.state === "error" && res.error ? String(res.error) : ""
-                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? (why !== "" ? "failed: " + (why.length > 36 ? why.slice(0, 35) + "\u2026" : why) : "failed") : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
+                        hint: !res ? "" : res.state === "searching" ? words.t("downloads-found-searching") : res.state === "error" ? words.t("downloads-found-failed") : res.state === "idle" ? words.t("downloads-found-cancelled") : words.t("downloads-releases", { count: res.search.items.length })
                         onClicked: if (res.state === "error") page.runSearch([modelData]); else page.adoptFrom(modelData)
-                        Tooltip { text: found.why !== "" ? found.why + "\nClick to try again" : "" }
+                        Tooltip { text: found.why !== "" ? words.t("downloads-found-retry-tip", { why: found.why }) : "" }
                     }
                 }
             }
@@ -2025,12 +2218,12 @@ Item {
                 visible: page.groups.length > 0
                 width: parent.width
                 spacing: theme.space(1.5)
-                FacetRow { title: "Release group"; entries: page.facets.groups.slice(0, 14) }
-                FacetRow { title: "Quality"; entries: page.facets.quality.slice(0, 14) }
-                FacetRow { visible: page.moreFilters; title: "Words"; entries: page.facets.other.slice(0, 30) }
+                FacetRow { title: words.t("downloads-facet-groups"); entries: page.facets.groups.slice(0, 14) }
+                FacetRow { title: words.t("downloads-facet-quality"); entries: page.facets.quality.slice(0, 14) }
+                FacetRow { visible: page.moreFilters; title: words.t("downloads-facet-words"); entries: page.facets.other.slice(0, 30) }
                 Button {
                     visible: page.facets.other.length > 0
-                    text: page.moreFilters ? "Fewer filters" : "More filters (" + page.facets.other.length + ")"
+                    text: page.moreFilters ? words.t("downloads-filters-fewer") : words.t("downloads-filters-more", { count: page.facets.other.length })
                     icon: page.moreFilters ? "chevron-up" : "chevron-down"
                     flat: true
                     small: true
@@ -2045,18 +2238,18 @@ Item {
                     id: narrow
                     objectName: "downloads-narrow"
                     width: Math.min(theme.space(90), parent.width - bestFit.width - parent.spacing)
-                    placeholder: "Narrow by a term, or -term to drop"
+                    placeholder: words.t("downloads-narrow-placeholder")
                     onEdited: function(t) { if (t.trim() !== "") { page.narrow(t); text = "" } }
                 }
                 Button {
                     id: bestFit
                     objectName: "downloads-best-fit"
-                    text: "Best match"
+                    msg: "downloads-best-match"
                     icon: "sparkles"
                     flat: true
                     enabled: !!page.state && page.state.bestFit.available && !page.searching
                     onClicked: page.refine({ type: "best_fit" })
-                    Tooltip { text: page.state && page.state.bestFit.available ? "Keeps the releases that look like the best one: " + page.state.bestFit.query : "No release stands out here" }
+                    Tooltip { text: page.state && page.state.bestFit.available ? words.t("downloads-best-match.tip", { query: page.state.bestFit.query }) : words.t("downloads-best-match-none") }
                 }
             }
             // The show the search names, when the library has it
@@ -2091,7 +2284,7 @@ Item {
                     anchors.rightMargin: theme.space(5)
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(1.5)
-                    Label { text: "In your library"; role: "ledger"; color: theme.textFaint }
+                    Label { msg: "downloads-suggest-in-library"; role: "ledger"; color: theme.textFaint }
                     Label { width: parent.width; text: page.searchShow ? page.searchShow.title : ""; role: "title"; font.pointSize: theme.typeLarge * 0.8; elide: Text.ElideRight }
                     Label {
                         width: parent.width
@@ -2099,10 +2292,14 @@ Item {
                             var s = page.searchShow
                             if (!s) return ""
                             var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0
-                            var parts = [total ? s.episodes_on_disk + " of " + total + " episodes on disk" : Fmt.plural(s.episodes_on_disk, "episode", "episodes") + " on disk"]
-                            if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) parts.push(Fmt.episodeSpan(s.next_airing.episode, s.next_airing.through || 0).toLowerCase() + (s.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(s.next_airing.at - page.nowMs / 1000))
-                            else if (s.complete) parts.push("complete")
-                            return parts.join(", ") + "."
+                            var disk = total ? words.t("downloads-strip-have-of", { have: s.episodes_on_disk, total: total }) : words.t("downloads-strip-have", { count: s.episodes_on_disk })
+                            var na = s.next_airing, more = ""
+                            if (na && na.at * 1000 > page.nowMs) {
+                                var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
+                                more = (na.through || 0) > na.episode ? words.t("downloads-strip-next-span", next) : words.t("downloads-strip-next", next)
+                            }
+                            else if (s.complete) more = words.t("downloads-strip-complete")
+                            return more !== "" ? words.t("downloads-strip-line-more", { disk: disk, more: more }) : words.t("downloads-sentence", { text: disk })
                         }
                         role: "ui"
                         color: theme.textDim
@@ -2110,10 +2307,12 @@ Item {
                     }
                     Label {
                         width: parent.width
-                        text: page.onDiskCount + page.otherOnDiskCount === 0 ? "None of these releases is for an episode you already have."
-                              : [page.onDiskCount > 0 ? Fmt.plural(page.onDiskCount, "release here is", "releases here are") + " the file you have, marked On disk" : "",
-                                 page.otherOnDiskCount > 0 ? Fmt.plural(page.otherOnDiskCount, "release is", "releases are") + " for an episode you have from another release" : ""]
-                                .filter(function(t) { return t }).join("; ") + "."
+                        text: {
+                            if (page.onDiskCount + page.otherOnDiskCount === 0) return words.t("downloads-strip-none-on-disk")
+                            var a = page.onDiskCount > 0 ? words.t("downloads-strip-on-disk", { count: page.onDiskCount }) : ""
+                            var b = page.otherOnDiskCount > 0 ? words.t("downloads-strip-other-on-disk", { count: page.otherOnDiskCount }) : ""
+                            return a !== "" && b !== "" ? words.t("downloads-strip-both", { first: a, second: b }) : words.t("downloads-sentence", { text: a || b })
+                        }
                         role: "ui"
                         font.pointSize: theme.typeSmall
                         color: theme.textFaint
@@ -2128,14 +2327,14 @@ Item {
                     Button {
                         objectName: "downloads-select-missing"
                         visible: page.missingPicks.length > 0
-                        text: "Tick the " + Fmt.plural(page.missingPicks.length, "missing episode", "missing episodes")
+                        text: words.t("downloads-tick-missing", { count: page.missingPicks.length })
                         icon: "check-check"
                         primary: true
                         onClicked: page.selectMissing()
-                        Tooltip { text: "For each episode here the library does not have, the release with the most seeders" }
+                        Tooltip { msg: "downloads-tick-missing.tip" }
                     }
-                    Button { text: "Open in library"; icon: "layers"; flat: true; onClicked: frame.go("series", { id: page.searchShow.series_id }, page.searchShow.title) }
-                    Button { icon: "x"; flat: true; small: true; onClicked: page.showDismissed = true; Tooltip { text: "Not this show" } }
+                    Button { msg: "downloads-open-in-library"; icon: "layers"; flat: true; onClicked: frame.go("series", { id: page.searchShow.series_id }, page.searchShow.title) }
+                    Button { icon: "x"; flat: true; small: true; onClicked: page.showDismissed = true; Tooltip { msg: "downloads-not-this-show" } }
                 }
             }
             // The releases as a table at the left, the actions at the right, keeping in view
@@ -2171,11 +2370,11 @@ Item {
                     height: visible ? theme.space(48) : 0
                     EmptyState {
                         icon: "search"
-                        title: "No releases"
-                        body: "Nothing on " + (page.state ? page.state.endpoint : "") + " matches \u201c" + (page.state ? page.state.query : "") + "\u201d. Another source, or fewer words, may find it."
+                        title: words.t("downloads-no-releases")
+                        body: words.t("downloads-no-releases-body", { name: page.state ? page.state.endpoint : "", query: page.state ? page.state.query : "" })
                         Repeater {
                             model: page.state ? page.endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.state.endpoint }) : []
-                            Button { required property string modelData; text: "Try " + modelData; icon: "search"; flat: true; onClicked: page.searchOn(modelData) }
+                            Button { required property string modelData; text: words.t("downloads-try-source", { name: modelData }); icon: "search"; flat: true; onClicked: page.searchOn(modelData) }
                         }
                     }
                 }
@@ -2198,10 +2397,10 @@ Item {
                         width: parent.width
                         spacing: theme.space(2.5)
                         // What is ticked
-                        Label { text: page.selectedCount ? Fmt.plural(page.selectedCount, "release", "releases") + " ticked" : "Nothing ticked"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label { text: page.selectedCount ? words.t("downloads-ticked", { count: page.selectedCount }) : words.t("downloads-nothing-ticked"); role: "title"; font.pointSize: theme.typeNormal }
                         Label {
                             width: parent.width
-                            text: page.selectedCount ? (page.selectedBytes > 0 ? Fmt.bytes(page.selectedBytes) + " together." : "") : "Tick releases in the table, or download them all."
+                            text: page.selectedCount ? (page.selectedBytes > 0 ? words.t("downloads-ticked-size", { size: words.bytes(page.selectedBytes) }) : "") : words.t("downloads-tick-hint")
                             role: "ui"
                             font.pointSize: theme.typeSmall
                             color: theme.textDim
@@ -2209,16 +2408,16 @@ Item {
                         }
                         Row {
                             spacing: theme.space(2)
-                            Button { text: "Tick all"; flat: true; small: true; enabled: page.items.length > 0 && page.selectedCount < page.items.length; onClicked: page.toggleAll(true) }
-                            Button { text: "Clear"; flat: true; small: true; enabled: page.selectedCount > 0; onClicked: page.toggleAll(false) }
+                            Button { msg: "downloads-tick-all"; flat: true; small: true; enabled: page.items.length > 0 && page.selectedCount < page.items.length; onClicked: page.toggleAll(true) }
+                            Button { msg: "action-clear"; flat: true; small: true; enabled: page.selectedCount > 0; onClicked: page.toggleAll(false) }
                         }
                         Button {
                             objectName: "downloads-download"
                             width: parent.width
                             // All means every row the table shows, never the rows past its end
                             readonly property var shown: table.order.slice(0, table.cap).map(function(i) { return page.items[i] })
-                            text: page.acting ? "Working" : page.selectedCount > 0 ? "Download " + Fmt.plural(page.selectedCount, "release", "releases")
-                                : shown.length < page.items.length ? "Download the " + shown.length + " shown" : "Download all " + shown.length
+                            text: page.acting ? words.t("downloads-working") : page.selectedCount > 0 ? words.t("downloads-download-ticked", { count: page.selectedCount })
+                                : shown.length < page.items.length ? words.t("downloads-download-shown", { count: shown.length }) : words.t("downloads-download-all", { count: shown.length })
                             icon: "download"
                             primary: true
                             enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
@@ -2226,19 +2425,19 @@ Item {
                         }
                         Button {
                             width: parent.width
-                            text: "Download as a movie"
+                            msg: "downloads-download-movie"
                             icon: "clapperboard"
                             flat: true
                             enabled: page.selectedCount === 1 && !page.acting
                             onClicked: page.movie()
-                            Tooltip { text: "One ticked release, straight into the movie folder" }
+                            Tooltip { msg: "downloads-download-movie.tip" }
                         }
                         Rectangle { width: parent.width; height: 1; color: theme.line }
                         // Keeping the show coming
-                        Label { text: "Subscribe"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label { msg: "downloads-subscribe"; role: "title"; font.pointSize: theme.typeNormal }
                         Label {
                             width: parent.width
-                            text: "New releases that match this search download as they appear, into the folder named here."
+                            msg: "downloads-subscribe-body"
                             role: "ui"
                             font.pointSize: theme.typeSmall
                             color: theme.textDim
@@ -2247,21 +2446,21 @@ Item {
                         Field {
                             objectName: "downloads-name"
                             width: parent.width
-                            placeholder: page.searchShow ? page.searchShow.title : "Picked from the first release"
+                            placeholder: page.searchShow ? page.searchShow.title : words.t("downloads-name-placeholder")
                             text: page.nameText
                             onEdited: function(t) { page.nameText = t }
                         }
                         Button {
                             objectName: "downloads-subscribe"
                             width: parent.width
-                            text: page.acting ? "Working" : page.followable ? "Subscribe to this search" : "No feed to subscribe to here"
+                            text: page.acting ? words.t("downloads-working") : page.followable ? words.t("downloads-subscribe-search") : words.t("downloads-subscribe-no-feed")
                             icon: "rss"
                             enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching && page.followable
                             onClicked: page.subscribe()
                         }
                         Button {
                             width: parent.width
-                            text: page.preview ? "Show the rule again" : "Show the rule it makes"
+                            text: page.preview ? words.t("downloads-preview-again") : words.t("downloads-preview-show")
                             icon: "eye"
                             flat: true
                             small: true
@@ -2272,12 +2471,19 @@ Item {
                             visible: !!page.preview
                             width: parent.width
                             spacing: theme.space(1)
-                            Label { width: parent.width; text: page.preview ? "From " + page.feedHost(page.preview.feed_url) + (page.preview.endpoint_name ? " (" + page.preview.endpoint_name + ")" : "") : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideRight }
-                            Label { visible: !!(page.preview && page.preview.must_contain); width: parent.width; text: page.preview ? "Must contain " + page.preview.must_contain : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
-                            Label { visible: !!(page.preview && page.preview.must_not_contain); width: parent.width; text: page.preview ? "Must not contain " + page.preview.must_not_contain : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
+                            Label { width: parent.width; text: page.preview ? (page.preview.endpoint_name ? words.t("downloads-preview-from-named", { host: page.feedHost(page.preview.feed_url), name: page.preview.endpoint_name }) : words.t("downloads-preview-from", { host: page.feedHost(page.preview.feed_url) })) : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideRight }
+                            Label { visible: !!(page.preview && page.preview.must_contain); width: parent.width; text: page.preview ? words.t("downloads-preview-must", { terms: page.preview.must_contain }) : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
+                            Label { visible: !!(page.preview && page.preview.must_not_contain); width: parent.width; text: page.preview ? words.t("downloads-preview-must-not", { terms: page.preview.must_not_contain }) : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
                         }
                         Label { visible: page.actionLine !== ""; width: parent.width; text: page.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
-                        Label { visible: page.actionError !== ""; width: parent.width; text: page.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
+                        ErrorLine {
+                            objectName: "downloads-action-error"
+                            width: parent.width
+                            text: page.actionError
+                            detail: page.actionErrorDetail
+                            actionText: page.actionFix.label || ""
+                            action: page.actionFix.act || null
+                        }
                     }
                 }
             }
@@ -2295,25 +2501,25 @@ Item {
             EmptyState {
                 objectName: "downloads-helper-state"
                 icon: page.helperChanged ? "rotate-ccw" : helperDown.missing ? "download" : "circle-alert"
-                title: page.helperChanged ? "Downloads is set to a helper that does not answer"
-                     : helperDown.missing ? "This copy of AniBeam came without downloads"
-                     : "Downloads could not start"
+                title: page.helperChanged ? words.t("downloads-helper-changed")
+                     : helperDown.missing ? words.t("downloads-helper-missing")
+                     : words.t("downloads-helper-failed")
                 body: page.helperChanged
-                    ? "Searches and downloads run through a small helper program. Settings point at another one than AniBeam's own, and it is not answering. Switch back and it starts by itself."
+                    ? words.t("downloads-helper-changed-body")
                     : helperDown.missing
-                    ? "It was built without the helper program searches and downloads run through. The installers on the releases page have it. Settings, Downloads says how to add it to this copy."
-                    : "The helper program searches and downloads run through stopped before it was ready. Starting it again fixes this most of the time."
+                    ? words.t("downloads-helper-missing-body")
+                    : words.t("downloads-helper-failed-body")
                 Button {
                     objectName: "downloads-helper-fix"
                     visible: page.helperChanged || !helperDown.missing
                     primary: true
-                    text: page.helperChanged ? "Use AniBeam's own" : "Start again"
+                    text: page.helperChanged ? words.t("downloads-helper-use-own") : words.t("downloads-helper-start-again")
                     icon: page.helperChanged ? "rotate-ccw" : "refresh-cw"
                     onClicked: page.helperChanged ? page.useBuiltInHelper() : page.connect()
                 }
                 Button {
                     objectName: "downloads-helper-settings"
-                    text: helperDown.missing && !page.helperChanged ? "Show me how" : "What went wrong"
+                    text: helperDown.missing && !page.helperChanged ? words.t("downloads-helper-show-how") : words.t("downloads-helper-what-went-wrong")
                     icon: helperDown.missing && !page.helperChanged ? "arrow-right" : "info"
                     primary: helperDown.missing && !page.helperChanged
                     flat: !(helperDown.missing && !page.helperChanged)
@@ -2343,6 +2549,9 @@ Item {
                 clientName: page.activeClientName
                 actionLine: page.getLine
                 actionError: page.getError
+                actionErrorDetail: page.getErrorDetail
+                actionFixLabel: page.getFix.label || ""
+                actionRetry: page.getFix.act || null
                 nowMs: page.nowMs
                 onBack: page.closeGet()
                 onFetch: function(name) { page.fetchGet(name) }
@@ -2402,10 +2611,10 @@ Item {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 options: [
-                    { text: "Gaps in your library  " + page.gapCards.length },
-                    { text: "Airing  " + page.airingCards.length },
-                    { text: "Following  " + page.rules.length },
-                    { text: "Downloaded  " + page.downloadedCount }
+                    { text: words.t("downloads-lens-gaps-count", { count: page.gapCards.length }) },
+                    { text: words.t("downloads-lens-airing-count", { count: page.airingCards.length }) },
+                    { text: words.t("downloads-lens-following-count", { count: page.rules.length }) },
+                    { text: words.t("downloads-lens-downloaded-count", { count: page.downloadedCount }) }
                 ]
                 index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
                 onPicked: function(i) { page.lens = ["gaps", "airing", "following", "downloaded"][i] }
@@ -2418,12 +2627,12 @@ Item {
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Gaps in your library"
+                title: words.t("downloads-lens-gaps")
                 count: page.gapCards.length
-                line: page.gapCards.length ? "Aired episodes that are not on disk. Open a show to see who has them." : "Nothing is missing: every aired episode of every show is on disk."
+                line: page.gapCards.length ? words.t("downloads-lens-gaps-line") : words.t("downloads-lens-gaps-none")
             }
             Flow {
-                width: parent.width
+                width: parent.width + 0.5  // a hair wider so an exact row never wraps
                 spacing: page.tileGap
                 Repeater {
                     model: page.gapCards
@@ -2431,8 +2640,7 @@ Item {
                         id: gap
                         required property var modelData
                         objectName: "gap-" + modelData.id
-                        readonly property real cols: Math.max(1, Math.floor((scroll.innerWidth + page.tileGap) / (theme.space(105) + page.tileGap)))
-                        width: Math.floor((scroll.innerWidth - page.tileGap * (cols - 1)) / cols)
+                        width: page.lensCardWidth
                         height: theme.space(36)
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
@@ -2480,9 +2688,9 @@ Item {
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Airing"
+                title: words.t("downloads-sub-airing")
                 count: page.airingCards.length
-                line: "Shows in your library with episodes still to come. Open one to follow it."
+                line: words.t("downloads-lens-airing-line")
             }
             // None yet: why, and where they come from
             Item {
@@ -2491,25 +2699,30 @@ Item {
                 height: visible ? theme.space(50) : 0
                 EmptyState {
                     icon: "calendar-clock"
-                    title: "Nothing in your library is airing"
-                    body: "A show lands here once it is in your library and has episodes still to come. Airing now lists everything on air."
-                    Button { text: "Airing now"; icon: "radio"; onClicked: frame.go("airing") }
+                    title: words.t("downloads-lens-airing-none")
+                    body: words.t("downloads-lens-airing-none-body")
+                    Button { msg: "downloads-airing-now"; icon: "radio"; onClicked: frame.go("airing") }
                 }
             }
             Flow {
-                width: parent.width
+                width: parent.width + 0.5  // a hair wider so an exact row never wraps
                 spacing: page.tileGap
                 Repeater {
                     model: page.airingCards
                     ShowCard {
                         required property var modelData
-                        width: page.cardWidth
+                        width: page.lensCardWidth
                         height: implicitHeight
                         poster: modelData.poster || ""
                         title: modelData.title
-                        tag: { var r = page.ruleForSeries(modelData.id); return r ? "Following" : "" }
+                        tag: { var r = page.ruleForSeries(modelData.id); return r ? words.t("downloads-lens-following") : "" }
                         tagDot: theme.green
-                        ledger: modelData.next_airing ? Fmt.episodeSpan(modelData.next_airing.episode, modelData.next_airing.through || 0) + (modelData.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(modelData.next_airing.at - page.nowMs / 1000) : "Airing"
+                        ledger: {
+                            var na = modelData.next_airing
+                            if (!na) return words.t("downloads-sub-airing")
+                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
+                            return (na.through || 0) > na.episode ? words.t("downloads-card-next-span", next) : words.t("downloads-card-next", next)
+                        }
                         cubes: modelData.cubes || ""
                         onOpened: page.openGet(page.showFromCard(modelData))
                     }
@@ -2523,13 +2736,21 @@ Item {
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Following"
+                title: words.t("downloads-lens-following")
                 count: page.rules.length
-                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.searchReady ? "Reading." : "")
+                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.rules.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"
                 onViewPicked: function(v) { frame.downloadsSubView = v }
+            }
+            ErrorLine {
+                objectName: "downloads-rules-error"
+                width: parent.width
+                text: page.rulesError !== "" ? words.t("downloads-rules-error") : ""
+                detail: page.rulesError
+                actionText: words.t("action-try-again")
+                action: function() { frame.readDownloadsRules() }
             }
             Repeater {
                 model: page.subSections
@@ -2547,7 +2768,7 @@ Item {
                             id: allButton
                             objectName: "downloads-unsubscribe-complete"
                             visible: subSection.modelData.key === "complete"
-                            text: page.queued > 1 ? "Removing, " + page.queued + " to go" : "Unsubscribe all " + subSection.modelData.items.length
+                            text: page.queued > 1 ? words.t("downloads-removing-to-go", { count: page.queued }) : words.t("downloads-unsubscribe-all", { count: subSection.modelData.items.length })
                             icon: "rss"
                             small: true
                             enabled: page.queued === 0
@@ -2556,15 +2777,15 @@ Item {
                     }
                     Flow {
                         visible: frame.downloadsSubView === "grid"
-                        width: parent.width
+                        width: parent.width + 0.5  // a hair wider so an exact row never wraps
                         spacing: page.tileGap
                         Repeater {
                             model: frame.downloadsSubView === "grid" ? subSection.modelData.items : []
                             ShowCard {
                                 required property var modelData
-                                width: page.cardWidth
+                                width: page.lensCardWidth
+                                // a feed with no library show is a full card too, so rows stay even
                                 height: implicitHeight
-                                compact: !modelData.show
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
                                 tag: page.ruleTag(modelData)
@@ -2572,7 +2793,7 @@ Item {
                                 ledger: page.ruleLedger(modelData)
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: "Unsubscribe"
+                                actionText: words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
                                 onOpened: page.openRule(modelData)
@@ -2593,14 +2814,14 @@ Item {
                                     var c = []
                                     var tag = page.ruleTag(modelData)
                                     if (tag !== "") c.push({ text: tag, dot: page.stateDot(page.subState(modelData)) })
-                                    if (modelData.rule_enabled === false && tag !== "Paused") c.push({ text: "Paused", dot: theme.textFaint })
+                                    if (modelData.rule_enabled === false && tag !== words.t("status-paused")) c.push({ text: words.t("status-paused"), dot: theme.textFaint })
                                     return c
                                 }
-                                facts: page.ruleLedger(modelData) + (modelData.show ? ", " + Fmt.plural(modelData.torrent_count || 0, "torrent", "torrents") : "")
+                                facts: page.ruleLedger(modelData) + (modelData.show ? ", " + words.t("downloads-torrents", { count: modelData.torrent_count || 0 }) : "")
                                 folder: modelData.save_path
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: "Unsubscribe"
+                                actionText: words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
                                 onOpened: page.openRule(modelData)
@@ -2614,7 +2835,10 @@ Item {
                 visible: page.rulesLoaded && page.rules.length === 0 && page.rulesError === ""
                 width: parent.width
                 height: visible ? theme.space(30) : 0
-                EmptyState { icon: "rss"; title: "No subscriptions"; body: "Search above and subscribe to keep a show coming." }
+                EmptyState {
+                    icon: "rss"; title: words.t("downloads-no-rules"); body: words.t("downloads-no-rules-body")
+                    Button { objectName: "downloads-no-rules-search"; msg: "downloads-search"; icon: "search"; primary: true; onClicked: page.focusSearch() }
+                }
             }
         }
 
@@ -2624,16 +2848,23 @@ Item {
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Downloaded"
+                title: words.t("downloads-lens-downloaded")
                 count: page.downloadedCount
-                line: Fmt.bytes(page.diskBytes) + " on disk. "
-                      + (!page.torrentOn ? (page.torrent && page.torrent.message ? page.torrent.message : page.clientName + " is not connected.")
-                      : page.torrentsError !== "" ? page.torrentsError
-                      : page.torrentsRead ? Fmt.plural(page.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(page.downloadedSize) + " in " + page.clientName + "." : "Reading.")
+                line: words.t("downloads-dl-line", { size: words.bytes(page.diskBytes), rest: !page.torrentOn ? words.t("downloads-dl-client-off", { client: page.clientName })
+                      : page.torrentsError !== "" ? words.t("downloads-dl-unread")
+                      : page.torrentsRead ? words.t("downloads-dl-in-client", { count: page.torrents.length, size: words.bytes(page.downloadedSize), client: page.clientName }) : words.t("downloads-reading") })
                 alarm: !page.torrentOn || page.torrentsError !== ""
                 view: frame.downloadsDlView
                 viewName: "downloads-dl-view"
                 onViewPicked: function(v) { frame.downloadsDlView = v }
+            }
+            ErrorLine {
+                objectName: "downloads-torrents-error"
+                width: parent.width
+                text: page.torrentOn ? page.torrentsError : ""
+                detail: page.torrentsErrorDetail
+                actionText: page.torrentsFix.label || ""
+                action: page.torrentsFix.act || null
             }
             // How much of the disk is watched, counted by episode, and the button that clears it
             Item {
@@ -2648,8 +2879,8 @@ Item {
                     anchors.rightMargin: theme.space(6)
                     anchors.verticalCenter: parent.verticalCenter
                     parts: [
-                        { label: "Watched", value: Fmt.bytes(page.watchedBytes), amount: page.watchedBytes, color: theme.green },
-                        { label: "Not watched", value: Fmt.bytes(page.diskBytes - page.watchedBytes), amount: page.diskBytes - page.watchedBytes, color: theme.accent }
+                        { label: words.t("downloads-usage-watched"), value: words.bytes(page.watchedBytes), amount: page.watchedBytes, color: theme.green },
+                        { label: words.t("downloads-usage-not-watched"), value: words.bytes(page.diskBytes - page.watchedBytes), amount: page.diskBytes - page.watchedBytes, color: theme.accent }
                     ]
                 }
                 Button {
@@ -2657,7 +2888,7 @@ Item {
                     objectName: "downloads-delete-watched"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: frame.deleteWatchedToken >= 0 ? "Deleting" : "Delete watched"
+                    text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : words.t("downloads-delete-watched")
                     icon: "trash-2"
                     enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
                     onClicked: page.askDeleteWatched(deleteWatched)
@@ -2679,7 +2910,7 @@ Item {
                             id: brokenButton
                             objectName: "downloads-remove-broken"
                             visible: dlSection.modelData.key === "broken"
-                            text: page.queued > 1 ? "Removing, " + page.queued + " to go" : "Remove all " + dlSection.modelData.items.length
+                            text: page.queued > 1 ? words.t("downloads-removing-to-go", { count: page.queued }) : words.t("downloads-remove-all", { count: dlSection.modelData.items.length })
                             icon: "x"
                             small: true
                             enabled: page.queued === 0
@@ -2695,10 +2926,10 @@ Item {
                 width: parent.width
                 spacing: theme.space(2)
                 SectionHead {
-                    title: "On disk"
+                    title: words.t("downloads-on-disk")
                     dot: theme.textDim
                     count: page.diskOnly.length
-                    line: "In your library with no torrent in " + page.clientName + ", the biggest first. Right-click one to delete it."
+                    line: words.t("downloads-on-disk-line", { client: page.clientName })
                 }
                 DiskList { cards: page.diskOnly; grid: frame.downloadsDlView === "grid" }
             }
@@ -2708,15 +2939,16 @@ Item {
                 height: visible ? theme.space(30) : 0
                 EmptyState {
                     icon: page.torrentOn ? "download" : "circle-alert"
-                    title: page.torrentOn ? "Nothing downloaded" : page.clientName + " is not connected"
-                    body: page.torrentOn ? "What you download or subscribe to shows up here, a show at a time." : (page.torrent && page.torrent.message ? page.torrent.message : "Check its address and password in Settings.")
-                    Button { visible: !page.torrentOn; text: "Settings"; icon: "settings"; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    title: page.torrentOn ? words.t("downloads-nothing-downloaded") : words.t("downloads-client-off-title", { client: page.clientName })
+                    body: page.torrentOn ? words.t("downloads-nothing-downloaded-body") : words.t("downloads-client-off-body")
+                    Button { objectName: "downloads-client-reconnect"; visible: !page.torrentOn; msg: "downloads-connect-again"; icon: "refresh-cw"; primary: true; busy: page.connecting; onClicked: page.connect() }
+                    Button { visible: !page.torrentOn; msg: "action-open-settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "downloads" }) }
                 }
             }
         }
     }
 
-    // The confirm before AniBeam starts a source's service; over everything on the page
+    // The confirm before Anibeam starts a source's service; over everything on the page
     StartSourceSheet {
         id: startSheet
         z: 20
@@ -2784,7 +3016,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(1)
             small: true
-            options: [{ text: "Grid", icon: "layout-grid" }, { text: "List", icon: "list" }]
+            options: [{ text: words.t("downloads-view-grid"), icon: "layout-grid" }, { text: words.t("downloads-view-list"), icon: "list" }]
             index: band.view === "list" ? 1 : 0
             onPicked: function(i) { band.viewPicked(i === 1 ? "list" : "grid") }
         }
@@ -2829,15 +3061,16 @@ Item {
         Flow {
             id: glFlow
             visible: gl.grid
-            width: parent.width
+            width: parent.width + 0.5  // a hair wider so an exact row never wraps
             spacing: page.tileGap
             Repeater {
                 model: gl.grid ? gl.groups : []
                 ShowCard {
                     required property var modelData
                     width: page.cardWidth
+                    // A folder with no show is still a full card (ShowCard's poster-less
+                    // pane, its glyph centred), so the grid stays even
                     height: implicitHeight
-                    compact: !modelData.show
                     glyph: "folder"
                     poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                     title: modelData.title
@@ -2847,7 +3080,7 @@ Item {
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
                     progressCode: "t"
                     cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                    actionText: page.groupState(modelData) === "downloading" ? "Cancel" : "Remove"
+                    actionText: page.groupState(modelData) === "downloading" ? words.t("action-cancel") : words.t("action-remove")
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)
@@ -2869,17 +3102,17 @@ Item {
                     title: modelData.title
                     chips: {
                         var c = [{ text: page.groupWord(gl.state), dot: page.stateDot(gl.state) }]
-                        if (modelData.rule) c.push({ text: "Subscribed", dot: theme.accent })
-                        if (modelData.show && modelData.show.complete) c.push({ text: "Complete", dot: theme.red })
+                        if (modelData.rule) c.push({ text: words.t("downloads-chip-subscribed"), dot: theme.accent })
+                        if (modelData.show && modelData.show.complete) c.push({ text: words.t("downloads-sub-complete"), dot: theme.red })
                         return c
                     }
-                    facts: page.groupLedger(modelData) + (gl.state === "downloading" ? ", " + Fmt.plural(modelData.torrents.length, "torrent", "torrents") : modelData.upspeed > 0 ? ", " + Fmt.bytes(modelData.upspeed) + "/s up" : "")
-                    trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? modelData.broken + " with files missing" : ""
+                    facts: page.groupLedger(modelData) + (gl.state === "downloading" ? ", " + words.t("downloads-torrents", { count: modelData.torrents.length }) : modelData.upspeed > 0 ? ", " + words.t("downloads-speed-up", { speed: words.bytes(modelData.upspeed) }) : "")
+                    trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? words.t("downloads-broken-some", { count: modelData.broken }) : ""
                     folder: modelData.folder
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
                     progressCode: "t"
                     cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                    actionText: page.groupState(modelData) === "downloading" ? "Cancel" : "Remove"
+                    actionText: page.groupState(modelData) === "downloading" ? words.t("action-cancel") : words.t("action-remove")
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)
@@ -2916,7 +3149,7 @@ Item {
         Flow {
             id: dlFlow
             visible: dl.grid
-            width: parent.width
+            width: parent.width + 0.5  // a hair wider so an exact row never wraps
             spacing: page.tileGap
             Repeater {
                 model: dl.grid ? dl.cards : []
@@ -2929,11 +3162,11 @@ Item {
                     glyph: "folder"
                     poster: modelData.poster || ""
                     title: modelData.title
-                    tag: modelData.finished_watched ? "Watched" : ""
+                    tag: modelData.finished_watched ? words.t("downloads-tag-watched") : ""
                     tagDot: theme.green
                     ledger: page.diskLedger(modelData)
                     cubes: modelData.cubes || ""
-                    actionText: "Delete"
+                    actionText: words.t("action-delete")
                     actionIcon: "trash-2"
                     onOpened: frame.go("series", { id: modelData.id }, modelData.title)
                     onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }
@@ -2954,11 +3187,11 @@ Item {
                     glyph: "folder"
                     poster: modelData.poster || ""
                     title: modelData.title
-                    chips: modelData.finished_watched ? [{ text: "Watched", dot: theme.green }] : []
+                    chips: modelData.finished_watched ? [{ text: words.t("downloads-tag-watched"), dot: theme.green }] : []
                     facts: page.diskLedger(modelData)
                     folder: modelData.path
                     cubes: modelData.cubes || ""
-                    actionText: "Delete"
+                    actionText: words.t("action-delete")
                     actionIcon: "trash-2"
                     onOpened: frame.go("series", { id: modelData.id }, modelData.title)
                     onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }

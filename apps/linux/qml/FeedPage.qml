@@ -7,18 +7,22 @@
 // "Everything else". The head is the library's: the title, the one-line summary beside
 // it, the sort at the right.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
     objectName: "feed-page"
     property var props: ({})
-    property string title: "Feed"
+    property string title: words.t("feed-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
 
     property string sort: Door.preferences.feed_sort === "Upcoming" ? "Upcoming" : "Recent"
     property var cards: []
+    // A read that failed says so with Try again, never as an empty feed
+    property bool loadFailed: false
+    // With folders, an empty feed waits on dated episodes, not on a folder
+    property bool hasFolders: false
     property real nowMs: Date.now()
     // The clock the sections are cut against: set on reload, so the lists do not move
     // between This week and Earlier as the countdowns tick
@@ -26,8 +30,8 @@ Item {
 
     function reasonText(reason) {
         var kind = reason ? Object.keys(reason)[0] : "None"
-        if (kind === "Aired") return Fmt.episodeName("", reason.Aired.episode) + " aired " + Fmt.relative(reason.Aired.at, nowMs / 1000)
-        if (kind === "Downloaded") return "File downloaded " + Fmt.relative(reason.Downloaded.at, nowMs / 1000)
+        if (kind === "Aired") return words.t("feed-aired", { episode: words.episodeName("", reason.Aired.episode), when: words.relative(reason.Aired.at, nowMs / 1000) })
+        if (kind === "Downloaded") return words.t("feed-downloaded", { when: words.relative(reason.Downloaded.at, nowMs / 1000) })
         return ""
     }
     function reasonAt(reason) {
@@ -47,7 +51,8 @@ Item {
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
-        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
+        return d > 0 ? words.t("feed-countdown-days", { days: d, hours: h }) : h > 0 ? words.t("feed-countdown-hours", { hours: h, minutes: m })
+            : words.t("feed-countdown-minutes", { minutes: Math.max(1, m) })
     }
 
     // The sections, cut once per reload. Recent: this week's over the earlier ones.
@@ -65,19 +70,19 @@ Item {
         if (sort === "Recent") {
             var fresh = tail.filter(function(e) { return e.at > 0 && now - e.at <= week })
             var earlier = tail.filter(function(e) { return !(e.at > 0 && now - e.at <= week) })
-            if (fresh.length) out.push({ title: "This week", cards: fresh, accent: true, fact: Fmt.plural(fresh.length, "new episode", "new episodes") })
-            if (earlier.length) out.push({ title: "Earlier", cards: earlier, accent: false,
-                                           fact: earlier[0].at > 0 ? "Latest out " + Fmt.relative(earlier[0].at, now) : "" })
+            if (fresh.length) out.push({ name: "this-week", title: words.t("feed-section-this-week"), cards: fresh, accent: true, fact: words.t("feed-new-episodes", { count: fresh.length }) })
+            if (earlier.length) out.push({ name: "earlier", title: words.t("feed-section-earlier"), cards: earlier, accent: false,
+                                           fact: earlier[0].at > 0 ? words.t("feed-latest-out", { when: words.relative(earlier[0].at, now) }) : "" })
             return out
         }
         // The head line already names the next one; the section counts this week's
         var thisWeek = head.filter(function(e) { return e.at - now <= week }).length
         var recent = tail.filter(function(e) { return e.at > 0 && now - e.at <= week }).length
-        if (head.length) out.push({ title: "Coming soon", cards: head, accent: true,
-                                    fact: thisWeek > 0 ? thisWeek + " this week" : "" })
-        if (tail.length) out.push({ title: "Everything else", cards: tail, accent: false,
-                                    fact: recent > 0 ? recent + " out this week"
-                                        : tail[0].at > 0 ? "Latest out " + Fmt.relative(tail[0].at, now) : "" })
+        if (head.length) out.push({ name: "coming-soon", title: words.t("feed-section-coming-soon"), cards: head, accent: true,
+                                    fact: thisWeek > 0 ? words.t("feed-this-week-count", { count: thisWeek }) : "" })
+        if (tail.length) out.push({ name: "everything-else", title: words.t("feed-section-everything-else"), cards: tail, accent: false,
+                                    fact: recent > 0 ? words.t("feed-out-this-week", { count: recent })
+                                        : tail[0].at > 0 ? words.t("feed-latest-out", { when: words.relative(tail[0].at, now) }) : "" })
         return out
     }
 
@@ -90,21 +95,23 @@ Item {
                 var sc = scheduledIn(cards[i])
                 if (sc && sc.at > now && (!next || sc.at < next.at)) next = { at: sc.at, title: cards[i].series ? cards[i].series.title : "" }
             }
-            if (!next) return "Nothing scheduled yet."
-            return "Next: " + next.title + " in " + shortCountdown(next.at - now)
+            if (!next) return words.t("feed-nothing-scheduled")
+            return words.t("feed-next", { title: next.title, countdown: shortCountdown(next.at - now) })
         }
         var fresh = 0
         for (var j = 0; j < cards.length; j++) {
             var at = reasonAt(cards[j].reason)
             if (at > 0 && now - at <= 7 * 86400) fresh++
         }
-        return fresh === 0 ? "Nothing new this week." : fresh === 1 ? "1 new episode this week." : fresh + " new episodes this week."
+        return fresh === 0 ? words.t("feed-nothing-new") : words.t("feed-new-this-week", { count: fresh })
     }
 
     function reload() {
         var keep = scroll.contentY
         var r = Door.listFeed(page.sort)
+        page.loadFailed = !!r.error && page.cards.length === 0
         if (r.error) { frame.fail(r.error, page.reload); return }
+        if (r.reply.cards.length === 0) { var src = Door.listSources(); page.hasFolders = !src.error && src.reply.sources.length > 0 }
         page.cutAt = Date.now()
         page.nowMs = page.cutAt
         page.cards = r.reply.cards
@@ -145,7 +152,7 @@ Item {
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title, this sort's one line beside it, the sort at the right
         Item {
@@ -155,7 +162,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Feed"
+                msg: "feed-title"
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -176,7 +183,7 @@ Item {
                 objectName: "feed-sort"
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                options: [{ text: "Recently released", icon: "clock", name: "recent" }, { text: "Coming soon", icon: "calendar-clock", name: "upcoming" }]
+                options: [{ text: words.t("feed-sort-recent"), icon: "clock", name: "recent" }, { text: words.t("feed-sort-upcoming"), icon: "calendar-clock", name: "upcoming" }]
                 index: page.sort === "Upcoming" ? 1 : 0
                 onPicked: function(i) { page.sort = i === 1 ? "Upcoming" : "Recent"; page.persist(); page.reload() }
             }
@@ -190,7 +197,7 @@ Item {
                 id: section
                 required property var modelData
                 required property int index
-                objectName: "feed-section-" + String(modelData.title).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                objectName: "feed-section-" + modelData.name
                 width: parent.width
                 spacing: theme.space(3)
                 topPadding: index > 0 ? theme.space(2) : 0
@@ -246,10 +253,15 @@ Item {
             width: parent.width
             height: visible ? theme.space(60) : 0
             EmptyState {
-                icon: "rss"
-                title: "Nothing here yet"
-                body: "Add a folder in Settings to build your feed."
-                Button { text: "Settings"; icon: "settings"; onClicked: frame.go("settings") }
+                objectName: "feed-empty"
+                icon: page.loadFailed ? "circle-alert" : "rss"
+                title: page.loadFailed ? words.t("feed-failed-title") : words.t("feed-empty-title")
+                body: page.loadFailed ? words.t("feed-failed-body")
+                    : page.hasFolders ? words.t("feed-empty-body-folders")
+                    : words.t("feed-empty-body")
+                Button { visible: page.loadFailed; msg: "action-try-again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: !page.loadFailed && !page.hasFolders; msg: "feed-add-folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+                Button { visible: !page.loadFailed && page.hasFolders; msg: "feed-airing-now"; icon: "radio"; onClicked: frame.go("airing") }
             }
         }
     }

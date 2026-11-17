@@ -1,0 +1,11 @@
+[
+ {"log": "#1004: a long show's cubes are too small to hold their numbers, so a scale runs under each row. Every source and release is a fake; nothing is searched or sent"},
+ {"click": "rail-downloads"},
+ {"until": "driver.item.pageReady('downloads')", "timeout": 15000},
+ {"eval": "var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status || {})); st.settings = Object.assign({}, st.settings || {}, { engine: 'Native' }); st.endpoints = [{ name: 'alpha', kind: 'filtered-rss', on_demand: false, followable: true, url: 'https://alpha.example/rss' }]; p.status = st; p.endpoints.length"},
+ {"eval": "var p = frame.item.pageItem; var s = p.showFromHit({ id: 0, title: 'Long Example', romaji: 'Long Example', english: 'Long Example', episodes: 220, format: 'TV', year: 2020, cover_url: '' }, 'Long Example'); s.cubes = 'w'.repeat(120) + 'd'.repeat(30) + 'g'.repeat(70); p.openGet(s); var items = [], facts = []; for (var e = 100; e <= 220; e++) { items.push({ title: '[Lumen] Long Example - ' + e + ' (1080p).mkv', link: 'magnet:?xt=urn:btih:l' + e, seeders: 10 }); facts.push({ group: 'Lumen', resolution: '1080p', episode: e, batch: false, size_bytes: 500000000 }) } p.setResult('alpha', { state: 'done', items: items, facts: facts, query: 'Long Example', search: { items: items, query: 'Long Example' } }); p.getActive = 'alpha'; items.length"},
+ {"wait": 1000},
+ {"eval": "frame.item.pageItem.scrollY = 380; frame.item.pageItem.scrollY"},
+ {"wait": 500},
+ {"shot": "1004-06-long-show"}
+]

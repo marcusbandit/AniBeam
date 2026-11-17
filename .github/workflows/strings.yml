@@ -1,0 +1,28 @@
+name: Strings
+
+# Every word a person reads comes from the catalog in i18n/ (#792): a pull request may not
+# add a raw string to a shell's UI files, nor ask for an ID the English catalog lacks. The
+# globs, the rules and what is skipped live in the script; the files that still hold raw
+# strings from before the catalog are in .github/strings-baseline.txt, whose counts only go
+# down. One Python run with no dependencies, so it costs seconds.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: strings-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: python3 .github/strings-check.py

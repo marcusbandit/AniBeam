@@ -7,7 +7,6 @@
 mod common;
 mod fixtures;
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,13 +16,6 @@ use anibeam_core::*;
 use serde_json::json;
 
 const DAY: i64 = 86_400;
-
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
 
 fn remote(prune: bool) -> DownloadSettings {
     DownloadSettings {
@@ -41,7 +33,8 @@ fn remote(prune: bool) -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: prune,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     }
 }
 
@@ -67,7 +60,11 @@ fn series(core: &Core, source: u64, id: u64, status: &str, last_aired_days_ago: 
         &format!("/lib/{name}"),
         &name,
     );
-    fixtures::insert_media(core, id, Some(&name), None, Some(2), status, "TV", Some(80));
+    fixtures::media(id, &name)
+        .episodes(2)
+        .status(status)
+        .score(80)
+        .insert(core);
     fixtures::match_series(core, s, Some(id), Some(1000 + id));
     if let Some(days) = last_aired_days_ago {
         let now = time::now_secs();
@@ -80,7 +77,7 @@ fn rules_json(names: &[&str]) -> String {
     let rules: Vec<_> = names
         .iter()
         .map(|n| {
-            json!({"name": n, "feed_url": format!("https://nyaa.si/?page=rss&q={n}"),
+            json!({"name": n, "feed_url": format!("https://tracker.example/?page=rss&q={n}"),
                    "save_path": format!("/lib/{n}"), "torrent_count": 2, "query": n})
         })
         .collect();
@@ -91,7 +88,6 @@ fn rules_json(names: &[&str]) -> String {
 fn setup(prune: bool) -> (common::Dir, Arc<Core>, Arc<Collector>, Arc<FakeHttp>) {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save(&core, remote(prune));
     let src = fixtures::insert_source(&core, "/lib");
     series(&core, src, 1, "FINISHED", Some(16));
@@ -191,17 +187,21 @@ fn a_show_finished_for_sixteen_days_loses_its_feed_and_only_its_feed() {
     assert!(body_of(&sent[0]).contains("\"names\":[\"Show 1\"]"));
     assert!(body_of(&sent[1]).contains("\"names\":[\"Show 5\"]"));
 
-    // The user's own removal, files and torrents kept, is the same call
+    // The user's own removal of the subscription, files and torrents kept,
+    // is the same call
     http.push_for(
         "/subscriptions/remove",
         200,
         json!({"dry_run": false, "plans": []}).to_string(),
     );
     let job = match core
-        .call(Call::RemoveSubscription {
-            name: "Show 1".to_string(),
+        .call(Call::RemoveShow {
+            title: "Show 1".to_string(),
+            rule: Some("Show 1".to_string()),
+            hashes: Vec::new(),
             torrents: false,
             files: false,
+            series: None,
         })
         .unwrap()
     {

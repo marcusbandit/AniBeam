@@ -45,7 +45,7 @@ impl Backend {
     }
 
     pub async fn acquire(&mut self) -> Option<Hold> {
-        let reason: Vec<u16> = "AniBeam: playing an episode"
+        let reason: Vec<u16> = "Anibeam: playing an episode"
             .encode_utf16()
             .chain(Some(0))
             .collect();

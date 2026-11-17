@@ -1,18 +1,19 @@
-// Downloads: the torrent client first (which one, which of the person's saved clients,
-// where, the login, a test), then how searches run (the search helper, anirss, or AniBeam
-// itself) and, for the helper, how AniBeam reaches it and its state, Rolling
-// downloads, finished shows, the search sources anirss was configured with and the endpoint
-// repos. Edits sit in a draft until Save: the secrets only cross once, and saving stops a
-// running sidecar (its environment carries the password), so a save is one deliberate act
-// followed by a reconnect. While the draft differs, a bar floats at the foot of the section
-// with Discard and Save, so the way to keep a change is never a scroll away from it.
+// Downloads: the source lists first, since nothing searches without one (#1003), then the
+// torrent client (which one, which of the person's saved clients, where, the login, a test),
+// then how searches run (the search helper, anirss, or Anibeam itself) and, for the helper,
+// how Anibeam reaches it and its state, Rolling downloads, finished shows and the search
+// sources anirss was configured with. Edits sit in a draft until Save: the secrets only cross
+// once, and saving stops a running sidecar (its environment carries the password), so a save
+// is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
+// foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
+// The password row says under it whether one is saved; no row explains itself further.
 import QtQuick
-import com.marcusrosado.AniBeam
+import QtQuick.Dialogs
+import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
-    title: "Downloads"
-    lead: "Where AniBeam sends what you download, and how it searches the release feeds."
+    title: words.t("settings-downloads-title")
     footInset: theme.space(36)
     property var status: null
     property var draft: null
@@ -27,17 +28,20 @@ SettingsTab {
     readonly property var settings: status ? status.settings : null
     readonly property var anirss: status ? status.anirss : null
     readonly property var torrent: status ? status.torrent : null
-    readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true, keep_watched: 1 })
-    // "Finishing episode 3 deletes episode 1" for the count kept behind
-    readonly property string keepLine: {
-        var k = roll.keep_watched === undefined ? 1 : roll.keep_watched
-        if (k === 0) return "Finishing an episode deletes the one before it."
-        return "Watched episodes kept behind the one you just finished. With " + k + ", finishing episode " + (k + 2) + " deletes episode 1."
+    // Where a show not in the library yet downloads to (#1005): applied at once, not drafted
+    readonly property var saveFolder: status && status.save_folder ? status.save_folder : ({ path: "", from: "Client", here: false })
+    function setSaveFolder(folder) {
+        var r = Door.call("SetSaveFolder", { folder: folder })
+        if (r.error) frame.fail(r.error, function() { tab.setSaveFolder(folder) })
     }
+    readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true, keep_watched: 1 })
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     // The engine the draft picks. A stored engine this build does not know comes in as
-    // anirss, and the core keeps it stored until AniBeam itself is picked here (#515)
+    // Anibeam itself, the default (#552), and the core keeps it stored until the search
+    // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
+    // The saved engine, as the Save to row applies at once and reads the saved client's folder
+    readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
@@ -55,7 +59,7 @@ SettingsTab {
 
     function reload() {
         var r = Door.getDownloads()
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.reload); return }
         tab.status = r.reply.status
         if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(r.reply.status.settings))
     }
@@ -97,32 +101,34 @@ SettingsTab {
         // Another client, or another engine reading the rules, makes the subscriptions read so far stale
         var switched = !settings || settings.torrent_url !== draft.torrent_url || settings.torrent_mode !== draft.torrent_mode || settings.engine !== draft.engine
         var r = Door.setDownloadSettings(draft, secrets)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.save); return }
         if (switched) frame.forgetDownloadsRules()
         dirty = false
         tokenText = ""; tokenTouched = false
         passwordText = ""; passwordTouched = false
         // The sidecar was stopped by the save; bring both halves back up on the new settings
         var c = Door.connectDownloads()
-        if (c.error) frame.fail(c.error)
+        if (c.error) frame.fail(c.error, tab.connect)
     }
     function discard() { dirty = false; tokenText = ""; tokenTouched = false; passwordText = ""; passwordTouched = false; reload() }
     // Unsaved edits are saved first, then the test runs on them
     function test() {
         if (dirty) { save(); if (dirty) return }
         var r = Door.testTorrentClient()
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.test); return }
         tab.testJob = r.reply.job
         tab.testing = true
     }
+    // A helper's or client's own words, one click away: the toast's Details opens and copies them
+    function details(said, raw) { frame.toast(said, 10, "", null, raw) }
     function connect() {
         var r = Door.connectDownloads()
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, tab.connect)
     }
     Connections {
         target: Door
         function onDownloadsStatusChanged(status) { tab.status = status; if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(status.settings)); tab.testing = false }
-        function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.toast(error.message) } }
+        function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.fail(error, tab.test) } }
         function onJobCancelled(job, kind) { if (job === tab.testJob) tab.testing = false }
     }
     // Edits not saved yet outlive a switch to another section or page: the frame keeps them
@@ -145,44 +151,39 @@ SettingsTab {
 
     readonly property string anirssLine: {
         if (!anirss) return ""
-        if (anirss.state === "Ready") return "Running, version " + anirss.version + " at " + anirss.url + "."
-        if (anirss.state === "Starting") return "Starting the search helper."
-        if (anirss.state === "Missing") return "The search helper is not installed. " + anirss.message
-        if (anirss.state === "Failed") return "The search helper is not running: " + anirss.message
-        return "Not started yet. It starts the first time you search on the Downloads page."
+        if (anirss.state === "Ready") return words.t("settings-downloads-anirss-ready", { version: anirss.version, url: anirss.url })
+        if (anirss.state === "Starting") return words.t("settings-downloads-anirss-starting")
+        if (anirss.state === "Missing") return words.t("settings-downloads-anirss-missing")
+        if (anirss.state === "Failed") return words.t("settings-downloads-anirss-failed")
+        return words.t("settings-downloads-anirss-idle")
     }
     readonly property string torrentLine: {
         if (!torrent) return ""
-        if (tab.testing) return "Trying " + clientName + "."
-        if (torrent.connected) return clientName + " " + torrent.version + " answered."
-        return torrent.message ? torrent.message : "Not tried yet."
+        if (tab.testing) return words.t("settings-downloads-torrent-trying", { client: clientName })
+        if (torrent.connected) return words.t("settings-downloads-torrent-answered", { client: clientName, version: torrent.version })
+        return torrent.message ? words.t("settings-downloads-torrent-failed", { client: clientName }) : words.t("settings-downloads-torrent-untried")
     }
     readonly property bool managed: !!draft && draft.torrent_mode === "Managed"
-    readonly property string modeLine: {
-        if (!draft) return ""
-        if (draft.torrent_mode === "Existing") return "A qBittorrent you run yourself, with its Web UI turned on."
-        if (draft.torrent_mode === "Managed") return "AniBeam runs a qBittorrent of its own into ~/Downloads/Anime. It keeps going after AniBeam quits, so subscriptions keep downloading."
-        return "Uses a qBittorrent that answers at the address below, else runs one of its own."
-    }
     readonly property string passwordLine: {
         if (!settings) return ""
-        if (tab.hasPassword) return "A password is saved here for this client."
-        if (torrent && torrent.password_source === "anirss") return "Using the password the search helper saved; save one here to stop depending on it."
-        return "No password saved. A client that bypasses its login for this machine needs none."
+        if (tab.hasPassword) return words.t("settings-downloads-password-saved")
+        if (torrent && torrent.password_source === "anirss") return words.t("settings-downloads-password-anirss")
+        return words.t("settings-downloads-password-none")
     }
     // anirss and this app each have their own idea of where the client is; say so when they differ
     readonly property string mismatch: {
         if (tab.nativeEngine || !anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
         var a = String(anirss.qbt_url).replace(/\/+$/, ""), b = String(settings.torrent_url).replace(/\/+$/, "")
         if (a === b) return ""
-        return "The search helper talks to " + a + " while AniBeam talks to " + b + ". A search helper you run yourself reads the address from its own config.toml, so switching clients here does not move it."
+        return words.t("settings-downloads-mismatch", { helperUrl: a, url: b })
     }
 
+    // The source lists first: nothing searches without one (#1003)
+    EndpointReposPanel { grows: false }
     Panel {
-        title: "Torrent client"
-        helper: "The qBittorrent that does the downloading. Its password is kept in the system password store."
-        SettingRow { label: "Which client"; helper: tab.modeLine
-            Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "My own", icon: "user-check" }, { text: "Built-in", icon: "play" }]
+        title: words.t("settings-downloads-torrent-title")
+        SettingRow { label: words.t("settings-downloads-which-client")
+            Seg { objectName: "downloads-client-mode"; options: [{ text: words.t("settings-downloads-pick-for-me"), icon: "sparkles" }, { text: words.t("settings-downloads-my-own"), icon: "user-check" }, { text: words.t("settings-downloads-built-in"), icon: "play" }]
                   index: !tab.draft ? 0 : tab.draft.torrent_mode === "Existing" ? 1 : tab.draft.torrent_mode === "Managed" ? 2 : 0
                   onPicked: function(i) {
                       tab.edit(function(d) {
@@ -193,76 +194,83 @@ SettingsTab {
                       })
                       tab.forgetPassword()
                   } } }
-        SettingRow { visible: tab.mine; label: "Saved clients"; helper: "A seedbox and the one on this machine, say. The client chip on the Downloads page switches between them too."
+        SettingRow { visible: tab.mine; label: words.t("settings-downloads-saved-clients")
             Row { spacing: theme.space(2)
                 Dropdown { objectName: "downloads-client"; options: tab.savedClients.map(function(c) { return c.name || c.url }); minWidth: theme.space(36)
                            visible: tab.savedClients.length > 0; index: Math.max(0, tab.activeIndex)
                            onPicked: function(i) { tab.pickClient(i) } }
-                Button { objectName: "downloads-client-add"; text: "Add"; icon: "plus"; flat: true; onClicked: tab.addClient() }
-                Button { objectName: "downloads-client-remove"; text: "Remove"; icon: "trash-2"; flat: true; visible: tab.savedClients.length > 1; onClicked: tab.removeClient() } } }
-        SettingRow { visible: tab.mine; label: "Name"
-            Field { objectName: "downloads-client-name"; text: tab.activeEntry ? tab.activeEntry.name : ""; width: theme.space(48); placeholder: "Named after its address"
+                Button { objectName: "downloads-client-add"; msg: "settings-downloads-add-client"; icon: "plus"; flat: true; onClicked: tab.addClient() }
+                Button { objectName: "downloads-client-remove"; msg: "action-remove"; icon: "trash-2"; flat: true; visible: tab.savedClients.length > 1; onClicked: tab.removeClient() } } }
+        SettingRow { visible: tab.mine; label: words.t("settings-downloads-name")
+            Field { objectName: "downloads-client-name"; text: tab.activeEntry ? tab.activeEntry.name : ""; width: theme.space(48); placeholder: words.t("settings-downloads-name-placeholder")
                     onEdited: function(t) { tab.edit(function(d) { tab.setActive(d, "name", t) }) } } }
-        SettingRow { label: "Address"; helper: tab.managed ? "Only this machine can reach it, and it needs no password." : "The Web UI's address."
+        SettingRow { label: words.t("settings-downloads-address")
             Field { objectName: "downloads-client-url"; text: tab.draft ? tab.draft.torrent_url : ""; mono: true; width: theme.space(48); placeholder: "http://localhost:8080"; onEdited: function(t) { tab.edit(function(d) { d.torrent_url = t; tab.setActive(d, "url", t) }) } } }
-        SettingRow { visible: !tab.managed; label: "Username"
+        SettingRow { visible: !tab.managed; label: words.t("settings-downloads-username")
             Field { text: tab.draft ? tab.draft.torrent_username : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.torrent_username = t; tab.setActive(d, "username", t) }) } } }
-        SettingRow { visible: !tab.managed; label: "Password"; helper: tab.passwordLine
-            Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? "Saved" : "Not set"
+        SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); status: tab.passwordLine
+            Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
-        SettingRow { label: "Connection"; line: tab.torrentLine; status: tab.mismatch
-            Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } }
+        SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
+            status: tab.saveFolder.path || words.t("settings-downloads-save-to-client")
+            Row { spacing: theme.space(2)
+                Button { visible: tab.saveFolder.from === "Chosen"; msg: "settings-downloads-save-to-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.setSaveFolder(null) }
+                Button { objectName: "downloads-save-to-choose"; msg: "settings-downloads-save-to-choose"; icon: "folder-open"; flat: true; onClicked: saveFolderDialog.open() } } }
+        SettingRow { label: words.t("settings-downloads-connection"); line: tab.torrentLine; status: tab.mismatch
+            Row { spacing: theme.space(2)
+                Button { visible: tab.mismatch !== "" && !!(tab.anirss && tab.anirss.config_path); msg: "settings-downloads-open-config"; icon: "external-link"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) }
+                Button { visible: !!tab.torrent && !tab.torrent.connected && !tab.testing && !!tab.torrent.message; msg: "settings-downloads-details"; icon: "info"; flat: true; onClicked: tab.details(words.t("settings-downloads-details-torrent", { client: tab.clientName }), tab.torrent.message) }
+                Button { text: tab.testing ? words.t("settings-downloads-test-trying") : tab.dirty ? words.t("settings-downloads-test-save") : words.t("settings-downloads-test"); icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } } }
     }
     Panel {
-        title: tab.nativeEngine ? "Searching" : "Search helper"
-        helper: tab.nativeEngine ? "AniBeam searches your sources itself and sends what you pick to the torrent client. The search helper is not needed." : "The part of AniBeam that searches and subscribes, a program called anirss. AniBeam runs it for you; change this only if you run your own."
-        SettingRow { label: "Searches run in"; helper: tab.nativeEngine ? "Subscriptions still go to the torrent client, so new episodes arrive while AniBeam is closed." : "The search helper, a separate program AniBeam runs or you run yourself."
-            Seg { objectName: "downloads-engine"; options: [{ text: "Search helper", icon: "wrench", name: "helper" }, { text: "AniBeam itself", icon: "sparkles", name: "anibeam" }]; index: tab.nativeEngine ? 1 : 0
+        title: tab.nativeEngine ? words.t("settings-downloads-searching") : words.t("settings-downloads-search-helper")
+        SettingRow { label: words.t("settings-downloads-runs-in")
+            Seg { objectName: "downloads-engine"; options: [{ text: words.t("settings-downloads-search-helper"), icon: "wrench", name: "helper" }, { text: words.t("settings-downloads-engine-native"), icon: "sparkles", name: "anibeam" }]; index: tab.nativeEngine ? 1 : 0
                   onPicked: function(i) { tab.edit(function(d) { d.engine = i === 1 ? "Native" : "Anirss" }) } } }
-        SettingRow { visible: !tab.nativeEngine; label: "How it runs"; helper: tab.sidecar ? "AniBeam starts it when it opens and stops it when it quits." : "AniBeam uses one you already run, at the address and with the key below."
-            Seg { options: [{ text: "AniBeam runs it", icon: "play" }, { text: "I run it", icon: "radio" }]; index: tab.sidecar ? 0 : 1
+        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-how-runs")
+            Seg { options: [{ text: words.t("settings-downloads-runs-sidecar"), icon: "play" }, { text: words.t("settings-downloads-runs-remote"), icon: "radio" }]; index: tab.sidecar ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { d.anirss_mode = i === 0 ? "Sidecar" : "Remote" }) } } }
-        SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: "Command"; helper: "A name on PATH or a full path. ~/.local/bin is searched too."
+        SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: words.t("settings-downloads-command")
             Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
-        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: "Address"; helper: "The server's base, without /api/v1."
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-address")
             Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
-        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: "Key"; helper: tab.settings && tab.settings.has_anirss_token ? "A key is saved. Type a new one to replace it, or clear the field to remove it." : "The key the search helper showed when it started. It lets AniBeam in."
-            Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-key")
+            Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
-        SettingRow { visible: !tab.nativeEngine; label: "Connection"; line: tab.anirssLine
-            Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
-                Tooltip { text: tab.dirty ? "Save your changes first" : "" } } }
+        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-connection"); line: tab.anirssLine
+            Row { spacing: theme.space(2)
+                Button { visible: !!tab.anirss && (tab.anirss.state === "Missing" || tab.anirss.state === "Failed") && !!tab.anirss.message; msg: "settings-downloads-details"; icon: "info"; flat: true; onClicked: tab.details(words.t("settings-downloads-details-anirss"), tab.anirss.message) }
+                Button { text: tab.anirss && tab.anirss.state === "Starting" ? words.t("settings-downloads-starting") : tab.anirss && tab.anirss.state === "Ready" ? words.t("settings-downloads-reconnect") : tab.anirss && tab.anirss.state === "Failed" ? words.t("action-try-again") : words.t("action-connect"); icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
+                    Tooltip { text: tab.dirty ? words.t("settings-downloads-save-first") : "" } } } }
     }
     Panel {
-        title: "Keep the next few ready"
-        helper: "A long show downloads a few episodes at a time, and each one you finish starts the next. The whole run never has to fit on the disk."
-        SettingRow { label: "For long shows"; helper: "Anything over " + tab.roll.over + " episodes downloads a few at a time by itself. Its row on the Downloads page can still get everything at once."
+        title: words.t("settings-downloads-roll-title")
+        SettingRow { label: words.t("settings-downloads-roll-big")
             Switch { objectName: "downloads-roll-big"; checked: tab.roll.big !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).big = on }) } } }
-        SettingRow { label: "Episodes ahead"; helper: "How many stay downloaded past the one you are on. 12 is about a season."
-            SliderRow { objectName: "downloads-roll-ahead"; unit: "episodes"; from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
+        SettingRow { label: words.t("settings-downloads-roll-ahead")
+            SliderRow { objectName: "downloads-roll-ahead"; unit: words.t("settings-downloads-unit-episodes"); from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).ahead = Math.round(v) }) } } }
-        SettingRow { label: "Long means over"; helper: "Downloads with more episodes than this get a few at a time."
-            SliderRow { objectName: "downloads-roll-over"; unit: "episodes"; from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
+        SettingRow { label: words.t("settings-downloads-roll-over")
+            SliderRow { objectName: "downloads-roll-over"; unit: words.t("settings-downloads-unit-episodes"); from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).over = Math.round(v) }) } } }
-        SettingRow { label: "Watched episodes"; helper: tab.roll.delete_watched !== false ? "Deleted once you are further along, so the disk only holds what is left to watch." : "Every file stays on the disk after you watch it."
-            Seg { objectName: "downloads-roll-watched"; options: [{ text: "Delete", icon: "trash-2" }, { text: "Keep all", icon: "archive" }]; index: tab.roll.delete_watched !== false ? 0 : 1
+        SettingRow { label: words.t("settings-downloads-roll-watched")
+            Seg { objectName: "downloads-roll-watched"; options: [{ text: words.t("action-delete"), icon: "trash-2" }, { text: words.t("settings-downloads-keep-all"), icon: "archive" }]; index: tab.roll.delete_watched !== false ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { tab.rolling(d).delete_watched = i === 0 }) } } }
-        SettingRow { visible: tab.roll.delete_watched !== false; label: "Keep behind"
-            helper: tab.keepLine
-            SliderRow { objectName: "downloads-roll-keep"; unit: "episodes"; from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
+        SettingRow { visible: tab.roll.delete_watched !== false; label: words.t("settings-downloads-keep-behind")
+            SliderRow { objectName: "downloads-roll-keep"; unit: words.t("settings-downloads-unit-episodes"); from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
     }
     Panel {
-        title: "Subscriptions and searches"
-        SettingRow { label: "Keep the last search"; helper: "The Downloads page opens with the search you last ran. Off, it opens empty."
+        title: words.t("settings-downloads-subscriptions-title")
+        SettingRow { label: words.t("settings-downloads-last-search")
             Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
-        SettingRow { label: "Unsubscribe from finished shows"; helper: "16 days after a show's last episode airs, its feed is dropped. The show and its files stay."
+        SettingRow { label: words.t("settings-downloads-prune")
             Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
     }
     Panel {
-        title: "Search sources"
-        helper: "Where a search goes, in the order they are tried. One that finds nothing falls through to the next."
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? "No sources set up yet" : "Connect the search helper to list them" }
+        title: words.t("settings-downloads-sources-title")
+        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
+            Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
         Repeater {
             model: tab.endpoints
             SettingRow {
@@ -273,11 +281,16 @@ SettingsTab {
                 Chip { text: String(modelData.kind); small: true; color: theme.raised }
             }
         }
-        SettingRow { label: "Search helper's settings file"; helper: tab.nativeEngine ? "Holds the save folders, the tags and the best match rules, which AniBeam itself follows when it runs the helper. Its own sources are the helper's alone." : "Holds the sources, the save folders, the tags and the best match rules."
+        SettingRow { label: words.t("settings-downloads-config-file")
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
-            Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
+            Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
-    EndpointReposPanel { grows: false }
+    FolderDialog {
+        id: saveFolderDialog
+        title: words.t("settings-downloads-save-to-pick")
+        currentFolder: tab.saveFolder.path ? Fmt.fileUrl(tab.saveFolder.path) : ""
+        onAccepted: tab.setSaveFolder(Fmt.localPath(String(selectedFolder)))
+    }
 
     // The save bar: floats over the section's foot while the draft differs from what is saved
     Rectangle {
@@ -294,21 +307,20 @@ SettingsTab {
         color: theme.glassFloat
         border.width: 1
         border.color: theme.accentEdge
-        Column {
+        Label {
             anchors.left: parent.left; anchors.leftMargin: theme.space(6)
             anchors.right: saveRow.left; anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(0.5)
-            Label { text: "Unsaved changes"; role: "title"; font.pointSize: theme.typeNormal }
-            Label { width: parent.width; text: "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+            msg: "settings-downloads-unsaved"; role: "title"; font.pointSize: theme.typeNormal
+            elide: Text.ElideRight
         }
         Row {
             id: saveRow
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(2)
-            Button { text: "Discard"; flat: true; enabled: tab.dirty; onClicked: tab.discard() }
-            Button { objectName: "downloads-save"; text: "Save"; icon: "check"; primary: true; enabled: tab.dirty; onClicked: tab.save() }
+            Button { msg: "settings-downloads-discard"; flat: true; enabled: tab.dirty; onClicked: tab.discard() }
+            Button { objectName: "downloads-save"; msg: "action-save"; icon: "check"; primary: true; enabled: tab.dirty; onClicked: tab.save() }
         }
     }
 }

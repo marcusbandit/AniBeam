@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: deps.sh <prefix>
-# Builds what Homebrew does not ship the way AniBeam needs it into <prefix>:
+# Builds what Homebrew does not ship the way Anibeam needs it into <prefix>:
 #   libmpv 0.41.0, lean: the OpenGL render API, VideoToolbox, CoreAudio, libass, and none of
 #     Lua, JavaScript, VapourSynth, Vulkan or libarchive. Homebrew's mpv enables VapourSynth,
 #     which links a whole Python framework into libmpv. The Swift glue stays on: 0.41's
@@ -15,12 +15,19 @@
 #     openssl@3.
 # Everything else (Qt, FFmpeg, libass, libplacebo) comes from Homebrew; bundle.sh copies it
 # into the app. The workflow caches <prefix> on a key that includes those Homebrew versions,
-# since libmpv records their install names.
+# since libmpv records their install names. Every download and clone goes through
+# ../download.sh, which retries and falls back to a second source where one serves the same
+# bytes (#1140).
 set -euo pipefail
 
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
 prefix="$1"
 MPV_VERSION=0.41.0
+MPV_SHA256=ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
 MPVQT_VERSION=v1.2.0
+MPVQT_COMMIT=edb1e3213e45aeec7dfcb74b1f5e722264af6636
 LIBTORRENT_VERSION=2.0.15
 LIBTORRENT_SHA256=5e2e79129823b7ea48721164c32b5aaf83d3fd733b5502100f6705b29f27bb02
 QBT_VERSION=5.2.4
@@ -45,14 +52,15 @@ rpath_id() {
 }
 
 echo "== libmpv $MPV_VERSION"
-curl -fsSL "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz" | tar -xz -C "$work"
+download_checked "$work/mpv.tar.gz" "$MPV_SHA256" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
+tar -xz -C "$work" -f "$work/mpv.tar.gz"
 # Upstream fixes not yet in a release. mpv-player/mpv#18383: a failed CoreAudio init left its
 # hotplug listener on a freed ao, and the next audio device change crashed the app (#75).
 # 0003 is ours: with 18383, init's error path would dispose the audio unit twice.
 # 0004 is mpv-player/mpv#18637, still open upstream: 0.41.0 hands an AudioChannelLayout to
 # kAudioOutputUnitProperty_ChannelMap, which wants an SInt32 array, and macOS 27 answers -50, so
 # Opus and mono tracks lost CoreAudio (#77). Drop 0004 once a release carries the upstream fix.
-for patch in "$(dirname "$0")"/patches/mpv-*.patch; do
+for patch in "$here"/patches/mpv-*.patch; do
   [ -e "$patch" ] || continue
   patch -d "$work/mpv-$MPV_VERSION" -p1 --forward < "$patch"
 done
@@ -73,8 +81,10 @@ rpath_id libmpv.2.dylib
 
 echo "== MpvQt $MPVQT_VERSION"
 # FindLibmpv hands CMake <prefix>/include/mpv while the sources say <mpv/client.h>; on Arch
-# /usr/include covers the difference, here the flag below does.
-git clone --quiet --depth 1 --branch "$MPVQT_VERSION" https://invent.kde.org/libraries/mpvqt.git "$work/mpvqt"
+# /usr/include covers the difference, here the flag below does. KDE's GitHub mirror is the
+# second source; clone checks the tag is still MPVQT_COMMIT.
+clone "$work/mpvqt" "$MPVQT_VERSION" "$MPVQT_COMMIT" \
+  https://invent.kde.org/libraries/mpvqt.git https://github.com/KDE/mpvqt.git
 cmake -S "$work/mpvqt" -B "$work/mpvqt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$prefix" \
@@ -88,9 +98,8 @@ rpath_id libMpvQt.3.dylib
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
 openssl="$(brew --prefix openssl@3)"
-curl -fsSL -o "$work/libtorrent.tar.gz" \
+download_checked "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256" \
   "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz"
-echo "$LIBTORRENT_SHA256  $work/libtorrent.tar.gz" | shasum -a 256 -c -
 tar -xz -C "$work" -f "$work/libtorrent.tar.gz"
 # C++20 to match qBittorrent, which includes its headers.
 cmake -S "$work/libtorrent-rasterbar-$LIBTORRENT_VERSION" -B "$work/libtorrent-build" -G Ninja \
@@ -105,8 +114,7 @@ cmake --build "$work/libtorrent-build"
 cmake --install "$work/libtorrent-build"
 
 echo "== qBittorrent $QBT_VERSION (nox)"
-curl -fsSL -o "$work/qbittorrent.tar.gz" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
-echo "$QBT_SHA256  $work/qbittorrent.tar.gz" | shasum -a 256 -c -
+download_checked "$work/qbittorrent.tar.gz" "$QBT_SHA256" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
 tar -xz -C "$work" -f "$work/qbittorrent.tar.gz"
 # The stacktrace support is boost's and only helps with crash reports nobody reads here. The
 # install rpath keeps the binary runnable from the prefix, since CMake strips the build rpath

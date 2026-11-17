@@ -7,7 +7,7 @@ mod fixtures;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use anibeam_core::presence::{self, Activity, SendError, Transport};
+use anibeam_core::presence::{self, Activity, Incoming, Party, SendError, Transport};
 use anibeam_core::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,12 +27,23 @@ enum Sent {
 struct Fake {
     log: Arc<(Mutex<Vec<Sent>>, Condvar)>,
     fail: bool,
+    /// Every connect finds a Discord that refuses the handshake.
+    refuse: bool,
     reject_posters: bool,
     /// Set by a test: Discord has quit, so every send finds it gone.
     gone: Arc<std::sync::atomic::AtomicBool>,
     reject_all: bool,
     gate: Option<Gate>,
+    /// What Discord says unasked, handed over by the next poll.
+    said: Arc<Mutex<Vec<Incoming>>>,
+    /// The party on each activity set, which `Sent::Set` leaves off.
+    parties: Arc<Mutex<Vec<Option<Party>>>>,
+    /// Answers to Ask to Join: the user and whether they were invited.
+    answers: Answers,
 }
+
+/// Each answer sent, the user and whether they were invited, with a wake for waiters.
+type Answers = Arc<(Mutex<Vec<(String, bool)>>, Condvar)>;
 
 /// A Discord that has stopped reading: sends wait until it opens.
 #[derive(Clone, Default)]
@@ -83,6 +94,8 @@ impl Transport for Fake {
         self.push(Sent::Connect);
         if self.fail {
             Err(SendError::Gone("no Discord".to_string()))
+        } else if self.refuse {
+            Err(SendError::Rejected("Invalid Client ID".to_string()))
         } else {
             Ok(())
         }
@@ -102,10 +115,27 @@ impl Transport for Fake {
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
         }
+        if let Some(a) = activity {
+            self.parties.lock().unwrap().push(a.party.clone());
+        }
         self.push(match activity {
-            Some(a) => Sent::Set(a.clone()),
+            Some(a) => Sent::Set(Activity {
+                party: None,
+                ..a.clone()
+            }),
             None => Sent::Clear,
         });
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
+        Ok(std::mem::take(&mut *self.said.lock().unwrap()))
+    }
+
+    fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
+        let (log, cv) = &*self.answers;
+        log.lock().unwrap().push((user_id.to_string(), invite));
+        cv.notify_all();
         Ok(())
     }
 
@@ -124,26 +154,12 @@ fn library(core: &Core) -> Library {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Bebop");
-    let ep1 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 1.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    let ep2 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 2.mkv",
-        2.0,
-        None,
-        "episode",
-        now,
-    );
+    let ep1 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 1.mkv", 1.0, now);
+    let ep2 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 2.mkv", 2.0, now);
     let extra = fixtures::insert_file(core, series, "/lib/Bebop/OP1.mkv", 1.0, None, "extra", now);
-    fixtures::insert_media_with_cover(core, 1, "https://img.example/bebop.jpg", None);
+    fixtures::media(1, "Media 1")
+        .cover("https://img.example/bebop.jpg")
+        .insert(core);
     fixtures::insert_episode(core, 1, 2, Some("Stray Dog Strut"), None);
     fixtures::match_series(core, series, Some(1), None);
     Library { ep1, ep2, extra }
@@ -189,6 +205,7 @@ fn presence_reply(core: &Core) -> (bool, bool) {
         Reply::Presence {
             available,
             connected,
+            ..
         } => (available, connected),
         other => panic!("{other:?}"),
     }
@@ -491,20 +508,11 @@ fn a_refused_poster_falls_back_to_the_apps_art() {
     );
 }
 
-#[test]
-fn get_presence_says_whether_this_build_has_an_application() {
-    let (_dir, core, _c) = common::open_core();
-    assert_eq!(
-        presence_reply(&core),
-        (presence::bundled_client_id().is_some(), false)
-    );
-}
-
 fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
     c.events()
         .into_iter()
         .filter_map(|e| match e.body {
-            EventBody::PresenceChanged { connected } => Some(connected),
+            EventBody::PresenceChanged { connected, .. } => Some(connected),
             _ => None,
         })
         .collect()
@@ -522,23 +530,85 @@ fn the_connection_coming_and_going_is_an_event() {
     core.presence_flush();
     common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: true }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::PresenceChanged {
+                    connected: true,
+                    ..
+                }
+            )
+        },
         Duration::from_secs(5),
     );
     // Switching off lets the connection go, and says so.
     switch(&core, false);
     common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: false }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::PresenceChanged {
+                    connected: false,
+                    ..
+                }
+            )
+        },
         Duration::from_secs(5),
     );
     assert_eq!(presence_events(&c), vec![true, false]);
     assert_eq!(presence_reply(&core), (true, false));
 }
 
+fn problem_reply(core: &Core) -> Option<PresenceProblem> {
+    match core.call(Call::GetPresence).unwrap() {
+        Reply::Presence { problem, .. } => problem,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn problem_events(c: &anibeam_core::events::Collector) -> Vec<Option<PresenceProblem>> {
+    c.events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::PresenceChanged { problem, .. } => Some(problem),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn a_discord_that_never_answers_sends_no_change() {
+fn a_discord_that_never_answers_is_named_once_and_never_connects() {
     let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        fail: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    for i in 0..5 {
+        tick(&core, s, f64::from(i), i % 2 == 1);
+        core.presence_flush();
+    }
+    // Settings says why nothing shows (#1029), and the shells hear it once.
+    assert_eq!(problem_reply(&core), Some(PresenceProblem::NoDiscord));
+    assert_eq!(problem_events(&c), vec![Some(PresenceProblem::NoDiscord)]);
+    // Switching off takes the reason with it.
+    switch(&core, false);
+    core.presence_flush();
+    assert_eq!(problem_reply(&core), None);
+    assert_eq!(
+        problem_events(&c),
+        vec![Some(PresenceProblem::NoDiscord), None]
+    );
+    assert!(presence_events(&c).iter().all(|on| !on));
+}
+
+#[test]
+fn no_discord_stops_being_named_once_nothing_plays() {
+    let (_dir, core, _c) = common::open_core();
     let lib = library(&core);
     let fake = Fake {
         fail: true,
@@ -549,15 +619,75 @@ fn a_discord_that_never_answers_sends_no_change() {
     let s = open(&core, lib.ep2);
     tick(&core, s, 1.0, false);
     core.presence_flush();
-    switch(&core, false);
+    assert_eq!(problem_reply(&core), Some(PresenceProblem::NoDiscord));
+    // The episode ends: a Discord opened since is found on the next one, so
+    // Settings no longer says it is missing.
+    close(&core, s);
     core.presence_flush();
-    assert!(presence_events(&c).is_empty(), "{:?}", presence_events(&c));
+    assert_eq!(problem_reply(&core), None);
+}
+
+#[test]
+fn a_discord_that_refuses_the_handshake_is_named_with_its_words() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        refuse: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    let refused = PresenceProblem::Refused {
+        message: "Invalid Client ID".to_string(),
+    };
+    assert_eq!(problem_reply(&core), Some(refused.clone()));
+    assert_eq!(problem_events(&c), vec![Some(refused)]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_refused_activity_is_named_while_connected() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_all: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    // Connected, but the profile is empty: Settings says Discord refused, and why.
+    assert_eq!(presence_reply(&core), (true, true));
+    let refused = PresenceProblem::Refused {
+        message: "details".to_string(),
+    };
+    assert_eq!(problem_reply(&core), Some(refused.clone()));
+    assert_eq!(problem_events(&c), vec![None, Some(refused)]);
+}
+
+#[test]
+fn a_connection_that_lands_names_no_problem() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    assert_eq!(problem_reply(&core), None);
+    assert_eq!(problem_events(&c), vec![None]);
 }
 
 fn wait_presence(c: &anibeam_core::events::Collector, connected: bool) {
     common::wait_for(
         c,
-        |e| matches!(e.body, EventBody::PresenceChanged { connected: x } if x == connected),
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: x, .. } if x == connected),
         Duration::from_secs(5),
     );
 }
@@ -621,6 +751,208 @@ fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
             _ => None,
         })
         .collect();
-    // Each activity is tried with its poster, then without.
-    assert_eq!(posters, vec![true, false, true, false]);
+    // Each activity is tried with its poster, then without, then without its party too.
+    assert_eq!(posters, vec![true, false, false, true, false, false]);
+}
+
+// ---------------------------------------------------------------------------
+// Joining through Discord (#966)
+// ---------------------------------------------------------------------------
+
+impl Fake {
+    /// Discord says `event`, as the next poll will find it.
+    fn say(&self, event: Incoming) {
+        self.said.lock().unwrap().push(event);
+    }
+
+    fn last_party(&self) -> Option<Party> {
+        self.parties.lock().unwrap().last().cloned().flatten()
+    }
+
+    /// Blocks until `n` answers have been sent.
+    fn wait_answers(&self, n: usize) -> Vec<(String, bool)> {
+        let (log, cv) = &*self.answers;
+        let guard = log.lock().unwrap();
+        let (guard, timeout) = cv
+            .wait_timeout_while(guard, Duration::from_secs(10), |a| a.len() < n)
+            .unwrap();
+        assert!(!timeout.timed_out(), "answers {:?}", *guard);
+        guard.clone()
+    }
+}
+
+fn ask(user: &str) -> Incoming {
+    Incoming::JoinRequest {
+        user_id: user.to_string(),
+        name: format!("Person {user}"),
+        avatar: None,
+    }
+}
+
+/// Waits for an event of the kind `pick` finds, and returns what it found.
+fn wait_for<T>(c: &anibeam_core::events::Collector, pick: impl Fn(&EventBody) -> Option<T>) -> T {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(found) = c.events().iter().find_map(|e| pick(&e.body)) {
+            return found;
+        }
+        assert!(std::time::Instant::now() < deadline, "no such event");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn asks(c: &anibeam_core::events::Collector) -> usize {
+    c.events()
+        .iter()
+        .filter(|e| matches!(e.body, EventBody::DiscordJoinAsk { .. }))
+        .count()
+}
+
+/// Playing with the switch on, connected: the stand-in is ready for events.
+fn playing() -> (
+    common::Dir,
+    Arc<Core>,
+    Arc<anibeam_core::events::Collector>,
+    Fake,
+) {
+    let (dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    wait_presence(&c, true);
+    core.presence_flush();
+    (dir, core, c, fake)
+}
+
+#[test]
+fn what_plays_outside_a_room_can_be_asked_to_join() {
+    let (_dir, _core, _c, fake) = playing();
+    let party = fake.last_party().expect("a party");
+    assert_eq!(party.secret, presence::ASK_SECRET);
+    assert_eq!((party.size, party.open), (1, false));
+    assert!(party.max >= 2);
+}
+
+#[test]
+fn an_ask_is_shown_once_while_it_stands() {
+    let (_dir, _core, c, fake) = playing();
+    fake.say(ask("101"));
+    let (name, in_room) = wait_for(&c, |b| match b {
+        EventBody::DiscordJoinAsk {
+            user_id,
+            name,
+            in_room,
+            ..
+        } if user_id == "101" => Some((name.clone(), *in_room)),
+        _ => None,
+    });
+    assert_eq!((name.as_str(), in_room), ("Person 101", false));
+    // Asking again while the first stands raises nothing new.
+    fake.say(ask("101"));
+    std::thread::sleep(Duration::from_millis(1200));
+    assert_eq!(asks(&c), 1);
+}
+
+#[test]
+fn a_no_closes_the_ask_and_every_later_one_from_that_person_without_a_word() {
+    let (_dir, core, c, fake) = playing();
+    fake.say(ask("202"));
+    wait_for(&c, |b| {
+        matches!(b, EventBody::DiscordJoinAsk { .. }).then_some(())
+    });
+    core.call(Call::DiscordAnswer {
+        user_id: "202".into(),
+        allow: false,
+    })
+    .unwrap();
+    assert_eq!(fake.wait_answers(1), vec![("202".to_string(), false)]);
+    wait_for(&c, |b| {
+        matches!(b, EventBody::DiscordAskGone { user_id } if user_id == "202").then_some(())
+    });
+
+    // They ask again: closed at once, and nothing reaches the screen.
+    fake.say(ask("202"));
+    assert_eq!(fake.wait_answers(2)[1], ("202".to_string(), false));
+    assert_eq!(asks(&c), 1);
+
+    // The list names them, and clearing it lets them ask again.
+    let Reply::DiscordBlocked { people } = core.call(Call::DiscordBlocked).unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        people,
+        vec![DiscordPerson {
+            id: "202".into(),
+            name: "Person 202".into()
+        }]
+    );
+    let Reply::DiscordBlocked { people } =
+        core.call(Call::DiscordUnblock { user_id: None }).unwrap()
+    else {
+        panic!()
+    };
+    assert!(people.is_empty());
+    fake.say(ask("202"));
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while asks(&c) < 2 {
+        assert!(std::time::Instant::now() < deadline, "no second ask");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_join_with_a_room_secret_joins_that_room_and_one_without_says_so() {
+    let (_dir, _core, c, fake) = playing();
+    fake.say(Incoming::Join {
+        secret: "room:k7qm2x".into(),
+    });
+    let code = wait_for(&c, |b| match b {
+        EventBody::DiscordJoin { code } => Some(code.clone()),
+        _ => None,
+    });
+    assert_eq!(code, "K7QM2X");
+    fake.say(Incoming::Join {
+        secret: presence::ASK_SECRET.into(),
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !c.events().iter().any(|e| {
+        e.plain_words
+            .as_ref()
+            .is_some_and(|w| w.id == "core-presence-no-room")
+    }) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no word about the missing room"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_launch_by_discord_listens_with_nothing_to_show() {
+    let (_dir, core, c) = common::open_core();
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    // A launch asks before the stored switch has come on
+    core.call(Call::DiscordListen).unwrap();
+    switch(&core, true);
+    wait_presence(&c, true);
+    fake.say(Incoming::Join {
+        secret: "room:K7QM2X".into(),
+    });
+    wait_for(&c, |b| {
+        matches!(b, EventBody::DiscordJoin { .. }).then_some(())
+    });
+    // Nothing was shown for it.
+    assert!(sets(&fake.sent()).is_empty());
+    // A window that comes up after the event takes the join, once.
+    let take = || match core.call(Call::DiscordTakeJoin).unwrap() {
+        Reply::DiscordJoin { code } => code,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(take().as_deref(), Some("K7QM2X"));
+    assert_eq!(take(), None);
 }

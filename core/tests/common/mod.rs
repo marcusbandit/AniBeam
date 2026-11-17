@@ -4,9 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anibeam_core::events::{Collector, Subscription};
-use anibeam_core::net::FakeHttp;
+use anibeam_core::net::Http;
 use anibeam_core::trackers::Secrets;
-use anibeam_core::{Core, CorePaths, Event, JobPhase};
+use anibeam_core::{
+    Call, Core, CorePaths, Direction, Event, JobPhase, Reply, SeriesCard, Sort, Tab,
+};
 
 /// Owns the test's temp directory and the subscription collecting its
 /// events, so the subscription lives exactly as long as the test's `dir`
@@ -42,7 +44,7 @@ pub fn open_core() -> (Dir, Arc<Core>, Arc<Collector>) {
 /// The same core with the network swapped for canned replies. A test that
 /// drives a provider job keeps its own handle on the `FakeHttp` to queue
 /// replies and read back the requests.
-pub fn open_core_with_http(http: Arc<FakeHttp>) -> (Dir, Arc<Core>, Arc<Collector>) {
+pub fn open_core_with_http(http: Arc<dyn Http>) -> (Dir, Arc<Core>, Arc<Collector>) {
     let dir = tempfile::tempdir().unwrap();
     let paths = CorePaths::under(dir.path());
     let secrets = Secrets::file_only(paths.secrets_path());
@@ -102,4 +104,32 @@ pub fn library_show(dir: &std::path::Path, core: &Core, c: &Collector) -> String
         Duration::from_secs(10),
     );
     show.to_string_lossy().into_owned()
+}
+
+/// Runs a call that starts a job and returns the job's id.
+pub fn started(core: &Core, call: Call) -> u64 {
+    job_of(core.call(call).unwrap())
+}
+
+/// The job id out of a `Reply::Started`; any other reply fails the test.
+pub fn job_of(reply: Reply) -> u64 {
+    match reply {
+        Reply::Started { job } => job,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// The library's cards on one tab, in the default A to Z order.
+pub fn cards(core: &Core, tab: Tab, reveal_hidden: bool) -> Vec<SeriesCard> {
+    let call = Call::ListSeries {
+        tab,
+        query: String::new(),
+        sort: Sort::Alpha,
+        direction: Direction::Asc,
+        reveal_hidden,
+    };
+    match core.call(call).unwrap() {
+        Reply::Series { series } => series,
+        other => panic!("{other:?}"),
+    }
 }

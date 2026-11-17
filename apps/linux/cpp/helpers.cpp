@@ -1,4 +1,5 @@
 #include "helpers.h"
+#include <QtCore/QLocale>
 #include <QtCore/QByteArray>
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
@@ -10,11 +11,6 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QPointF>
 #include <QtCore/QPoint>
-#include <QtCore/QHash>
-#include <QtCore/QMutex>
-#include <QtCore/QMutexLocker>
-#include <QtGui/QImage>
-#include <QtGui/QImageReader>
 #include <QtGui/QCursor>
 #include <QtCore/QProcess>
 #ifdef Q_OS_WIN
@@ -115,43 +111,6 @@ void set_app_palette(const QColor &window, const QColor &text, const QColor &bas
     p.setColor(QPalette::ButtonText, buttonText);
     p.setColor(QPalette::Accent, highlight);
     QGuiApplication::setPalette(p);
-}
-
-QColor poster_tone(const QString &path)
-{
-    static QMutex lock;
-    static QHash<QString, QColor> cache;
-    {
-        QMutexLocker held(&lock);
-        auto hit = cache.constFind(path);
-        if (hit != cache.constEnd())
-            return *hit;
-    }
-    QColor tone;
-    if (!path.isEmpty()) {
-        QImageReader reader(path);
-        reader.setAutoTransform(false);
-        reader.setScaledSize(QSize(8, 12));
-        const QImage image = reader.read().convertToFormat(QImage::Format_RGB32);
-        double r = 0, g = 0, b = 0, total = 0;
-        for (int y = 0; y < image.height(); ++y) {
-            const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
-            for (int x = 0; x < image.width(); ++x) {
-                const QColor c = QColor::fromRgb(line[x]);
-                // A grey pixel counts once; a fully saturated, bright one five times.
-                const double weight = 1.0 + 4.0 * c.hsvSaturationF() * c.valueF();
-                r += c.redF() * weight;
-                g += c.greenF() * weight;
-                b += c.blueF() * weight;
-                total += weight;
-            }
-        }
-        if (total > 0)
-            tone = QColor::fromRgbF(float(r / total), float(g / total), float(b / total));
-    }
-    QMutexLocker held(&lock);
-    cache.insert(path, tone);
-    return tone;
 }
 
 namespace {
@@ -268,7 +227,7 @@ bool open_url(const QString &url)
 }
 
 namespace {
-// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml; the
+// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/Anibeam/qml/<name>.qml; the
 // same name under the dev directory replaces one that exists there.
 class QmlDirInterceptor : public QQmlAbstractUrlInterceptor
 {
@@ -276,7 +235,7 @@ public:
     explicit QmlDirInterceptor(QString dir) : m_dir(std::move(dir)) {}
     QUrl intercept(const QUrl &url, DataType type) override
     {
-        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/AniBeam/qml/");
+        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/Anibeam/qml/");
         if (type != QmlFile || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
             return url;
         const QString name = url.path().mid(prefix.size());
@@ -303,4 +262,16 @@ private:
 void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
 {
     engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
+}
+
+void set_default_locale(const QString &tag)
+{
+    QLocale::setDefault(QLocale(tag));
+}
+
+QString system_locale_name()
+{
+    // The languages the person reads, most wanted first (LANGUAGE, then LC_MESSAGES on
+    // Linux), not the locale numbers and dates are formatted in
+    return QLocale::system().uiLanguages().join(QLatin1Char(','));
 }

@@ -1,9 +1,10 @@
 //! The UI thread: the window, what it shows, and the clock that keeps it current.
 //!
 //! Two sources feed the pages. This phone's own core is the default for everything; another
-//! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
+//! Anibeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
+use anibeam_core::i18n::tr;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -15,11 +16,12 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick,
-    SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
+    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, RollingSettings,
+    SeasonPick, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
+use crate::notify::{self, Notify};
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
@@ -35,7 +37,7 @@ const STORAGE_EVERY: u32 = 30;
 
 /// Puts a model's rows in place, touching only the rows that changed, so a once-a-second
 /// countdown repaints the text that moved and not the whole grid.
-fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(crate) fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     if model.row_count() != rows.len() {
         model.set_vec(rows);
         return;
@@ -52,20 +54,20 @@ fn list<T: Clone + 'static>() -> Rc<VecModel<T>> {
 }
 
 /// Shelves whose tiles keep one model per shelf title for the life of the app.
-struct Shelves {
-    shelves: Rc<VecModel<Shelf>>,
+pub(crate) struct Shelves {
+    pub(crate) shelves: Rc<VecModel<Shelf>>,
     tiles: HashMap<&'static str, Rc<VecModel<Tile>>>,
 }
 
 impl Shelves {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Shelves {
             shelves: list(),
             tiles: HashMap::new(),
         }
     }
 
-    fn set(&mut self, rows: Vec<(&'static str, Vec<Tile>)>) {
+    pub(crate) fn set(&mut self, rows: Vec<(&'static str, Vec<Tile>)>) {
         let shelves = rows
             .into_iter()
             .filter(|(_, tiles)| !tiles.is_empty())
@@ -74,7 +76,7 @@ impl Shelves {
                 let count = tiles.len();
                 update(&model, tiles);
                 Shelf {
-                    title: title.into(),
+                    title: tr!(title).into(),
                     count: count.to_string().into(),
                     tiles: model.into(),
                 }
@@ -83,6 +85,10 @@ impl Shelves {
         update(&self.shelves, shelves);
     }
 }
+
+/// What the last episode mark said, how to put it back (the series, the count before it and
+/// the season, when Undo can), and the tick it said it on.
+type MarkNote = (String, Option<(u64, u32, u32)>, u32);
 
 /// Which series page is open: one of this phone's, or one of the other device's.
 #[derive(Clone, Copy, PartialEq)]
@@ -144,6 +150,10 @@ struct App {
     /// What Plan to watch said, kept apart from the list's own note.
     airing_plan_note: Option<String>,
     airing_undo: Option<(u64, String, u32)>,
+    /// What the last episode mark said; see `MarkNote`.
+    mark_note: Option<MarkNote>,
+    /// A mark is on its way to the core; the next waits for it, so two never cross.
+    mark_busy: bool,
     /// Shows marked not interested here and not yet gone from the core's list.
     airing_hidden: HashSet<u64>,
     /// A read asked for while one was out: run it, asking AniList or not, when that lands.
@@ -164,11 +174,20 @@ struct App {
     sources: Vec<PhoneSource>,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
+    /// The rolling settings were asked for.
+    rolling_loaded: bool,
     held: Option<bool>,
-    service: Option<String>,
+    service: Option<notify::Ongoing>,
+    /// The downloads seen not yet whole, so each one that finishes is told once.
+    unfinished: HashSet<String>,
     /// The service's notification went up while Android allowed it to show. One posted
     /// before the person allowed notifications stays hidden until it is posted again.
     service_shown: bool,
+    /// When Android's notification dialog was last asked for.
+    asked_at: Option<std::time::Instant>,
+    /// The last sync's end, while the computer's line still shows it, so a language change
+    /// words it again without asking the computer.
+    synced: Option<(i64, Option<String>)>,
 }
 
 thread_local! {
@@ -180,6 +199,12 @@ pub fn endpoints_changed() {
     with_app(App::show_search_sources);
 }
 
+/// Downloads calls this once the core took a download or a subscription: the first one
+/// may explain the notification.
+pub fn download_started() {
+    with_app(App::download_started);
+}
+
 fn with_app(f: impl FnOnce(&mut App)) {
     APP.with(|app| {
         if let Some(app) = app.borrow_mut().as_mut() {
@@ -188,81 +213,61 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
-/// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 8] = [
-    "Accounts",
-    "Downloads",
-    "Streaming",
-    "Search sites",
-    "Connection",
-    "Your computer",
-    "About",
-    "App icon",
+/// More's sections' names, by the index Settings.section uses.
+const SECTIONS: [&str; 14] = [
+    "more-accounts",
+    "phone-nav-downloads",
+    "more-streaming",
+    "onb-sites-title",
+    "more-connection",
+    "more-computer",
+    "more-about",
+    "more-icon",
+    "more-stats",
+    "more-data",
+    "more-activity",
+    "more-appearance",
+    "more-subtitles",
+    "more-language",
 ];
 
-/// Every setting More's search can land on: its section, its label (the key its page lights),
-/// and the words a person might type for it.
+/// Every setting More's search can land on: its section, its label's message ID (the label is
+/// the key its page lights), and the ID of the words a person might type for it. The search
+/// reads the words in the language the app speaks and in English, so an English word still
+/// finds its setting.
 const SETTINGS: &[(i32, &str, &str)] = &[
-    (
-        0,
-        "AniList",
-        "anilist tracker sign in login account connect list progress",
-    ),
-    (
-        0,
-        "MyAnimeList",
-        "mal myanimelist tracker sign in login account connect list progress",
-    ),
-    (
-        1,
-        "Storage cap",
-        "space disk limit gb full storage delete size",
-    ),
-    (
-        1,
-        "Only on Wi-Fi",
-        "wifi wi-fi mobile data cellular network",
-    ),
-    (
-        2,
-        "Stream quality",
-        "auto original 1080p 720p 480p convert data computer play",
-    ),
-    (
-        3,
-        "Check repos for new sites",
-        "refresh update repo endpoint",
-    ),
-    (
-        3,
-        "Add a repo",
-        "repo endpoint trust fingerprint address url",
-    ),
-    (
-        3,
-        "Add a site by hand",
-        "custom endpoint feed rss torznab jackett prowlarr address",
-    ),
-    (3, "Your own feeds", "feed rss source remove"),
-    (
-        4,
-        "Check the connection",
-        "network dns test https secure reach internet",
-    ),
-    (
-        5,
-        "Your computer's AniBeam",
-        "tailscale tailnet host address desktop library stream test save device",
-    ),
-    (6, "What's new", "changelog patch notes changes update"),
-    (6, "Set up again", "onboarding first run start over"),
-    (6, "Version", "build about"),
-    (
-        7,
-        "App icon",
-        "icon launcher home screen logo dark line art themed material you",
-    ),
+    (0, "tracker-anilist", "more-words-anilist"),
+    (0, "tracker-mal", "more-words-mal"),
+    (1, "more-set-storage-cap", "more-words-storage-cap"),
+    (1, "onb-wifi-only", "more-words-wifi"),
+    (1, "more-set-rolling", "more-words-rolling"),
+    (1, "onb-notify-title", "more-words-notifications"),
+    (2, "more-set-stream-quality", "more-words-stream-quality"),
+    (3, REPOS_CHECK, "more-words-check-repos"),
+    (3, "repos-add-title", "more-words-add-repo"),
+    (3, "repos-add-site-label", "more-words-add-site"),
+    (3, FEEDS, "more-words-feeds"),
+    (4, "more-set-check", "more-words-check"),
+    (5, "more-set-computer", "more-words-computer"),
+    (6, "more-set-whats-new", "more-words-whats-new"),
+    (6, "more-set-onboarding", "more-words-onboarding"),
+    (6, "about-ratings", "more-words-ratings"),
+    (6, "more-set-version", "more-words-version"),
+    (8, "more-stats", "more-words-stats"),
+    (9, "backup-export", "more-words-backup"),
+    (9, "backup-restore", "more-words-restore"),
+    (9, "backup-images-title", "more-words-cache"),
+    (10, "more-activity", "more-words-activity"),
+    (11, "look-colours", "more-words-colours"),
+    (11, "look-text-size", "more-words-text-size"),
+    (7, "more-icon", "more-words-icon"),
+    (12, "more-set-subs-size", "more-words-subs-size"),
+    (12, "more-set-subs-style", "more-words-subs-style"),
+    (13, "more-language", "more-words-language"),
 ];
+
+const FEEDS: &str = "more-set-feeds";
+const REPOS_CHECK: &str = "repos-check-repos";
 
 /// The settings a search names: each word in the label, the words or the section's name, the
 /// ones whose label holds the whole search first.
@@ -274,11 +279,13 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
     }
     let mut hits: Vec<(bool, SettingHit)> = SETTINGS
         .iter()
-        .filter(|(_, label, _)| has_feeds || *label != "Your own feeds")
-        .filter(|(_, label, _)| has_repos || *label != "Check repos for new sites")
-        .filter_map(|&(section, label, words)| {
-            let place = SECTIONS[section as usize];
-            let hay = format!("{label} {words} {place}").to_lowercase();
+        .filter(|(_, label, _)| has_feeds || *label != FEEDS)
+        .filter(|(_, label, _)| has_repos || *label != REPOS_CHECK)
+        .filter_map(|&(section, label_id, words_id)| {
+            let label = tr!(label_id);
+            let place = tr!(SECTIONS[section as usize]);
+            let english = english_words(&[label_id, words_id, SECTIONS[section as usize]]);
+            let hay = format!("{label} {} {place} {english}", tr!(words_id)).to_lowercase();
             q.split_whitespace().all(|w| hay.contains(w)).then(|| {
                 (
                     label.to_lowercase().contains(&q),
@@ -295,15 +302,42 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
     hits.into_iter().map(|(_, hit)| hit).collect()
 }
 
+/// The English of some messages, so a word typed in English still finds a setting when the app
+/// speaks another language.
+fn english_words(ids: &[&str]) -> String {
+    use crate::tr::Lang;
+    let now = crate::tr::lang();
+    if now == Lang::En {
+        return String::new();
+    }
+    ids.iter()
+        .map(|id| crate::tr::tr_in(Lang::En, id, &[]))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn account_line(a: &TrackerAccount) -> String {
     match (a.connected, &a.username) {
-        (true, Some(name)) => format!("Signed in as {name}"),
-        (true, None) => "Signed in".to_string(),
+        (true, Some(name)) => tr!("acct-signed-in-as", name = name.as_str()),
+        (true, None) => tr!("acct-signed-in"),
         (false, _) if a.client_id.is_empty() && !a.bundled_credentials => {
-            "Not available in this build".to_string()
+            tr!("acct-not-in-build")
         }
-        (false, _) => "Not signed in. Tap to sign in.".to_string(),
+        (false, _) => tr!("acct-tap-to-sign-in"),
     }
+}
+
+/// The name of the person whose watch history the computer shows this phone, from its
+/// hello. None with no name, so a screen says nothing rather than a guess.
+pub(crate) fn person_name(profile: Option<&anibeam_companion::api::Profile>) -> Option<&str> {
+    profile.map(|p| p.name.trim()).filter(|n| !n.is_empty())
+}
+
+/// "Alex Doe's progress", or empty with no name.
+pub(crate) fn progress_of(profile: Option<&anibeam_companion::api::Profile>) -> String {
+    person_name(profile).map_or_else(String::new, |name| {
+        tr("host-progress", &[("name", name.into())])
+    })
 }
 
 impl App {
@@ -326,16 +360,12 @@ impl App {
         match event {
             Event::SyncStarted => {}
             Event::SyncDone { at, error } => {
-                let (tone, text) = match error {
-                    None => (0, format!("Synced {}.", format::stamp(at))),
-                    Some(e) => (1, format!("Last try {}: {e}", format::stamp(at))),
-                };
-                self.data().set_host_tone(tone);
-                self.data().set_host_result(text.into());
+                self.synced = Some((at, error.map(|e| e.to_string())));
+                self.show_synced();
             }
             Event::Snapshot(cache) => {
                 crate::player::set_remote_numbers(remote_numbers(&cache));
-                self.cache = Some(cache);
+                self.cache = Some(*cache);
             }
             Event::Poster(id, decoded) => {
                 self.remote_art
@@ -346,7 +376,8 @@ impl App {
             Event::AniList(anilist) => self.anilist = anilist,
             Event::TestStarted => {
                 self.data().set_host_tone(2);
-                self.data().set_host_result("Asking...".into());
+                self.synced = None;
+                self.data().set_host_result(tr!("host-asking").into());
             }
             Event::TestDone(result) => {
                 let (tone, text) = match result {
@@ -417,11 +448,28 @@ impl App {
         }
     }
 
+    /// The computer's line for the last sync, in the language the app speaks now.
+    fn show_synced(&self) {
+        let Some((at, error)) = &self.synced else {
+            return;
+        };
+        let (tone, text) = match error {
+            None => (0, tr!("host-synced", when = format::stamp(*at))),
+            Some(e) => (
+                1,
+                tr!("host-last-try", when = format::stamp(*at), error = e),
+            ),
+        };
+        self.data().set_host_tone(tone);
+        self.data().set_host_result(text.into());
+    }
+
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
     /// run every second; the models only repaint what changed.
     fn tick(&mut self) {
         // A new day moves the calendar's window, so the airings around it are read again.
         let changed = crate::local::take_changed();
+        crate::find::tick(changed);
         if changed
             || self
                 .read_on
@@ -429,6 +477,7 @@ impl App {
         {
             self.reload();
         }
+        self.show_notify();
         let now = anibeam_companion::now();
         // A handle of its own, so `data` does not hold `self` while the models change.
         let window = self.window.clone_strong();
@@ -452,21 +501,31 @@ impl App {
         self.show_calendar(calendar);
         update(&self.coming, home.coming);
         self.home_shelves.set(vec![
-            ("Recently watched", home.watched),
-            ("Recently downloaded", home.downloaded),
+            ("home-recently-watched", home.watched),
+            ("home-recently-downloaded", home.downloaded),
         ]);
+        crate::feed::tick(&window, changed, &self.art, now);
+        crate::disk::tick(&window, changed, &self.cards);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
-                0 => "On this phone".to_string(),
-                1 => "On this phone, 1 show".to_string(),
-                n => format!("On this phone, {n} shows"),
+                0 => tr!("home-note-empty"),
+                n => tr!("home-note", count = n),
             }
             .into(),
         );
 
+        // Whose progress the last sync showed, said only beside the address it came from,
+        // so a newly typed address never sits under the last computer's person.
+        let whose = progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+        let synced_here = self
+            .cache
+            .as_ref()
+            .is_some_and(|c| c.address.trim() == data.get_host_address().trim());
+        data.set_host_person(if synced_here { whose.as_str() } else { "" }.into());
+
         // Library: this phone, or the device picked above it.
-        let mut devices: Vec<SharedString> = vec!["This phone".into()];
+        let mut devices: Vec<SharedString> = vec![tr!("lib-this-phone").into()];
         if let Some(name) = self.host_name() {
             devices.push(name.into());
         }
@@ -495,33 +554,38 @@ impl App {
                 &query,
             )
         };
-        let shows = |n: usize| {
-            if n == 1 {
-                "1 show".to_string()
-            } else {
-                format!("{n} shows")
-            }
-        };
         data.set_library_note(
             if device == 0 {
-                format!("This phone, {}", shows(self.cards.len()))
+                tr!("lib-note-phone", count = self.cards.len())
             } else {
                 let at = self
                     .cache
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                format!("{}, synced {at}", devices[device])
+                match person_name(self.cache.as_ref().and_then(|c| c.profile.as_ref())) {
+                    Some(name) => tr!(
+                        "lib-note-remote-for",
+                        device = devices[device].as_str(),
+                        name = name,
+                        when = at
+                    ),
+                    None => tr!(
+                        "lib-note-remote",
+                        device = devices[device].as_str(),
+                        when = at
+                    ),
+                }
             }
             .into(),
         );
         data.set_library_empty(
             if !query.trim().is_empty() {
-                format!("Nothing matches \"{}\".", query.trim())
+                tr!("lib-empty-search", query = query.trim())
             } else if device == 0 {
-                "Nothing on this phone yet.".to_string()
+                tr!("lib-empty-phone")
             } else {
-                "That device has nothing in its library.".to_string()
+                tr!("lib-empty-remote")
             }
             .into(),
         );
@@ -529,7 +593,7 @@ impl App {
         if devices != self.devices {
             data.set_devices(ModelRc::new(VecModel::from(devices.clone())));
             let mut views = devices.clone();
-            views.push("Airing now".into());
+            views.push(tr!("cal-view-airing").into());
             data.set_cal_views(ModelRc::new(VecModel::from(views)));
             self.devices = devices;
         }
@@ -540,7 +604,7 @@ impl App {
             Some(Open::Phone(_)) => self
                 .detail
                 .as_ref()
-                .map(|d| crate::phone::series(d, &self.art, now)),
+                .map(|d| crate::phone::series(d, &self.art, now, self.deleting)),
             Some(Open::Remote(id)) => crate::remote::series(
                 self.cache.as_ref(),
                 &self.anilist,
@@ -581,12 +645,24 @@ impl App {
                 data.set_series_open(false);
             }
         }
+        // The sheets on the page edit this phone's own show, never the computer's.
+        let own = matches!(self.open, Some(Open::Phone(_)));
+        for (key, path) in crate::show::sync(
+            &window,
+            self.detail.as_ref().filter(|_| own),
+            self.trackers.as_ref(),
+            &self.art,
+        ) {
+            if self.asked.insert(key) {
+                let _ = self.posters.send((key, path));
+            }
+        }
 
         // More.
         if let Some((job, why)) = crate::local::sign_in_failed()
             && let Some(which) = self.signing_in.remove(&job)
         {
-            self.sign_in_error = Some((which, format!("Sign-in failed: {why}. Tap to try again.")));
+            self.sign_in_error = Some((which, tr!("acct-sign-in-failed", why = why)));
         }
         if let Some((anilist, mal)) = &self.trackers {
             let line = |which: i32, a: &TrackerAccount| match &self.sign_in_error {
@@ -598,16 +674,15 @@ impl App {
             // The warn dot shows only while a row says its sign-in failed.
             let failed = |which: i32, a: &TrackerAccount| matches!(&self.sign_in_error, Some((w, _)) if *w == which && !a.connected);
             data.set_sign_in_failed(failed(0, anilist) || failed(1, mal));
-            let signed: Vec<&str> = [("AniList", anilist), ("MAL", mal)]
-                .iter()
-                .filter(|(_, a)| a.connected)
-                .map(|(n, _)| *n)
-                .collect();
-            data.set_trackers_line(if signed.is_empty() {
-                "Not signed in".into()
-            } else {
-                signed.join(" and ").into()
-            });
+            data.set_trackers_line(
+                match (anilist.connected, mal.connected) {
+                    (false, false) => tr!("more-accounts-none"),
+                    (true, true) => tr!("more-accounts-syncing-both"),
+                    (true, false) => tr!("more-accounts-syncing", tracker = "AniList"),
+                    (false, true) => tr!("more-accounts-syncing", tracker = "MAL"),
+                }
+                .into(),
+            );
         }
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
@@ -629,12 +704,26 @@ impl App {
             self.airing_undo = None;
             data.set_airing_undo("".into());
         }
+        if self
+            .mark_note
+            .as_ref()
+            .is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > MARK_TICKS)
+        {
+            self.mark_note = None;
+            self.show_mark();
+        }
         if self.ticks.is_multiple_of(5) {
             self.hold_for_network();
         }
         if self.ticks.is_multiple_of(STORAGE_EVERY) {
             self.storage();
         }
+    }
+
+    /// The clock's second: the pages, then the count the timed lines and polls go by. Only
+    /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
+    fn second(&mut self) {
+        self.tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -651,9 +740,8 @@ impl App {
             .sum();
         data.set_cal_note(
             match total {
-                0 => "Nothing airs this week".to_string(),
-                1 => "1 episode in the next 7 days".to_string(),
-                n => format!("{n} episodes in the next 7 days"),
+                0 => tr!("cal-note-none"),
+                n => tr!("cal-note", count = n),
             }
             .into(),
         );
@@ -749,15 +837,28 @@ impl App {
             });
     }
 
+    /// Airing now on another season: the page empties and reads it.
+    fn set_airing_season(&mut self, to: SeasonPick) {
+        // The page already shows it: nothing to do, unless the read failed or is not there.
+        if to == self.airing_season && self.airing.is_some() && self.airing_note.is_none() {
+            return;
+        }
+        self.airing_season = to;
+        self.airing = None;
+        self.airing_note = None;
+        self.show_airing();
+        self.load_airing(true);
+    }
+
     fn show_airing(&mut self) {
         self.ask_airing_posters();
         let window = self.window.clone_strong();
         let data = window.global::<AppData>();
         let now = anibeam_companion::now();
-        data.set_airing_season(i32::from(self.airing_season == SeasonPick::Next));
+        data.set_airing_season(i32::from(self.airing_season != SeasonPick::Now));
         let Some(airing) = &self.airing else {
             data.set_airing_line(if self.airing_listing || self.airing_refreshing {
-                "Asking AniList".into()
+                tr!("airing-asking").into()
             } else {
                 "".into()
             });
@@ -774,17 +875,40 @@ impl App {
         update(
             &self.airing_filters,
             vec![
-                format!("Everything {}", shows.len()).into(),
-                format!("On my lists {listed}").into(),
-                format!("On this phone {owned}").into(),
+                tr!("phone-airing-filter-all", count = shows.len()).into(),
+                tr!("airing-filter-listed", count = listed).into(),
+                tr!("airing-filter-owned", count = owned).into(),
             ],
         );
         data.set_airing_filter(self.airing_filter);
-        let mut seasons: Vec<SharedString> = vec!["This season".into(), "Next season".into()];
-        if self.airing_season == SeasonPick::Next {
-            seasons[1] = airing.label.clone().into();
+        // This season, the next one or the one picked, and the way to any other.
+        let at = crate::seasons::now();
+        let second = match self.airing_season {
+            SeasonPick::Now => tr!("airing-next-season"),
+            showing => crate::seasons::label(showing, at),
+        };
+        update(
+            &self.airing_seasons,
+            vec![
+                tr!("airing-this-season").into(),
+                second.into(),
+                tr!("airing-other-season").into(),
+            ],
+        );
+        let pick = window.global::<crate::AiringPick>();
+        pick.set_showing(crate::seasons::label(self.airing_season, at).into());
+        let (showing_year, showing_quarter) = crate::seasons::moment_of(self.airing_season, at)
+            .map_or((-1, -1), |(y, q)| (y, q as i32));
+        pick.set_showing_year(showing_year);
+        pick.set_showing_quarter(showing_quarter);
+        pick.set_this_year(at.0);
+        pick.set_this_quarter(at.1 as i32);
+        pick.set_focus_year(crate::seasons::year_of(self.airing_season, at));
+        // The list reaches a year past this one, so it moves on with the calendar.
+        let years = crate::seasons::years(at);
+        if pick.get_years().row_data(0) != years.first().copied() {
+            pick.set_years(ModelRc::new(VecModel::from(years)));
         }
-        update(&self.airing_seasons, seasons);
         let picked: Vec<&&AiringShow> = shows
             .iter()
             .filter(|s| match self.airing_filter {
@@ -845,9 +969,9 @@ impl App {
             self.airing_refreshing,
         ) {
             (Some(note), _) => note.clone(),
-            (None, true) => "Asking AniList for the newest".to_string(),
+            (None, true) => tr!("airing-asking-newest"),
             (None, false) if airing.not_interested > 0 => {
-                format!("{} hidden as not interested", airing.not_interested)
+                tr!("airing-hidden", count = airing.not_interested)
             }
             _ => String::new(),
         };
@@ -908,6 +1032,29 @@ impl App {
         self.data().set_airing_menu(menu);
     }
 
+    /// Get episodes for a show the library does not have: straight into its show view.
+    fn airing_get(&mut self, id: i32) {
+        self.data().set_airing_menu(Default::default());
+        let show = self
+            .airing
+            .as_ref()
+            .and_then(|a| a.shows.iter().find(|s| s.anilist_id == id as u64).cloned());
+        if let Some(show) = show {
+            crate::find::open_airing(&show);
+            return;
+        }
+        // An Out now episode whose show is not in the season list: search its title.
+        let aired = self.airing.as_ref().and_then(|a| {
+            a.aired
+                .iter()
+                .find(|e| e.anilist_id == id as u64)
+                .map(|e| e.title.clone())
+        });
+        if let Some(title) = aired {
+            crate::find::search_for(&title);
+        }
+    }
+
     fn airing_plan(&mut self, id: i32) {
         self.data().set_airing_menu(Default::default());
         let Some(core) = crate::local::core() else {
@@ -919,11 +1066,10 @@ impl App {
             .spawn(move || {
                 let note = match core.call(Call::PlanToWatch { anilist_id }) {
                     Ok(_) => None,
-                    Err(anibeam_core::CoreError::NotConnected { .. }) => Some(
-                        "Plan to watch needs AniList or MAL. Sign in under More, Accounts."
-                            .to_string(),
-                    ),
-                    Err(e) => Some(format!("Plan to watch did not go through: {e}")),
+                    Err(anibeam_core::CoreError::NotConnected { .. }) => {
+                        Some(tr!("airing-plan-needs-tracker"))
+                    }
+                    Err(e) => Some(tr!("airing-plan-failed", error = e.to_string())),
                 };
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
@@ -1052,6 +1198,97 @@ impl App {
             });
     }
 
+    /// A rolling download's control: how many stay ahead, more now, or everything.
+    fn roll_action(&mut self, id: i32, what: i32, n: i32) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let (Ok(id), Ok(n)) = (u64::try_from(id), u32::try_from(n)) else {
+            return;
+        };
+        let call = match what {
+            0 => Call::SetRoll {
+                id,
+                ahead: Some(n),
+                on: None,
+                delete_watched: None,
+            },
+            1 => Call::RollMore { id, count: n },
+            _ => Call::SetRoll {
+                id,
+                ahead: None,
+                on: Some(false),
+                delete_watched: None,
+            },
+        };
+        let _ = std::thread::Builder::new()
+            .name("roll".into())
+            .spawn(move || {
+                if let Err(e) = core.call(call) {
+                    crate::local::log(&format!("roll change failed: {e}"));
+                }
+                let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
+            });
+    }
+
+    /// The rolling settings as More shows them.
+    fn show_rolling(&self, r: &RollingSettings) {
+        let data = self.data();
+        data.set_roll_big(r.big);
+        data.set_roll_ahead(r.ahead as i32);
+        data.set_roll_over(r.over as i32);
+        data.set_roll_delete(r.delete_watched);
+        data.set_roll_keep(r.keep_watched as i32);
+    }
+
+    /// Reads the rolling settings once, off the UI thread; More changes them only through
+    /// the app, which shows what it saves.
+    fn load_rolling(&mut self) {
+        if self.rolling_loaded {
+            return;
+        }
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        self.rolling_loaded = true;
+        let _ = std::thread::Builder::new()
+            .name("rolling".into())
+            .spawn(move || {
+                if let Ok(Reply::RollingSettings { rolling }) = core.call(Call::GetRollingSettings)
+                {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        with_app(|app| app.show_rolling(&rolling))
+                    });
+                }
+            });
+    }
+
+    /// Saves off the UI thread, in order: a slider sends a step at a time, and only the
+    /// newest of the steps waiting is written.
+    fn save_rolling(&self, rolling: RollingSettings) {
+        static SAVES: std::sync::OnceLock<Sender<RollingSettings>> = std::sync::OnceLock::new();
+        let tx = SAVES.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<RollingSettings>();
+            let _ = std::thread::Builder::new()
+                .name("rolling".into())
+                .spawn(move || {
+                    while let Ok(mut rolling) = rx.recv() {
+                        while let Ok(newer) = rx.try_recv() {
+                            rolling = newer;
+                        }
+                        let Some(core) = crate::local::core() else {
+                            continue;
+                        };
+                        if let Err(e) = core.call(Call::SetRollingSettings { rolling }) {
+                            crate::local::log(&format!("rolling settings not saved: {e}"));
+                        }
+                    }
+                });
+            tx
+        });
+        let _ = tx.send(rolling);
+    }
+
     fn remove_source(&mut self, index: i32) {
         let Some(core) = crate::local::core() else {
             return;
@@ -1076,38 +1313,56 @@ impl App {
         };
         self.data().set_checking(true);
         self.data().set_check_summary("".into());
-        let _ = std::thread::Builder::new().name("check".into()).spawn(move || {
-            let answer = core.call(Call::PhoneNetCheck);
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    let window = app.window.clone_strong();
-                    let data = window.global::<AppData>();
-                    data.set_checking(false);
-                    let Ok(Reply::PhoneNetCheck { checks }) = answer else { return };
-                    app.check_text = std::iter::once(format!("AniBeam {} connection check", env!("CARGO_PKG_VERSION")))
+        let _ = std::thread::Builder::new()
+            .name("check".into())
+            .spawn(move || {
+                let answer = core.call(Call::PhoneNetCheck);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        let window = app.window.clone_strong();
+                        let data = window.global::<AppData>();
+                        data.set_checking(false);
+                        let Ok(Reply::PhoneNetCheck { checks }) = answer else {
+                            return;
+                        };
+                        app.check_text = std::iter::once(format!(
+                            "Anibeam {} connection check",
+                            env!("ANIBEAM_PHONE_VERSION")
+                        ))
                         .chain(checks.iter().map(|c| {
-                            format!("{} {}: {} ({} ms)", if c.ok { "OK  " } else { "FAIL" }, c.name, c.detail, c.ms)
+                            format!(
+                                "{} {}: {} ({} ms)",
+                                if c.ok { "OK  " } else { "FAIL" },
+                                c.name,
+                                c.detail,
+                                c.ms
+                            )
                         }))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    let failed = checks.iter().filter(|c| !c.ok).count();
-                    data.set_check_failed(failed as i32);
-                    data.set_check_summary(
-                        if failed == 0 { "Every step went through.".to_string() } else { format!("{failed} of {} steps failed. A screenshot of this list says where.", checks.len()) }
+                        let failed = checks.iter().filter(|c| !c.ok).count();
+                        data.set_check_failed(failed as i32);
+                        data.set_check_summary(
+                            if failed == 0 {
+                                tr!("more-check-all-ok")
+                            } else {
+                                tr!("more-check-failed", failed = failed, total = checks.len())
+                            }
                             .into(),
-                    );
-                    let rows: Vec<CheckRow> = checks
-                        .iter()
-                        .map(|c| CheckRow {
-                            name: format!("{}  {} ms", c.name, c.ms).into(),
-                            detail: c.detail.clone().into(),
-                            ok: c.ok,
-                        })
-                        .collect();
-                    data.set_checks(ModelRc::new(VecModel::from(rows)));
-                })
+                        );
+                        let rows: Vec<CheckRow> = checks
+                            .iter()
+                            .map(|c| CheckRow {
+                                name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms)
+                                    .into(),
+                                detail: c.detail.clone().into(),
+                                ok: c.ok,
+                            })
+                            .collect();
+                        data.set_checks(ModelRc::new(VecModel::from(rows)));
+                    })
+                });
             });
-        });
     }
 
     /// Asks the engine for its torrents on a thread, one ask at a time.
@@ -1121,6 +1376,7 @@ impl App {
         if self.sources.is_empty() {
             self.load_sources();
         }
+        self.load_rolling();
         crate::repos::opened();
         self.polling = true;
         let _ = std::thread::Builder::new()
@@ -1165,64 +1421,88 @@ impl App {
         torrents.extend(demo_torrents());
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
-        let active: Vec<&Torrent> = torrents
-            .iter()
-            .filter(|t| {
-                !is_demo(&t.hash)
-                    && t.progress < 1.0
-                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
-            })
-            .collect();
-        let rows = torrents
+        let real = |t: &Torrent| !is_demo(&t.hash) || demo_notifies();
+        let rows: Vec<DownloadRow> = torrents
             .iter()
             .map(|t| download_row(t, held, self.torrent_show(t), &self.art))
             .collect();
+        let moving: Vec<notify::Moving> = torrents
+            .iter()
+            .zip(&rows)
+            .filter(|(t, _)| {
+                real(t)
+                    && t.progress < 1.0
+                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+            })
+            .map(|(t, row)| notify::Moving {
+                called: notify::called(&row.show, &notify::what_of(t), &t.name),
+                facts: row.facts.to_string(),
+                progress: t.progress,
+                size: t.size,
+            })
+            .collect();
+        // A download seen unfinished that is whole now says so, once, with its own
+        // notification.
+        let now: Vec<(String, bool)> = torrents
+            .iter()
+            .filter(|t| real(t))
+            .map(|t| (t.hash.clone(), t.progress >= 1.0))
+            .collect();
+        for hash in notify::finished(&mut self.unfinished, &now) {
+            if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
+                crate::platform::episode_ready(
+                    notify::ready_id(&hash),
+                    &notify::ready_title(&row.show, &notify::what_of(t), &t.name),
+                    &notify::ready_text(),
+                );
+            }
+        }
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
-            "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
+            tr!("dl-note-waiting")
         } else if torrents.is_empty() {
-            "Nothing downloading."
+            tr!("dl-note-nothing")
         } else {
-            ""
+            String::new()
         };
         self.data().set_downloads_note(note.into());
         let (down, up) = torrents
             .iter()
             .fold((0u64, 0u64), |(d, u), t| (d + t.dlspeed, u + t.upspeed));
         self.data()
-            .set_rate_down(format!("{}/s", format::bytes(down)).into());
+            .set_rate_down(tr!("dl-speed", rate = format::bytes(down)).into());
         self.data()
-            .set_rate_up(format!("{}/s", format::bytes(up)).into());
-        let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
+            .set_rate_up(tr!("dl-speed", rate = format::bytes(up)).into());
+        let finished = torrents.iter().filter(|t| finished(t)).count();
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
-        self.data().set_moving_count(active.len() as i32);
+        self.data().set_moving_count(moving.len() as i32);
 
-        // The service runs while something downloads, with how many in its notification.
-        let text = match active.len() {
-            0 => None,
-            1 => Some(format!("Downloading {}", active[0].name)),
-            n => Some(format!("Downloading {n} episodes")),
-        };
+        // The service runs while something downloads, its notification saying what and how
+        // far along, with the numbers Downloads shows.
+        let text = notify::ongoing(&moving, format::bytes);
         if text != self.service {
-            let done = match &text {
-                Some(t) => crate::android::start_service(t),
-                None => {
-                    crate::android::stop_service();
+            let done = match (&text, &self.service) {
+                // Running: the notification changes in place. Starting the service again
+                // on every look would be refused once the app is in the background.
+                (Some(t), Some(_)) => crate::platform::update_service(t),
+                (Some(t), None) => crate::platform::start_service(t),
+                (None, _) => {
+                    crate::platform::stop_service();
                     true
                 }
             };
             if done {
-                self.service_shown = text.is_some() && crate::android::notifications_allowed();
+                self.service_shown = text.is_some() && crate::platform::notifications_allowed();
                 self.service = text;
             }
         } else if let Some(t) = &self.service
             && !self.service_shown
-            && crate::android::notifications_allowed()
+            && crate::platform::notifications_allowed()
         {
             // Allowed since it went up: post it again, so it shows.
-            self.service_shown = crate::android::start_service(t);
+            self.service_shown = crate::platform::start_service(t);
         }
     }
 
@@ -1232,7 +1512,7 @@ impl App {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
+        let held = self.prefs.wifi_only && crate::platform::unmetered() != Some(true);
         if self.held == Some(held) {
             return;
         }
@@ -1256,8 +1536,8 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("storage".into())
             .spawn(move || {
-                let used = crate::android::used(&library);
-                let space = crate::android::space(&data_dir);
+                let used = crate::platform::used(&library);
+                let space = crate::platform::space(&data_dir);
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| app.show_storage(used, space))
                 });
@@ -1283,28 +1563,26 @@ impl App {
                 });
             }
         }
-        let free_text = free
-            .map(|f| format!("{} free", format::bytes(f)))
-            .unwrap_or_default();
         data.set_used_figure(format::bytes(used).into());
         data.set_free_figure(free.map(format::bytes).unwrap_or_default().into());
         data.set_storage_line(
-            format!(
-                "{} used{}{}",
-                format::bytes(used),
-                if free_text.is_empty() { "" } else { ", " },
-                free_text
-            )
+            match free {
+                Some(f) => tr!(
+                    "disk-storage-line-free",
+                    used = format::bytes(used),
+                    free = format::bytes(f)
+                ),
+                None => tr!("disk-storage-line", used = format::bytes(used)),
+            }
             .into(),
         );
         let limit = (self.prefs.limit_gb * 1e9) as u64;
-        let below = "less than the cap: the phone fills up before AniBeam stops";
         data.set_free_line(
             free.map(|f| {
                 if f < limit {
-                    format!("This phone has {} free, {below}.", format::bytes(f))
+                    tr!("disk-free-below-cap", free = format::bytes(f))
                 } else {
-                    format!("This phone has {} free.", format::bytes(f))
+                    tr!("disk-free", free = format::bytes(f))
                 }
             })
             .unwrap_or_default()
@@ -1314,6 +1592,24 @@ impl App {
 
     fn show_prefs(&self) {
         let data = self.data();
+        data.set_version(
+            tr!(
+                "more-version",
+                version = env!("ANIBEAM_PHONE_VERSION"),
+                build = env!("ANIBEAM_VERSION_CODE")
+            )
+            .into(),
+        );
+        data.set_ratings_label(tr!("about-ratings").into());
+        data.set_mark_watched_label(tr!("mark-menu-watched").into());
+        data.set_mark_unwatched_label(tr!("mark-menu-unwatched").into());
+        data.set_mark_cancel_label(tr!("mark-menu-cancel").into());
+        data.set_ratings_credit(tr!("about-ratings-credit").into());
+        let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
+            .iter()
+            .map(|q| q.label().into())
+            .collect();
+        data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
         data.set_onboarding(!self.prefs.onboarded);
         data.set_wifi_only(self.prefs.wifi_only);
         let quality = crate::stream::Quality::ALL
@@ -1333,10 +1629,62 @@ impl App {
     /// preview.
     fn show_app_icon(&self) {
         let data = self.data();
-        data.set_app_icon(crate::android::app_icon());
-        if let Some((ground, ink)) = crate::android::line_colours() {
+        data.set_app_icon(crate::platform::app_icon());
+        if let Some((ground, ink)) = crate::platform::line_colours() {
             data.set_line_ground(slint::Color::from_argb_encoded(ground));
             data.set_line_ink(slint::Color::from_argb_encoded(ink));
+        }
+    }
+
+    fn notify(&self) -> Notify {
+        Notify::new(
+            crate::platform::notifications_allowed(),
+            self.prefs.notify_asked,
+        )
+    }
+
+    /// Where the download notification stands, for onboarding, Downloads and More. Read on
+    /// every tick: Android's dialog and its settings answer outside the app.
+    fn show_notify(&self) {
+        let code = self.notify().code();
+        if self.data().get_notify() != code {
+            self.data().set_notify(code);
+        }
+    }
+
+    /// The notification's button: Android's dialog the first time, its settings after. When
+    /// Android shows no dialog (it stopped asking, as after two denials on an earlier build),
+    /// `TorrentService.askPermission` opens the settings itself.
+    fn allow_notifications(&mut self) {
+        // A second tap while Android's dialog is still coming up is the same tap.
+        if self
+            .asked_at
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(2))
+        {
+            return;
+        }
+        match self.notify() {
+            Notify::Unasked => {
+                // Noted only once the ask went out, so one that failed is tried again.
+                if crate::platform::ask_notifications() {
+                    self.asked_at = Some(std::time::Instant::now());
+                    self.prefs.notify_asked = true;
+                    self.save_prefs();
+                }
+            }
+            Notify::Denied => crate::platform::notification_settings(),
+            Notify::On => {}
+        }
+        self.show_notify();
+    }
+
+    /// The core took a download or a subscription: the first one explains the notification
+    /// before Android asks, once, unless onboarding already did.
+    fn download_started(&mut self) {
+        if notify::offer_on_download(self.notify(), self.prefs.notify_offered) {
+            self.prefs.notify_offered = true;
+            self.save_prefs();
+            self.data().set_notify_ask(true);
         }
     }
 
@@ -1395,6 +1743,9 @@ impl App {
         } else {
             Open::Phone(id)
         });
+        // A mark's line and its Undo belong to the page they were made on.
+        self.mark_note = None;
+        self.show_mark();
         self.detail = None;
         self.reload_open();
         self.tick();
@@ -1437,6 +1788,92 @@ impl App {
             });
     }
 
+    /// An episode's mark, the desktop's cube click: a watched one marks it and every one after
+    /// it unwatched, any other marks it and every one before it watched. The season goes
+    /// along, since a show with no tracker keeps its marks per season.
+    fn mark(&mut self, number: f32, season: i32, watched: bool) {
+        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else {
+            return;
+        };
+        let whole = number.max(0.0).floor() as u32;
+        let target = if watched {
+            whole.saturating_sub(1)
+        } else {
+            whole
+        };
+        let season = u32::try_from(season).unwrap_or(1).max(1);
+        let before = self.detail.as_ref().and_then(|d| d.card.watched);
+        self.set_progress(core, series, target, season, before);
+    }
+
+    fn set_progress(
+        &mut self,
+        core: std::sync::Arc<anibeam_core::Core>,
+        series: u64,
+        target: u32,
+        season: u32,
+        before: Option<u32>,
+    ) {
+        if self.mark_busy {
+            return;
+        }
+        self.mark_busy = true;
+        let _ = std::thread::Builder::new()
+            .name("mark".into())
+            .spawn(move || {
+                let answer = core.call(Call::SetProgress {
+                    series,
+                    progress: target,
+                    season: Some(season),
+                });
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.mark_busy = false;
+                        // Gone from the page it was made on: its line and Undo go with it.
+                        if app.open != Some(Open::Phone(series)) {
+                            return;
+                        }
+                        app.mark_note = match answer {
+                            // A tracker's show with no account behind it: the way to one.
+                            Err(e @ anibeam_core::CoreError::NotConnected { .. }) => Some((
+                                tr("mark-not-connected", &[("reason", e.to_string().into())]),
+                                None,
+                                app.ticks,
+                            )),
+                            Err(e) => Some((e.to_string(), None, app.ticks)),
+                            Ok(_) => mark_line(target, before)
+                                .map(|line| (line, before.map(|b| (series, b, season)), app.ticks)),
+                        };
+                        app.show_mark();
+                        app.reload_open();
+                        app.tick();
+                    })
+                });
+            });
+    }
+
+    fn mark_take_back(&mut self) {
+        if self.mark_busy {
+            return;
+        }
+        let Some((_, Some((series, before, season)), _)) = self.mark_note.take() else {
+            return;
+        };
+        self.show_mark();
+        if let Some(core) = crate::local::core() {
+            self.set_progress(core, series, before, season, None);
+        }
+    }
+
+    fn show_mark(&self) {
+        let (line, undo) = self
+            .mark_note
+            .as_ref()
+            .map_or((String::new(), false), |(l, u, _)| (l.clone(), u.is_some()));
+        self.data().set_mark_line(line.into());
+        self.data().set_mark_undo(undo);
+    }
+
     fn reload_open(&mut self) {
         if let (Some(Open::Phone(id)), Some(core)) = (self.open, crate::local::core()) {
             self.detail = match core.call(Call::GetSeries { series: id }) {
@@ -1447,6 +1884,8 @@ impl App {
     }
 
     fn close_series(&mut self) {
+        self.mark_note = None;
+        self.show_mark();
         self.deleting = false;
         self.picked.clear();
         self.open = None;
@@ -1463,7 +1902,7 @@ impl App {
         };
         self.sign_in_error = None;
         let Some(core) = crate::local::core() else {
-            let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
+            let line: SharedString = tr!("acct-still-starting").into();
             if which == 0 {
                 self.data().set_anilist_state(line);
             } else {
@@ -1474,27 +1913,38 @@ impl App {
         let started = core.call(Call::ConnectTracker { tracker });
         if let Ok(Reply::Started { job }) = &started {
             self.signing_in.insert(*job, which);
+            // Its first read list is when the list kept on this phone is offered to it.
+            crate::listmove::offer(tracker);
         }
         if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
             self.sign_in_error = Some((
                 which,
-                format!("Sign-in did not start: {e}. Tap to try again."),
+                tr!("acct-sign-in-not-started", error = e.to_string()),
             ));
             self.tick();
         }
     }
 
     fn save_host(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            self.data().set_host_address("".into());
+            self.data().set_host_tone(2);
+            self.data().set_host_result(tr!("host-none").into());
+            let _ = self.commands.send(Command::Forget);
+            return;
+        }
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
-                self.data().set_host_result("Saved. Syncing...".into());
+                self.synced = None;
+                self.data().set_host_result(tr!("host-saved").into());
                 self.data().set_host_tone(2);
                 let _ = self.commands.send(Command::SaveAndSync(address));
             }
             Err(why) => {
                 self.data().set_host_tone(1);
+                self.synced = None;
                 self.data().set_host_result(why.into());
             }
         }
@@ -1507,6 +1957,7 @@ impl App {
             }
             Err(why) => {
                 self.data().set_host_tone(1);
+                self.synced = None;
                 self.data().set_host_result(why.into());
             }
         }
@@ -1536,22 +1987,45 @@ fn demo_torrents() -> Vec<Torrent> {
 
 const DEMO_MARK: &str = "demo:";
 
+/// Dev only: with this file on the device, the demo downloads drive the notification too,
+/// so it can be seen without a real download.
+fn demo_notifies() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::path::Path::new("/data/local/tmp/anibeam-demo/notify").exists())
+}
+
 /// Set on an Airing now poster's key in the art, apart from every series id.
-const AIRING_ART: u64 = 1 << 48;
+pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
+/// How long an episode mark's line stays, the desktop toast's eight seconds.
+const MARK_TICKS: u32 = 8;
+
+/// What a mark that moves more than one episode says, as the desktop's toast does; one
+/// that moves a single episode shows on its cube and says nothing.
+fn mark_line(target: u32, before: Option<u32>) -> Option<String> {
+    let before = before?;
+    if target.abs_diff(before) <= 1 {
+        return None;
+    }
+    Some(if target > before {
+        tr("mark-watched-up-to", &[("episode", target.into())])
+    } else {
+        tr("mark-unwatched-from", &[("episode", (target + 1).into())])
+    })
+}
 
 /// A list status as a poster's flag says it.
-fn list_word(status: anibeam_core::ListStatus) -> &'static str {
+fn list_word(status: anibeam_core::ListStatus) -> String {
     use anibeam_core::ListStatus::*;
-    match status {
-        Watching => "Watching",
-        Planning => "Planning",
-        Completed => "Completed",
-        Paused => "On hold",
-        Dropped => "Dropped",
-        Repeating => "Rewatching",
-    }
+    tr!(match status {
+        Watching => "list-watching",
+        Planning => "list-planning",
+        Completed => "list-completed",
+        Paused => "list-paused",
+        Dropped => "list-dropped",
+        Repeating => "list-repeating",
+    })
 }
 
 fn is_demo(hash: &str) -> bool {
@@ -1570,41 +2044,45 @@ fn plain(text: &str) -> String {
 fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -> DownloadRow {
     let done = t.progress >= 1.0;
     let paused = t.state.starts_with("paused") && !done;
+    // The state's message ID; the tone below goes by it too.
     let state = match t.state.as_str() {
-        _ if done => "Done",
+        _ if done => "dl-state-done",
         // Held off mobile data, nothing restarts it, a retry included, until Wi-Fi.
-        "pausedDL" | "error" if held => "Waiting for Wi-Fi",
-        "pausedDL" => "Paused",
-        "stalledDL" => "Looking for peers",
-        "checkingDL" => "Checking",
-        "error" => "Stopped by an error",
-        _ => "Downloading",
+        "pausedDL" | "error" if held => "dl-state-waiting",
+        "pausedDL" => "dl-state-paused",
+        "stalledDL" => "dl-state-peers",
+        "checkingDL" => "dl-state-checking",
+        "error" => "dl-state-error",
+        _ => "dl-state-downloading",
     };
     let amount = if done {
         format::bytes(t.size)
     } else {
-        format!(
-            "{} of {}",
-            format::bytes((t.progress * t.size as f64) as u64),
-            format::bytes(t.size)
+        tr!(
+            "dl-amount",
+            got = format::bytes((t.progress * t.size as f64) as u64),
+            size = format::bytes(t.size)
         )
     };
     let mut speed = Vec::new();
     if !done && t.dlspeed > 0 {
-        speed.push(format!("{}/s", format::bytes(t.dlspeed)));
+        speed.push(tr!("dl-speed", rate = format::bytes(t.dlspeed)));
     }
     if !done && t.eta > 0 && t.eta < 8_640_000 {
-        speed.push(format!(
-            "{} left",
-            format::countdown(t.eta).trim_start_matches("in ")
-        ));
+        speed.push(tr!("dl-left", span = format::span(t.eta)));
     }
-    let speed = speed.join(", ");
-    let facts = if speed.is_empty() {
-        amount.clone()
-    } else {
-        format!("{amount}, {speed}")
+    let join = |parts: Vec<String>| {
+        parts
+            .into_iter()
+            .reduce(|a, b| tr!("common-join-comma", a = a, b = b))
+            .unwrap_or_default()
     };
+    let facts = join(
+        std::iter::once(amount.clone())
+            .chain(speed.clone())
+            .collect(),
+    );
+    let speed = join(speed);
     // Only the files picked to download: a skipped one has no cube and is not coming.
     let mut episodes: Vec<f64> = t
         .files
@@ -1613,12 +2091,11 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         .filter_map(|f| f.episode)
         .collect();
     episodes.sort_by(f64::total_cmp);
-    let what = match (t.episode, episodes.first(), episodes.last()) {
-        (Some(e), _, _) if !t.batch => format!("Episode {e}"),
-        (_, Some(a), Some(b)) if a != b => format!("Episodes {a} to {b}"),
-        (_, Some(a), _) => format!("Episode {a}"),
-        _ if t.batch => "A batch".to_string(),
-        _ => String::new(),
+    let what = match crate::notify::what_of(t) {
+        crate::notify::What::Episode(n) => tr!("common-episode-n", n = n),
+        crate::notify::What::Episodes(from, to) => tr!("dl-episodes-range", from = from, to = to),
+        crate::notify::What::Batch => tr!("dl-batch"),
+        crate::notify::What::None => String::new(),
     };
     let release = [t.group.as_str(), t.resolution.as_str()]
         .iter()
@@ -1649,20 +2126,25 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
     };
     let (poster, has_poster) = show.map(|c| art.poster(Some(c.id))).unwrap_or_default();
     let tone = match state {
-        "Done" => 4,
-        "Waiting for Wi-Fi" => 2,
-        "Stopped by an error" => 3,
+        "dl-state-done" => 4,
+        "dl-state-waiting" => 2,
+        "dl-state-error" => 3,
         _ if paused => 1,
         _ => 0,
     };
     DownloadRow {
         hash: t.hash.clone().into(),
         name: t.name.clone().into(),
-        state: state.into(),
+        // A download that is simply moving says no state word; the row shows what it holds.
+        state: if state == "dl-state-downloading" {
+            Default::default()
+        } else {
+            tr!(state).into()
+        },
         facts: facts.into(),
         progress: t.progress as f32,
         paused,
-        done,
+        done: finished(t),
         percent: format!("{}%", (t.progress * 100.0).floor() as i64).into(),
         what: what.into(),
         amount: amount.into(),
@@ -1681,7 +2163,36 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
             .map(|c| format::initials(&c.title))
             .unwrap_or_default()
             .into(),
+        roll: t
+            .roll
+            .as_ref()
+            .and_then(|r| i32::try_from(r.id).ok())
+            .unwrap_or(-1),
+        roll_line: t.roll.as_ref().map(roll_line).unwrap_or_default().into(),
+        roll_ahead: t.roll.as_ref().map_or(0, |r| r.ahead as i32),
+        roll_left: t
+            .roll
+            .as_ref()
+            .map_or(0, |r| r.total.saturating_sub(r.through) as i32),
     }
+}
+
+/// Where a rolling download's window stands, in the desktop's words.
+fn roll_line(r: &anibeam_core::RollView) -> String {
+    tr!(
+        "dl-roll-line",
+        ahead = r.ahead as i64,
+        next = r.next as i64,
+        through = r.through as i64,
+        total = r.total as i64,
+        watched = r.watched as i64
+    )
+}
+
+/// A finished download that is not rolling: it moves to Finished. A rolling one stays with
+/// what downloads, its controls there, whatever its window holds.
+fn finished(t: &Torrent) -> bool {
+    t.progress >= 1.0 && t.roll.is_none()
 }
 
 /// Reads poster files off the UI thread and hands each decoded one back.
@@ -1723,31 +2234,62 @@ fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
 
 /// Builds the window, starts the core, the sync thread and the clocks, and runs until the
 /// activity goes away.
+/// The language changed: every line Rust wrote is written again in the new one. The Slint
+/// pages re-word themselves through `Tr.rev`.
+pub fn relocalize() {
+    with_app(|app| {
+        app.show_prefs();
+        app.storage();
+        app.show_airing();
+        app.show_synced();
+        crate::schedule::relocalize(&app.window);
+        app.tick();
+    });
+    crate::player::relocalize();
+    crate::find::relocalize();
+    crate::show::relocalize();
+    crate::show_match::relocalize();
+    crate::listmove::relocalize();
+    crate::inspect::relocalize();
+    crate::stats::relocalize();
+    crate::backup::relocalize();
+    crate::activity::relocalize();
+    crate::repos::relocalize();
+    crate::disk::relocalize();
+    crate::feed::relocalize();
+    crate::platform::relocalize();
+}
+
 pub fn run(
     data_dir: PathBuf,
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything talks to a computer, so every request can carry the phone's proof.
+    match Store::open(&data_dir).and_then(|s| s.device_key()) {
+        Ok(key) => anibeam_companion::client::use_device_key(key),
+        Err(e) => eprintln!("Anibeam: no device key, requests go unsigned: {e}"),
+    }
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
-        HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
-    });
+    let address = store.settings().host();
 
     let window = AppWindow::new()?;
+    crate::platform::window_up(&window);
+    // First, so everything below that words a line already speaks the picked language.
+    crate::lang::install(&window, &data_dir);
     crate::player::install(&window);
+    crate::subtitles::install(&window);
+    crate::feed::install(&window);
+    crate::disk::install(&window);
+    crate::inspect::install(&window);
+    crate::show::install(&window);
+    crate::show_match::install(&window);
+    crate::schedule::install(&window);
     let data = window.global::<AppData>();
-    data.set_version(
-        format!(
-            "AniBeam for Android {} (build {})",
-            env!("CARGO_PKG_VERSION"),
-            env!("ANIBEAM_VERSION_CODE")
-        )
-        .into(),
-    );
-    data.set_host_address(address.display().into());
+    data.set_host_address(address.map(|a| a.display()).unwrap_or_default().into());
 
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());
@@ -1769,12 +2311,9 @@ pub fn run(
     data.on_open_remote(|id| with_app(|app| app.open_series(id, true)));
     data.on_close_series(|| with_app(App::close_series));
     data.on_play(|file| crate::player::open(file as u64));
+    data.on_mark(|number, season, watched| with_app(|app| app.mark(number, season, watched)));
+    data.on_mark_take_back(|| with_app(App::mark_take_back));
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
-    let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
-        .iter()
-        .map(|q| q.label().into())
-        .collect();
-    data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
     data.on_set_stream_quality(|i| {
         with_app(|app| {
             if let Some(q) = usize::try_from(i)
@@ -1788,23 +2327,35 @@ pub fn run(
     });
     data.on_read_app_icon(|| with_app(|app| app.show_app_icon()));
     data.on_set_app_icon(|i| {
-        crate::android::set_app_icon(i);
+        crate::platform::set_app_icon(i);
         with_app(|app| app.show_app_icon());
     });
     data.on_open_airing(|| with_app(App::open_airing));
     data.on_pick_airing_season(|i| {
         with_app(|app| {
-            app.airing_season = if i == 1 {
-                SeasonPick::Next
-            } else {
-                SeasonPick::Now
+            // The second cell is the next season until another is picked; then it already
+            // is the season showing, and a tap on it stays put.
+            let to = match i {
+                1 if app.airing_season == SeasonPick::Now => SeasonPick::Next,
+                1 => return,
+                _ => SeasonPick::Now,
             };
-            app.airing = None;
-            app.airing_note = None;
-            app.show_airing();
-            app.load_airing(true);
+            app.set_airing_season(to);
         })
     });
+    {
+        let pick = window.global::<crate::AiringPick>();
+        pick.on_picked(|quarter, year| {
+            with_app(|app| {
+                let to = crate::seasons::pick(
+                    usize::try_from(quarter).unwrap_or(0),
+                    year,
+                    crate::seasons::now(),
+                );
+                app.set_airing_season(to);
+            })
+        });
+    }
     data.on_pick_airing_filter(|i| {
         with_app(|app| {
             app.airing_filter = i;
@@ -1814,6 +2365,7 @@ pub fn run(
     data.on_airing_tap(|id| with_app(|app| app.airing_tap(id)));
     data.on_airing_close(|| with_app(|app| app.data().set_airing_menu(Default::default())));
     data.on_airing_plan(|id| with_app(|app| app.airing_plan(id)));
+    data.on_airing_get(|id| with_app(|app| app.airing_get(id)));
     data.on_airing_dismiss(|id| with_app(|app| app.airing_dismiss(id)));
     data.on_airing_take_back(|| with_app(App::airing_take_back));
     data.on_pick_cal_device(|i| {
@@ -1880,10 +2432,13 @@ pub fn run(
     data.on_finish_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = true;
+            // Onboarding showed the notification, so a first download does not ask again.
+            app.prefs.notify_offered = true;
             app.save_prefs();
         })
     });
     data.on_open_notes(|| with_app(|app| app.show_notes()));
+    data.on_allow_notifications(|| with_app(App::allow_notifications));
     window.global::<Settings>().on_find({
         let window = window.as_weak();
         move |query| {
@@ -1911,13 +2466,36 @@ pub fn run(
     data.on_torrent_action(|hash, action| {
         with_app(|app| app.torrent_action(hash.to_string(), action))
     });
+    data.on_roll_action(|id, what, n| with_app(|app| app.roll_action(id, what, n)));
+    data.set_roll_max_ahead(anibeam_core::downloads::rolling::MAX_AHEAD as i32);
+    // The core's defaults until its stored values come in.
+    let d = RollingSettings::default();
+    data.set_roll_big(d.big);
+    data.set_roll_ahead(d.ahead as i32);
+    data.set_roll_over(d.over as i32);
+    data.set_roll_delete(d.delete_watched);
+    data.set_roll_keep(d.keep_watched as i32);
+    data.on_set_roll(|big, ahead, over, delete, keep| {
+        with_app(|app| {
+            let d = RollingSettings::default();
+            let rolling = RollingSettings {
+                big,
+                ahead: u32::try_from(ahead).unwrap_or(d.ahead),
+                over: u32::try_from(over).unwrap_or(d.over),
+                delete_watched: delete,
+                keep_watched: u32::try_from(keep).unwrap_or(d.keep_watched),
+            };
+            app.show_rolling(&rolling);
+            app.save_rolling(rolling);
+        })
+    });
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {
         with_app(|app| {
-            let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
+            let copied = crate::platform::copy_text("Anibeam connection check", &app.check_text);
             app.data().set_check_summary(if copied {
-                "Copied. Paste it in a message.".into()
+                tr!("more-check-copied").into()
             } else {
                 "Could not copy.".into()
             });
@@ -1932,6 +2510,11 @@ pub fn run(
 
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
+    crate::stats::install(&window);
+    crate::backup::install(&window, &data_dir);
+    crate::activity::install(&window);
+    crate::listmove::install(&window);
+    crate::look::install(&window, &data_dir);
 
     let mut app = App {
         window: window.clone_strong(),
@@ -1975,6 +2558,8 @@ pub fn run(
         airing_note: None,
         airing_plan_note: None,
         airing_undo: None,
+        mark_note: None,
+        mark_busy: false,
         airing_hidden: HashSet::new(),
         airing_again: None,
         airing_filters,
@@ -1990,9 +2575,13 @@ pub fn run(
         sources: Vec::new(),
         downloads,
         polling: false,
+        rolling_loaded: false,
         held: None,
         service: None,
+        unfinished: HashSet::new(),
         service_shown: false,
+        asked_at: None,
+        synced: None,
     };
     app.show_prefs();
     app.start_notes();
@@ -2006,32 +2595,65 @@ pub fn run(
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
-        with_app(App::tick)
+        with_app(App::second)
     });
-    // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
-    // nothing between changes.
-    // A phone without a hinge answers None the first time, and the timer stops there.
+    // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
+    // with neither a hinge sensor nor window extensions stops the timer; one that has the
+    // extensions but reports no fold for a few seconds is looked at every two seconds after,
+    // so a foldable with no hinge sensor still follows when it opens.
     let hinge = Rc::new(Timer::default());
     let fold_window = window.as_weak();
     let stop = Rc::downgrade(&hinge);
+    let mut flat_ticks = 0u32;
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
         let Some(window) = fold_window.upgrade() else {
             return;
         };
-        let (angle, across) = crate::android::fold();
-        if angle.is_none() {
+        if !crate::crease::look_now(flat_ticks) {
+            flat_ticks += 1;
+            return;
+        }
+        let (angle, rotated) = crate::platform::fold();
+        let reading = crate::platform::crease();
+        // No hinge and no window extensions: nothing will ever say, so the timer stops.
+        if angle.is_none() && reading == crate::crease::Reading::Silent {
             if let Some(t) = stop.upgrade() {
                 t.stop();
             }
             return;
         }
         let fold = window.global::<crate::Fold>();
+        if angle.is_none() && !matches!(reading, crate::crease::Reading::Fold(_)) {
+            flat_ticks += 1;
+            // A crease that went away (shut, on a foldable with no hinge sensor) leaves none
+            // behind for the layout.
+            if fold.get_crease_known() {
+                fold.set_crease_known(false);
+                fold.set_crease_half(false);
+                fold.set_crease_across(rotated);
+            }
+            return;
+        }
+        flat_ticks = 0;
         let angle = angle.unwrap_or(180.0);
         if fold.get_hinge() != angle {
             fold.set_hinge(angle);
         }
-        if fold.get_crease_across() != across {
-            fold.set_crease_across(across);
+        let crease = crate::crease::layout(reading, rotated, window.window().scale_factor());
+        if fold.get_crease_across() != crease.across {
+            fold.set_crease_across(crease.across);
+        }
+        if fold.get_crease_known() != crease.known {
+            fold.set_crease_known(crease.known);
+        }
+        if fold.get_crease_half() != crease.half {
+            fold.set_crease_half(crease.half);
+        }
+        if fold.get_crease_start() != crease.start {
+            fold.set_crease_start(crease.start);
+        }
+        if fold.get_crease_end() != crease.end {
+            fold.set_crease_end(crease.end);
         }
     });
     let syncs = Timer::default();
@@ -2046,4 +2668,23 @@ pub fn run(
     APP.with(|cell| cell.borrow_mut().take());
     ran?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mark_line;
+
+    #[test]
+    fn a_mark_says_so_only_when_it_moves_more_than_one_episode() {
+        assert_eq!(
+            mark_line(5, Some(1)).as_deref(),
+            Some("Watched up to Episode 5")
+        );
+        assert_eq!(
+            mark_line(2, Some(8)).as_deref(),
+            Some("Unwatched from Episode 3")
+        );
+        assert_eq!(mark_line(4, Some(3)), None);
+        assert_eq!(mark_line(4, None), None);
+    }
 }

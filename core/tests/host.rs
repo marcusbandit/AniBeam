@@ -84,7 +84,8 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     };
     core.call(Call::SetDownloadSettings {
         settings,
@@ -96,7 +97,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "torrents/info",
         200,
         json!([{
-            "hash": "a1b2c3", "name": "[SubsPlease] Sousou no Frieren - 08", "state": "downloading",
+            "hash": "a1b2c3", "name": "[Lumen] Sousou no Frieren - 08", "state": "downloading",
             "progress": 0.25, "size": 1500000000u64, "dlspeed": 1200000, "upspeed": 0, "eta": 600,
             "num_seeds": 1, "num_leechs": 1, "ratio": 0.0,
             "save_path": "/lib/Sousou no Frieren", "content_path": "/lib/Sousou no Frieren/08.mkv",
@@ -117,17 +118,25 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "Sousou no Frieren",
     );
     for n in 1..=7 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             frieren,
             &format!("/lib/Sousou no Frieren/{n:02}.mkv"),
             n as f64,
-            None,
-            "episode",
             now - 1000 + n,
         );
     }
-    fixtures::insert_media_with_cover(&core, 154587, "https://img.test/frieren.jpg", None);
+    // A second release of episode 7: two versions of one episode.
+    let seventh_again = fixtures::insert_episode_file(
+        &core,
+        frieren,
+        "/lib/Sousou no Frieren/[Group] Sousou no Frieren - 07 [1080p WEB-DL H264].mkv",
+        7.0,
+        now - 900,
+    );
+    fixtures::media(154587, "Media 154587")
+        .cover("https://img.test/frieren.jpg")
+        .insert(&core);
     core.store()
         .write(|c| {
             c.execute(
@@ -166,15 +175,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         })
         .unwrap();
     let secret = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Secret", "Secret");
-    fixtures::insert_file(
-        &core,
-        secret,
-        "/lib/Secret/01.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, secret, "/lib/Secret/01.mkv", 1.0, now);
     core.call(Call::SetHidden {
         series: secret,
         hidden: true,
@@ -187,15 +188,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "/lib/Movies/Perfect Blue (1997).mkv",
         "Perfect Blue",
     );
-    fixtures::insert_file(
-        &core,
-        film,
-        "/lib/Movies/Perfect Blue (1997).mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Movies/Perfect Blue (1997).mkv", 1.0, now);
 
     // Off until asked.
     core.set_host_bind(Some("127.0.0.1:0".to_string()));
@@ -259,7 +252,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         assert_eq!(f.anilist_id, Some(154587));
         assert_eq!(f.mal_id, Some(52991));
         assert_eq!(f.total_episodes, Some(12));
-        assert_eq!(f.episodes_on_disk, 7);
+        assert_eq!(f.episodes_on_disk, 8, "a file each, a second copy too");
         assert_eq!(f.progress, Some(5));
         assert_eq!(f.year, Some(2023));
         let upcoming: Vec<u32> = f.upcoming.iter().map(|a| a.episode).collect();
@@ -270,11 +263,29 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
             .iter()
             .map(|e| (e.code.as_str(), e.watched))
             .collect();
-        assert_eq!(codes.len(), 7);
+        assert_eq!(codes.len(), 8);
         assert_eq!(codes[0], ("E01", true), "tracker progress 5 covers 1 to 5");
         assert_eq!(codes[4], ("E05", true));
         assert_eq!(codes[5], ("E06", false));
         assert_eq!(codes[6], ("E07", true), "a completed view counts too");
+        assert_eq!(codes[7], ("E07", true), "the second copy of episode 7");
+        // Both copies of episode 7 carry the same two versions, each named by release;
+        // an episode on disk once carries none.
+        let sevens: Vec<&wire::Episode> = f.episodes.iter().filter(|e| e.code == "E07").collect();
+        assert_eq!(sevens.len(), 2);
+        let files: Vec<u64> = sevens[0].versions.iter().map(|v| v.file).collect();
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&seventh_again));
+        assert_eq!(sevens[0].versions, sevens[1].versions);
+        assert!(
+            sevens[0]
+                .versions
+                .iter()
+                .any(|v| v.label.starts_with("Group")),
+            "{:?}",
+            sevens[0].versions
+        );
+        assert!(f.episodes[0].versions.is_empty());
         assert!(f.episodes[0].aired_at.is_some());
         assert_eq!(f.episodes[0].key, "1");
         let tag = f.poster.clone().expect("the poster file exists");

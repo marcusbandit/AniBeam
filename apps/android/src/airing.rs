@@ -32,7 +32,7 @@ pub fn start(data_dir: &std::path::Path) {
 /// The computer as saved in More, not as the address field reads while it is edited.
 fn saved_address() -> Option<HostAddress> {
     let store = anibeam_companion::store::Store::open(DATA.get()?).ok()?;
-    HostAddress::parse(&store.settings().address).ok()
+    store.settings().host()
 }
 
 fn waiting() -> Vec<Waiting> {

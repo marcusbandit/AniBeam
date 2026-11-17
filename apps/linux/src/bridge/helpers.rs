@@ -63,15 +63,16 @@ pub mod ffi {
             modifiers: i32,
             text: &QString,
         );
-        /// A poster's average colour, saturation-weighted, decoded at 8x12 and cached per
-        /// path; invalid for a file that cannot be read.
-        fn poster_tone(path: &QString) -> QColor;
         /// The pointer hidden (or shown) over every window: an application override cursor.
         fn set_cursor_hidden(hidden: bool);
         /// Dev only: loads the shell's QML files from `dir` instead of the compiled resources.
         fn install_qml_dir(engine: Pin<&mut QQmlApplicationEngine>, dir: &QString);
         /// A URL opened with the desktop's handler through xdg-open, detached.
         fn open_url(url: &QString) -> bool;
+        /// QLocale::setDefault: the language Qt names months, days and numbers in.
+        fn set_default_locale(tag: &QString);
+        /// QLocale::system().uiLanguages(), most wanted first and comma separated: "de-DE,en".
+        fn system_locale_name() -> QString;
     }
 
     unsafe extern "C++" {

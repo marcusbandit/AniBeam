@@ -3,6 +3,7 @@
 //! call that may fetch runs on its own thread and lands back on the UI thread.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use anibeam_core::{
     Call, CoreError, EndpointCatalog, EndpointCredential, EndpointRepoPreview, Reply,
@@ -30,9 +31,76 @@ enum Row {
     },
 }
 
+/// What the form says above its fields. Kept as which line it is, so it can be worded again
+/// when the language changes.
+#[derive(Clone)]
+enum Note {
+    /// A value is kept on the phone, and a field left empty keeps what is stored.
+    KeptEmpty,
+    /// A value is kept on the phone, never in the library or an export.
+    KeptNever,
+    /// An update asks for the values again.
+    NewAsks,
+    /// An update that sends requests to another host asks again.
+    NewHost(String),
+}
+
+impl Note {
+    fn text(&self) -> String {
+        match self {
+            Note::KeptEmpty => tr!("repos-ask-kept-empty"),
+            Note::KeptNever => tr!("repos-ask-kept-never"),
+            Note::NewAsks => tr!("repos-ask-new"),
+            Note::NewHost(host) => tr!("repos-ask-new-host", host = host),
+        }
+    }
+}
+
+/// What the connection check found for one host.
+#[derive(Clone, Debug, PartialEq)]
+enum Health {
+    /// No step said anything yet; not kept.
+    Pending,
+    Answered {
+        ms: u64,
+    },
+    Failed {
+        step: String,
+        detail: String,
+    },
+}
+
+impl Health {
+    fn ok(&self) -> bool {
+        !matches!(self, Health::Failed { .. })
+    }
+
+    /// The line under the row.
+    fn line(&self) -> String {
+        match self {
+            Health::Pending => String::new(),
+            Health::Answered { ms } => tr!("repos-health-answered", ms = ms.to_string()),
+            Health::Failed { step, detail } => {
+                tr!("repos-health-failed", step = step, detail = detail)
+            }
+        }
+    }
+}
+
+/// The line under a repo waiting to be trusted: how many sites, and whether it is already.
+fn preview_line(preview: &EndpointRepoPreview) -> String {
+    let count = preview.endpoints.len();
+    if preview.trusted {
+        tr!("repos-preview-trusted", count = count)
+    } else {
+        tr!("repos-preview-line", count = count)
+    }
+}
+
 /// An install or update waiting for the person's values.
 struct Asking {
     row: Row,
+    note: Note,
     keys: Vec<String>,
     values: Vec<String>,
 }
@@ -40,6 +108,8 @@ struct Asking {
 struct Repos {
     window: Weak<AppWindow>,
     catalog: Option<EndpointCatalog>,
+    /// What the last check found, by host.
+    health: HashMap<String, Health>,
     preview: Option<EndpointRepoPreview>,
     rows: Vec<Row>,
     /// The endpoint list, kept and updated row by row: a row that did not change keeps its
@@ -84,6 +154,7 @@ pub fn install(window: &AppWindow) {
         *cell.borrow_mut() = Some(Repos {
             window: window.as_weak(),
             catalog: None,
+            health: HashMap::new(),
             preview: None,
             rows: Vec::new(),
             lines: std::rc::Rc::new(VecModel::default()),
@@ -112,6 +183,7 @@ pub fn install(window: &AppWindow) {
     });
     d.on_remove_repo(|i| with(|r| r.remove_repo(i)));
     d.on_refresh(|| with(Repos::refresh));
+    d.on_check(|| with(Repos::check));
     d.on_save_edit(|| with(Repos::save_edit));
     d.on_close_edit(|| with(Repos::close_edit));
     d.on_change_values(|| with(Repos::change_values));
@@ -130,8 +202,25 @@ pub fn install(window: &AppWindow) {
     });
     d.on_confirm(|| with(Repos::confirm));
     d.on_dismiss(|| with(Repos::dismiss));
-    d.on_open_link(|url| crate::android::open_url(&url));
+    d.on_open_link(|url| crate::platform::open_url(&url));
     d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
+}
+
+/// The language changed: the rows, the preview and the form's note are worded again.
+pub fn relocalize() {
+    with(|r| {
+        if let Some(catalog) = r.catalog.clone() {
+            r.show(catalog);
+        }
+        if let Some(p) = &r.preview {
+            let line = preview_line(p);
+            r.data(|d| d.set_preview_line(line.into()));
+        }
+        if let Some(a) = &r.asking {
+            let note = a.note.text();
+            r.data(|d| d.set_asking_note(note.into()));
+        }
+    });
 }
 
 /// The core is open: show what is saved, then fetch every repo again, as the core does at
@@ -238,27 +327,39 @@ impl Repos {
                     .map(|a| a.label.as_str())
                     .collect();
                 (
-                    format!("Needs its {} before it searches", labels.join(", ")),
+                    tr!("repos-needs-before-search", labels = labels.join(", ")),
                     true,
                 )
             } else if let Some(note) = &i.desktop_note {
                 (note.clone(), true)
             } else if !i.offered {
-                ("No longer offered by its repo".into(), true)
+                (tr!("repos-no-longer-offered"), true)
             } else if let Some(host) = &i.update_host {
-                (format!("The update sends requests to {host}"), true)
+                (tr!("repos-update-host", host = host), true)
             } else if i.custom {
-                ("Tap to change its name or address".into(), false)
+                (tr!("repos-tap-change-custom"), false)
             } else if !i.auth.is_empty() {
                 let labels: Vec<&str> = i.auth.iter().map(|a| a.label.as_str()).collect();
-                (format!("Tap to change its {}", labels.join(", ")), false)
+                (
+                    tr!("repos-tap-change-keys", labels = labels.join(", ")),
+                    false,
+                )
             } else {
                 (String::new(), false)
             };
+            let health = self
+                .health
+                .get(&host_key(&i.host))
+                .map(|h| (h.line(), h.ok()))
+                .unwrap_or_default();
             lines.push(EndpointRow {
                 name: i.name.clone().into(),
                 line: if i.custom {
-                    format!("{}  {}  added by you", i.host, i.kind)
+                    tr!(
+                        "repos-line-custom",
+                        host = &i.host,
+                        kind = i.kind.to_string()
+                    )
                 } else {
                     format!("{}  {}  v{}", i.host, i.kind, i.version)
                 }
@@ -267,9 +368,11 @@ impl Repos {
                 enabled: i.enabled,
                 nsfw: i.nsfw,
                 note: note.into(),
+                health: health.0.into(),
+                health_ok: health.1,
                 update: match i.update {
-                    Some(v) => format!("Update to v{v}"),
-                    None if !i.missing.is_empty() => "Add its value".into(),
+                    Some(v) => tr!("repos-update-to", version = v.to_string()),
+                    None if !i.missing.is_empty() => tr!("repos-add-its-value"),
                     None => String::new(),
                 }
                 .into(),
@@ -293,12 +396,14 @@ impl Repos {
                 note: if needs.is_empty() {
                     String::new()
                 } else {
-                    format!("Asks for your {}", needs.join(", "))
+                    tr!("repos-asks-for", labels = needs.join(", "))
                 }
                 .into(),
                 update: "".into(),
                 editable: false,
                 warn: !o.auth.is_empty(),
+                health: "".into(),
+                health_ok: false,
             });
             rows.push(Row::Offered {
                 repo: o.repo_url.clone(),
@@ -360,17 +465,7 @@ impl Repos {
             r.busy(false);
             match answer {
                 Ok(Reply::EndpointRepoPreview { preview }) => {
-                    let count = preview.endpoints.len();
-                    let line = format!(
-                        "{} {}, signed{}",
-                        count,
-                        if count == 1 { "site" } else { "sites" },
-                        if preview.trusted {
-                            ", already trusted"
-                        } else {
-                            ""
-                        }
-                    );
+                    let line = preview_line(&preview);
                     r.data(|d| {
                         d.set_preview_name(preview.name.clone().into());
                         d.set_preview_url(preview.url.clone().into());
@@ -431,7 +526,7 @@ impl Repos {
             i as i32,
             Row::Fill { install },
             e.auth.clone(),
-            "Kept on this phone only. A field left empty keeps what is stored.".into(),
+            Note::KeptEmpty,
         );
     }
 
@@ -546,6 +641,28 @@ impl Repos {
         });
     }
 
+    /// Asks each site this phone searches whether it answers, with the connection check's
+    /// steps, and writes what it found under each installed site.
+    fn check(&mut self) {
+        if self
+            .window
+            .upgrade()
+            .is_some_and(|w| w.global::<RepoData>().get_checking())
+        {
+            return;
+        }
+        self.data(|d| d.set_checking(true));
+        spawn(Call::PhoneNetCheck, |r, answer| {
+            r.data(|d| d.set_checking(false));
+            if let Ok(Reply::PhoneNetCheck { checks }) = answer {
+                r.health = health_of(&checks);
+                if let Some(catalog) = r.catalog.clone() {
+                    r.show(catalog);
+                }
+            }
+        });
+    }
+
     fn refresh(&mut self) {
         spawn(Call::RefreshEndpointRepos, |r, answer| {
             // A refresh that cannot reach anything is said on each repo's row; it is not an
@@ -598,12 +715,7 @@ impl Repos {
                 let fill = Row::Fill {
                     install: install.clone(),
                 };
-                self.ask(
-                    i,
-                    fill,
-                    fields,
-                    "Kept on this phone only, never in the library or an export.".into(),
-                );
+                self.ask(i, fill, fields, Note::KeptNever);
                 return;
             }
             Row::Installed {
@@ -636,21 +748,15 @@ impl Repos {
             ),
         ) {
             (Row::Installed { .. }, Some(e)) => match &e.update_host {
-                Some(host) => format!("The new version sends this to {host}, so it asks again."),
-                None => "The new version asks for these again.".into(),
+                Some(host) => Note::NewHost(host.clone()),
+                None => Note::NewAsks,
             },
-            _ => "Kept on this phone only, never in the library or an export.".into(),
+            _ => Note::KeptNever,
         };
         self.ask(i, row, fields, note);
     }
 
-    fn ask(
-        &mut self,
-        index: i32,
-        row: Row,
-        fields: Vec<anibeam_core::EndpointField>,
-        note: String,
-    ) {
+    fn ask(&mut self, index: i32, row: Row, fields: Vec<anibeam_core::EndpointField>, note: Note) {
         self.close_edit();
         let rows: Vec<AuthRow> = fields
             .iter()
@@ -661,20 +767,22 @@ impl Repos {
                 secret: f.secret,
             })
             .collect();
-        let action = match &row {
-            Row::Offered { .. } => "Install",
-            Row::Installed { .. } => "Update",
-            Row::Fill { .. } => "Save",
+        let kind = match &row {
+            Row::Offered { .. } => 0,
+            Row::Installed { .. } => 1,
+            Row::Fill { .. } => 2,
         };
+        let text = note.text();
         self.asking = Some(Asking {
             row,
+            note,
             keys: fields.iter().map(|f| f.key.clone()).collect(),
             values: vec![String::new(); fields.len()],
         });
         self.data(|d| {
-            d.set_asking_action(action.into());
+            d.set_asking_kind(kind);
             d.set_asking_index(index);
-            d.set_asking_note(note.into());
+            d.set_asking_note(text.into());
             d.set_fields(ModelRc::new(VecModel::from(rows)));
             d.set_asking(true);
             d.set_asking_error("".into());
@@ -714,18 +822,13 @@ impl Repos {
         if e.auth.is_empty() {
             return;
         }
-        self.ask(
-            i,
-            Row::Fill { install },
-            e.auth.clone(),
-            "Kept on this phone only. A field left empty keeps what is stored.".into(),
-        );
+        self.ask(i, Row::Fill { install }, e.auth.clone(), Note::KeptEmpty);
     }
 
     fn confirm(&mut self) {
         let Some(a) = &self.asking else { return };
         if matches!(a.row, Row::Fill { .. }) && a.values.iter().all(|v| v.trim().is_empty()) {
-            self.data(|d| d.set_asking_error("Type a value first.".into()));
+            self.data(|d| d.set_asking_error(tr!("repos-type-value").into()));
             return;
         }
         let credentials = a
@@ -803,5 +906,91 @@ impl Repos {
                 r.answer(answer);
             },
         );
+    }
+}
+/// A host as the check names it, without its port and in lower case.
+fn host_key(host: &str) -> String {
+    host.rsplit_once(':')
+        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty())
+        .map_or(host, |(h, _)| h)
+        .to_lowercase()
+}
+
+/// What the connection check found for each host: the last step, a whole request, when
+/// every step went through, else the first step that failed and why.
+fn health_of(checks: &[anibeam_core::NetCheck]) -> HashMap<String, Health> {
+    let mut out: HashMap<String, Health> = HashMap::new();
+    for c in checks {
+        let Some((label, step)) = c.name.split_once(": ") else {
+            continue;
+        };
+        let key = host_key(label);
+        let entry = out.entry(key).or_insert(Health::Pending);
+        if !c.ok {
+            if entry.ok() {
+                *entry = Health::Failed {
+                    step: step.to_string(),
+                    detail: c.detail.clone(),
+                };
+            }
+        } else if entry.ok() && (step == "HTTPS" || step == "HTTP") {
+            *entry = Health::Answered { ms: c.ms };
+        }
+    }
+    out.retain(|_, h| *h != Health::Pending);
+    out
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+    use anibeam_core::NetCheck;
+
+    fn check(name: &str, ok: bool, detail: &str, ms: u64) -> NetCheck {
+        NetCheck {
+            name: name.into(),
+            ok,
+            detail: detail.into(),
+            ms,
+        }
+    }
+
+    #[test]
+    fn a_host_that_went_through_answers_in_the_time_of_its_request() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check("site.example: HTTPS", true, "HTTP 200, 10 bytes", 240),
+            check("example.com: HTTPS", true, "HTTP 200, 10 bytes", 90),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(h["site.example"], Health::Answered { ms: 240 });
+    }
+
+    #[test]
+    fn a_host_that_failed_says_the_first_step_that_did() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check(
+                "site.example: reaching 1.2.3.4",
+                false,
+                "no answer (dropped)",
+                6000,
+            ),
+            check("site.example: HTTPS", false, "timed out", 6000),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(
+            h["site.example"],
+            Health::Failed {
+                step: "reaching 1.2.3.4".into(),
+                detail: "no answer (dropped)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_port_is_not_part_of_the_host() {
+        assert_eq!(host_key("Site.Example:9696"), "site.example");
+        assert_eq!(host_key("site.example"), "site.example");
     }
 }

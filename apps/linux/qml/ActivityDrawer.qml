@@ -7,7 +7,7 @@
 // chatter of its own, it only renders what the core already reported.
 import QtQuick
 import QtQuick.Controls.Basic as QC
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -21,6 +21,11 @@ Item {
 
     readonly property var stages: ["Library", "Metadata", "Trackers", "Franchise", "Playback", "Store", "System", "Downloads"]
     readonly property var levels: ["Info", "Warn", "Error"]
+    // What each stage and level chip reads, by message ID
+    readonly property var stageWords: ({ Library: "activity-drawer-stage-library", Metadata: "activity-drawer-stage-metadata", Trackers: "activity-drawer-stage-trackers",
+                                         Franchise: "activity-drawer-stage-franchise", Playback: "activity-drawer-stage-playback", Store: "activity-drawer-stage-store",
+                                         System: "activity-drawer-stage-system", Downloads: "activity-drawer-stage-downloads" })
+    readonly property var levelWords: ({ Info: "activity-drawer-level-info", Warn: "activity-drawer-level-warn", Error: "activity-drawer-level-error" })
     property var stageOn: ({})
     property var levelOn: ({})
     property var expanded: ({})
@@ -45,9 +50,20 @@ Item {
     // read as a fresh one
     function stampOf(at) {
         var d = new Date(at * 1000), now = new Date()
-        return d.toDateString() === now.toDateString() ? Qt.formatTime(d, "hh:mm:ss") : Qt.formatDateTime(d, "d MMM hh:mm")
+        return d.toDateString() === now.toDateString() ? Qt.formatTime(d, words.t("activity-drawer-time-format")) : Qt.formatDateTime(d, words.t("activity-drawer-stamp-format"))
     }
-    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
+    // `plainWords` is the plain line as a message ID and its arguments (#792); `said` is the
+    // core's own words, for lines from before the core kept their IDs. Each entry is worded
+    // once, when it arrives, and again for every entry when the language changes, so a
+    // switch reaches lines already in the log without wording 2000 rows on every event.
+    function sayOf(w, said) { return w ? words.t(w.id, w.args) : (said || "") }
+    function toEntry(e) { return { at: e.at, time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: sayOf(e.plain_words, e.plain), plainWords: e.plain_words || null, said: e.plain || "", seq: e.seq } }
+    Connections {
+        target: words
+        function onLangChanged() {
+            root.entries = root.entries.map(function(x) { return Object.assign({}, x, { time: root.stampOf(x.at), plain: root.sayOf(x.plainWords, x.said) }) })
+        }
+    }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -88,9 +104,10 @@ Item {
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (!technical) {
-                if (e.plain === "") continue
+                var said = e.plain
+                if (said === "") continue
                 if (problemsOnly && e.level === "Info") continue
-                e = { time: e.time, stage: "", level: e.level, msg: e.plain, seq: e.seq }
+                e = { time: e.time, stage: "", level: e.level, msg: said, seq: e.seq }
             } else {
                 if (sAny && !stageOn[e.stage]) continue
                 if (lAny && !levelOn[e.level]) continue
@@ -123,7 +140,7 @@ Item {
         copiedTimer.restart()
     }
     // One line, by a click on it
-    function copyLine(r) { frame.copyText(lineOf(r), "Copied the line") }
+    function copyLine(r) { frame.copyText(lineOf(r), words.t("activity-drawer-copied-line")) }
     // Clear empties the log for good: the first click asks, the second clears
     property bool clearArmed: false
     Timer { id: clearDisarm; interval: 4000; onTriggered: root.clearArmed = false }
@@ -162,7 +179,7 @@ Item {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Activity"
+                    text: words.t("activity-drawer-title")
                     color: theme.text
                     font.family: theme.fontSans
                     font.pointSize: theme.typeNormal
@@ -173,7 +190,7 @@ Item {
                     visible: !root.technical
                     anchors.verticalCenter: parent.verticalCenter
                     small: true
-                    options: [{ text: "Everything" }, { text: "Problems" }]
+                    options: [{ text: words.t("activity-drawer-everything") }, { text: words.t("activity-drawer-problems") }]
                     index: root.problemsOnly ? 1 : 0
                     onPicked: function(i) { root.problemsOnly = i === 1 }
                 }
@@ -182,7 +199,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData
+                        text: words.t(root.stageWords[modelData])
                         small: true
                         clickable: true
                         selected: root.stageOn[modelData] === true
@@ -197,7 +214,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData === "Warn" ? "Warning" : modelData
+                        text: words.t(root.levelWords[modelData])
                         small: true
                         clickable: true
                         selected: root.levelOn[modelData] === true
@@ -212,16 +229,16 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(1)
-                Button { text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"; flat: true; small: true; onClicked: root.copyAll() }
+                Button { text: root.copied ? words.t("activity-drawer-copied") : words.t("activity-drawer-copy"); icon: root.copied ? "check" : "copy"; flat: true; small: true; onClicked: root.copyAll() }
                 Button {
-                    text: root.clearArmed ? "Clear every line" : "Clear"; icon: "trash-2"; flat: true; small: true; danger: root.clearArmed
+                    text: root.clearArmed ? words.t("activity-drawer-clear-every") : words.t("action-clear"); icon: "trash-2"; flat: true; small: true; danger: root.clearArmed
                     onClicked: {
                         if (!root.clearArmed) { root.clearArmed = true; clearDisarm.restart(); return }
                         root.clearArmed = false
                         Door.clearEvents(); root.entries = []; root.expanded = ({})
                     }
                 }
-                Button { text: "Close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
+                Button { msg: "action-close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
             }
         }
         Rectangle { anchors.top: header.bottom; width: parent.width; height: 1; color: theme.line }
@@ -247,7 +264,7 @@ Item {
                 Rectangle { anchors.fill: parent; color: rowMouse.containsMouse ? theme.tileHover : "transparent"; radius: theme.radiusSm }
                 MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyLine(logRow.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                     Accessible.onPressAction: root.copyLine(logRow.modelData) }
-                Tooltip { text: "Click to copy the line" }
+                Tooltip { msg: "activity-drawer-copy-tip" }
                 Row {
                     id: line
                     anchors.fill: parent
@@ -282,7 +299,7 @@ Item {
                     Chip {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: modelData.foldKey !== undefined && modelData.foldKey >= 0
-                        text: "Fold"
+                        msg: "activity-drawer-fold"
                         small: true
                         clickable: true
                         color: theme.tileSunken
@@ -309,7 +326,7 @@ Item {
             visible: root.rows.length === 0
             anchors.top: header.bottom; anchors.topMargin: theme.space(4)
             anchors.left: parent.left; anchors.leftMargin: theme.space(4)
-            text: root.technical ? "Nothing logged yet." : root.problemsOnly ? "No problems. Everything worked." : "Nothing to report yet. What AniBeam does for you shows up here."
+            text: root.technical ? words.t("activity-drawer-empty-technical") : root.problemsOnly ? words.t("activity-drawer-empty-problems") : words.t("activity-drawer-empty")
             color: theme.textDim
         }
     }
