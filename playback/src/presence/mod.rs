@@ -742,6 +742,8 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     // Read before the presence lock is taken: presence takes the sessions
     // lock inside its own, never the other way round.
     let playing = on.then(|| playback.sessions.playing()).flatten();
+    // The room open now, read outside the lock as `follow_rooms` reads it.
+    let room = on.then(|| join::room_now(playback)).flatten();
     let mut inner = recover(&p.inner);
     // Checked again under the presence lock, as a tick is.
     let playing = playing.filter(|s| playback.sessions.is_open(s.id));
@@ -757,6 +759,9 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     };
     let first = on && inner.worker.is_none();
     if first {
+        // Known before the first post, so a room already open goes out with
+        // what plays rather than in a second set after it.
+        join::adopt_room(&mut inner, room);
         let transport = inner
             .injected
             .take()
@@ -783,13 +788,16 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
         input,
         anibeam_foundation::time::now_secs() as u64,
     );
-    run(playback, &inner, actions);
-    if on {
-        join::post_party(&inner);
-        if let (Some(until), Some(worker)) = (inner.listen.take(), &inner.worker) {
-            worker.post(move |d| d.listen = Some(until));
+    // What plays, its party and the listen go in one post, so the worker
+    // never shows the activity without the party a moment before it.
+    let mut posts = posts(playback, actions);
+    if on && inner.worker.is_some() {
+        posts.push(join::party_post(&inner));
+        if let Some(until) = inner.listen.take() {
+            posts.push(join::listen_post(until));
         }
     }
+    post_all(&inner, posts);
     drop(inner);
     // The room team says each change of room on the bus; presence follows it from the
     // first switch on, starting from the room open now.
@@ -823,13 +831,22 @@ fn feed(playback: &Arc<Playback>, input: Input) {
     run(playback, &inner, actions);
 }
 
+/// A change to the desired state, as one post carries it.
+type Post = Box<dyn FnOnce(&mut Desired)>;
+
 /// Carries the actions out under the presence lock, so two callers' sends
 /// reach the worker in the order their decisions were made. Nothing here
 /// blocks: a send only overwrites the desired state, and the timer is a
 /// spawned task.
 fn run(playback: &Arc<Playback>, inner: &Inner, actions: Vec<Action>) {
+    post_all(inner, posts(playback, actions));
+}
+
+/// What the actions change in the desired state, arming any timer they ask for.
+fn posts(playback: &Arc<Playback>, actions: Vec<Action>) -> Vec<Post> {
+    let mut posts: Vec<Post> = Vec::new();
     for action in actions {
-        let change: Box<dyn FnOnce(&mut Desired)> = match action {
+        posts.push(match action {
             Action::Set(activity) => Box::new(move |d| d.want = Some(activity)),
             Action::Clear => Box::new(|d| d.want = None),
             // Off takes the room and the party with it, so nothing shows again until on
@@ -847,10 +864,19 @@ fn run(playback: &Arc<Playback>, inner: &Inner, actions: Vec<Action>) {
                 arm(playback, session, generation);
                 continue;
             }
-        };
-        if let Some(worker) = &inner.worker {
-            worker.post(change);
-        }
+        });
+    }
+    posts
+}
+
+/// Hands the worker every change as one: a worker that wakes between two
+/// posts sends the state between them, so what belongs together goes in one.
+fn post_all(inner: &Inner, posts: Vec<Post>) {
+    if posts.is_empty() {
+        return;
+    }
+    if let Some(worker) = &inner.worker {
+        worker.post(move |d| posts.into_iter().for_each(|post| post(d)));
     }
 }
 

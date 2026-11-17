@@ -114,6 +114,13 @@ core-error-refused-not-newer = Нельзя: ваш список уже даль
 core-error-refused-extra = Нельзя: это дополнительный материал.
 core-error-refused-unmatched = Нельзя: файл не привязан к серии.
 core-error-refused-on-disk = Нельзя: файл есть только на диске.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = сериал скрыт
+refusal-no-match = сериал ещё не привязан; привяжите его в «О сериалах»
+refusal-not-newer = ваш список уже дальше этой серии
+refusal-extra = это доп. материал
+refusal-unmatched = файл не привязан к серии
+refusal-on-disk = файл есть только на диске
 core-error-provider = { $provider } не ответил: { $message }
 core-error-io = Не удалось прочитать или записать файл: { $message }
 core-error-storage = Не удалось сохранить библиотеку: { $message }

@@ -1292,6 +1292,39 @@ fn the_room_shows_on_discord_with_everyone_in_it_while_nothing_plays() {
 }
 
 #[test]
+fn switching_discord_on_in_a_room_shows_the_room_in_one_set() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let s = open(&ann, ann.files[0]);
+    ann.core
+        .call(Call::Tick {
+            session: s,
+            position: 3.0,
+            paused: false,
+        })
+        .unwrap();
+    let made = room(ann.core.call(Call::RoomCreate { session: Some(s) })).expect("a room");
+    let discord = on_discord(&ann);
+    ann.core.presence_flush();
+    // Switched on mid episode in a room: the room is known before the first
+    // set, so no set with the ask party goes out ahead of it.
+    let sets: Vec<_> = discord
+        .wire()
+        .into_iter()
+        .filter_map(|w| match w {
+            Wire::Set(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sets.len(), 1, "{sets:#?}");
+    let party = sets[0].clone().expect("a party");
+    assert_eq!(
+        party.secret,
+        format!("{}{}", presence::ROOM_SECRET, made.code)
+    );
+}
+
+#[test]
 fn switching_discord_off_in_a_room_takes_the_room_off_and_keeps_it_off() {
     let relay = relay();
     let ann = person(&relay, "Ann", &[1.0], true);

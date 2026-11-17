@@ -889,17 +889,12 @@ player-tracked = Erfasst
 player-not-tracked = Nicht erfasst
 player-track-update-failed = Liste konnte nicht aktualisiert werden
 player-not-tracked-why = Nicht erfasst: { $reason }.
+phone-player-refusal-no-match = die Serie ist noch nicht zugeordnet, tippe auf ihrer Seite auf Zuordnen
 player-track-ok-at = { $tracker } bei { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } konnte nicht aktualisiert werden
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = Serie ausgeblendet
-phone-player-refusal-no-match = die Serie hat keine Tracker-Zuordnung
-phone-player-refusal-not-newer = der Tracker ist schon weiter als diese Folge
-phone-player-refusal-extra = das ist ein Extra
-phone-player-refusal-unmatched = die Datei ist keiner Folge zugeordnet
-phone-player-refusal-on-disk = Datei nur auf Platte
 
 ## Subtitles
 

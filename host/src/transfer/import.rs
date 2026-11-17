@@ -765,6 +765,8 @@ struct HistorySeries {
     id: u64,
     kind: SeriesKind,
     path: String,
+    /// The library's own files of the series, by path, with the key each carries.
+    files: HashMap<String, String>,
 }
 
 impl HistorySeries {
@@ -789,11 +791,46 @@ impl HistorySeries {
         };
         let file = normalise(file);
         (self.kind == SeriesKind::Show && file != self.path && under(&file, &self.path))
-            .then(|| classifier::key_of_file_name(&file_name(&file)))
+            .then(|| self.file_key(&file))
+    }
+
+    /// The key a file of this show carries. The library's own row says it
+    /// when the library has the file at that path. Otherwise the path does:
+    /// the name, with the folder below the show in front when there is one.
+    /// An export names a copy in a later folder that way, since two extras of
+    /// one name in two folders key apart (#1085), and writes any other extra
+    /// straight in the show's folder, under its bare name. A copy the scan
+    /// later finds alone in its folder takes that history over.
+    fn file_key(&self, file: &str) -> String {
+        if let Some(key) = self.files.get(file) {
+            return key.clone();
+        }
+        classifier::key_in_folder(
+            &classifier::folder_below(&self.path, file),
+            &classifier::key_of_file_name(&file_name(file)),
+        )
     }
 }
 
 fn series_by_path(conn: &Connection) -> Result<HashMap<String, HistorySeries>, CoreError> {
+    let mut files: HashMap<u64, HashMap<String, String>> = HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT series_id, path, episode_key FROM files")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (series, path, key) = row?;
+            files
+                .entry(series)
+                .or_default()
+                .insert(normalise(&path), key);
+        }
+    }
     let mut stmt = conn.prepare("SELECT id, kind, path FROM series ORDER BY id")?;
     let rows = stmt
         .query_map([], |r| {
@@ -801,10 +838,17 @@ fn series_by_path(conn: &Connection) -> Result<HashMap<String, HistorySeries>, C
                 id: r.get::<_, i64>(0)? as u64,
                 kind: SeriesKind::from_column(&r.get::<_, String>(1)?).unwrap_or(SeriesKind::Show),
                 path: r.get(2)?,
+                files: HashMap::new(),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows.into_iter().map(|r| (r.path.clone(), r)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|mut r| {
+            r.files = files.remove(&r.id).unwrap_or_default();
+            (r.path.clone(), r)
+        })
+        .collect())
 }
 
 /// Where a resume point lands: on the series and episode it names, or on
@@ -843,9 +887,13 @@ fn resume_target(
                 .values()
                 .filter(|r| under(&file, &r.path))
                 .max_by_key(|r| r.path.len())?;
+            let key = match row.kind {
+                SeriesKind::Show => row.file_key(&file),
+                SeriesKind::Movie => classifier::key_of_file_name(&file_name(&file)),
+            };
             Some((
                 row.id,
-                classifier::key_of_file_name(&file_name(&file)),
+                key,
                 *position,
                 *duration,
                 format::parse_instant(at)?,
@@ -1057,12 +1105,14 @@ mod tests {
             id: 1,
             kind: SeriesKind::Movie,
             path: "/lib/Movies/Film (2001).mkv".to_string(),
+            files: HashMap::new(),
         };
         assert_eq!(film.key(0.0, None), "Film (2001).mkv");
         let show = HistorySeries {
             id: 2,
             kind: SeriesKind::Show,
             path: "/lib/Show".to_string(),
+            files: HashMap::new(),
         };
         assert_eq!(show.key(12.0, None), "12");
         assert_eq!(show.key(12.5, None), "12.5");
@@ -1077,6 +1127,7 @@ mod tests {
             id: 2,
             kind: SeriesKind::Show,
             path: "/lib/Show".to_string(),
+            files: HashMap::new(),
         };
         assert_eq!(
             show.entry_key(0.0, None, Some("/lib/Show/NCOP1.mkv")),
@@ -1089,10 +1140,75 @@ mod tests {
             id: 3,
             kind: SeriesKind::Movie,
             path: "/lib/Movies/Film.mkv".to_string(),
+            files: HashMap::new(),
         };
         assert_eq!(
             film.entry_key(0.0, None, None),
             Some("Film.mkv".to_string())
+        );
+    }
+
+    /// Two extras of one name in two season folders of a show carry two
+    /// keys in the library (#1085), and an entry naming either file lands
+    /// on that file's own key, whether the library has the file at that
+    /// path or the export named it by its key.
+    #[test]
+    fn same_named_extras_in_two_folders_keep_their_own_keys() {
+        let show = HistorySeries {
+            id: 2,
+            kind: SeriesKind::Show,
+            path: "/lib/Show".to_string(),
+            files: HashMap::from([
+                (
+                    "/lib/Show/Season 1/NCOP1.mkv".to_string(),
+                    "NCOP1.mkv".to_string(),
+                ),
+                (
+                    "/lib/Show/Season 2/NCOP1.mkv".to_string(),
+                    "Season 2/NCOP1.mkv".to_string(),
+                ),
+            ]),
+        };
+        let key = |file: &str| show.entry_key(0.0, None, Some(file));
+        // The real paths.
+        assert_eq!(key("/lib/Show/Season 1/NCOP1.mkv").unwrap(), "NCOP1.mkv");
+        assert_eq!(
+            key("/lib/Show/Season 2/NCOP1.mkv").unwrap(),
+            "Season 2/NCOP1.mkv"
+        );
+        // The paths an export writes: the show's folder and the key.
+        assert_eq!(key("/lib/Show/NCOP1.mkv").unwrap(), "NCOP1.mkv");
+        // A release of the second copy the library does not hold yet.
+        assert_eq!(
+            key("/lib/Show/Season 2/NCOP1 [A1B2C3D4].mkv").unwrap(),
+            "Season 2/NCOP1.mkv"
+        );
+        // A file the library does not hold keys by the folder the document
+        // names: on a fresh library, before its first scan, every one.
+        assert_eq!(
+            key("/lib/Show/Extras/NCED1.mkv").unwrap(),
+            "Extras/NCED1.mkv"
+        );
+
+        let mut series = HashMap::new();
+        series.insert(show.path.clone(), show);
+        let at = serde_json::Value::from("1970-01-01T00:00:10Z");
+        let resume = |file: &str| {
+            resume_target(
+                &series,
+                &ResumeEntry::File {
+                    file: file.to_string(),
+                    position: 1.0,
+                    duration: 2.0,
+                    at: at.clone(),
+                },
+            )
+            .map(|(_, key, ..)| key)
+        };
+        assert_eq!(resume("/lib/Show/NCOP1.mkv").unwrap(), "NCOP1.mkv");
+        assert_eq!(
+            resume("/lib/Show/Season 2/NCOP1.mkv").unwrap(),
+            "Season 2/NCOP1.mkv"
         );
     }
 
@@ -1107,6 +1223,7 @@ mod tests {
                 id: 2,
                 kind: SeriesKind::Show,
                 path: "/lib/Show".to_string(),
+                files: HashMap::new(),
             },
         );
         series.insert(
@@ -1115,6 +1232,7 @@ mod tests {
                 id: 3,
                 kind: SeriesKind::Movie,
                 path: "/lib/Movies/Film.mkv".to_string(),
+                files: HashMap::new(),
             },
         );
         let at = serde_json::Value::from("1970-01-01T00:00:10Z");

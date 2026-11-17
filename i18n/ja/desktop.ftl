@@ -1663,13 +1663,6 @@ player-screenshot-saved = Pictures/Anibeamに保存しました
 player-skipped-intro = OPをスキップしました
 player-skipped-outro = EDをスキップしました
 player-undo = 元に戻す
-# Why a tracker was not updated, read after "Not tracked:" or a tracker's name
-player-refusal-hidden = 作品が非表示です
-player-refusal-no-match = 作品がまだ照合されていません。作品情報で照合してください
-player-refusal-not-newer = リストはすでにこのエピソードより先です
-player-refusal-extra = これは特典映像です
-player-refusal-unmatched = ファイルがエピソードと照合されていません
-player-refusal-on-disk = ファイルはディスク上にしかありません
 player-not-tracked-because = 記録されませんでした: { $reason }。
 # A tracker and what it said: "AniList: the show is hidden"
 player-outcome-said = { $tracker }: { $words }

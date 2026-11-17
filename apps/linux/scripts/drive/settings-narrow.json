@@ -1,0 +1,22 @@
+[
+ {
+  "log": "Settings in a narrow window (#1133): below the width the named index and a readable column need, the index folds to glyphs named by their tips and the search spans the top; the column stays inside the window, a glyph still opens its section, and widening the window brings the names back. Any root, any density"
+ },
+ {"page": "settings", "props": {"tab": "library"}},
+ {"until": "driver.item.pageReady('settings')"},
+ {"eval": "window.width = 560"},
+ {"until": "frame.item.pageItem.compact", "expect": true},
+ {"eval": "var p = frame.item.pageItem; p.sideInset + p.indexWidth + p.columnGap + p.sectionWidth <= p.width", "expect": true},
+ {"shot": "settings-narrow-560"},
+ {"click": "settings-tabs-appearance"},
+ {"until": "frame.item.pageItem.current", "expect": "appearance"},
+ {"hover": "settings-tabs-playback"},
+ {"until": "frame.item.tipShown", "timeout": 3000},
+ {"shot": "settings-narrow-tip"},
+ {"eval": "window.width = 300"},
+ {"until": "frame.item.pageItem.width < 260"},
+ {"eval": "var p = frame.item.pageItem; p.sideInset + p.indexWidth + p.columnGap + p.sectionWidth <= p.width", "expect": true},
+ {"eval": "window.width = 1280"},
+ {"until": "frame.item.pageItem.compact", "expect": false},
+ {"shot": "settings-narrow-1280"}
+]

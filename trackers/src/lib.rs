@@ -9,6 +9,7 @@
 pub mod accounts;
 pub mod cache;
 pub mod local;
+mod mal_lookup;
 pub mod move_up;
 pub mod oauth;
 pub mod on_hold;

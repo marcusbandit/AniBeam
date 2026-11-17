@@ -446,7 +446,10 @@ fn switching_on_mid_episode_shows_it_and_off_lets_go() {
     tick(&core, s, 1.0, false);
     switch(&core, true);
     core.presence_flush();
-    assert_eq!(sets(&fake.sent()).len(), 1);
+    // One set, and it already carries the party: the switch hands the
+    // worker what plays and its party together, never one before the other.
+    assert_eq!(sets(&fake.sent()).len(), 1, "{:#?}", fake.sent());
+    assert!(fake.parties.lock().unwrap()[0].is_some());
 
     switch(&core, false);
     tick(&core, s, 2.0, false);

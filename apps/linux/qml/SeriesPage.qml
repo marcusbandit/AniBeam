@@ -337,12 +337,12 @@ Item {
     // Each ID spelled out in a words.t call, so the strings check sees every one
     function refusalWord(r) {
         switch (r) {
-        case "Hidden": return words.t("player-refusal-hidden")
-        case "NoMatch": return words.t("player-refusal-no-match")
-        case "NotNewer": return words.t("player-refusal-not-newer")
-        case "Extra": return words.t("player-refusal-extra")
-        case "Unmatched": return words.t("player-refusal-unmatched")
-        case "OnDisk": return words.t("player-refusal-on-disk")
+        case "Hidden": return words.t("refusal-hidden")
+        case "NoMatch": return words.t("refusal-no-match")
+        case "NotNewer": return words.t("refusal-not-newer")
+        case "Extra": return words.t("refusal-extra")
+        case "Unmatched": return words.t("refusal-unmatched")
+        case "OnDisk": return words.t("refusal-on-disk")
         default: return String(r)
         }
     }

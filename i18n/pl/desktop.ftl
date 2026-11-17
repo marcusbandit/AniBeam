@@ -2410,13 +2410,6 @@ player-screenshot-saved = Zapisano w Obrazy/Anibeam
 player-skipped-intro = Pominięto intro
 player-skipped-outro = Pominięto outro
 player-undo = Cofnij
-# Why a tracker was not updated, read after "Not tracked:" or a tracker's name
-player-refusal-hidden = serial jest ukryty
-player-refusal-no-match = serial nie jest jeszcze dopasowany; dopasuj go w Informacjach
-player-refusal-not-newer = Twoja lista jest już dalej niż ten odcinek
-player-refusal-extra = to dodatek
-player-refusal-unmatched = plik nie jest dopasowany do odcinka
-player-refusal-on-disk = plik jest tylko na dysku
 player-not-tracked-because = Nie zapisano: { $reason }.
 # A tracker and what it said: "AniList: the show is hidden"
 player-outcome-said = { $tracker }: { $words }

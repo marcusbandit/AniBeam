@@ -889,17 +889,12 @@ player-tracked = Suivi
 player-not-tracked = Non suivi
 player-track-update-failed = Impossible de mettre à jour votre liste
 player-not-tracked-why = Non suivi : { $reason }.
+phone-player-refusal-no-match = la série n'est pas encore associée, touchez Associer sur sa page
 player-track-ok-at = { $tracker } à { $progress }
 player-track-ok = { $tracker } ok
 player-track-note = { $tracker } : { $note }
 player-track-failed = Impossible de mettre à jour { $tracker }
 player-track-line = { $head } : { $parts }
-phone-player-refusal-hidden = la série est masquée
-phone-player-refusal-no-match = la série n'a pas d'association de suivi
-phone-player-refusal-not-newer = le suivi est déjà au-delà de cet épisode
-phone-player-refusal-extra = c'est un bonus
-phone-player-refusal-unmatched = le fichier n'est pas associé à un épisode
-phone-player-refusal-on-disk = le fichier n'existe que sur le disque
 
 ## Subtitles
 

@@ -437,6 +437,36 @@ pub fn key_of_file_name(file_name: &str) -> String {
     }
 }
 
+/// The folders between a series and one of its files, joined with `/`:
+/// `Season 2` for `Show/Season 2/NCOP1.mkv`. Empty for a file in the series'
+/// own folder, and for one outside it.
+pub fn folder_below(series: &str, file: &str) -> String {
+    let root = series.trim_end_matches(std::path::is_separator);
+    let Some(rest) = file.strip_prefix(root) else {
+        return String::new();
+    };
+    if !rest.starts_with(std::path::is_separator) {
+        return String::new();
+    }
+    let parts: Vec<&str> = rest
+        .split(std::path::is_separator)
+        .filter(|p| !p.is_empty())
+        .collect();
+    parts[..parts.len().saturating_sub(1)].join("/")
+}
+
+/// An extra's key with the folder it sits in below its show:
+/// `Season 2/NCOP1.mkv`, or the key alone for the show's own folder. Two
+/// extras of one name in two folders of a show key apart this way, or they
+/// would share one history (#1085).
+pub fn key_in_folder(folder: &str, key: &str) -> String {
+    if folder.is_empty() {
+        key.to_string()
+    } else {
+        format!("{folder}/{key}")
+    }
+}
+
 /// An episode's history key. Season 1, and a file naming no season, key
 /// by the bare number (`12`, `12.5`), which is what every key was before
 /// seasons were part of it, so old history rows keep matching their files.
@@ -1131,6 +1161,7 @@ mod tests {
         assert_eq!(parse_episode_key("S02E01"), Some((2, 1.0)));
         assert_eq!(parse_episode_key("S02E12.5"), Some((2, 12.5)));
         assert_eq!(parse_episode_key("Show OP1.mkv"), None);
+        assert_eq!(parse_episode_key("Season 2/NCOP1.mkv"), None);
         assert_eq!(format_number(12.0), "12");
         assert_eq!(format_number(12.5), "12.5");
         assert_eq!(
@@ -1227,5 +1258,24 @@ mod tests {
         assert_eq!(release_label("plain name.mkv"), "plain name");
         // ASCII word boundaries, as in the old QML rule: CJK letters are not word characters
         assert_eq!(release_label("番組第01話1080p.mkv"), "1080p");
+    }
+
+    /// The folder a file sits in below its show, for a key that has to tell
+    /// two of one name apart (#1085).
+    #[test]
+    fn the_folder_below_a_show_and_a_key_in_it() {
+        assert_eq!(
+            folder_below("/lib/Show", "/lib/Show/Season 2/NCOP1.mkv"),
+            "Season 2"
+        );
+        assert_eq!(
+            folder_below("/lib/Show/", "/lib/Show/Season 2/Extras/NCOP1.mkv"),
+            "Season 2/Extras"
+        );
+        assert_eq!(folder_below("/lib/Show", "/lib/Show/NCOP1.mkv"), "");
+        assert_eq!(folder_below("/lib/Show", "/lib/Show2/NCOP1.mkv"), "");
+        assert_eq!(folder_below("/lib/Show", "/elsewhere/NCOP1.mkv"), "");
+        assert_eq!(key_in_folder("Season 2", "NCOP1.mkv"), "Season 2/NCOP1.mkv");
+        assert_eq!(key_in_folder("", "NCOP1.mkv"), "NCOP1.mkv");
     }
 }

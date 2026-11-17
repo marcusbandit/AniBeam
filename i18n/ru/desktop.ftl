@@ -2350,13 +2350,6 @@ player-screenshot-saved = Сохранено в Pictures/Anibeam
 player-skipped-intro = Опенинг пропущен
 player-skipped-outro = Эндинг пропущен
 player-undo = Отменить
-# Why a tracker was not updated, read after "Not tracked:" or a tracker's name
-player-refusal-hidden = сериал скрыт
-player-refusal-no-match = сериал ещё не привязан; привяжите его в «О сериалах»
-player-refusal-not-newer = ваш список уже дальше этой серии
-player-refusal-extra = это доп. материал
-player-refusal-unmatched = файл не привязан к серии
-player-refusal-on-disk = файл есть только на диске
 player-not-tracked-because = Не отмечено: { $reason }.
 # A tracker and what it said: "AniList: the show is hidden"
 player-outcome-said = { $tracker }: { $words }

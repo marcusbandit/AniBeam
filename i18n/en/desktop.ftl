@@ -2238,13 +2238,6 @@ player-screenshot-saved = Saved to Pictures/Anibeam
 player-skipped-intro = Skipped intro
 player-skipped-outro = Skipped outro
 player-undo = Undo
-# Why a tracker was not updated, read after "Not tracked:" or a tracker's name
-player-refusal-hidden = the show is hidden
-player-refusal-no-match = the show is not matched yet; match it on Show info
-player-refusal-not-newer = your list is already past this episode
-player-refusal-extra = this is an extra
-player-refusal-unmatched = the file is not matched to an episode
-player-refusal-on-disk = the file is only on disk
 player-not-tracked-because = Not tracked: { $reason }.
 # A tracker and what it said: "AniList: the show is hidden"
 player-outcome-said = { $tracker }: { $words }

@@ -644,15 +644,18 @@ FocusScope {
     // A refusal is a rule the core applied, not something that went wrong, so it reads as a
     // sentence and the line it lands in does not say error. The bare enum name is what the
     // core sends and is not for anyone to read.
-    readonly property var refusalWords: ({
-        Hidden: "player-refusal-hidden",
-        NoMatch: "player-refusal-no-match",
-        NotNewer: "player-refusal-not-newer",
-        Extra: "player-refusal-extra",
-        Unmatched: "player-refusal-unmatched",
-        OnDisk: "player-refusal-on-disk"
-    })
-    function refusalWord(r) { return refusalWords[r] ? words.t(refusalWords[r]) : String(r) }
+    // Each ID spelled out in a words.t call, so the strings check sees every one
+    function refusalWord(r) {
+        switch (r) {
+        case "Hidden": return words.t("refusal-hidden")
+        case "NoMatch": return words.t("refusal-no-match")
+        case "NotNewer": return words.t("refusal-not-newer")
+        case "Extra": return words.t("refusal-extra")
+        case "Unmatched": return words.t("refusal-unmatched")
+        case "OnDisk": return words.t("refusal-on-disk")
+        default: return String(r)
+        }
+    }
     // An error on the picture in plain words: a refusal says why, anything else is the
     // bridge's sentence and what to do, never the core's message alone
     function errorLine(e) {

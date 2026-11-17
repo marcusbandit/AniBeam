@@ -800,17 +800,12 @@ player-tracked = 已记录
 player-not-tracked = 未记录
 player-track-update-failed = 无法更新你的列表
 player-not-tracked-why = 未记录：{ $reason }。
+phone-player-refusal-no-match = 这部番剧还没有匹配，请在它的页面点“匹配”
 player-track-ok-at = { $tracker } 已更新到 { $progress }
 player-track-ok = { $tracker } 正常
 player-track-note = { $tracker }：{ $note }
 player-track-failed = 无法更新 { $tracker }
 player-track-line = { $head }：{ $parts }
-phone-player-refusal-hidden = 这部番剧已隐藏
-phone-player-refusal-no-match = 这部番剧没有匹配的追踪条目
-phone-player-refusal-not-newer = 追踪服务上的进度已超过这一集
-phone-player-refusal-extra = 这是附加内容
-phone-player-refusal-unmatched = 文件未匹配到剧集
-phone-player-refusal-on-disk = 文件只存在于本地
 
 ## Subtitles
 

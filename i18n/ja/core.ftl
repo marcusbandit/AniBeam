@@ -102,6 +102,13 @@ core-error-refused-not-newer = 実行できません: リストはすでにこ�
 core-error-refused-extra = 実行できません: これは特典映像です。
 core-error-refused-unmatched = 実行できません: このファイルはエピソードと照合されていません。
 core-error-refused-on-disk = 実行できません: このファイルはディスク上にしかありません。
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = 作品が非表示です
+refusal-no-match = 作品がまだ照合されていません。作品情報で照合してください
+refusal-not-newer = リストはすでにこのエピソードより先です
+refusal-extra = これは特典映像です
+refusal-unmatched = ファイルがエピソードと照合されていません
+refusal-on-disk = ファイルはディスク上にしかありません
 core-error-provider = { $provider }から応答がありません: { $message }
 core-error-io = ファイルを読み書きできませんでした: { $message }
 core-error-storage = ライブラリを保存できませんでした: { $message }
