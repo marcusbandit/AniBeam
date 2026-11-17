@@ -110,6 +110,13 @@ core-error-refused-not-newer = Dat kan niet: je lijst is al voorbij deze aflever
 core-error-refused-extra = Dat kan niet: dit is een extra.
 core-error-refused-unmatched = Dat kan niet: het bestand is niet aan een aflevering gekoppeld.
 core-error-refused-on-disk = Dat kan niet: het bestand staat alleen op schijf.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = de serie is verborgen
+refusal-no-match = de serie is nog niet gekoppeld; koppel hem bij Serie-info
+refusal-not-newer = je lijst is al voorbij deze aflevering
+refusal-extra = dit is een extra
+refusal-unmatched = het bestand is niet aan een aflevering gekoppeld
+refusal-on-disk = het bestand staat alleen op schijf
 core-error-provider = { $provider } reageerde niet: { $message }
 core-error-io = Kon een bestand niet lezen of schrijven: { $message }
 core-error-storage = Kon je bibliotheek niet opslaan: { $message }

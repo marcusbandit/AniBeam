@@ -802,12 +802,6 @@ player-track-ok = { $tracker } OK
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker }を更新できませんでした
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = 作品が非表示です
-phone-player-refusal-no-match = 作品がトラッカーと照合されていません
-phone-player-refusal-not-newer = トラッカーはすでにこの話より先まで進んでいます
-phone-player-refusal-extra = 特典映像です
-phone-player-refusal-unmatched = ファイルがエピソードに照合されていません
-phone-player-refusal-on-disk = ファイルはディスク上のみです
 
 ## Subtitles
 

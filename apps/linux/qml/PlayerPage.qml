@@ -638,12 +638,12 @@ FocusScope {
     // sentence and the line it lands in does not say error. The bare enum name is what the
     // core sends and is not for anyone to read.
     readonly property var refusalWords: ({
-        Hidden: "player-refusal-hidden",
-        NoMatch: "player-refusal-no-match",
-        NotNewer: "player-refusal-not-newer",
-        Extra: "player-refusal-extra",
-        Unmatched: "player-refusal-unmatched",
-        OnDisk: "player-refusal-on-disk"
+        Hidden: "refusal-hidden",
+        NoMatch: "refusal-no-match",
+        NotNewer: "refusal-not-newer",
+        Extra: "refusal-extra",
+        Unmatched: "refusal-unmatched",
+        OnDisk: "refusal-on-disk"
     })
     function refusalWord(r) { return refusalWords[r] ? words.t(refusalWords[r]) : String(r) }
     function errorLine(e) { return e.kind === "Refused" ? words.t("player-not-tracked-because", { reason: refusalWord(e.reason) }) : e.message }

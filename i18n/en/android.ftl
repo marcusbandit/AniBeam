@@ -1064,12 +1064,6 @@ player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } could not be updated
 # The whole line. { $head } is Tracked, Not tracked or Could not update your list; { $parts } is the list above joined by semicolons.
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = the show is hidden
-phone-player-refusal-no-match = the show has no tracker match
-phone-player-refusal-not-newer = the tracker is already past this episode
-phone-player-refusal-extra = this is an extra
-phone-player-refusal-unmatched = the file is not matched to an episode
-phone-player-refusal-on-disk = the file is only on disk
 
 ## Subtitles
 

@@ -109,6 +109,13 @@ core-error-refused-not-newer = Det kan ikke lade sig gøre: din liste er allered
 core-error-refused-extra = Det kan ikke lade sig gøre: dette er en ekstra.
 core-error-refused-unmatched = Det kan ikke lade sig gøre: filen er ikke matchet med et afsnit.
 core-error-refused-on-disk = Det kan ikke lade sig gøre: filen findes kun på disken.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = serien er skjult
+refusal-no-match = serien er ikke matchet endnu; match den under Serieinfo
+refusal-not-newer = din liste er allerede forbi dette afsnit
+refusal-extra = dette er en ekstra
+refusal-unmatched = filen er ikke matchet med et afsnit
+refusal-on-disk = filen findes kun på disken
 core-error-provider = { $provider } svarede ikke: { $message }
 core-error-io = Kunne ikke læse eller skrive en fil: { $message }
 core-error-storage = Kunne ikke gemme dit bibliotek: { $message }

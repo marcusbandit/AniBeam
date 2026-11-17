@@ -894,12 +894,6 @@ player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } kon niet worden bijgewerkt
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = de serie is verborgen
-phone-player-refusal-no-match = de serie heeft geen trackerkoppeling
-phone-player-refusal-not-newer = de tracker is al voorbij deze aflevering
-phone-player-refusal-extra = dit is een extra
-phone-player-refusal-unmatched = het bestand is niet aan een aflevering gekoppeld
-phone-player-refusal-on-disk = het bestand is alleen op schijf
 
 ## Ondertitels
 

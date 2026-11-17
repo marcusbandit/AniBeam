@@ -894,12 +894,6 @@ player-track-ok = { $tracker }: ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = Não foi possível atualizar { $tracker }
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = a série está oculta
-phone-player-refusal-no-match = a série não tem vínculo com a lista
-phone-player-refusal-not-newer = a lista já passou deste episódio
-phone-player-refusal-extra = isto é um extra
-phone-player-refusal-unmatched = o arquivo não está ligado a um episódio
-phone-player-refusal-on-disk = o arquivo só está no disco
 
 ## Subtitles
 

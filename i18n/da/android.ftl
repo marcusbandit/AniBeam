@@ -894,12 +894,6 @@ player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } kunne ikke opdateres
 player-track-line = { $head }: { $parts }
-phone-player-refusal-hidden = serien er skjult
-phone-player-refusal-no-match = serien har intet match hos trackeren
-phone-player-refusal-not-newer = trackeren er allerede forbi dette afsnit
-phone-player-refusal-extra = det er en ekstra
-phone-player-refusal-unmatched = filen er ikke matchet med et afsnit
-phone-player-refusal-on-disk = filen findes kun på disken
 
 ## Undertekster
 

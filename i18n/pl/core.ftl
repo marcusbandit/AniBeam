@@ -112,6 +112,13 @@ core-error-refused-not-newer = Nie można tego zrobić: Twoja lista jest już da
 core-error-refused-extra = Nie można tego zrobić: to dodatek.
 core-error-refused-unmatched = Nie można tego zrobić: plik nie jest dopasowany do odcinka.
 core-error-refused-on-disk = Nie można tego zrobić: plik jest tylko na dysku.
+# Why a list was not updated, read after "Not tracked:" or a tracker's name, on every shell's player
+refusal-hidden = serial jest ukryty
+refusal-no-match = serial nie jest jeszcze dopasowany; dopasuj go w Informacjach
+refusal-not-newer = Twoja lista jest już dalej niż ten odcinek
+refusal-extra = to dodatek
+refusal-unmatched = plik nie jest dopasowany do odcinka
+refusal-on-disk = plik jest tylko na dysku
 core-error-provider = { $provider } nie odpowiedział: { $message }
 core-error-io = Nie udało się odczytać ani zapisać pliku: { $message }
 core-error-storage = Nie udało się zapisać biblioteki: { $message }
