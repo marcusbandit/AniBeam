@@ -1,2 +1,2 @@
 ### Fixed
-- Join from Discord starts a closed Anibeam on AUR, deb and rpm installs too
+- Join from Discord starts a closed Anibeam on anibeam-bin, deb and rpm installs too
