@@ -1,7 +1,7 @@
 // Settings: the index at the left with the settings search on top of it, and the open
 // section beside it. The index is a plain menu: each entry is a glyph and the section's
 // name, with a red dot at its right when the section wants attention (a folder gone, an
-// update waiting). Typing in the search swaps the section for the
+// update waiting). A narrow window folds the index to its glyphs (#1133). Typing in the search swaps the section for the
 // settings whose names or words match; picking one opens its section, scrolls the row into
 // view and lights it for a moment. The section and each one's scroll are session state
 // kept on the frame, by section id. Section ids that have since moved into another
@@ -204,18 +204,39 @@ FocusScope {
     // with the same margin on both sides, the search on top of the index. The section's column
     // is the measure SettingsTab sets its rows to; the stage itself runs on to the window's right
     // edge, so the wheel scrolls the section from the margin and its scroll bar sits at the edge.
+    // A page too narrow for the named index beside a readable column (#1133) folds the index to
+    // its glyphs, each named by its tip, and lays the search across the top of both.
     readonly property real topInset: theme.space(7)
-    readonly property real indexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
-    readonly property real columnGap: theme.space(14)
-    readonly property real sectionWidth: Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
-    readonly property real sideInset: Math.max(theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
+    readonly property real namedIndexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
+    readonly property bool compact: page.width < namedIndexWidth + theme.space(14) + theme.space(100) + theme.space(16)
+    readonly property real indexWidth: compact ? theme.space(11) : namedIndexWidth
+    readonly property real columnGap: compact ? theme.space(6) : theme.space(14)
+    readonly property real sectionWidth: compact
+        ? Math.max(theme.space(40), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(12)))
+        : Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
+    readonly property real sideInset: Math.max(compact ? theme.space(6) : theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
+    // Where the index and the section start: under the search, which sits over the index alone
+    // while it has its names, and over the pair once it folds
+    readonly property real bodyTop: topInset + search.height + theme.space(4)
+
+    SearchField {
+        id: search
+        objectName: "settings-search"
+        x: page.sideInset
+        y: page.topInset
+        width: page.compact ? page.indexWidth + page.columnGap + page.sectionWidth : page.indexWidth
+        placeholder: words.t("settings-search-placeholder")
+        hint: "/"
+        onTextChanged: page.query = text
+        onAccepted: if (page.results.length) page.openResult(page.results[0])
+    }
 
     // ---- The index
     Flickable {
         id: indexPane
         objectName: "settings-index"
         x: page.sideInset
-        y: page.topInset
+        y: page.bodyTop
         width: page.indexWidth
         height: page.height - y
         contentHeight: indexCol.height + theme.space(10)
@@ -225,16 +246,6 @@ FocusScope {
         Column {
             id: indexCol
             width: indexPane.width
-            SearchField {
-                id: search
-                objectName: "settings-search"
-                width: parent.width
-                placeholder: words.t("settings-search-placeholder")
-                hint: "/"
-                onTextChanged: page.query = text
-                onAccepted: if (page.results.length) page.openResult(page.results[0])
-            }
-            Item { width: 1; height: theme.space(4) }
             Repeater {
                 model: page.sections
                 Rectangle {
@@ -251,13 +262,14 @@ FocusScope {
                     border.color: theme.accentEdge
                     Icon {
                         id: glyph
-                        x: theme.space(4)
+                        x: page.compact ? (entry.width - width) / 2 : theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: entry.modelData.icon
                         size: theme.space(5)
                         color: entry.active ? theme.accent : theme.text
                     }
                     Label {
+                        visible: !page.compact
                         anchors.left: glyph.right
                         anchors.leftMargin: theme.space(3.5)
                         anchors.right: dot.left
@@ -274,9 +286,9 @@ FocusScope {
                         id: dot
                         objectName: "settings-tabs-" + entry.modelData.id + "-dot"
                         visible: page.warns(entry.modelData.id)
-                        anchors.right: parent.right
-                        anchors.rightMargin: theme.space(4)
-                        anchors.verticalCenter: parent.verticalCenter
+                        // Folded, it sits over the glyph's top right, as the rail's badges do
+                        x: page.compact ? entry.width - width - theme.space(1.5) : entry.width - width - theme.space(4)
+                        y: page.compact ? theme.space(1.5) : (entry.height - height) / 2
                         width: theme.space(2); height: width; radius: width / 2
                         color: theme.red
                     }
@@ -290,6 +302,8 @@ FocusScope {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: page.open(entry.modelData.id)
                     }
+                    // Folded to its glyph, the entry is named by its tip
+                    Tooltip { text: page.compact ? entry.modelData.name : "" }
                 }
             }
         }
@@ -298,7 +312,7 @@ FocusScope {
     Item {
         id: stage
         x: indexPane.x + indexPane.width + page.columnGap
-        y: indexPane.y
+        y: page.compact ? page.bodyTop : page.topInset
         width: page.width - x
         height: page.height - y
         Loader {
