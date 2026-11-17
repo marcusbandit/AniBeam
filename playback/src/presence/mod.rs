@@ -1027,6 +1027,20 @@ impl Worker {
                     self.answers.extend(answers);
                     // Nothing shows on a connection that is not there.
                     self.dirty = self.shown().is_some() || self.is_connected();
+                    // With nothing to show, no Discord is no longer news: one
+                    // opened since is found on the next episode, and Settings
+                    // stops saying it is missing. A refusal stands until a
+                    // send lands, since it says what is wrong.
+                    if !self.dirty
+                        && !self.listening()
+                        && recover(&self.problem).as_ref() == Some(&PresenceProblem::NoDiscord)
+                    {
+                        self.set_problem(
+                            None,
+                            Level::Debug,
+                            "Discord presence has nothing to show",
+                        );
+                    }
                     self.deliver();
                     self.answer();
                     self.poll();
@@ -1254,7 +1268,9 @@ impl Worker {
                 Err(SendError::Rejected(e)) => {
                     let message = format!("Discord refused the connection: {e}");
                     let problem = refused(&e);
-                    if self.set_problem(Some(problem), Level::Warn, &message) {
+                    // Info on the bus: a Warn reads as playback failing in the
+                    // plain log, and playback is fine. Settings names it.
+                    if self.set_problem(Some(problem), Level::Info, &message) {
                         tracing::warn!("{message}");
                     }
                     return;
@@ -1324,7 +1340,12 @@ impl Worker {
         match result {
             Ok(()) => {
                 self.dirty = false;
-                self.set_problem(None, Level::Info, "Discord is showing what plays");
+                let message = if activity.is_some() {
+                    "Discord is showing what plays"
+                } else {
+                    "Discord cleared what it showed"
+                };
+                self.set_problem(None, Level::Info, message);
             }
             Err(SendError::Rejected(e)) => {
                 // Not debug: a refusal leaves the profile empty, and this
@@ -1333,7 +1354,7 @@ impl Worker {
                 self.dirty = false;
                 self.set_problem(
                     Some(refused(&e)),
-                    Level::Warn,
+                    Level::Info,
                     &format!("Discord refused the activity: {e}"),
                 );
             }

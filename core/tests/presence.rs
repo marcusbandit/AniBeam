@@ -607,6 +607,27 @@ fn a_discord_that_never_answers_is_named_once_and_never_connects() {
 }
 
 #[test]
+fn no_discord_stops_being_named_once_nothing_plays() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        fail: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    assert_eq!(problem_reply(&core), Some(PresenceProblem::NoDiscord));
+    // The episode ends: a Discord opened since is found on the next one, so
+    // Settings no longer says it is missing.
+    close(&core, s);
+    core.presence_flush();
+    assert_eq!(problem_reply(&core), None);
+}
+
+#[test]
 fn a_discord_that_refuses_the_handshake_is_named_with_its_words() {
     let (_dir, core, c) = common::open_core();
     let lib = library(&core);

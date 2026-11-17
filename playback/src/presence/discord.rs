@@ -101,10 +101,12 @@ impl<S: Stream> Connection<S> {
             Err(e) => return Err(e),
         };
         if reply["evt"] != "READY" {
-            let why = reply["data"]["message"].as_str().map(str::to_string);
-            return Err(SendError::Rejected(
-                why.unwrap_or_else(|| format!("no READY: {reply}")),
-            ));
+            // An error that says why is a refusal; anything else is not a
+            // Discord that can be named.
+            return Err(match reply["data"]["message"].as_str() {
+                Some(why) if !why.trim().is_empty() => SendError::Rejected(why.trim().to_string()),
+                _ => SendError::Gone(format!("no READY: {reply}")),
+            });
         }
         // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
         // activities, and the replies are skipped by nonce on the way to the next one.
@@ -419,8 +421,8 @@ fn walk<T>(
     mut attempt: impl FnMut(usize) -> Option<Result<T, SendError>>,
 ) -> (Result<T, SendError>, usize) {
     let from = if len == 0 { 0 } else { from % len };
-    // A refusal outlives a later socket that only went quiet, so Settings
-    // names what a Discord that answered said (#1029).
+    // A refusal outlives a later socket that only went quiet or refused
+    // too, so Settings names what the first Discord that answered said (#1029).
     let mut last = SendError::Gone("no Discord socket".to_string());
     for step in 0..len {
         let i = (from + step) % len;
@@ -429,11 +431,9 @@ fn walk<T>(
         }
         match attempt(i) {
             Some(Ok(found)) => return (Ok(found), i),
-            Some(Err(e))
-                if matches!(e, SendError::Rejected(_)) || matches!(last, SendError::Gone(_)) =>
-            {
-                last = e;
-            }
+            // The first refusal stands, so the reason Settings shows does
+            // not swap between two Discords from one retry to the next.
+            Some(Err(e)) if matches!(last, SendError::Gone(_)) => last = e,
             Some(Err(_)) | None => {}
         }
     }
@@ -560,6 +560,14 @@ mod tests {
             },
         );
         assert!(matches!(result, Err(SendError::Rejected(m)) if m == "Invalid Client ID"));
+        // Nor does a second refusal take its place.
+        let (result, _) = walk(
+            2,
+            0,
+            || false,
+            |i| Some(Err::<(), _>(SendError::Rejected(format!("refusal {i}")))),
+        );
+        assert!(matches!(result, Err(SendError::Rejected(m)) if m == "refusal 0"));
     }
 
     #[test]
@@ -696,6 +704,12 @@ mod tests {
             "123",
         );
         assert!(matches!(error, Err(SendError::Rejected(m)) if m == "Invalid Origin"));
+        // A first frame that is neither READY nor an error that says why is no Discord.
+        let other = Connection::handshake(
+            Fake::new(&[(FRAME, json!({"cmd": "DISPATCH", "evt": "SOMETHING_ELSE"}))]),
+            "123",
+        );
+        assert!(matches!(other, Err(SendError::Gone(_))));
         // A stream that ends before answering is no Discord.
         assert!(matches!(
             Connection::handshake(Fake::new(&[]), "123"),

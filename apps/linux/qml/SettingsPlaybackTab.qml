@@ -117,7 +117,7 @@ SettingsTab {
         discordBlocked = r.reply.people || []
     }
     Component.onCompleted: { readPresence(); readBlocked(); Qt.callLater(checkPreview) }
-    Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected; tab.readPresence() } }
+    Connections { target: Door; function onPresenceChanged() { tab.readPresence() } }
 
     Panel {
         title: words.t("settings-playback-skipping")
