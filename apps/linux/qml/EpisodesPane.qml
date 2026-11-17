@@ -43,7 +43,7 @@ Corner {
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function load() {
         var r = Door.getSeries(root.seriesId)
-        if (r.error) { frame.fail(r.error, root.load); return }
+        if (r.error) { frame.fail(r.error); return }
         root.detail = r.reply.detail
     }
     onVisibleChanged: if (!visible) detail = null
@@ -228,19 +228,10 @@ Corner {
                     }
                 }
                 // No expected count and nothing on disk: say so rather than draw nothing
-                Row {
+                Label {
                     visible: root.detail !== null && root.seasonRows.every(function(r) { return r.count === 0 })
-                    spacing: theme.space(3)
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Nothing is on disk yet. Downloads can get the episodes."
-                        role: "ui"; color: theme.textDim
-                    }
-                    Button {
-                        objectName: "episodes-get"
-                        text: "Get episodes"; icon: "download"; small: true
-                        onClicked: { var id = root.seriesId; root.close(); frame.go("downloads", { series: id }, "Downloads") }
-                    }
+                    text: "No episodes on disk"
+                    role: "ui"; color: theme.textDim
                 }
             }
 
@@ -270,7 +261,7 @@ Corner {
                 Button {
                     objectName: "episodes-refresh"
                     flat: true; small: true; icon: "refresh-cw"; text: "Refresh"
-                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error, clicked) : frame.toast("Refreshing " + root.title) }
+                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.title) }
                 }
             }
         }
