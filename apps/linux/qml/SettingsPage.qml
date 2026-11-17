@@ -1,7 +1,8 @@
 // Settings: the index at the left with the settings search on top of it, and the open
 // section beside it. The index is a plain menu: each entry is a glyph and the section's
 // name, with a red dot at its right when the section wants attention (a folder gone, an
-// update waiting). A narrow window folds the index to its glyphs (#1133). Typing in the search swaps the section for the
+// update waiting). A window too narrow for that folds the index to its glyphs and lays the
+// search across the top of both (#1133). Typing in the search swaps the section for the
 // settings whose names or words match; picking one opens its section, scrolls the row into
 // view and lights it for a moment. The section and each one's scroll are session state
 // kept on the frame, by section id. Section ids that have since moved into another
@@ -205,15 +206,18 @@ FocusScope {
     // is the measure SettingsTab sets its rows to; the stage itself runs on to the window's right
     // edge, so the wheel scrolls the section from the margin and its scroll bar sits at the edge.
     // A page too narrow for the named index beside a readable column (#1133) folds the index to
-    // its glyphs, each named by its tip, and lays the search across the top of both.
+    // its glyphs, each named by its tip, and lays the search across the top of both. It folds
+    // where the named layout's own column would drop under its floor, so the column never sits
+    // clamped at the floor in a window it does not fit.
     readonly property real topInset: theme.space(7)
     readonly property real namedIndexWidth: page.width < theme.space(270) ? theme.space(60) : theme.space(74)
-    readonly property bool compact: page.width < namedIndexWidth + theme.space(14) + theme.space(100) + theme.space(16)
+    readonly property real namedSpare: page.width - namedIndexWidth - theme.space(14) - theme.space(22)
+    readonly property bool compact: namedSpare < theme.space(100)
     readonly property real indexWidth: compact ? theme.space(11) : namedIndexWidth
     readonly property real columnGap: compact ? theme.space(6) : theme.space(14)
     readonly property real sectionWidth: compact
-        ? Math.max(theme.space(40), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(12)))
-        : Math.max(theme.space(100), Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(22)))
+        ? Math.max(0, Math.min(theme.space(210), page.width - indexWidth - columnGap - theme.space(12)))
+        : Math.min(theme.space(210), namedSpare)
     readonly property real sideInset: Math.max(compact ? theme.space(6) : theme.space(8), Math.round((page.width - indexWidth - columnGap - sectionWidth) / 2))
     // Where the index and the section start: under the search, which sits over the index alone
     // while it has its names, and over the pair once it folds
@@ -269,6 +273,7 @@ FocusScope {
                         color: entry.active ? theme.accent : theme.text
                     }
                     Label {
+                        id: entryName
                         visible: !page.compact
                         anchors.left: glyph.right
                         anchors.leftMargin: theme.space(3.5)
@@ -302,8 +307,9 @@ FocusScope {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: page.open(entry.modelData.id)
                     }
-                    // Folded to its glyph, the entry is named by its tip
-                    Tooltip { text: page.compact ? entry.modelData.name : "" }
+                    // Folded to its glyph, or its name cut short by a large text size, the
+                    // entry is named by its tip
+                    Tooltip { text: page.compact || entryName.truncated ? entry.modelData.name : "" }
                 }
             }
         }
