@@ -742,6 +742,8 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     // Read before the presence lock is taken: presence takes the sessions
     // lock inside its own, never the other way round.
     let playing = on.then(|| playback.sessions.playing()).flatten();
+    // The room open now, read outside the lock as `follow_rooms` reads it.
+    let room = on.then(|| join::room_now(playback)).flatten();
     let mut inner = recover(&p.inner);
     // Checked again under the presence lock, as a tick is.
     let playing = playing.filter(|s| playback.sessions.is_open(s.id));
@@ -757,6 +759,9 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     };
     let first = on && inner.worker.is_none();
     if first {
+        // Known before the first post, so a room already open goes out with
+        // what plays rather than in a second set after it.
+        join::adopt_room(&mut inner, room);
         let transport = inner
             .injected
             .take()
@@ -789,7 +794,7 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
     if on && inner.worker.is_some() {
         posts.push(join::party_post(&inner));
         if let Some(until) = inner.listen.take() {
-            posts.push(Box::new(move |d| d.listen = Some(until)));
+            posts.push(join::listen_post(until));
         }
     }
     post_all(&inner, posts);
@@ -867,7 +872,10 @@ fn posts(playback: &Arc<Playback>, actions: Vec<Action>) -> Vec<Post> {
 /// Hands the worker every change as one: a worker that wakes between two
 /// posts sends the state between them, so what belongs together goes in one.
 fn post_all(inner: &Inner, posts: Vec<Post>) {
-    if let (Some(worker), false) = (&inner.worker, posts.is_empty()) {
+    if posts.is_empty() {
+        return;
+    }
+    if let Some(worker) = &inner.worker {
         worker.post(move |d| posts.into_iter().for_each(|post| post(d)));
     }
 }

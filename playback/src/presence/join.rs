@@ -38,9 +38,7 @@ static SERIAL: AtomicU64 = AtomicU64::new(0);
 /// The party and the idle activity for what the core knows now, handed to
 /// the worker. Does nothing before the switch first went on.
 pub(super) fn post_party(inner: &Inner) {
-    if let Some(worker) = &inner.worker {
-        worker.post(party_post(inner));
-    }
+    super::post_all(inner, vec![party_post(inner)]);
 }
 
 /// The party and the room's idle activity, as a change to the desired state.
@@ -50,6 +48,11 @@ pub(super) fn party_post(inner: &Inner) -> Post {
         d.party = Some(party);
         d.idle = idle;
     })
+}
+
+/// Staying connected with nothing to show until `until`, as a change.
+pub(super) fn listen_post(until: Instant) -> Post {
+    Box::new(move |d| d.listen = Some(until))
 }
 
 fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
@@ -105,6 +108,14 @@ fn random_party_id() -> String {
 /// invite only, with nobody let in yet.
 pub(crate) fn set_room(playback: &Arc<Playback>, show: Option<RoomShow>) {
     let mut inner = recover(&playback.presence.inner);
+    if adopt_room(&mut inner, show) && playback.presence.enabled.load(Ordering::Relaxed) {
+        post_party(&inner);
+    }
+}
+
+/// Takes the room team's word on the room into what presence knows, and
+/// says whether it changed.
+pub(super) fn adopt_room(inner: &mut Inner, show: Option<RoomShow>) -> bool {
     let same = inner.room.as_ref().map(|r| &r.code) == show.as_ref().map(|r| &r.code);
     if !same {
         inner.let_in.clear();
@@ -112,12 +123,16 @@ pub(crate) fn set_room(playback: &Arc<Playback>, show: Option<RoomShow>) {
         inner.room_party = random_party_id();
     }
     if inner.room == show {
-        return;
+        return false;
     }
     inner.room = show;
-    if playback.presence.enabled.load(Ordering::Relaxed) {
-        post_party(&inner);
-    }
+    true
+}
+
+/// The room open now, as Discord shows it.
+pub(super) fn room_now(playback: &Playback) -> Option<RoomShow> {
+    let rooms = playback.presence.rooms.get()?;
+    rooms.status().as_ref().map(show_of)
 }
 
 /// The room as Discord shows it, from the room team's word on it.
@@ -145,9 +160,7 @@ pub(super) fn follow_rooms(playback: &Arc<Playback>) {
         .services
         .bus
         .subscribe(Arc::new(Follow(Arc::downgrade(playback))));
-    if let Some(rooms) = playback.presence.rooms.get() {
-        set_room(playback, rooms.status().as_ref().map(show_of));
-    }
+    set_room(playback, room_now(playback));
 }
 
 /// What Discord said, on the worker's thread.
@@ -375,7 +388,7 @@ pub fn listen_call(playback: &Arc<Playback>) -> Result<Reply, CoreError> {
         let mut inner = recover(&playback.presence.inner);
         match &inner.worker {
             Some(worker) if playback.presence.enabled.load(Ordering::Relaxed) => {
-                worker.post(move |d| d.listen = Some(until));
+                worker.post(listen_post(until));
             }
             _ => inner.listen = Some(until),
         }
