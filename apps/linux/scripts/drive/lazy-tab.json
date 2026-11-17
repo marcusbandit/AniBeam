@@ -1,0 +1,34 @@
+[
+  {"log": "Tab reaches every card on a long page, built or not, and scrolls it into view (#627)."},
+  {"log": "Needs a root whose library is far taller than the window, about 200 shows, so the"},
+  {"log": "cards near the end start unbuilt."},
+  {"click": "rail-library"},
+  {"until": "driver.item.pageReady('library')"},
+  {"until": "frame.item.pageItem.cardIds().length >= 150", "timeout": 60000},
+  {"log": "the cards in page order: section by section, as the focus chain runs"},
+  {"eval": "[].concat.apply([], frame.item.pageItem.sections.map(function(s) { return s.ids }))", "as": "ids"},
+  {"eval": "'tile-' + vars.ids[vars.ids.length - 1]", "as": "last"},
+  {"eval": "vars.inView = function() { var c = window.activeFocusItem, f = c.parent.parent.flick, p = c.mapToItem(f, 0, 0); return p.y >= 0 && p.y + c.height <= f.height }; 1"},
+
+  {"log": "the last card has not been built when the page opens"},
+  {"eval": "driver.item.findItem(vars.last) === null", "expect": true},
+
+  {"log": "from the first card, Tab walks on past the bottom of the view and the page follows"},
+  {"eval": "driver.item.findItem('tile-' + vars.ids[0]).forceActiveFocus(Qt.TabFocusReason); 1"},
+  {"key": "Tab", "repeatUntil": "window.activeFocusItem && window.activeFocusItem.objectName === 'tile-' + vars.ids[40]", "max": 60},
+  {"wait": 400},
+  {"eval": "vars.inView()", "expect": true},
+
+  {"log": "on to the last card, which Tab built"},
+  {"key": "Tab", "repeatUntil": "window.activeFocusItem && window.activeFocusItem.objectName === vars.last", "max": 400},
+  {"eval": "window.activeFocusItem.objectName === vars.last", "expect": true},
+  {"wait": 400},
+  {"eval": "vars.inView()", "expect": true},
+  {"shot": "lazy-tab-01-last-card"},
+
+  {"log": "Shift+Tab goes back one card at a time"},
+  {"key": "Shift+Tab"},
+  {"eval": "window.activeFocusItem.objectName === 'tile-' + vars.ids[vars.ids.length - 2]", "expect": true},
+  {"wait": 400},
+  {"eval": "vars.inView()", "expect": true}
+]

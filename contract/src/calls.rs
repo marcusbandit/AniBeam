@@ -707,7 +707,8 @@ pub enum Call {
         name: Option<String>,
     },
     PhoneRules,
-    /// Takes subscriptions out; with `files`, their downloads and episodes too.
+    /// Takes subscriptions out; with `files`, the downloads they added and their episodes
+    /// too, never one got by hand. Answers `PhoneUnsubscribed`.
     PhoneUnsubscribe {
         names: Vec<String>,
         files: bool,
@@ -999,6 +1000,10 @@ pub enum Reply {
         /// The room this person is in can be joined from Discord without asking.
         #[serde(default)]
         room_open: bool,
+        /// Why Discord shows nothing, while the switch is on and the last try
+        /// to reach it failed (#1029). None while it shows, or nothing was tried.
+        #[serde(default)]
+        problem: Option<PresenceProblem>,
     },
     DiscordBlocked {
         people: Vec<DiscordPerson>,
@@ -1038,6 +1043,11 @@ pub enum Reply {
     },
     PhoneRules {
         rules: Vec<SubscriptionRule>,
+    },
+    /// What `PhoneUnsubscribe` took off the phone: the downloads the subscriptions had
+    /// added, none without `files` (#654).
+    PhoneUnsubscribed {
+        removed: u64,
     },
     PhoneNetCheck {
         checks: Vec<NetCheck>,

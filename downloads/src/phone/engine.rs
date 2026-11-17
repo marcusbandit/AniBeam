@@ -55,6 +55,14 @@ impl Entry {
     }
 }
 
+/// What an add did: the torrent's info hash, and whether this add is what brought it in.
+/// `new` is false for one the engine already held, got by hand or by an earlier round, so
+/// a subscription never counts it as its own (#654).
+pub struct Added {
+    pub hash: String,
+    pub new: bool,
+}
+
 /// A torrent's file list read before it is added, and what the add needs to start from it
 /// without asking the peers again.
 pub struct Peeked {
@@ -214,7 +222,7 @@ impl Engine {
     /// list is held only while it is copied, never across the write.
     fn save_entries(&self) {
         let _turn = recover(&self.saving);
-        let entries = self.entries.lock().unwrap().clone();
+        let entries = recover(&self.entries).clone();
         match serde_json::to_vec_pretty(&entries) {
             Ok(bytes) => {
                 if let Err(e) = anibeam_foundation::atomic_file::write(&self.entries_path, bytes) {
@@ -228,7 +236,7 @@ impl Engine {
     /// Held from the start: nothing downloads until the app has looked at the network and
     /// said Wi-Fi or allowed mobile data.
     pub fn held(&self) -> bool {
-        *self.held.lock().unwrap()
+        *recover(&self.held)
     }
 
     /// Adds `release` to download into `<root>/<folder>`, held at once when downloads are.
@@ -239,21 +247,23 @@ impl Engine {
         release: &Release,
         folder: &str,
         torrent: Option<Vec<u8>>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<Added, CoreError> {
         let source = match torrent {
             Some(bytes) => AddTorrent::from_bytes(bytes),
             None => AddTorrent::from_url(&release.link),
         };
         // A magnet has to fetch its few kilobytes of metadata before it can pause, so it is
         // added running and held right after: on mobile data only that little goes out.
-        self.start(
-            release,
-            folder,
-            source,
-            AddTorrentOptions::default(),
-            Vec::new(),
-        )
-        .await
+        let (hash, new) = self
+            .start(
+                release,
+                folder,
+                source,
+                AddTorrentOptions::default(),
+                Vec::new(),
+            )
+            .await?;
+        Ok(Added { hash, new })
     }
 
     /// Reads a torrent's file list without adding it, so a rolling download can pick the
@@ -344,14 +354,16 @@ impl Engine {
             paused: self.held(),
             ..Default::default()
         };
-        self.start(
-            release,
-            folder,
-            AddTorrent::from_bytes(peeked.bytes),
-            options,
-            entry.priorities,
-        )
-        .await
+        let (hash, _) = self
+            .start(
+                release,
+                folder,
+                AddTorrent::from_bytes(peeked.bytes),
+                options,
+                entry.priorities,
+            )
+            .await?;
+        Ok(hash)
     }
 
     async fn start(
@@ -361,7 +373,7 @@ impl Engine {
         source: AddTorrent<'_>,
         options: AddTorrentOptions,
         priorities: Vec<i64>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<(String, bool), CoreError> {
         let held = self.held();
         let output = self.root.join(folder);
         let added = within_a_minute(self.session.add_torrent(
@@ -377,7 +389,9 @@ impl Engine {
         let handle = match added {
             AddTorrentResponse::Added(_, h) => h,
             // One the engine has already keeps its record: its files stay where they are.
-            AddTorrentResponse::AlreadyManaged(_, h) => return Ok(h.info_hash().as_string()),
+            AddTorrentResponse::AlreadyManaged(_, h) => {
+                return Ok((h.info_hash().as_string(), false));
+            }
             AddTorrentResponse::ListOnly(_) => {
                 return Err(fail("the engine only listed the torrent"));
             }
@@ -386,7 +400,7 @@ impl Engine {
             self.session.pause(&handle).await.map_err(fail)?;
         }
         let hash = handle.info_hash().as_string();
-        self.entries.lock().unwrap().insert(
+        recover(&self.entries).insert(
             hash.clone(),
             Entry {
                 title: release.title.clone(),
@@ -397,7 +411,7 @@ impl Engine {
             },
         );
         self.save_entries();
-        Ok(hash)
+        Ok((hash, true))
     }
 
     /// Every torrent as qBittorrent would list it. A finished one is paused here: a phone
@@ -413,7 +427,7 @@ impl Engine {
             let stats = h.stats();
             // The lock is held only in this block: the engine is awaited below.
             let entry = {
-                let mut entries = self.entries.lock().unwrap();
+                let mut entries = recover(&self.entries);
                 let entry = entries.entry(hash.clone()).or_default();
                 if stats.finished && entry.completion_on == 0 {
                     entry.completion_on = now();
@@ -527,10 +541,7 @@ impl Engine {
         let h = self
             .handle(hash)
             .ok_or_else(|| CoreError::invalid("hash", format!("no torrent {hash}")))?;
-        let entry = self
-            .entries
-            .lock()
-            .unwrap()
+        let entry = recover(&self.entries)
             .get(&h.info_hash().as_string())
             .cloned()
             .unwrap_or_default();
@@ -556,7 +567,7 @@ impl Engine {
         // them: librqbit refuses a change while a torrent still checks its files, and a
         // priority recorded but never applied would make the next pass see nothing to do.
         let (old, new, by_user, folder) = {
-            let entries = self.entries.lock().unwrap();
+            let entries = recover(&self.entries);
             let e = entries.get(&key).cloned().unwrap_or_default();
             let mut n = e.clone();
             n.priorities.resize(count, NORMAL);
@@ -579,9 +590,7 @@ impl Engine {
             files.set_wanted(old);
             return Err(fail(e));
         }
-        self.entries
-            .lock()
-            .unwrap()
+        recover(&self.entries)
             .entry(key.clone())
             .or_default()
             .priorities = new.priorities;
@@ -607,17 +616,13 @@ impl Engine {
             match action {
                 PhoneAction::Pause => {
                     self.session.pause(&h).await.map_err(fail)?;
-                    self.entries
-                        .lock()
-                        .unwrap()
+                    recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = true;
                 }
                 PhoneAction::Resume => {
-                    self.entries
-                        .lock()
-                        .unwrap()
+                    recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = false;
@@ -631,7 +636,7 @@ impl Engine {
                         .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), files)
                         .await
                         .map_err(fail)?;
-                    self.entries.lock().unwrap().remove(hash);
+                    recover(&self.entries).remove(hash);
                     self.shelf.forget(&h.info_hash().as_string());
                 }
             }
@@ -642,7 +647,7 @@ impl Engine {
 
     /// Holds every unfinished download, or lets the ones the person did not pause run again.
     pub async fn set_held(&self, held: bool) -> Result<(), CoreError> {
-        *self.held.lock().unwrap() = held;
+        *recover(&self.held) = held;
         let handles: Vec<_> = self
             .session
             .with_torrents(|it| it.map(|(_, h)| h.clone()).collect());
@@ -650,10 +655,7 @@ impl Engine {
             if h.stats().finished {
                 continue;
             }
-            let by_user = self
-                .entries
-                .lock()
-                .unwrap()
+            let by_user = recover(&self.entries)
                 .get(&h.info_hash().as_string())
                 .is_some_and(|e| e.paused_by_user);
             // One torrent the engine will not pause or start (in error, say) must not leave
@@ -741,6 +743,31 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn a_panic_with_the_list_held_still_lets_it_save() {
+        // One panic with `entries` or `held` held used to break every later save or
+        // hold check for the rest of the run, since each unwrapped the poison (#923).
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        std::thread::scope(|s| {
+            let held = s.spawn(|| {
+                let _entries = engine.entries.lock().unwrap();
+                let _held = engine.held.lock().unwrap();
+                panic!("boom, with the list and the hold held");
+            });
+            assert!(held.join().is_err());
+        });
+        assert!(engine.entries.lock().is_err(), "the list is poisoned");
+        assert!(engine.held.lock().is_err(), "the hold is poisoned");
+        recover(&engine.entries).insert("abc".to_string(), Entry::default());
+        engine.save_entries();
+        let saved = std::fs::read_to_string(&engine.entries_path).unwrap();
+        assert!(saved.contains("abc"), "the list was saved: {saved}");
+        assert!(engine.held());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn a_skipped_episode_never_lands_in_the_library_even_after_a_restart() {
         let dir = tempfile::tempdir().unwrap();
         let bytes = batch(dir.path()).await;
@@ -772,6 +799,22 @@ mod tests {
         // Wanted again, it is fetched: the file shows up and reads as normal.
         engine.set_priority(&hash, &[two], NORMAL).await.unwrap();
         assert_eq!(engine.files(&hash).unwrap()[two].priority, NORMAL);
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_torrent_is_new_only_to_the_add_that_brought_it_in() {
+        // A subscription owns what its add brought in, never one already here (#654).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let first = engine.add(&r, "Show", Some(bytes.clone())).await.unwrap();
+        let again = engine.add(&r, "Show", Some(bytes)).await.unwrap();
+        assert!(first.new && !again.new);
+        assert_eq!(first.hash, again.hash);
         engine.session.stop().await;
     }
 }

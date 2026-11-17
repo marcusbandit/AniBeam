@@ -35,14 +35,6 @@ fn settings(mode: TorrentMode, torrent_url: &str) -> DownloadSettings {
     }
 }
 
-/// Points the XDG homes at `dir`, so no case reads the machine's own anirss config.
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
-
 struct Rig {
     dir: common::Dir,
     core: Arc<Core>,
@@ -62,7 +54,6 @@ fn managed() -> Rig {
 fn rig(s: DownloadSettings) -> Rig {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     let reply = core
         .call(Call::SetDownloadSettings {
             settings: s,

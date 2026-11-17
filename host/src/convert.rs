@@ -443,7 +443,9 @@ impl Converter {
     /// The bytes of one piece, converting as needed. None when it cannot be
     /// had: no encoder, ffmpeg failed, or the piece is past the end.
     pub async fn piece(&self, key: &Key, source: &Source, i: u32) -> Option<Vec<u8>> {
-        if i >= wire::hls_pieces(source.probe.duration) {
+        // A length no playlist lists (none, broken, or past a day) never
+        // reaches ffmpeg.
+        if !wire::hls_pieces(source.probe.duration).is_some_and(|n| i < n) {
             return None;
         }
         let enc = encoder().await?;
@@ -854,6 +856,32 @@ mod tests {
         assert!(joined.contains("expr:gte(t,n_forced*6)"));
         assert!(joined.contains("-output_ts_offset 60.000"));
         assert!(joined.contains("-start_number 10"));
+    }
+
+    #[test]
+    fn a_length_no_playlist_lists_never_starts_a_conversion() {
+        let dir = tempfile::tempdir().unwrap();
+        let converter = Converter::new(dir.path());
+        let key = Key {
+            file: 1,
+            height: 720,
+            audio: None,
+            burn: None,
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // No duration read, a NaN, a broken header's billions of seconds, and
+        // the sliver past the last whole piece.
+        for (duration, i) in [(0.0, 0), (f64::NAN, 0), (1e12, 0), (1440.0004, 240)] {
+            let source = Source {
+                path: PathBuf::from("/lib/Show - 01.mkv"),
+                probe: wire::Probe {
+                    duration,
+                    ..Default::default()
+                },
+            };
+            assert_eq!(rt.block_on(converter.piece(&key, &source, i)), None);
+            assert!(recover(&converter.jobs).is_empty(), "{duration} made a job");
+        }
     }
 
     #[test]

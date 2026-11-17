@@ -33,6 +33,11 @@ pub struct Rule {
     /// The links already taken, so each episode downloads once.
     #[serde(default)]
     pub taken: BTreeSet<String>,
+    /// The info hashes of the torrents this rule added, lowercase. Unsubscribing with its
+    /// files removes these and nothing else, so a download got by hand into the same
+    /// folder stays (#654).
+    #[serde(default)]
+    pub added: BTreeSet<String>,
 }
 
 fn yes() -> bool {
@@ -101,7 +106,15 @@ impl RuleStore {
         let taken = rules
             .iter()
             .find(|r| r.name == name && same(r))
-            .map(|r| r.taken.clone());
+            .map(|r| r.taken.clone())
+            .unwrap_or_default();
+        // What a rule of this name added stays its own even when the feed changed: the
+        // rule it replaces filled the same folder, and its downloads are still there.
+        let added = rules
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| r.added.clone())
+            .unwrap_or_default();
         let rule = Rule {
             name: name.clone(),
             feed_url: spec.feed_url.clone(),
@@ -110,7 +123,8 @@ impl RuleStore {
             must_not_contain: spec.must_not_contain.clone(),
             save_path: save_base.join(&name).to_string_lossy().into_owned(),
             enabled: true,
-            taken: taken.unwrap_or_default(),
+            taken,
+            added,
         };
         rules.retain(|r| r.name != name);
         rules.push(rule.clone());
@@ -148,6 +162,37 @@ impl RuleStore {
             r.taken.extend(links.iter().cloned());
         }
         self.save(&rules)
+    }
+
+    /// Notes a torrent `rule` added: its link as taken, and its info hash, when the rule
+    /// is the one that brought the torrent in, as the rule's own.
+    pub fn mark_added(&self, rule: &str, link: &str, hash: Option<&str>) -> Result<(), CoreError> {
+        let _one = editing();
+        let mut rules = self.load();
+        if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
+            r.taken.insert(link.to_string());
+            if let Some(hash) = hash {
+                r.added.insert(hash.to_lowercase());
+            }
+        }
+        self.save(&rules)
+    }
+
+    /// Takes `hashes` off every rule's own: a torrent got by hand is the person's, even one
+    /// a subscription brought in once before (#654).
+    pub fn disown(&self, hashes: &[String]) -> Result<(), CoreError> {
+        let _one = editing();
+        let mut rules = self.load();
+        let mut changed = false;
+        for r in &mut rules {
+            for hash in hashes {
+                changed |= r.added.remove(&hash.to_lowercase());
+            }
+        }
+        if changed {
+            self.save(&rules)?;
+        }
+        Ok(())
     }
 
     /// Reads the rules, lets `change` change them, and writes them back when it says it
@@ -265,6 +310,7 @@ mod tests {
             save_path: "/x/Frieren".into(),
             enabled: true,
             taken: BTreeSet::new(),
+            added: BTreeSet::new(),
         }
     }
 
@@ -380,6 +426,8 @@ mod tests {
         rules[0].endpoint = String::new();
         store.save(&rules).unwrap();
         store.mark_taken("Show", &["a".to_string()]).unwrap();
+        // A torrent the rule added keeps its hash, lowercase, through the subscribe again.
+        store.mark_added("Show", "b", Some("ABC")).unwrap();
 
         let (_, again) = store
             .subscribe("Show", &spec(kept), filled, fill, dir.path())
@@ -389,7 +437,8 @@ mod tests {
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].feed_url, kept);
         assert_eq!(rules[0].endpoint, "keyed");
-        assert!(rules[0].taken.contains("a"));
+        assert!(rules[0].taken.contains("a") && rules[0].taken.contains("b"));
+        assert_eq!(rules[0].added, BTreeSet::from(["abc".to_string()]));
 
         // Another endpoint whose kept feed reads the same but fills another token is
         // another feed, and another rule.
@@ -403,5 +452,40 @@ mod tests {
             .unwrap();
         assert_eq!(second.name, "Show @other");
         assert_eq!(store.load().len(), 2);
+    }
+
+    #[test]
+    fn what_a_rule_added_stays_its_own_through_a_new_feed_until_got_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RuleStore::new(dir.path().join("rules.json"));
+        let spec = |url: &str| SubscriptionSpec {
+            feed_url: url.into(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            endpoint_name: String::new(),
+        };
+        let as_is = |r: &Rule| Some(r.feed_url.clone());
+        let at_720 = "https://feed.example/rss?q=Show+720p";
+        store
+            .subscribe("Show", &spec(at_720), at_720, as_is, dir.path())
+            .unwrap();
+        store.mark_added("Show", "a", Some("AAA")).unwrap();
+        store.mark_added("Show", "b", Some("bbb")).unwrap();
+
+        // Followed again at 1080p: the same name and folder, so the rule replaces the
+        // old one. Its links are another feed's, but its downloads are still the rule's.
+        let at_1080 = "https://feed.example/rss?q=Show+1080p";
+        store
+            .subscribe("Show", &spec(at_1080), at_1080, as_is, dir.path())
+            .unwrap();
+        let rules = store.load();
+        assert_eq!(rules.len(), 1);
+        assert!(rules[0].taken.is_empty());
+        let both = BTreeSet::from(["aaa".to_string(), "bbb".to_string()]);
+        assert_eq!(rules[0].added, both);
+
+        // Got by hand, a torrent is the person's from then on.
+        store.disown(&["BBB".to_string()]).unwrap();
+        assert_eq!(store.load()[0].added, BTreeSet::from(["aaa".to_string()]));
     }
 }

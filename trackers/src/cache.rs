@@ -8,6 +8,10 @@
 //! enough that a watching session sees its own marks and long enough that
 //! opening and closing the app a few times does not hammer AniList.
 //!
+//! The accounts are the owner's, so every row here is too: each read,
+//! update and delete names profile 1, and an insert takes the column's
+//! default, which is the same profile (#863).
+//!
 //! Carried from Electron's `fetchAnilistProgressMap`,
 //! `fetchMalProgressMap`, `refreshProgress` and `refreshAllProgress` in
 //! `src/main/handlers/trackerHandler.ts`, and `setProgressEntry` and
@@ -207,7 +211,7 @@ pub(crate) fn mal_instant(raw: &str) -> Option<i64> {
 pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Result<(), CoreError> {
     let mut kept: HashMap<u64, i64> = HashMap::new();
     {
-        let mut stmt = tx.prepare("SELECT media_id, updated_at FROM tracker_entries WHERE tracker = ?1 AND updated_at IS NOT NULL")?;
+        let mut stmt = tx.prepare("SELECT media_id, updated_at FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1 AND updated_at IS NOT NULL")?;
         let rows = stmt.query_map(params![t.as_str()], |r| {
             Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)?))
         })?;
@@ -217,7 +221,7 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
         }
     }
     tx.execute(
-        "DELETE FROM tracker_entries WHERE tracker = ?1",
+        "DELETE FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1",
         params![t.as_str()],
     )?;
     {
@@ -245,7 +249,7 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
         }
     }
     tx.execute(
-        "UPDATE tracker_accounts SET progress_fetched_at = ?2 WHERE tracker = ?1",
+        "UPDATE tracker_accounts SET progress_fetched_at = ?2 WHERE tracker = ?1 AND profile_id = 1",
         params![t.as_str(), now],
     )?;
     Ok(())
@@ -334,7 +338,7 @@ pub fn patch_status(
 ) -> Result<(), CoreError> {
     conn.execute(
         "UPDATE tracker_entries SET status = ?3, updated_at = COALESCE(?4, updated_at), fetched_at = ?5
-         WHERE tracker = ?1 AND media_id = ?2",
+         WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
         params![
             t.as_str(),
             media_id as i64,
@@ -381,7 +385,7 @@ pub fn patch_repeat(
 ) -> Result<(), CoreError> {
     conn.execute(
         "UPDATE tracker_entries SET repeat = ?3, updated_at = MAX(COALESCE(updated_at, 0), ?4)
-         WHERE tracker = ?1 AND media_id = ?2",
+         WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
         params![t.as_str(), media_id as i64, i64::from(repeat), now],
     )?;
     Ok(())

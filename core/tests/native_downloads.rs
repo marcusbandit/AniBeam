@@ -8,7 +8,6 @@
 mod common;
 use common::started;
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -41,16 +40,6 @@ fn settings(torrent_url: &str) -> DownloadSettings {
     }
 }
 
-/// Points the XDG homes at `dir`, so no case reads the machine's own
-/// anirss config or saved password. Process-wide, but every case points
-/// them at an empty directory, which reads the same as any other.
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
-
 struct Rig {
     dir: common::Dir,
     core: Arc<Core>,
@@ -63,7 +52,6 @@ struct Rig {
 fn rig_at(torrent_url: &str, save_base: &str) -> Rig {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     let reply = core
         .call(Call::SetDownloadSettings {
             settings: settings(torrent_url),

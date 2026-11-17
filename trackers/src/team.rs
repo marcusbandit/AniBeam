@@ -28,6 +28,8 @@ pub struct Trackers {
     pub sign_in_hold_ms: AtomicU64,
     /// The series whose rewatch a mark is writing right now (#776).
     pub(crate) rewatching: super::writes::Rewatching,
+    /// Each series' tracker writes, one after another (#1112).
+    pub(crate) write_line: super::writes::WriteLine,
 }
 
 impl Trackers {
@@ -38,6 +40,7 @@ impl Trackers {
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
             rewatching: Default::default(),
+            write_line: Default::default(),
         }
     }
 }

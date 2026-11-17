@@ -41,13 +41,11 @@ QBT_SHA=14d29323f1c12c1e8892ac69496f8b51ddebb74b4b590fc13e343aa213fecaf4
 describe="$(git -C "$repo" describe --tags --match 'v*' --exclude 'v*-*' --dirty 2>/dev/null || echo v0.0.0)"
 pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")}"
 
-# fetch <url> <sha256> <name>: into the downloads directory, checked every time.
-fetch() {
-  local file="$downloads/$3"
-  mkdir -p "$downloads"
-  [ -f "$file" ] || curl -fsSL "$1" -o "$file"
-  echo "$2  $file" | sha256sum -c --quiet - || { echo "checksum mismatch for $3" >&2; rm -f "$file"; exit 1; }
-}
+# download.sh's fetch puts each pinned file in $downloads, retrying a host that times out
+# or answers 504 (#953).
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$here/../download.sh"
+
 
 echo "== tools"
 tools="$downloads"

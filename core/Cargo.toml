@@ -8,11 +8,12 @@ repository.workspace = true
 description = "Anibeam's app team: the Core every shell opens, its call router, launch and update, and the uniffi export, over the team crates"
 build = "build.rs"
 
-# Files outside this folder the tests read, so a change to one checks the core and what builds
-# on it (.github/affected-crates.py): the apps' patch notes and their versions
-# (tests/changelog.rs). The anirss pins in the packaging are the downloads crate's.
-[package.metadata.ci]
-reads = [
+# Files outside this folder that only tests/changelog.rs reads: the apps' patch notes and their
+# versions. A change to one runs that test alone, not the core's clippy, its other tests or what
+# builds on it (.github/affected-crates.py, #1086). The anirss pins in the packaging are the
+# downloads crate's.
+[package.metadata.ci.test-reads]
+changelog = [
   "../.github/changelog-fold.sh",
   "../apps/linux/CHANGELOG.md",
   "../apps/linux/changes",
@@ -46,9 +47,12 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+# The phone's torrent engine, the one downloads runs: core/tests/phone_unsubscribe.rs makes
+# its test torrents with it. A dev-dependency cannot wait for the phone feature.
+librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
 
 [features]
-phone = ["anibeam-downloads/phone", "anibeam-trackers/phone"]
+phone = ["anibeam-downloads/phone", "anibeam-trackers/phone", "dep:librqbit"]
 cast = ["anibeam-playback/cast"]
 
 [dev-dependencies]

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anibeam_core::events::{Collector, Subscription};
-use anibeam_core::net::FakeHttp;
+use anibeam_core::net::Http;
 use anibeam_core::trackers::Secrets;
 use anibeam_core::{
     Call, Core, CorePaths, Direction, Event, JobPhase, Reply, SeriesCard, Sort, Tab,
@@ -44,7 +44,7 @@ pub fn open_core() -> (Dir, Arc<Core>, Arc<Collector>) {
 /// The same core with the network swapped for canned replies. A test that
 /// drives a provider job keeps its own handle on the `FakeHttp` to queue
 /// replies and read back the requests.
-pub fn open_core_with_http(http: Arc<FakeHttp>) -> (Dir, Arc<Core>, Arc<Collector>) {
+pub fn open_core_with_http(http: Arc<dyn Http>) -> (Dir, Arc<Core>, Arc<Collector>) {
     let dir = tempfile::tempdir().unwrap();
     let paths = CorePaths::under(dir.path());
     let secrets = Secrets::file_only(paths.secrets_path());

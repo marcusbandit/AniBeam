@@ -83,8 +83,15 @@ SettingsTab {
     function readPresence() {
         var presence = Door.call("GetPresence", {})
         presenceFailed = !!presence.error
-        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected }
+        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected; discordProblem = presence.reply.problem || null }
     }
+    // Why Discord shows nothing (#1029): serde's shape, the string "NoDiscord" or
+    // { Refused: { message } }, read again on every PresenceChanged
+    property var discordProblem: null
+    readonly property string discordState: !Door.preferences.discord_presence ? ""
+        : discordProblem === "NoDiscord" ? words.t("settings-playback-discord-no-discord")
+        : discordProblem && discordProblem.Refused ? words.t("settings-playback-discord-refused", { reason: discordProblem.Refused.message })
+        : discordConnected ? words.t("settings-playback-discord-connected") : words.t("settings-playback-discord-not-connected")
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
     // The subtitle preview reads the library and starts an mpv frame, so it waits until its
@@ -110,7 +117,7 @@ SettingsTab {
         discordBlocked = r.reply.people || []
     }
     Component.onCompleted: { readPresence(); readBlocked(); Qt.callLater(checkPreview) }
-    Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
+    Connections { target: Door; function onPresenceChanged() { tab.readPresence() } }
 
     Panel {
         title: words.t("settings-playback-skipping")
@@ -190,7 +197,7 @@ SettingsTab {
         SettingRow { label: words.t("settings-playback-discord")
             status: tab.presenceFailed ? words.t("settings-playback-discord-check-failed")
                 : !tab.discordAvailable ? words.t("settings-playback-discord-unavailable")
-                : !Door.preferences.discord_presence ? "" : tab.discordConnected ? words.t("settings-playback-discord-connected") : words.t("settings-playback-discord-not-connected")
+                : tab.discordState
             Row { spacing: theme.space(2)
                 Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
                 Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }

@@ -44,7 +44,7 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
          FROM local_entries l
          JOIN series s ON s.id = l.series_id
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
-         LEFT JOIN tracker_entries e ON e.tracker = ?1 AND e.media_id = {id_column}
+         LEFT JOIN tracker_entries e ON e.tracker = ?1 AND e.media_id = {id_column} AND e.profile_id = 1
          WHERE {id_column} IS NOT NULL AND s.hidden = 0 AND s.missing_since IS NULL
            AND (e.updated_at IS NULL OR l.updated_at > e.updated_at)
            AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1 AND h.{bare} = {id_column})
@@ -198,7 +198,7 @@ async fn run(
                 .write_async(move |c| {
                     c.execute(
                         "UPDATE tracker_entries SET updated_at = MAX(COALESCE(updated_at, 0), ?3)
-                         WHERE tracker = ?1 AND media_id = ?2",
+                         WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
                         params![t.as_str(), media_id as i64, now],
                     )?;
                     Ok(())

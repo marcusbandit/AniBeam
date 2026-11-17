@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anibeam_contract::{CoreError, Provider};
+use anibeam_foundation::sync::recover;
 
 pub mod anilist;
 pub mod aniskip;
@@ -572,16 +573,16 @@ impl FakeHttp {
     /// The next `send` fails as if the connection never opened. Queued once
     /// per call, so two calls fail the next two sends.
     pub fn fail_next(&self, message: impl Into<String>) {
-        self.failures.lock().unwrap().push(message.into());
+        recover(&self.failures).push(message.into());
     }
 
     pub fn requests(&self) -> Vec<HttpRequest> {
-        self.requests.lock().unwrap().clone()
+        recover(&self.requests).clone()
     }
 
     /// The fronts the core last handed over (`Http::set_fronts`).
     pub fn fronts(&self) -> Vec<(String, String)> {
-        self.fronts.lock().unwrap().clone()
+        recover(&self.fronts).clone()
     }
 
     fn queue(
@@ -591,7 +592,7 @@ impl FakeHttp {
         headers: Vec<(String, String)>,
         body: Vec<u8>,
     ) {
-        self.replies.lock().unwrap().push(Canned {
+        recover(&self.replies).push(Canned {
             matcher,
             status,
             headers,
@@ -603,16 +604,16 @@ impl FakeHttp {
 impl Http for FakeHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
         Box::pin(async move {
-            self.requests.lock().unwrap().push(req.clone());
+            recover(&self.requests).push(req.clone());
             {
-                let mut failures = self.failures.lock().unwrap();
+                let mut failures = recover(&self.failures);
                 if !failures.is_empty() {
                     return Err(HttpError {
                         message: failures.remove(0),
                     });
                 }
             }
-            let mut replies = self.replies.lock().unwrap();
+            let mut replies = recover(&self.replies);
             let found = replies.iter().position(|c| {
                 c.matcher
                     .as_ref()
@@ -637,7 +638,7 @@ impl Http for FakeHttp {
     }
 
     fn set_fronts(&self, fronts: Vec<(String, String)>) {
-        *self.fronts.lock().unwrap() = fronts;
+        *recover(&self.fronts) = fronts;
     }
 }
 

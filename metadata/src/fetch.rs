@@ -18,6 +18,7 @@ use crate::record;
 use anibeam_contract::{CoreError, Provider};
 use anibeam_foundation::store::sql::as_i64;
 use anibeam_net::anilist::{Enrichment, Media};
+use anibeam_net::jikan::JikanEpisodes;
 use anibeam_net::tvmaze::Show;
 
 /// The whole record behind `anilist_id`, written against `series`.
@@ -36,7 +37,10 @@ use anibeam_net::tvmaze::Show;
 /// the core's outage window, which warns at most once every ten minutes
 /// and skips Jikan until the window has passed. Without Jikan's half the
 /// list is AniList's alone, so the future rows it leaves out stay rather
-/// than going: one of them may be an episode only Jikan knew of.
+/// than going: one of them may be an episode only Jikan knew of. A series
+/// whose titles the outage cost is written down as owed them (`owed`), so a
+/// finished series, which no airing refresh comes back for, gets them once
+/// Jikan answers again (#1065).
 ///
 /// The enrichment is the exception. `write_media` replaces the relations
 /// and the recommendations unconditionally, so writing a build that has no
@@ -64,10 +68,11 @@ pub async fn fetch_and_write(
     let mal_id = media.id_mal.or(enrichment.id_mal);
     let jikan = match mal_id {
         Some(mal_id) => metadata.jikan_episodes(mal_id).await,
-        None => Some(Vec::new()),
+        None => JikanEpisodes::whole(Vec::new()),
     };
-    let whole = jikan.is_some();
-    let jikan = jikan.unwrap_or_default();
+    let whole = jikan.whole;
+    let owed = mal_id.is_some() && crate::team::owes_titles(&jikan);
+    let jikan = jikan.episodes;
 
     let write = record::build(&media, Some(&enrichment));
     let titles = record::streaming_titles(&enrichment.streaming_episodes);
@@ -97,6 +102,7 @@ pub async fn fetch_and_write(
             } else {
                 record::upsert_episodes(tx, anilist_id, &episodes, false)?;
             }
+            crate::owed::mark(tx, anilist_id, owed)?;
             write_match_only(
                 tx,
                 series,

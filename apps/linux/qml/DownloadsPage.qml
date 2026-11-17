@@ -282,6 +282,9 @@ Item {
     // ---- The suggestions under the field: library shows, then AniList's
     property var aniHits: []
     property real aniJob: -1
+    // Index 0 is the release search row, there only while a source is on; the shows start at 1
+    readonly property bool canSearchReleases: enabledEndpoints.length > 0
+    readonly property int suggestFirst: canSearchReleases ? 0 : 1
     property int suggestIndex: 0
     property bool suggestClosed: false
     readonly property string query: search.text.trim()
@@ -454,8 +457,9 @@ Item {
         page.searchFirst = false
         page.fetchGet(on[0].name)
     }
-    // The sources may arrive after the page opens on a show: the search waits for them
-    onEnabledEndpointsChanged: fetchFirst()
+    // The sources may arrive after the page opens on a show: the search waits for them. A
+    // source switched on also clears the line that said none was
+    onEnabledEndpointsChanged: { page.clearAllOff(); page.fetchFirst() }
     function closeGet() { page.searchFirst = false; page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
     function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
     function fetchGet(name) {
@@ -557,9 +561,16 @@ Item {
     // The search error's Details and its button: { detail, label, act }
     property var searchFix: ({})
     // A search error in plain words, with the button that does the fix (#538)
-    function sayOnSearch(text, detail, label, act) {
-        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null }
+    // `allOff` marks an error that says no source is on: whichever control switches one on
+    // clears it
+    function sayOnSearch(text, detail, label, act, allOff) {
+        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null, allOff: !!allOff }
         page.searchError = text
+    }
+    function clearAllOff() {
+        if (page.searchError === "" || !page.searchFix.allOff || page.enabledEndpoints.length === 0) return
+        page.searchError = ""
+        page.searchFix = ({})
     }
     property var selected: ({})
     property int hoveredGroup: -1
@@ -763,14 +774,15 @@ Item {
         if (q === "") { search.focusInput(); return }
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
         if (!names.length) {
+            page.suggestClosed = true
             if (page.endpoints.length) {
                 var first = page.endpoints[0].name
                 page.sayOnSearch(words.t("downloads-search-all-off"), "", words.t("downloads-turn-on", { name: first }), function() {
                     page.setSource(first, true)
                     // A source that runs now searches at once; one to start asks first
                     if (page.sourceOn(first)) page.runSearch()
-                })
-            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) })
+                }, true)
+            } else page.sayOnSearch(words.t("downloads-search-no-sources"), "", words.t("action-open-settings"), function() { frame.go("settings", { tab: "downloads" }) }, true)
             return
         }
         page.closeGet()
@@ -1920,8 +1932,8 @@ Item {
                 if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
                 else page.runSearch()
             }
-            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
-            onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(page.suggestFirst, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+            onTextChanged: { page.suggestClosed = false; page.suggestIndex = page.suggestFirst; aniDebounce.restart() }
             onCleared: { page.aniHits = [] }
         }
 
@@ -1929,7 +1941,8 @@ Item {
         Tile {
             id: suggestTile
             objectName: "downloads-suggestions"
-            visible: page.suggesting
+            // With no source on and no show matched yet there is nothing to offer
+            visible: page.suggesting && (page.suggestRows.length > 0 || page.canSearchReleases)
             width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
@@ -2034,14 +2047,18 @@ Item {
                         }
                     }
                 }
+                // Searching release names needs a source that is on; without one, Return
+                // closes the box and says which source to turn on
                 Item {
+                    objectName: "suggest-release-search"
+                    visible: page.canSearchReleases
                     width: parent.width
                     height: theme.space(14)
                     Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 || releaseRowMouse.containsMouse ? theme.glassFloat : "transparent" }
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.enabledEndpoints.length ? words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") }) : words.t("downloads-suggest-release-search-none", { query: page.query })
+                        text: words.t("downloads-suggest-release-search", { query: page.query, names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") })
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }

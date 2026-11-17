@@ -76,7 +76,7 @@ pub fn plan_to_watch(trackers: &Arc<Trackers>, anilist_id: u64) -> Result<Reply,
             connected = true;
             let Some(id) = id else { continue };
             let on_list: bool = c.query_row(
-                "SELECT EXISTS (SELECT 1 FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2)",
+                "SELECT EXISTS (SELECT 1 FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1)",
                 params![t.as_str(), id as i64],
                 |r| r.get(0),
             )?;

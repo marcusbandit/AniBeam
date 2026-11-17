@@ -23,15 +23,14 @@ trap 'rm -rf "$work"' EXIT
 rm -rf "$dest"
 mkdir -p "$dest/app"
 
-fetch() { # url sha256 out
-  curl -fsSL --retry 3 -o "$3" "$1"
-  echo "$2  $3" | sha256sum -c -
-}
+# Downloads go through ../download.sh: retries, a time cap and a sha256 check (#1140).
+# shellcheck source=SCRIPTDIR/../download.sh
+. "$(dirname "$0")/../download.sh"
 
 echo "== Python $PBS_PYTHON (python-build-standalone $PBS_RELEASE)"
 pbs="cpython-$PBS_PYTHON+$PBS_RELEASE-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
-fetch "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}" \
-  "$PBS_SHA256" "$work/python.tar.gz"
+download_checked "$work/python.tar.gz" "$PBS_SHA256" \
+  "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}"
 tar --force-local -xzf "$work/python.tar.gz" -C "$work"
 mv "$work/python" "$dest/python"
 
@@ -44,8 +43,7 @@ rm -rf "$py/tcl" "$py/include" "$py/Scripts" "$py/libs" \
 rm -rf "$lib"/site-packages/*
 
 echo "== anirss $ANIRSS_VERSION"
-fetch "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz" \
-  "$ANIRSS_SHA256" "$work/anirss.tar.gz"
+download_checked "$work/anirss.tar.gz" "$ANIRSS_SHA256" "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz"
 tar --force-local -xzf "$work/anirss.tar.gz" -C "$work"
 src="$work/anirss-$ANIRSS_VERSION"
 cp "$src/anirss" "$dest/app/anirss"

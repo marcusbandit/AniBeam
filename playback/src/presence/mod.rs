@@ -238,7 +238,9 @@ impl From<io::Error> for SendError {
 
 /// The connection to Discord, behind a trait so a test can stand in for it.
 pub trait Transport: Send {
-    /// Opens a fresh connection, closing any that stands.
+    /// Opens a fresh connection, closing any that stands. `Gone` when no
+    /// Discord answered, `Rejected` when one answered and refused, in its
+    /// words: Settings names either (#1029).
     fn connect(&mut self, client_id: &str) -> Result<(), SendError>;
     /// Sets the activity, or clears it with `None`.
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError>;
@@ -475,6 +477,8 @@ fn seconds(position: f64) -> f64 {
 pub struct Presence {
     enabled: AtomicBool,
     connected: Arc<AtomicBool>,
+    /// Why Discord shows nothing, as the worker last found (#1029).
+    problem: Arc<Mutex<Option<PresenceProblem>>>,
     pause_clear_ms: AtomicU64,
     check_ms: Arc<AtomicU64>,
     inner: Mutex<Inner>,
@@ -600,6 +604,7 @@ impl Presence {
         Presence {
             enabled: AtomicBool::new(false),
             connected: Arc::new(AtomicBool::new(false)),
+            problem: Arc::default(),
             pause_clear_ms: AtomicU64::new(PAUSE_CLEAR.as_millis() as u64),
             check_ms: Arc::new(AtomicU64::new(CHECK.as_millis() as u64)),
             inner: Mutex::new(Inner {
@@ -618,6 +623,12 @@ impl Presence {
 
     pub fn connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
+    }
+
+    /// Why Discord shows nothing while the switch is on, if the worker found
+    /// a reason: no Discord answered, or one refused.
+    pub fn problem(&self) -> Option<PresenceProblem> {
+        recover(&self.problem).clone()
     }
 
     /// For a test: speak to `transport` in place of Discord.
@@ -709,13 +720,14 @@ pub fn sync(playback: &Arc<Playback>) {
     set_enabled(playback, on);
 }
 
-/// `GetPresence`: whether this build can show what plays on Discord, and
-/// whether it is talking to a Discord client right now.
+/// `GetPresence`: whether this build can show what plays on Discord,
+/// whether it is talking to a Discord client right now, and if not, why.
 pub fn status_call(playback: &Playback) -> Result<Reply, CoreError> {
     Ok(Reply::Presence {
         available: playback.presence.available(),
         connected: playback.presence.connected(),
         room_open: recover(&playback.presence.inner).room_open,
+        problem: playback.presence.problem(),
     })
 }
 
@@ -760,6 +772,7 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
             transport,
             client_id,
             p.connected.clone(),
+            p.problem.clone(),
             p.check_ms.clone(),
             p.bus.clone(),
             handler,
@@ -873,10 +886,22 @@ pub(crate) fn elapsed(playback: &Arc<Playback>, session: u64, generation: u64) {
 // The worker
 // ---------------------------------------------------------------------------
 
+/// The longest refusal Settings shows, in characters: Discord's own words
+/// are a line, and anything past this is not one.
+const REFUSAL_MAX: usize = 200;
+
+/// A refusal as Settings names it, in Discord's words cut to a line.
+fn refused(message: &str) -> PresenceProblem {
+    PresenceProblem::Refused {
+        message: message.trim().chars().take(REFUSAL_MAX).collect(),
+    }
+}
+
 fn spawn(
     transport: Box<dyn Transport>,
     client_id: String,
     connected: Arc<AtomicBool>,
+    problem: Arc<Mutex<Option<PresenceProblem>>>,
     check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
     on_event: Handler,
@@ -886,6 +911,7 @@ fn spawn(
         transport,
         client_id,
         connected,
+        problem,
         check_ms,
         bus,
         on_event,
@@ -920,6 +946,9 @@ struct Worker {
     transport: Box<dyn Transport>,
     client_id: String,
     connected: Arc<AtomicBool>,
+    /// Why Discord shows nothing, for Settings: set by a failed connect or a
+    /// refused activity, cleared by one that lands or the switch going off.
+    problem: Arc<Mutex<Option<PresenceProblem>>>,
     check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
     on_event: Handler,
@@ -987,6 +1016,7 @@ impl Worker {
                     seen = version;
                     if disconnect {
                         self.disconnect("Discord presence switched off");
+                        self.set_problem(None, Level::Debug, "Discord presence switched off");
                     }
                     self.want = want;
                     self.party = party;
@@ -997,6 +1027,20 @@ impl Worker {
                     self.answers.extend(answers);
                     // Nothing shows on a connection that is not there.
                     self.dirty = self.shown().is_some() || self.is_connected();
+                    // With nothing to show, no Discord is no longer news: one
+                    // opened since is found on the next episode, and Settings
+                    // stops saying it is missing. A refusal stands until a
+                    // send lands, since it says what is wrong.
+                    if !self.dirty
+                        && !self.listening()
+                        && recover(&self.problem).as_ref() == Some(&PresenceProblem::NoDiscord)
+                    {
+                        self.set_problem(
+                            None,
+                            Level::Debug,
+                            "Discord presence has nothing to show",
+                        );
+                    }
                     self.deliver();
                     self.answer();
                     self.poll();
@@ -1141,14 +1185,37 @@ impl Worker {
     /// `message` at `level` for the log, `PresenceChanged` for Settings.
     fn set_connected(&self, on: bool, level: Level, message: &str) {
         if self.connected.swap(on, Ordering::Relaxed) != on {
-            self.bus.emit(
-                level,
-                Stage::Playback,
-                message,
-                None,
-                EventBody::PresenceChanged { connected: on },
-            );
+            self.said(level, message);
         }
+    }
+
+    /// Records why Discord shows nothing, and tells the shells when the
+    /// reason really changed, so a Discord that stays away is said once and
+    /// not on every retry.
+    fn set_problem(&self, problem: Option<PresenceProblem>, level: Level, message: &str) -> bool {
+        let changed = {
+            let mut now = recover(&self.problem);
+            let changed = *now != problem;
+            *now = problem;
+            changed
+        };
+        if changed {
+            self.said(level, message);
+        }
+        changed
+    }
+
+    fn said(&self, level: Level, message: &str) {
+        self.bus.emit(
+            level,
+            Stage::Playback,
+            message,
+            None,
+            EventBody::PresenceChanged {
+                connected: self.is_connected(),
+                problem: recover(&self.problem).clone(),
+            },
+        );
     }
 
     /// Clears what Discord shows and lets the connection go: switched off,
@@ -1180,13 +1247,32 @@ impl Worker {
             self.last_attempt = Some(Instant::now());
             match self.transport.connect(&self.client_id) {
                 Ok(()) => {
+                    // The reason first, so the one event that says connected
+                    // carries no stale reason with it.
+                    recover(&self.problem).take();
                     self.set_connected(true, Level::Info, "Discord is showing what plays");
                     self.posters = true;
                     self.privacy = true;
                     self.parties = true;
                 }
-                Err(e) => {
-                    tracing::debug!("discord presence could not connect: {e:?}");
+                // Not debug: either leaves the profile empty, and Settings
+                // and these lines are the only trace of why. Said once per
+                // change, never on every retry.
+                Err(SendError::Gone(e)) => {
+                    let message = format!("Discord presence found no Discord: {e}");
+                    if self.set_problem(Some(PresenceProblem::NoDiscord), Level::Info, &message) {
+                        tracing::info!("{message}");
+                    }
+                    return;
+                }
+                Err(SendError::Rejected(e)) => {
+                    let message = format!("Discord refused the connection: {e}");
+                    let problem = refused(&e);
+                    // Info on the bus: a Warn reads as playback failing in the
+                    // plain log, and playback is fine. Settings names it.
+                    if self.set_problem(Some(problem), Level::Info, &message) {
+                        tracing::warn!("{message}");
+                    }
                     return;
                 }
             }
@@ -1252,12 +1338,25 @@ impl Worker {
             }
         }
         match result {
-            Ok(()) => self.dirty = false,
+            Ok(()) => {
+                self.dirty = false;
+                let message = if activity.is_some() {
+                    "Discord is showing what plays"
+                } else {
+                    "Discord cleared what it showed"
+                };
+                self.set_problem(None, Level::Info, message);
+            }
             Err(SendError::Rejected(e)) => {
                 // Not debug: a refusal leaves the profile empty, and this
-                // line is the only trace of why.
+                // line and Settings are the only trace of why.
                 tracing::warn!("discord refused the activity: {e}");
                 self.dirty = false;
+                self.set_problem(
+                    Some(refused(&e)),
+                    Level::Info,
+                    &format!("Discord refused the activity: {e}"),
+                );
             }
             Err(SendError::Gone(e)) => {
                 tracing::debug!("discord presence lost the connection: {e}");

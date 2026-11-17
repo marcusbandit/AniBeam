@@ -7,7 +7,12 @@ mod common;
 use common::{job_of, started};
 mod fixtures;
 
-use anibeam_core::net::{Body, FakeHttp, Method};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anibeam_core::net::{
+    Body, BoxFuture, FakeHttp, Http, HttpError, HttpRequest, HttpResponse, Method,
+};
 use anibeam_core::*;
 
 /// One matched series, both ids carried, twelve episodes published, and the
@@ -1025,6 +1030,155 @@ fn finishing_a_completed_show_again_counts_a_rewatch() {
         panic!()
     };
     assert_eq!(detail.rewatch_count, Some(2));
+}
+
+/// Two marks of one rewatch finish (the rule at the end and the player's
+/// button, say) count one rewatch: the second finds the first still writing
+/// and answers with its job, or, once that job is done, finds the list
+/// covering the finish and is refused. The cached progress sits below the
+/// last episode, so a plain mark would not be covered and its write would
+/// race the rewatch's (#1042).
+#[test]
+fn a_second_mark_of_one_rewatch_finish_counts_one_rewatch() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 11, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    fixtures::insert_completed(&core, series, "1", anibeam_core::time::now_secs());
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":11,"status":"COMPLETED","repeat":1,"startedAt":{"year":2025},"completedAt":{"year":2025}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":12,"status":"COMPLETED"}}}"#,
+    );
+
+    let mark = Call::MarkEpisode {
+        series,
+        episode: 12.0,
+    };
+    let job = started(&core, mark.clone());
+    let second = core.call(mark);
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::Marked { .. }), "{done:?}");
+    match second {
+        Ok(Reply::Started { job: same }) => assert_eq!(same, job, "the first mark's job"),
+        Err(CoreError::Refused {
+            reason: Refusal::NotNewer,
+        }) => {}
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "repeat": 2 })
+        ]
+    );
+}
+
+/// A stand-in AniList that keeps one list entry and answers from it: a read
+/// gets the entry as it stands, a save changes it. The save that counts a
+/// rewatch is held until another save has landed, or for half a second
+/// when none comes, so a write that does not wait its turn lands first.
+struct HeldRewatch {
+    entry: std::sync::Mutex<serde_json::Value>,
+    landed: tokio::sync::Notify,
+}
+
+impl HeldRewatch {
+    fn save(&self, variables: &serde_json::Value) -> serde_json::Value {
+        let mut entry = self.entry.lock().unwrap();
+        for key in ["progress", "status", "repeat"] {
+            if let Some(v) = variables.get(key) {
+                entry[key] = v.clone();
+            }
+        }
+        serde_json::json!({ "data": { "SaveMediaListEntry": { "id": 9, "status": entry["status"] } } })
+    }
+}
+
+impl Http for HeldRewatch {
+    fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+        Box::pin(async move {
+            let reply = |status: u16, body: String| HttpResponse {
+                status,
+                headers: vec![],
+                body: body.into_bytes(),
+            };
+            let Some(Body::Json(v)) = req.body.as_ref().filter(|_| req.url.contains("anilist"))
+            else {
+                return Ok(reply(500, format!("no canned reply for {}", req.url)));
+            };
+            let query = v["query"].as_str().unwrap_or_default();
+            let variables = &v["variables"];
+            if !query.contains("SaveMediaListEntry") {
+                let entry = self.entry.lock().unwrap().clone();
+                return Ok(reply(
+                    200,
+                    serde_json::json!({ "data": { "MediaList": entry } }).to_string(),
+                ));
+            }
+            if variables.get("repeat").is_some() {
+                let _ =
+                    tokio::time::timeout(Duration::from_millis(500), self.landed.notified()).await;
+            }
+            let body = self.save(variables).to_string();
+            self.landed.notify_one();
+            Ok(reply(200, body))
+        })
+    }
+}
+
+/// A status set while a rewatch is being written waits for it (#1112). Both
+/// read the list as Completed before either writes, so without the wait the
+/// status lands first and the rewatch's Completed lands over it. In turn,
+/// the rewatch counts once and the status asked for last is what the list
+/// says.
+#[test]
+fn a_status_set_during_a_rewatch_write_waits_for_it() {
+    let anilist = Arc::new(HeldRewatch {
+        entry: std::sync::Mutex::new(serde_json::json!({
+            "progress": 11, "status": "COMPLETED", "repeat": 1,
+            "startedAt": { "year": 2025 }, "completedAt": { "year": 2025 }
+        })),
+        landed: tokio::sync::Notify::new(),
+    });
+    let (_dir, core, c) = common::open_core_with_http(anilist.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 11, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    fixtures::insert_completed(&core, series, "1", anibeam_core::time::now_secs());
+
+    let mark = started(
+        &core,
+        Call::MarkEpisode {
+            series,
+            episode: 12.0,
+        },
+    );
+    let status = started(
+        &core,
+        Call::SetListStatus {
+            series,
+            status: ListStatus::Watching,
+        },
+    );
+    common::wait_job(&c, mark);
+    common::wait_job(&c, status);
+
+    let entry = anilist.entry.lock().unwrap().clone();
+    assert_eq!(entry["repeat"], 2, "one rewatch counted: {entry}");
+    assert_eq!(
+        entry["status"], "CURRENT",
+        "the status asked for last: {entry}"
+    );
 }
 
 /// Playing only the last episode of a completed show again is not a

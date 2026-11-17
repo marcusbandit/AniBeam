@@ -9,6 +9,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use anibeam_foundation::sync::recover;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 /// The resolvers, asked in order, by address so no lookup is needed to reach them: their
@@ -125,7 +126,7 @@ impl Doh {
         if is_home_name(name) {
             return Found::NoRecord;
         }
-        if let Some((ips, until)) = self.cache.lock().unwrap().get(name)
+        if let Some((ips, until)) = recover(&self.cache).get(name)
             && *until > Instant::now()
         {
             return if ips.is_empty() {
@@ -134,12 +135,7 @@ impl Doh {
                 Found::Addresses(ips.clone())
             };
         }
-        if self
-            .down_until
-            .lock()
-            .unwrap()
-            .is_some_and(|until| until > Instant::now())
-        {
+        if recover(&self.down_until).is_some_and(|until| until > Instant::now()) {
             return Found::NoAnswer;
         }
         let mut reached = false;
@@ -176,7 +172,7 @@ impl Doh {
             return Found::NoRecord;
         }
         if !reached {
-            *self.down_until.lock().unwrap() = Some(Instant::now() + DOWN_FOR);
+            *recover(&self.down_until) = Some(Instant::now() + DOWN_FOR);
         }
         Found::NoAnswer
     }
@@ -186,7 +182,7 @@ impl Doh {
     fn keep(&self, name: &str, ips: Vec<IpAddr>, ttl: u64) {
         let now = Instant::now();
         let until = now + Duration::from_secs(ttl.clamp(30, MAX_TTL));
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = recover(&self.cache);
         cache.retain(|_, (_, stale)| *stale > now);
         cache.insert(name.to_string(), (ips, until));
     }

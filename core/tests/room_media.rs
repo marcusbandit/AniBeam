@@ -88,11 +88,6 @@ fn file_path(n: f64) -> String {
 fn person(relay: &Relay, name: &str, episodes: &[f64]) -> Person {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    // No case reads the machine's own anirss config or saved password
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
-        std::env::set_var("XDG_STATE_HOME", dir.path());
-    }
     let reply = core
         .call(Call::SetDownloadSettings {
             settings: settings(),
