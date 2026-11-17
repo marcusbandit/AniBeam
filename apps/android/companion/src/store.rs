@@ -13,7 +13,6 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
@@ -186,22 +185,13 @@ impl Store {
     }
 }
 
-/// The companion's own copy of the core's `atomic_file::write`, kept on purpose: this crate
-/// does not depend on `anibeam-core`, and pulling the whole core in for one rename is not
-/// worth it (#575). It already differs where it matters here: the name is unique per
-/// write, since a relaunched activity can overlap the old one's sync thread, and the bytes
-/// reach the disk before the rename.
+/// Every file the companion keeps goes through the core's atomic write (#575): one name per
+/// file, each save of it waits its turn, a failed one removes its half-written copy, and the
+/// bytes reach the disk before the rename. The private variant also keeps the device key's
+/// seed readable by this app alone.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    // Unique per write: a relaunched activity can overlap the old one's sync thread.
-    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = path.with_extension(format!("tmp{}-{n}", std::process::id()));
-    {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)
+    anibeam_core::atomic_file::write_private(path, bytes)?;
+    Ok(())
 }
 
 #[cfg(test)]

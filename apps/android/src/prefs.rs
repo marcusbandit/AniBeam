@@ -92,9 +92,10 @@ pub fn load(data_dir: &Path) -> Prefs {
 }
 
 /// Written whole through the core's atomic write, so a kill mid-write leaves the last good
-/// file.
+/// file. The private variant is for its sync before the rename: a phone that dies right
+/// after a save would otherwise wake to an empty file and run the introduction again.
 pub fn save(data_dir: &Path, prefs: &Prefs) -> std::io::Result<()> {
-    anibeam_core::atomic_file::write(&file(data_dir), serde_json::to_vec_pretty(prefs)?)?;
+    anibeam_core::atomic_file::write_private(&file(data_dir), serde_json::to_vec_pretty(prefs)?)?;
     Ok(())
 }
 
