@@ -216,7 +216,11 @@ pub fn hls_playlist(duration: f64, query: &str) -> Option<String> {
     for i in 0..count {
         let left = duration - f64::from(i) * HLS_PIECE;
         // The last piece keeps a sliver past it, so the lengths add up.
-        let len = if i + 1 == count { left } else { left.min(HLS_PIECE) };
+        let len = if i + 1 == count {
+            left
+        } else {
+            left.min(HLS_PIECE)
+        };
         out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
     }
     out.push_str("#EXT-X-ENDLIST\n");
