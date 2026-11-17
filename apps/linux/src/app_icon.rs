@@ -2,7 +2,7 @@
 //! is also the Dock's icon on a Mac and the taskbar's on Windows. On Linux the launcher and
 //! the dock read the icon theme by the desktop entry's name, so Dark is laid over the
 //! installed icon in the user's own hicolor folder, and Default takes it away again. On a Mac
-//! QGuiApplication only changes the Dock while the app runs, so when AniBeam runs from its
+//! QGuiApplication only changes the Dock while the app runs, so when Anibeam runs from its
 //! .app bundle Dark is also set as the bundle's custom icon through NSWorkspace, which is
 //! what Finder, Launchpad and the Dock show when it is closed, and Default removes it.
 
