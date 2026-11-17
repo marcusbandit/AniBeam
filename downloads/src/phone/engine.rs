@@ -744,23 +744,22 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_panic_with_the_list_held_still_lets_it_save() {
-        // One panic with `entries` held used to leave the list unsaved for the
-        // rest of the run, since every later save unwrapped the poison (#923).
+        // One panic with `entries` or `held` held used to break every later save or
+        // hold check for the rest of the run, since each unwrapped the poison (#923).
         let dir = tempfile::tempdir().unwrap();
         let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
             .await
             .unwrap();
         std::thread::scope(|s| {
             let held = s.spawn(|| {
-                let _held = engine.entries.lock().unwrap();
-                panic!("boom, with the list held");
+                let _entries = engine.entries.lock().unwrap();
+                let _held = engine.held.lock().unwrap();
+                panic!("boom, with the list and the hold held");
             });
             assert!(held.join().is_err());
         });
-        assert!(
-            engine.entries.lock().is_err(),
-            "the list really is poisoned"
-        );
+        assert!(engine.entries.lock().is_err(), "the list is poisoned");
+        assert!(engine.held.lock().is_err(), "the hold is poisoned");
         recover(&engine.entries).insert("abc".to_string(), Entry::default());
         engine.save_entries();
         let saved = std::fs::read_to_string(&engine.entries_path).unwrap();
