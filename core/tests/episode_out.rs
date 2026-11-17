@@ -21,9 +21,20 @@ fn outs(c: &anibeam_core::events::Collector) -> Vec<EpisodeOut> {
 /// A followed show in the library, one on AniList only, and one the user
 /// is not watching, each with an episode due a couple of seconds from now.
 fn shows(core: &Core, at: i64) -> u64 {
-    let src = fixtures::insert_source(core, "/lib");
-    let frieren = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
-    fixtures::insert_episode_file(core, frieren, "/lib/Frieren/01.mkv", 1.0, 1);
+    shows_in(core, "/lib", at)
+}
+
+/// `shows` with the library folder at `lib`.
+fn shows_in(core: &Core, lib: &str, at: i64) -> u64 {
+    let src = fixtures::insert_source(core, lib);
+    let frieren = fixtures::insert_series(
+        core,
+        src,
+        SeriesKind::Show,
+        &format!("{lib}/Frieren"),
+        "Frieren",
+    );
+    fixtures::insert_episode_file(core, frieren, &format!("{lib}/Frieren/01.mkv"), 1.0, 1);
     fixtures::media(1, "Frieren")
         .episodes(28)
         .status("RELEASING")
@@ -150,7 +161,10 @@ fn wait_quiet(core: &Core) {
         if jobs.is_empty() {
             break;
         }
-        assert!(std::time::Instant::now() < until, "jobs still running: {jobs:#?}");
+        assert!(
+            std::time::Instant::now() < until,
+            "jobs still running: {jobs:#?}"
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     // The calendar's settle window, one second, plus room for the re-arm itself.
@@ -163,12 +177,17 @@ fn a_resume_says_at_once_what_aired_during_the_suspend() {
     // only said when the alarm wakes. Here the alarm sleeps its longest, for a broadcast an
     // hour out, and the schedule then moves that broadcast into the past without an event,
     // as wall time running on through a suspend does.
-    let (_dir, core, c) = common::open_core();
+    // The library is an empty folder of the test's own and no provider answers, so the
+    // launch's jobs end at once.
+    let (dir, core, c) = common::open_core_with_http(anibeam_core::net::FakeHttp::new());
+    let lib = dir.path().join("lib");
+    std::fs::create_dir(&lib).unwrap();
     let now = anibeam_core::time::now_secs();
-    shows(&core, now + 3600);
+    shows_in(&core, &lib.to_string_lossy(), now + 3600);
     core.start().unwrap();
     wait_quiet(&core);
-    fixtures::insert_airing(&core, 1, 7, anibeam_core::time::now_secs() - 1);
+    // The show on AniList only, which no scan of the library can touch
+    fixtures::insert_airing(&core, 2, 4, anibeam_core::time::now_secs() - 1);
     std::thread::sleep(Duration::from_millis(1100));
     assert!(outs(&c).is_empty(), "nothing wakes the alarm yet");
 
@@ -179,7 +198,7 @@ fn a_resume_says_at_once_what_aired_during_the_suspend() {
         Duration::from_secs(5),
     );
     let ids: Vec<u64> = outs(&c).iter().map(|o| o.anilist_id).collect();
-    assert_eq!(ids, vec![1], "only the broadcast now in the past");
+    assert_eq!(ids, vec![2], "only the broadcast now in the past");
 }
 
 #[test]
