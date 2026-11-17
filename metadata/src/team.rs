@@ -1,7 +1,7 @@
 //! The metadata team (#854): matching, airing, franchises, Recommended,
 //! Airing now and the calendar feed.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
@@ -45,6 +45,10 @@ pub struct Metadata {
     /// one must neither write a warning per series into the log nor wait
     /// on Jikan once per series: inside the window it is not asked at all.
     jikan_outage: Mutex<Option<Instant>>,
+    /// The MAL ids whose Jikan read stopped at the page cap or its time
+    /// limit and already said so, so a show that hits it on every page
+    /// open is one line in the log for the run, not one per open.
+    jikan_capped: Mutex<HashSet<u64>>,
     /// How long, in milliseconds, Jikan is left alone after it failed:
     /// `OUTAGE_WINDOW`, which a test shortens.
     pub jikan_window_ms: AtomicU64,
@@ -73,6 +77,7 @@ impl Metadata {
             show_reads: Mutex::new(HashMap::new()),
             recommender_gap_ms: AtomicU64::new(crate::recommended::GAP_MS),
             jikan_outage: Mutex::new(None),
+            jikan_capped: Mutex::new(HashSet::new()),
             jikan_window_ms: AtomicU64::new(OUTAGE_WINDOW.as_millis() as u64),
             owed_walking: AtomicBool::new(false),
             this: OnceLock::new(),
@@ -122,7 +127,8 @@ impl Metadata {
 
     /// `jikan_episodes` from the page holding episode `from` on, for a
     /// caller that holds everything before it already (#1105). A read that
-    /// stopped at the page cap or its budget says so in one log line.
+    /// stopped at the page cap or its budget says so in one log line, the
+    /// first time it happens to that show in this run.
     pub(crate) async fn jikan_episodes_from(&self, mal_id: u64, from: u32) -> JikanEpisodes {
         if self.jikan_down() {
             return JikanEpisodes::default();
@@ -140,7 +146,9 @@ impl Metadata {
             None if read.whole => self.jikan_back(),
             None => {}
         }
-        if let Some(cap) = read.capped {
+        // The gate is let go before the emit, as the outage's is.
+        let first_cap = read.capped.is_some() && recover(&self.jikan_capped).insert(mal_id);
+        if let Some(cap) = read.capped.filter(|_| first_cap) {
             let why = match cap {
                 JikanCap::Pages => format!("at {JIKAN_MAX_PAGES} pages"),
                 JikanCap::Budget => "at its time limit".to_string(),

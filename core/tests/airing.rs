@@ -512,5 +512,59 @@ fn a_jikan_read_cut_short_says_so_once() {
     );
     assert!(episodes(&core, 1).iter().any(|(n, _, _)| *n == 150));
 
+    // The same show cut short again later in the run says nothing more.
+    fixtures::set_airing_refreshed_at(&core, 1, Some(now - 7 * 3_600));
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((3, now + 86_400)), &[(1, now - 86_400)]).to_string(),
+    );
+    http.push_for("jikan.moe", 200, jikan_page(1, 100, true));
+    let job = started(&core, Call::RefreshAiring { series });
+    common::wait_job(&c, job);
+    assert_eq!(http.requests().len(), 4, "{:#?}", http.requests());
+    let lines = c
+        .events()
+        .into_iter()
+        .filter(|e| e.message.starts_with("Jikan's episode list"))
+        .count();
+    assert_eq!(lines, 1);
+
+    core.shutdown();
+}
+
+/// An untitled episode that aired lately may still get Jikan's title, even
+/// below the highest stored title, so the read reaches back to its page.
+#[test]
+fn a_late_untitled_episode_is_still_asked_about() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "One Piece", 1, 21);
+
+    let now = time::now_secs();
+    fixtures::insert_episode(&core, 1, 950, None, Some(now - 5 * 86_400));
+    fixtures::insert_episode(&core, 1, 1100, Some("Stored"), Some(now - 86_400));
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((1101, now + 86_400)), &[]).to_string(),
+    );
+    http.push_for("episodes?page=10", 200, jikan_page(901, 1000, true));
+    http.push_for("episodes?page=11", 200, jikan_page(1001, 1100, false));
+
+    let job = started(&core, Call::RefreshAiring { series });
+    common::wait_job(&c, job);
+    let jikan = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("jikan.moe"))
+        .count();
+    assert_eq!(jikan, 2, "{:#?}", http.requests());
+    let rows = episodes(&core, 1);
+    let get = |n: i64| rows.iter().find(|(m, _, _)| *m == n).cloned();
+    assert_eq!(get(950).unwrap().1.as_deref(), Some("Episode title 950"));
+    assert_eq!(get(1100).unwrap().1.as_deref(), Some("Stored"));
+
     core.shutdown();
 }

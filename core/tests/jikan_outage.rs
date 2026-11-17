@@ -443,11 +443,13 @@ fn the_first_jikan_reply_after_an_outage_fills_what_it_left_owed() {
     core.shutdown();
 }
 
-/// A long show an outage left owed Jikan's titles reads Jikan from the
-/// first page, not from past its highest stored title (#1105): its holes
-/// may sit anywhere, and only a whole read crosses it off.
+/// A long show an outage left owed Jikan's titles still reads Jikan only
+/// from its late page (#1105), and that partial read leaves it owed: the
+/// holes may sit before the page it read, and the owed walk's whole read
+/// is what crosses it off. So a cut short read cannot pin every later
+/// refresh to the first page.
 #[test]
-fn an_owed_series_reads_jikan_from_the_first_page() {
+fn an_owed_series_refresh_reads_its_late_page_and_stays_owed() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
@@ -466,9 +468,9 @@ fn an_owed_series_reads_jikan_from_the_first_page() {
         schedule_json(1, Some((1051, now + 86_400)), &[]).to_string(),
     );
     http.push_for(
-        "jikan.moe",
+        "episodes?page=11",
         200,
-        jikan_page(&[(1, "Romance Dawn"), (1050, "Stored")]),
+        jikan_page(&[(1001, "Late page"), (1050, "Stored")]),
     );
 
     let job = started(&core, Call::RefreshAiring { series });
@@ -481,10 +483,10 @@ fn an_owed_series_reads_jikan_from_the_first_page() {
         .collect();
     assert_eq!(
         jikan,
-        vec!["https://api.jikan.moe/v4/anime/21/episodes".to_string()]
+        vec!["https://api.jikan.moe/v4/anime/21/episodes?page=11".to_string()]
     );
-    assert!(owed(&core).is_empty());
-    assert_eq!(rows(&core, 1)[0].1.as_deref(), Some("Romance Dawn"));
+    assert_eq!(owed(&core), vec![1]);
+    assert_eq!(rows(&core, 1)[0].1.as_deref(), Some("Late page"));
 
     core.shutdown();
 }
