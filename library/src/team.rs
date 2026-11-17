@@ -111,6 +111,32 @@ impl Library {
         let watcher = self.watcher().clone();
         if let Some(watcher) = watcher {
             watcher.unwatch(path);
+            // The presence watches may wait on an install walk, and a call
+            // answers in milliseconds, so they go off this thread.
+            let path = path.to_string();
+            self.services
+                .handle
+                .spawn_blocking(move || watcher.forget_source(&path));
+        }
+    }
+
+    /// A source's folder is not there: watch above it for its return
+    /// (#1191). Called by the Scan job, off the runtime's blocking pool.
+    pub(crate) fn await_source(self: &Arc<Self>, path: &str) {
+        let watcher = self.watcher().clone();
+        if let Some(watcher) = watcher
+            && !watcher.await_source(path)
+        {
+            self.on_watch_triggers(vec![Trigger::Returned(path.to_string())]);
+        }
+    }
+
+    /// A source read fine: stop waiting for it and watch for it leaving.
+    /// Called by the Scan job, off the runtime's blocking pool.
+    pub(crate) fn source_present(&self, path: &str) {
+        let watcher = self.watcher().clone();
+        if let Some(watcher) = watcher {
+            watcher.source_present(path);
         }
     }
 
@@ -133,7 +159,15 @@ impl Library {
                 Trigger::Ingest(p) | Trigger::Removed(p) => {
                     paths.push(watcher::parent_series_path(&p))
                 }
-                Trigger::NewDirectory(p) => paths.push(p),
+                // A source that came back or went away is scanned, and the
+                // scan is what flips it, says so and moves its watches.
+                Trigger::NewDirectory(p) | Trigger::Returned(p) | Trigger::Gone(p) => paths.push(p),
+                Trigger::Closer(p) => {
+                    let library = self.clone();
+                    self.services
+                        .handle
+                        .spawn_blocking(move || library.await_source(&p));
+                }
                 // Comes back through here as an Ingest once it is written.
                 Trigger::Settling(p) => self.settle_file(p),
             }
