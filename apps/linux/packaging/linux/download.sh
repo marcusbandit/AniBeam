@@ -13,7 +13,7 @@ download() {
     # --speed-limit/--speed-time: a transfer that hangs at under 1 KB/s for a minute counts
     # as failed and is retried. --max-time caps one try and --retry-max-time the retries,
     # a long Retry-After included. --retry-all-errors retries a 404 too, which costs half a
-    # minute on a mistyped version and saves a build from a release host's passing 404.
+    # minute per source on a mistyped version before the same error.
     # -o truncates the part file on every retry.
     if curl -fL --no-progress-meter --connect-timeout 20 \
         --speed-limit 1024 --speed-time 60 --max-time 900 \
