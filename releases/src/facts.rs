@@ -44,7 +44,7 @@ static BATCH_WORD: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(batch|complete series|complete season|season pack)\b").unwrap()
 });
 /// A season with no episode after it: `S01 1080p`, `S02.1080p`
-static SEASON_PACK: LazyLock<Regex> =
+pub(crate) static SEASON_PACK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bS(\d{1,2})(?:[\s._\[(]|$)").unwrap());
 /// Where the video came from: `WEB-DL`, `WEBRip`, `WEB`, `BluRay`, `BDRip`, `HDTV`, `DVD`
 static RIP: LazyLock<Regex> = LazyLock::new(|| {
