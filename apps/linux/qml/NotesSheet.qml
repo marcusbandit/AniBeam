@@ -36,7 +36,7 @@ Corner {
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function save() {
         var r = Door.call("SetSeriesNotes", { series: root.seriesId, notes: input.text })
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, root.save); return }
         root.close()
     }
 

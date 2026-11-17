@@ -43,7 +43,7 @@ Corner {
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function load() {
         var r = Door.getSeries(root.seriesId)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, root.load); return }
         root.detail = r.reply.detail
     }
     onVisibleChanged: if (!visible) detail = null
@@ -228,10 +228,19 @@ Corner {
                     }
                 }
                 // No expected count and nothing on disk: say so rather than draw nothing
-                Label {
+                Row {
                     visible: root.detail !== null && root.seasonRows.every(function(r) { return r.count === 0 })
-                    msg: "episodes-pane-none-on-disk"
-                    role: "ui"; color: theme.textDim
+                    spacing: theme.space(3)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        msg: "episodes-pane-none-on-disk"
+                        role: "ui"; color: theme.textDim
+                    }
+                    Button {
+                        objectName: "episodes-get"
+                        msg: "episodes-pane-get-episodes"; icon: "download"; small: true
+                        onClicked: { var id = root.seriesId; root.close(); frame.go("downloads", { series: id }) }
+                    }
                 }
             }
 
@@ -261,7 +270,7 @@ Corner {
                 Button {
                     objectName: "episodes-refresh"
                     flat: true; small: true; icon: "refresh-cw"; msg: "action-refresh"
-                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast(words.t("episodes-pane-refreshing", { title: root.title })) }
+                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error, clicked) : frame.toast(words.t("episodes-pane-refreshing", { title: root.title })) }
                 }
             }
         }

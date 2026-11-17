@@ -92,7 +92,7 @@ FocusScope {
     readonly property bool canMark: trackerKnown && !!session && !session.is_extra && episodeNumber >= 0
     function readSeries() {
         var d = Door.getSeries(session.series)
-        if (d.error) { console.warn("anibeam: series detail:", d.error.message); return }
+        if (d.error) { page.say(errorLine(d.error), words.t("action-try-again"), page.readSeries); return }
         var card = d.reply.detail.card
         trackerKnown = !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
         seriesTitles = card.titles || {}
@@ -235,6 +235,13 @@ FocusScope {
         id: video
         anchors.fill: parent
         property bool isReady: false
+        // mpv gave up on the file: say so on the picture, with a way to get it again
+        onEnded: function(reason) {
+            if (reason !== "error") return
+            var series = page.session ? page.session.series : -1
+            page.say(words.t("player-would-not-play"), words.t("player-get-it-again"),
+                     series >= 0 ? function() { frame.go("downloads", { series: series }) } : null)
+        }
         onReady: {
             isReady = true
             observe("time-pos", VideoItem.Double); observe("duration", VideoItem.Double); observe("pause", VideoItem.Flag)
@@ -340,7 +347,7 @@ FocusScope {
         var r = Door.openPlayback(props.file)
         // Tried once: a file gone since the end would otherwise be asked for every frame
         ended = false
-        if (r.error) { notice.show(errorLine(r.error)); return }
+        if (r.error) { page.say(errorLine(r.error), words.t("action-try-again"), page.reopen); return }
         closed = false
         replayVisible = false
         session = r.reply.session
@@ -646,11 +653,25 @@ FocusScope {
         OnDisk: "player-refusal-on-disk"
     })
     function refusalWord(r) { return refusalWords[r] ? words.t(refusalWords[r]) : String(r) }
-    function errorLine(e) { return e.kind === "Refused" ? words.t("player-not-tracked-because", { reason: refusalWord(e.reason) }) : e.message }
+    // An error on the picture in plain words: a refusal says why, anything else is the
+    // bridge's sentence and what to do, never the core's message alone
+    function errorLine(e) {
+        if (e.kind === "Refused") return words.t("player-not-tracked-because", { reason: refusalWord(e.reason) })
+        return e.plain ? e.plain + (e.next ? " " + e.next : "") : String(e.message || words.t("frame-did-not-work"))
+    }
+    // A notice with the button that does the fix; the notice's button runs `act`
+    function say(text, label, act) {
+        page.noticeUndo = act || null
+        notice.show(text, act ? label : "", act ? 6 : 4)
+    }
     function markWatched() {
         if (!canMark) return
         var r = Door.markEpisode(session.series, episodeNumber)
-        if (r.error) notice.show(errorLine(r.error))
+        if (r.error) page.say(errorLine(r.error), words.t("action-try-again"), r.error.kind === "Refused" ? null : page.markWatched)
+    }
+    function saveScore(v) {
+        var r = Door.setScore(page.session.series, v)
+        if (r.error) page.say(errorLine(r.error), words.t("action-try-again"), function() { page.saveScore(v) })
     }
     function outcomeText(o) {
         if (o.reason) return words.t("player-outcome-said", { tracker: trackerName(o.tracker), words: refusalWord(o.reason) })
@@ -671,7 +692,9 @@ FocusScope {
     }
     function markOutcome(outcomes) {
         var list = asArray(outcomes)
-        notice.show(outcomeLine(list))
+        // A list that did not answer (not a refusal) gets Try again, which marks again
+        var failed = list.some(function(o) { return !o.ok && !o.reason })
+        page.say(outcomeLine(list), words.t("action-try-again"), failed ? page.markWatched : null)
         if (session && session.is_last_episode && list.some(function(o) { return o.ok })) rating.visible = true
     }
     Connections {
@@ -679,7 +702,8 @@ FocusScope {
         function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes) }
         function onScored(series, score, outcomes) {
             if (!page.session || series !== page.session.series) return
-            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? words.t("player-rated", { score: words.score(score) }) : words.t("player-score-failed"))
+            if (page.asArray(outcomes).every(function(o) { return o.ok })) page.say(words.t("player-rated", { score: words.score(score) }))
+            else page.say(words.t("player-score-failed"), words.t("action-try-again"), function() { page.saveScore(score) })
         }
     }
 
@@ -1018,7 +1042,7 @@ FocusScope {
     ScorePicker {
         id: ratingPicker
         onOpenChanged: page.openMenus += open ? 1 : -1
-        onSaved: function(v) { rating.visible = false; var r = Door.setScore(page.session.series, v); if (r.error) notice.show(page.errorLine(r.error)) }
+        onSaved: function(v) { rating.visible = false; page.saveScore(v) }
     }
 
     // ---- The key list
