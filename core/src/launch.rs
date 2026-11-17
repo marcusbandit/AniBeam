@@ -23,7 +23,7 @@ use crate::events::Subscription;
 use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
-use crate::metadata::{Metadata, airing, apply, automatch, imdb};
+use crate::metadata::{Metadata, airing, apply, automatch, imdb, owed};
 use crate::sync::recover;
 use crate::trackers::{Trackers, cache};
 
@@ -149,6 +149,8 @@ fn after_scan(metadata: &Arc<Metadata>, trackers: &Arc<Trackers>, downloads: &Ar
     apply::backfill_stubs(metadata);
     crawl::start_gap_crawl(metadata);
     airing::start_refresh_library(metadata);
+    // The titles a Jikan outage left owed, asked for again (#1065).
+    owed::start(metadata);
     imdb::start_refresh(&metadata.services);
     cache::start_refresh(trackers, None, false);
     images::start_fill(&metadata.net);

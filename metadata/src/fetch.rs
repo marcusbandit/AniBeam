@@ -37,7 +37,10 @@ use anibeam_net::tvmaze::Show;
 /// the core's outage window, which warns at most once every ten minutes
 /// and skips Jikan until the window has passed. Without Jikan's half the
 /// list is AniList's alone, so the future rows it leaves out stay rather
-/// than going: one of them may be an episode only Jikan knew of.
+/// than going: one of them may be an episode only Jikan knew of. A series
+/// whose titles the outage cost is written down as owed them (`owed`), so a
+/// finished series, which no airing refresh comes back for, gets them once
+/// Jikan answers again (#1065).
 ///
 /// The enrichment is the exception. `write_media` replaces the relations
 /// and the recommendations unconditionally, so writing a build that has no
@@ -68,6 +71,7 @@ pub async fn fetch_and_write(
         None => JikanEpisodes::whole(Vec::new()),
     };
     let whole = jikan.whole;
+    let owed = mal_id.is_some() && !whole && metadata.jikan_down();
     let jikan = jikan.episodes;
 
     let write = record::build(&media, Some(&enrichment));
@@ -98,6 +102,7 @@ pub async fn fetch_and_write(
             } else {
                 record::upsert_episodes(tx, anilist_id, &episodes, false)?;
             }
+            crate::owed::mark(tx, anilist_id, owed)?;
             write_match_only(
                 tx,
                 series,
