@@ -122,6 +122,7 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
                 next_airing: show.and_then(|s| s.next_airing.as_ref()).map(airing),
                 complete: show.is_some_and(|s| s.complete),
                 missing: show.map(|s| s.missing.clone()).unwrap_or_default(),
+                missing_season: show.and_then(|s| s.missing_season),
                 name: r.name,
                 feed_url: without_secrets(&r.feed_url),
                 query: r.query,

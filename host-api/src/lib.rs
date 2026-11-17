@@ -499,6 +499,11 @@ pub struct Subscription {
     /// Aired episode numbers that are not on disk.
     #[serde(default)]
     pub missing: Vec<u32>,
+    /// The season those numbers are in, when the show numbers by season
+    /// (#1091). None from a host that predates it, or for numbers that
+    /// carry no season.
+    #[serde(default)]
+    pub missing_season: Option<u32>,
 }
 
 /// One torrent in the client.

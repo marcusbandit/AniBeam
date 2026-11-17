@@ -328,6 +328,7 @@ mod tests {
             next_airing: None,
             complete: false,
             missing: Vec::new(),
+            missing_season: None,
             cubes: String::new(),
         }
     }

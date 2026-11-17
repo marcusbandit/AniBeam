@@ -129,6 +129,8 @@ pub struct SubscriptionInfo {
     pub files: u64,
     /// Aired episodes the rule has not found, as the host saw it.
     pub missing: Vec<u32>,
+    /// The season the host counted `missing` in, when it says (#1091).
+    pub missing_season: Option<u32>,
 }
 
 /// One series in full, for its page.
@@ -199,6 +201,7 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
             complete: sub.complete,
             files: sub.file_count,
             missing: sub.missing.clone(),
+            missing_season: sub.missing_season,
         });
     Some(Detail {
         id,
