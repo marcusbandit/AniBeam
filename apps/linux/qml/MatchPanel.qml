@@ -63,23 +63,30 @@ Corner {
         q = String(q || "").trim()
         if (q.length < 2) { root.searching = false; root.results = []; root.searchJob = -1; return }
         var r = Door.searchOn(root.provider, q, 12)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, function() { root.runSearch(q) }); return }
         root.searchJob = r.reply.job
         root.searching = true
     }
+    // A retry keeps the series it failed on, since the panel may be closed or open on
+    // another one by the time it is pressed
     function apply(target, title) {
-        var r = Door.applyMatch(root.seriesId, target)
-        if (r.error) { frame.fail(r.error); return }
-        frame.toast(title ? words.t("match-matched-to", { title: title }) : words.t("match-applied"))
+        var id = root.seriesId, fr = frame
+        var said = title ? words.t("match-matched-to", { title: title }) : words.t("match-applied")
+        var again = function() { var a = Door.applyMatch(id, target); if (a.error) fr.fail(a.error, again); else fr.toast(said) }
+        var r = Door.applyMatch(id, target)
+        if (r.error) { frame.fail(r.error, again); return }
+        frame.toast(said)
         root.close("applied")
     }
     // A result row applies by its provider: a TVmaze show through the id-only call, an
     // AniList media as a target with no season
     function applyResult(r) {
         if (r.provider === "Tvmaze") {
-            var out = Door.applyTvmaze(root.seriesId, r.id)
-            if (out.error) { frame.fail(out.error); return }
-            frame.toast(words.t("match-matched-to", { title: r.title }))
+            var id = root.seriesId, fr = frame, said = words.t("match-matched-to", { title: r.title })
+            var again = function() { var a = Door.applyTvmaze(id, r.id); if (a.error) fr.fail(a.error, again); else fr.toast(said) }
+            var out = Door.applyTvmaze(id, r.id)
+            if (out.error) { frame.fail(out.error, again); return }
+            frame.toast(said)
             root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
     }
@@ -144,7 +151,9 @@ Corner {
         function onJobFailed(job, kind, error) {
             if (job === root.searchJob) { root.searching = false; root.searchJob = -1 }
             else if (job !== root.resolveJob) return
-            frame.toast(error && error.message ? error.message : words.t("match-provider-silent", { provider: root.providerName }))
+            var again = job === root.resolveJob ? function() { lookUp.clicked() } : function() { root.runSearch(search.text) }
+            if (error && error.message) frame.fail(error, again)
+            else frame.toast(words.t("match-provider-silent", { provider: root.providerName }), 8, words.t("action-try-again"), again)
         }
     }
 
@@ -197,7 +206,7 @@ Corner {
                 small: true
                 icon: "refresh-cw"
                 msg: "match-refresh-info"
-                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast(words.t("match-refreshing", { title: root.seriesTitle })) }
+                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error, clicked) : frame.toast(words.t("match-refreshing", { title: root.seriesTitle })) }
             }
             // Two steps: it drops the tracker link and a hand-set episode count, and the
             // series is then left alone by the automatic match
@@ -210,8 +219,11 @@ Corner {
                 onClicked: {
                     if (!armed) { armed = true; disarm.restart(); return }
                     armed = false
-                    var r = Door.clearMatch(root.seriesId)
-                    if (r.error) frame.fail(r.error)
+                    var id = root.seriesId
+                    var fr = frame, cleared = words.t("match-cleared")
+                    var again = function() { var c = Door.clearMatch(id); if (c.error) fr.fail(c.error, again); else fr.toast(cleared) }
+                    var r = Door.clearMatch(id)
+                    if (r.error) frame.fail(r.error, again)
                     else frame.toast(words.t("match-cleared"))
                     root.close()
                 }
@@ -262,7 +274,7 @@ Corner {
                 msg: "match-look-up"
                 onClicked: {
                     var r = Door.resolveLink(linkField.text)
-                    if (r.error) { frame.fail(r.error); return }
+                    if (r.error) { frame.fail(r.error, clicked); return }
                     root.resolveJob = r.reply && r.reply.job !== undefined ? r.reply.job : -1
                 }
             }

@@ -35,8 +35,12 @@ Corner {
     }
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function save() {
-        var r = Door.call("SetSeriesNotes", { series: root.seriesId, notes: input.text })
-        if (r.error) { frame.fail(r.error); return }
+        // The series and the words are kept, so a retry after the sheet is gone, or open on
+        // another series, still saves these
+        var args = { series: root.seriesId, notes: input.text }, fr = frame
+        var again = function() { var a = Door.call("SetSeriesNotes", args); if (a.error) fr.fail(a.error, again) }
+        var r = Door.call("SetSeriesNotes", args)
+        if (r.error) { frame.fail(r.error, again); return }
         root.close()
     }
 

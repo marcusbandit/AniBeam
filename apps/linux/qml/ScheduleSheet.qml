@@ -296,14 +296,23 @@ Corner {
             return { first: n.first, last: n.last, year: has(n.year) ? n.year : null, month: n.month || null,
                      at: has(n.at) ? { secs_since_epoch: Math.round(n.at), nanos_since_epoch: 0 } : null }
         })
-        // Always the season the page is about, the one its count and its tiles belong to
-        var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: root.season, notes: wire })
-        if (r.error) { frame.fail(r.error); return }
-        if (root.endAt !== root.savedEnd) {
-            var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
-            if (c.error) { frame.fail(c.error); return }
+        // Always the season the page is about, the one its count and its tiles belong to.
+        // The calls are kept whole, so a retry after the sheet closed, or opened on another
+        // series, still saves these.
+        var notesArgs = { series: root.seriesId, season: root.season, notes: wire }
+        var countArgs = root.endAt !== root.savedEnd ? { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null } : null
+        var said = wire.length || root.endAt ? words.t("schedule-saved") : words.t("schedule-cleared")
+        var run = function() {
+            var a = Door.call("SetScheduleNotes", notesArgs)
+            if (a.error) return a.error
+            if (countArgs) { var c = Door.call("SetEpisodeCount", countArgs); if (c.error) return c.error }
+            return null
         }
-        frame.toast(wire.length || root.endAt ? words.t("schedule-saved") : words.t("schedule-cleared"))
+        var fr = frame
+        var again = function() { var e = run(); if (e) fr.fail(e, again); else fr.toast(said) }
+        var e = run()
+        if (e) { frame.fail(e, again); return }
+        frame.toast(said)
         root.close()
     }
 
