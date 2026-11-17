@@ -21,6 +21,7 @@
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
+use tokio::sync::oneshot;
 
 use crate::Trackers;
 use crate::{TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold};
@@ -362,6 +363,87 @@ struct RewatchSlot {
 impl Drop for RewatchSlot {
     fn drop(&mut self) {
         recover(&self.set.0).remove(&self.series);
+    }
+}
+
+/// Each series' writes in the order they were asked for, one line per
+/// trackers team as [`Rewatching`] is. A write reads the list before it
+/// writes, so two writes of one series at once would both read the same
+/// list and the one that landed last would decide it: a status set while a
+/// rewatch is being written could leave the rewatch's Completed over it
+/// (#1112). Each write takes its place when it is asked for and starts once
+/// the write before it has ended, however that one ended.
+#[derive(Clone, Default)]
+pub(crate) struct WriteLine(Arc<LineInner>);
+
+#[derive(Default)]
+struct LineInner {
+    next: std::sync::atomic::AtomicU64,
+    /// Each series' last write in line: its ticket, and the end it waits on.
+    last: std::sync::Mutex<std::collections::HashMap<LineKey, (u64, oneshot::Receiver<()>)>>,
+}
+
+/// What a line is kept by: the series, or for a show the library does not
+/// have (series nought), its AniList id.
+type LineKey = (u64, Option<u64>);
+
+fn line_key(target: &Targets) -> LineKey {
+    match target.series {
+        0 => (0, target.anilist),
+        series => (series, None),
+    }
+}
+
+impl WriteLine {
+    /// A place at the back of the target's line.
+    fn join(&self, target: &Targets) -> Turn {
+        let key = line_key(target);
+        let ticket = self
+            .0
+            .next
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (done, end) = oneshot::channel();
+        let before = recover(&self.0.last)
+            .insert(key, (ticket, end))
+            .map(|(_, end)| end);
+        Turn {
+            line: self.clone(),
+            key,
+            ticket,
+            before,
+            _done: done,
+        }
+    }
+}
+
+/// A write's place in its series' line. The write after it starts when
+/// this is dropped, which is when the job holding it ends.
+struct Turn {
+    line: WriteLine,
+    key: LineKey,
+    ticket: u64,
+    before: Option<oneshot::Receiver<()>>,
+    _done: oneshot::Sender<()>,
+}
+
+impl Turn {
+    /// Waits for the write before this one to end. Dropping the wait
+    /// keeps the place, so the next wait picks it up again.
+    async fn come(&mut self) {
+        if let Some(before) = self.before.as_mut() {
+            // Dropped without a send is how every write ends.
+            let _ = before.await;
+            self.before = None;
+        }
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        let mut last = recover(&self.line.0.last);
+        if last.get(&self.key).is_some_and(|(t, _)| *t == self.ticket) {
+            last.remove(&self.key);
+        }
     }
 }
 
@@ -824,8 +906,12 @@ pub fn start_many(
     };
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
+    let turns = reachable
+        .iter()
+        .map(|target| owner.write_line.join(target))
+        .collect();
     Ok(Some(jobs.start(kind, move |ctx| async move {
-        run_many(owner, ctx, reachable, action, left_out).await
+        run_many(owner, ctx, reachable, turns, action, left_out).await
     })))
 }
 
@@ -833,6 +919,7 @@ async fn run_many(
     trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     targets: Vec<Targets>,
+    turns: Vec<Turn>,
     action: Action,
     left_out: LeftOut,
 ) -> Result<Finished, CoreError> {
@@ -841,7 +928,10 @@ async fn run_many(
     let mut named = None;
     let mut landed: Vec<Tracker> = Vec::new();
     let mut reason: Option<String> = None;
-    for (i, target) in targets.iter().enumerate() {
+    // Each pick waits its own turn and gives it up once written, so a
+    // write over many series holds up each one only while it writes it.
+    for ((i, target), mut turn) in targets.iter().enumerate().zip(turns) {
+        turn.come().await;
         ctx.checkpoint()?;
         ctx.progress(i as u64, Some(total), &target.folder_name);
         let outcomes = write_all(&trackers, &ctx, target, &action, false).await?;
@@ -1058,8 +1148,10 @@ fn start_holding(
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
     let cell = slot.as_ref().map(|s| s.job.clone());
+    let mut turn = owner.write_line.join(&target);
     let job = jobs.start(kind, move |ctx| async move {
         let _slot = slot;
+        turn.come().await;
         run(owner, ctx, target, action).await
     });
     if let Some(cell) = cell {
@@ -2221,6 +2313,37 @@ mod tests {
         );
         drop(slot);
         assert!(set.hold(7).is_ok(), "a dropped slot frees the series");
+    }
+
+    #[tokio::test]
+    async fn a_write_waits_for_the_one_before_it_in_its_own_series_only() {
+        let line = WriteLine::default();
+        let target = |series| Targets {
+            series,
+            anilist: Some(series + 100),
+            mal: None,
+            total: None,
+            folder_name: String::new(),
+        };
+        let soon = std::time::Duration::from_millis(50);
+        let first = line.join(&target(1));
+        let mut second = line.join(&target(1));
+        let mut elsewhere = line.join(&target(2));
+        assert!(
+            tokio::time::timeout(soon, elsewhere.come()).await.is_ok(),
+            "another series does not wait"
+        );
+        assert!(
+            tokio::time::timeout(soon, second.come()).await.is_err(),
+            "the second write waits for the first"
+        );
+        drop(first);
+        assert!(tokio::time::timeout(soon, second.come()).await.is_ok());
+        drop((second, elsewhere));
+        assert!(
+            recover(&line.0.last).is_empty(),
+            "an empty line is forgotten"
+        );
     }
 
     /// The status is read first, whatever the provider said, because a 429
