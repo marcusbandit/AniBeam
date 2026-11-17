@@ -111,26 +111,28 @@ pub struct Planned {
 
 /// The first library folder still on disk, in the order the folders were added: where
 /// Anibeam's own qBittorrent saves when nothing else is picked, so a new show lands where
-/// the library finds it.
+/// the library finds it. The disk decides, not the source's `available` mark, which only a
+/// scan updates: a drive plugged in since then counts at once (#1193).
 pub fn library_folder(services: &Services) -> Result<Option<String>, CoreError> {
-    let folders: Vec<String> = services.store.read(|c| {
-        let mut stmt =
-            c.prepare("SELECT path FROM sources WHERE available = 1 ORDER BY added_at, id")?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    })?;
-    Ok(folders.into_iter().find(|p| Path::new(p).is_dir()))
+    Ok(library_folders(services)?
+        .into_iter()
+        .find(|p| Path::new(p).is_dir()))
 }
 
-/// The first library folder that is not usable now: its source is marked unavailable, or its
-/// folder is not on disk. Its drive or share is not connected.
+/// The first library folder that is not on disk now: its drive or share is not connected.
 fn disconnected_library(services: &Services) -> Result<Option<String>, CoreError> {
-    let folders: Vec<String> = services.store.read(|c| {
+    Ok(library_folders(services)?
+        .into_iter()
+        .find(|p| !Path::new(p).is_dir()))
+}
+
+/// Every library folder, in the order they were added.
+fn library_folders(services: &Services) -> Result<Vec<String>, CoreError> {
+    services.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM sources ORDER BY added_at, id")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    })?;
-    Ok(folders.into_iter().find(|p| !Path::new(p).is_dir()))
+    })
 }
 
 /// The blob's folder, then the first library folder for Anibeam's own qBittorrent, then
@@ -174,24 +176,26 @@ pub fn planned(
         TorrentMode::Managed if picked.is_none() => library_folder(services)?,
         _ => None,
     };
+    // A library whose drive is not connected is where this add belongs: it waits for the
+    // drive rather than saving anywhere else, anirss's folder included (#1193)
+    if here
+        && s.torrent_mode == TorrentMode::Managed
+        && picked.is_none()
+        && library.is_none()
+        && let Some(folder) = disconnected_library(services)?
+    {
+        return Err(CoreError::invalid(
+            "save_path",
+            anibeam_contract::i18n::tr(
+                "core-downloads-library-not-connected",
+                &[("folder", folder.into())],
+            ),
+        ));
+    }
     let (save_base, from) = match (picked, library) {
         (Some(base), _) => (Some(base), SaveFolderFrom::Chosen),
         (None, Some(base)) => (Some(base), SaveFolderFrom::Library),
         (None, None) => match config.save_base.clone() {
-            // A library whose drive is not connected is where this add belongs: it waits
-            // for the drive rather than saving somewhere else (#1193)
-            None if here && s.torrent_mode == TorrentMode::Managed => {
-                if let Some(folder) = disconnected_library(services)? {
-                    return Err(CoreError::invalid(
-                        "save_path",
-                        anibeam_contract::i18n::tr(
-                            "core-downloads-library-not-connected",
-                            &[("folder", folder.into())],
-                        ),
-                    ));
-                }
-                (None, SaveFolderFrom::Client)
-            }
             Some(base) => (Some(base), SaveFolderFrom::Helper),
             None => (None, SaveFolderFrom::Client),
         },
@@ -495,6 +499,27 @@ mod tests {
         let s = mode(&t, TorrentMode::Managed);
         let e = planned(&t.services, &s, true).unwrap_err();
         assert!(e.to_string().contains("/Volumes/Gone/Anime"), "{e}");
+    }
+
+    #[test]
+    fn an_unconnected_library_wins_over_an_anirss_folder_that_is_here() {
+        let folder = tempfile::tempdir().unwrap();
+        let base = folder.path().to_string_lossy().into_owned();
+        let (_d, t) = rig(false, Some("/Volumes/Gone/Anime"), &base);
+        let s = mode(&t, TorrentMode::Managed);
+        let e = planned(&t.services, &s, true).unwrap_err();
+        assert!(e.to_string().contains("/Volumes/Gone/Anime"), "{e}");
+    }
+
+    #[test]
+    fn a_library_folder_on_disk_counts_while_its_source_is_still_marked_unavailable() {
+        let lib = tempfile::tempdir().unwrap();
+        let lib = lib.path().to_string_lossy().into_owned();
+        let (_d, t) = rig(false, Some(&lib), "/home/qbtuser/Anime/");
+        let s = mode(&t, TorrentMode::Managed);
+        let p = planned(&t.services, &s, true).unwrap();
+        assert_eq!(p.save_base, Some(lib));
+        assert_eq!(p.from, SaveFolderFrom::Library);
     }
 
     #[test]
