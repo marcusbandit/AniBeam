@@ -354,6 +354,14 @@ impl Core {
             .store(window.as_millis() as u64, Ordering::SeqCst);
     }
 
+    /// Shortens how long one Jikan episode read may spend asking for pages,
+    /// so a test can reach a read cut short without thirty seconds of
+    /// pages. Not part of the contract either.
+    #[doc(hidden)]
+    pub fn set_jikan_budget(&self, budget: std::time::Duration) {
+        self.metadata.net.jikan.set_budget(budget);
+    }
+
     /// Shortens how long the browser's callback is held for a sign-in to
     /// finish, so a test can reach the "still finishing" page without a
     /// minute's wait. Not part of the contract either.

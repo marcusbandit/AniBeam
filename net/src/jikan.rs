@@ -3,6 +3,7 @@
 //! carries no episode titles, so this fills them in.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -44,9 +45,10 @@ struct Pagination {
     has_next_page: bool,
 }
 
-/// The most pages one read asks for. Jikan sends 100 episodes a page, so
-/// this reaches episode 2,000, past the longest show it lists; a reply that
-/// says there is a next page forever stops here instead of looping.
+/// The most pages one read asks for from where it starts. Jikan sends 100
+/// episodes a page, so a read from the first page reaches episode 2,000,
+/// past the longest show it lists; a reply that says there is a next page
+/// forever stops here instead of looping.
 pub const JIKAN_MAX_PAGES: u32 = 20;
 
 /// How long one read may spend before it stops asking for more pages. A
@@ -55,6 +57,20 @@ pub const JIKAN_MAX_PAGES: u32 = 20;
 /// gets through all of `JIKAN_MAX_PAGES` well inside it at the limiter's
 /// pace.
 pub const JIKAN_READ_BUDGET: Duration = Duration::from_secs(30);
+
+/// How many episodes Jikan sends a page. A read that starts past the
+/// first page finds its page from this.
+pub const JIKAN_PAGE_SIZE: u32 = 100;
+
+/// Why a read stopped before Jikan said there was nothing more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JikanCap {
+    /// It asked for `JIKAN_MAX_PAGES` pages and Jikan still said another
+    /// followed.
+    Pages,
+    /// It ran past its budget before the next page was asked for.
+    Budget,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JikanEpisode {
@@ -76,6 +92,9 @@ pub struct JikanEpisodes {
     pub whole: bool,
     /// The failure that stopped the read on a page after the first.
     pub stopped: Option<CoreError>,
+    /// Set when the read stopped at `JIKAN_MAX_PAGES` or at its budget,
+    /// which is what the one log line about it says (#1105).
+    pub capped: Option<JikanCap>,
 }
 
 impl JikanEpisodes {
@@ -85,27 +104,40 @@ impl JikanEpisodes {
             episodes,
             whole: true,
             stopped: None,
+            capped: None,
         }
     }
 }
 
 pub struct JikanClient {
     client: ProviderClient,
-    budget: Duration,
+    /// The read budget in milliseconds: `JIKAN_READ_BUDGET`, which a test
+    /// shortens.
+    budget_ms: AtomicU64,
 }
 
 impl JikanClient {
     pub fn new(client: ProviderClient) -> JikanClient {
-        JikanClient {
-            client,
-            budget: JIKAN_READ_BUDGET,
-        }
+        JikanClient::with_budget(client, JIKAN_READ_BUDGET)
     }
 
     /// A client whose reads stop asking for pages after `budget`, for a
     /// test that cannot wait out the real one.
     pub fn with_budget(client: ProviderClient, budget: Duration) -> JikanClient {
-        JikanClient { client, budget }
+        JikanClient {
+            client,
+            budget_ms: AtomicU64::new(budget.as_millis() as u64),
+        }
+    }
+
+    /// Changes the read budget, for a test that holds the client already.
+    pub fn set_budget(&self, budget: Duration) {
+        self.budget_ms
+            .store(budget.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    fn budget(&self) -> Duration {
+        Duration::from_millis(self.budget_ms.load(Ordering::SeqCst))
     }
 
     /// Every episode Jikan holds for that MAL id, in episode order, read a
@@ -118,14 +150,55 @@ impl JikanClient {
     /// the failure in `stopped`. So does running past the read's budget
     /// before a later page is asked for, with nothing in `stopped`.
     pub async fn episodes(&self, mal_id: u64) -> Result<JikanEpisodes, CoreError> {
+        self.episodes_from(mal_id, 1).await
+    }
+
+    /// The same read, from the page that holds episode `from` on (#1105).
+    /// A caller that already holds everything before `from` asks for this
+    /// rather than the whole list: a long show is a request per hundred
+    /// episodes. `whole` then means Jikan holds nothing past what came
+    /// back, and the episodes before the start page are simply not in it.
+    ///
+    /// The page is found by counting a hundred episodes a page from one.
+    /// When Jikan's own list does not count that way, the start page
+    /// begins past `from`, is missing, or is refused; the read then tries
+    /// the page before it, and after that the first page, so it never
+    /// skips the episode asked for. A list that ends on a page boundary
+    /// costs one page more, not all of them. Each try has its own budget.
+    pub async fn episodes_from(&self, mal_id: u64, from: u32) -> Result<JikanEpisodes, CoreError> {
+        let start = from.saturating_sub(1) / JIKAN_PAGE_SIZE + 1;
+        let mut tries = vec![start];
+        if start > 2 {
+            tries.push(start - 1);
+        }
+        if start > 1 {
+            tries.push(1);
+        }
+        for first in tries {
+            if let Read::Pages(read) = self.read(mal_id, first, from).await? {
+                return Ok(read);
+            }
+        }
+        // Even the first page is a 404: a series with no episode list.
+        Ok(JikanEpisodes::whole(Vec::new()))
+    }
+
+    /// Pages from `first` on, while Jikan says another follows. A 404 on
+    /// `first` is `Read::Missing`. So is a start page past the first that
+    /// Jikan refuses or that begins past episode `from`, which ends the
+    /// read after that one request.
+    async fn read(&self, mal_id: u64, first: u32, from: u32) -> Result<Read, CoreError> {
         // Keyed by episode number, so a repeated entry collapses and the
         // list comes back in order whatever order Jikan sent it in.
         let mut by_number: BTreeMap<u32, JikanEpisode> = BTreeMap::new();
         let mut whole = false;
         let mut stopped = None;
+        let mut capped = Some(JikanCap::Pages);
         let started = Instant::now();
-        for page in 1..=JIKAN_MAX_PAGES {
-            if page > 1 && started.elapsed() >= self.budget {
+        let budget = self.budget();
+        for page in first..first + JIKAN_MAX_PAGES {
+            if page > first && started.elapsed() >= budget {
+                capped = Some(JikanCap::Budget);
                 break;
             }
             let reply = match self.page(mal_id, page).await {
@@ -133,20 +206,37 @@ impl JikanClient {
                 // A 404 on the first page is a series with no episode
                 // list. On a later one it is a reply that contradicts the
                 // page before it, so what was read is kept but not whole.
+                Ok(None) if page == first => return Ok(Read::Missing),
                 Ok(None) => {
-                    whole = page == 1;
+                    capped = None;
                     break;
                 }
-                Err(e) if page == 1 => return Err(e),
+                // A start page Jikan refuses outright may be one past its
+                // last; an earlier page may still answer.
+                Err(e) if page == first && first > 1 && refused(&e) => return Ok(Read::Missing),
+                Err(e) if page == first => return Err(e),
                 Err(e) => {
                     stopped = Some(e);
+                    capped = None;
                     break;
                 }
             };
-            for raw in reply.data {
-                if raw.episode <= 0 {
-                    continue;
-                }
+            let episodes: Vec<RawEpisode> = reply
+                .data
+                .into_iter()
+                .filter(|raw| raw.episode > 0)
+                .collect();
+            if page == first
+                && first > 1
+                && episodes
+                    .iter()
+                    .map(|raw| raw.episode)
+                    .min()
+                    .is_some_and(|n| n > i64::from(from))
+            {
+                return Ok(Read::Missing);
+            }
+            for raw in episodes {
                 let number = raw.episode as u32;
                 by_number.insert(
                     number,
@@ -160,14 +250,16 @@ impl JikanClient {
             }
             if !reply.pagination.has_next_page {
                 whole = true;
+                capped = None;
                 break;
             }
         }
-        Ok(JikanEpisodes {
+        Ok(Read::Pages(JikanEpisodes {
             episodes: by_number.into_values().collect(),
             whole,
             stopped,
-        })
+            capped,
+        }))
     }
 
     /// One page of the episode list, or `None` for a 404. The first page
@@ -193,6 +285,21 @@ impl JikanClient {
         }
         Ok(Some(response.json()?))
     }
+}
+
+/// What a run of pages came back with.
+enum Read {
+    /// The pages read.
+    Pages(JikanEpisodes),
+    /// The first page asked for was a 404, or a start page that does not
+    /// hold the episode asked for.
+    Missing,
+}
+
+/// A client error that is not a rate limit: Jikan refusing the request
+/// itself, which asking for a different page may not repeat.
+fn refused(e: &CoreError) -> bool {
+    matches!(e, CoreError::Provider { status: Some(s), .. } if (400..500).contains(s) && *s != 429)
 }
 
 #[cfg(test)]
@@ -268,6 +375,7 @@ mod tests {
         let read = client(http.clone()).episodes(21).await.unwrap();
         assert!(read.whole);
         assert!(read.stopped.is_none());
+        assert_eq!(read.capped, None);
         assert_eq!(read.episodes.len(), 150);
         assert_eq!(read.episodes[149].number, 150);
         let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
@@ -314,7 +422,120 @@ mod tests {
         let read = client(http).episodes(21).await.unwrap();
         assert!(!read.whole);
         assert!(read.stopped.is_none());
+        assert_eq!(read.capped, None);
         assert_eq!(read.episodes.len(), 100);
+    }
+
+    /// A read from a late episode asks only from the page that holds it
+    /// (#1105): a show past a thousand episodes is one request, not
+    /// eleven, and what it read is whole from there on.
+    #[tokio::test]
+    async fn a_read_from_a_late_episode_asks_only_from_the_page_holding_it() {
+        let http = FakeHttp::new();
+        http.push_json(200, page(1001, 1060, false));
+        let read = client(http.clone()).episodes_from(21, 1051).await.unwrap();
+        assert!(read.whole);
+        assert_eq!(read.capped, None);
+        assert_eq!(read.episodes.len(), 60);
+        assert_eq!(read.episodes[0].number, 1001);
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            vec!["https://api.jikan.moe/v4/anime/21/episodes?page=11".to_string()]
+        );
+    }
+
+    /// Episode 100 is still on the first page, and 101 on the second.
+    #[tokio::test]
+    async fn the_start_page_counts_a_hundred_episodes_a_page() {
+        let http = FakeHttp::new();
+        http.push_json(200, page(1, 100, false));
+        client(http.clone()).episodes_from(21, 100).await.unwrap();
+        http.push_json(200, page(101, 120, false));
+        client(http.clone()).episodes_from(21, 101).await.unwrap();
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://api.jikan.moe/v4/anime/21/episodes".to_string(),
+                "https://api.jikan.moe/v4/anime/21/episodes?page=2".to_string(),
+            ]
+        );
+    }
+
+    /// A Jikan list that skips numbers puts an episode on an earlier page
+    /// than counting says. A start page that begins past the episode
+    /// asked for starts the read over from the first page, so the
+    /// episode is not skipped.
+    #[tokio::test]
+    async fn a_start_page_past_the_episode_asked_for_starts_over() {
+        let http = FakeHttp::new();
+        http.push_json(200, page(160, 200, false));
+        http.push_json(200, page(1, 100, true));
+        http.push_json(200, page(101, 200, false));
+        let read = client(http.clone()).episodes_from(21, 150).await.unwrap();
+        assert!(read.whole);
+        assert_eq!(read.episodes.len(), 200);
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://api.jikan.moe/v4/anime/21/episodes?page=2".to_string(),
+                "https://api.jikan.moe/v4/anime/21/episodes".to_string(),
+                "https://api.jikan.moe/v4/anime/21/episodes?page=2".to_string(),
+            ]
+        );
+    }
+
+    /// A 404 on the start page is a page that does not exist, so the read
+    /// starts over from the first.
+    #[tokio::test]
+    async fn a_missing_start_page_starts_over() {
+        let http = FakeHttp::new();
+        http.push(404, "not found");
+        http.push_json(200, page(1, 40, false));
+        let read = client(http.clone()).episodes_from(21, 150).await.unwrap();
+        assert!(read.whole);
+        assert_eq!(read.episodes.len(), 40);
+        assert_eq!(http.requests().len(), 2);
+    }
+
+    /// A list that ends on a page boundary has no page for the next
+    /// episode yet. The read tries the page before it, which is whole,
+    /// rather than every page from the first.
+    #[tokio::test]
+    async fn a_list_ending_on_a_page_boundary_costs_one_page_more() {
+        let http = FakeHttp::new();
+        http.push(404, "not found");
+        http.push_json(200, page(901, 1000, false));
+        let read = client(http.clone()).episodes_from(21, 1001).await.unwrap();
+        assert!(read.whole);
+        assert_eq!(read.episodes.len(), 100);
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://api.jikan.moe/v4/anime/21/episodes?page=11".to_string(),
+                "https://api.jikan.moe/v4/anime/21/episodes?page=10".to_string(),
+            ]
+        );
+    }
+
+    /// A start page Jikan refuses is tried again from an earlier page; an
+    /// outage on it is the read's failure, with no second request.
+    #[tokio::test]
+    async fn a_refused_start_page_falls_back_and_an_outage_does_not() {
+        let http = FakeHttp::new();
+        http.push(400, "bad request");
+        http.push_json(200, page(101, 150, false));
+        let read = client(http.clone()).episodes_from(21, 120).await;
+        assert!(read.unwrap().whole);
+        assert_eq!(http.requests().len(), 2);
+
+        let http = FakeHttp::new();
+        http.push(504, "gateway timeout");
+        assert!(client(http.clone()).episodes_from(21, 1051).await.is_err());
+        assert_eq!(http.requests().len(), 1);
     }
 
     /// A read past its budget asks for no further page, and what it read
@@ -331,6 +552,7 @@ mod tests {
         let read = jikan.episodes(21).await.unwrap();
         assert!(!read.whole);
         assert!(read.stopped.is_none());
+        assert_eq!(read.capped, Some(JikanCap::Budget));
         assert_eq!(read.episodes.len(), 100);
         assert_eq!(http.requests().len(), 1);
     }
@@ -345,6 +567,7 @@ mod tests {
         }
         let read = client(http.clone()).episodes(21).await.unwrap();
         assert!(!read.whole);
+        assert_eq!(read.capped, Some(JikanCap::Pages));
         assert_eq!(http.requests().len(), JIKAN_MAX_PAGES as usize);
         assert_eq!(read.episodes.len(), JIKAN_MAX_PAGES as usize * 100);
     }
