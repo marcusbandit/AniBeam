@@ -264,6 +264,12 @@ pub async fn hls(
     let Some((path, probe)) = probe_of(&st, id).await else {
         return not_found();
     };
+    if !wire::hls_converts(probe.duration) {
+        return error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "the file does not say how long it is, so it cannot be converted",
+        );
+    }
     if !convert::available().await {
         return error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -278,7 +284,9 @@ pub async fn hls(
         return error(StatusCode::BAD_REQUEST, "the file has no such track");
     }
     if name == "index.m3u8" {
-        let list = wire::hls_playlist(probe.duration, &query_of(audio, burn));
+        let Some(list) = wire::hls_playlist(probe.duration, &query_of(audio, burn)) else {
+            return not_found();
+        };
         return (
             [
                 (header::CONTENT_TYPE, "application/vnd.apple.mpegurl"),
