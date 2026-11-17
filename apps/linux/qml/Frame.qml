@@ -616,8 +616,17 @@ FocusScope {
             objectName: "frame-toast"
             visible: false
             radius: theme.radiusTile
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
+            // Centred at the foot, and never on the update island: moved left of it where
+            // it fits there, set above it where it does not (#1108)
+            readonly property real gap: theme.space(4)
+            readonly property real centredX: (parent.width - width) / 2
+            readonly property real footY: parent.height - theme.space(10) - height
+            readonly property bool meetsIsland: updateNotice.visible
+                && centredX + width > updateNotice.x - gap
+                && footY < updateNotice.y + updateNotice.height && footY + height > updateNotice.y
+            readonly property bool besideIsland: updateNotice.x - gap - width >= theme.space(4)
+            x: !meetsIsland ? centredX : besideIsland ? updateNotice.x - gap - width : centredX
+            y: meetsIsland && !besideIsland ? updateNotice.y - gap - height : footY
             width: Math.min(parent.width - theme.space(8), toastRow.implicitWidth + theme.space(4))
             height: toastCol.implicitHeight + theme.space(1)
             property var action: null
