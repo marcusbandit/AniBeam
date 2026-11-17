@@ -5,6 +5,8 @@
   {"eval": "frame.item.nav.current.page", "expect": "series"},
   {"eval": "driver.item.findItem('series-back') !== null", "expect": true},
   {"eval": "driver.item.findItem('series-continue') !== null", "expect": true},
+  {"log": "the progress line stays inside the play row, never past the band's edge (#783)"},
+  {"eval": "var b = driver.item.findItem('series-progress-box'); b.x + b.width <= b.parent.width + 0.5 && driver.item.findItem('series-progress').width >= 0", "expect": true},
   {"shot": "pages-01-series"},
   {"click": "series-continue"},
   {"until": "driver.item.pageReady('player')"},
