@@ -34,6 +34,7 @@ use crate::repos;
 use crate::room;
 use crate::stats;
 use crate::store::Store;
+use crate::sync::recover;
 use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
 
@@ -1044,7 +1045,7 @@ impl Core {
     pub fn set_snapshot_cache(&self, on: bool) {
         self.library.snapshot_cache.store(on, Ordering::Relaxed);
         if !on {
-            *self.library.kept_load.lock().unwrap() = None;
+            *recover(&self.library.kept_load) = None;
         }
     }
 
@@ -1082,10 +1083,10 @@ impl Core {
         self.services.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
-        // lock expression: `if let Some(x) = mutex.lock().unwrap().take()`
+        // lock expression: `if let Some(x) = recover(&mutex).take()`
         // keeps the guard alive for the whole `if let` body, which would
         // hold this lock for as long as the wait below.
-        let runtime = self.runtime.lock().unwrap().take();
+        let runtime = recover(&self.runtime).take();
         self.services.close(runtime);
     }
 }
@@ -1114,7 +1115,7 @@ impl Drop for Core {
         // cleanly; hand any runtime still present to the background path
         // instead. Taken out of the mutex before that call, for the same
         // reason `shutdown` above does.
-        let runtime = self.runtime.lock().unwrap().take();
+        let runtime = recover(&self.runtime).take();
         if let Some(runtime) = runtime {
             runtime.shutdown_background();
         }
