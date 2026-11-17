@@ -317,7 +317,7 @@ Item {
         for (var i = 0; i < outcomes.length; i++) {
             var o = outcomes[i]
             if (o.ok) continue
-            // A refusal says why, in the player's words; a list that did not answer keeps
+            // A refusal says why, in the shared refusal words; a list that did not answer keeps
             // its own message under Details
             var tracker = names[o.tracker] || o.tracker
             list.push(o.reason ? words.t("series-tracker-refused-why", { tracker: tracker, why: page.refusalWord(o.reason) }) : words.t("series-tracker-refused", { tracker: tracker }))
