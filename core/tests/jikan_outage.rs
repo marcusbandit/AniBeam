@@ -275,3 +275,174 @@ fn a_failure_on_jikans_second_page_keeps_the_first_and_deletes_nothing() {
 
     core.shutdown();
 }
+
+/// Each stored row behind one media id: its number, title and date.
+fn rows(core: &Core, anilist_id: u64) -> Vec<(i64, Option<String>, Option<i64>)> {
+    core.store()
+        .read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT number, title, aired_at FROM anilist_episodes WHERE anilist_id = ?1 ORDER BY number",
+            )?;
+            let rows = stmt.query_map([anilist_id as i64], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap()
+}
+
+/// The AniList ids still owed Jikan's titles.
+fn owed(core: &Core) -> Vec<u64> {
+    core.store()
+        .read(|c| Ok(anibeam_core::metadata::owed::owed(c)?.into_iter().collect()))
+        .unwrap()
+}
+
+/// A whole page of Jikan episodes, titled.
+fn jikan_page(titles: &[(u32, &str)]) -> String {
+    let data: Vec<serde_json::Value> = titles
+        .iter()
+        .map(|(n, t)| serde_json::json!({ "mal_id": n, "episode": n, "title": t, "aired": "2020-01-01T00:00:00+00:00" }))
+        .collect();
+    serde_json::json!({ "pagination": { "has_next_page": false }, "data": data }).to_string()
+}
+
+/// A finished series with a file on disk and no match yet.
+fn unmatched(core: &Core, source: u64, name: &str) -> u64 {
+    let series = fixtures::insert_series(
+        core,
+        source,
+        SeriesKind::Show,
+        &format!("/lib/{name}"),
+        name,
+    );
+    fixtures::insert_episode_file(core, series, &format!("/lib/{name}/01.mkv"), 1.0, 1);
+    series
+}
+
+/// Queues the three AniList replies a match makes for a finished show.
+fn finished_replies(
+    http: &anibeam_core::net::FakeHttp,
+    id: u64,
+    name: &str,
+    mal: u64,
+    nodes: &[(u32, i64)],
+) {
+    let mut media = media_json(id, name, mal);
+    media["data"]["Media"]["status"] = serde_json::json!("FINISHED");
+    http.push_json(200, media);
+    http.push_json(200, bare_enrichment(id, mal));
+    http.push_json(200, schedule_json(id, None, nodes));
+}
+
+/// A finished series matched while Jikan was down is written down as owed
+/// its titles (#1065). The walk launch starts leaves Jikan alone while the
+/// window is open, and once it has passed fills the titles in, keeping the
+/// dates AniList gave and crossing the series off.
+#[test]
+fn a_finished_series_matched_through_an_outage_gets_its_titles_once_jikan_answers() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = unmatched(&core, src, "Cowboy Bebop");
+
+    let nodes = [(1, 1_000_000), (2, 1_600_000)];
+    finished_replies(&http, 1, "Cowboy Bebop", 1001, &nodes);
+    http.push_for("jikan.moe", 504, "gateway timeout");
+    apply(&core, &c, series, 1);
+    assert_eq!(
+        rows(&core, 1),
+        vec![(1, None, Some(1_000_000)), (2, None, Some(1_600_000))]
+    );
+    assert_eq!(owed(&core), vec![1]);
+
+    // Inside the window the walk does not ask Jikan, and the series stays
+    // owed.
+    let job = anibeam_core::metadata::owed::start(core.metadata()).expect("something is owed");
+    common::wait_job(&c, job);
+    assert_eq!(jikan_requests(&http), 1, "{:#?}", http.requests());
+    assert_eq!(owed(&core), vec![1]);
+
+    // Jikan is back.
+    core.set_jikan_window(std::time::Duration::ZERO);
+    http.push_for(
+        "anime/1001/episodes",
+        200,
+        jikan_page(&[
+            (1, "Asteroid Blues"),
+            (2, "Stray Dog Strut"),
+            (3, "Honky Tonk Women"),
+        ]),
+    );
+    let job = anibeam_core::metadata::owed::start(core.metadata()).expect("something is owed");
+    let done = common::wait_job(&c, job);
+    assert!(done.message.contains("filled for 1 series"), "{done:#?}");
+    let filled = rows(&core, 1);
+    assert_eq!(
+        filled[0],
+        (1, Some("Asteroid Blues".into()), Some(1_000_000))
+    );
+    assert_eq!(
+        filled[1],
+        (2, Some("Stray Dog Strut".into()), Some(1_600_000))
+    );
+    assert_eq!(filled[2].0, 3);
+    assert_eq!(filled[2].1.as_deref(), Some("Honky Tonk Women"));
+    assert!(owed(&core).is_empty());
+    assert!(anibeam_core::metadata::owed::start(core.metadata()).is_none());
+    assert_eq!(jikan_warnings(&c), 1);
+
+    core.shutdown();
+}
+
+/// The first whole Jikan reply after the window has passed is Jikan back,
+/// and starts the walk on its own: no timer, no launch.
+#[test]
+fn the_first_jikan_reply_after_an_outage_fills_what_it_left_owed() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = unmatched(&core, src, "Cowboy Bebop");
+    let second = unmatched(&core, src, "Trigun");
+
+    let nodes = [(1, 1_000_000), (2, 1_600_000)];
+    finished_replies(&http, 1, "Cowboy Bebop", 1001, &nodes);
+    http.push_for("jikan.moe", 504, "gateway timeout");
+    apply(&core, &c, first, 1);
+    assert_eq!(owed(&core), vec![1]);
+
+    core.set_jikan_window(std::time::Duration::ZERO);
+    finished_replies(&http, 2, "Trigun", 1002, &nodes);
+    http.push_for(
+        "anime/1002/episodes",
+        200,
+        jikan_page(&[(1, "The $60,000,000,000 Man"), (2, "Truth of Mistake")]),
+    );
+    http.push_for(
+        "anime/1001/episodes",
+        200,
+        jikan_page(&[(1, "Asteroid Blues"), (2, "Stray Dog Strut")]),
+    );
+    apply(&core, &c, second, 2);
+    assert_eq!(
+        rows(&core, 2)[0].1.as_deref(),
+        Some("The $60,000,000,000 Man")
+    );
+
+    common::wait_for(
+        &c,
+        |e| e.message.contains("Jikan titles filled for 1 series"),
+        std::time::Duration::from_secs(10),
+    );
+    assert_eq!(
+        rows(&core, 1),
+        vec![
+            (1, Some("Asteroid Blues".into()), Some(1_000_000)),
+            (2, Some("Stray Dog Strut".into()), Some(1_600_000)),
+        ]
+    );
+    assert!(owed(&core).is_empty());
+    assert_eq!(jikan_requests(&http), 3, "{:#?}", http.requests());
+
+    core.shutdown();
+}

@@ -344,6 +344,16 @@ impl Core {
             .store(gap.as_millis() as u64, Ordering::SeqCst);
     }
 
+    /// Shortens how long Jikan is left alone after it failed, so a test can
+    /// reach the reply that ends an outage without ten minutes' wait. Not
+    /// part of the contract either.
+    #[doc(hidden)]
+    pub fn set_jikan_window(&self, window: std::time::Duration) {
+        self.metadata
+            .jikan_window_ms
+            .store(window.as_millis() as u64, Ordering::SeqCst);
+    }
+
     /// Shortens how long the browser's callback is held for a sign-in to
     /// finish, so a test can reach the "still finishing" page without a
     /// minute's wait. Not part of the contract either.
