@@ -169,13 +169,13 @@ const WATCHING_SQL: &str = "SELECT t.media_id, t.progress, t.updated_at,
      FROM tracker_entries t
      LEFT JOIN anilist_media m ON m.id = CASE WHEN ?1 = 'anilist' THEN t.media_id
          ELSE (SELECT a.id FROM anilist_media a WHERE a.mal_id = t.media_id ORDER BY a.id LIMIT 1) END
-     WHERE t.tracker = ?1 AND t.status = ?2";
+     WHERE t.tracker = ?1 AND t.profile_id = 1 AND t.status = ?2";
 
 /// The other tracker's stamp for the same media, unless its entry is on
 /// hold: that stamp is the move, quite possibly this sweep's own, and
 /// counting it would keep the entry here from ever following.
 const OTHER_SQL: &str = "SELECT updated_at FROM tracker_entries
-     WHERE tracker = ?1 AND media_id = ?2 AND (status IS NULL OR status != 'paused')";
+     WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1 AND (status IS NULL OR status != 'paused')";
 
 /// The owner's latest play here on any series matched to the media, by either
 /// id. The lists are the owner's, so a guest's plays (#631) do not count.
@@ -631,7 +631,7 @@ async fn move_one(
         .services.store
         .write_async(move |c| {
             c.query_row(
-                "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+                "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
                 params![t.as_str(), media_id as i64],
                 |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
             )
@@ -845,7 +845,7 @@ fn paused_entries(
         }
         let status: Option<String> = conn
             .query_row(
-                "SELECT status FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+                "SELECT status FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
                 params![t.as_str(), id as i64],
                 |r| r.get(0),
             )

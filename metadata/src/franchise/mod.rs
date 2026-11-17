@@ -175,11 +175,32 @@ fn owned_by(conn: &Connection, n: &Node) -> Result<Option<u64>, CoreError> {
 fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>, CoreError> {
     let mut stmt = conn.prepare_cached(
         "SELECT COALESCE(
-             (SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1),
+             (SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1 AND profile_id = 1),
              (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = ?1 ORDER BY ls.id LIMIT 1))",
     )?;
     let found: Option<Option<String>> = stmt
         .query_row(params![as_i64(anilist_id)], |r| r.get(0))
         .optional()?;
     Ok(found.flatten().as_deref().and_then(ListStatus::from_column))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A friend's AniList entry is not the owner's, so a node only the
+    /// friend has listed reads as off the list (#863).
+    #[test]
+    fn a_node_reads_the_owners_list_status_only() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO anilist_media (id, mal_id, media_type, title_romaji) VALUES (10, 110, 'ANIME', 'Owner show'), (20, 120, 'ANIME', 'Friend show');
+             INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
+                 (1, 'anilist', 10, 'watching', 0), (2, 'anilist', 20, 'completed', 0);",
+        )
+        .unwrap();
+        assert_eq!(list_status(&c, 10).unwrap(), Some(ListStatus::Watching));
+        assert_eq!(list_status(&c, 20).unwrap(), None);
+    }
 }
