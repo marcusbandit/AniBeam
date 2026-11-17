@@ -43,9 +43,24 @@ jobs:
     steps:
       - name: Packages
         # What the anibeam PKGBUILD builds with, plus git for the version and zstd to pack.
+        # The image's mirrors all sit on one CDN, and that CDN dropping files failed the job
+        # (#1139). pacman moves to the next Server when a download fails, so two mirrors off
+        # that CDN follow them, and the whole install tries three times. A failed try installs
+        # nothing, and the next one reuses the packages that did arrive.
         run: |
-          pacman -Syu --noconfirm --needed git rust lld qt6-base qt6-declarative qt6-svg \
-            mpvqt mpv zstd
+          cat >> /etc/pacman.d/mirrorlist <<'EOF'
+          Server = https://london.mirror.pkgbuild.com/$repo/os/$arch
+          Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+          EOF
+          for try in 1 2 3; do
+            if pacman -Syu --noconfirm --needed git rust lld qt6-base qt6-declarative qt6-svg \
+              mpvqt mpv zstd; then
+              break
+            fi
+            if [ "$try" -eq 3 ]; then exit 1; fi
+            echo "pacman failed, trying again in 15s"
+            sleep 15
+          done
 
       - uses: actions/checkout@v4
         with:
