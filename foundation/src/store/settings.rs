@@ -38,6 +38,10 @@ pub const DOWNLOAD_PATHS: &str = "download_paths";
 pub const ROOM_OFFSETS: &str = "room_offsets";
 /// The people told no when they asked on Discord to join (#966), newest first.
 pub const DISCORD_BLOCKED: &str = "discord_blocked";
+/// The AniList ids whose last fetch went out while Jikan was down, so their
+/// episode titles are still owed (#1065): asked for again at launch and on
+/// the first Jikan reply after an outage. A JSON list of ids.
+pub const JIKAN_OWED: &str = "jikan_owed";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

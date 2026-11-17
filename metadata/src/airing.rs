@@ -213,6 +213,8 @@ async fn refresh_anilist(
         None => JikanEpisodes::whole(Vec::new()),
     };
     let whole = jikan.whole;
+    // Only a refresh that asked Jikan has a say in what is still owed.
+    let owed = mal_id.map(|_| crate::team::owes_titles(&jikan));
     let jikan = jikan.episodes;
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.
@@ -227,6 +229,9 @@ async fn refresh_anilist(
                 record::write_episodes(tx, anilist_id, &rows, true, now)?;
             } else {
                 record::upsert_episodes(tx, anilist_id, &rows, true)?;
+            }
+            if let Some(owed) = owed {
+                crate::owed::mark(tx, anilist_id, owed)?;
             }
             let status_changed = write_status(tx, anilist_id, status.as_deref())?;
             stamp(tx, anilist_id, now)?;

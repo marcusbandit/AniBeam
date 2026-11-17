@@ -80,7 +80,9 @@ pub struct Connection<S> {
 impl<S: Stream> Connection<S> {
     /// Says which application this is, waits for READY and asks for the join
     /// events. A Discord that refuses or ignores a subscription still shows
-    /// activities, so the subscriptions are never waited on.
+    /// activities, so the subscriptions are never waited on. A Discord that
+    /// answers the handshake with a close or an error refused it, and says
+    /// why (#1029); one that never answers is no Discord.
     pub fn handshake(mut stream: S, client_id: &str) -> Result<Connection<S>, SendError> {
         stream.write_all(&encode(HANDSHAKE, &json!({"v": 1, "client_id": client_id})))?;
         let mut conn = Connection {
@@ -88,9 +90,23 @@ impl<S: Stream> Connection<S> {
             nonce: 0,
             events: Vec::new(),
         };
-        let reply = conn.next_reply(|_| true)?;
+        let reply = match conn.next_reply(|_| true) {
+            Ok(reply) => reply,
+            Err(SendError::Gone(e)) => {
+                return Err(match e.strip_prefix(CLOSED) {
+                    Some(why) => SendError::Rejected(why.to_string()),
+                    None => SendError::Gone(e),
+                });
+            }
+            Err(e) => return Err(e),
+        };
         if reply["evt"] != "READY" {
-            return Err(SendError::Gone(format!("no READY: {reply}")));
+            // An error that says why is a refusal; anything else is not a
+            // Discord that can be named.
+            return Err(match reply["data"]["message"].as_str() {
+                Some(why) if !why.trim().is_empty() => SendError::Rejected(why.trim().to_string()),
+                _ => SendError::Gone(format!("no READY: {reply}")),
+            });
         }
         // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
         // activities, and the replies are skipped by nonce on the way to the next one.
@@ -170,11 +186,23 @@ impl<S: Stream> Connection<S> {
     fn unasked(&mut self, op: u32, value: Value) -> Result<(), SendError> {
         match op {
             PING => self.stream.write_all(&encode(PONG, &value))?,
-            CLOSE => return Err(SendError::Gone(format!("closed: {value}"))),
+            CLOSE => return Err(SendError::Gone(format!("{CLOSED}{}", said(&value)))),
             FRAME => self.events.extend(incoming(&value)),
             _ => {}
         }
         Ok(())
+    }
+}
+
+/// What a close frame's message starts with, which the handshake reads as
+/// Discord refusing it.
+const CLOSED: &str = "closed: ";
+
+/// The words in a close or error frame: its message, else the frame itself.
+fn said(value: &Value) -> String {
+    match value["message"].as_str() {
+        Some(m) if !m.trim().is_empty() => m.trim().to_string(),
+        _ => value.to_string(),
     }
 }
 
@@ -393,6 +421,8 @@ fn walk<T>(
     mut attempt: impl FnMut(usize) -> Option<Result<T, SendError>>,
 ) -> (Result<T, SendError>, usize) {
     let from = if len == 0 { 0 } else { from % len };
+    // A refusal outlives a later socket that only went quiet or refused
+    // too, so Settings names what the first Discord that answered said (#1029).
     let mut last = SendError::Gone("no Discord socket".to_string());
     for step in 0..len {
         let i = (from + step) % len;
@@ -401,8 +431,10 @@ fn walk<T>(
         }
         match attempt(i) {
             Some(Ok(found)) => return (Ok(found), i),
-            Some(Err(e)) => last = e,
-            None => {}
+            // The first refusal stands, so the reason Settings shows does
+            // not swap between two Discords from one retry to the next.
+            Some(Err(e)) if matches!(last, SendError::Gone(_)) => last = e,
+            Some(Err(_)) | None => {}
         }
     }
     (Err(last), from)
@@ -428,6 +460,7 @@ fn candidates() -> Vec<PathBuf> {
     if let Some(run) = std::env::var_os("XDG_RUNTIME_DIR") {
         let run = PathBuf::from(run);
         dirs.push(run.join("app/com.discordapp.Discord"));
+        dirs.push(run.join("app/dev.vencord.Vesktop"));
         dirs.push(run.join("snap.discord"));
         dirs.insert(0, run);
     }
@@ -510,6 +543,31 @@ mod tests {
         let (third, _) = walk(6, next, budget(0), attempt);
         assert!(third.is_err());
         assert_eq!(walk(6, 4, budget(1), attempt).0.ok(), Some(4));
+    }
+
+    #[test]
+    fn a_refusal_is_kept_over_a_later_socket_that_only_went_quiet() {
+        let (result, _) = walk(
+            3,
+            0,
+            || false,
+            |i| match i {
+                0 => Some(Err::<(), _>(SendError::Rejected(
+                    "Invalid Client ID".into(),
+                ))),
+                1 => Some(Err(SendError::Gone("timed out".into()))),
+                _ => None,
+            },
+        );
+        assert!(matches!(result, Err(SendError::Rejected(m)) if m == "Invalid Client ID"));
+        // Nor does a second refusal take its place.
+        let (result, _) = walk(
+            2,
+            0,
+            || false,
+            |i| Some(Err::<(), _>(SendError::Rejected(format!("refusal {i}")))),
+        );
+        assert!(matches!(result, Err(SendError::Rejected(m)) if m == "refusal 0"));
     }
 
     #[test]
@@ -635,8 +693,24 @@ mod tests {
             Fake::new(&[(CLOSE, json!({"code": 4000, "message": "Invalid Client ID"}))]),
             "123",
         );
-        assert!(matches!(refused, Err(SendError::Gone(_))));
-        // A stream that ends before answering is no Discord either.
+        // A close in answer to the handshake is Discord refusing it, in its words (#1029).
+        assert!(matches!(refused, Err(SendError::Rejected(m)) if m == "Invalid Client ID"));
+        // So is an error in place of READY.
+        let error = Connection::handshake(
+            Fake::new(&[(
+                FRAME,
+                json!({"cmd": "DISPATCH", "evt": "ERROR", "data": {"code": 4000, "message": "Invalid Origin"}}),
+            )]),
+            "123",
+        );
+        assert!(matches!(error, Err(SendError::Rejected(m)) if m == "Invalid Origin"));
+        // A first frame that is neither READY nor an error that says why is no Discord.
+        let other = Connection::handshake(
+            Fake::new(&[(FRAME, json!({"cmd": "DISPATCH", "evt": "SOMETHING_ELSE"}))]),
+            "123",
+        );
+        assert!(matches!(other, Err(SendError::Gone(_))));
+        // A stream that ends before answering is no Discord.
         assert!(matches!(
             Connection::handshake(Fake::new(&[]), "123"),
             Err(SendError::Gone(_))

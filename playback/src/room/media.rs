@@ -30,8 +30,9 @@
 //! rest to fetch, and an episode that came as a batch keeps the batch's other
 //! files, with the episode's own file first.
 
-use std::sync::Arc;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anibeam_room::proto::{self, ClientMsg, MemberId, Progress};
@@ -710,13 +711,17 @@ async fn settle_in(
     content: &str,
 ) -> Result<(), Why> {
     let woken = Arc::new(Notify::new());
+    let failed = Failed::default();
     let _listening = Listening::new(
         rooms.services.bus.clone(),
-        Arc::new(Arrivals(woken.clone())),
+        Arc::new(Arrivals {
+            woken: woken.clone(),
+            failed: failed.clone(),
+        }),
     );
     let started = tokio::time::Instant::now();
     let (scan_at, deadline) = (started + SCAN_AFTER, started + ARRIVE_WAIT);
-    let (mut matched, mut scanned) = (false, false);
+    let (mut matched, mut scanned) = (ShowMatch::default(), false);
     loop {
         let local = rooms
             .services
@@ -726,16 +731,7 @@ async fn settle_in(
         if local.file.is_some() {
             return Ok(());
         }
-        if !matched
-            && let Some(series) = series_holding(rooms, content)
-            && let Some(target) = target(offer, e)
-        {
-            matched = true;
-            match anibeam_metadata::apply::apply_match(&rooms.metadata, series, target) {
-                Ok(_) => tracing::info!("room: matched series {series} to the room's show"),
-                Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
-            }
-        }
+        matched.try_apply(rooms, content, offer, e, &failed);
         if tokio::time::Instant::now() >= deadline {
             return Err(Why::NotInLibrary);
         }
@@ -753,18 +749,90 @@ async fn settle_in(
     }
 }
 
-/// Wakes `settle_in` when the library or a show's match moved.
-struct Arrivals(Arc<Notify>);
+/// How many times `settle_in` starts the room's match before it lets the
+/// show be, so a match that keeps failing (the provider down, say) is not
+/// started again on every wake.
+const MATCH_TRIES: u8 = 3;
+
+/// The match jobs that failed or were cancelled while `settle_in` waits.
+type Failed = Arc<Mutex<HashSet<u64>>>;
+
+/// Where `settle_in` is with pointing the download's show at the room's
+/// match. A match that could not start (the series' row not readable yet,
+/// say) or whose job failed is tried again on the next wake, up to
+/// `MATCH_TRIES` times (#1067).
+#[derive(Default)]
+struct ShowMatch {
+    /// The match job started last, while it may still land.
+    job: Option<u64>,
+    tries: u8,
+}
+
+impl ShowMatch {
+    fn try_apply(
+        &mut self,
+        rooms: &Rooms,
+        content: &str,
+        offer: &Offer,
+        e: &proto::EpisodeRef,
+        failed: &Failed,
+    ) {
+        if let Some(job) = self.job {
+            if !anibeam_foundation::sync::recover(failed).contains(&job) {
+                return;
+            }
+            self.job = None;
+        }
+        if self.tries >= MATCH_TRIES {
+            return;
+        }
+        let (Some(series), Some(target)) = (series_holding(rooms, content), target(offer, e))
+        else {
+            return;
+        };
+        self.tries += 1;
+        match anibeam_metadata::apply::apply_match(&rooms.metadata, series, target) {
+            Ok(job) => {
+                self.job = Some(job);
+                tracing::info!("room: matching series {series} to the room's show");
+            }
+            Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
+        }
+    }
+}
+
+/// Wakes `settle_in` when the library or a show's match moved, and notes
+/// the match jobs that ended without matching.
+struct Arrivals {
+    woken: Arc<Notify>,
+    failed: Failed,
+}
 
 impl EventListener for Arrivals {
     fn on_event(&self, event: Event) {
-        if matches!(
+        let match_ended = matches!(
+            event.job,
+            Some(JobRef {
+                kind: JobKind::ApplyMatch,
+                phase: JobPhase::Finished,
+                ..
+            })
+        ) && matches!(
             event.body,
-            EventBody::ScanFinished { .. }
-                | EventBody::SeriesChanged { .. }
-                | EventBody::MatchApplied { .. }
-        ) {
-            self.0.notify_one();
+            EventBody::JobFailed { .. } | EventBody::JobCancelled
+        );
+        if match_ended && let Some(job) = &event.job {
+            anibeam_foundation::sync::recover(&self.failed).insert(job.id);
+        }
+        if match_ended
+            || matches!(
+                event.body,
+                EventBody::ScanFinished { .. }
+                    | EventBody::SeriesChanged { .. }
+                    | EventBody::MatchApplied { .. }
+            )
+        {
+            self.woken.notify_one();
         }
     }
 }
@@ -1396,6 +1464,8 @@ async fn offer_for(rooms: &Arc<Rooms>, file: u64, e: &proto::EpisodeRef) -> Opti
 mod tests {
     use super::*;
 
+    use anibeam_foundation::testing::Running;
+
     fn ep(number: f64) -> proto::EpisodeRef {
         proto::EpisodeRef {
             anilist_id: Some(1),
@@ -1628,6 +1698,112 @@ mod tests {
         let one = library("anilist", &[(1, None), (2, None), (4, Some(3))]);
         assert_eq!(have(&one, "S02E05"), vec![1.0, 2.0]);
         assert_eq!(have(&one, "5"), vec![1.0, 2.0, 4.0]);
+    }
+
+    /// The rooms over the teams below them, each built as `Core::open`
+    /// builds it, and the services they run on. None of `Core::open`'s
+    /// links: the match reads none of them.
+    fn rooms_over(dir: &std::path::Path, http: Arc<anibeam_net::FakeHttp>) -> (Running, Rooms) {
+        let running = Running::open(dir, http);
+        let services = running.services.clone();
+        let net = Arc::new(anibeam_net::Net::new(
+            services.clone(),
+            anibeam_library::cards::cards_for,
+        ));
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let library = Arc::new(anibeam_library::Library::new(
+            services.clone(),
+            net.clone(),
+            closed,
+        ));
+        let metadata = Arc::new(anibeam_metadata::Metadata::new(
+            services.clone(),
+            net.clone(),
+            library.clone(),
+        ));
+        let trackers = Arc::new(anibeam_trackers::Trackers::new(
+            services.clone(),
+            net.clone(),
+        ));
+        let downloads = Arc::new(anibeam_downloads::Downloads::new(
+            services.clone(),
+            net.clone(),
+        ));
+        let playback = Arc::new(crate::Playback::new(
+            services.clone(),
+            net,
+            trackers,
+            downloads.clone(),
+        ));
+        let rooms = Rooms::new(services, playback, downloads, library, metadata);
+        (running, rooms)
+    }
+
+    #[test]
+    fn a_room_match_whose_job_failed_is_started_again() {
+        let dir = tempfile::tempdir().unwrap();
+        // TVmaze has no such show, so every match job fails.
+        let http = anibeam_net::FakeHttp::new();
+        for _ in 0..MATCH_TRIES {
+            http.push_for("tvmaze", 404, "");
+        }
+        let (running, rooms) = rooms_over(dir.path(), http);
+        let services = running.services.clone();
+        services
+            .store
+            .tx(|tx| {
+                tx.execute_batch(
+                    "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0);
+                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at)
+                         VALUES (7, 1, 'show', '/lib/Show', 'Show', 0);
+                     INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, seen_at)
+                         VALUES (7, '/lib/Show/05.mkv', 1, 0, 'episode', 5, '5', '5', 0);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let woken = Arc::new(Notify::new());
+        let failed = Failed::default();
+        let listening = Listening::new(
+            services.bus.clone(),
+            Arc::new(Arrivals {
+                woken: woken.clone(),
+                failed: failed.clone(),
+            }),
+        );
+        let offer = Offer {
+            anilist_id: None,
+            tvmaze_id: Some(9),
+            ..offer("[Group] Show - 05 [1080p]")
+        };
+        let e = proto::EpisodeRef {
+            anilist_id: None,
+            ..ep(5.0)
+        };
+        let mut matched = ShowMatch::default();
+        let mut started = Vec::new();
+        for _ in 0..MATCH_TRIES {
+            matched.try_apply(&rooms, "/lib/Show", &offer, &e, &failed);
+            let job = matched.job.expect("a match job started");
+            assert!(!started.contains(&job), "a new job each try");
+            started.push(job);
+            let gone = async {
+                while !anibeam_foundation::sync::recover(&failed).contains(&job) {
+                    woken.notified().await;
+                }
+            };
+            let ended = services
+                .handle
+                .block_on(async { tokio::time::timeout(Duration::from_secs(30), gone).await });
+            assert!(ended.is_ok(), "match job {job} never failed");
+        }
+        // The tries are spent: a later wake starts nothing.
+        matched.try_apply(&rooms, "/lib/Show", &offer, &e, &failed);
+        assert_eq!(matched.job, None);
+        assert_eq!(started.len(), usize::from(MATCH_TRIES));
+        drop(listening);
+        drop(rooms);
+        running.shutdown();
     }
 
     #[test]

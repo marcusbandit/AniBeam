@@ -71,7 +71,11 @@ Column {
             }))
         }
         if (finished && have > 0 && missing.length) {
-            var shown = missing.slice(0, 8).join(", ")
+            // A show numbered by season names the season its missing numbers are in
+            var season = show.missing_season, pad = function(n) { return n < 10 ? "0" + n : "" + n }
+            var shown = missing.slice(0, 8).map(function(n) {
+                return season !== null && season !== undefined ? "S" + pad(season) + "E" + pad(n) : n
+            }).join(", ")
             parts.push(missing.length > 8 ? words.t("show-detail-missing-more", { list: shown, more: missing.length - 8 })
                 : words.t("show-detail-missing", { count: missing.length, list: shown }))
         }
