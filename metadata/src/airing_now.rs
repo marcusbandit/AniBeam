@@ -22,6 +22,7 @@ use anibeam_contract::*;
 use anibeam_foundation::jobs::Finished;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
 use anibeam_foundation::time;
 use anibeam_foundation::titles::{self, fallback_title};
 use anibeam_net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
@@ -289,7 +290,7 @@ pub fn list_call(metadata: &Metadata, pick: SeasonPick) -> Result<Reply, CoreErr
 /// This season's read while it is still running.
 fn running(metadata: &Metadata, pick: SeasonPick) -> Option<u64> {
     let key = season_of(pick, time::now_secs()).key;
-    let id = *metadata.airing_reads.lock().unwrap().get(&key)?;
+    let id = *recover(&metadata.airing_reads).get(&key)?;
     metadata
         .services
         .jobs
@@ -323,7 +324,7 @@ pub fn refresh_call(
     if fresh && !force {
         return Ok(Reply::Ok);
     }
-    let mut reads = metadata.airing_reads.lock().unwrap();
+    let mut reads = recover(&metadata.airing_reads);
     if let Some(id) = reads.get(&key).copied()
         && metadata
             .services

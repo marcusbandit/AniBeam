@@ -17,6 +17,7 @@ use crate::Metadata;
 use anibeam_contract::*;
 use anibeam_foundation::jobs::Finished;
 use anibeam_foundation::prefs;
+use anibeam_foundation::sync::recover;
 use anibeam_foundation::time;
 
 /// How long the page's own read is good for.
@@ -347,7 +348,7 @@ fn start_read(
         .into_iter()
         .map(|j| j.id)
         .collect();
-    let mut reads = metadata.show_reads.lock().unwrap();
+    let mut reads = recover(&metadata.show_reads);
     // A read that ended and is past the retry gap is forgotten, so the map
     // only ever holds the reads of the last few minutes.
     reads.retain(|_, (job, at)| running.contains(job) || now - *at < RETRY_SECS);

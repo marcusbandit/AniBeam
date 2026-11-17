@@ -373,9 +373,7 @@ impl Jobs {
     }
 
     pub fn running(&self, kind: JobKind) -> Option<u64> {
-        self.running
-            .lock()
-            .unwrap()
+        recover(&self.running)
             .iter()
             .find(|(_, r)| r.kind == kind)
             .map(|(id, _)| *id)
@@ -537,10 +535,7 @@ impl Jobs {
     }
 
     pub fn list(&self) -> Vec<JobInfo> {
-        let mut out: Vec<JobInfo> = self
-            .running
-            .lock()
-            .unwrap()
+        let mut out: Vec<JobInfo> = recover(&self.running)
             .iter()
             .map(|(id, r)| JobInfo {
                 id: *id,

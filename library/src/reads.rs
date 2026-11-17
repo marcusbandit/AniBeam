@@ -14,6 +14,7 @@ use crate::sort;
 use anibeam_contract::*;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
+use anibeam_foundation::sync::recover;
 use anibeam_foundation::time;
 use anibeam_net::images;
 
@@ -85,14 +86,14 @@ fn load_kept(library: &Library) -> Result<Loaded, CoreError> {
     // Read before the load, so a change that lands during it leaves the
     // load stamped with the generation it may not have seen.
     let generation = library.services.bus.generation();
-    if let Some(kept) = library.kept_load.lock().unwrap().as_ref()
+    if let Some(kept) = recover(&library.kept_load).as_ref()
         && kept.generation == generation
         && kept.at.elapsed() < KEEP_FOR
     {
         return Ok(kept.loaded.clone());
     }
     let loaded = load_fresh(&library.services)?;
-    *library.kept_load.lock().unwrap() = Some(KeptLoad {
+    *recover(&library.kept_load) = Some(KeptLoad {
         generation,
         at: std::time::Instant::now(),
         loaded: loaded.clone(),
