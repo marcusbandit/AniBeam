@@ -41,6 +41,9 @@ build() {
   export GIT_CEILING_DIRECTORIES="$srcdir"
   # A release built from source: the release icon, not the dev one a checkout gets.
   export ANIBEAM_ICON=release
+  # The Discord application the release builds show presence as. Every presence carries
+  # its id, so it is public and lives here: the AUR cannot read CI's secret.
+  export ANIBEAM_DISCORD_CLIENT_ID=1570603971393880194
   cargo build --frozen --release -p anibeam
 }
 
@@ -50,6 +53,7 @@ check() {
   export CARGO_TARGET_DIR=target
   export GIT_CEILING_DIRECTORIES="$srcdir"
   export ANIBEAM_ICON=release
+  export ANIBEAM_DISCORD_CLIENT_ID=1570603971393880194
   cargo test --frozen --release -p anibeam
 }
 
