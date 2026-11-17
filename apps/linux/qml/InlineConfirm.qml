@@ -28,7 +28,7 @@ Grid {
         id: questionText
         visible: text !== ""
         width: root.split ? Math.min(implicitWidth, root.maxWidth) : implicitWidth
-        wrapMode: root.split ? Text.Wrap : Text.NoWrap
+        wrapMode: root.split ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
         text: root.question
         color: theme.text
         font.family: theme.fontSans

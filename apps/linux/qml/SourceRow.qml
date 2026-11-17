@@ -32,13 +32,15 @@ Item {
     readonly property real chipPart: chip.visible ? pathLine.spacing + chip.width : 0
     readonly property real minPath: Math.min(pathText.implicitWidth, theme.space(60))
     readonly property var actions: [
-        { msg: "action-open", icon: "folder-open" },
-        { msg: "source-row-rescan", icon: "refresh-cw" },
-        { msg: "action-remove", icon: "trash-2" }
+        { msg: "action-open", icon: "folder-open", fires: "open" },
+        { msg: "source-row-rescan", icon: "refresh-cw", fires: "rescan" },
+        { msg: "action-remove", icon: "trash-2", fires: "remove" }
     ]
     // How wide the controls stand with their labels on, whatever they show now
     readonly property real controlsWide: confirming ? confirm.implicitWidth : ruler.implicitWidth
-    readonly property bool stacked: width < glyphPart + Math.max(chipPart + minPath, metaText.implicitWidth) + controlsWide + gutter
+    // A confirm that put its question over its buttons wants the whole row under the path
+    readonly property bool stacked: (confirming && confirm.split)
+                                    || width < glyphPart + Math.max(chipPart + minPath, metaText.implicitWidth) + controlsWide + gutter
     readonly property bool glyphsOnly: stacked && ruler.implicitWidth > width
     // What the lead may span: the whole row when stacked, else the part left of the buttons
     readonly property real leadRoom: Math.max(0, (stacked ? width : width - controlsWide - gutter) - glyphPart)
@@ -112,12 +114,11 @@ Item {
                 model: root.actions
                 Button {
                     required property var modelData
-                    required property int index
                     msg: root.glyphsOnly ? "" : modelData.msg
                     icon: modelData.icon
                     flat: true
-                    onClicked: index === 0 ? root.open() : index === 1 ? root.rescan() : root.remove()
-                    Tooltip { text: root.glyphsOnly ? words.t(modelData.msg) : "" }
+                    onClicked: root[modelData.fires]()
+                    Tooltip { msg: root.glyphsOnly ? modelData.msg : "" }
                 }
             }
         }
@@ -137,7 +138,7 @@ Item {
         spacing: theme.space(1)
         Repeater {
             model: root.actions
-            Button { required property var modelData; msg: modelData.msg; icon: modelData.icon; flat: true; takesFocus: false }
+            Button { required property var modelData; msg: modelData.msg; icon: modelData.icon; flat: true; takesFocus: false; Accessible.ignored: true }
         }
     }
 }
