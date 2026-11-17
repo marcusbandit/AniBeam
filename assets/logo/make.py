@@ -30,6 +30,8 @@ YELLOW = "#FDC901"
 INK = "#0D0E11"
 # The icon's rounded square inside the 1024 canvas.
 SQUARE = '<rect x="14" y="14" width="996" height="996" rx="225" fill="{}"/>'
+# The tile's side in the Mac icon's 1024 canvas.
+MAC_TILE = 824
 # The outline's width in the glyph's 1024 units: about 2 dp on Android's 108 dp canvas.
 LINE = 32
 
@@ -47,6 +49,17 @@ def icon(ground: str, ink: str) -> str:
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
         + SQUARE.format(ground)
         + f'<path fill="{ink}" d="{glyph}"/></svg>\n'
+    )
+
+
+def mac_icon(ground: str, ink: str) -> str:
+    """The icon at macOS's size: Apple's grid puts the tile at 824 of the 1024 canvas, 100 px
+    of transparent margin all round, where the full-bleed icon would look oversized in the Dock."""
+    scale = MAC_TILE / (1024 - 2 * 14)
+    inner = SQUARE.format(ground) + f'<path fill="{ink}" d="{glyph}"/>'
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
+        f'<g transform="translate(512 512) scale({scale}) translate(-512 -512)">{inner}</g></svg>\n'
     )
 
 
@@ -91,8 +104,8 @@ for kind in ("nightly", "dev"):
 # The desktop shows the nightly's or dev's mark on those builds (apps/linux/build.rs).
 for kind in ("nightly", "dev"):
     shutil.copyfile(here / f"logo-{kind}.png", linux / f"assets/icon-{kind}.png")
-# The Mac's icns takes a 1024 for its 512@2x slot.
-png(default, linux / "packaging/macos/icon-1024.png", 1024)
+# The Mac's icns takes a 1024 for its 512@2x slot, drawn at macOS's tile size.
+png(mac_icon(YELLOW, INK), linux / "packaging/macos/icon-1024.png", 1024)
 # Every hicolor size, for the packages to install and for the app to lay the dark set over
 # them in the user's own icon folder when Dark is picked.
 for size in (16, 24, 32, 48, 64, 128, 256, 512):
