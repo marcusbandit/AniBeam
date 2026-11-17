@@ -222,7 +222,7 @@ impl Engine {
     /// list is held only while it is copied, never across the write.
     fn save_entries(&self) {
         let _turn = recover(&self.saving);
-        let entries = self.entries.lock().unwrap().clone();
+        let entries = recover(&self.entries).clone();
         match serde_json::to_vec_pretty(&entries) {
             Ok(bytes) => {
                 if let Err(e) = anibeam_foundation::atomic_file::write(&self.entries_path, bytes) {
@@ -236,7 +236,7 @@ impl Engine {
     /// Held from the start: nothing downloads until the app has looked at the network and
     /// said Wi-Fi or allowed mobile data.
     pub fn held(&self) -> bool {
-        *self.held.lock().unwrap()
+        *recover(&self.held)
     }
 
     /// Adds `release` to download into `<root>/<folder>`, held at once when downloads are.
@@ -400,7 +400,7 @@ impl Engine {
             self.session.pause(&handle).await.map_err(fail)?;
         }
         let hash = handle.info_hash().as_string();
-        self.entries.lock().unwrap().insert(
+        recover(&self.entries).insert(
             hash.clone(),
             Entry {
                 title: release.title.clone(),
@@ -427,7 +427,7 @@ impl Engine {
             let stats = h.stats();
             // The lock is held only in this block: the engine is awaited below.
             let entry = {
-                let mut entries = self.entries.lock().unwrap();
+                let mut entries = recover(&self.entries);
                 let entry = entries.entry(hash.clone()).or_default();
                 if stats.finished && entry.completion_on == 0 {
                     entry.completion_on = now();
@@ -541,10 +541,7 @@ impl Engine {
         let h = self
             .handle(hash)
             .ok_or_else(|| CoreError::invalid("hash", format!("no torrent {hash}")))?;
-        let entry = self
-            .entries
-            .lock()
-            .unwrap()
+        let entry = recover(&self.entries)
             .get(&h.info_hash().as_string())
             .cloned()
             .unwrap_or_default();
@@ -570,7 +567,7 @@ impl Engine {
         // them: librqbit refuses a change while a torrent still checks its files, and a
         // priority recorded but never applied would make the next pass see nothing to do.
         let (old, new, by_user, folder) = {
-            let entries = self.entries.lock().unwrap();
+            let entries = recover(&self.entries);
             let e = entries.get(&key).cloned().unwrap_or_default();
             let mut n = e.clone();
             n.priorities.resize(count, NORMAL);
@@ -593,9 +590,7 @@ impl Engine {
             files.set_wanted(old);
             return Err(fail(e));
         }
-        self.entries
-            .lock()
-            .unwrap()
+        recover(&self.entries)
             .entry(key.clone())
             .or_default()
             .priorities = new.priorities;
@@ -621,17 +616,13 @@ impl Engine {
             match action {
                 PhoneAction::Pause => {
                     self.session.pause(&h).await.map_err(fail)?;
-                    self.entries
-                        .lock()
-                        .unwrap()
+                    recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = true;
                 }
                 PhoneAction::Resume => {
-                    self.entries
-                        .lock()
-                        .unwrap()
+                    recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = false;
@@ -645,7 +636,7 @@ impl Engine {
                         .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), files)
                         .await
                         .map_err(fail)?;
-                    self.entries.lock().unwrap().remove(hash);
+                    recover(&self.entries).remove(hash);
                     self.shelf.forget(&h.info_hash().as_string());
                 }
             }
@@ -656,7 +647,7 @@ impl Engine {
 
     /// Holds every unfinished download, or lets the ones the person did not pause run again.
     pub async fn set_held(&self, held: bool) -> Result<(), CoreError> {
-        *self.held.lock().unwrap() = held;
+        *recover(&self.held) = held;
         let handles: Vec<_> = self
             .session
             .with_torrents(|it| it.map(|(_, h)| h.clone()).collect());
@@ -664,10 +655,7 @@ impl Engine {
             if h.stats().finished {
                 continue;
             }
-            let by_user = self
-                .entries
-                .lock()
-                .unwrap()
+            let by_user = recover(&self.entries)
                 .get(&h.info_hash().as_string())
                 .is_some_and(|e| e.paused_by_user);
             // One torrent the engine will not pause or start (in error, say) must not leave
@@ -752,6 +740,32 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         panic!("the torrent never left its first check");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_panic_with_the_list_held_still_lets_it_save() {
+        // One panic with `entries` held used to leave the list unsaved for the
+        // rest of the run, since every later save unwrapped the poison (#923).
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        std::thread::scope(|s| {
+            let held = s.spawn(|| {
+                let _held = engine.entries.lock().unwrap();
+                panic!("boom, with the list held");
+            });
+            assert!(held.join().is_err());
+        });
+        assert!(
+            engine.entries.lock().is_err(),
+            "the list really is poisoned"
+        );
+        recover(&engine.entries).insert("abc".to_string(), Entry::default());
+        engine.save_entries();
+        let saved = std::fs::read_to_string(&engine.entries_path).unwrap();
+        assert!(saved.contains("abc"), "the list was saved: {saved}");
+        assert!(engine.held());
     }
 
     #[tokio::test(flavor = "multi_thread")]
