@@ -616,7 +616,9 @@ fn cut_short(ctx: &Arc<JobCtx>, tally: &mut Tally, t: Tracker, moved: usize, day
 /// still be the one the pass read, the entry as the tracker has it now must
 /// still be due, and only then does the status go. The cards move with it,
 /// one entry at a time, so a pass cut short leaves no card behind its
-/// list.
+/// list. The entry's place in its write line comes first, so a write the
+/// user asked for before it lands first and the checks below see it, and
+/// one asked for meanwhile waits until the move is written (#1136).
 async fn move_one(
     trackers: &Trackers,
     ctx: &Arc<JobCtx>,
@@ -627,6 +629,8 @@ async fn move_one(
     days: u32,
 ) -> Result<Option<&'static str>, CoreError> {
     let media_id = entry.media_id;
+    let mut turn = trackers.write_line.join_entries(vec![(t, media_id)]);
+    turn.come().await;
     let cached = trackers
         .services.store
         .write_async(move |c| {
@@ -806,9 +810,15 @@ pub fn played(trackers: &Arc<Trackers>, series: u64) {
     if paused.is_empty() {
         return;
     }
+    // Its place in the write line is taken with the play, so a status the
+    // user sets after it lands after it (#1136).
+    let mut turn = trackers
+        .write_line
+        .join_entries(paused.iter().map(|&(t, id, _)| (t, id)).collect());
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
     jobs.start(JobKind::SetStatus, move |ctx| async move {
+        turn.come().await;
         back_to_watching(owner, ctx, series, paused).await
     });
 }
