@@ -223,12 +223,19 @@ pub fn mark(trackers: &Arc<Trackers>, series: u64, episode: f64) -> Result<u64, 
     let main = guard(&trackers.services, &target)?;
     // A completed show finished again is a rewatch, which is the one mark
     // the list may already cover. A second mark of the same finish finds
-    // the slot taken and is judged as a plain mark.
+    // the slot taken and is refused: judged as a plain mark, its write
+    // would race the rewatch's for the list's status and count (#1042).
     let finished = trackers
         .services
         .store
         .read(|c| finished_again(c, &target, main, episode))?;
-    let slot = finished.then(|| trackers.rewatching.hold(series)).flatten();
+    let slot = if finished {
+        Some(trackers.rewatching.hold(series).ok_or(CoreError::Refused {
+            reason: Refusal::NotNewer,
+        })?)
+    } else {
+        None
+    };
     let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
@@ -308,7 +315,7 @@ fn finished_again(
 /// team, so two cores in one process never share a slot (#776). Two marks of
 /// one finish (the rule at the end and the player's button, say) both read the
 /// list before either has written, so the second finds the series held here
-/// and is not counted as a rewatch at all.
+/// and is refused, leaving the one rewatch to the first.
 #[derive(Clone, Default)]
 pub(crate) struct Rewatching(Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
 
