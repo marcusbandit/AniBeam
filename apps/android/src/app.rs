@@ -177,6 +177,8 @@ struct App {
     /// The rolling settings were asked for.
     rolling_loaded: bool,
     held: Option<bool>,
+    /// Whether the network was free per byte the last time Android said.
+    free: Option<bool>,
     /// Android stopped the download work: the downloads are held until it runs again or
     /// the app is opened (`follow_stops`).
     stopped: bool,
@@ -1429,8 +1431,10 @@ impl App {
         // Held for Wi-Fi, which the rows and the note say; held because Android stopped the
         // work, they read Paused.
         let waiting = held && !self.stopped;
-        // The service is for torrents that are moving: one in error, stuck with no peers or
-        // paused does not keep a notification up.
+        // The service is for torrents that are working: one in error, finished or paused
+        // does not keep a notification up. One looking for peers does: Android lets the app
+        // start the work again only while it is open, so dropping it for a stall would end
+        // the download with the screen off for good.
         let real = |t: &Torrent| !is_demo(&t.hash) || demo_notifies();
         let rows: Vec<DownloadRow> = torrents
             .iter()
@@ -1442,7 +1446,7 @@ impl App {
             .filter(|(t, _)| {
                 real(t)
                     && t.progress < 1.0
-                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+                    && matches!(t.state.as_str(), "downloading" | "stalledDL" | "checkingDL")
             })
             .map(|(t, row)| notify::Moving {
                 called: notify::called(&row.show, &notify::what_of(t), &t.name),
@@ -1497,8 +1501,14 @@ impl App {
         }
         let text = notify::ongoing(&moving, format::bytes);
         // Only a look taken with the hold where it was asked to be: one from before it was
-        // lifted shows nothing moving, and would end the work Android just ran again.
-        let forced = self.service_unsure && self.held == Some(held);
+        // lifted shows nothing moving, and would end the work Android just ran again. It
+        // ends the work only when every unfinished download is plainly paused or in error,
+        // not one still starting up.
+        let idle = torrents
+            .iter()
+            .filter(|t| real(t) && t.progress < 1.0)
+            .all(|t| matches!(t.state.as_str(), "pausedDL" | "error"));
+        let forced = self.service_unsure && self.held == Some(held) && (text.is_some() || idle);
         if text != self.service || forced {
             let done = match (&text, &self.service) {
                 // Running: the notification changes in place. Starting the service again
@@ -1553,8 +1563,12 @@ impl App {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let held =
-            self.stopped || (self.prefs.wifi_only && crate::platform::unmetered() != Some(true));
+        // With no answer, the network is taken to be what it last was: Android hides it from
+        // an app in the background until the download work runs again, and that must not
+        // read as leaving Wi-Fi. No traffic flows meanwhile either way.
+        let free = crate::platform::unmetered().or(self.free);
+        self.free = free;
+        let held = self.stopped || (self.prefs.wifi_only && free != Some(true));
         if self.held == Some(held) {
             return;
         }
@@ -2621,6 +2635,7 @@ pub fn run(
         polling: false,
         rolling_loaded: false,
         held: None,
+        free: None,
         stopped: false,
         service_unsure: false,
         service: None,
