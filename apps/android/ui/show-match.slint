@@ -5,6 +5,7 @@ import { Theme } from "theme.slint";
 import { Button, Field, SearchField, Segmented } from "widgets.slint";
 import { ShowData, ShowSheet } from "show.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 export struct MatchRow {
     title: string,
@@ -75,7 +76,7 @@ component ResultRow inherits Rectangle {
             overflow: elide;
         }
     }
-    touch := TouchArea { clicked => { root.tapped(); } }
+    touch := Tap { clicked => { root.tapped(); } }
 }
 
 export component MatchSheet inherits ShowSheet {
@@ -194,7 +195,7 @@ export component MatchSheet inherits ShowSheet {
         hit: hit;
         tapped => { MatchData.apply(i); }
     }
-    TouchArea {
+    Tap {
         height: Theme.touch;
         clicked => { MatchData.auto-match(); }
         Text {

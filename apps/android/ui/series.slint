@@ -7,6 +7,7 @@ import { ShowActions, ShowData } from "show.slint";
 import { ShowSections } from "show-sections.slint";
 import { UndoBar } from "airing.slint";
 import { Tr } from "tr.slint";
+import { Tap, Typing } from "typing.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -107,9 +108,12 @@ component EpisodeItem inherits Rectangle {
             Ask.mark-open = true;
         }
     }
-    touch := TouchArea {
+    touch := Tap {
         enabled: root.data.file != 0 || (root.gettable && !AppData.deleting) || root.holdable;
         pointer-event(e) => {
+            if (e.kind == PointerEventKind.up) {
+                Typing.done += 1;
+            }
             if (e.kind == PointerEventKind.down) {
                 root.was-held = false;
                 hold.running = root.holdable;
@@ -276,7 +280,7 @@ export component SeriesPage inherits Rectangle {
     background: Theme.ground;
 
     // Swallow touches so nothing under the page reacts.
-    TouchArea { }
+    Tap { }
     // Measures every episode code, one per line, outside the layout: its width is the widest
     // code's, which sizes the rows' code column.
     code-probe := CodeText {

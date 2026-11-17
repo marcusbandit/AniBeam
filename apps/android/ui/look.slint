@@ -6,6 +6,7 @@
 import { Theme } from "theme.slint";
 import { ListGroup, ListRow, Segmented, SectionHead } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // A theme in a list: its name and the three colours that tell it apart.
 export struct LookTheme {
@@ -47,7 +48,7 @@ component ThemeRow inherits Rectangle {
     callback clicked();
     height: 14 * Theme.unit;
     background: touch.pressed ? Theme.raised : transparent;
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
     // The theme's ground with its text and accent on it, as a sample of the page.
     Rectangle {
         x: Theme.pad;
@@ -120,7 +121,7 @@ component Swatch inherits Rectangle {
         border-width: 1px;
         border-color: Theme.line-strong;
     }
-    TouchArea { clicked => { root.clicked(); } }
+    Tap { clicked => { root.clicked(); } }
 }
 
 export component LookBody inherits VerticalLayout {

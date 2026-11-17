@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { Tr } from "tr.slint";
 import { Button, Segmented } from "widgets.slint";
+import { Tap } from "typing.slint";
 
 // One line of the log, or a run of identical ones. `count` over 1 is a folded run; `fold`
 // marks the first line of a run that is open, to close it again.
@@ -46,7 +47,7 @@ component Line inherits Rectangle {
     callback fold();
     height: texts.preferred-height + 6 * Theme.unit;
     background: touch.pressed ? Theme.raised : transparent;
-    touch := TouchArea { clicked => { root.copy(); } }
+    touch := Tap { clicked => { root.copy(); } }
     texts := VerticalLayout {
         x: Theme.pad;
         y: 3 * Theme.unit;
@@ -75,7 +76,7 @@ component Line inherits Rectangle {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
-                TouchArea { clicked => { root.expand(); } }
+                Tap { clicked => { root.expand(); } }
             }
             if root.entry.fold: Rectangle {
                 width: closes.preferred-width + 4 * Theme.unit;
@@ -89,7 +90,7 @@ component Line inherits Rectangle {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
-                TouchArea { clicked => { root.fold(); } }
+                Tap { clicked => { root.fold(); } }
             }
         }
         Text {

@@ -81,8 +81,16 @@ fn typing_an_address() -> (AppWindow, ElementHandle) {
 fn a_tap_on_the_page_ends_editing() {
     i_slint_backend_testing::init_no_event_loop();
     let (page, field) = typing_an_address();
-    // A tap well above the field, on the step's title.
-    tap(&page, 200.0, field.absolute_position().y - 120.0);
+    // A tap on the step's title, plain text over the page's empty space.
+    let title = ElementHandle::find_by_accessible_label(&page, "onb-computer-title")
+        .find(|e| e.size().width > 0.0 && e.size().height > 0.0)
+        .expect("no title on the computer step");
+    assert!(
+        title.absolute_position().y + title.size().height < field.absolute_position().y,
+        "the title is not above the field"
+    );
+    let (tx, ty) = centre(&title);
+    tap(&page, tx, ty);
     type_text(&page, "b");
     assert_eq!(
         page.global::<AppData>().get_host_address(),
@@ -114,10 +122,17 @@ fn a_tap_on_a_button_ends_editing_and_presses_it() {
 fn a_tap_on_the_fields_edge_keeps_editing() {
     i_slint_backend_testing::init_no_event_loop();
     let (page, field) = typing_an_address();
-    let p = field.absolute_position();
-    let (_, fy) = centre(&field);
-    // Left of the text, still inside the field's glass.
-    tap(&page, p.x - 4.0, fy);
+    let glass = ElementHandle::find_by_element_type_name(&page, "Field")
+        .find(|e| e.size().width > 0.0)
+        .expect("no field glass on the computer step");
+    let p = glass.absolute_position();
+    let (_, fy) = centre(&glass);
+    // Just inside the glass's left edge, left of the text.
+    assert!(
+        p.x + 2.0 < field.absolute_position().x,
+        "the text starts at the glass's edge"
+    );
+    tap(&page, p.x + 2.0, fy);
     type_text(&page, "b");
     assert_eq!(
         page.global::<AppData>().get_host_address(),

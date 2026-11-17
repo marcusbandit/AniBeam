@@ -5,9 +5,9 @@ import { Ask, HostField } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoPanes } from "repos.slint";
 import { Scroll } from "panes.slint";
-import { Typing } from "typing.slint";
 import { NotifyPreview, NotifyRow } from "notify.slint";
 import { LangList } from "lang.slint";
+import { Tap } from "typing.slint";
 
 // The first run, one question a step: the language, who you are on AniList and MAL, Wi-Fi or mobile data,
 // how much room the phone gives Anibeam, whether downloads show in the notifications,
@@ -28,7 +28,7 @@ export component Onboarding inherits Rectangle {
         { title: Tr.t("onb-computer-title"), note: Tr.t("onb-computer-note") },
     ];
 
-    TouchArea { clicked => { Typing.done += 1; } }
+    Tap { }
 
     // Where you are: one segment a step, the ones done in the accent.
     HorizontalLayout {

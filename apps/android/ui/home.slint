@@ -7,6 +7,7 @@ import { CalRow } from "calendar.slint";
 import { FeedBlock } from "feed.slint";
 import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, TileRow } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // The next episode to air, set like the head of the desktop's show view: the poster, the
 // title in the display cut, the episode, and the countdown as a figure in the poster's ink.
@@ -56,7 +57,7 @@ component NextUp inherits Rectangle {
             }
         }
     }
-    touch := TouchArea {
+    touch := Tap {
         clicked => { AppData.open-series(AppData.hero.id); }
     }
 }

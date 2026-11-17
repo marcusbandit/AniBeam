@@ -5,6 +5,7 @@ import { Theme } from "theme.slint";
 import { Button, Poster, SectionHead, TileRow } from "widgets.slint";
 import { ShowCard, ShowData, ShowPerson } from "show.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // A character: round portrait, the name in two lines at most and the role under it.
 component PersonItem inherits Rectangle {
@@ -54,7 +55,7 @@ component PersonItem inherits Rectangle {
             overflow: elide;
         }
     }
-    touch := TouchArea {
+    touch := Tap {
         enabled: root.person.id >= 0;
         clicked => { ShowData.pick-person(root.person.id); }
     }
@@ -106,7 +107,7 @@ component RelationRow inherits Rectangle {
             overflow: elide;
         }
     }
-    touch := TouchArea { clicked => { root.tapped(); } }
+    touch := Tap { clicked => { root.tapped(); } }
 }
 
 export component ShowSections inherits VerticalLayout {

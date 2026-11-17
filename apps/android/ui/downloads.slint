@@ -13,6 +13,7 @@ import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { DiskBlock } from "disk.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // The colour of a download's state dot: moving, paused, waiting, trouble, done.
 component StateDot inherits Rectangle {
@@ -130,7 +131,7 @@ component DownloadCard inherits Rectangle {
         border-width: 1px;
         border-color: Theme.line;
     }
-    touch := TouchArea {
+    touch := Tap {
         y: 0;
         height: root.card-height;
         clicked => {
@@ -242,7 +243,7 @@ component DownloadCard inherits Rectangle {
 component FinishedRow inherits Rectangle {
     in property <DownloadRow> data;
     height: row.preferred-height;
-    touch := TouchArea {
+    touch := Tap {
         clicked => {
             if (root.data.series >= 0) {
                 AppData.open-series(root.data.series);
@@ -362,6 +363,8 @@ component Finder inherits VerticalLayout {
     if AppData.search-sources.length > 0: Rectangle {
         height: chips.preferred-height;
         Flickable {
+            // Its empty space takes a tap, to end the editing in a field (#1172).
+            Tap { }
             content-width: Math.max(self.width, chips.preferred-width);
             interactive: chips.preferred-width > self.width;
             chips := HorizontalLayout {
@@ -430,7 +433,7 @@ component PlanBar inherits Rectangle {
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.line-strong;
-    TouchArea { }
+    Tap { }
     bar-row := HorizontalLayout {
         padding: Theme.unit * 3;
         padding-left: Theme.unit * 4;

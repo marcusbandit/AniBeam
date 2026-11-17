@@ -6,3 +6,14 @@
 export global Typing {
     in-out property <int> done;
 }
+
+// A TouchArea that counts the press it finishes, so the tap ends the editing in a field. Every
+// TouchArea in the phone's pages is one of these, except a field's own: its glass, its edit
+// keys and the search field's clear button. One that sets its own pointer-event counts there.
+export component Tap inherits TouchArea {
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.up) {
+            Typing.done += 1;
+        }
+    }
+}
