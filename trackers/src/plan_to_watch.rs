@@ -101,12 +101,18 @@ pub fn plan_to_watch(trackers: &Arc<Trackers>, anilist_id: u64) -> Result<Reply,
     if targets.is_empty() {
         return Ok(Reply::Ok);
     }
+    // Its place in the write line is taken now, so a status the user sets
+    // after this lands after it (#1136).
+    let mut turn = trackers
+        .write_line
+        .join_entries(targets.iter().map(|&(t, id, _)| (t, id)).collect());
     let owner = trackers.clone();
     let job = trackers
         .services
         .jobs
         .clone()
         .start(JobKind::SetStatus, move |ctx| async move {
+            turn.come().await;
             plan(owner, ctx, title, targets).await
         });
     Ok(Reply::Started { job })

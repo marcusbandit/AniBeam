@@ -109,10 +109,37 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
     if !connected {
         return Err(CoreError::NotConnected { tracker: t });
     }
+    // Each pick's place in its entry's write line is taken now, in the
+    // order picked, so a write to one of them asked for after the move
+    // waits until the move has written it, and one asked for before goes
+    // first (#1136).
+    let mut picked: Vec<u64> = Vec::new();
+    for s in series {
+        if !picked.contains(&s) {
+            picked.push(s);
+        }
+    }
+    let mut turns = Vec::new();
+    trackers.services.store.read(|c| {
+        for &s in &picked {
+            // A series gone already is the job's to count as failed.
+            let Ok(target) = writes::targets(c, s) else {
+                continue;
+            };
+            let id = match t {
+                Tracker::Anilist => target.anilist,
+                Tracker::Mal => target.mal,
+            };
+            if let Some(id) = id {
+                turns.push((s, trackers.write_line.join_entries(vec![(t, id)])));
+            }
+        }
+        Ok(())
+    })?;
     let owner = trackers.clone();
     let jobs = owner.services.jobs.clone();
     Ok(jobs.start(JobKind::MoveLists, move |ctx| async move {
-        run(owner, ctx, t, series).await
+        run(owner, ctx, t, picked, turns).await
     }))
 }
 
@@ -120,14 +147,17 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
 /// tracker already matches, or one that left the list kept here, sends
 /// nothing. A status goes first and a score second, each through the write
 /// the menus use, to this tracker alone; one the tracker refuses is that
-/// series' failure, never the job's.
+/// series' failure, never the job's. The picks go in the order picked, the
+/// order their places in the write line were taken, each waiting its turn
+/// and giving it up once written.
 async fn run(
     trackers: Arc<Trackers>,
     ctx: Arc<JobCtx>,
     t: Tracker,
     picked: Vec<u64>,
+    mut turns: Vec<(u64, writes::Turn)>,
 ) -> Result<Finished, CoreError> {
-    let rows: Vec<MoveRow> = trackers
+    let mut rows: Vec<MoveRow> = trackers
         .services
         .store
         .write_async(move |c| preview(c, t))
@@ -135,6 +165,9 @@ async fn run(
         .into_iter()
         .filter(|r| picked.contains(&r.series))
         .collect();
+    rows.sort_by_key(|r| picked.iter().position(|s| *s == r.series));
+    // A pick the move will not write needs no place.
+    turns.retain(|(s, _)| rows.iter().any(|r| r.series == *s));
     let user_id = trackers
         .services
         .store
@@ -147,6 +180,14 @@ async fn run(
         ctx.checkpoint()?;
         ctx.progress(n as u64, Some(total), &row.title);
         let series = row.series;
+        let _turn = match turns.iter().position(|(s, _)| *s == series) {
+            Some(i) => {
+                let (_, mut turn) = turns.remove(i);
+                turn.come().await;
+                Some(turn)
+            }
+            None => None,
+        };
         // A series gone since the preview is that series' failure alone.
         let Ok(target) = trackers
             .services

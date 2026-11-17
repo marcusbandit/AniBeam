@@ -384,7 +384,8 @@ impl Drop for RewatchSlot {
 /// once every write asked for before it on the same entries has ended,
 /// however that one ended. Lines go by entry rather than by series, so two
 /// series matched to one show, or a show the library does not have, share
-/// theirs.
+/// theirs. Move up, On hold and Plan to watch write from jobs of their own
+/// and take their places here too (#1136).
 #[derive(Clone, Default)]
 pub(crate) struct WriteLine(Arc<LineInner>);
 
@@ -396,7 +397,7 @@ struct LineInner {
 }
 
 /// One list entry: a tracker and its media id.
-type ListEntry = (Tracker, u64);
+pub(crate) type ListEntry = (Tracker, u64);
 
 /// A write still in line: its ticket, and the end the writes after it wait on.
 type Waiting = (u64, watch::Receiver<()>);
@@ -404,10 +405,16 @@ type Waiting = (u64, watch::Receiver<()>);
 impl WriteLine {
     /// A place at the back of the line of every entry the target writes to.
     fn join(&self, target: &Targets) -> Turn {
-        let entries: Vec<ListEntry> = [Tracker::Anilist, Tracker::Mal]
-            .into_iter()
-            .filter_map(|t| target.id_for(t).map(|id| (t, id)))
-            .collect();
+        self.join_entries(
+            [Tracker::Anilist, Tracker::Mal]
+                .into_iter()
+                .filter_map(|t| target.id_for(t).map(|id| (t, id)))
+                .collect(),
+        )
+    }
+
+    /// One place at the back of the line of each of these entries.
+    pub(crate) fn join_entries(&self, entries: Vec<ListEntry>) -> Turn {
         let ticket = self
             .0
             .next
@@ -432,7 +439,7 @@ impl WriteLine {
 
 /// A write's place in its entries' lines. The writes after it may start
 /// once this is dropped, which is when the job holding it ends.
-struct Turn {
+pub(crate) struct Turn {
     line: WriteLine,
     entries: Vec<ListEntry>,
     ticket: u64,
@@ -446,7 +453,7 @@ struct Turn {
 impl Turn {
     /// Waits for every write ahead of this one to end. Dropping the wait
     /// keeps the place, so the next wait picks up where it stopped.
-    async fn come(&mut self) {
+    pub(crate) async fn come(&mut self) {
         while let Some(end) = self.before.last_mut() {
             // Nothing is ever sent: the sender dropping is how a write ends.
             let _ = end.changed().await;
