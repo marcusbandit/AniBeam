@@ -6,13 +6,16 @@ use i_slint_backend_testing::ElementHandle;
 use slint::platform::{PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition};
 
-use crate::{AppData, AppWindow, Tr};
+use crate::{AppData, AppWindow, RepoData, Tr};
 
+/// A finger down and up at one point. The changed handlers that move focus run once the
+/// event is handled, as they would before the next frame.
 fn tap(page: &AppWindow, x: f32, y: f32) {
     let position = LogicalPosition::new(x, y);
     let button = PointerEventButton::Left;
     page.window()
         .dispatch_event(WindowEvent::PointerPressed { position, button });
+    slint::platform::update_timers_and_animations();
     page.window()
         .dispatch_event(WindowEvent::PointerReleased { position, button });
     page.window().dispatch_event(WindowEvent::PointerExited);
@@ -36,25 +39,31 @@ fn centre(e: &ElementHandle) -> (f32, f32) {
     (p.x + s.width / 2.0, p.y + s.height / 2.0)
 }
 
-/// The computer step of the first run: one address field under the step's title.
-fn computer_step() -> AppWindow {
+/// A step of the first run, tall enough that nothing on it is scrolled away.
+fn step(n: i32) -> AppWindow {
     let page = AppWindow::new().unwrap();
     page.window()
-        .set_size(slint::LogicalSize::new(400.0, 900.0));
-    // Each label reads as its catalog id, so every button has a size to tap.
+        .set_size(slint::LogicalSize::new(400.0, 2400.0));
+    // Each label reads as its catalog id, so a button can be found by it.
     page.global::<Tr>().on_lookup(|id, _rev, _args| id);
     let app = page.global::<AppData>();
     app.set_onboarding(true);
-    app.set_step(7);
+    app.set_step(n);
     slint::platform::update_timers_and_animations();
     page
 }
 
-#[test]
-fn a_tap_on_the_page_ends_editing() {
-    i_slint_backend_testing::init_no_event_loop();
-    let page = computer_step();
-    let field = ElementHandle::find_by_element_type_name(&page, "LineInput")
+fn fields(page: &AppWindow) -> Vec<ElementHandle> {
+    ElementHandle::find_by_element_type_name(page, "LineInput")
+        .filter(|e| e.size().width > 0.0 && e.size().height > 0.0)
+        .collect()
+}
+
+/// The computer step with its address field focused and holding "a".
+fn typing_an_address() -> (AppWindow, ElementHandle) {
+    let page = step(7);
+    let field = fields(&page)
+        .into_iter()
         .next()
         .expect("no field on the computer step");
     let (fx, fy) = centre(&field);
@@ -65,7 +74,13 @@ fn a_tap_on_the_page_ends_editing() {
         "a",
         "the tap did not focus the field"
     );
+    (page, field)
+}
 
+#[test]
+fn a_tap_on_the_page_ends_editing() {
+    i_slint_backend_testing::init_no_event_loop();
+    let (page, field) = typing_an_address();
     // A tap well above the field, on the step's title.
     tap(&page, 200.0, field.absolute_position().y - 120.0);
     type_text(&page, "b");
@@ -81,20 +96,8 @@ fn a_tap_on_the_page_ends_editing() {
 #[test]
 fn a_tap_on_a_button_ends_editing_and_presses_it() {
     i_slint_backend_testing::init_no_event_loop();
-    let page = computer_step();
-    let field = ElementHandle::find_by_element_type_name(&page, "LineInput")
-        .next()
-        .expect("no field on the computer step");
-    let (fx, fy) = centre(&field);
-    tap(&page, fx, fy);
-    type_text(&page, "a");
-    assert_eq!(
-        page.global::<AppData>().get_host_address(),
-        "a",
-        "the tap did not focus the field"
-    );
-
-    let back = ElementHandle::find_by_element_type_name(&page, "TextButton")
+    let (page, _) = typing_an_address();
+    let back = ElementHandle::find_by_accessible_label(&page, "onb-back")
         .find(|e| e.size().width > 0.0 && e.size().height > 0.0)
         .expect("no Back on the computer step");
     let (bx, by) = centre(&back);
@@ -104,10 +107,52 @@ fn a_tap_on_a_button_ends_editing_and_presses_it() {
         6,
         "Back did not take the tap"
     );
+}
+
+/// A tap on the field's own glass, beside the text, keeps typing into it.
+#[test]
+fn a_tap_on_the_fields_edge_keeps_editing() {
+    i_slint_backend_testing::init_no_event_loop();
+    let (page, field) = typing_an_address();
+    let p = field.absolute_position();
+    let (_, fy) = centre(&field);
+    // Left of the text, still inside the field's glass.
+    tap(&page, p.x - 4.0, fy);
     type_text(&page, "b");
     assert_eq!(
         page.global::<AppData>().get_host_address(),
-        "a",
-        "the field kept the keys after Back"
+        "ab",
+        "a tap on the field's edge took the keys away"
+    );
+}
+
+/// Moving from one field to the next keeps the keys with the field tapped: the sites step's
+/// by-hand name, then its address.
+#[test]
+fn a_tap_from_one_field_to_another_types_into_the_second() {
+    i_slint_backend_testing::init_no_event_loop();
+    let page = step(6);
+    let all = fields(&page);
+    assert!(all.len() >= 2, "the sites step shows {} fields", all.len());
+    let (name, url) = (&all[all.len() - 2], &all[all.len() - 1]);
+    let repos = page.global::<RepoData>();
+
+    let (x, y) = centre(name);
+    tap(&page, x, y);
+    type_text(&page, "n");
+    assert_eq!(
+        repos.get_custom_name(),
+        "n",
+        "the name field did not take the keys"
+    );
+
+    let (x, y) = centre(url);
+    tap(&page, x, y);
+    type_text(&page, "u");
+    assert_eq!(repos.get_custom_name(), "n", "the name field kept the keys");
+    assert_eq!(
+        repos.get_custom_url(),
+        "u",
+        "the address field did not take the keys"
     );
 }

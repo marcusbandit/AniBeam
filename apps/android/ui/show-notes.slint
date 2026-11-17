@@ -19,6 +19,8 @@ export component NotesSheet inherits ShowSheet {
         background: Theme.field;
         border-width: 1px;
         border-color: input.has-focus ? Theme.line-strong : Theme.line;
+        // A tap anywhere on the box types into it, never through to the page (#1172).
+        TouchArea { clicked => { input.focus(); } }
         if input.text == "": Text {
             x: Theme.unit * 3;
             y: Theme.unit * 3;

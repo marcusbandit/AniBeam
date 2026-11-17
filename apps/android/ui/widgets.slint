@@ -6,6 +6,7 @@ import { Theme } from "theme.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
 import { Tr } from "tr.slint";
+import { Typing } from "typing.slint";
 
 // Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
 // a layout grows to its wrapped height whatever max-height says, so this one fixes its
@@ -168,7 +169,7 @@ export component Chip inherits Rectangle {
         y: Math.min(0, (parent.height - Theme.touch) / 2);
         height: Math.max(parent.height, Theme.touch);
         enabled: root.tappable;
-        clicked => { root.clicked(); }
+        clicked => { Typing.done += 1; root.clicked(); }
     }
 }
 
@@ -219,7 +220,7 @@ export component Button inherits Rectangle {
         y: Math.min(0, (parent.height - Theme.touch) / 2);
         height: Math.max(parent.height, Theme.touch);
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => { Typing.done += 1; root.clicked(); }
     }
 }
 
@@ -257,7 +258,7 @@ export component TextButton inherits Rectangle {
         vertical-alignment: center;
         overflow: elide;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := TouchArea { clicked => { Typing.done += 1; root.clicked(); } }
 }
 
 // The small pill above a title that goes back where you came from: "Downloads", "Library".
@@ -293,7 +294,7 @@ export component BackPill inherits Rectangle {
         y: -2 * Theme.unit;
         width: parent.width + 4 * Theme.unit;
         height: parent.height + 4 * Theme.unit;
-        clicked => { root.clicked(); }
+        clicked => { Typing.done += 1; root.clicked(); }
     }
 }
 
@@ -321,7 +322,7 @@ export component IconButton inherits Rectangle {
         transform-rotation: root.spinning ? (animation-tick() / 1000ms) * 360deg : 0deg;
     }
     touch := TouchArea {
-        clicked => { root.clicked(); }
+        clicked => { Typing.done += 1; root.clicked(); }
     }
 }
 
@@ -374,7 +375,7 @@ export component Switch inherits Rectangle {
         y: -2 * Theme.unit;
         width: parent.width + 4 * Theme.unit;
         height: parent.height + 4 * Theme.unit;
-        clicked => { root.toggled(); }
+        clicked => { Typing.done += 1; root.toggled(); }
     }
 }
 
@@ -590,6 +591,7 @@ export component ListRow inherits Rectangle {
     touch := TouchArea {
         enabled: root.tappable || root.switch;
         clicked => {
+            Typing.done += 1;
             if (root.switch) {
                 root.toggled();
             } else {
@@ -736,7 +738,7 @@ export component Segmented inherits Rectangle {
             vertical-alignment: center;
             overflow: elide;
         }
-        TouchArea { clicked => { root.pick(i); } }
+        TouchArea { clicked => { Typing.done += 1; root.pick(i); } }
     }
 }
 
@@ -771,16 +773,6 @@ component EditKey inherits Rectangle {
     }
 }
 
-// The field that has the keys, where it sits in the window, so a tap anywhere else can end
-// the editing and put the phone's keyboard away (#1172).
-export global Typing {
-    in-out property <bool> on;
-    in-out property <length> left;
-    in-out property <length> top;
-    in-out property <length> right;
-    in-out property <length> bottom;
-}
-
 // The one line both fields type into (#911). A bare TextInput never scrolls, so it sits in a
 // clipped box and shifts to keep the cursor in view, the way Slint's LineEdit does. While it has
 // focus it carries its own Select all, Copy and Paste: the iPhone has no text menu. A secret
@@ -795,34 +787,15 @@ component LineInput inherits Rectangle {
     out property <length> keys-width: root.editing ? keys.preferred-width + Theme.unit : 0;
     callback accepted(string);
     callback edited(string);
+    public function focus-input() {
+        input.focus();
+    }
     // A field too narrow to keep some text beside the keys goes without them.
     property <bool> editing: input.has-focus && root.width - keys.preferred-width >= 24 * Theme.unit;
     // Where the cursor last stood in the text, so a box that narrows or widens (the keys
     // coming and going) can bring it back into view.
     property <length> cursor-x;
     property <length> shift;
-    // Where the field sits while it has the keys: the window shrinking for the keyboard, or
-    // a page scrolling, moves it.
-    property <length> at-x: root.absolute-position.x;
-    property <length> at-y: root.absolute-position.y;
-    function report() {
-        if input.has-focus {
-            Typing.on = true;
-            Typing.left = root.at-x;
-            Typing.top = root.at-y;
-            Typing.right = root.at-x + root.width;
-            Typing.bottom = root.at-y + root.height;
-        } else if Typing.left == root.at-x && Typing.top == root.at-y {
-            // Only the field that reported last lets go: focus moving to another field can
-            // tell the new one before the old.
-            Typing.on = false;
-        }
-    }
-    changed at-x => { root.report(); }
-    changed at-y => { root.report(); }
-    changed width => { root.report(); }
-    changed height => { root.report(); }
-    changed has-focus => { root.report(); }
     function follow() {
         if root.cursor-x + root.shift < 0 {
             root.shift = -root.cursor-x;
@@ -901,6 +874,8 @@ export component SearchField inherits Rectangle {
         colorize: Theme.dim;
     }
     property <length> text-x: Theme.unit * 12.5;
+    // A tap anywhere on the glass types into the field, never through to the page (#1172).
+    TouchArea { clicked => { input.focus-input(); } }
     if root.text == "": Text {
         x: root.text-x;
         width: parent.width - self.x - max(Theme.pad, input.keys-width);
@@ -958,6 +933,8 @@ export component Field inherits Rectangle {
     background: Theme.field;
     border-width: 1px;
     border-color: input.has-focus ? Theme.line-strong : Theme.line;
+    // A tap anywhere on the glass types into the field, never through to the page (#1172).
+    TouchArea { clicked => { input.focus-input(); } }
     if root.text == "": Text {
         x: Theme.unit * 4;
         width: parent.width - 8 * Theme.unit - input.keys-width;
@@ -1012,7 +989,7 @@ export component NavItem inherits Rectangle {
         horizontal-alignment: center;
     }
     TouchArea {
-        clicked => { root.clicked(); }
+        clicked => { Typing.done += 1; root.clicked(); }
     }
 }
 
@@ -1105,6 +1082,7 @@ export component PosterTile inherits Rectangle {
         enabled: root.data.id >= 0;
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
+                Typing.done += 1;
                 root.was-held = false;
                 hold.running = root.holdable;
             } else if (e.kind != PointerEventKind.move) {
