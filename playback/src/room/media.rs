@@ -716,7 +716,7 @@ async fn settle_in(
     );
     let started = tokio::time::Instant::now();
     let (scan_at, deadline) = (started + SCAN_AFTER, started + ARRIVE_WAIT);
-    let (mut matched, mut scanned) = (false, false);
+    let (mut matched, mut scanned) = (ShowMatch::default(), false);
     loop {
         let local = rooms
             .services
@@ -726,16 +726,7 @@ async fn settle_in(
         if local.file.is_some() {
             return Ok(());
         }
-        if !matched
-            && let Some(series) = series_holding(rooms, content)
-            && let Some(target) = target(offer, e)
-        {
-            matched = true;
-            match anibeam_metadata::apply::apply_match(&rooms.metadata, series, target) {
-                Ok(_) => tracing::info!("room: matched series {series} to the room's show"),
-                Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
-            }
-        }
+        matched.try_apply(rooms, content, offer, e);
         if tokio::time::Instant::now() >= deadline {
             return Err(Why::NotInLibrary);
         }
@@ -749,6 +740,33 @@ async fn settle_in(
                     anibeam_library::scan::start(&rooms.library, scope);
                 }
             }
+        }
+    }
+}
+
+/// Whether `settle_in` has pointed the download's show at the room's match.
+/// Only a match that started counts: one that failed (the series' row not
+/// readable yet, say) is tried again on the next wake (#1067).
+#[derive(Default)]
+struct ShowMatch {
+    done: bool,
+}
+
+impl ShowMatch {
+    fn try_apply(&mut self, rooms: &Rooms, content: &str, offer: &Offer, e: &proto::EpisodeRef) {
+        if self.done {
+            return;
+        }
+        let (Some(series), Some(target)) = (series_holding(rooms, content), target(offer, e))
+        else {
+            return;
+        };
+        match anibeam_metadata::apply::apply_match(&rooms.metadata, series, target) {
+            Ok(_) => {
+                self.done = true;
+                tracing::info!("room: matched series {series} to the room's show");
+            }
+            Err(err) => tracing::warn!("room: could not match series {series}: {err}"),
         }
     }
 }
@@ -1628,6 +1646,77 @@ mod tests {
         let one = library("anilist", &[(1, None), (2, None), (4, Some(3))]);
         assert_eq!(have(&one, "S02E05"), vec![1.0, 2.0]);
         assert_eq!(have(&one, "5"), vec![1.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn a_show_match_that_failed_is_tried_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let running =
+            anibeam_foundation::testing::Running::open(dir.path(), anibeam_net::FakeHttp::new());
+        let services = running.services.clone();
+        let net = Arc::new(anibeam_net::Net::new(
+            services.clone(),
+            anibeam_library::cards::cards_for,
+        ));
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let library = Arc::new(anibeam_library::Library::new(
+            services.clone(),
+            net.clone(),
+            closed,
+        ));
+        let metadata = Arc::new(anibeam_metadata::Metadata::new(
+            services.clone(),
+            net.clone(),
+            library.clone(),
+        ));
+        let trackers = Arc::new(anibeam_trackers::Trackers::new(
+            services.clone(),
+            net.clone(),
+        ));
+        let downloads = Arc::new(anibeam_downloads::Downloads::new(
+            services.clone(),
+            net.clone(),
+        ));
+        let playback = Arc::new(crate::Playback::new(
+            services.clone(),
+            net,
+            trackers,
+            downloads.clone(),
+        ));
+        let rooms = Rooms::new(services.clone(), playback, downloads, library, metadata);
+        // The download's file is in the library, but the row of the series
+        // it names cannot be read yet, so the first match fails.
+        services
+            .store
+            .write(|c| {
+                c.execute_batch(
+                    "PRAGMA foreign_keys = OFF;
+                     INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0);
+                     INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, seen_at)
+                         VALUES (7, '/lib/Show/05.mkv', 1, 0, 'episode', 5, '5', '5', 0);
+                     PRAGMA foreign_keys = ON;",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let (offer, e) = (offer("[Group] Show - 05 [1080p]"), ep(5.0));
+        let mut matched = ShowMatch::default();
+        matched.try_apply(&rooms, "/lib/Show", &offer, &e);
+        assert!(!matched.done, "a match that failed is not done");
+
+        services
+            .store
+            .write(|c| {
+                c.execute(
+                    "INSERT INTO series (id, source_id, kind, path, folder_name, added_at)
+                     VALUES (7, 1, 'show', '/lib/Show', 'Show', 0)",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        matched.try_apply(&rooms, "/lib/Show", &offer, &e);
+        assert!(matched.done, "the next wake matches the show");
     }
 
     #[test]
