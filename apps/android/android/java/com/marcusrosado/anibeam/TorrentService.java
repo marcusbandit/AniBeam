@@ -182,6 +182,9 @@ public class TorrentService extends Service {
         ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
         ActivityManager.getMyMemoryState(info);
         if (info.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) return true;
+        // The job Android stopped waits to run again, and Android may hold it back for hours
+        // after a few stops. It goes, so the app schedules a fresh one now that it is open.
+        if (jobs()) DownloadJob.cancel(context);
         goOn(context);
         return false;
     }
