@@ -137,16 +137,25 @@ pub fn series(
         }
     };
 
-    // Aired, listed by the rule as missing, and not on disk. The host sends bare numbers;
-    // `missing_season` says which season they are in (#1087).
+    // Aired, listed by the rule as missing, and not on disk. The host names the season its
+    // numbers are in (#1091); from an older host, `missing_season` works it out (#1087).
     let on_disk: Vec<(u32, u32)> = page
         .episodes
         .iter()
         .filter(|e| e.number.fract() == 0.0)
         .map(|e| (e.season.unwrap_or(1), e.number as u32))
         .collect();
-    let season = missing_season(&page.episodes, page.upcoming.first());
-    let next_number = page.upcoming.first().map(|a| a.episode);
+    let season = page
+        .subscription
+        .as_ref()
+        .and_then(|s| s.missing_season)
+        .unwrap_or_else(|| missing_season(&page.episodes, page.upcoming.first()));
+    // Only a next airing in that same season cuts the list short
+    let next_number = page
+        .upcoming
+        .first()
+        .filter(|a| a.season.unwrap_or(1) == season)
+        .map(|a| a.episode);
     let missing: Vec<u32> = page
         .subscription
         .iter()
@@ -294,10 +303,10 @@ pub fn series(
     Some((head, lines))
 }
 
-/// The season the host's missing numbers belong to: the one airing next, the way its row
-/// is coded, else the one season every file is in. Files across several seasons, or none,
-/// leave them in the first, since the host counts every season's numbers together.
-/// Specials (season 0) never decide it.
+/// The season the missing numbers of a host that does not name it belong to: the one airing
+/// next, the way its row is coded, else the one season every file is in. Files across
+/// several seasons, or none, leave them in the first, since such a host counts every
+/// season's numbers together. Specials (season 0) never decide it.
 fn missing_season(episodes: &[library::DiskEpisode], next: Option<&Airing>) -> u32 {
     if let Some(a) = next {
         return a.season.unwrap_or(1);

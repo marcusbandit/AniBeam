@@ -1155,6 +1155,49 @@ fn an_ended_multi_season_show_judges_each_file_against_its_own_season() {
     core.shutdown();
 }
 
+/// The downloads page's link to an ended two-season show counts each
+/// season against its own length (#1091): both seasons whole is complete
+/// with nothing missing, where pooling 1 to 18 read 11 to 18 as missing,
+/// and a hole in season 1 leaves it incomplete though season 2 fills
+/// every number up to 8.
+#[test]
+fn a_multi_season_show_links_to_downloads_whole_per_season() {
+    let (_dir, core, _c) = common::open_core();
+    insert_show(&core, 901, "Ended", &[(1, long_ago(10)), (2, long_ago(8))]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=8).map(|n| (2, n)));
+    let series = tv_series(&core, 901, &files);
+    let link = |core: &Core| {
+        let images = core.services().paths.images_dir();
+        core.store()
+            .read(|c| downloads::link::shows(c, &images, time::now(), &[series]))
+            .unwrap()
+            .remove(&series)
+            .expect("the series links")
+    };
+
+    let show = link(&core);
+    assert_eq!(show.missing, Vec::<u32>::new());
+    assert_eq!(show.missing_season, Some(2));
+    assert_eq!(show.episodes_on_disk, 18);
+    assert!(show.complete);
+
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "DELETE FROM files WHERE series_id = ?1 AND season = 1 AND number = 3",
+                params![series as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let show = link(&core);
+    assert!(!show.complete, "S01E03 is gone");
+    assert_eq!(show.missing, Vec::<u32>::new(), "season 2 is whole");
+    assert_eq!(show.episodes_on_disk, 17);
+    core.shutdown();
+}
+
 /// Two seasons on disk keep their history apart: watching S01E01 never
 /// marks S02E01, the card's code reads the latest season's latest episode
 /// rather than season 1's higher number, and next up walks within the

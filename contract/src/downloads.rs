@@ -249,20 +249,26 @@ pub struct ShowLink {
     pub path: String,
     pub poster: Option<String>,
     pub status: Option<AiringStatus>,
-    /// Distinct episode numbers on disk, so a v2 next to its v1 counts
-    /// once.
+    /// Distinct episodes on disk, each season counting its own numbers, so
+    /// a v2 next to its v1 counts once and S02E01 is not S01E01.
     pub episodes_on_disk: u64,
     pub total_episodes: Option<u32>,
     pub total_is_estimate: bool,
     pub next_airing: Option<Airing>,
     /// Every episode from 1 to the total is on disk and the show has
     /// finished airing (or was cancelled): nothing more will come, so the
-    /// subscription has nothing left to do. A film is complete once its
-    /// file is there.
+    /// subscription has nothing left to do. A show numbered by season
+    /// (TVmaze) counts each season on disk against its own length. A film
+    /// is complete once its file is there.
     pub complete: bool,
-    /// The episode numbers from 1 to the total that are not on disk, when
-    /// the total is known. Empty for a complete show.
+    /// The episode numbers that are not on disk, when the total is known:
+    /// from 1 to the total, or for a show numbered by season, from 1 to the
+    /// length of `missing_season`. Empty for a complete show.
     pub missing: Vec<u32>,
+    /// The season `missing` counts in: the one the series card is about,
+    /// the latest on disk (#1091). None when the numbers carry no season.
+    #[serde(default)]
+    pub missing_season: Option<u32>,
     /// The series card's episode cubes, carried along for the page.
     #[serde(default)]
     pub cubes: String,
