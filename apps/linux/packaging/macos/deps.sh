@@ -52,8 +52,7 @@ rpath_id() {
 }
 
 echo "== libmpv $MPV_VERSION"
-download "$work/mpv.tar.gz" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
-verify "$work/mpv.tar.gz" "$MPV_SHA256"
+download_checked "$work/mpv.tar.gz" "$MPV_SHA256" "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz"
 tar -xz -C "$work" -f "$work/mpv.tar.gz"
 # Upstream fixes not yet in a release. mpv-player/mpv#18383: a failed CoreAudio init left its
 # hotplug listener on a freed ao, and the next audio device change crashed the app (#75).
@@ -99,9 +98,8 @@ rpath_id libMpvQt.3.dylib
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
 openssl="$(brew --prefix openssl@3)"
-download "$work/libtorrent.tar.gz" \
+download_checked "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256" \
   "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz"
-verify "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256"
 tar -xz -C "$work" -f "$work/libtorrent.tar.gz"
 # C++20 to match qBittorrent, which includes its headers.
 cmake -S "$work/libtorrent-rasterbar-$LIBTORRENT_VERSION" -B "$work/libtorrent-build" -G Ninja \
@@ -116,8 +114,7 @@ cmake --build "$work/libtorrent-build"
 cmake --install "$work/libtorrent-build"
 
 echo "== qBittorrent $QBT_VERSION (nox)"
-download "$work/qbittorrent.tar.gz" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
-verify "$work/qbittorrent.tar.gz" "$QBT_SHA256"
+download_checked "$work/qbittorrent.tar.gz" "$QBT_SHA256" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
 tar -xz -C "$work" -f "$work/qbittorrent.tar.gz"
 # The stacktrace support is boost's and only helps with crash reports nobody reads here. The
 # install rpath keeps the binary runnable from the prefix, since CMake strips the build rpath

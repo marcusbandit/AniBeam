@@ -33,9 +33,8 @@ mkdir -p "$dest/bin" "$dest/app"
 
 echo "== Python $PBS_PYTHON (python-build-standalone $PBS_RELEASE)"
 pbs="cpython-$PBS_PYTHON+$PBS_RELEASE-aarch64-apple-darwin-install_only_stripped.tar.gz"
-download "$work/python.tar.gz" \
+download_checked "$work/python.tar.gz" "$PBS_SHA256" \
   "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}"
-verify "$work/python.tar.gz" "$PBS_SHA256"
 tar -xz -C "$work" -f "$work/python.tar.gz"
 mv "$work/python" "$dest/python"
 
@@ -53,8 +52,7 @@ rm -rf "$py/include" "$py/share" "$py/lib/pkgconfig" \
 rm -rf "$lib"/site-packages/*
 
 echo "== anirss $ANIRSS_VERSION"
-download "$work/anirss.tar.gz" "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz"
-verify "$work/anirss.tar.gz" "$ANIRSS_SHA256"
+download_checked "$work/anirss.tar.gz" "$ANIRSS_SHA256" "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz"
 tar -xz -C "$work" -f "$work/anirss.tar.gz"
 src="$work/anirss-$ANIRSS_VERSION"
 cp "$src/anirss" "$dest/app/anirss"

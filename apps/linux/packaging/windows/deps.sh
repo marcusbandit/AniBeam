@@ -44,8 +44,7 @@ mkdir -p "$prefix/bin" "$prefix/lib" "$prefix/include"
 qt="$(cygpath -m "${QT_ROOT_DIR:?QT_ROOT_DIR names the Qt install-qt-action set up}")"
 
 echo "== libmpv ($MPV_ASSET)"
-download "$work/mpv.7z" "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$MPV_RELEASE/$MPV_ASSET"
-verify "$work/mpv.7z" "$MPV_SHA256"
+download_checked "$work/mpv.7z" "$MPV_SHA256" "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$MPV_RELEASE/$MPV_ASSET"
 7z x -y -o"$work/mpv" "$work/mpv.7z" > /dev/null
 cp -R "$work/mpv/include/mpv" "$prefix/include/"
 cp "$work/mpv/libmpv-2.dll" "$prefix/bin/"
@@ -97,17 +96,15 @@ toolchain="$VCPKG/scripts/buildsystems/vcpkg.cmake"
 echo "== boost $BOOST_VERSION headers"
 boost_tar="boost_${BOOST_VERSION//./_}"
 # SourceForge carries the same tarball; the sha256 is the one archives.boost.io publishes.
-download "$work/boost.tar.gz" \
+download_checked "$work/boost.tar.gz" "$BOOST_SHA256" \
   "https://archives.boost.io/release/$BOOST_VERSION/source/$boost_tar.tar.gz" \
   "https://sourceforge.net/projects/boost/files/boost/$BOOST_VERSION/$boost_tar.tar.gz/download"
-verify "$work/boost.tar.gz" "$BOOST_SHA256"
 tar --force-local -xzf "$work/boost.tar.gz" -C "$work"
 boost="$work/$boost_tar"
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
-download "$work/libtorrent.tar.gz" \
+download_checked "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256" \
   "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz"
-verify "$work/libtorrent.tar.gz" "$LIBTORRENT_SHA256"
 tar --force-local -xzf "$work/libtorrent.tar.gz" -C "$work"
 cmake -S "$work/libtorrent-rasterbar-$LIBTORRENT_VERSION" -B "$work/libtorrent-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
@@ -123,8 +120,7 @@ cmake --build "$work/libtorrent-build"
 cmake --install "$work/libtorrent-build"
 
 echo "== qBittorrent $QBT_VERSION (nox)"
-download "$work/qbittorrent.tar.gz" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
-verify "$work/qbittorrent.tar.gz" "$QBT_SHA256"
+download_checked "$work/qbittorrent.tar.gz" "$QBT_SHA256" "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz"
 tar --force-local -xzf "$work/qbittorrent.tar.gz" -C "$work"
 cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \

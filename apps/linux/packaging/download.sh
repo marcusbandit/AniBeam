@@ -44,10 +44,24 @@ sha256_of() {
 # verify <file> <sha256>: fails, and removes the file, when it is not the pinned one.
 verify() {
   local got
+  [ -f "$1" ] || { echo "verify: $1 is missing" >&2; return 1; }
   got="$(sha256_of "$1")"
   [ "$got" = "$2" ] && return 0
   echo "checksum mismatch for $(basename "$1"): got $got, want $2" >&2
   rm -f "$1"
+  return 1
+}
+
+# download_checked <file> <sha256> <url> [<fallback url>...]: download, with each source's
+# answer checked before it is taken, so a host that answers 200 with an error page or other
+# bytes is passed over for the next one instead of ending the build.
+download_checked() {
+  local file="$1" sha="$2" url
+  shift 2
+  for url in "$@"; do
+    download "$file" "$url" && verify "$file" "$sha" && return 0
+  done
+  echo "download_checked: no source gave the pinned $(basename "$file")" >&2
   return 1
 }
 
@@ -60,17 +74,29 @@ fetch() {
   verify "$file" "$2" || exit 1
 }
 
-# with_timeout <seconds> <command>...: runs the command, killed after <seconds> where a GNU
-# timeout exists. macOS has none unless Homebrew's coreutils put gtimeout there, and Windows'
-# own timeout.exe is a different program, so each is tried before it is trusted. Without one
-# the command runs uncapped; git's low-speed limit still ends a stalled clone.
+# The GNU timeout clone caps a try with, found once. macOS has none unless Homebrew's
+# coreutils put gtimeout there, so each is tried before it is trusted. Windows gets none: Git
+# Bash's timeout kills git.exe but not its git-remote-https child, which keeps the checkout
+# open, and the next try's rm -rf then fails. Without one a try runs uncapped; git's
+# low-speed limit still ends a stalled clone.
+download_timeout=
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) ;;
+  *)
+    if timeout 1 true > /dev/null 2>&1; then
+      download_timeout=timeout
+    elif gtimeout 1 true > /dev/null 2>&1; then
+      download_timeout=gtimeout
+    fi
+    ;;
+esac
+
+# with_timeout <seconds> <command>...: the command, killed after <seconds> where it can be.
 with_timeout() {
   local secs="$1"
   shift
-  if timeout 1 true > /dev/null 2>&1; then
-    timeout "$secs" "$@"
-  elif gtimeout 1 true > /dev/null 2>&1; then
-    gtimeout "$secs" "$@"
+  if [ -n "$download_timeout" ]; then
+    "$download_timeout" "$secs" "$@"
   else
     "$@"
   fi
@@ -78,7 +104,8 @@ with_timeout() {
 
 # clone <dir> <tag> <commit> <url> [<fallback url>...]: a shallow clone of <tag>, three tries
 # per source, checked to be <commit> so a fallback cannot hand over other code. A try that
-# moves under 1 KB/s for a minute, or runs past five minutes, fails.
+# moves under 1 KB/s for a minute, or runs past five minutes where with_timeout can stop it,
+# fails.
 clone() {
   local dir="$1" tag="$2" commit="$3" url try
   shift 3
