@@ -1084,8 +1084,8 @@ fn a_second_mark_of_one_rewatch_finish_counts_one_rewatch() {
 
 /// A stand-in AniList that keeps one list entry and answers from it: a read
 /// gets the entry as it stands, a save changes it. The save that counts a
-/// rewatch is held until another save has landed, or for a second when
-/// none comes, so a write that does not wait its turn lands first.
+/// rewatch is held until another save has landed, or for half a second
+/// when none comes, so a write that does not wait its turn lands first.
 struct HeldRewatch {
     entry: std::sync::Mutex<serde_json::Value>,
     landed: tokio::sync::Notify,
@@ -1125,7 +1125,8 @@ impl Http for HeldRewatch {
                 ));
             }
             if variables.get("repeat").is_some() {
-                let _ = tokio::time::timeout(Duration::from_secs(1), self.landed.notified()).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_millis(500), self.landed.notified()).await;
             }
             let body = self.save(variables).to_string();
             self.landed.notify_one();

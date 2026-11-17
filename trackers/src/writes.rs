@@ -21,7 +21,7 @@
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
-use tokio::sync::oneshot;
+use tokio::sync::watch;
 
 use crate::Trackers;
 use crate::{TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold};
@@ -366,49 +366,54 @@ impl Drop for RewatchSlot {
     }
 }
 
-/// Each series' writes in the order they were asked for, one line per
-/// trackers team as [`Rewatching`] is. A write reads the list before it
-/// writes, so two writes of one series at once would both read the same
-/// list and the one that landed last would decide it: a status set while a
-/// rewatch is being written could leave the rewatch's Completed over it
-/// (#1112). Each write takes its place when it is asked for and starts once
-/// the write before it has ended, however that one ended.
+/// Each list entry's writes in the order they were asked for, one set of
+/// lines per trackers team as [`Rewatching`] is. A write reads the entry
+/// before it writes, so two writes of one entry at once would both read the
+/// same list and the one that landed last would decide it: a status set
+/// while a rewatch is being written could leave the rewatch's Completed over
+/// it (#1112). Each write takes its place when it is asked for and starts
+/// once every write asked for before it on the same entries has ended,
+/// however that one ended. Lines go by entry rather than by series, so two
+/// series matched to one show, or a show the library does not have, share
+/// theirs.
 #[derive(Clone, Default)]
 pub(crate) struct WriteLine(Arc<LineInner>);
 
 #[derive(Default)]
 struct LineInner {
     next: std::sync::atomic::AtomicU64,
-    /// Each series' last write in line: its ticket, and the end it waits on.
-    last: std::sync::Mutex<std::collections::HashMap<LineKey, (u64, oneshot::Receiver<()>)>>,
+    /// Each entry's writes still in line, oldest first.
+    waiting: std::sync::Mutex<std::collections::HashMap<ListEntry, Vec<Waiting>>>,
 }
 
-/// What a line is kept by: the series, or for a show the library does not
-/// have (series nought), its AniList id.
-type LineKey = (u64, Option<u64>);
+/// One list entry: a tracker and its media id.
+type ListEntry = (Tracker, u64);
 
-fn line_key(target: &Targets) -> LineKey {
-    match target.series {
-        0 => (0, target.anilist),
-        series => (series, None),
-    }
-}
+/// A write still in line: its ticket, and the end the writes after it wait on.
+type Waiting = (u64, watch::Receiver<()>);
 
 impl WriteLine {
-    /// A place at the back of the target's line.
+    /// A place at the back of the line of every entry the target writes to.
     fn join(&self, target: &Targets) -> Turn {
-        let key = line_key(target);
+        let entries: Vec<ListEntry> = [Tracker::Anilist, Tracker::Mal]
+            .into_iter()
+            .filter_map(|t| target.id_for(t).map(|id| (t, id)))
+            .collect();
         let ticket = self
             .0
             .next
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let (done, end) = oneshot::channel();
-        let before = recover(&self.0.last)
-            .insert(key, (ticket, end))
-            .map(|(_, end)| end);
+        let (done, end) = watch::channel(());
+        let mut waiting = recover(&self.0.waiting);
+        let mut before = Vec::new();
+        for entry in &entries {
+            let line = waiting.entry(*entry).or_default();
+            before.extend(line.iter().map(|(_, end)| end.clone()));
+            line.push((ticket, end.clone()));
+        }
         Turn {
             line: self.clone(),
-            key,
+            entries,
             ticket,
             before,
             _done: done,
@@ -416,33 +421,41 @@ impl WriteLine {
     }
 }
 
-/// A write's place in its series' line. The write after it starts when
-/// this is dropped, which is when the job holding it ends.
+/// A write's place in its entries' lines. The writes after it may start
+/// once this is dropped, which is when the job holding it ends.
 struct Turn {
     line: WriteLine,
-    key: LineKey,
+    entries: Vec<ListEntry>,
     ticket: u64,
-    before: Option<oneshot::Receiver<()>>,
-    _done: oneshot::Sender<()>,
+    /// The ends of every write ahead of this one. Each write waits on all of
+    /// them rather than only the last, so one that leaves the line before
+    /// its own turn came lets nobody past the ones still ahead of it.
+    before: Vec<watch::Receiver<()>>,
+    _done: watch::Sender<()>,
 }
 
 impl Turn {
-    /// Waits for the write before this one to end. Dropping the wait
-    /// keeps the place, so the next wait picks it up again.
+    /// Waits for every write ahead of this one to end. Dropping the wait
+    /// keeps the place, so the next wait picks up where it stopped.
     async fn come(&mut self) {
-        if let Some(before) = self.before.as_mut() {
-            // Dropped without a send is how every write ends.
-            let _ = before.await;
-            self.before = None;
+        while let Some(end) = self.before.last_mut() {
+            // Nothing is ever sent: the sender dropping is how a write ends.
+            let _ = end.changed().await;
+            self.before.pop();
         }
     }
 }
 
 impl Drop for Turn {
     fn drop(&mut self) {
-        let mut last = recover(&self.line.0.last);
-        if last.get(&self.key).is_some_and(|(t, _)| *t == self.ticket) {
-            last.remove(&self.key);
+        let mut waiting = recover(&self.line.0.waiting);
+        for entry in &self.entries {
+            if let Some(line) = waiting.get_mut(entry) {
+                line.retain(|(t, _)| *t != self.ticket);
+                if line.is_empty() {
+                    waiting.remove(entry);
+                }
+            }
         }
     }
 }
@@ -928,8 +941,9 @@ async fn run_many(
     let mut named = None;
     let mut landed: Vec<Tracker> = Vec::new();
     let mut reason: Option<String> = None;
-    // Each pick waits its own turn and gives it up once written, so a
-    // write over many series holds up each one only while it writes it.
+    // Every pick's place was taken when the write was asked for, so a
+    // write to one of them asked for later waits until this loop has
+    // written it. Each place is given up as soon as its pick is written.
     for ((i, target), mut turn) in targets.iter().enumerate().zip(turns) {
         turn.come().await;
         ctx.checkpoint()?;
@@ -2316,32 +2330,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_write_waits_for_the_one_before_it_in_its_own_series_only() {
+    async fn a_write_waits_for_every_write_ahead_of_it_on_its_entries_only() {
         let line = WriteLine::default();
-        let target = |series| Targets {
+        let target = |series, anilist| Targets {
             series,
-            anilist: Some(series + 100),
+            anilist: Some(anilist),
             mal: None,
             total: None,
             folder_name: String::new(),
         };
-        let soon = std::time::Duration::from_millis(50);
-        let first = line.join(&target(1));
-        let mut second = line.join(&target(1));
-        let mut elsewhere = line.join(&target(2));
+        async fn waits(turn: &mut Turn) -> bool {
+            let soon = std::time::Duration::from_millis(50);
+            tokio::time::timeout(soon, turn.come()).await.is_err()
+        }
+        let first = line.join(&target(1, 100));
+        let cancelled = line.join(&target(1, 100));
+        // Another series matched to the same show shares its line.
+        let mut third = line.join(&target(2, 100));
+        let mut elsewhere = line.join(&target(3, 300));
+        assert!(!waits(&mut elsewhere).await, "another show does not wait");
+        assert!(waits(&mut third).await, "a later write waits");
+        drop(cancelled);
         assert!(
-            tokio::time::timeout(soon, elsewhere.come()).await.is_ok(),
-            "another series does not wait"
-        );
-        assert!(
-            tokio::time::timeout(soon, second.come()).await.is_err(),
-            "the second write waits for the first"
+            waits(&mut third).await,
+            "a write leaving the line lets nobody past the one still ahead"
         );
         drop(first);
-        assert!(tokio::time::timeout(soon, second.come()).await.is_ok());
-        drop((second, elsewhere));
+        assert!(!waits(&mut third).await);
+        drop((third, elsewhere));
         assert!(
-            recover(&line.0.last).is_empty(),
+            recover(&line.0.waiting).is_empty(),
             "an empty line is forgotten"
         );
     }
