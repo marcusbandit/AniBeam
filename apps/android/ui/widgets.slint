@@ -771,6 +771,16 @@ component EditKey inherits Rectangle {
     }
 }
 
+// The field that has the keys, where it sits in the window, so a tap anywhere else can end
+// the editing and put the phone's keyboard away (#1172).
+export global Typing {
+    in-out property <bool> on;
+    in-out property <length> left;
+    in-out property <length> top;
+    in-out property <length> right;
+    in-out property <length> bottom;
+}
+
 // The one line both fields type into (#911). A bare TextInput never scrolls, so it sits in a
 // clipped box and shifts to keep the cursor in view, the way Slint's LineEdit does. While it has
 // focus it carries its own Select all, Copy and Paste: the iPhone has no text menu. A secret
@@ -791,6 +801,28 @@ component LineInput inherits Rectangle {
     // coming and going) can bring it back into view.
     property <length> cursor-x;
     property <length> shift;
+    // Where the field sits while it has the keys: the window shrinking for the keyboard, or
+    // a page scrolling, moves it.
+    property <length> at-x: root.absolute-position.x;
+    property <length> at-y: root.absolute-position.y;
+    function report() {
+        if input.has-focus {
+            Typing.on = true;
+            Typing.left = root.at-x;
+            Typing.top = root.at-y;
+            Typing.right = root.at-x + root.width;
+            Typing.bottom = root.at-y + root.height;
+        } else if Typing.left == root.at-x && Typing.top == root.at-y {
+            // Only the field that reported last lets go: focus moving to another field can
+            // tell the new one before the old.
+            Typing.on = false;
+        }
+    }
+    changed at-x => { root.report(); }
+    changed at-y => { root.report(); }
+    changed width => { root.report(); }
+    changed height => { root.report(); }
+    changed has-focus => { root.report(); }
     function follow() {
         if root.cursor-x + root.shift < 0 {
             root.shift = -root.cursor-x;

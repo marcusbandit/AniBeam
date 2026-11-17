@@ -2,7 +2,7 @@ import { Theme } from "theme.slint";
 import { Tr } from "tr.slint";
 import { LangChoice, LangData } from "lang.slint";
 import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, EpisodeVersionLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
-import { Button, NavItem, Pane } from "widgets.slint";
+import { Button, NavItem, Pane, Typing } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
 import { Ask, MorePage, SettingHit, Settings } from "more.slint";
@@ -363,263 +363,275 @@ export component AppWindow inherits Window {
         keys.focus();
     }
 
-    keys := FocusScope {
-        // Back closes a question, then a series page, then goes Home, and only leaves the
-        // app from there. During onboarding it steps back.
-        key-pressed(event) => {
-            if (event.text != Key.Back) {
-                return reject;
-            }
-            if (PlayerData.open && PlayerData.picker != 0) {
-                PlayerData.close-picker();
-                return accept;
-            }
-            // Locked, back does nothing either: an edge swipe is the stray touch most likely.
-            if (PlayerData.open) {
-                if (!PlayerData.locked) {
-                    PlayerData.back();
-                }
-                return accept;
-            }
-            if (AppData.notes-open) {
-                AppData.close-notes();
-                return accept;
-            }
-            if (Ask.mobile) {
-                Ask.mobile = false;
-                return accept;
-            }
-            if (AppData.notify-ask) {
-                AppData.notify-ask = false;
-                return accept;
-            }
-            if (Ask.menu-id >= 0) {
-                Ask.menu-id = -1;
-                return accept;
-            }
-            if (Ask.mark-open) {
-                Ask.mark-open = false;
-                return accept;
-            }
-            if (Ask.versions-open) {
-                Ask.versions-open = false;
-                return accept;
-            }
-            if (ShowData.sheet != 0) {
-                ShowData.close();
-                return accept;
-            }
-            if (AppData.airing-menu.show) {
-                AppData.airing-close();
-                return accept;
-            }
-            if (AiringPick.open) {
-                AiringPick.open = false;
-                return accept;
-            }
-            if (DiskData.sheet != 0) {
-                DiskData.sheet = 0;
-                return accept;
-            }
-            if (MoveData.open) {
-                MoveData.later();
-                return accept;
-            }
-            if (AppData.onboarding && AppData.step > 0) {
-                AppData.step -= 1;
-                return accept;
-            }
-            if (AppData.series-open && AppData.deleting) {
-                AppData.cancel-delete();
-                return accept;
-            }
-            if (AppData.series-open) {
-                AppData.close-series();
-                return accept;
-            }
-            if (root.page == 2 && FindData.shown && FindData.view > 0) {
-                FindData.back();
-                return accept;
-            }
-            // In More, Back leaves a section for the index, then clears the search.
-            if (root.page == 3 && Settings.section >= 0) {
-                Settings.section = -1;
-                return accept;
-            }
-            if (root.page == 3 && Settings.query != "") {
-                Settings.query = "";
-                Settings.find("");
-                return accept;
-            }
-            if (root.page != 0) {
-                Nav.page = 0;
-                return accept;
-            }
-            reject
+    // A tap outside the field that has the keys ends the editing, so the keyboard goes
+    // away (#1172). A TouchArea sees where every tap under it lands before its children
+    // take it, so the button or row tapped still works.
+    function drop-field(x: length, y: length) {
+        if Typing.on && (x < Typing.left || x > Typing.right || y < Typing.top || y > Typing.bottom) {
+            keys.focus();
         }
+    }
+    taps := TouchArea {
+        changed mouse-x => { root.drop-field(self.mouse-x, self.mouse-y); }
+        changed mouse-y => { root.drop-field(self.mouse-x, self.mouse-y); }
+        keys := FocusScope {
+            // Back closes a question, then a series page, then goes Home, and only leaves the
+            // app from there. During onboarding it steps back.
+            key-pressed(event) => {
+                if (event.text != Key.Back) {
+                    return reject;
+                }
+                if (PlayerData.open && PlayerData.picker != 0) {
+                    PlayerData.close-picker();
+                    return accept;
+                }
+                // Locked, back does nothing either: an edge swipe is the stray touch most likely.
+                if (PlayerData.open) {
+                    if (!PlayerData.locked) {
+                        PlayerData.back();
+                    }
+                    return accept;
+                }
+                if (AppData.notes-open) {
+                    AppData.close-notes();
+                    return accept;
+                }
+                if (Ask.mobile) {
+                    Ask.mobile = false;
+                    return accept;
+                }
+                if (AppData.notify-ask) {
+                    AppData.notify-ask = false;
+                    return accept;
+                }
+                if (Ask.menu-id >= 0) {
+                    Ask.menu-id = -1;
+                    return accept;
+                }
+                if (Ask.mark-open) {
+                    Ask.mark-open = false;
+                    return accept;
+                }
+                if (Ask.versions-open) {
+                    Ask.versions-open = false;
+                    return accept;
+                }
+                if (ShowData.sheet != 0) {
+                    ShowData.close();
+                    return accept;
+                }
+                if (AppData.airing-menu.show) {
+                    AppData.airing-close();
+                    return accept;
+                }
+                if (AiringPick.open) {
+                    AiringPick.open = false;
+                    return accept;
+                }
+                if (DiskData.sheet != 0) {
+                    DiskData.sheet = 0;
+                    return accept;
+                }
+                if (MoveData.open) {
+                    MoveData.later();
+                    return accept;
+                }
+                if (AppData.onboarding && AppData.step > 0) {
+                    AppData.step -= 1;
+                    return accept;
+                }
+                if (AppData.series-open && AppData.deleting) {
+                    AppData.cancel-delete();
+                    return accept;
+                }
+                if (AppData.series-open) {
+                    AppData.close-series();
+                    return accept;
+                }
+                if (root.page == 2 && FindData.shown && FindData.view > 0) {
+                    FindData.back();
+                    return accept;
+                }
+                // In More, Back leaves a section for the index, then clears the search.
+                if (root.page == 3 && Settings.section >= 0) {
+                    Settings.section = -1;
+                    return accept;
+                }
+                if (root.page == 3 && Settings.query != "") {
+                    Settings.query = "";
+                    Settings.find("");
+                    return accept;
+                }
+                if (root.page != 0) {
+                    Nav.page = 0;
+                    return accept;
+                }
+                reject
+            }
 
-        body := Rectangle {
-            x: Fold.body-x;
-            y: Fold.body-y;
-            width: Fold.body-width;
-            height: Fold.body-height;
-            animate x, width { duration: Fold.settle; easing: ease-in-out; }
-            clip: true;
-
-            HomePage {
-                visible: root.page == 0;
-            }
-            LibraryPage {
-                visible: root.page == 1;
-            }
-            DownloadsPage {
-                visible: root.page == 2;
-            }
-            MorePage {
-                visible: root.page == 3;
-            }
-            if root.page == 4: CalendarPage { }
-            // Folded, the series page covers the body; otherwise it opens over the pane that
-            // shows, and the page beside it stays in reach. It slides in from the right when
-            // nothing was open, quicker in than out; another series picked while one is open
-            // takes its place at once.
-            if AppData.series-open || root.series-in > 0: Rectangle {
-                property <Area> area: Fold.show(root.series-share);
-                x: self.area.x;
-                y: self.area.y;
-                width: self.area.width;
-                height: self.area.height;
-                animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
+            body := Rectangle {
+                x: Fold.body-x;
+                y: Fold.body-y;
+                width: Fold.body-width;
+                height: Fold.body-height;
+                animate x, width { duration: Fold.settle; easing: ease-in-out; }
                 clip: true;
-                Rectangle {
-                    x: (1 - root.series-in) * parent.width;
-                    width: parent.width;
-                    height: parent.height;
-                    background: Theme.ground;
-                    TouchArea { }
-                    SeriesPage { }
-                    // Sliding out, it is already closed: nothing on it takes a touch.
-                    if !AppData.series-open: TouchArea { }
-                    if Fold.split: Rectangle {
-                        x: 0;
-                        width: 1px;
-                        background: Theme.line;
-                        opacity: Fold.posture == 1 ? 1 : 0;
-                        animate opacity { duration: Fold.settle; }
+
+                HomePage {
+                    visible: root.page == 0;
+                }
+                LibraryPage {
+                    visible: root.page == 1;
+                }
+                DownloadsPage {
+                    visible: root.page == 2;
+                }
+                MorePage {
+                    visible: root.page == 3;
+                }
+                if root.page == 4: CalendarPage { }
+                // Folded, the series page covers the body; otherwise it opens over the pane that
+                // shows, and the page beside it stays in reach. It slides in from the right when
+                // nothing was open, quicker in than out; another series picked while one is open
+                // takes its place at once.
+                if AppData.series-open || root.series-in > 0: Rectangle {
+                    property <Area> area: Fold.show(root.series-share);
+                    x: self.area.x;
+                    y: self.area.y;
+                    width: self.area.width;
+                    height: self.area.height;
+                    animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
+                    clip: true;
+                    Rectangle {
+                        x: (1 - root.series-in) * parent.width;
+                        width: parent.width;
+                        height: parent.height;
+                        background: Theme.ground;
+                        TouchArea { }
+                        SeriesPage { }
+                        // Sliding out, it is already closed: nothing on it takes a touch.
+                        if !AppData.series-open: TouchArea { }
+                        if Fold.split: Rectangle {
+                            x: 0;
+                            width: 1px;
+                            background: Theme.line;
+                            opacity: Fold.posture == 1 ? 1 : 0;
+                            animate opacity { duration: Fold.settle; }
+                        }
                     }
                 }
             }
-        }
 
-        // Navigation: along the bottom folded, down the left otherwise. The rail narrows as
-        // the phone bends, and the body slides with it.
-        nav := Rectangle {
-            x: 0;
-            y: Fold.rail ? 0 : root.height - Fold.bar-height - root.inset-bottom;
-            width: Fold.rail ? root.inset-left + Fold.rail-width : root.width;
-            height: Fold.rail ? root.height : Fold.bar-height + root.inset-bottom;
-            animate width { duration: Fold.settle; easing: ease-in-out; }
-            background: Theme.ground;
-            Rectangle {
-                x: Fold.rail ? parent.width - 1px : 0;
-                y: 0;
-                width: Fold.rail ? 1px : parent.width;
-                height: Fold.rail ? parent.height : 1px;
-                background: Theme.line;
-            }
-            // Stood up, the bar keeps to a phone's width in the middle, under the thumbs.
-            property <length> bar-span: self.width - root.inset-left - root.inset-right;
-            property <length> bar-x: root.inset-left + (self.width - root.inset-left - root.inset-right - self.bar-span) / 2;
-            property <length> item-width: Fold.rail ? Fold.rail-width : self.bar-span / root.destinations.length;
-            property <length> item-height: Fold.rail ? 19 * Theme.unit : Fold.bar-height;
-            // The rail's tabs sit high, where a thumb holding the side reaches them, and
-            // clear of the top inset.
-            property <length> rail-top: root.inset-top + 6 * Theme.unit;
-            for destination[i] in root.destinations: NavItem {
-                x: Fold.rail ? root.inset-left : parent.bar-x + i * parent.item-width;
-                y: Fold.rail ? parent.rail-top + i * parent.item-height : 0;
-                width: parent.item-width;
-                height: parent.item-height;
+            // Navigation: along the bottom folded, down the left otherwise. The rail narrows as
+            // the phone bends, and the body slides with it.
+            nav := Rectangle {
+                x: 0;
+                y: Fold.rail ? 0 : root.height - Fold.bar-height - root.inset-bottom;
+                width: Fold.rail ? root.inset-left + Fold.rail-width : root.width;
+                height: Fold.rail ? root.height : Fold.bar-height + root.inset-bottom;
                 animate width { duration: Fold.settle; easing: ease-in-out; }
-                icon: destination.icon;
-                label: destination.label;
-                active: root.page == destination.page;
-                clicked => { root.go(destination.page); }
+                background: Theme.ground;
+                Rectangle {
+                    x: Fold.rail ? parent.width - 1px : 0;
+                    y: 0;
+                    width: Fold.rail ? 1px : parent.width;
+                    height: Fold.rail ? parent.height : 1px;
+                    background: Theme.line;
+                }
+                // Stood up, the bar keeps to a phone's width in the middle, under the thumbs.
+                property <length> bar-span: self.width - root.inset-left - root.inset-right;
+                property <length> bar-x: root.inset-left + (self.width - root.inset-left - root.inset-right - self.bar-span) / 2;
+                property <length> item-width: Fold.rail ? Fold.rail-width : self.bar-span / root.destinations.length;
+                property <length> item-height: Fold.rail ? 19 * Theme.unit : Fold.bar-height;
+                // The rail's tabs sit high, where a thumb holding the side reaches them, and
+                // clear of the top inset.
+                property <length> rail-top: root.inset-top + 6 * Theme.unit;
+                for destination[i] in root.destinations: NavItem {
+                    x: Fold.rail ? root.inset-left : parent.bar-x + i * parent.item-width;
+                    y: Fold.rail ? parent.rail-top + i * parent.item-height : 0;
+                    width: parent.item-width;
+                    height: parent.item-height;
+                    animate width { duration: Fold.settle; easing: ease-in-out; }
+                    icon: destination.icon;
+                    label: destination.label;
+                    active: root.page == destination.page;
+                    clicked => { root.go(destination.page); }
+                }
             }
-        }
 
-        // Onboarding covers the bars too, on a ground of its own; unfolded it keeps to a
-        // readable column, and as a book to the right page.
-        if AppData.onboarding: Rectangle {
-            background: Theme.ground;
-            TouchArea { }
-            Onboarding {
-                x: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
-                y: root.inset-top;
-                width: Fold.posture == 0 ? root.width - root.inset-left - root.inset-right : Fold.sheet-width;
-                height: root.height - root.inset-top - root.inset-bottom;
+            // Onboarding covers the bars too, on a ground of its own; unfolded it keeps to a
+            // readable column, and as a book to the right page.
+            if AppData.onboarding: Rectangle {
+                background: Theme.ground;
+                TouchArea { }
+                Onboarding {
+                    x: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+                    y: root.inset-top;
+                    width: Fold.posture == 0 ? root.width - root.inset-left - root.inset-right : Fold.sheet-width;
+                    height: root.height - root.inset-top - root.inset-bottom;
+                }
             }
-        }
 
-        if Ask.mobile: MobileDataQuestion {
-            inset-bottom: root.inset-bottom;
-        }
+            if Ask.mobile: MobileDataQuestion {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if AppData.notify-ask: NotifyQuestion {
-            inset-bottom: root.inset-bottom;
-        }
+            if AppData.notify-ask: NotifyQuestion {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if Ask.menu-id >= 0: ShowMenu {
-            inset-bottom: root.inset-bottom;
-        }
+            if Ask.menu-id >= 0: ShowMenu {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if Ask.mark-open: MarkMenu {
-            inset-bottom: root.inset-bottom;
-        }
+            if Ask.mark-open: MarkMenu {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if Ask.versions-open: VersionsMenu {
-            inset-bottom: root.inset-bottom;
-        }
+            if Ask.versions-open: VersionsMenu {
+                inset-bottom: root.inset-bottom;
+            }
 
-        ShowSheets {
-            inset-bottom: root.inset-bottom;
-        }
+            ShowSheets {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if AppData.airing-menu.show: AiringSheet {
-            inset-bottom: root.inset-bottom;
-        }
+            if AppData.airing-menu.show: AiringSheet {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if AiringPick.open: SeasonSheet {
-            inset-bottom: root.inset-bottom;
-        }
+            if AiringPick.open: SeasonSheet {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if DiskData.sheet != 0: DiskSheet {
-            inset-bottom: root.inset-bottom;
-        }
+            if DiskData.sheet != 0: DiskSheet {
+                inset-bottom: root.inset-bottom;
+            }
 
-        if MoveData.open: MoveSheet {
-            inset-bottom: root.inset-bottom;
-        }
+            if MoveData.open: MoveSheet {
+                inset-bottom: root.inset-bottom;
+            }
 
-        // What's new covers the pages and the bars, onboarding included.
-        // Unfolded it keeps to the same readable column as onboarding.
-        if AppData.notes-open: NotesPage {
-            width: root.width;
-            height: root.height;
-            inset-left: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
-            inset-right: Fold.posture == 0 ? root.inset-right : root.width - Fold.sheet-x - Fold.sheet-width;
-            inset-top: root.inset-top;
-            inset-bottom: root.inset-bottom;
-        }
+            // What's new covers the pages and the bars, onboarding included.
+            // Unfolded it keeps to the same readable column as onboarding.
+            if AppData.notes-open: NotesPage {
+                width: root.width;
+                height: root.height;
+                inset-left: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+                inset-right: Fold.posture == 0 ? root.inset-right : root.width - Fold.sheet-x - Fold.sheet-width;
+                inset-top: root.inset-top;
+                inset-bottom: root.inset-bottom;
+            }
 
-        // The player covers everything, the bars included: Android hides them while it plays.
-        if PlayerData.open: PlayerPage {
-            width: root.width;
-            height: root.height;
-            inset-left: root.inset-left;
-            inset-right: root.inset-right;
-            inset-top: root.inset-top;
-            inset-bottom: root.inset-bottom;
+            // The player covers everything, the bars included: Android hides them while it plays.
+            if PlayerData.open: PlayerPage {
+                width: root.width;
+                height: root.height;
+                inset-left: root.inset-left;
+                inset-right: root.inset-right;
+                inset-top: root.inset-top;
+                inset-bottom: root.inset-bottom;
+            }
         }
     }
 }
