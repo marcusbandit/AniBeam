@@ -306,14 +306,15 @@ fn main() {
         "assets/icons/wrench.svg",
         "assets/icons/x.svg",
     ]);
-    // The Mac's Now Playing and media keys are Objective-C++ (cpp/nowplaying.mm), a library
-    // of its own because ARC is a flag for a whole build: on cxx-qt's it would reach every
-    // .cpp too. clang takes the language from the extension; the C++ side is set as
+    // The Mac's Now Playing and media keys (cpp/nowplaying.mm) and its tracker sign-in
+    // window (cpp/signin.mm) are Objective-C++, a library of their own because ARC is a flag
+    // for a whole build: on cxx-qt's it would reach every .cpp too. clang takes the language from the extension; the C++ side is set as
     // cxx-qt sets its own, which also links libc++. The cc::Build is cloned from cxx-qt's,
     // still untouched here, which is how this script reaches the cc crate with no
-    // dependency of its own. The frameworks are linked from src/macnp.rs.
+    // dependency of its own. The frameworks are linked from src/macnp.rs and src/signin.rs.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
+        println!("cargo:rerun-if-changed=cpp/signin.mm");
         // SAFETY: only copies cxx-qt's cc::Build; the original is left as it was.
         builder = unsafe {
             builder.cc_builder(|cc| {
@@ -321,6 +322,7 @@ fn main() {
                     .cpp(true)
                     .std("c++17")
                     .file("cpp/nowplaying.mm")
+                    .file("cpp/signin.mm")
                     .flag("-fobjc-arc")
                     .compile("anibeam_nowplaying");
             })

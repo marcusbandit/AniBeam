@@ -26,6 +26,8 @@ mod runtime;
 mod scan_summary;
 mod scheme;
 mod serve;
+#[cfg(target_os = "macos")]
+mod signin;
 mod theme;
 #[cfg(windows)]
 mod winpower;
