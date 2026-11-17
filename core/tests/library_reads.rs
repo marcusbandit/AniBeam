@@ -16,13 +16,11 @@ fn list_series_tabs_cards_detail_and_metadata() {
         "Sousou no Frieren",
     );
     for n in 1..=8 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             frieren,
             &format!("/lib/Sousou no Frieren/{n:02}.mkv"),
             n as f64,
-            None,
-            "episode",
             now - 100 * n,
         );
     }
@@ -35,16 +33,12 @@ fn list_series_tabs_cards_detail_and_metadata() {
         "extra",
         now,
     );
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        Some("Frieren: Beyond Journey's End"),
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154587, "Sousou no Frieren")
+        .english("Frieren: Beyond Journey's End")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     fixtures::match_series(&core, frieren, Some(154587), Some(52991));
     for n in 1..=9 {
         fixtures::insert_airing(
@@ -69,25 +63,9 @@ fn list_series_tabs_cards_detail_and_metadata() {
         "/lib/Movies/Perfect Blue (1997).mkv",
         "Perfect Blue",
     );
-    fixtures::insert_file(
-        &core,
-        film,
-        "/lib/Movies/Perfect Blue (1997).mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Movies/Perfect Blue (1997).mkv", 1.0, now);
     let hidden = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Secret", "Secret");
-    fixtures::insert_file(
-        &core,
-        hidden,
-        "/lib/Secret/01.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, hidden, "/lib/Secret/01.mkv", 1.0, now);
     core.call(Call::SetHidden {
         series: hidden,
         hidden: true,
@@ -96,19 +74,7 @@ fn list_series_tabs_cards_detail_and_metadata() {
     let missing = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Gone", "Gone");
     fixtures::mark_missing(&core, missing);
 
-    let list = |tab: Tab| match core
-        .call(Call::ListSeries {
-            tab,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let list = |tab: Tab| common::cards(&core, tab, false);
     let all = list(Tab::All);
     assert_eq!(
         all.iter().map(|s| s.id).collect::<Vec<_>>(),
@@ -282,26 +248,18 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
     // Finished, fully watched, tracker says completed.
     let done = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/K-On!", "K-On!");
     for n in 1..=12 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             done,
             &format!("/lib/K-On!/{n:02}.mkv"),
             n as f64,
-            None,
-            "episode",
             now - 86_400 * n,
         );
     }
-    fixtures::insert_media(
-        &core,
-        11000,
-        Some("K-On!"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::media(11000, "K-On!")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     fixtures::match_series(&core, done, Some(11000), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11000, 12, "completed", None);
 
@@ -313,67 +271,35 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
         "/lib/Perfect Blue (1997).mkv",
         "Perfect Blue",
     );
-    fixtures::insert_file(
-        &core,
-        film,
-        "/lib/Perfect Blue (1997).mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    fixtures::insert_media(
-        &core,
-        11001,
-        Some("Perfect Blue"),
-        None,
-        Some(1),
-        "FINISHED",
-        "MOVIE",
-        Some(86),
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Perfect Blue (1997).mkv", 1.0, now);
+    fixtures::media(11001, "Perfect Blue")
+        .episodes(1)
+        .format("MOVIE")
+        .score(86)
+        .insert(&core);
     fixtures::match_series(&core, film, Some(11001), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11001, 1, "completed", None);
 
     // Caught up on a show that is still airing: current, not done.
     let current = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
     for n in 1..=8 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             current,
             &format!("/lib/Frieren/{n:02}.mkv"),
             n as f64,
-            None,
-            "episode",
             now - 86_400 * (9 - n),
         );
     }
-    fixtures::insert_media(
-        &core,
-        11002,
-        Some("Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(11002, "Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     fixtures::match_series(&core, current, Some(11002), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11002, 8, "watching", None);
 
-    let list = |tab: Tab| match core
-        .call(Call::ListSeries {
-            tab,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let list = |tab: Tab| common::cards(&core, tab, false);
     let ids = |tab: Tab| list(tab).iter().map(|s| s.id).collect::<Vec<_>>();
 
     // With the default preferences the finished ones are sectioned away.
@@ -480,26 +406,19 @@ fn a_dropped_series_leaves_the_airing_rail_but_not_the_library() {
             title,
         );
         for n in 1..=3 {
-            fixtures::insert_file(
+            fixtures::insert_episode_file(
                 &core,
                 id,
                 &format!("/lib/{title}/{n:02}.mkv"),
                 n as f64,
-                None,
-                "episode",
                 now - 86_400 * (4 - n),
             );
         }
-        fixtures::insert_media(
-            &core,
-            media,
-            Some(title),
-            None,
-            Some(12),
-            "RELEASING",
-            "TV",
-            Some(75),
-        );
+        fixtures::media(media, title)
+            .episodes(12)
+            .status("RELEASING")
+            .score(75)
+            .insert(&core);
         fixtures::match_series(&core, id, Some(media), None);
         fixtures::insert_tracker_entry(&core, "anilist", media, 2, status, None);
         ids.push(id);
@@ -540,18 +459,11 @@ fn a_kept_snapshot_lasts_until_a_change_event() {
     core.set_snapshot_cache(true);
     let src = fixtures::insert_source(&core, "/lib");
     let first = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
-    let ids = || match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
-        other => panic!("{other:?}"),
+    let ids = || {
+        common::cards(&core, Tab::All, false)
+            .iter()
+            .map(|s| s.id)
+            .collect::<Vec<_>>()
     };
     assert_eq!(ids(), vec![first]);
 
@@ -612,18 +524,11 @@ fn an_untracked_show_watched_through_is_caught_up_and_counts_episodes() {
         "episode",
         now,
     );
-    let card = || match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series.into_iter().find(|s| s.id == show).unwrap(),
-        other => panic!("{other:?}"),
+    let card = || {
+        common::cards(&core, Tab::All, false)
+            .into_iter()
+            .find(|s| s.id == show)
+            .unwrap()
     };
     let (last, rest) = keys.split_last().unwrap();
     for k in rest {
@@ -648,16 +553,10 @@ fn an_anilist_description_reaches_the_series_page_as_plain_text() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let show = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Show", "Show");
-    fixtures::insert_media(
-        &core,
-        900001,
-        Some("Show"),
-        None,
-        Some(2),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::media(900001, "Show")
+        .episodes(2)
+        .score(80)
+        .insert(&core);
     fixtures::match_series(&core, show, Some(900001), None);
     core.store()
         .write(|c| {

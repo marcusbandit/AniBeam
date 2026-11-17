@@ -1,0 +1,548 @@
+//! The airing refresh: the cheapest fetch the core makes, and the only
+//! one that runs on its own schedule.
+//!
+//! A releasing series' next broadcast moves. A full refresh would answer
+//! that with four provider calls and a rewrite of the whole record; this
+//! job asks AniList for the schedule alone, and Jikan for the titles when
+//! there is a MAL id to ask about. That makes it cheap enough to run over
+//! the library at launch, and it is why nothing it writes may replace a
+//! title: the schedule carries none at all, so a title already in the
+//! table is the best one there will ever be. `write_episodes`'
+//! `keep_titles` is that rule.
+//!
+//! Jikan is asked through `Metadata::jikan_episodes`, which warns at most
+//! once every `metadata::OUTAGE_WINDOW` and skips Jikan for the rest of it.
+//! The window lives beside the module rather than here because the full
+//! fetch shares it: a launch sweep through an outage must write one line,
+//! not one line per series, and must not wait on Jikan once per series
+//! either. A refresh without Jikan's half deletes no future row, since the
+//! one the schedule leaves out may be an episode only Jikan knew of.
+//!
+//! Jikan is a request per hundred episodes, so this job asks only from the
+//! page that holds the first episode it can still learn about
+//! (`jikan_from`, #1105); a long show costs a page or two, not all of them.
+//!
+//! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
+//! `AIRING_REFRESH_TTL_MS`, carried over.
+//!
+//! A TVmaze match takes the same window and the same rules, but there is
+//! no cheaper TVmaze request than the whole show: its refresh is the full
+//! fetch, one call with the episodes embedded, and `fetched_at` is its
+//! clock.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
+
+use crate::Metadata;
+use crate::apply::{card_for, provider_stopped};
+use crate::fetch::{self, message_of};
+use crate::record;
+use anibeam_contract::*;
+use anibeam_foundation::events::Signal;
+use anibeam_foundation::jobs::{Finished, JobCtx};
+use anibeam_foundation::services::Services;
+use anibeam_foundation::time;
+use anibeam_net::jikan::JikanEpisodes;
+use anibeam_net::tvmaze;
+
+/// How long a series' schedule is taken to be current. Electron's
+/// `AIRING_REFRESH_TTL_MS`: a broadcast slot does not move by the hour,
+/// and a library of releasing series would otherwise cost a request each
+/// every time a page is opened.
+pub const TTL: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// One series worth asking about. `folder_name` is what the log lines
+/// name it by.
+#[derive(Clone, Debug)]
+pub struct Candidate {
+    pub series: u64,
+    pub behind: Behind,
+    pub folder_name: String,
+}
+
+/// The record a candidate's schedule lives in. `mal_id` decides whether
+/// Jikan is asked at all.
+#[derive(Clone, Debug)]
+pub enum Behind {
+    Anilist {
+        anilist_id: u64,
+        mal_id: Option<u64>,
+    },
+    Tvmaze {
+        show_id: u64,
+    },
+}
+
+/// The join a candidate is decided from. The `anilist_media` and the
+/// `tvmaze_shows` joins are what make an unmatched series and a MAL-only
+/// match disappear from it: a NULL id matches no row. The TVmaze half
+/// reads the show's last fetch as its refresh stamp.
+const ELIGIBILITY_SQL: &str = "SELECT * FROM (
+    SELECT s.id AS id, s.anilist_id, s.mal_id, NULL AS show_id, s.folder_name, m.status, m.airing_refreshed_at,
+           EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) AS has_files
+    FROM series s JOIN anilist_media m ON m.id = s.anilist_id
+    UNION ALL
+    SELECT s.id, NULL, NULL, t.id, s.folder_name, t.status, t.fetched_at,
+           EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id)
+    FROM series s JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
+)";
+
+/// One row of that query, before the tests below have been applied.
+struct Row {
+    candidate: Candidate,
+    status: Option<String>,
+    refreshed_at: Option<i64>,
+    has_files: bool,
+}
+
+fn read_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
+    let status: Option<String> = r.get(5)?;
+    let (behind, status) = match r.get::<_, Option<i64>>(3)? {
+        // TVmaze's status in AniList's words, which is what `eligible`
+        // and every other reader speak.
+        Some(show_id) => (
+            Behind::Tvmaze {
+                show_id: show_id as u64,
+            },
+            status
+                .as_deref()
+                .and_then(tvmaze::airing_status)
+                .map(|s| s.anilist_word().to_string()),
+        ),
+        None => (
+            Behind::Anilist {
+                anilist_id: r.get::<_, i64>(1)? as u64,
+                mal_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
+            },
+            status,
+        ),
+    };
+    Ok(Row {
+        candidate: Candidate {
+            series: r.get::<_, i64>(0)? as u64,
+            behind,
+            folder_name: r.get(4)?,
+        },
+        status,
+        refreshed_at: r.get(6)?,
+        has_files: r.get::<_, i64>(7)? == 1,
+    })
+}
+
+/// Only a series that is actually still airing has a next episode, and
+/// only one with files on disk is worth a request. `force` waives the six
+/// hour window and nothing else: a finished series stays finished however
+/// hard it is asked for.
+fn eligible(row: &Row, now: i64, force: bool) -> bool {
+    if !row.has_files {
+        return false;
+    }
+    if row.status.as_deref().and_then(AiringStatus::from_provider) != Some(AiringStatus::Releasing)
+    {
+        return false;
+    }
+    force
+        || row
+            .refreshed_at
+            .is_none_or(|at| now.saturating_sub(at) >= ttl_secs())
+}
+
+fn ttl_secs() -> i64 {
+    i64::try_from(TTL.as_secs()).unwrap_or(i64::MAX)
+}
+
+/// Whether this one series is worth a fetch right now.
+pub fn candidate(
+    conn: &Connection,
+    series: u64,
+    now: i64,
+    force: bool,
+) -> Result<Option<Candidate>, CoreError> {
+    let sql = format!("{ELIGIBILITY_SQL} WHERE id = ?1");
+    let row = conn
+        .query_row(&sql, params![series as i64], read_row)
+        .optional()?;
+    Ok(row
+        .filter(|row| eligible(row, now, force))
+        .map(|row| row.candidate))
+}
+
+/// Every series worth a fetch right now, in id order, which is what the
+/// launch sweep walks.
+pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreError> {
+    let sql = format!("{ELIGIBILITY_SQL} ORDER BY id");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([], read_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .filter(|row| eligible(row, now, false))
+        .map(|row| row.candidate)
+        .collect())
+}
+
+/// One series' fetch and write. The schedule is the point of it; Jikan
+/// rides along for the titles of episodes the table has none for, and its
+/// failure costs those titles rather than the whole refresh.
+///
+/// Returns whether any row actually changed. `write_episodes` cannot say,
+/// so the rows are read either side of it inside the one transaction and
+/// compared: the same numbers with the same titles and the same dates is
+/// a refresh nobody needs to hear about.
+pub async fn refresh_one(
+    metadata: &Metadata,
+    cand: &Candidate,
+    now: i64,
+) -> Result<bool, CoreError> {
+    match cand.behind {
+        Behind::Anilist { anilist_id, mal_id } => {
+            refresh_anilist(metadata, anilist_id, mal_id, now).await
+        }
+        Behind::Tvmaze { show_id } => refresh_tvmaze(metadata, show_id, now).await,
+    }
+}
+
+async fn refresh_anilist(
+    metadata: &Metadata,
+    anilist_id: u64,
+    mal_id: Option<u64>,
+    now: i64,
+) -> Result<bool, CoreError> {
+    let schedule = metadata.net.anilist.schedule(anilist_id).await?;
+    let from = match mal_id {
+        Some(_) => metadata
+            .services
+            .store
+            .read(move |c| jikan_from(c, anilist_id, now))?,
+        None => 1,
+    };
+    let jikan = match mal_id {
+        Some(mal_id) => metadata.jikan_episodes_from(mal_id, from).await,
+        None => JikanEpisodes::whole(Vec::new()),
+    };
+    let whole = jikan.whole;
+    // Only a refresh that asked Jikan has a say in what is still owed. One
+    // that read from a later page may write a series owed, but never cross
+    // one off: the holes an outage left may sit before its first page, and
+    // the owed walk's whole read is what fills them.
+    let owed = mal_id.and_then(|_| {
+        let owes = crate::team::owes_titles(&jikan);
+        (owes || from == 1).then_some(owes)
+    });
+    let jikan = jikan.episodes;
+    // No streaming titles: this job never fetches the enrichment they come
+    // from, and an empty list is not an instruction to clear anything.
+    let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
+    let status = schedule.status.clone();
+    metadata
+        .services
+        .store
+        .tx_async(move |tx| {
+            let before = stored(tx, anilist_id)?;
+            if whole {
+                record::write_episodes(tx, anilist_id, &rows, true, now)?;
+            } else {
+                record::upsert_episodes(tx, anilist_id, &rows, true)?;
+            }
+            if let Some(owed) = owed {
+                crate::owed::mark(tx, anilist_id, owed)?;
+            }
+            let status_changed = write_status(tx, anilist_id, status.as_deref())?;
+            stamp(tx, anilist_id, now)?;
+            Ok(status_changed || before != stored(tx, anilist_id)?)
+        })
+        .await
+}
+
+/// How far back an untitled episode is still worth asking Jikan about.
+/// Jikan often lists a new episode before it has a title and adds the
+/// title days later, sometimes after the next episode's.
+const LATE_TITLE: i64 = 30 * 86_400;
+
+/// The first episode Jikan can still tell this refresh anything about
+/// (#1105). `keep_titles` means a stored title never changes here, so
+/// nothing up to the highest titled row is worth asking for again, with
+/// two exceptions the read must reach: a row still in the future, since
+/// Jikan's silence about one is what drops it, and an untitled row that
+/// aired inside `LATE_TITLE`, whose title may still come. An older
+/// untitled row below the highest titled one is left to the full fetch
+/// and the owed walk, which read every page. With no rows at all the
+/// read starts at episode one.
+fn jikan_from(conn: &Connection, anilist_id: u64, now: i64) -> Result<u32, CoreError> {
+    let (titled, future, late): (Option<i64>, Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT max(CASE WHEN title IS NOT NULL THEN number END),
+                min(CASE WHEN aired_at > ?2 THEN number END),
+                min(CASE WHEN title IS NULL AND aired_at > ?3 THEN number END)
+         FROM anilist_episodes WHERE anilist_id = ?1",
+        params![anilist_id as i64, now, now.saturating_sub(LATE_TITLE)],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let after_titled = titled.map_or(1, |n| n.saturating_add(1));
+    let from = [future, late]
+        .into_iter()
+        .flatten()
+        .fold(after_titled, i64::min);
+    Ok(u32::try_from(from.max(1)).unwrap_or(1))
+}
+
+/// A TVmaze show's turn: the whole show fetched again and written whole,
+/// compared either side the way the AniList half compares its rows. A
+/// new poster comes in with it.
+async fn refresh_tvmaze(metadata: &Metadata, show_id: u64, now: i64) -> Result<bool, CoreError> {
+    let show = fetch::fetch_show(metadata, show_id).await?;
+    let urls = fetch::show_image_urls(&show);
+    let changed = metadata
+        .services
+        .store
+        .tx_async(move |tx| {
+            let before = stored_show(tx, show_id)?;
+            fetch::write_show(tx, &show, now)?;
+            Ok(before != stored_show(tx, show_id)?)
+        })
+        .await?;
+    metadata.net.images.ensure(&urls).await;
+    Ok(changed)
+}
+
+/// A show's status and its episodes, the part of it a card draws from.
+type StoredShow = (Option<String>, Vec<(i64, i64, Option<String>, Option<i64>)>);
+
+fn stored_show(tx: &Transaction, show_id: u64) -> Result<StoredShow, CoreError> {
+    let status: Option<String> = tx
+        .query_row(
+            "SELECT status FROM tvmaze_shows WHERE id = ?1",
+            params![show_id as i64],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let mut stmt = tx.prepare(
+        "SELECT season, number, name, airstamp FROM tvmaze_episodes WHERE show_id = ?1 ORDER BY season, number",
+    )?;
+    let rows = stmt.query_map(params![show_id as i64], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+    })?;
+    Ok((status, rows.collect::<Result<Vec<_>, _>>()?))
+}
+
+/// One stored row as the comparison sees it: the number, the title and
+/// the date, which is every column this job can write.
+type StoredRow = (i64, Option<String>, Option<i64>);
+
+/// The rows behind one media id, in episode order.
+fn stored(tx: &Transaction, anilist_id: u64) -> Result<Vec<StoredRow>, CoreError> {
+    let mut stmt = tx.prepare("SELECT number, title, aired_at FROM anilist_episodes WHERE anilist_id = ?1 ORDER BY number")?;
+    let rows = stmt.query_map(params![anilist_id as i64], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// The series had its turn, whether or not anything came back. Without
+/// this a series AniList holds no schedule for would be asked about again
+/// every time the sweep runs.
+fn stamp(tx: &Transaction, anilist_id: u64, now: i64) -> Result<(), CoreError> {
+    tx.execute(
+        "UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1",
+        params![anilist_id as i64, now],
+    )?;
+    Ok(())
+}
+
+/// The one field this cheap fetch may write besides episodes: the media's
+/// own status, which is how a series that stopped airing ever leaves the
+/// airing rail: the full fetch that would normally carry it ran once,
+/// when the series was matched, and never runs again on its own. Only a
+/// status AniList actually sent and the row's state disagrees with is
+/// written, and nothing here may clear one.
+fn write_status(
+    tx: &Transaction,
+    anilist_id: u64,
+    status: Option<&str>,
+) -> Result<bool, CoreError> {
+    let Some(s) = status.filter(|s| AiringStatus::from_provider(s).is_some()) else {
+        return Ok(false);
+    };
+    let current: Option<String> = tx
+        .query_row(
+            "SELECT status FROM anilist_media WHERE id = ?1",
+            params![anilist_id as i64],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if current.as_deref().and_then(AiringStatus::from_provider) == AiringStatus::from_provider(s) {
+        return Ok(false);
+    }
+    tx.execute(
+        "UPDATE anilist_media SET status = ?2 WHERE id = ?1",
+        params![anilist_id as i64, s],
+    )?;
+    Ok(true)
+}
+
+async fn stamp_async(services: &Services, behind: Behind, now: i64) -> Result<(), CoreError> {
+    services
+        .store
+        .tx_async(move |tx| match behind {
+            Behind::Anilist { anilist_id, .. } => stamp(tx, anilist_id, now),
+            // The show's fetch is its clock, so a failed turn moves it on
+            // the same way a failed AniList turn moves its stamp.
+            Behind::Tvmaze { show_id } => {
+                tx.execute(
+                    "UPDATE tvmaze_shows SET fetched_at = ?2 WHERE id = ?1",
+                    params![show_id as i64, now],
+                )?;
+                Ok(())
+            }
+        })
+        .await
+}
+
+/// What one series' turn produced. A failure that is the provider's rather
+/// than the core's still counts as the turn having happened.
+async fn refresh_reported(
+    metadata: &Metadata,
+    ctx: &JobCtx,
+    cand: &Candidate,
+    now: i64,
+) -> Result<bool, CoreError> {
+    match refresh_one(metadata, cand, now).await {
+        Ok(updated) => Ok(updated),
+        // A rate limit the limiter could not ride out, or nothing
+        // answering at all, is the provider saying stop rather than this
+        // series failing. The job ends and the series keeps its old stamp, so the
+        // next run asks again.
+        Err(e) if provider_stopped(&e) => Err(e),
+        Err(e) => {
+            ctx.emit(
+                Level::Warn,
+                format!(
+                    "airing refresh failed for {}: {}",
+                    cand.folder_name,
+                    message_of(&e)
+                ),
+                EventBody::Notice,
+            );
+            stamp_async(&metadata.services, cand.behind.clone(), now).await?;
+            Ok(false)
+        }
+    }
+}
+
+/// Starts the RefreshAiring job for one series. A series that is not a
+/// candidate ends the job at once rather than refusing the call: the shell
+/// asks for this on its way into a page, and "nothing to do" is an answer
+/// rather than an error.
+pub fn start_refresh(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreError> {
+    let known: Option<i64> = metadata.services.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT 1 FROM series WHERE id = ?1",
+            params![series as i64],
+            |r| r.get(0),
+        )
+        .optional()?)
+    })?;
+    if known.is_none() {
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
+    }
+    let owner = metadata.clone();
+    Ok(owner
+        .services
+        .jobs
+        .clone()
+        .start(JobKind::RefreshAiring, move |ctx| async move {
+            let now = time::now_secs();
+            let cand = owner
+                .services
+                .store
+                .write_async(move |c| candidate(c, series, now, false))
+                .await?;
+            let Some(cand) = cand else {
+                return Ok(Finished {
+                    plain: None,
+                    level: Level::Debug,
+                    message: format!("Airing: series {series} needs no refresh"),
+                    body: EventBody::AiringRefreshed {
+                        series,
+                        updated: false,
+                    },
+                });
+            };
+            let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
+            if updated && let Some(card) = card_for(&owner.services, series).await? {
+                ctx.changed(card);
+            }
+            // A new date for a followed show's next episode is a new timer (#215)
+            if updated {
+                owner.services.bus.signal(Signal::SchedulesMoved);
+            }
+            Ok(Finished {
+                plain: None,
+                level: Level::Debug,
+                message: if updated {
+                    format!("Airing refreshed for {}", cand.folder_name)
+                } else {
+                    format!("Airing unchanged for {}", cand.folder_name)
+                },
+                body: EventBody::AiringRefreshed { series, updated },
+            })
+        }))
+}
+
+/// Starts the launch sweep: every releasing series whose schedule is older
+/// than the window, one at a time, paced by the limiter. Electron's
+/// `refreshAiringForLibrary`.
+///
+/// The list is read once, up front, so the loop is finite whatever the
+/// fetches write back.
+pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
+    let owner = metadata.clone();
+    metadata
+        .services
+        .jobs
+        .clone()
+        .start(JobKind::RefreshAiring, move |ctx| async move {
+            let now = time::now_secs();
+            let work = owner
+                .services
+                .store
+                .write_async(move |c| candidates(c, now))
+                .await?;
+            let total = work.len() as u64;
+            let mut updated = 0u64;
+            for (done, cand) in work.into_iter().enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(done as u64, Some(total), &cand.folder_name);
+                // Each series is stamped with the time its own turn came, not
+                // the time the sweep started: a long walk would otherwise
+                // stamp the last series hours before it was actually fetched.
+                if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
+                    updated += 1;
+                    if let Some(card) = card_for(&owner.services, cand.series).await? {
+                        ctx.changed(card);
+                    }
+                }
+            }
+            if updated > 0 {
+                owner.services.bus.signal(Signal::SchedulesMoved);
+            }
+            Ok(Finished {
+                plain: None,
+                // The launch runs this whether anything was due or not, so
+                // a sweep that changed nothing is trace rather than log.
+                level: if updated == 0 {
+                    Level::Debug
+                } else {
+                    Level::Info
+                },
+                message: format!("Airing refreshed for {updated} series"),
+                body: EventBody::Notice,
+            })
+        })
+}

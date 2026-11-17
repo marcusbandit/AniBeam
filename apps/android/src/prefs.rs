@@ -26,6 +26,15 @@ pub struct Prefs {
     /// Unfolded, the Calendar shows its days as a list beside the picked one rather than
     /// the week as a board.
     pub cal_days: bool,
+    /// Android's notification dialog went out once; every later tap opens the settings.
+    pub notify_asked: bool,
+    /// The notification was explained, in onboarding or on a first download, so the
+    /// download's question does not come up again.
+    pub notify_offered: bool,
+    /// Get sends downloads to the connected computer rather than this phone (#733).
+    pub download_to_desk: bool,
+    /// The computer's name as it last answered, so Download to names it while it is off.
+    pub desk_name: String,
 }
 
 impl Default for Prefs {
@@ -38,6 +47,10 @@ impl Default for Prefs {
             notes: Seen::default(),
             stream_quality: Default::default(),
             cal_days: false,
+            notify_asked: false,
+            notify_offered: false,
+            download_to_desk: false,
+            desk_name: String::new(),
         }
     }
 }
@@ -113,6 +126,8 @@ mod tests {
         assert_eq!(p.limit_gb, 18.0);
         // A file from before What's new has read no notes.
         assert_eq!(p.notes, Seen::default());
+        // Nor was it asked about notifications.
+        assert!(!p.notify_asked && !p.notify_offered);
     }
 
     #[test]
@@ -131,6 +146,10 @@ mod tests {
             notes,
             stream_quality: crate::stream::Quality::P720,
             cal_days: true,
+            notify_asked: true,
+            notify_offered: true,
+            download_to_desk: true,
+            desk_name: "computer".into(),
         };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);

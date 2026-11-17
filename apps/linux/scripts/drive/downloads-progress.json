@@ -26,7 +26,7 @@
   "shot": "progress-01-show"
  },
  {
-  "click": "provider-erai"
+  "click": "provider-keyed"
  },
  {
   "wait": 12000

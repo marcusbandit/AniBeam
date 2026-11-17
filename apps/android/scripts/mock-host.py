@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-mock-host.py: a dev-only fake of the AniBeam desktop's read-only JSON API.
+mock-host.py: a dev-only fake of the Anibeam desktop's read-only JSON API.
 
 It serves the routes described in host-api/src/lib.rs (hello, snapshot and
-posters) from host-api/fixtures/snapshot.json, so the Android app can be built
+posters) from host-api/fixtures/snapshot.json, and takes download calls (logged,
+never acted on), so the Android app can be built
 and run against something without the desktop app being up. It never reads or
 writes a real library. Standard library only.
 
 Usage:
-    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name banditbox]
+    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name desktop] [--profile NAME [--guest]]
 
 --demo       adds six currently airing AniList shows (ids 100 to 105), their
              subscriptions and torrents. Needs the network once; the AniList
              reply is cached in apps/android/build/mock/demo.json.
+--profile    names whose progress the hello says it answers with; --guest makes
+             them someone other than the computer's owner.
 --aired      makes Frieren (id 12) episode 8 air two hours ago, as if the
              snapshot was taken just before it aired.
 
@@ -47,6 +50,7 @@ API_VERSION = 1
 APP = "anibeam"
 MOCK_VERSION = "2.1.0-mock"
 HELLO_PATH = "/api/v1/hello"
+CALL_PATH = "/api/v1/call"
 SNAPSHOT_PATH = "/api/v1/snapshot"
 POSTER_RE = re.compile(r"^/api/v1/posters/(\d+)$")
 
@@ -69,7 +73,7 @@ CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Filled in by main() from the command line and the demo fetch.
-OPTS = {"host_name": "banditbox", "aired": False}
+OPTS = {"host_name": "desktop", "aired": False, "profile": "", "guest": False}
 DEMO = {"media": None, "covers": {}}
 POSTER_LOCK = threading.Lock()
 
@@ -249,7 +253,7 @@ def demo_parts(media, now):
             subs.append({
                 "name": romaji,
                 "title": romaji,
-                "feed_url": "https://nyaa.si/?page=rss&q=" + urllib.parse.quote(query) + "&c=1_2&f=0",
+                "feed_url": "https://tracker.example/?page=rss&q=" + urllib.parse.quote(query) + "&c=1_2&f=0",
                 "query": query,
                 "enabled": True,
                 "torrent_count": on_disk,
@@ -262,22 +266,22 @@ def demo_parts(media, now):
 
         if i == 0:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
                 "downloading", 0.42, 1_400_000_000, 3_400_000, 240, now - 300, None, sid))
         elif i == 1:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
                 "stalledDL", 0.07, 1_400_000_000, 0, None, now - 2 * HOUR, None, sid))
         elif i == 2:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {on_disk:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {on_disk:02d} (1080p) [DEADBEEF].mkv",
                 "pausedUP", 1.0, 1_300_000_000, 0, None, now - DAY - 600, now - DAY, sid))
 
     name = "Kusuriya no Hitorigoto Batch"
     subs.append({
         "name": name,
         "title": name,
-        "feed_url": "https://nyaa.si/?page=rss&q=" + urllib.parse.quote(name) + "&c=1_2&f=0",
+        "feed_url": "https://tracker.example/?page=rss&q=" + urllib.parse.quote(name) + "&c=1_2&f=0",
         "query": name,
         "enabled": True,
         "torrent_count": 0,
@@ -411,19 +415,41 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlsplit(self.path).path
         if path == HELLO_PATH:
-            return self._json(200, {
+            hello = {
                 "app": APP,
                 "api": API_VERSION,
                 "version": MOCK_VERSION,
                 "host": OPTS["host_name"],
                 "now": now_s(),
-            })
+                "features": ["downloads"],
+            }
+            if OPTS["profile"]:
+                hello["profile"] = {"name": OPTS["profile"], "owner": not OPTS["guest"]}
+            return self._json(200, hello)
         if path == SNAPSHOT_PATH:
             return self._json(200, build_snapshot(now_s()))
         match = POSTER_RE.match(path)
         if match:
             return self._poster(int(match.group(1)))
         return self._json(404, {"error": f"no route for {path}"})
+
+    def do_POST(self):
+        # Download calls (#733): logged and answered as done, never handed to anything.
+        path = urllib.parse.urlsplit(self.path).path
+        if path != CALL_PATH:
+            return self._json(404, {"error": f"no route for {path}"})
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            call = json.loads(self.rfile.read(length) or b"null")
+        except ValueError as exc:
+            return self._json(400, {"error": f"not a call: {exc}"})
+        name = call if isinstance(call, str) else next(iter(call or {}), "?")
+        if name not in ("DownloadReleasesWith", "Subscribe"):
+            return self._json(403, {"error": "only download calls are taken by the mock"})
+        body = call[name]
+        items = [i.get("title", "?") for i in body.get("items", [])]
+        sys.stderr.write(f"mock: {name} name={body.get('name')!r} series={body.get('series', (body.get('options') or {}).get('series'))} items={items}\n")
+        return self._json(200, "Ok")
 
     def send_error(self, code, message=None, explain=None):
         # Anything this server does not serve, including methods it does not
@@ -464,15 +490,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Dev-only fake of the AniBeam host API.")
+    ap = argparse.ArgumentParser(description="Dev-only fake of the Anibeam host API.")
     ap.add_argument("--port", type=int, default=8790)
     ap.add_argument("--bind", default="127.0.0.1")
     ap.add_argument("--demo", action="store_true", help="add six live AniList shows, subscriptions and torrents")
     ap.add_argument("--aired", action="store_true", help="make Frieren episode 8 air two hours ago")
-    ap.add_argument("--host-name", default="banditbox", help="the machine name the host reports")
+    ap.add_argument("--host-name", default="desktop", help="the machine name the host reports")
+    ap.add_argument("--profile", default="", help="whose progress the hello says it answers with")
+    ap.add_argument("--guest", action="store_true", help="that person is a guest, not the computer's owner")
     args = ap.parse_args(argv)
 
     OPTS["host_name"] = args.host_name
+    OPTS["profile"] = args.profile
+    OPTS["guest"] = args.guest
     OPTS["aired"] = args.aired
     if args.demo:
         media = load_demo_media()

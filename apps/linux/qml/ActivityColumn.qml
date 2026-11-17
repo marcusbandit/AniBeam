@@ -4,7 +4,7 @@
 // cubes, time left), then the Downloads lines of the log, newest first. The torrents come
 // from the page's own poll; the log is backfilled once and then follows Door.event.
 import QtQuick
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: root
@@ -23,6 +23,20 @@ Item {
     signal cancelAll(Item anchor, var torrents)
     // What a torrent's buttons wait on ("Stop", "Start", "Cancel", or ""), from the page
     property var busyOf: function(hash) { return "" }
+    // The line under the pointer, for the page's right-click menu (#1004)
+    property var hoverTorrent: null
+    property Item hoverTorrentItem: null
+    function hoverLine(item, t, on) {
+        if (on) { hoverTorrentItem = item; hoverTorrent = t }
+        else if (hoverTorrentItem === item) { hoverTorrentItem = null; hoverTorrent = null }
+    }
+    // The folder a line's torrent saves into: its own, or for a show's group its first one's
+    function saveFolderOf(t) {
+        if (!t) return ""
+        var m = t.grouped ? t.members[0] : t
+        if (m.save_path) return m.save_path
+        return m.content_path ? String(m.content_path).replace(/[\\/][^\\/]*$/, "") : ""
+    }
 
     // Moving or waiting to: not finished, not stopped; broken ones stay so they get seen
     function moving(t) {
@@ -96,7 +110,11 @@ Item {
 
     // ---- Today's Downloads lines from the log
     property var lines: []
-    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), "hh:mm"), level: e.level, msg: e.message } }
+    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null } }
+    // A line in a person's words, rendered when it is drawn so a language switch reaches
+    // lines already shown (#792): the message ID and its arguments, else the plain line as
+    // the core said it, else the developer's line for one the core never worded
+    function lineText(l) { return l.plainWords ? words.t(l.plainWords.id, l.plainWords.args) : l.plain || l.msg }
     function keep(e) {
         if (e.stage !== "Downloads" || e.level === "Debug") return false
         var since = new Date(); since.setHours(0, 0, 0, 0)
@@ -133,17 +151,18 @@ Item {
             var ns = t.files.filter(function(f) { return f.priority !== 0 }).map(function(f) { return f.episode })
                 .filter(function(n, i, all) { return all.indexOf(n) === i }).sort(function(a, b) { return a - b })
             var run = ns.length > 1 && ns.every(function(n, i) { return i === 0 || n === ns[i - 1] + 1 })
-            return run ? "Episodes " + ns[0] + " to " + ns[ns.length - 1] : ns.length ? "Episodes " + ns.join(", ") : t.members.length + " downloads"
+            return run ? words.t("activity-column-episode-run", { first: ns[0], last: ns[ns.length - 1] }) : ns.length ? words.t("activity-column-episode-list", { list: ns.join(", ") })
+                : words.t("activity-column-downloads", { count: t.members.length })
         }
-        if (t.batch) return "Batch download"
-        if (t.episode !== null && t.episode !== undefined) return "Episode " + t.episode
-        return showOf(t) ? "Download" : ""
+        if (t.batch) return words.t("activity-column-batch")
+        if (t.episode !== null && t.episode !== undefined) return words.t("episode-number", { number: t.episode })
+        return showOf(t) ? words.t("activity-column-download") : ""
     }
     function nameOf(t) {
         var s = showOf(t)
         if (!s) return t.name
-        if (t.batch) return s.title + ", a batch"
-        if (t.episode !== null && t.episode !== undefined) return s.title + ", episode " + t.episode
+        if (t.batch) return words.t("activity-column-name-batch", { title: s.title })
+        if (t.episode !== null && t.episode !== undefined) return words.t("activity-column-name-episode", { title: s.title, number: t.episode })
         return s.title
     }
 
@@ -155,28 +174,28 @@ Item {
             width: parent.width
             spacing: theme.space(5)
             Item { width: 1; height: theme.space(5) }
-            Label { text: "Activity"; role: "display"; font.pointSize: theme.typeHeading * 1.2; font.variableAxes: ({ "wdth": 68, "wght": 380 }) }
+            Label { msg: "activity-column-title"; role: "display"; font.pointSize: theme.typeHeading * 1.2; font.variableAxes: ({ "wdth": 68, "wght": 380 }) }
             Row {
                 spacing: theme.space(4)
                 visible: root.connected
                 Column {
-                    Label { text: Fmt.bytes(root.transfer ? root.transfer.dl_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge }
-                    Label { text: "down"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                    Label { text: words.bytes(root.transfer ? root.transfer.dl_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge }
+                    Label { msg: "activity-column-down"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                 }
                 Column {
-                    Label { text: Fmt.bytes(root.transfer ? root.transfer.up_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim }
-                    Label { text: "up"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                    Label { text: words.bytes(root.transfer ? root.transfer.up_speed || 0 : 0) + "/s"; role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim }
+                    Label { msg: "activity-column-up"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                 }
             }
-            Label { visible: !root.connected; width: parent.width; text: root.clientName + " is not connected, so nothing moves here."; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap }
-            Button { objectName: "activity-reconnect"; visible: !root.connected; text: "Connect again"; icon: "refresh-cw"; small: true; onClicked: root.reconnect() }
+            Label { visible: !root.connected; width: parent.width; text: words.t("activity-column-not-connected", { client: root.clientName }); role: "ui"; color: theme.textDim; wrapMode: Text.Wrap }
+            Button { objectName: "activity-reconnect"; visible: !root.connected; msg: "activity-column-connect-again"; icon: "refresh-cw"; small: true; onClicked: root.reconnect() }
 
             // ---- Downloading now
             Column {
                 visible: root.active.length > 0
                 width: parent.width
                 spacing: theme.space(1)
-                Label { text: "Downloading now"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
+                Label { msg: "activity-column-downloading"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
                 // Twelve, then the rest on a click
                 property bool all: false
                 Repeater {
@@ -184,13 +203,13 @@ Item {
                     TorrentLine { required property var modelData; t: modelData }
                 }
                 Button { visible: root.entries.length > 12; small: true; flat: true
-                    text: parent.all ? "Fewer" : "And " + (root.entries.length - 12) + " more"
+                    text: parent.all ? words.t("activity-column-fewer") : words.t("activity-column-more", { count: root.entries.length - 12 })
                     onClicked: parent.all = !parent.all }
             }
             Label {
                 visible: root.connected && root.active.length === 0
                 width: parent.width
-                text: "Nothing is downloading."
+                msg: "activity-column-nothing-downloading"
                 role: "ui"; color: theme.textDim; wrapMode: Text.Wrap
             }
 
@@ -199,14 +218,14 @@ Item {
                 visible: root.finishedEntries.length > 0
                 width: parent.width
                 spacing: theme.space(1)
-                Label { text: "Finished today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
+                Label { msg: "activity-column-finished-today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
                 property bool all: false
                 Repeater {
                     model: parent.all ? root.finishedEntries : root.finishedEntries.slice(0, 8)
                     TorrentLine { required property var modelData; t: modelData }
                 }
                 Button { visible: root.finishedEntries.length > 8; small: true; flat: true
-                    text: parent.all ? "Fewer" : "And " + (root.finishedEntries.length - 8) + " more"
+                    text: parent.all ? words.t("activity-column-fewer") : words.t("activity-column-more", { count: root.finishedEntries.length - 8 })
                     onClicked: parent.all = !parent.all }
             }
 
@@ -214,8 +233,8 @@ Item {
             Column {
                 width: parent.width
                 spacing: 0
-                Label { text: "Today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(3) }
-                Label { visible: root.lines.length === 0; width: parent.width; text: "Searches, downloads and new subscriptions show up here as they happen."; role: "ui"; color: theme.textFaint; wrapMode: Text.Wrap }
+                Label { msg: "activity-column-today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(3) }
+                Label { visible: root.lines.length === 0; width: parent.width; msg: "activity-column-today-empty"; role: "ui"; color: theme.textFaint; wrapMode: Text.Wrap }
                 Repeater {
                     model: root.lines
                     Item {
@@ -230,7 +249,7 @@ Item {
                             x: theme.space(5)
                             width: parent.width - x
                             Label { text: modelData.time; role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textFaint }
-                            Label { width: parent.width; text: modelData.msg; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
+                            Label { width: parent.width; text: root.lineText(modelData); role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
                         }
                     }
                 }
@@ -241,6 +260,7 @@ Item {
     // One torrent: the show's poster, what it is, bytes as step cubes, time left
     component TorrentLine: Item {
         id: line
+        objectName: "activity-line"
         property var t: ({})
         readonly property var show: root.showOf(t)
         readonly property bool broken: t.state === "error" || t.state === "missingFiles"
@@ -252,7 +272,8 @@ Item {
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
         MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t.grouped ? line.t.members[0] : line.t); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
             Accessible.onPressAction: root.openShow(line.t.grouped ? line.t.members[0] : line.t) }
-        HoverHandler { id: lineHover }
+        HoverHandler { id: lineHover; onHoveredChanged: root.hoverLine(line, line.t, hovered) }
+        Component.onDestruction: root.hoverLine(line, null, false)
         // Stop or start, and cancel (the torrent goes, and what it wrote so far, asked
         // first); each spins until the client has done it. A show's group does all of its
         // torrents: Stop takes the ones still moving, Start the stopped ones.
@@ -282,7 +303,7 @@ Item {
                     var want = stopped ? "Start" : "Stop"
                     root.controlAll(line.members.filter(function(m) { return root.stopped(m) === stopped }).map(function(m) { return m.hash }), want)
                 }
-                Tooltip { text: toggle.busy ? (line.waiting === "Stop" ? "Stopping" : "Starting") : toggle.stopped ? "Start downloading" : "Stop downloading; what it has stays" }
+                Tooltip { text: toggle.busy ? (line.waiting === "Stop" ? words.t("activity-column-stopping") : words.t("activity-column-starting")) : toggle.stopped ? words.t("activity-column-start-tip") : words.t("activity-column-stop-tip") }
             }
             Button {
                 id: cancel
@@ -292,7 +313,7 @@ Item {
                 danger: true
                 busy: line.waiting === "Cancel"
                 onClicked: line.t.grouped ? root.cancelAll(cancel, line.members) : root.cancelTorrent(cancel, line.t)
-                Tooltip { text: cancel.busy ? "Cancelling" : line.t.grouped ? "Cancel these downloads" : "Cancel this download" }
+                Tooltip { text: cancel.busy ? words.t("activity-column-cancelling") : line.t.grouped ? words.t("activity-column-cancel-all-tip") : words.t("activity-column-cancel-tip") }
             }
         }
         Corner {
@@ -330,13 +351,13 @@ Item {
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
-                Label { id: sizeText; text: line.done ? Fmt.bytes(line.t.size || 0) : Fmt.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))) + " of " + Fmt.bytes(line.t.size || 0); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
+                Label { id: sizeText; text: line.done ? words.bytes(line.t.size || 0) : words.t("activity-column-size-of", { got: words.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))), total: words.bytes(line.t.size || 0) }); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
                 // Stopped needs no word: the play button says it
                 Label {
                     id: leftText
                     visible: text !== ""
-                    text: line.broken ? "Files missing" : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
-                        : line.t.eta > 0 && line.t.eta < 8640000 ? Fmt.countdown(line.t.eta) + " left" : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : "Waiting for peers"
+                    text: line.broken ? words.t("activity-column-files-missing") : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), words.t("activity-column-time-format"))
+                        : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: words.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? words.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
                     role: line.broken ? "ui" : "figure"
                     font.pointSize: theme.typeSmall * 0.95
                     color: line.broken ? theme.red : theme.textDim
@@ -345,7 +366,7 @@ Item {
             // A batch: each episode as its own cube, filling as its file comes in
             Label {
                 visible: !line.done && line.eps.length > 1
-                text: line.epsDone + " of " + line.eps.length + " episodes done"
+                text: words.t("activity-column-episodes-done", { done: line.epsDone, count: line.eps.length })
                 role: "ui"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim
             }
             // Six to a row, so a season reads as two short rows
@@ -355,10 +376,13 @@ Item {
                 height: implicitHeight
                 codes: line.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
                 fills: line.eps.map(function(e) { return e.p })
+                numbered: true
+                numbers: line.eps.map(function(e) { return e.n })
                 cubeSize: theme.space(5.25)
                 minSize: theme.space(2)
                 maxRows: 4
-                tipFor: function(i, code) { var e = line.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
+                tipFor: function(i, code) { var e = line.eps[i]; return e.skip ? words.t("activity-column-cube-skipped", { number: e.n }) : e.p >= 1 ? words.t("activity-column-cube-done", { number: e.n })
+                    : words.t("activity-column-cube-progress", { number: e.n, percent: Math.floor(e.p * 100) }) }
             }
             RollControls {
                 width: parent.width

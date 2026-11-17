@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: smoke.sh <AniBeam-dir> <anibeam-cli.exe> <out-dir>
+# usage: smoke.sh <Anibeam-dir> <anibeam-cli.exe> <out-dir>
 # Runs the bundled app the way a Windows user gets it and leaves PNGs in <out-dir>: a small
 # library of generated clips, matched against AniList, then the home, library, series and
 # settings pages, the player on a real file through libmpv, and the Downloads page starting
@@ -132,8 +132,8 @@ cat > "$out/downloads.json" <<'JSON'
   {"page": "downloads"},
   {"wait": 25000},
   {"shot": "downloads"},
-  {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.7.1"},
+  {"eval": "frame.item.pageItem.nativeEngine", "expect": true},
+  {"eval": "frame.item.pageItem.searchReady", "expect": true},
   {"eval": "frame.item.pageItem.torrentOn", "expect": true},
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]

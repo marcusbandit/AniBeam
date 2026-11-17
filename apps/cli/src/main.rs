@@ -11,7 +11,7 @@ use anibeam_core::{
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "anibeam-cli", version = anibeam_core::VERSION, about = "AniBeam's core from the terminal")]
+#[command(name = "anibeam-cli", version = anibeam_core::VERSION, about = "Anibeam's core from the terminal")]
 struct Cli {
     /// Put every directory under this root instead of the XDG paths.
     #[arg(long, global = true)]
@@ -109,9 +109,9 @@ impl EventListener for ChannelListener {
 /// `secrets.json` and never probes the machine's keyring: a sandbox is
 /// asked for precisely so it touches nothing outside itself, and a keyring
 /// prompt on the owner's screen is the opposite of that. Without a root the
-/// core makes the choice itself, keyring first. A root also runs against the
-/// owner's real anirss and qBittorrent, so it changes nothing there on its
-/// own, as the desktop's sandbox runs do: no pruning, no endpoint writes.
+/// core makes the choice itself, keyring first. A root gives anirss a home of
+/// its own inside it (#637); unattended changes stay off all the same, as the
+/// desktop's sandbox runs do: no pruning, no endpoint writes.
 fn open(root: Option<PathBuf>) -> Arc<Core> {
     let sandbox = root.is_some();
     let opened = match root {
@@ -394,6 +394,7 @@ mod tests {
             stage: Stage::Store,
             message: String::new(),
             plain: None,
+            plain_words: None,
             job: Some(JobRef {
                 id: job,
                 kind: JobKind::Export,

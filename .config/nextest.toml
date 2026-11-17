@@ -1,0 +1,7 @@
+# cargo-nextest, which CI and .github/local-ci.sh run the tests with (#1086). It runs every
+# test binary at once, where cargo test runs them one after another. It skips doctests, so
+# those run after it with cargo test --doc.
+[profile.ci]
+# Every test runs even after one fails, so one pass lists everything that is wrong.
+fail-fast = false
+failure-output = "immediate-final"

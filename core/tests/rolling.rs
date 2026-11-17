@@ -9,9 +9,9 @@
 //! the case waits until the earlier pass is done before queuing it.
 
 mod common;
+use common::started;
 mod fixtures;
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anibeam_core::events::Collector;
@@ -38,16 +38,8 @@ fn settings() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
-    }
-}
-
-/// Points the XDG homes at `dir`, so no case reads the machine's own anirss
-/// files.
-fn isolate_xdg(dir: &Path) {
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     }
 }
 
@@ -62,15 +54,8 @@ fn save_settings(core: &Core) {
     assert_eq!(reply, Reply::Ok);
 }
 
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
 fn release(title: &str, link: &str) -> Release {
-    serde_json::from_value(json!({"title": title, "link": link, "source": "nyaa"})).unwrap()
+    serde_json::from_value(json!({"title": title, "link": link, "source": "tracker"})).unwrap()
 }
 
 fn batch_release(hash: &str) -> Release {
@@ -227,7 +212,6 @@ struct Rig {
 fn batch_rig() -> Rig {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save_settings(&core);
 
     let hash = "ab".repeat(20);
@@ -298,8 +282,7 @@ fn a_batch_of_forty_episodes_rolls_twelve_ahead() {
 #[test]
 fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
     let http = FakeHttp::new();
-    let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
     save_settings(&core);
 
     // Handed over in reverse, so the order is the roll's own.
@@ -307,7 +290,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .rev()
         .map(|n| {
             release(
-                &format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"),
+                &format!("[Kumo-Subs] Black Clover - {n:03} [1080p].mkv"),
                 &format!("magnet:?xt=urn:btih:{n:040x}"),
             )
         })
@@ -349,7 +332,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .map(|i| i["title"].as_str().unwrap())
         .collect();
     let want: Vec<String> = (1..=12)
-        .map(|n| format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"))
+        .map(|n| format!("[Kumo-Subs] Black Clover - {n:03} [1080p].mkv"))
         .collect();
     assert_eq!(sent, want, "episodes 1 to 12, in episode order");
     core.shutdown();
@@ -456,7 +439,6 @@ fn roll_more_widens_the_window_and_set_roll_off_fetches_the_rest_and_ends_the_ro
 fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_are_watched() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    isolate_xdg(dir.path());
     save_settings(&core);
 
     // The batch on disk: episodes 1 to 4, in the library.
@@ -477,15 +459,7 @@ fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_ar
         "Black Clover",
     );
     for n in 1..=4 {
-        fixtures::insert_file(
-            &core,
-            series,
-            &on_disk(n).to_string_lossy(),
-            n as f64,
-            None,
-            "episode",
-            1,
-        );
+        fixtures::insert_episode_file(&core, series, &on_disk(n).to_string_lossy(), n as f64, 1);
     }
     let key = |n: usize| classifier::number_key(None, n as f64);
     // Episodes 1 to 3 finished after the roll begins; episode 4 was seen

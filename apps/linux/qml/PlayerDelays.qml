@@ -48,23 +48,23 @@ Item {
         Column {
             id: column
             anchors.centerIn: parent
-            Text { text: "Delay"; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.textSpace(6); verticalAlignment: Text.AlignVCenter }
+            Text { text: words.t("player-delays-title"); color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.textSpace(6); verticalAlignment: Text.AlignVCenter }
             Repeater {
-                model: [{ prop: "sub-delay", key: "sub", label: "Subtitles" },
-                        { prop: "audio-delay", key: "audio", label: "Audio" }]
+                model: [{ prop: "sub-delay", key: "sub", label: "player-delays-subtitles", earlier: "player-delays-subtitles-earlier", later: "player-delays-subtitles-later" },
+                        { prop: "audio-delay", key: "audio", label: "player-delays-audio", earlier: "player-delays-audio-earlier", later: "player-delays-audio-later" }]
                 Row {
                     id: delayRow
                     required property var modelData
                     readonly property real value: modelData.prop === "audio-delay" ? page.audioDelay : page.subDelay
                     spacing: theme.space(1)
-                    Label { anchors.verticalCenter: parent.verticalCenter; width: theme.textSpace(20); role: "ui"; text: delayRow.modelData.label }
-                    PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-down"; glyph: "minus"; tip: delayRow.modelData.label + " 0.1 s earlier"
+                    Label { anchors.verticalCenter: parent.verticalCenter; width: theme.textSpace(20); role: "ui"; text: words.t(delayRow.modelData.label) }
+                    PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-down"; glyph: "minus"; tip: words.t(delayRow.modelData.earlier)
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, -0.1) }
                     Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(16); horizontalAlignment: Text.AlignHCenter; role: "ledger"; text: page.delayText(delayRow.value) }
-                    PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-up"; glyph: "plus"; tip: delayRow.modelData.label + " 0.1 s later"
+                    PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-up"; glyph: "plus"; tip: words.t(delayRow.modelData.later)
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, 0.1) }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-reset"; glyph: "rotate-ccw"; interactive: delayRow.value !== 0
-                        tip: interactive ? "Reset to 0 until the next file" : "No delay"; onClicked: page.resetDelay(delayRow.modelData.prop) }
+                        tip: interactive ? words.t("player-delays-reset") : words.t("player-delays-none"); onClicked: page.resetDelay(delayRow.modelData.prop) }
                 }
             }
         }

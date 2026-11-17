@@ -10,22 +10,10 @@ use anibeam_core::*;
 const DAY: i64 = 86_400;
 
 fn card(core: &Core, series: u64) -> SeriesCard {
-    match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: true,
-        })
-        .unwrap()
-    {
-        Reply::Series { series: cards } => cards
-            .into_iter()
-            .find(|c| c.id == series)
-            .expect("the series is listed"),
-        other => panic!("{other:?}"),
-    }
+    common::cards(core, Tab::All, true)
+        .into_iter()
+        .find(|c| c.id == series)
+        .expect("the series is listed")
 }
 
 /// A releasing show with no published count: episodes 1 to `aired` out and
@@ -34,27 +22,18 @@ fn airing_show(core: &Core, anilist: u64, aired: i64, scheduled: i64) -> u64 {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let id = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Show", "Show");
-    fixtures::insert_media(
-        core,
-        anilist,
-        Some("Show"),
-        None,
-        None,
-        "RELEASING",
-        "TV",
-        None,
-    );
+    fixtures::media(anilist, "Show")
+        .status("RELEASING")
+        .insert(core);
     fixtures::match_series(core, id, Some(anilist), None);
     for n in 1..=scheduled {
         fixtures::insert_airing(core, anilist, n, now + (n - aired) * 7 * DAY - DAY);
         if n <= aired {
-            fixtures::insert_file(
+            fixtures::insert_episode_file(
                 core,
                 id,
                 &format!("/lib/Show/{n:02}.mkv"),
                 n as f64,
-                None,
-                "episode",
                 now,
             );
         }
@@ -103,16 +82,10 @@ fn a_record_with_its_own_count_wins() {
     let (_dir, core, _c) = common::open_core();
     let id = airing_show(&core, 3, 5, 12);
     set(&core, id, Some(13));
-    fixtures::insert_media(
-        &core,
-        3,
-        Some("Show"),
-        None,
-        Some(12),
-        "RELEASING",
-        "TV",
-        None,
-    );
+    fixtures::media(3, "Show")
+        .episodes(12)
+        .status("RELEASING")
+        .insert(&core);
     let c = card(&core, id);
     assert!(!c.episodes_set_applied);
     assert_eq!(c.total_episodes, Some(12));

@@ -1,4 +1,4 @@
-# AniBeam
+# Anibeam
 
 A local anime library: it scans folders, matches what it finds against AniList and Jikan, plays the files, and keeps trackers up to date. The native line splits the app into one core and one shell per platform; this glossary is the vocabulary both halves share.
 
@@ -34,6 +34,14 @@ _Avoid_: push, notification, signal, callback
 Long-running work started by a call that returns at once and reports through events until it finishes: a scan, a match sweep, a crawl.
 _Avoid_: task, sweep, operation
 
+**Catalog**:
+The Fluent files under `i18n/` that hold every word a person reads, one folder per language, English the source. Code asks for a message by its ID through `tr`; no shell writes a word of its own.
+_Avoid_: translations, strings file, locale files
+
+**Message ID**:
+The stable name of one message in the catalog, saying where it shows and what it says (`player-skip-intro`), never the English text.
+_Avoid_: key, string key, label
+
 ### Playback
 
 **Session**:
@@ -57,7 +65,7 @@ A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold 
 _Avoid_: paused, idle, stale, backlog
 
 **Local list**:
-The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker.
+The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker: once a tracker connects and its list is read, a sheet shows each show it would change, this computer's side beside the tracker's, and Move sends them; Not now leaves a pointer under Settings, Accounts. The rows stay after a move, and the tracker's entry wins from then on.
 _Avoid_: offline list, guest list
 
 **Rewatch**:
@@ -72,6 +80,10 @@ _Avoid_: watch dates, history dates
 Free text on a tracker's list entry: AniList's notes, MAL's comments, at most 2000 characters. Written from the series page to every connected tracker, read back with each list refresh. Not the schedule notes, which are about a season's dates.
 _Avoid_: comments, schedule notes
 
+**Schedule agent**:
+The coding agent on this computer that looks a show's episode dates up from the Episodes and dates sheet (#419): Claude Code today, run as a live session over its own stream protocol in an empty folder with only web search and web fetch, safe mode and nothing saved. It gets the show and the dates the library has, says what it does as it goes, and answers in lines the schedule parser reads; the answer lands in the sheet's paste box, so the tiles preview it and nothing is kept until Save. Found on the machine, never shipped; with none, the sheet only says what one would do. ACP, and Codex through it, comes next.
+_Avoid_: AI, assistant, bot
+
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
@@ -79,6 +91,14 @@ _Avoid_: position, progress, bookmark
 **Completion**:
 The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
 _Avoid_: finished, done, watched to the end
+
+**Profile**:
+One person's own progress on a computer they share over the tailnet: their history, resume points and tracker accounts. A profile is the Tailscale user a device belongs to, so nobody signs in. The first profile is the person the computer belongs to. The library and the metadata are everyone's.
+_Avoid_: account, user, login
+
+**Watch log**:
+Every finish of an episode, each with its own time and where it came from: played here, set by hand, or imported. A completion records the latest finish for the series page and the cards, and adds one more to the log. Stats reads the log and leaves out what was set by hand. History from before the log came in as one finish per episode.
+_Avoid_: watch history, play log, finishes table
 
 **Skip window**:
 A span of an episode the player offers to jump over, an intro or an outro, taken from the file's chapters first and from AniSkip otherwise.
@@ -119,7 +139,7 @@ Removing a missing series with everything it holds. The only way a series leaves
 _Avoid_: delete, purge, remove series
 
 **Export**:
-The JSON file that carries a library out of one AniBeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
+The JSON file that carries a library out of one Anibeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
 _Avoid_: backup, dump, migration file
 
 **Private data**:
@@ -139,19 +159,35 @@ The user saying what a file's reading should be when its name read wrong. It is 
 _Avoid_: override, correction, remap, manual match
 
 **Airing now**:
-Every show AniList has on air, not only the library's, read whole from AniList and kept apart from the library's own tables, so a show only browsed never reaches the franchise graph or the image fill. Its other pick is the next season by name. Along the top sits Out now, the episodes out in the last two days, newest first.
+Every show AniList has on air, not only the library's, read whole from AniList and kept apart from the library's own tables, so a show only browsed never reaches the franchise graph or the image fill. Its other pick is the next season by name. Along the top sits Out now, the episodes out in the last 24 hours, newest first.
 _Avoid_: seasonal, schedule, calendar, discover
 
 **Not interested**:
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
 
+**Recommended**:
+The shows ranked for the user from their own list, best first: Home's Recommended for you row and its See all page. A show is in it while the user has yet to watch it, which is on no list, on Planning, or on Watching or On hold with a first episode or two seen. All holds every such show; In library only those the library has files for; On list only those on one of the user's lists, whether the library has them or not. Not interested keeps a show off it too. The ranking is learnt again after every tracker refresh, from a cache of AniList reads that stays apart from the library's tables, the way Airing now's does.
+_Avoid_: suggestions, picks, discover, for you feed
+
+**Forecast**:
+The percentage on a recommended show: the share of the user's rated shows it is predicted to beat. 84% means the predicted score sits above 84% of what they rated.
+_Avoid_: match, match score, compatibility, rating
+
+**Hidden tag**:
+A tag AniList marks as a spoiler. It counts toward the ranking like any other, and nothing names it: the app only says how many the user loves are behind a show, as "A hidden tag you love".
+_Avoid_: spoiler tag (in the interface), secret tag
+
+**Show page**:
+The page for one AniList show the library does not have: what the core holds for it, the user's list entry, and Get episodes. Once files for the show land in the library it becomes that series' page.
+_Avoid_: external series page, ghost page, AniList page
+
 **Episode out**:
 The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
 _Avoid_: new episode alert, release notification, reminder
 
 **Stats**:
-A year of watching added up from the episode history: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
+A year of watching added up from the watch log: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
 _Avoid_: analytics, insights, wrapped, report
 
 **Planning list**:
@@ -203,11 +239,11 @@ What the core reads off a release's title beside anirss's fields: the episode (a
 _Avoid_: metadata, parsed info
 
 **On-demand endpoint**:
-An endpoint anirss starts only when a search needs it (1337x: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting 1337x"), then "Searching 1337x".
+An endpoint anirss starts only when a search needs it (a site reached through a search proxy: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting <name>"), then "Searching <name>".
 _Avoid_: harness, container, lazy endpoint
 
 **Endpoint**:
-One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
+One site a search goes to, as anirss configures it: an RSS search built from a site's address with a category and a filter, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source
 
 **Search state**:
@@ -235,7 +271,7 @@ What the core adds to a subscription whose folder is a library show (#215): a on
 _Avoid_: poll, auto-download, follow job
 
 **Wire query**:
-The query an endpoint itself was last asked. On a generic RSS endpoint (1337x through Jackett) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
+The query an endpoint itself was last asked. On a generic RSS endpoint (a site reached through a search proxy) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
 _Avoid_: base query, raw query
 
 **Complete subscription**:
@@ -250,6 +286,10 @@ _Avoid_: remove RSS, delete subscription
 Every torrent the client holds for one folder, as one entry: the series that folder fills when the library has it, else the folder by name. Its state is what the client is doing with the torrents: downloading, seeding, done, stopped, or files missing (the torrents point at a folder that is not there). Removing it takes the torrents, and ticked, the files to the trash; a subscription it has stays.
 _Avoid_: group, torrent list
 
+**Save folder**:
+Where a show that is not in the library yet downloads to: a folder of its own under it. The first that has one wins: a folder picked in Settings, then, for the managed torrent client, the first library folder still on disk (#1005), then the search helper's config, then the client's own default. A show already in the library downloads into its own folder instead. The user's own client never gets the library folder.
+_Avoid_: save base, download folder
+
 **Show link**:
 How a subscription or a torrent finds its library series: by the save folder's exact path, else its last component, else that component with case and punctuation dropped. A client can name the library's folder under another mount, and anirss can spell a rule's folder a little differently.
 _Avoid_: match (that is the metadata match), mapping
@@ -257,6 +297,10 @@ _Avoid_: match (that is the metadata match), mapping
 **Transfer**:
 A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up: every two seconds while one is moving, every fifteen while none is.
 _Avoid_: download, job, task
+
+**Downloads choice**:
+What searches, follows and downloads on the desktop, under Settings, Downloads: Anibeam itself (the core's own port of anirss, which searches the core's sources and writes the torrent client's rules directly) or the search helper (anirss, run as the sidecar or reached on a server). Anibeam itself is the default (#552): fresh settings pick it, and so do settings stored before the choice existed or naming one this build does not know. Settings that name the search helper keep it. Sources written only into anirss's own config.toml are not read by Anibeam itself; they come in through an endpoint repo or by hand.
+_Avoid_: backend, mode. The code calls it the downloads engine (`DownloadsEngine`), native or anirss.
 
 **Sidecar**:
 anirss run by the core: `anirss --serve` on a port and token the core chose, started the first time something asks for it and stopped with the core. The other way in is a server somebody else runs, reached by address and token.
@@ -297,7 +341,7 @@ An app's `CHANGELOG.md`: every version newest first, each a few one-line changes
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
 **First run**:
-The walkthrough a fresh desktop install opens with instead of an empty library: what AniBeam is, the anime folder (or a new Anime folder in the videos folder), the tracker, how Downloads works, and what is left for later. Every step can be skipped. It shows once; an install that was already in use never sees it, and Settings, About runs it again.
+The walkthrough a fresh desktop install opens with instead of an empty library: what Anibeam is, the anime folder (or a new Anime folder in the videos folder), the tracker, how Downloads works, and what is left for later. Every step can be skipped. It shows once; an install that was already in use never sees it, and Settings, About runs it again.
 _Avoid_: onboarding wizard, tour, setup assistant
 
 **What's new**:
@@ -313,6 +357,36 @@ _Avoid_: server, sync server
 **Trusted device**:
 A device the tailnet host answers. Every device on the tailnet is trusted until the person switches it off in Settings, Phone app; nothing off the tailnet is.
 _Avoid_: allowed device, whitelisted device
+
+**Device key**:
+The key pair each Anibeam makes once and keeps with its secrets. The tailnet host says its public key in its hello; a phone or another Anibeam signs each request to it with its own.
+_Avoid_: token, password, certificate
+
+**Proof**:
+The signature a request carries of the device key that sent it, good for that one request to that one host, around the time it was made, once. A request whose proof does not check out is refused wherever it comes from.
+_Avoid_: auth header, token
+
+**Paired device**:
+A device whose device key the host keeps. Its requests are answered on any network the host listens on, unless the person switched it off on the tailnet.
+_Avoid_: linked device, registered device
+
+### Watch together
+
+**Room**:
+Up to 10 people watching the same episode at once, each playing their own copy. A room holds the episode's identity, the play state and who is in it, never video or where to get it. It has a 6 character code, and its host moves it to the next episode.
+_Avoid_: party, session, lobby, watch party
+
+**Relay**:
+The server rooms live on: it hands out codes, passes the play state between members and serves the join page a room link opens. `anibeam-relay` is the native one, for self-hosting and tests; the Cloudflare Worker is the one the app uses by default.
+_Avoid_: room server, sync server, backend
+
+**Offset**:
+How far one person's file is from the host's, in seconds, so the same moment plays at the same time: local position is the room's position plus the offset. Kept per file, and suggested from the openings when both are known.
+_Avoid_: delay, drift, sync offset
+
+**Get media**:
+What a room member without the episode presses to get it from the host. The host's app answers with the torrent its copy came from while its torrent client still holds it, else the release's name, and the member downloads it through Downloads: the torrent itself, or the same release found on the member's own sources. The answer is sealed between the two apps, so a relay that only passes it on cannot read it; one that swapped the members' keys could (#982). Everyone in the room sees the download's progress and time left.
+_Avoid_: share, send file, sync download
 
 ### Route
 

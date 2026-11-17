@@ -2,7 +2,7 @@
 // uniform cards, most popular first. The core owns the season (ListAiringNow answers the
 // cached read at once; RefreshAiringNow goes to AniList on open when that read is over half
 // an hour old, and from Refresh). Along the top, Out now: the episodes that came out in the
-// last two days across everything on air, newest first. A seg picks Airing now or the next
+// last 24 hours across everything on air, newest first. A seg picks Airing now or the next
 // season, another narrows the cards to the user's lists or the library.
 //
 // The x on a card marks the show not interested: it leaves the page at once, with Undo in a
@@ -23,13 +23,13 @@ import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
 import QtCore
-import com.marcusrosado.AniBeam
+import com.marcusrosado.Anibeam
 
 Item {
     id: page
     objectName: "airing-page"
     property var props: ({})
-    property string title: "Airing now"
+    property string title: words.t("airing-title")
     property alias scrollY: scroll.contentY
     function escapePressed() {
         if (page.selecting) { page.clearPicks(); return true }
@@ -46,12 +46,52 @@ Item {
     // What to leave out, on top of the filter: the shows on the user's lists, the library's
     property bool hideListed: !!props.hideListed
     property bool hideOwned: !!props.hideOwned
-    // The cards' order: AniList's popularity as it came, or one of these
-    property string sort: props.sort || "popular"
-    readonly property var sorts: [["popular", "Most popular"], ["score", "Highest score"],
-                                  ["soonest", "Next episode soonest"], ["episodes", "Most episodes"], ["title", "Title"]]
+    // The season grid's order, any field AniList gives a show. The pick and its direction are
+    // kept across launches; the value is what ascending runs over, `asc` the direction a field
+    // starts in and `words` what the direction button says for ascending and descending, each
+    // by message ID.
+    readonly property var sorts: [
+        { key: "popular", label: "airing-sort-popular", asc: true, words: ["airing-dir-most-popular", "airing-dir-least-popular"] },
+        { key: "score", label: "airing-sort-score", asc: false, words: ["airing-dir-lowest", "airing-dir-highest"] },
+        { key: "trending", label: "airing-sort-trending", asc: false, words: ["airing-dir-least-trending", "airing-dir-most-trending"] },
+        { key: "favourites", label: "airing-sort-favourites", asc: false, words: ["airing-dir-fewest", "airing-dir-most"] },
+        { key: "soonest", label: "airing-sort-soonest", asc: true, words: ["airing-dir-soonest", "airing-dir-latest"] },
+        { key: "aired", label: "airing-sort-aired", asc: false, words: ["airing-dir-fewest", "airing-dir-most"] },
+        { key: "episodes", label: "airing-sort-episodes", asc: false, words: ["airing-dir-fewest", "airing-dir-most"] },
+        { key: "start", label: "airing-sort-start", asc: false, words: ["airing-dir-oldest", "airing-dir-newest"] },
+        { key: "duration", label: "airing-sort-duration", asc: false, words: ["airing-dir-shortest", "airing-dir-longest"] },
+        { key: "title", label: "airing-sort-title", asc: true, words: ["airing-dir-a-to-z", "airing-dir-z-to-a"] }]
+    function sortIndex(key) {
+        for (var i = 0; i < page.sorts.length; i++) if (page.sorts[i].key === key) return i
+        return 0
+    }
+    readonly property int sortAt: page.sortIndex(sortPref.sortKey)
+    readonly property bool sortAsc: sortPref.sortAsc
+    function pickSort(i) {
+        sortPref.sortKey = page.sorts[i].key
+        sortPref.sortAsc = page.sorts[i].asc
+        scroll.contentY = 0
+    }
+    function flipSort() { sortPref.sortAsc = !sortPref.sortAsc }
+    // What a show is ordered by, or null when AniList gave none: those sort last either way
+    function sortValue(key, s, i) {
+        switch (key) {
+        case "popular": return i
+        case "score": return s.average_score
+        case "trending": return s.trending
+        case "favourites": return s.favourites
+        case "soonest": return s.next_airing ? s.next_airing.at : null
+        // The last episode out: the newest one seen airing, else the one before the next, else
+        // all of them for a show with none due and none just out
+        case "aired": return s.latest ? s.latest.episode : s.next_airing ? s.next_airing.episode - 1 : (s.episodes || null)
+        case "episodes": return s.episodes
+        case "start": return s.start_date
+        case "duration": return s.duration
+        default: return String(s.title).toLocaleLowerCase()
+        }
+    }
     function keepView() {
-        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned, sort: page.sort }
+        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned }
     }
     property var listed: null
     property bool refreshing: false
@@ -79,12 +119,19 @@ Item {
     }
     property bool allOut: false
 
-    readonly property var statusWords: ({ Watching: "Watching", Repeating: "Rewatching", Completed: "Completed",
-                                          Paused: "On hold", Dropped: "Dropped", Planning: "Planning" })
-    // The season after this one, by AniList's quarters, for the seg before its first read
+    // A list status as the core names it, to its words by message ID
+    readonly property var statusWords: ({ Watching: "status-watching", Repeating: "status-rewatching", Completed: "status-completed",
+                                          Paused: "status-on-hold", Dropped: "status-dropped", Planning: "status-planning" })
+    // The season after this one, by AniList's quarters, for the seg before its first read. A
+    // code as the bridge spells it ("Spring 2027"); seasonText() gives its words
     readonly property string nextLabel: {
         var d = new Date(nowMs), q = Math.floor(d.getUTCMonth() / 3)
-        return ["Winter", "Spring", "Summer", "Fall"][(q + 1) % 4] + " " + (d.getUTCFullYear() + (q === 3 ? 1 : 0))
+        return ["Winter", "Spring", "Summer", "Fall"][(q + 1) % 4] + " " + (d.getUTCFullYear() + (q === 3 ? 1 : 0))   // i18n: none
+    }
+    // A season code ("Spring 2027") in words
+    function seasonText(code) {
+        var parts = String(code).split(" ")
+        return parts.length === 2 ? words.t("airing-season", { season: parts[0], year: parts[1] }) : String(code)
     }
     readonly property bool trackerConnected: !!(Door.trackers && ((Door.trackers.anilist && Door.trackers.anilist.connected)
                                                                   || (Door.trackers.mal && Door.trackers.mal.connected)))
@@ -93,17 +140,17 @@ Item {
     function fresh(s) { return !!s.latest && nowMs / 1000 - s.latest.at < 86400 }
     function ago(at) {
         var secs = Math.max(0, nowMs / 1000 - at)
-        if (secs < 3600) return Math.max(1, Math.floor(secs / 60)) + "m ago"
-        if (secs < 86400) return Math.floor(secs / 3600) + "h ago"
-        return Math.floor(secs / 86400) + "d ago"
+        if (secs < 3600) return words.t("airing-ago-minutes", { minutes: Math.max(1, Math.floor(secs / 60)) })
+        if (secs < 86400) return words.t("airing-ago-hours", { hours: Math.floor(secs / 3600) })
+        return words.t("airing-ago-days", { days: Math.floor(secs / 86400) })
     }
     // The ledger line: an episode out in the last day says so; else the countdown runs (an
     // empty override); else what kind of show it is
     function metaOf(s) {
-        if (fresh(s)) return Fmt.episodeName("", s.latest.episode) + " out " + ago(s.latest.at)
+        if (fresh(s)) return words.t("airing-episode-out", { episode: words.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
         if (s.next_airing) return ""
-        if (s.latest) return Fmt.episodeName("", s.latest.episode) + " out " + ago(s.latest.at)
-        return s.episodes ? Fmt.plural(s.episodes, "episode", "episodes") : "No date yet"
+        if (s.latest) return words.t("airing-episode-out", { episode: words.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
+        return s.episodes ? words.t("count-episodes", { count: s.episodes }) : words.t("airing-no-date")
     }
     function cardItem(s) {
         return {
@@ -116,7 +163,7 @@ Item {
             // The accent New tag: an episode out in the last day
             watched_state: fresh(s) ? "Behind" : "Unknown",
             strip: null,
-            code: s.list_status ? (page.statusWords[s.list_status] || "") : owned(s) ? "In library" : "",
+            code: s.list_status ? (page.statusWords[s.list_status] ? words.t(page.statusWords[s.list_status]) : "") : owned(s) ? words.t("airing-in-library") : "",
             community_score: s.average_score !== null && s.average_score !== undefined ? s.average_score / 10 : null,
             my_score: null,
             hidden: false,
@@ -148,17 +195,19 @@ Item {
             if (f === 2 && !page.owned(s)) return false
             return page.kept(s)
         })
-        if (page.sort === "popular") return out
-        // A show missing the value sorts after every show that has it; ties keep popularity
-        var key = page.sort === "score" ? function(s) { return s.average_score === null || s.average_score === undefined ? null : -s.average_score }
-                : page.sort === "soonest" ? function(s) { return s.next_airing ? s.next_airing.at : null }
-                : page.sort === "episodes" ? function(s) { return s.episodes ? -s.episodes : null }
-                : function(s) { return String(s.title).toLocaleLowerCase() }
-        var rows = out.map(function(s, i) { return { s: s, k: key(s), i: i } })
+        // A show missing the value sorts after every show that has it, whichever way the order
+        // runs; ties keep AniList's popularity order
+        var key = page.sorts[page.sortAt].key
+        if (key === "popular" && page.sortAsc) return out
+        var dir = page.sortAsc ? 1 : -1
+        var rows = out.map(function(s, i) {
+            var v = page.sortValue(key, s, i)
+            return { s: s, k: v === undefined ? null : v, i: i }
+        })
         rows.sort(function(a, b) {
             if (a.k === null || b.k === null) return a.k === b.k ? a.i - b.i : a.k === null ? 1 : -1
-            if (a.k < b.k) return -1
-            if (a.k > b.k) return 1
+            if (a.k < b.k) return -dir
+            if (a.k > b.k) return dir
             return a.i - b.i
         })
         return rows.map(function(r) { return r.s })
@@ -180,8 +229,11 @@ Item {
     }
     // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
     readonly property real outGap: outList ? theme.space(2) : theme.space(3)
-    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
-    // columns at a readable width gets fewer
+    Settings { id: sortPref; location: Shell.settingsUrl; category: "airing"; property string sortKey: "popular"; property bool sortAsc: true }
+    // Cards come columns by rows, from Settings, Appearance. The grid wins over the image: a
+    // banner is cropped to its cell, and a column goes only when a cell would drop under
+    // outMinCard, too small to read a title in
+    readonly property real outMinCard: theme.space(32)
     Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayout: {
         var m = /^(\d)x(\d)$/.exec(kept.outLayout)
@@ -193,8 +245,9 @@ Item {
     readonly property int outRows: outList ? 3 : outLayout[1]
     readonly property int outCols: outList
         ? Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(84) + outGap)))
-        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
-    readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
+        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (outMinCard + outGap))))
+    // Not floored: the cells then sum to the full width, so the grid ends where the posters do
+    readonly property real outCellWidth: (scroll.innerWidth - outGap * (outCols - 1)) / outCols
     // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
     readonly property real outCellHeight: outList ? theme.space(17) : Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
     readonly property int outFirst: outCols * outRows
@@ -212,7 +265,7 @@ Item {
     // filter pill already)
     readonly property string summary: {
         if (!listed || page.shows.length === 0 || page.season !== "Now" || outToday === 0) return ""
-        return Fmt.plural(outToday, "episode", "episodes") + " out today"
+        return words.t("airing-out-today", { count: outToday })
     }
     function showOf(id) {
         if (!listed) return null
@@ -275,8 +328,8 @@ Item {
             ids.push(list[i].anilist_id)
         }
         if (ids.length === 0) return
-        page.undo = { ids: ids, text: ids.length === 1 ? list[0].title + " won't show up here again"
-                                                      : ids.length + " shows won't show up here again" }
+        page.undo = { ids: ids, text: ids.length === 1 ? words.t("airing-dismissed-one", { title: list[0].title })
+                                                      : words.t("airing-dismissed", { count: ids.length }) }
         undoTimer.restart()
         page.reload()
     }
@@ -300,28 +353,28 @@ Item {
             if (r.reply && r.reply.job !== undefined) sent++
             else already++
         }
-        if (list.length === 1) { if (sent === 0) frame.toast(list[0].title + " is on your list already"); return }
-        frame.toast(sent === 0 ? "They are all on your list already"
-                               : Fmt.plural(sent, "show goes", "shows go") + " on your Planning list"
-                                 + (already > 0 ? ", " + already + " were on it already" : ""))
+        if (list.length === 1) { if (sent === 0) frame.toast(words.t("airing-planned-already-one", { title: list[0].title })); return }
+        frame.toast(sent === 0 ? words.t("airing-planned-already-all")
+                               : already > 0 ? words.t("airing-planned-some-already", { count: sent, already: already })
+                               : words.t("airing-planned", { count: sent }))
     }
     // The bar's two actions: they act on every card picked, then picking ends
     function planPicked() { var l = page.pickedShows(); page.clearPicks(); page.planAll(l) }
     function dismissPicked() { var l = page.pickedShows(); page.clearPicks(); page.dismissAll(l) }
     function getEpisodes(s) {
-        if (page.owned(s)) { frame.go("downloads", { series: s.owned }, "Downloads"); return }
+        if (page.owned(s)) { frame.go("downloads", { series: s.owned }); return }
         frame.go("downloads", { hit: { id: s.anilist_id, title: s.title, romaji: s.romaji || "", english: s.english || "", native: s.native || "",
-                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: 0 } }, "Downloads")
+                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: 0 } })
     }
     function siteOf(s) { return s.site_url || "https://anilist.co/anime/" + s.anilist_id }
     function actionsFor(s) {
         var items = []
-        if (page.owned(s)) items.push({ text: "Play next", icon: "play", action: function() { frame.playNext(s.owned, s.title) } })
-        if (page.owned(s)) items.push({ text: "Open series", icon: "layers", action: function() { frame.go("series", { id: s.owned }, s.title) } })
-        if (!s.list_status) items.push({ text: "Plan to watch", icon: "bookmark", action: function() { page.plan(s) } })
-        items.push({ text: page.owned(s) ? "Get more episodes" : "Get episodes", icon: "download", action: function() { page.getEpisodes(s) } })
-        items.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(page.siteOf(s)) } })
-        items.push({ text: "Not interested", icon: "eye-off", action: function() { page.dismiss(s) } })
+        if (page.owned(s)) items.push({ text: words.t("airing-play-next"), icon: "play", action: function() { frame.playNext(s.owned, s.title) } })
+        if (page.owned(s)) items.push({ text: words.t("action-open-series"), icon: "layers", action: function() { frame.go("series", { id: s.owned }, s.title) } })
+        if (!s.list_status) items.push({ text: words.t("airing-plan-to-watch"), icon: "bookmark", action: function() { page.plan(s) } })
+        items.push({ text: page.owned(s) ? words.t("airing-get-more-episodes") : words.t("airing-get-episodes"), icon: "download", action: function() { page.getEpisodes(s) } })
+        items.push({ text: words.t("airing-open-on-anilist"), icon: "external-link", action: function() { frame.openLink(page.siteOf(s)) } })
+        items.push({ text: words.t("airing-not-interested"), icon: "eye-off", action: function() { page.dismiss(s) } })
         return items
     }
     function openActions(s, anchor) {
@@ -347,7 +400,7 @@ Item {
             page.refreshing = false
             page.refreshJob = -1
             page.loadFailed = !page.listed || page.listed.shows.length === 0
-            frame.toast(error && error.message ? error.message : "AniList could not be reached")
+            frame.fail(error, function() { page.refresh(true) })
         }
         function onJobCancelled(job, kind) { if (job === page.refreshJob) { page.refreshing = false; page.refreshJob = -1 } }
         // Plan to watch lands, a download makes a show the library's: the cache read says so
@@ -359,12 +412,12 @@ Item {
     // ---- The grid's geometry: as many columns as the width holds at the poster width
     readonly property real gap: theme.space(4)
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
-    readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
+    readonly property real cardWidth: (scroll.innerWidth - gap * (cols - 1)) / cols
 
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title, the one line beside it, Refresh at the right
         Item {
@@ -374,7 +427,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.season === "Now" ? "Airing now" : page.seasonLabel
+                text: page.season === "Now" ? words.t("airing-title") : page.seasonText(page.seasonLabel)
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -400,16 +453,16 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 flat: true
                 icon: "eye-off"
-                text: page.listed ? page.listed.not_interested + " not interested" : ""
-                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" }, "Settings")
-                Tooltip { text: "Shows you marked not interested, in Settings" }
+                text: page.listed ? words.t("airing-not-interested-count", { count: page.listed.not_interested }) : ""
+                onClicked: frame.go("settings", { tab: "hidden" })
+                Tooltip { msg: "airing-not-interested-tip" }
             }
             Button {
                 id: refreshBtn
                 objectName: "airing-refresh"
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.refreshing ? "Refreshing" : "Refresh"
+                text: page.refreshing ? words.t("airing-refreshing") : words.t("action-refresh")
                 icon: "refresh-cw"
                 busy: page.refreshing
                 flat: true
@@ -429,9 +482,9 @@ Item {
                     id: seasonSeg
                     objectName: "airing-season"
                     // The third cell opens every season; it is never the one showing
-                    options: [{ text: "Airing now", icon: "radio", name: "now" },
-                              { text: page.seasonLabel, icon: "calendar-clock", name: "next" },
-                              { icon: "chevron-down", name: "seasons", tip: "Pick another season" }]
+                    options: [{ text: words.t("airing-title"), icon: "radio", name: "now" },
+                              { text: page.seasonText(page.seasonLabel), icon: "calendar-clock", name: "next" },
+                              { icon: "chevron-down", name: "seasons", tip: words.t("airing-pick-season") }]
                     index: page.season === "Now" ? 0 : 1
                     onPicked: function(i) {
                         if (i === 0) page.pickSeason("Now")
@@ -448,9 +501,9 @@ Item {
                 }
                 Seg {
                     objectName: "airing-filter"
-                    options: [{ text: "Everything", name: "all", count: page.listed ? page.allCount : undefined },
-                              { text: "On my lists", name: "lists", count: page.listed ? page.listedCount : undefined },
-                              { text: "In my library", name: "library", count: page.listed ? page.ownedCount : undefined }]
+                    options: [{ text: words.t("airing-filter-all"), name: "all", count: page.listed ? page.allCount : undefined },
+                              { text: words.t("airing-filter-lists"), name: "lists", count: page.listed ? page.listedCount : undefined },
+                              { text: words.t("airing-filter-library"), name: "library", count: page.listed ? page.ownedCount : undefined }]
                     index: page.filter
                     onPicked: function(i) {
                         page.filter = i
@@ -466,37 +519,29 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
-                Dropdown {
-                    objectName: "airing-sort"
-                    prefix: "Sort"
-                    minWidth: theme.space(44)
-                    options: page.sorts.map(function(s) { return s[1] })
-                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                    onPicked: function(i) { page.sort = page.sorts[i][0]; page.keepView(); scroll.contentY = 0 }
-                }
                 ToggleChip {
                     objectName: "airing-hide-lists"
-                    text: "Hide my lists"
+                    msg: "airing-hide-lists"
                     icon: "eye-off"
                     checked: page.hideListed
                     // On my lists with them hidden would be nothing at all
                     interactive: page.filter !== 1
                     onToggled: function(on) { page.hideListed = on; page.keepView(); page.clearPicks() }
-                    Tooltip { text: "Leave out the shows on your AniList or MAL lists" }
+                    Tooltip { msg: "airing-hide-lists-tip" }
                 }
                 ToggleChip {
                     objectName: "airing-hide-library"
-                    text: "Hide my library"
+                    msg: "airing-hide-library"
                     icon: "eye-off"
                     checked: page.hideOwned
                     interactive: page.filter !== 2
                     onToggled: function(on) { page.hideOwned = on; page.keepView(); page.clearPicks() }
-                    Tooltip { text: "Leave out the shows you have episodes of" }
+                    Tooltip { msg: "airing-hide-library-tip" }
                 }
             }
         }
 
-        // ---- Out now: the episodes of the last two days, newest first, as an even grid of
+        // ---- Out now: the episodes of the last 24 hours, newest first, as an even grid of
         // rows (thumb, title, episode and age), three rows deep until All opens the rest
         Column {
             objectName: "airing-out-now"
@@ -512,7 +557,7 @@ Item {
                     spacing: theme.space(3)
                     Label {
                         id: outTitle
-                        text: "Out now"
+                        msg: "airing-out-now"
                         role: "display"
                         font.pointSize: theme.typeHeading
                         font.variableAxes: ({ "wdth": 70, "wght": 420 })
@@ -520,7 +565,7 @@ Item {
                     }
                     Label {
                         anchors.baseline: outTitle.baseline
-                        text: Fmt.plural(page.aired.length, "episode", "episodes") + " in the last two days"
+                        msg: "airing-out-last-day"; msgArgs: ({ count: page.aired.length })
                         role: "ui"
                         color: theme.textDim
                     }
@@ -533,12 +578,13 @@ Item {
                     small: true
                     flat: true
                     icon: page.allOut ? "chevron-up" : "chevron-down"
-                    text: page.allOut ? "Fewer" : "All " + page.aired.length
+                    text: page.allOut ? words.t("airing-out-fewer") : words.t("airing-out-all", { count: page.aired.length })
                     onClicked: page.allOut = !page.allOut
                 }
             }
             Flow {
-                width: parent.width
+                // Half a pixel over, so a row of exact cells never wraps its last one
+                width: parent.width + 0.5
                 spacing: page.outGap
                 Repeater {
                     model: page.outShown
@@ -621,7 +667,7 @@ Item {
                                     }
                                     Row {
                                         spacing: theme.space(2)
-                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: words.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
                                         Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
                                     }
                                 }
@@ -676,7 +722,7 @@ Item {
                                     }
                                     Row {
                                         spacing: theme.space(2)
-                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                        Label { text: words.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
                                         Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
                                     }
                                 }
@@ -689,10 +735,46 @@ Item {
             }
         }
 
-        // ---- The shows, most popular first
+        // ---- The season's order: sorts the grid below and nothing above it
+        Item {
+            objectName: "airing-sort-row"
+            visible: page.shows.length > 0
+            width: parent.width
+            height: theme.controlHeight
+            Row {
+                spacing: theme.space(2)
+                Dropdown {
+                    objectName: "airing-sort"
+                    prefix: words.t("airing-sort")
+                    minWidth: theme.space(58)
+                    options: page.sorts.map(function(s) { return words.t(s.label) })
+                    index: page.sortAt
+                    onPicked: function(i) { page.pickSort(i) }
+                }
+                Button {
+                    objectName: "airing-sort-direction"
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(implicitWidth, theme.space(48))
+                    flat: true
+                    icon: page.sortAsc ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"
+                    text: words.t(page.sorts[page.sortAt].words[page.sortAsc ? 0 : 1])
+                    onClicked: page.flipSort()
+                }
+            }
+            Label {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                msg: "count-shows"; msgArgs: ({ count: page.shows.length })
+                role: "ui"
+                color: theme.textDim
+            }
+        }
+
+        // ---- The shows, in the order above
         Flow {
             objectName: "airing-grid"
-            width: parent.width
+            // Half a pixel over, so a row of exact cards never wraps its last one
+            width: parent.width + 0.5
             spacing: page.gap
             Repeater {
                 model: page.shows
@@ -729,28 +811,34 @@ Item {
             EmptyState {
                 visible: page.loadFailed
                 icon: "triangle-alert"
-                title: "AniList could not be reached"
-                body: "The shows on air come from AniList. They come back on the next refresh."
-                Button { text: "Try again"; icon: "refresh-cw"; onClicked: { page.reload(); page.refresh(true) } }
+                title: words.t("airing-load-failed-title")
+                body: words.t("airing-load-failed-body")
+                Button { msg: "action-try-again"; icon: "refresh-cw"; onClicked: { page.reload(); page.refresh(true) } }
             }
             EmptyState {
                 visible: !page.loadFailed && (!page.listed || page.listed.shows.length === 0)
+                // Read and still empty is a season AniList lists nothing for, not a page never read
+                readonly property bool readEmpty: !!page.listed && page.listed.fetched_at !== null && page.listed.fetched_at !== undefined
                 icon: page.refreshing ? "loader-circle" : "radio"
-                title: page.refreshing ? "Reading what is on air" : "Nothing read yet"
-                body: page.refreshing ? "Every show on air, from AniList. This takes a few seconds the first time." : "Refresh reads every show on air from AniList."
-                Button { visible: !page.refreshing; text: "Refresh"; icon: "refresh-cw"; onClicked: page.refresh(true) }
+                title: page.refreshing ? words.t("airing-reading-title")
+                     : readEmpty ? (page.season === "Now" ? words.t("airing-nothing-now") : words.t("airing-nothing-for", { season: page.seasonText(page.listed.label) }))
+                     : words.t("airing-nothing-read")
+                body: page.refreshing ? words.t("airing-reading-body")
+                    : readEmpty ? words.t("airing-nothing-body")
+                    : words.t("airing-nothing-read-body")
+                Button { visible: !page.refreshing; msg: "action-refresh"; icon: "refresh-cw"; onClicked: page.refresh(true) }
             }
             EmptyState {
                 visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.narrowed
                 icon: page.hidesEmptied ? "eye-off" : page.filter === 1 ? "bookmark" : "layers"
-                title: page.hidesEmptied ? "Your hides leave nothing here"
-                     : page.filter === 1 ? "Nothing here is on your lists"
-                     : "Nothing here is in your library"
-                body: page.hidesEmptied ? "Every show here is on your lists or in your library, and you hid those."
-                    : page.filter === 1 ? "Plan to watch on a card puts it on your list."
-                    : "Get episodes on a card downloads it into your library."
+                title: page.hidesEmptied ? words.t("airing-hides-empty-title")
+                     : page.filter === 1 ? words.t("airing-lists-empty-title")
+                     : words.t("airing-library-empty-title")
+                body: page.hidesEmptied ? words.t("airing-hides-empty-body")
+                    : page.filter === 1 ? words.t("airing-lists-empty-body")
+                    : words.t("airing-library-empty-body")
                 Button {
-                    text: "Show everything"
+                    msg: "airing-show-everything"
                     onClicked: { page.filter = 0; page.hideListed = false; page.hideOwned = false; page.keepView() }
                 }
             }
@@ -776,12 +864,12 @@ Item {
             spacing: theme.space(3)
             Label {
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.pickedCount + " picked"
+                msg: "airing-picked"; msgArgs: ({ count: page.pickedCount })
                 role: "ui"
             }
-            Button { objectName: "airing-picked-plan"; small: true; text: "Plan to watch"; icon: "bookmark"; onClicked: page.planPicked() }
-            Button { objectName: "airing-picked-dismiss"; small: true; text: "Not interested"; icon: "eye-off"; onClicked: page.dismissPicked() }
-            Button { objectName: "airing-picked-cancel"; small: true; flat: true; text: "Cancel"; onClicked: page.clearPicks() }
+            Button { objectName: "airing-picked-plan"; small: true; msg: "airing-plan-to-watch"; icon: "bookmark"; onClicked: page.planPicked() }
+            Button { objectName: "airing-picked-dismiss"; small: true; msg: "airing-not-interested"; icon: "eye-off"; onClicked: page.dismissPicked() }
+            Button { objectName: "airing-picked-cancel"; small: true; flat: true; msg: "action-cancel"; onClicked: page.clearPicks() }
         }
     }
 
@@ -809,7 +897,7 @@ Item {
                 role: "ui"
                 elide: Text.ElideRight
             }
-            Button { objectName: "airing-undo-button"; small: true; text: "Undo"; icon: "rotate-ccw"; onClicked: page.takeBack() }
+            Button { objectName: "airing-undo-button"; small: true; msg: "airing-undo"; icon: "rotate-ccw"; onClicked: page.takeBack() }
         }
     }
 }

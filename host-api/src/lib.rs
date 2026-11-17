@@ -1,4 +1,4 @@
-//! What an AniBeam host serves over a tailnet, and what the phone app reads.
+//! What an Anibeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
 //! addresses only. Every device on the tailnet is answered unless the person
@@ -8,8 +8,9 @@
 //! the playback calls below, which keep watch history. Two documents and one
 //! kind of file:
 //!
-//! - [`HELLO`]: who answers ([`Hello`]). Cheap; a client uses it to tell "host
-//!   is up" from "host is down".
+//! - [`HELLO`]: who answers ([`Hello`]), and whose progress it answers the
+//!   asking device with ([`Hello::profile`]). Cheap; a client uses it to tell
+//!   "host is up" from "host is down".
 //! - [`SNAPSHOT`]: everything a client keeps ([`Snapshot`]): the library, the
 //!   subscriptions, the torrents. A client stores the last one it got and shows
 //!   it while the host is away; the airing times in it stay true without the
@@ -34,9 +35,25 @@
 //!   its place, its history and its tracker progress on the host, as if it had
 //!   played there, and a show marked not interested is hidden on both.
 //!
-//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! A host that lists [`FEATURE_DOWNLOADS`] also takes [`DOWNLOAD_CALLS`] on
+//! [`CALL`], from the owner's own devices only: a release picked on the phone
+//! downloads on the host, into its library, as its own Downloads page would
+//! put it there. The reply comes once the host's job is done, so it says
+//! whether the torrents went in.
+//!
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other Anibeams
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
+//!
+//! A host that lists [`FEATURE_HISTORY`] answers [`HISTORY`]: its watch
+//! history, resume points and matches as an `anibeam-export` document (the
+//! desktop's own export format, without sources, accounts, fixes or
+//! preferences), for another Anibeam computer to merge with its own.
+//!
+//! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
+//! client may sign each request with its own key ([`proof`], with the `proof`
+//! feature): a request whose proof does not check out is refused, and one from
+//! a key the host paired with is known to be that device.
 //!
 //! Times are Unix seconds. Every optional field may be absent or `null`, and a
 //! client must ignore fields it does not know: [`API_VERSION`] only moves for a
@@ -46,13 +63,16 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped only for a change an older client would misread.
 pub const API_VERSION: u32 = 1;
+
+#[cfg(feature = "proof")]
+pub mod proof;
 /// The port a host listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8790;
 /// `GET`: [`Hello`].
 pub const HELLO: &str = "/api/v1/hello";
 /// `GET`: [`Snapshot`].
 pub const SNAPSHOT: &str = "/api/v1/snapshot";
-/// What [`Hello::app`] says, so a client knows it reached AniBeam and not
+/// What [`Hello::app`] says, so a client knows it reached Anibeam and not
 /// something else on the port.
 pub const APP: &str = "anibeam";
 
@@ -64,10 +84,19 @@ pub const CALL: &str = "/api/v1/call";
 pub const FEATURE_STREAM: &str = "stream";
 /// In [`Hello::features`] when the host can also convert ([`hls_path`]).
 pub const FEATURE_CONVERT: &str = "convert";
+/// In [`Hello::features`] when the host reads request proofs in the scheme
+/// [`Hello::key`] is for. The scheme's version is the first word of each
+/// proof, so a newer one adds a new feature beside this.
+pub const FEATURE_PROOF: &str = "proof-v1";
 /// `GET`: [`Peers`], with [`FEATURE_PEERS`].
 pub const PEERS: &str = "/api/v1/peers";
 /// In [`Hello::features`] when the host answers [`PEERS`].
 pub const FEATURE_PEERS: &str = "peers";
+/// `GET`: an `anibeam-export` document of the host's series and history, with
+/// [`FEATURE_HISTORY`]. Its shape is versioned by the document's own `version`.
+pub const HISTORY: &str = "/api/v1/history";
+/// In [`Hello::features`] when the host answers [`HISTORY`].
+pub const FEATURE_HISTORY: &str = "history";
 /// The `Call` variants [`CALL`] takes: the ones a player makes, and the two that keep
 /// Not interested the same on a client as on the host.
 pub const PLAYER_CALLS: &[&str] = &[
@@ -80,6 +109,11 @@ pub const PLAYER_CALLS: &[&str] = &[
     "SetNotInterested",
     "ListNotInterested",
 ];
+/// In [`Hello::features`] when the host takes [`DOWNLOAD_CALLS`].
+pub const FEATURE_DOWNLOADS: &str = "downloads";
+/// The `Call` variants [`CALL`] also takes with [`FEATURE_DOWNLOADS`], from the
+/// owner's devices: the desktop's own download and subscribe.
+pub const DOWNLOAD_CALLS: &[&str] = &["DownloadReleasesWith", "Subscribe"];
 /// The heights a conversion comes in. A client asking for another gets the
 /// nearest one below it.
 pub const CONVERT_HEIGHTS: &[u32] = &[1080, 720, 480];
@@ -137,6 +171,61 @@ pub fn hls_path(file: u64, height: u32, audio: Option<usize>, burn: Option<usize
     path
 }
 
+/// Seconds per piece of the playlist [`hls_path`] answers. Every piece starts
+/// on a keyframe the host forces at its start.
+pub const HLS_PIECE: f64 = 6.0;
+
+/// The longest episode the host converts: a day. A probe that says more read
+/// a broken header, and listing its pieces would run the host out of memory.
+pub const HLS_LONGEST: f64 = 86_400.0;
+
+/// A last piece of this long or less is folded into the one before it. The
+/// probe's length runs a hair past the last frame's start, so a piece that
+/// short holds no frame and ffmpeg never writes it.
+pub const HLS_SLIVER: f64 = 0.1;
+
+/// Whether an episode `duration` seconds long can be listed as pieces: a
+/// finite, positive length of [`HLS_LONGEST`] at most. A probe that found no
+/// duration reads as 0.
+pub fn hls_converts(duration: f64) -> bool {
+    duration.is_finite() && duration > 0.0 && duration <= HLS_LONGEST
+}
+
+/// How many pieces an episode `duration` seconds long comes in, one at least,
+/// or None when [`hls_converts`] refuses the length.
+pub fn hls_pieces(duration: f64) -> Option<u32> {
+    if !hls_converts(duration) {
+        return None;
+    }
+    Some(((duration - HLS_SLIVER) / HLS_PIECE).ceil().max(1.0) as u32)
+}
+
+/// The playlist [`hls_path`] answers for an episode `duration` seconds long:
+/// every piece of the whole episode up front, so a player seeks it like a
+/// file. Piece `n` is `seg<n>.ts` with `query` after it, so each piece asks
+/// for the same conversion the playlist did. A computer casting a conversion
+/// to a TV reads the pieces back out of this text. None when
+/// [`hls_converts`] refuses the length.
+pub fn hls_playlist(duration: f64, query: &str) -> Option<String> {
+    let count = hls_pieces(duration)?;
+    let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+    out.push_str(&format!(
+        "#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n",
+        HLS_PIECE.ceil() as u32
+    ));
+    for i in 0..count {
+        // The last piece keeps a sliver past it, so the lengths add up.
+        let len = if i + 1 == count {
+            duration - f64::from(i) * HLS_PIECE
+        } else {
+            HLS_PIECE
+        };
+        out.push_str(&format!("#EXTINF:{len:.3},\nseg{i}.ts{query}\n"));
+    }
+    out.push_str("#EXT-X-ENDLIST\n");
+    Some(out)
+}
+
 /// `GET /api/v1/hello`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
@@ -144,9 +233,9 @@ pub struct Hello {
     pub app: String,
     /// The host's [`API_VERSION`].
     pub api: u32,
-    /// The AniBeam version, as its About page shows it.
+    /// The Anibeam version, as its About page shows it.
     pub version: String,
-    /// The machine's name, for a client to show ("banditbox").
+    /// The machine's name, for a client to show ("desk").
     pub host: String,
     /// The host's clock, so a client can tell how far apart they are.
     pub now: i64,
@@ -154,6 +243,11 @@ pub struct Hello {
     /// [`FEATURE_CONVERT`]. Empty from a host older than streaming.
     #[serde(default)]
     pub features: Vec<String>,
+    /// The host's public key, in hex, with [`FEATURE_PROOF`]: what a client
+    /// signs its requests to, and the key it pairs with. Absent from an older
+    /// host.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
     /// Set when the person switched streaming off on the host: it leaves
     /// [`FEATURE_STREAM`] and [`FEATURE_CONVERT`] out and refuses the file
     /// routes, while the snapshot and posters still answer. Absent from a
@@ -167,11 +261,33 @@ pub struct Hello {
     /// cannot tell.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub relayed: bool,
+    /// Whose progress the host answers the asking device with: the person the
+    /// device belongs to on the tailnet. Absent from a host older than
+    /// profiles, and when the host cannot name the person, so a client says
+    /// nothing rather than a guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
-/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// The person a host answers a device as ([`Hello::profile`]), named as
+/// Tailscale names them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Profile {
+    /// The name Tailscale shows for them ("Alex Doe").
+    pub name: String,
+    /// Their Tailscale login, "someone@example.com" or a GitHub login. May be
+    /// empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub login: String,
+    /// Set when they are the person the host belongs to, so the device sees the
+    /// host's own history rather than a guest's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub owner: bool,
+}
+
+/// `GET` [`PEERS`]: the other Anibeams the host sees on the tailnet, for a
 /// client that cannot list tailnet devices itself. Only devices the host
-/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// trusts and that answered their hello as Anibeam a moment ago; neither the
 /// host nor the device asking is among them. A host that cannot read its
 /// tailnet answers `503` instead of an empty list, so a client keeps the list
 /// it had.
@@ -181,7 +297,7 @@ pub struct Peers {
     pub hosts: Vec<PeerHost>,
 }
 
-/// One AniBeam on the tailnet.
+/// One Anibeam on the tailnet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerHost {
     /// Its machine name, from its own hello.
@@ -189,7 +305,7 @@ pub struct PeerHost {
     pub name: String,
     /// `http://<tailnet address>:<port>`, where it answered.
     pub url: String,
-    /// Its AniBeam version.
+    /// Its Anibeam version.
     #[serde(default)]
     pub version: String,
 }
@@ -364,6 +480,22 @@ pub struct Episode {
     pub watched: bool,
     #[serde(default)]
     pub aired_at: Option<i64>,
+    /// Every file of this episode when the host has it more than once, two
+    /// releases of it, each named by its release; empty when there is one.
+    /// Each copy of the episode carries the same list. Absent from a host
+    /// older than versions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<EpisodeVersion>,
+}
+
+/// One file of an episode the host has more than once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EpisodeVersion {
+    /// The host's id for the file, as [`Episode::file`].
+    pub file: u64,
+    /// The release, `group, 1080p WEB-DL H264`, or the file name where two
+    /// would otherwise read alike.
+    pub label: String,
 }
 
 /// One anirss subscription: a feed qBittorrent downloads from by itself.
@@ -393,6 +525,11 @@ pub struct Subscription {
     /// Aired episode numbers that are not on disk.
     #[serde(default)]
     pub missing: Vec<u32>,
+    /// The season those numbers are in, when the show numbers by season
+    /// (#1091). None from a host that predates it, or for numbers that
+    /// carry no season.
+    #[serde(default)]
+    pub missing_season: Option<u32>,
 }
 
 /// One torrent in the client.
@@ -426,6 +563,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_playlist_covers_the_whole_episode() {
+        let list = hls_playlist(14.5, "?audio=1").unwrap();
+        assert!(list.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
+        assert!(list.contains("#EXTINF:6.000,\nseg0.ts?audio=1\n"));
+        assert!(list.contains("#EXTINF:2.500,\nseg2.ts?audio=1\n"));
+        assert!(!list.contains("seg3.ts"));
+        assert!(list.ends_with("#EXT-X-ENDLIST\n"));
+    }
+
+    #[test]
+    fn a_length_that_is_not_a_sane_one_lists_nothing() {
+        for d in [0.0, -6.0, f64::NAN, f64::INFINITY, HLS_LONGEST + 1.0, 1e12] {
+            assert_eq!(hls_pieces(d), None, "{d}");
+            assert_eq!(hls_playlist(d, ""), None, "{d}");
+        }
+        assert_eq!(hls_pieces(HLS_LONGEST), Some(14_400));
+        assert_eq!(hls_pieces(0.04), Some(1));
+    }
+
+    #[test]
+    fn a_sliver_past_the_last_piece_is_no_piece_of_its_own() {
+        assert_eq!(hls_pieces(1440.0), Some(240));
+        assert_eq!(hls_pieces(1440.0004), Some(240));
+        assert_eq!(hls_pieces(1440.5), Some(241));
+        let list = hls_playlist(1440.0004, "").unwrap();
+        assert!(!list.contains("seg240.ts"));
+        assert!(list.contains("#EXTINF:6.000,\nseg239.ts\n"));
+        let total: f64 = list
+            .lines()
+            .filter_map(|l| l.strip_prefix("#EXTINF:"))
+            .map(|l| l.trim_end_matches(',').parse::<f64>().unwrap())
+            .sum();
+        assert!((total - 1440.0).abs() < 0.01, "{total}");
+    }
+
+    #[test]
     fn the_fixture_reads_as_a_snapshot() {
         let text = include_str!("../fixtures/snapshot.json");
         let snapshot: Snapshot = serde_json::from_str(text).unwrap();
@@ -448,6 +621,79 @@ mod tests {
         assert_eq!(snapshot.series[0].kind, Kind::Movie);
         assert!(snapshot.torrents.is_none());
         assert!(snapshot.subscriptions.is_empty());
+    }
+
+    #[test]
+    fn an_episode_without_versions_says_nothing_of_them() {
+        let one: Episode =
+            serde_json::from_str(r#"{"key": "7", "number": 7, "code": "E07", "watched": false}"#)
+                .unwrap();
+        assert!(one.versions.is_empty());
+        assert!(!serde_json::to_string(&one).unwrap().contains("versions"));
+        let two = Episode {
+            versions: vec![
+                EpisodeVersion {
+                    file: 4,
+                    label: "Group A, 1080p".into(),
+                },
+                EpisodeVersion {
+                    file: 9,
+                    label: "Group B, 720p".into(),
+                },
+            ],
+            ..one
+        };
+        let back: Episode = serde_json::from_str(&serde_json::to_string(&two).unwrap()).unwrap();
+        assert_eq!(back.versions, two.versions);
+    }
+
+    /// The hello as a client from before profiles knew it.
+    #[derive(Deserialize)]
+    struct OldHello {
+        app: String,
+        host: String,
+        #[serde(default)]
+        features: Vec<String>,
+    }
+
+    fn hello(profile: Option<Profile>) -> Hello {
+        Hello {
+            app: APP.into(),
+            api: API_VERSION,
+            version: "2.5.0".into(),
+            host: "desk".into(),
+            now: 1,
+            features: vec![FEATURE_STREAM.into()],
+            key: String::new(),
+            streaming_off: false,
+            relayed: false,
+            profile,
+        }
+    }
+
+    #[test]
+    fn an_older_client_reads_a_hello_that_names_the_profile() {
+        let text = serde_json::to_string(&hello(Some(Profile {
+            name: "Alex Doe".into(),
+            login: "alex@example.com".into(),
+            owner: true,
+        })))
+        .unwrap();
+        assert!(text.contains(r#""profile":{"name":"Alex Doe""#), "{text}");
+        let old: OldHello = serde_json::from_str(&text).unwrap();
+        assert_eq!((old.app.as_str(), old.host.as_str()), (APP, "desk"));
+        assert_eq!(old.features, [FEATURE_STREAM]);
+    }
+
+    #[test]
+    fn a_hello_from_an_older_host_names_no_profile() {
+        let text = r#"{"app": "anibeam", "api": 1, "version": "2.4.0", "host": "desk", "now": 1}"#;
+        let old: Hello = serde_json::from_str(text).unwrap();
+        assert_eq!(old.profile, None);
+        let none = serde_json::to_string(&hello(None)).unwrap();
+        assert!(!none.contains("profile"), "{none}");
+        let guest: Profile = serde_json::from_str(r#"{"name": "Sam"}"#).unwrap();
+        assert_eq!((guest.login.as_str(), guest.owner), ("", false));
     }
 
     #[test]
