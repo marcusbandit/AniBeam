@@ -474,7 +474,7 @@ match-link-anilist = AniListまたはMyAnimeListのリンクを貼り付け
 match-look-up = 検索
 match-searching = { $provider }を検索中
 match-type-more = { $provider }を検索するには2文字以上入力してください。
-match-no-results-try = { $provider }に一致する作品はありません。別の言葉で探すか、下にリンクを貼り付けてください。
+match-no-results = { $provider }に該当する作品はありません。
 
 ## WatchingPage.qml
 

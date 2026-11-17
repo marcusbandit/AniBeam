@@ -67,19 +67,26 @@ Corner {
         root.searchJob = r.reply.job
         root.searching = true
     }
+    // A retry keeps the series it failed on, since the panel may be closed or open on
+    // another one by the time it is pressed
     function apply(target, title) {
-        var r = Door.applyMatch(root.seriesId, target)
-        if (r.error) { frame.fail(r.error, function() { root.apply(target, title) }); return }
-        frame.toast(title ? words.t("match-matched-to", { title: title }) : words.t("match-applied"))
+        var id = root.seriesId, fr = frame
+        var said = title ? words.t("match-matched-to", { title: title }) : words.t("match-applied")
+        var again = function() { var a = Door.applyMatch(id, target); if (a.error) fr.fail(a.error, again); else fr.toast(said) }
+        var r = Door.applyMatch(id, target)
+        if (r.error) { frame.fail(r.error, again); return }
+        frame.toast(said)
         root.close("applied")
     }
     // A result row applies by its provider: a TVmaze show through the id-only call, an
     // AniList media as a target with no season
     function applyResult(r) {
         if (r.provider === "Tvmaze") {
-            var out = Door.applyTvmaze(root.seriesId, r.id)
-            if (out.error) { frame.fail(out.error, function() { root.applyResult(r) }); return }
-            frame.toast(words.t("match-matched-to", { title: r.title }))
+            var id = root.seriesId, fr = frame, said = words.t("match-matched-to", { title: r.title })
+            var again = function() { var a = Door.applyTvmaze(id, r.id); if (a.error) fr.fail(a.error, again); else fr.toast(said) }
+            var out = Door.applyTvmaze(id, r.id)
+            if (out.error) { frame.fail(out.error, again); return }
+            frame.toast(said)
             root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
     }
@@ -213,7 +220,8 @@ Corner {
                     if (!armed) { armed = true; disarm.restart(); return }
                     armed = false
                     var id = root.seriesId
-                    var again = function() { var c = Door.clearMatch(id); if (c.error) frame.fail(c.error, again); else frame.toast(words.t("match-cleared")) }
+                    var fr = frame, cleared = words.t("match-cleared")
+                    var again = function() { var c = Door.clearMatch(id); if (c.error) fr.fail(c.error, again); else fr.toast(cleared) }
                     var r = Door.clearMatch(id)
                     if (r.error) frame.fail(r.error, again)
                     else frame.toast(words.t("match-cleared"))
@@ -288,7 +296,7 @@ Corner {
             visible: root.results.length === 0
             text: root.searching ? words.t("match-searching", { provider: root.providerName })
                 : search.text.trim().length < 2 ? words.t("match-type-more", { provider: root.providerName })
-                : words.t("match-no-results-try", { provider: root.providerName })
+                : words.t("match-no-results", { provider: root.providerName })
             role: "ui"; color: theme.textDim
         }
     }

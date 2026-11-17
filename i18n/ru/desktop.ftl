@@ -626,7 +626,7 @@ match-link-anilist = Вставьте ссылку на AniList или MyAnimeLi
 match-look-up = Найти
 match-searching = Поиск в { $provider }
 match-type-more = Чтобы искать в { $provider }, введите хотя бы две буквы.
-match-no-results-try = В { $provider } ничего не нашлось. Попробуйте другие слова или вставьте ссылку ниже.
+match-no-results = В { $provider } ничего не найдено.
 
 ## WatchingPage.qml
 

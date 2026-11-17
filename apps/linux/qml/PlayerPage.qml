@@ -92,7 +92,7 @@ FocusScope {
     readonly property bool canMark: trackerKnown && !!session && !session.is_extra && episodeNumber >= 0
     function readSeries() {
         var d = Door.getSeries(session.series)
-        if (d.error) { page.say(errorLine(d.error), words.t("action-try-again"), page.readSeries); return }
+        if (d.error) { page.sayError(d.error, page.readSeries); return }
         var card = d.reply.detail.card
         trackerKnown = !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
         seriesTitles = card.titles || {}
@@ -347,7 +347,7 @@ FocusScope {
         var r = Door.openPlayback(props.file)
         // Tried once: a file gone since the end would otherwise be asked for every frame
         ended = false
-        if (r.error) { page.say(errorLine(r.error), words.t("action-try-again"), page.reopen); return }
+        if (r.error) { page.sayError(r.error, page.reopen); return }
         closed = false
         replayVisible = false
         session = r.reply.session
@@ -657,21 +657,39 @@ FocusScope {
     // bridge's sentence and what to do, never the core's message alone
     function errorLine(e) {
         if (e.kind === "Refused") return words.t("player-not-tracked-because", { reason: refusalWord(e.reason) })
-        return e.plain ? e.plain + (e.next ? " " + e.next : "") : String(e.message || words.t("frame-did-not-work"))
+        return frame.plainText(e)
     }
     // A notice with the button that does the fix; the notice's button runs `act`
     function say(text, label, act) {
         page.noticeUndo = act || null
         notice.show(text, act ? label : "", act ? 6 : 4)
     }
+    // An error with the button its fix names: Try again runs `retry`, a settings fix opens
+    // that tab, and any other fix gets no button, since pressing it could not help
+    function sayError(e, retry) {
+        var fix = String(e.fix || "")
+        if (fix === "retry" && retry) page.say(errorLine(e), words.t("action-try-again"), retry)
+        else if (fix.indexOf("settings:") === 0) {
+            var tab = fix.slice(9)
+            page.say(errorLine(e), words.t("action-open-settings"), function() { frame.go("settings", { tab: tab }) })
+        } else page.say(errorLine(e))
+    }
     function markWatched() {
         if (!canMark) return
-        var r = Door.markEpisode(session.series, episodeNumber)
-        if (r.error) page.say(errorLine(r.error), words.t("action-try-again"), r.error.kind === "Refused" ? null : page.markWatched)
+        page.markEpisode(session.series, episodeNumber)
     }
+    // The series and episode are kept, so a retry marks the one that failed, not the one
+    // playing by the time it is pressed
+    function markEpisode(series, episode) {
+        var r = Door.markEpisode(series, episode)
+        if (r.error) page.sayError(r.error, function() { page.markEpisode(series, episode) })
+    }
+    // A score kept on this device has no job to report back, so it says so here (#213)
     function saveScore(v) {
-        var r = Door.setScore(page.session.series, v)
-        if (r.error) page.say(errorLine(r.error), words.t("action-try-again"), function() { page.saveScore(v) })
+        var series = page.session.series
+        var r = Door.setScore(series, v)
+        if (r.error) page.sayError(r.error, function() { page.saveScore(v) })
+        else if (!r.reply || r.reply.job === undefined) page.say(words.t("player-rated", { score: words.score(v) }))
     }
     function outcomeText(o) {
         if (o.reason) return words.t("player-outcome-said", { tracker: trackerName(o.tracker), words: refusalWord(o.reason) })
@@ -690,16 +708,17 @@ FocusScope {
                              : { tracked: "player-outcome-tracked", "not-tracked": "player-outcome-not-tracked", failed: "player-outcome-could-not-update" }
         return words.t(ids[head], { list: all.join("; ") })
     }
-    function markOutcome(outcomes) {
+    function markOutcome(outcomes, series, episode) {
         var list = asArray(outcomes)
-        // A list that did not answer (not a refusal) gets Try again, which marks again
+        // A list that did not answer (not a refusal) gets Try again, which marks the same
+        // episode again
         var failed = list.some(function(o) { return !o.ok && !o.reason })
-        page.say(outcomeLine(list), words.t("action-try-again"), failed ? page.markWatched : null)
+        page.say(outcomeLine(list), words.t("action-try-again"), failed ? function() { page.markEpisode(series, episode) } : null)
         if (session && session.is_last_episode && list.some(function(o) { return o.ok })) rating.visible = true
     }
     Connections {
         target: Door
-        function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes) }
+        function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes, series, episode) }
         function onScored(series, score, outcomes) {
             if (!page.session || series !== page.session.series) return
             if (page.asArray(outcomes).every(function(o) { return o.ok })) page.say(words.t("player-rated", { score: words.score(score) }))

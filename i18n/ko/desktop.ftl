@@ -507,7 +507,7 @@ match-link-anilist = AniList 또는 MyAnimeList 링크 붙여넣기
 match-look-up = 조회
 match-searching = { $provider } 검색 중
 match-type-more = 두 글자 이상 입력하면 { $provider }에서 검색해요.
-match-no-results-try = { $provider }에서 맞는 제목이 없어요. 다른 단어로 찾거나 아래에 링크를 붙여 넣으세요.
+match-no-results = { $provider }에서 찾은 제목이 없어요.
 
 ## WatchingPage.qml
 

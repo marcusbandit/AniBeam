@@ -61,9 +61,24 @@ Item {
 
     // The episode count set by hand (#239); null clears it
     function setEpisodeCount(n) {
-        var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
-        if (r && r.error) frame.fail(r.error, function() { page.setEpisodeCount(n) })
-        else frame.toast(n === null ? words.t("series-count-cleared") : words.t("series-count-set", { count: n }))
+        var id = page.props.id
+        var run = function() { return Door.call("SetEpisodeCount", { series: id, count: n }) }
+        var said = n === null ? words.t("series-count-cleared") : words.t("series-count-set", { count: n })
+        var r = run()
+        if (r && r.error) frame.fail(r.error, page.retry(run, said))
+        else frame.toast(said)
+    }
+    // A Try again that outlives the page, as the toast can: it keeps the call and what to
+    // say after it, and nothing of the page. `said` is a line, or a function of the reply.
+    function retry(run, said) {
+        var fr = frame
+        var again = function() {
+            var r = run()
+            if (r && r.error) { fr.fail(r.error, again); return }
+            var line = typeof said === "function" ? said(r) : said
+            if (line) fr.toast(line)
+        }
+        return again
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
     readonly property var scheduleNotes: detail && detail.schedule_notes ? detail.schedule_notes : []
@@ -199,7 +214,12 @@ Item {
     // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
     // behind Fill in, so a fix of another file never carries it along
     function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
-    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error, page.rescan) : frame.toast(words.t("series-rescan-started")) }
+    function rescan() {
+        var id = page.props.id
+        var run = function() { return Door.rescanSeries(id) }
+        var r = run()
+        r.error ? frame.fail(r.error, page.retry(run, words.t("series-rescan-started"))) : frame.toast(words.t("series-rescan-started"))
+    }
     function load() {
         var r = Door.getSeries(props.id)
         if (r.error) { frame.fail(r.error, page.load); return }
@@ -231,7 +251,7 @@ Item {
             if (series !== page.props.id) return
             reloadDebounce.restart()
             if (outcomes.every(function(o) { return o.ok })) frame.toast(score < 0 ? words.t("series-rated-cleared") : words.t("series-rated", { score: words.score(score) }))
-            else frame.toast(words.t("series-score-not-saved"), 8, words.t("action-try-again"), function() { page.saveScore(score) })
+            else frame.toast(words.t("series-score-not-saved"), 8, words.t("action-try-again"), page.retry(function() { return Door.setScore(series, score) }, ""))
         }
         function onMarked(series, episode, outcomes) {
             if (series !== page.props.id) return
@@ -251,9 +271,9 @@ Item {
     // Never a file a torrent is still writing; the core refuses it too, behind every Play
     function openFile(file) {
         for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) {
-            var id = page.props.id
-            frame.toast(words.t("series-still-downloading-plays", { episode: words.episodeName("", episodes[i].number) }), 6,
-                        words.t("series-open-downloads"), function() { frame.go("downloads", { series: id }) })
+            var id = page.props.id, fr = frame
+            fr.toast(words.t("series-still-downloading-plays", { episode: words.episodeName("", episodes[i].number) }), 6,
+                     words.t("series-open-downloads"), function() { fr.go("downloads", { series: id }) })
             return
         }
         frame.go("player", { file: file }, page.title)
@@ -297,9 +317,10 @@ Item {
         for (var i = 0; i < outcomes.length; i++) {
             var o = outcomes[i]
             if (o.ok) continue
-            // A refusal's reason is what to do; a list that did not answer keeps its own
-            // message under Details
-            list.push(words.t(o.reason && o.message ? "series-tracker-refused-why" : "series-tracker-refused", { tracker: names[o.tracker] || o.tracker, why: o.message || "" }))
+            // A refusal says why, in the player's words; a list that did not answer keeps
+            // its own message under Details
+            var tracker = names[o.tracker] || o.tracker
+            list.push(o.reason ? words.t("series-tracker-refused-why", { tracker: tracker, why: page.refusalWord(o.reason) }) : words.t("series-tracker-refused", { tracker: tracker }))
         }
         return list.join("; ")
     }
@@ -309,14 +330,31 @@ Item {
         var bad = page.failedOutcomes(outcomes)
         if (bad === "") return
         var raw = outcomes.filter(function(o) { return !o.ok && !o.reason && o.message }).map(function(o) { return o.message }).join("\n")
-        if (outcomes.every(function(o) { return o.ok || !!o.reason })) frame.toast(bad, 8)
-        else frame.toast(words.t("series-tracker-check-accounts", { list: bad }), 8, words.t("action-open-settings"), function() { frame.go("settings", { tab: "accounts" }) }, raw)
+        var fr = frame
+        if (outcomes.every(function(o) { return o.ok || !!o.reason })) fr.toast(bad, 8)
+        else fr.toast(words.t("series-tracker-check-accounts", { list: bad }), 8, words.t("action-open-settings"), function() { fr.go("settings", { tab: "accounts" }) }, raw)
+    }
+    // Each ID spelled out in a words.t call, so the strings check sees every one
+    function refusalWord(r) {
+        switch (r) {
+        case "Hidden": return words.t("player-refusal-hidden")
+        case "NoMatch": return words.t("player-refusal-no-match")
+        case "NotNewer": return words.t("player-refusal-not-newer")
+        case "Extra": return words.t("player-refusal-extra")
+        case "Unmatched": return words.t("player-refusal-unmatched")
+        case "OnDisk": return words.t("player-refusal-on-disk")
+        default: return String(r)
+        }
     }
     // A score kept on this device has no job to report back, so it says so here (#213)
     function saveScore(v) {
-        var r = Door.setScore(page.props.id, v)
-        if (r.error) frame.fail(r.error, function() { page.saveScore(v) })
-        else if (!r.reply || r.reply.job === undefined) frame.toast(v < 0 ? words.t("series-score-cleared") : words.t("series-score-saved"))
+        var id = page.props.id
+        var run = function() { return Door.setScore(id, v) }
+        var done = v < 0 ? words.t("series-score-cleared") : words.t("series-score-saved")
+        var said = function(r) { return !r.reply || r.reply.job === undefined ? done : "" }
+        var r = run()
+        if (r.error) frame.fail(r.error, page.retry(run, said))
+        else { var line = said(r); if (line) frame.toast(line) }
     }
     function marker(ep) {
         var watched = !!ep.watched
@@ -329,7 +367,7 @@ Item {
         // The season goes along for a show with no tracker, whose marks are kept per season
         var id = props.id, season = ep.season || 1
         var r = Door.setProgress(id, target, season)
-        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error, function() { page.marker(ep) }); return }
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error, page.retry(function() { return Door.setProgress(id, target, season) }, "")); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
             frame.toast(target > before ? words.t("series-watched-up-to", { episode: words.episodeName("", target) }) : words.t("series-unwatched-from", { episode: words.episodeName("", target + 1) }), 8, words.t("series-undo"),
@@ -1023,8 +1061,9 @@ Item {
                             // The id is kept here: Undo can come after the page is gone
                             var id = props.id
                             var r = Door.setHidden(id, hide)
-                            if (r.error) { frame.fail(r.error, clicked); return }
-                            frame.toast(hide ? words.t("series-hidden-toast", { title: page.title }) : words.t("series-unhidden-toast", { title: page.title }), 6, words.t("series-undo"),
+                            var said = hide ? words.t("series-hidden-toast", { title: page.title }) : words.t("series-unhidden-toast", { title: page.title })
+                            if (r.error) { frame.fail(r.error, page.retry(function() { return Door.setHidden(id, hide) }, said)); return }
+                            frame.toast(said, 6, words.t("series-undo"),
                                         function() { Door.setHidden(id, !hide) })
                         }
                         Tooltip { text: page.hasTracker ? words.t("series-hide-tip-tracked") : words.t("series-hide-tip") }

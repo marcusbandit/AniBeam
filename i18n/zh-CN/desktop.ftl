@@ -464,7 +464,7 @@ match-link-anilist = 粘贴 AniList 或 MyAnimeList 链接
 match-look-up = 查找
 match-searching = 正在搜索 { $provider }
 match-type-more = 至少输入两个字才能搜索 { $provider }。
-match-no-results-try = { $provider }上没有匹配的作品。换个词试试，或在下方粘贴链接。
+match-no-results = 在 { $provider } 上没有找到标题。
 
 ## WatchingPage.qml
 

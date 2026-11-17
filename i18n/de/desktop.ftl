@@ -564,7 +564,7 @@ match-link-anilist = Link von AniList oder MyAnimeList einfügen
 match-look-up = Suchen
 match-searching = Suche { $provider }
 match-type-more = Gib mindestens zwei Buchstaben ein, um { $provider } zu durchsuchen.
-match-no-results-try = Keine Titel passen dazu bei { $provider }. Versuche andere Wörter oder füge unten einen Link ein.
+match-no-results = Keine Titel bei { $provider } gefunden.
 
 ## WatchingPage.qml
 
