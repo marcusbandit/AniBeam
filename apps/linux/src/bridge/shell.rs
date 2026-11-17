@@ -597,34 +597,35 @@ impl qobject::Shell {
             eprintln!(
                 "anibeam: notifications: a sandbox run shows none: episode {number} of {title}"
             );
-            return;
-        }
-        #[cfg(not(any(target_os = "macos", windows)))]
-        {
-            use crate::dbus::notify::{Notifier, Target};
-            static NOTIFIER: std::sync::OnceLock<tokio::sync::Mutex<Notifier>> =
-                std::sync::OnceLock::new();
-            let target = Target {
-                series: v["series"].as_u64(),
-                anilist_id: v["anilist_id"].as_u64().unwrap_or(0),
-                title,
-            };
-            let shell = self.qt_thread();
-            let on_click = std::sync::Arc::new(move |t: Target, token: String| {
-                let series = t.series.map_or(-1.0, |s| s as f64);
-                let _ = shell.queue(move |shell| {
-                    shell.notification_opened(
-                        series,
-                        t.anilist_id as f64,
-                        QString::from(&t.title),
-                        QString::from(&token),
-                    )
+        } else {
+            #[cfg(not(any(target_os = "macos", windows)))]
+            {
+                use crate::dbus::notify::{Notifier, Target};
+                static NOTIFIER: std::sync::OnceLock<tokio::sync::Mutex<Notifier>> =
+                    std::sync::OnceLock::new();
+                let target = Target {
+                    series: v["series"].as_u64(),
+                    anilist_id: v["anilist_id"].as_u64().unwrap_or(0),
+                    title,
+                };
+                let shell = self.qt_thread();
+                let on_click = std::sync::Arc::new(move |t: Target, token: String| {
+                    let series = t.series.map_or(-1.0, |s| s as f64);
+                    let _ = shell.queue(move |shell| {
+                        shell.notification_opened(
+                            series,
+                            t.anilist_id as f64,
+                            QString::from(&t.title),
+                            QString::from(&token),
+                        )
+                    });
                 });
-            });
-            crate::runtime::runtime().spawn(async move {
-                let notifier = NOTIFIER.get_or_init(|| tokio::sync::Mutex::new(Notifier::new()));
-                notifier.lock().await.show(target, number, on_click).await;
-            });
+                crate::runtime::runtime().spawn(async move {
+                    let notifier =
+                        NOTIFIER.get_or_init(|| tokio::sync::Mutex::new(Notifier::new()));
+                    notifier.lock().await.show(target, number, on_click).await;
+                });
+            }
         }
     }
 
