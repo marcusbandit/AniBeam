@@ -1386,6 +1386,7 @@ core-downloads-no-default-folder = qBittorrent nie ma domyślnego folderu zapisu
 core-downloads-save-folder-not-absolute = { $folder } nie jest pełną ścieżką do folderu
 # $folder is the folder given
 core-downloads-save-folder-unusable = { $folder } nie może przechowywać pobranych plików: wybierz folder, który istnieje i nie jest folderem domowym
+core-downloads-library-not-connected = Folder biblioteki { $folder } nie jest podłączony: podłącz jego dysk, a potem dodaj ponownie
 core-downloads-name-empty = nazwa nie może być pusta
 core-downloads-name-slash = nazwa nie może zawierać / ani \
 # $name is the name given, in quotes

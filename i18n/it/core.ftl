@@ -1165,6 +1165,7 @@ core-downloads-no-default-folder = qBittorrent non ha una cartella di salvataggi
 core-downloads-save-folder-not-absolute = { $folder } non è un percorso completo a una cartella
 # $folder is the folder given
 core-downloads-save-folder-unusable = { $folder } non può contenere download: scegli una cartella che esiste e che non sia la tua cartella home
+core-downloads-library-not-connected = La cartella della libreria { $folder } non è collegata: collega la sua unità, poi aggiungi di nuovo
 core-downloads-name-empty = il nome non può essere vuoto
 core-downloads-name-slash = il nome non deve contenere / o \
 core-downloads-name-not-folder = { $name } non è un nome di cartella
