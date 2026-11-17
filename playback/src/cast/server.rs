@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn a_converted_playlist_reads_as_pieces_with_their_starts() {
-        let list = anibeam_host_api::hls_playlist(15.0, "?audio=1&burn=0");
+        let list = anibeam_host_api::hls_playlist(15.0, "?audio=1&burn=0").unwrap();
         let pieces = read_pieces(&list);
         assert_eq!(
             pieces,
