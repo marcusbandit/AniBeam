@@ -1425,9 +1425,15 @@ Item {
     }
 
     // ---- No library yet: the same empty state as Library, and no rows (#1006)
+    // Centred in the room above the tracker nudge, so the two never meet; on a window too
+    // short for both, the nudge steps aside (#1107)
     LibraryEmpty {
+        id: homeEmpty
         objectName: "home-empty"
         visible: page.libraryEmpty
+        anchors.horizontalCenter: parent.horizontalCenter
+        readonly property real room: nudge.shown ? nudge.y - theme.space(4) : page.height
+        y: Math.max(0, (room - height) / 2)
     }
     EmptyState {
         objectName: "home-failed"
@@ -1440,8 +1446,10 @@ Item {
     }
     // A new install has no library to hold the tracker nudge, so the empty Home carries it
     TrackerNudge {
+        id: nudge
         objectName: "home-tracker-nudge"
-        visible: page.libraryEmpty && wanted
+        readonly property bool shown: page.libraryEmpty && wanted && homeEmpty.height + theme.space(8) <= y
+        visible: shown
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         // Over the update island when the two share the page's right side, never under it (#1093)

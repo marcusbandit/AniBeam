@@ -616,8 +616,21 @@ FocusScope {
             objectName: "frame-toast"
             visible: false
             radius: theme.radiusTile
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
+            // Centred at the foot, and never on the update island: moved left of it where
+            // it fits there, clear of the rail, and set above it where it does not (#1108)
+            readonly property real gap: theme.space(4)
+            readonly property real centredX: (parent.width - width) / 2
+            readonly property real footY: parent.height - theme.space(10) - height
+            readonly property bool meetsIsland: updateNotice.visible
+                && centredX + width > updateNotice.x - gap
+                && footY < updateNotice.y + updateNotice.height + gap && footY + height > updateNotice.y - gap
+            readonly property real leftEdge: (rail.visible ? rail.x + rail.width : 0) + gap
+            readonly property bool besideIsland: updateNotice.x - gap - width >= leftEdge
+            x: !meetsIsland ? centredX : besideIsland ? updateNotice.x - gap - width : centredX
+            y: meetsIsland && !besideIsland ? Math.max(0, updateNotice.y - gap - height) : footY
+            // An island coming or going under a toast that is up moves it, never jumps it
+            Behavior on x { enabled: toastBox.visible; NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: toastBox.visible; NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
             width: Math.min(parent.width - theme.space(8), toastRow.implicitWidth + theme.space(4))
             height: toastCol.implicitHeight + theme.space(1)
             property var action: null

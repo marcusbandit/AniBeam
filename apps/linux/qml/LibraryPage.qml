@@ -690,6 +690,7 @@ Item {
     // The empty library: no folder, folders still being read, or folders with no video
     LibraryEmpty {
         objectName: "library-empty"
+        anchors.centerIn: parent
         visible: page.libraryEmpty
     }
 }
