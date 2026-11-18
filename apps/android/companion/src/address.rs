@@ -108,7 +108,10 @@ mod tests {
         assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
         let a = HostAddress::parse("Http://desktop:8791").unwrap();
         assert_eq!(a.display(), "desktop:8791");
-        assert_eq!(HostAddress::parse("HTTP://desktop").unwrap().host, "desktop");
+        assert_eq!(
+            HostAddress::parse("HTTP://desktop").unwrap().host,
+            "desktop"
+        );
     }
 
     #[test]
