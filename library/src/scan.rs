@@ -159,20 +159,34 @@ pub enum ScanScope {
 }
 
 /// A file row as it stood before this reconcile: what decides whether its
-/// series changed, and where its history sits.
+/// series changed, whether the row needs writing at all, and where its
+/// history sits.
 struct OldRow {
     id: u64,
+    size: i64,
     mtime: i64,
-    /// kind, number, season, extra kind, extra index, label
-    reading: (
-        String,
-        Option<f64>,
-        Option<u32>,
-        Option<String>,
-        Option<u32>,
-        String,
-    ),
+    kind: String,
+    number: Option<f64>,
+    season: Option<u32>,
+    extra_kind: Option<String>,
+    extra_index: Option<u32>,
+    label: String,
     key: String,
+    sidecars: String,
+}
+
+impl OldRow {
+    /// The row reads the file as the walk does now: the same kind, number,
+    /// season, extra and label. A new reading changes the page as surely as
+    /// a new file.
+    fn reads_as(&self, kind: &str, f: &walk::ScannedFile) -> bool {
+        self.kind == kind
+            && self.number == episode_number(f)
+            && self.season == f.classified.season
+            && self.extra_kind.as_deref() == f.classified.extra.map(|k| k.as_str())
+            && self.extra_index == f.classified.extra_index
+            && self.label == f.label
+    }
 }
 
 #[derive(Default, Debug)]
@@ -366,17 +380,17 @@ pub fn reconcile_source(
         let key = (s.kind.as_str().to_string(), s.path.clone());
         let (id, was_missing, is_new) = match existing.get(&key) {
             Some(e) => {
-                tx.execute(
+                tx.prepare_cached(
                     "UPDATE series SET folder_name = ?2, missing_since = NULL WHERE id = ?1",
-                    params![e.id as i64, s.name],
-                )?;
+                )?
+                .execute(params![e.id as i64, s.name])?;
                 (e.id, e.missing, false)
             }
             None => {
-                tx.execute(
+                tx.prepare_cached(
                     "INSERT INTO series (source_id, kind, path, folder_name, added_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![source_id as i64, s.kind.as_str(), s.path, s.name, now],
-                )?;
+                )?
+                .execute(params![source_id as i64, s.kind.as_str(), s.path, s.name, now])?;
                 (tx.last_insert_rowid() as u64, false, true)
             }
         };
@@ -390,23 +404,23 @@ pub fn reconcile_source(
         let mut old: HashMap<String, OldRow> = HashMap::new();
         {
             let mut stmt = tx.prepare_cached(
-                "SELECT id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key FROM files WHERE series_id = ?1",
+                "SELECT id, path, size, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars FROM files WHERE series_id = ?1",
             )?;
             let rows = stmt.query_map(params![id as i64], |r| {
                 Ok((
                     r.get::<_, String>(1)?,
                     OldRow {
                         id: r.get::<_, i64>(0)? as u64,
-                        mtime: r.get(2)?,
-                        reading: (
-                            r.get(3)?,
-                            r.get(4)?,
-                            r.get::<_, Option<i64>>(5)?.map(|v| v as u32),
-                            r.get(6)?,
-                            r.get::<_, Option<i64>>(7)?.map(|v| v as u32),
-                            r.get(8)?,
-                        ),
-                        key: r.get(9)?,
+                        size: r.get(2)?,
+                        mtime: r.get(3)?,
+                        kind: r.get(4)?,
+                        number: r.get(5)?,
+                        season: r.get::<_, Option<i64>>(6)?.map(|v| v as u32),
+                        extra_kind: r.get(7)?,
+                        extra_index: r.get::<_, Option<i64>>(8)?.map(|v| v as u32),
+                        label: r.get(9)?,
+                        key: r.get(10)?,
+                        sidecars: r.get(11)?,
                     },
                 ))
             })?;
@@ -426,7 +440,8 @@ pub fn reconcile_source(
         let new_paths: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
         for (path, row) in &old {
             if !new_paths.contains(path.as_str()) {
-                tx.execute("DELETE FROM files WHERE id = ?1", params![row.id as i64])?;
+                tx.prepare_cached("DELETE FROM files WHERE id = ?1")?
+                    .execute(params![row.id as i64])?;
                 file_changed = true;
             }
         }
@@ -439,17 +454,8 @@ pub fn reconcile_source(
             let sidecars = serde_json::to_string(&f.sidecars)?;
             match old.get(&f.path) {
                 Some(row) => {
-                    let file_id = &row.id;
-                    // A new reading changes the page as surely as a new file.
-                    let reading = (
-                        kind.to_string(),
-                        episode_number(f),
-                        f.classified.season,
-                        f.classified.extra.map(|k| k.as_str().to_string()),
-                        f.classified.extra_index,
-                        f.label.clone(),
-                    );
-                    if row.mtime != f.mtime || row.reading != reading || row.key != f.episode_key {
+                    let reads_as = row.reads_as(kind, f);
+                    if row.mtime != f.mtime || !reads_as || row.key != f.episode_key {
                         file_changed = true;
                     }
                     if row.key != f.episode_key {
@@ -459,10 +465,19 @@ pub fn reconcile_source(
                             to: f.episode_key.clone(),
                         });
                     }
-                    tx.execute(
+                    // A rescan finds most files exactly as they were, and
+                    // those rows are left as they are.
+                    let unchanged = reads_as
+                        && row.mtime == f.mtime
+                        && row.size == f.size as i64
+                        && row.key == f.episode_key
+                        && row.sidecars == sidecars;
+                    if !unchanged {
+                        tx.prepare_cached(
                         "UPDATE files SET size = ?2, mtime = ?3, kind = ?4, number = ?5, season = ?6, extra_kind = ?7, extra_index = ?8, label = ?9, episode_key = ?10, sidecars = ?11, seen_at = ?12 WHERE id = ?1",
-                        params![
-                            *file_id as i64,
+                    )?
+                    .execute(params![
+                            row.id as i64,
                             f.size as i64,
                             f.mtime,
                             kind,
@@ -474,8 +489,8 @@ pub fn reconcile_source(
                             f.episode_key,
                             sidecars,
                             now
-                        ],
-                    )?;
+                        ])?;
+                    }
                 }
                 None => {
                     file_changed = true;
@@ -488,7 +503,8 @@ pub fn reconcile_source(
                         stmt.query_row(params![f.path], |r| r.get(0)).optional()?
                     };
                     if let Some(other) = owner.map(|v| v as u64).filter(|other| *other != id) {
-                        tx.execute("DELETE FROM files WHERE path = ?1", params![f.path])?;
+                        tx.prepare_cached("DELETE FROM files WHERE path = ?1")?
+                            .execute(params![f.path])?;
                         lost_a_file.insert(other);
                     }
                     let folder = crate::classifier::folder_below(&s.path, &f.path);
@@ -507,9 +523,10 @@ pub fn reconcile_source(
                     })
                     .transpose()?
                     .flatten();
-                    tx.execute(
+                    tx.prepare_cached(
                         "INSERT INTO files (series_id, path, size, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars, seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                        params![
+                    )?
+                    .execute(params![
                             id as i64,
                             f.path,
                             f.size as i64,
@@ -523,8 +540,7 @@ pub fn reconcile_source(
                             f.episode_key,
                             sidecars,
                             now
-                        ],
-                    )?;
+                        ])?;
                     // A new copy that keys by its name alone may have history
                     // waiting under its folder's key: an import names a copy
                     // in a later folder that way (#1085), and so did this
@@ -833,6 +849,55 @@ pub fn list_sources(conn: &Connection, state: &LibraryState) -> Result<Vec<Sourc
     Ok(out)
 }
 
+/// A source's path, or NotFound.
+fn source_path(conn: &Connection, id: u64) -> Result<String, CoreError> {
+    source_row(conn, id)?
+        .map(|(path, _)| path)
+        .ok_or(CoreError::NotFound {
+            what: Entity::Source,
+            id,
+        })
+}
+
+/// A folder a source can be set to: an absolute path, normalised.
+fn absolute(path: &str) -> Result<String, CoreError> {
+    if !Path::new(path).is_absolute() {
+        return Err(CoreError::invalid(
+            "path",
+            tr("core-library-source-not-absolute", &[]),
+        ));
+    }
+    Ok(normalise(path))
+}
+
+/// Refuses a source path another source (other than `except`) already
+/// holds, contains or lies inside. Two sources that overlap walk the same
+/// tree and both claim every file in it: the second one's series hit
+/// `UNIQUE (kind, path)` and fail the reconcile, and every full scan after
+/// that fails the same way, so the overlap is refused at the door.
+fn free_for(tx: &Transaction, path: &str, except: Option<u64>) -> Result<(), CoreError> {
+    let mut stmt = tx.prepare("SELECT path FROM sources WHERE id IS NOT ?1")?;
+    let others = stmt.query_map(params![except.map(|id| id as i64)], |r| {
+        r.get::<_, String>(0)
+    })?;
+    for other in others {
+        let other = other?;
+        if other == path {
+            return Err(CoreError::invalid(
+                "path",
+                tr("core-library-source-exists", &[]),
+            ));
+        }
+        if under(path, &other) || under(&other, path) {
+            return Err(CoreError::invalid(
+                "path",
+                tr("core-library-source-nested", &[]),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn is_unique_violation(e: &rusqlite::Error) -> bool {
     matches!(e, rusqlite::Error::SqliteFailure(f, _) if f.code == ErrorCode::ConstraintViolation)
 }
@@ -852,43 +917,15 @@ pub fn list_sources_call(library: &Library) -> Result<Reply, CoreError> {
 /// is not a directory right now is still a source, just an unavailable
 /// one; the job leaves everything under it alone.
 pub fn add_source(library: &Arc<Library>, path: &str) -> Result<Reply, CoreError> {
-    if !Path::new(path).is_absolute() {
-        return Err(CoreError::invalid(
-            "path",
-            tr("core-library-source-not-absolute", &[]),
-        ));
-    }
     let owner = library.clone();
-    let path = normalise(path);
+    let path = absolute(path)?;
     let available = Path::new(&path).is_dir();
     let now = time::now_secs();
     let insert = path.clone();
     // The overlap check and the insert share one transaction, so two calls
     // racing each other cannot both find the tree free.
     let id = library.services.store.tx(move |tx| {
-        // Two sources that overlap walk the same tree and both claim every
-        // file in it: the second one's series hit `UNIQUE (kind, path)` and
-        // fail the reconcile, and every full scan after that fails the same
-        // way. Refuse the overlap at the door instead.
-        let existing: Vec<String> = {
-            let mut stmt = tx.prepare("SELECT path FROM sources")?;
-            stmt.query_map([], |r| r.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        for other in &existing {
-            if *other == insert {
-                return Err(CoreError::invalid(
-                    "path",
-                    tr("core-library-source-exists", &[]),
-                ));
-            }
-            if under(&insert, other) || under(other, &insert) {
-                return Err(CoreError::invalid(
-                    "path",
-                    tr("core-library-source-nested", &[]),
-                ));
-            }
-        }
+        free_for(tx, &insert, None)?;
         match tx.execute(
             "INSERT INTO sources (path, available, added_at) VALUES (?1, ?2, ?3)",
             params![insert, i64::from(available), now],
@@ -936,47 +973,13 @@ pub fn add_source(library: &Arc<Library>, path: &str) -> Result<Reply, CoreError
 /// refuses a path: not absolute, or overlapping another source. A scan of
 /// the source follows, which watches the new folder.
 pub fn move_source(library: &Arc<Library>, source: u64, path: &str) -> Result<Reply, CoreError> {
-    if !Path::new(path).is_absolute() {
-        return Err(CoreError::invalid(
-            "path",
-            tr("core-library-source-not-absolute", &[]),
-        ));
-    }
     let owner = library.clone();
-    let path = normalise(path);
+    let path = absolute(path)?;
     let available = Path::new(&path).is_dir();
     let to = path.clone();
     let from = library.services.store.tx(move |tx| {
-        let from: Option<String> = tx
-            .query_row(
-                "SELECT path FROM sources WHERE id = ?1",
-                params![source as i64],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let from = from.ok_or(CoreError::NotFound {
-            what: Entity::Source,
-            id: source,
-        })?;
-        let others: Vec<String> = {
-            let mut stmt = tx.prepare("SELECT path FROM sources WHERE id != ?1")?;
-            stmt.query_map(params![source as i64], |r| r.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        for other in &others {
-            if *other == to {
-                return Err(CoreError::invalid(
-                    "path",
-                    tr("core-library-source-exists", &[]),
-                ));
-            }
-            if under(&to, other) || under(other, &to) {
-                return Err(CoreError::invalid(
-                    "path",
-                    tr("core-library-source-nested", &[]),
-                ));
-            }
-        }
+        let from = source_path(tx, source)?;
+        free_for(tx, &to, Some(source))?;
         tx.execute(
             "UPDATE sources SET path = ?2, available = ?3 WHERE id = ?1",
             params![source as i64, to, i64::from(available)],
@@ -1038,17 +1041,7 @@ pub fn move_source(library: &Arc<Library>, source: u64, path: &str) -> Result<Re
 /// cascade, and both removals are announced.
 pub fn remove_source(library: &Library, source: u64) -> Result<Reply, CoreError> {
     let (path, ids) = library.services.store.tx(move |tx| {
-        let path: Option<String> = tx
-            .query_row(
-                "SELECT path FROM sources WHERE id = ?1",
-                params![source as i64],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let path = path.ok_or(CoreError::NotFound {
-            what: Entity::Source,
-            id: source,
-        })?;
+        let path = source_path(tx, source)?;
         let ids: Vec<u64> = {
             let mut stmt = tx.prepare("SELECT id FROM series WHERE source_id = ?1 ORDER BY id")?;
             stmt.query_map(params![source as i64], |r| {
@@ -1135,24 +1128,7 @@ pub fn scan(library: &Arc<Library>, source: Option<u64>) -> Result<Reply, CoreEr
 /// right now is refused rather than walked, so the series is never marked
 /// missing by a scan that could not look.
 pub fn rescan_series(library: &Arc<Library>, series: u64) -> Result<Reply, CoreError> {
-    let row: Option<(String, bool)> = library.services.store.read(|c| {
-        Ok(c.query_row(
-            "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
-            params![series as i64],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1)),
-        )
-        .optional()?)
-    })?;
-    let (path, available) = row.ok_or(CoreError::NotFound {
-        what: Entity::Series,
-        id: series,
-    })?;
-    if !available {
-        return Err(CoreError::Unavailable { path });
-    }
-    Ok(Reply::Started {
-        job: start(library, ScanScope::Series(series)),
-    })
+    rescan_many(library, &[series])
 }
 
 /// Rescans several series in one scan (#208): each picked series is a
@@ -1163,25 +1139,28 @@ pub fn rescan_series(library: &Arc<Library>, series: u64) -> Result<Reply, CoreE
 pub fn rescan_many(library: &Arc<Library>, series: &[u64]) -> Result<Reply, CoreError> {
     let mut there = Vec::new();
     let mut away = None;
-    for &id in series {
-        let row: Option<(String, bool)> = library.services.store.read(|c| {
-            Ok(c.query_row(
-                "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
-                params![id as i64],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1)),
-            )
-            .optional()?)
-        })?;
-        let (source, available) = row.ok_or(CoreError::NotFound {
-            what: Entity::Series,
-            id,
-        })?;
-        if available {
-            there.push(id);
-        } else {
-            away.get_or_insert(source);
+    library.services.store.read(|c| {
+        let mut stmt = c.prepare(
+            "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
+        )?;
+        for &id in series {
+            let (source, available) = stmt
+                .query_row(params![id as i64], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1))
+                })
+                .optional()?
+                .ok_or(CoreError::NotFound {
+                    what: Entity::Series,
+                    id,
+                })?;
+            if available {
+                there.push(id);
+            } else {
+                away.get_or_insert(source);
+            }
         }
-    }
+        Ok(())
+    })?;
     let Some((&first, rest)) = there.split_first() else {
         return Err(CoreError::Unavailable {
             path: away.unwrap_or_default(),
@@ -1407,8 +1386,11 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                         tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
                             .await
                             .map_err(|e| CoreError::internal(e.to_string()))?;
-                    let scanned = match walked {
-                        Ok(scanned) => scanned,
+                    let walk::Walk {
+                        series: scanned,
+                        movie_folders,
+                    } = match walked {
+                        Ok(walk) => walk,
                         Err(e) => {
                             ctx.say(
                                 Level::Warn,
@@ -1457,12 +1439,6 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                     if !target.available {
                         set_available(&library, &ctx, source_id, &path, true).await?;
                     }
-                    let root = path.clone();
-                    let movie_folders = tokio::task::spawn_blocking(move || {
-                        walk::find_movie_folders(Path::new(&root))
-                    })
-                    .await
-                    .map_err(|e| CoreError::internal(e.to_string()))?;
                     library.state.set_movie_folders(source_id, movie_folders);
 
                     let only = only_under.clone();
@@ -2352,7 +2328,7 @@ mod tests {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(&file, b"x").unwrap();
         }
-        let walked = walk::scan_source(lib.path()).unwrap();
+        let walked = walk::scan_source(lib.path()).unwrap().series;
         assert_eq!(walked.len(), 1, "one show");
         // The keys as a scan before #1085 wrote them: the name alone.
         let mut before = walked.clone();
@@ -2418,7 +2394,7 @@ mod tests {
         // With the first season's copy gone, the other is the only one of its
         // name: it takes the bare key back, and its history follows it there.
         std::fs::remove_file(show.join("Season 1").join("NCOP1.mkv")).unwrap();
-        let walked = walk::scan_source(lib.path()).unwrap();
+        let walked = walk::scan_source(lib.path()).unwrap().series;
         store
             .tx(move |tx| reconcile_source(tx, 1, &walked, None, 40))
             .unwrap();
@@ -2451,7 +2427,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
         let reconcile = |now: i64| {
-            let walked = walk::scan_source(lib.path()).unwrap();
+            let walked = walk::scan_source(lib.path()).unwrap().series;
             store
                 .tx(move |tx| reconcile_source(tx, 1, &walked, None, now))
                 .unwrap()
@@ -2588,6 +2564,38 @@ mod tests {
             .tx(|tx| reconcile_source(tx, 1, &[ova_folder()], None, 30))
             .unwrap();
         assert!(r.changed.is_empty());
+        store.close();
+    }
+
+    /// A rescan that finds a file as it was leaves its row alone, and one
+    /// whose size alone moved writes the size without calling the series
+    /// changed.
+    #[test]
+    fn a_rescan_writes_only_the_rows_that_moved() {
+        let (_dir, store) = store_with_source();
+        let files = ["/lib/A/ep01.mkv", "/lib/A/ep02.mkv"];
+        let walk = scanned(SeriesKind::Show, "/lib/A", "A", &files);
+        let first = walk.clone();
+        store
+            .tx(move |tx| reconcile_source(tx, 1, &[first], None, 10))
+            .unwrap();
+        let mut again = walk.clone();
+        again.files[1].size = 7;
+        let r = store
+            .tx(move |tx| reconcile_source(tx, 1, &[again], None, 20))
+            .unwrap();
+        assert!(r.added.is_empty() && r.changed.is_empty() && r.removed.is_empty());
+        let rows: Vec<(String, i64, i64)> = store
+            .write(|c| {
+                let mut stmt = c.prepare("SELECT path, size, seen_at FROM files ORDER BY path")?;
+                let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                Ok(rows.collect::<Result<_, _>>()?)
+            })
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![(files[0].to_string(), 1, 10), (files[1].to_string(), 7, 20)]
+        );
         store.close();
     }
 

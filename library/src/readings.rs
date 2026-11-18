@@ -171,11 +171,10 @@ pub(crate) fn load_fixes(conn: &Connection) -> Result<HashMap<String, FileReadin
 /// The series' AniList record format, `SPECIAL` or `TV`, when it has one.
 pub(crate) fn record_format(conn: &Connection, series: u64) -> Result<Option<String>, CoreError> {
     Ok(conn
-        .query_row(
+        .prepare_cached(
             "SELECT m.format FROM series s JOIN anilist_media m ON m.id = s.anilist_id WHERE s.id = ?1",
-            params![series as i64],
-            |r| r.get::<_, Option<String>>(0),
-        )
+        )?
+        .query_row(params![series as i64], |r| r.get::<_, Option<String>>(0))
         .optional()?
         .flatten())
 }

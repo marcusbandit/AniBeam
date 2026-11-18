@@ -225,12 +225,23 @@ fn is_sample_video(name: &str) -> bool {
         .any(|tail| stem.len() > tail.len() && stem.ends_with(tail))
 }
 
+/// A video as its folder's listing found it, with the size and time the
+/// listing already read.
+struct Video {
+    path: PathBuf,
+    size: u64,
+    mtime: i64,
+}
+
 struct Listing {
     dirs: Vec<PathBuf>,
-    videos: Vec<PathBuf>,
+    videos: Vec<Video>,
     subtitles: Vec<String>,
 }
 
+/// One folder's entries in name order. An entry's own type comes free with
+/// the listing, so only a symlink (followed, as the rest of the walk does)
+/// and a video (for its size and time) cost a `stat`.
 fn list(dir: &Path) -> Listing {
     let mut out = Listing {
         dirs: Vec::new(),
@@ -240,30 +251,57 @@ fn list(dir: &Path) -> Listing {
     let Ok(entries) = fs::read_dir(dir) else {
         return out;
     };
-    let mut entries: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-    entries.sort();
-    for p in entries {
-        let name = p
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+    let mut entries: Vec<fs::DirEntry> = entries.filter_map(|e| e.ok()).collect();
+    entries.sort_by_cached_key(fs::DirEntry::file_name);
+    for e in entries {
+        let name = e.file_name().to_string_lossy().into_owned();
         if is_ignored_name(&name) {
             continue;
         }
-        let Ok(meta) = fs::metadata(&p) else { continue };
-        if meta.is_dir() {
+        let Ok(kind) = e.file_type() else { continue };
+        let p = e.path();
+        let followed = if kind.is_symlink() {
+            match fs::metadata(&p) {
+                Ok(meta) => Some(meta),
+                Err(_) => continue,
+            }
+        } else {
+            None
+        };
+        let is_dir = followed
+            .as_ref()
+            .map_or(kind.is_dir(), fs::Metadata::is_dir);
+        let is_file = followed
+            .as_ref()
+            .map_or(kind.is_file(), fs::Metadata::is_file);
+        if is_dir {
             if !is_sample_dir(&name) {
                 out.dirs.push(p);
             }
-        } else if meta.is_file() && is_video(&name) {
-            if !is_sample_video(&name) {
-                out.videos.push(p);
+        } else if is_file && is_video(&name) {
+            if is_sample_video(&name) {
+                continue;
             }
-        } else if meta.is_file() && is_subtitle(&name) {
+            let Some(meta) = followed.or_else(|| e.metadata().ok()) else {
+                continue;
+            };
+            out.videos.push(Video {
+                path: p,
+                size: meta.len(),
+                mtime: meta.modified().map_or(0, anibeam_foundation::time::to_secs),
+            });
+        } else if is_file && is_subtitle(&name) {
             out.subtitles.push(p.to_string_lossy().into_owned());
         }
     }
     out
+}
+
+/// The last part of a path, or nothing.
+fn name_of(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// A path's canonical form, symlinks and `..` resolved; the path itself when
@@ -348,10 +386,7 @@ enum Shape {
 /// single-episode torrents each bring their own folder, and they are
 /// episodes of it, never shows of their own.
 fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
-    let name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let name = name_of(dir);
     let title = ONE_EPISODE.captures(&name)?.get(1)?.as_str();
     let key = title_key(&BRACKETS.replace_all(title, " "));
     let l = state.list(dir);
@@ -363,10 +398,7 @@ fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
 /// or `Extras`, bare or after the show's own title. A later season, or a
 /// label after some other title, is not one.
 fn is_companion_folder(dir: &Path, show: &str) -> bool {
-    let name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let name = name_of(dir);
     let cleaned = clean_folder_title(&name);
     if EXTRAS_FOLDER.is_match(&cleaned) {
         return true;
@@ -437,35 +469,27 @@ fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf])
     Shape::Series
 }
 
-fn file_meta(p: &Path) -> (u64, i64) {
-    fs::metadata(p)
-        .map(|m| {
-            (
-                m.len(),
-                m.modified()
-                    .ok()
-                    .map(anibeam_foundation::time::to_secs)
-                    .unwrap_or(0),
-            )
-        })
-        .unwrap_or((0, 0))
+/// An Extras, Bonus or Featurettes folder.
+fn is_extras_folder(dir: &Path) -> bool {
+    EXTRAS_FOLDER.is_match(&clean_folder_title(&name_of(dir)))
 }
 
-fn scanned_file(p: &Path, folder_season: Option<u32>, subtitles: &[String]) -> ScannedFile {
-    let name = p
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+/// One video read: `folder_season` and `in_extras` are its folder's, worked
+/// out once for every file in it.
+fn scanned_file(
+    v: &Video,
+    folder_season: Option<u32>,
+    in_extras: bool,
+    subtitles: &[String],
+) -> ScannedFile {
+    let p = v.path.as_path();
+    let name = name_of(p);
     let mut classified = classify(&name);
     if classified.season.is_none() {
         classified.season = folder_season;
     }
     // A file in an Extras folder is an extra even when its name says nothing, so it
     // never reads as episode 1.
-    let in_extras = p
-        .parent()
-        .and_then(|d| d.file_name())
-        .is_some_and(|d| EXTRAS_FOLDER.is_match(&clean_folder_title(&d.to_string_lossy())));
     if in_extras && classified.extra.is_none() {
         classified.extra = Some(ExtraKind::Other);
         classified.number = 0.0;
@@ -479,11 +503,10 @@ fn scanned_file(p: &Path, folder_season: Option<u32>, subtitles: &[String]) -> S
         ),
         None => clean_episode_title(&name),
     };
-    let (size, mtime) = file_meta(p);
     ScannedFile {
         path: p.to_string_lossy().into_owned(),
-        size,
-        mtime,
+        size: v.size,
+        mtime: v.mtime,
         episode_key: episode_key(&classified, &name),
         classified,
         label,
@@ -491,18 +514,11 @@ fn scanned_file(p: &Path, folder_season: Option<u32>, subtitles: &[String]) -> S
     }
 }
 
-fn film(state: &mut WalkState, p: &Path, use_folder_title: bool) -> ScannedSeries {
-    let name = p
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let folder = p
-        .parent()
-        .and_then(|d| d.file_name())
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+fn film(state: &mut WalkState, v: &Video, use_folder_title: bool) -> ScannedSeries {
+    let p = v.path.as_path();
+    let name = name_of(p);
     let title = if use_folder_title {
-        clean_movie_title(&folder)
+        clean_movie_title(&p.parent().map(name_of).unwrap_or_default())
     } else {
         clean_movie_title(&name)
     };
@@ -511,7 +527,8 @@ fn film(state: &mut WalkState, p: &Path, use_folder_title: bool) -> ScannedSerie
         .as_deref()
         .map(|l| l.subtitles.as_slice())
         .unwrap_or(&[]);
-    let mut f = scanned_file(p, None, subtitles);
+    let in_extras = p.parent().is_some_and(is_extras_folder);
+    let mut f = scanned_file(v, None, in_extras, subtitles);
     f.classified.season = None;
     f.episode_key = name;
     ScannedSeries {
@@ -540,14 +557,12 @@ fn collect_videos_in_subtree(
         out: &mut Vec<ScannedFile>,
         seen: &mut HashSet<String>,
     ) {
-        let name = dir
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let name = name_of(dir);
         let season_here = extract_season_number(&name).or(parent_season);
+        let in_extras = is_extras_folder(dir);
         let l = state.list(dir);
         for v in &l.videos {
-            let f = scanned_file(v, season_here, &l.subtitles);
+            let f = scanned_file(v, season_here, in_extras, &l.subtitles);
             if seen.insert(f.path.clone()) {
                 out.push(f);
             }
@@ -576,10 +591,7 @@ fn collect(
     wrapper: Option<Context>,
     passthrough: Option<Context>,
 ) {
-    let folder_name = folder
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let folder_name = name_of(folder);
     let is_movies_container = is_movies_folder_name(&folder_name);
     let movies = in_movies || is_movies_container;
     let l = state.list(folder);
@@ -631,11 +643,7 @@ fn collect(
                 results.push(film(state, v, false));
             }
             for sub in subs {
-                let sub_name = sub
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                let (name, season_hint) = derive_subfolder_series_name(&sub_name, &canonical);
+                let (name, season_hint) = derive_subfolder_series_name(&name_of(&sub), &canonical);
                 collect(
                     state,
                     &sub,
@@ -681,6 +689,13 @@ fn collect(
     }
 }
 
+/// What one walk of a source found: its series, and every folder named
+/// Movies under it, never looking inside one for another.
+pub struct Walk {
+    pub series: Vec<ScannedSeries>,
+    pub movie_folders: Vec<String>,
+}
+
 /// The walk of one source. Blocking; the scan job runs it on a blocking thread.
 ///
 /// The root's own listing is read here rather than left to `list`, which
@@ -688,7 +703,7 @@ fn collect(
 /// That reading is right for a folder deep inside a library and wrong for
 /// the root: a mount point whose drive is gone is still a directory, and an
 /// empty answer from one would mark every series under it missing.
-pub fn scan_source(root: &Path) -> Result<Vec<ScannedSeries>, CoreError> {
+pub fn scan_source(root: &Path) -> Result<Walk, CoreError> {
     let meta = fs::metadata(root).map_err(|e| CoreError::io_at(root.to_string_lossy(), e))?;
     if !meta.is_dir() {
         return Err(CoreError::Io {
@@ -697,40 +712,27 @@ pub fn scan_source(root: &Path) -> Result<Vec<ScannedSeries>, CoreError> {
         });
     }
     fs::read_dir(root).map_err(|e| CoreError::io_at(root.to_string_lossy(), e))?;
-    let mut results = Vec::new();
+    let mut series = Vec::new();
     let mut state = WalkState::new(root);
-    collect(&mut state, root, &mut results, true, false, None, None);
-    Ok(results)
-}
-
-/// Every folder named Movies under the source, never descending into one.
-/// `visited` is this call's own canonical-path memo (root registered up
-/// front), so a symlink loop back to an ancestor is dropped rather than
-/// recursed into forever.
-pub fn find_movie_folders(root: &Path) -> Vec<String> {
-    fn walk(dir: &Path, found: &mut Vec<String>, visited: &mut HashSet<PathBuf>) {
-        for d in list(dir).dirs {
-            if !visited.insert(canonical_path(&d)) {
-                continue;
-            }
-            let name = d
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if is_movies_folder_name(&name) {
+    collect(&mut state, root, &mut series, true, false, None, None);
+    // The folders the walk above read come back from its memo, so this
+    // reads only the ones it never needed.
+    fn movies(state: &mut WalkState, dir: &Path, found: &mut Vec<String>) {
+        let l = state.list(dir);
+        for d in &l.dirs {
+            if is_movies_folder_name(&name_of(d)) {
                 found.push(d.to_string_lossy().into_owned());
-                continue;
+            } else {
+                movies(state, d, found);
             }
-            walk(&d, found, visited);
         }
     }
-    let mut found = Vec::new();
-    if fs::metadata(root).is_ok_and(|m| m.is_dir()) {
-        let mut visited = HashSet::new();
-        visited.insert(canonical_path(root));
-        walk(root, &mut found, &mut visited);
-    }
-    found
+    let mut movie_folders = Vec::new();
+    movies(&mut state, root, &mut movie_folders);
+    Ok(Walk {
+        series,
+        movie_folders,
+    })
 }
 
 #[cfg(test)]
@@ -853,7 +855,7 @@ mod tests {
         touch(&show.join("[Kumo-Subs] Karakai Jouzu no Takagi-san - Movie [1080p][49CCAF8A].mkv"));
         touch(&show.join("screenshots").join("cap01.png"));
 
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         let series: Vec<&ScannedSeries> = results
             .iter()
             .filter(|r| r.kind == SeriesKind::Show)
@@ -903,7 +905,7 @@ mod tests {
                     .join(format!("My Show - {ep:02}.mkv")),
             );
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].kind, SeriesKind::Show);
         assert_eq!(results[0].files.len(), 3);
@@ -918,7 +920,7 @@ mod tests {
             let rip = format!("Avatar.Seven.Havens.S01E{ep}.1080p.x265-ELiTE");
             touch(&show.join(&rip).join(format!("{rip}.mkv")));
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].kind, SeriesKind::Show);
         assert_eq!(results[0].name, "Avatar Seven Havens");
@@ -932,7 +934,7 @@ mod tests {
                 .join("[Grp] Solo Show - 05 [1080p]")
                 .join("[Grp] Solo Show - 05 [1080p].mkv"),
         );
-        let results = scan_source(one.path()).unwrap();
+        let results = scan_source(one.path()).unwrap().series;
         assert_eq!(
             (results.len(), results[0].path.as_str()),
             (1, &*show.to_string_lossy())
@@ -950,7 +952,7 @@ mod tests {
             let rip = format!("Mixed.Show.S01E{ep}.1080p.x265-ELiTE");
             touch(&show.join(&rip).join(format!("{rip}.mkv")));
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(
             (results[0].kind, results[0].files.len()),
@@ -964,7 +966,7 @@ mod tests {
         let dl = tmp.path().join("Downloads");
         touch(&dl.join("Foo.S01E03-GRP").join("Foo.S01E03-GRP.mkv"));
         touch(&dl.join("Bar.S02E07-GRP").join("Bar.S02E07-GRP.mkv"));
-        assert_eq!(scan_source(tmp.path()).unwrap().len(), 2);
+        assert_eq!(scan_source(tmp.path()).unwrap().series.len(), 2);
     }
 
     #[test]
@@ -975,7 +977,7 @@ mod tests {
             let rip = format!("Show.S01E{ep:02}-ELiTE");
             touch(&show.join(&rip).join(format!("{rip}.mkv")));
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, show.to_string_lossy());
         // A range is a pack, not one episode
@@ -998,7 +1000,7 @@ mod tests {
                     .join(format!("Loose.Show.S01E{ep}.mkv")),
             );
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(
             (results[0].kind, results[0].files.len()),
@@ -1020,7 +1022,7 @@ mod tests {
                 .join("Pack.Show.S02.1080p")
                 .join("Pack.Show.S02E01.mkv"),
         );
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 2);
     }
 
@@ -1034,7 +1036,7 @@ mod tests {
                     .join(format!("Plain Show - {ep:02}.mkv")),
             );
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(
             (results.len(), results[0].kind, results[0].files.len()),
             (1, SeriesKind::Show, 4)
@@ -1053,7 +1055,7 @@ mod tests {
             );
         }
         touch(&show.join("Edge Show - OVA.mkv"));
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(
             results
                 .iter()
@@ -1094,7 +1096,7 @@ mod tests {
         ] {
             touch(&release.join("[Judas] Kaminomi - OVAs").join(f));
         }
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         let series: Vec<&ScannedSeries> = results
             .iter()
             .filter(|r| r.kind == SeriesKind::Show)
@@ -1159,6 +1161,7 @@ mod tests {
         }
         let mut names: Vec<String> = scan_source(tmp.path())
             .unwrap()
+            .series
             .into_iter()
             .filter(|r| r.kind == SeriesKind::Show)
             .map(|s| s.name)
@@ -1188,7 +1191,8 @@ mod tests {
         touch(&tmp.path().join("Show").join("Show - 10.srt"));
         touch(&tmp.path().join("Show").join(".hidden.mkv"));
         touch(&tmp.path().join("Show").join("Show - 02.mkv.part"));
-        let results = scan_source(tmp.path()).unwrap();
+        let walk = scan_source(tmp.path()).unwrap();
+        let results = &walk.series;
         let films: Vec<&ScannedSeries> = results
             .iter()
             .filter(|r| r.kind == SeriesKind::Movie)
@@ -1229,7 +1233,7 @@ mod tests {
             vec![(None, None), (Some("en".into()), Some("forced".into()))]
         );
         assert_eq!(
-            find_movie_folders(tmp.path()),
+            walk.movie_folders,
             vec![tmp.path().join("Movies").to_string_lossy().into_owned()]
         );
     }
@@ -1254,7 +1258,7 @@ mod tests {
             touch(&show.join("Season 1").join("Show - 01.mkv"));
             touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
             touch(&show.join("Show - 02.mkv"));
-            let results = scan_source(tmp.path()).unwrap();
+            let results = scan_source(tmp.path()).unwrap().series;
             assert_eq!(shows_and_films(&results), (1, 0), "{companion}");
             assert_eq!(results[0].path, show.to_string_lossy());
             assert_eq!(results[0].files.len(), 4);
@@ -1274,7 +1278,7 @@ mod tests {
         touch(&show.join("Extras").join("Behind the scenes.mkv"));
         touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
         touch(&show.join("Show - 01.mkv"));
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(shows_and_films(&results), (1, 0));
         let extra = results[0]
             .files
@@ -1291,7 +1295,10 @@ mod tests {
         let show = tmp.path().join("Show");
         touch(&show.join("Show 2 OVA").join("Show 2 - OVA1.mkv"));
         touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
-        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()).0, 2);
+        assert_eq!(
+            shows_and_films(&scan_source(tmp.path()).unwrap().series).0,
+            2
+        );
     }
 
     #[test]
@@ -1309,7 +1316,10 @@ mod tests {
         touch(&show.join("Season 1").join("Show - 01.mkv"));
         touch(&show.join("Season 2").join("Show - 01.mkv"));
         touch(&show.join("Show.S02E05-GRP").join("Show.S02E05-GRP.mkv"));
-        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (3, 0));
+        assert_eq!(
+            shows_and_films(&scan_source(tmp.path()).unwrap().series),
+            (3, 0)
+        );
 
         let tmp = tempfile::tempdir().unwrap();
         let show = tmp.path().join("Show");
@@ -1321,14 +1331,20 @@ mod tests {
                     .join(format!("Other Title - {ep:02}.mkv")),
             );
         }
-        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (2, 0));
+        assert_eq!(
+            shows_and_films(&scan_source(tmp.path()).unwrap().series),
+            (2, 0)
+        );
 
         // A label after some other title is that title's folder
         let tmp = tempfile::tempdir().unwrap();
         let dl = tmp.path().join("Downloads");
         touch(&dl.join("Foo.S01E03-GRP").join("Foo.S01E03-GRP.mkv"));
         touch(&dl.join("Bar Specials").join("Bar - SP01.mkv"));
-        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (2, 0));
+        assert_eq!(
+            shows_and_films(&scan_source(tmp.path()).unwrap().series),
+            (2, 0)
+        );
     }
 
     #[test]
@@ -1339,7 +1355,7 @@ mod tests {
         touch(&rip.join("Show.S01E11-GRP.mkv"));
         touch(&rip.join("Sample").join("Show.S01E11-sample.mkv"));
         touch(&show.join("Show.S01E12-GRP").join("Show.S01E12-GRP.mkv"));
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].kind, SeriesKind::Show);
         assert_eq!(results[0].path, show.to_string_lossy());
@@ -1361,7 +1377,7 @@ mod tests {
         }
         touch(&show.join("X.S01E11-sample.mkv"));
         touch(&show.join("X.S01E12_Sample.mkv"));
-        let results = scan_source(tmp.path()).unwrap();
+        let results = scan_source(tmp.path()).unwrap().series;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].files.len(), 3);
         assert!(is_sample_video("a.sample.mp4"));
@@ -1376,7 +1392,7 @@ mod tests {
             let film = tmp.path().join("Movies").join("Akira (1988)");
             touch(&film.join("Akira.1988.BluRay.Remastered.mkv"));
             touch(&film.join(sample));
-            let results = scan_source(tmp.path()).unwrap();
+            let results = scan_source(tmp.path()).unwrap().series;
             assert_eq!(results.len(), 1, "{sample}");
             assert_eq!(results[0].kind, SeriesKind::Movie);
             assert_eq!(results[0].name, "Akira", "{sample}");
@@ -1391,20 +1407,10 @@ mod tests {
         let lib = tmp.path().join("lib");
         touch(&lib.join("Show").join("ep01.mkv"));
         symlink("..", lib.join("Show").join("loop")).unwrap();
-        let results = scan_source(&lib).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].kind, SeriesKind::Show);
-        assert_eq!(results[0].files.len(), 1);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn find_movie_folders_survives_the_same_symlink_loop() {
-        use std::os::unix::fs::symlink;
-        let tmp = tempfile::tempdir().unwrap();
-        let lib = tmp.path().join("lib");
-        touch(&lib.join("Show").join("ep01.mkv"));
-        symlink("..", lib.join("Show").join("loop")).unwrap();
-        assert_eq!(find_movie_folders(&lib), Vec::<String>::new());
+        let walk = scan_source(&lib).unwrap();
+        assert_eq!(walk.series.len(), 1);
+        assert_eq!(walk.series[0].kind, SeriesKind::Show);
+        assert_eq!(walk.series[0].files.len(), 1);
+        assert!(walk.movie_folders.is_empty());
     }
 }
