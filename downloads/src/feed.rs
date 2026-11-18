@@ -39,21 +39,19 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
     parse(&text).map_err(|message| CoreError::service(host, "unreadable", message))
 }
 
-pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
+fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
     let doc = roxmltree::Document::parse(text).map_err(|e| {
         anibeam_contract::i18n::tr(
             "core-downloads-not-a-feed",
             &[("error", e.to_string().into())],
         )
     })?;
-    let mut out = Vec::new();
-    for item in doc.descendants().filter(|n| n.has_tag_name("item")) {
-        out.push(entry(item));
-        if out.len() >= MAX_ENTRIES {
-            break;
-        }
-    }
-    Ok(out)
+    Ok(doc
+        .descendants()
+        .filter(|n| n.has_tag_name("item"))
+        .take(MAX_ENTRIES)
+        .map(entry)
+        .collect())
 }
 
 fn entry(item: roxmltree::Node) -> FeedEntry {
@@ -101,7 +99,9 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
         .flatten()
         .find(|u| u.starts_with("http") && *u != link)
         .unwrap_or_default();
-    let size_bytes = child("size")
+    let size_text = child("size");
+    let size_bytes = size_text
+        .as_deref()
         .and_then(|s| s.parse::<u64>().ok())
         .or_else(|| attr("size").and_then(|s| s.parse().ok()))
         .or_else(|| {
@@ -110,19 +110,16 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
                 .and_then(|s| s.parse().ok())
         })
         .filter(|n| *n > 0);
-    let size = child("size")
+    let size = size_text
         .filter(|s| s.parse::<u64>().is_err())
         .or_else(|| size_bytes.map(human))
         .unwrap_or_default();
-    let count = |name: &str| -> Option<i64> {
-        child(name)
-            .or_else(|| attr(name))
-            .and_then(|s| s.parse::<i64>().ok())
-    };
+    let num = |s: String| s.parse::<i64>().ok();
+    let count = |name: &str| child(name).or_else(|| attr(name)).and_then(num);
     let leechers = count("leechers").or_else(|| {
         // torznab carries peers (seeders and leechers together)
-        let peers = attr("peers").and_then(|s| s.parse::<i64>().ok())?;
-        let seeders = attr("seeders").and_then(|s| s.parse::<i64>().ok())?;
+        let peers = attr("peers").and_then(num)?;
+        let seeders = attr("seeders").and_then(num)?;
         Some((peers - seeders).max(0))
     });
     let info_hash = child("infoHash")

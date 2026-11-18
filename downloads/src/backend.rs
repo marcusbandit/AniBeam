@@ -58,11 +58,13 @@ impl DownloadsBackend {
         match engine {
             DownloadsEngine::Anirss => ensure_client(downloads).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                let native = Native::for_core(
-                    &downloads.services,
-                    Vec::new(),
-                    saved_bestfit(&downloads.services)?,
-                );
+                // The installed endpoints' credentials come from the keyring, and the saved
+                // ranking from anirss's config on disk: both off the runtime
+                let services = downloads.services.clone();
+                let native = on_qbt::blocking(move || {
+                    saved_bestfit(&services).map(|b| Native::for_core(&services, Vec::new(), b))
+                })
+                .await??;
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()
@@ -251,27 +253,24 @@ impl DownloadsBackend {
     /// installed endpoint of its name does, and one written into anirss by
     /// hand as a plain feed; the core's are its own.
     pub fn narrows_locally(&self, downloads: &Downloads, endpoint: &str) -> bool {
-        let plain =
-            |kind: &str, narrows: bool| kind != anibeam_releases::kinds::FILTERED_RSS && !narrows;
+        let plain = |kind: &str| kind != anibeam_releases::kinds::FILTERED_RSS;
         match self {
             DownloadsBackend::Anirss(_) => {
-                let Some(kind) = downloads
+                let plain_feed = downloads
                     .state()
                     .endpoints
                     .iter()
                     .find(|e| e.name == endpoint)
-                    .map(|e| e.kind.clone())
-                else {
-                    return false;
-                };
-                kind != anibeam_releases::kinds::FILTERED_RSS
+                    .is_some_and(|e| plain(&e.kind));
+                // Read after the state lock is let go: it asks the store
+                plain_feed
                     && !anibeam_releases::repos::installed_narrows(&downloads.services, endpoint)
             }
             DownloadsBackend::Native(native, _) => native
                 .endpoints
                 .iter()
                 .find(|e| e.name == endpoint)
-                .is_some_and(|e| plain(&e.kind, e.quirks.narrows_in_rule())),
+                .is_some_and(|e| plain(&e.kind) && !e.quirks.narrows_in_rule()),
         }
     }
 }
