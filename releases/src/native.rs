@@ -117,10 +117,7 @@ impl Native {
                 .ok_or_else(|| {
                     CoreError::invalid(
                         "endpoint",
-                        tr(
-                            "core-releases-no-source-named",
-                            &[("name", name.into())],
-                        ),
+                        tr("core-releases-no-source-named", &[("name", name.into())]),
                     )
                 }),
         }

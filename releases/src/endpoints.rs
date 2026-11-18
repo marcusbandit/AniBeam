@@ -214,7 +214,9 @@ pub(crate) struct UrlParts {
 impl UrlParts {
     /// The netloc without its userinfo: host and port.
     fn host_port(&self) -> &str {
-        self.netloc.rsplit_once('@').map_or(&self.netloc, |(_, h)| h)
+        self.netloc
+            .rsplit_once('@')
+            .map_or(&self.netloc, |(_, h)| h)
     }
 
     /// `parts.hostname`: lower case, userinfo and brackets gone.
@@ -876,9 +878,15 @@ pub(crate) mod tests {
         );
         assert_eq!(http.requests()[0].url, "https://d.example/feed?q=show");
         let unmapped = Endpoint::new("api", "json", "https://c.example/api?q={query}");
-        let err = fetch_items(http.as_ref(), &unmapped, "show").await.unwrap_err();
+        let err = fetch_items(http.as_ref(), &unmapped, "show")
+            .await
+            .unwrap_err();
         assert!(matches!(err, CoreError::Service { ref code, .. } if code == "unmapped"));
-        assert_eq!(http.requests().len(), 1, "an unmapped json source asks nothing");
+        assert_eq!(
+            http.requests().len(),
+            1,
+            "an unmapped json source asks nothing"
+        );
     }
 
     #[test]

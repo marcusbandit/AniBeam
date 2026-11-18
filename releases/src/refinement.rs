@@ -84,7 +84,11 @@ fn matches_all_tokens(item: &Release, tokens: &[String]) -> bool {
 
 /// A group's tokens in their order: the poster first, then the longest, then alphabetical.
 fn token_order(token: &str) -> (bool, Reverse<usize>, &str) {
-    (!token.starts_with('['), Reverse(token.chars().count()), token)
+    (
+        !token.starts_with('['),
+        Reverse(token.chars().count()),
+        token,
+    )
 }
 
 /// The groups in their order: poster groups first, then the larger, then by label.
@@ -98,7 +102,12 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
     let parsed: Vec<Parsed> = selected.iter().map(parse).collect();
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for p in &parsed {
-        let seen: BTreeSet<&str> = p.poster.iter().chain(&p.tokens).map(String::as_str).collect();
+        let seen: BTreeSet<&str> = p
+            .poster
+            .iter()
+            .chain(&p.tokens)
+            .map(String::as_str)
+            .collect();
         for token in seen {
             *counts.entry(token).or_insert(0) += 1;
         }
@@ -314,7 +323,10 @@ where
                 ));
             }
             let new_query = build_refined_query(query, &tokens, items);
-            (new_query, Box::new(move |it| matches_all_tokens(it, &tokens)))
+            (
+                new_query,
+                Box::new(move |it| matches_all_tokens(it, &tokens)),
+            )
         }
         RefineOp::Term { term } => {
             let term = term.trim();

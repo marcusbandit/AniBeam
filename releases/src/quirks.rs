@@ -82,10 +82,7 @@ impl Quirks {
         }
         for p in &feed.pages {
             if p.len() > MAX_PATTERN {
-                return Err(tr(
-                    "core-releases-quirks-pattern-long",
-                    &[],
-                ));
+                return Err(tr("core-releases-quirks-pattern-long", &[]));
             }
             let re = compile(p).map_err(|e| {
                 tr(
@@ -94,31 +91,19 @@ impl Quirks {
                 )
             })?;
             if !re.capture_names().any(|n| n == Some("slug")) {
-                return Err(tr(
-                    "core-releases-quirks-pattern-slug",
-                    &[],
-                ));
+                return Err(tr("core-releases-quirks-pattern-slug", &[]));
             }
         }
         // The show's feed carries the search address's parameters, a token among them, so it
         // must go to the same host.
         if !feed.url.starts_with("https://") {
-            return Err(tr(
-                "core-releases-quirks-url-https",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-https", &[]));
         }
         if crate::repos::index::host_of(&feed.url) != host.to_ascii_lowercase() {
-            return Err(tr(
-                "core-releases-quirks-url-host",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-host", &[]));
         }
         if feed.url.matches("{slug}").count() != 1 || feed.url.replace("{slug}", "").contains('{') {
-            return Err(tr(
-                "core-releases-quirks-url-slug",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-slug", &[]));
         }
         Ok(())
     }
