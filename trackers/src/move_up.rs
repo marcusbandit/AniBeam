@@ -216,28 +216,25 @@ async fn run(
             None
         };
         // A status first, a score after. Whatever landed counts the show as
-        // moved; a part the tracker refused says so in the log on its own.
-        let mut landed = false;
-        let mut refused = false;
+        // moved; a part the tracker refused says so in the log on its own,
+        // and a refused status sends no score after it.
         let rewatch = row.status == Some(ListStatus::Watching)
             && row.tracker_status == Some(ListStatus::Repeating);
-        if let Some(status) = row
-            .status
-            .filter(|s| Some(*s) != row.tracker_status && !rewatch)
-        {
-            let action = writes::Action::Status { status };
-            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
-                true => landed = true,
-                false => refused = true,
-            }
-        }
-        if let Some(score) = row.score.filter(|s| Some(*s) != row.tracker_score)
-            && !refused
-        {
-            let action = writes::Action::Score { score };
-            match sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
-                true => landed = true,
-                false => refused = true,
+        let parts = [
+            row.status
+                .filter(|s| Some(*s) != row.tracker_status && !rewatch)
+                .map(|status| writes::Action::Status { status }),
+            row.score
+                .filter(|s| Some(*s) != row.tracker_score)
+                .map(|score| writes::Action::Score { score }),
+        ];
+        let (mut landed, mut refused) = (false, false);
+        for action in parts.into_iter().flatten() {
+            if sent(&trackers, &ctx, t, &target, media_id, user_id, action).await {
+                landed = true;
+            } else {
+                refused = true;
+                break;
             }
         }
         if landed {
