@@ -1122,8 +1122,10 @@ async fn step<C: RollClient>(
         match client.add(downloads, &items, roll).await {
             Ok(hashes) => {
                 *changed = true;
+                let now = now_secs();
                 for &p in &m.add {
                     roll.parts[p].added = true;
+                    roll.parts[p].added_at = now;
                 }
                 let mut parts: Vec<&mut Part> = roll
                     .parts
@@ -1820,28 +1822,70 @@ mod tests {
         assert!(r.parts[0].hash.is_empty());
     }
 
-    #[test]
-    fn a_held_single_added_late_is_given_its_own_time_to_show() {
+    /// A client that takes every add and lists nothing yet.
+    struct Quiet;
+
+    impl RollClient for Quiet {
+        async fn files(&self, _: &str) -> Result<Vec<TorrentFile>, CoreError> {
+            Ok(Vec::new())
+        }
+        async fn set_file_priority(&self, _: &str, _: &[usize], _: i64) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn set_sequential(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn delete(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn recheck(&self, _: &[String]) -> Result<(), CoreError> {
+            Ok(())
+        }
+        fn files_here(&self, _: &Services) -> bool {
+            false
+        }
+        async fn add(
+            &self,
+            _: &Arc<Downloads>,
+            _: &[Release],
+            _: &Roll,
+        ) -> Result<Vec<String>, CoreError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_held_single_added_late_is_given_its_own_time_to_show() {
+        let dir = tempfile::tempdir().unwrap();
+        let teams = crate::testing::Teams::open(dir.path(), anibeam_net::FakeHttp::new());
         let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
         let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let day = 86_400;
+        // Picked four days ago; the first twelve were listed and the first is watched
         let mut r = plan(
             &items,
             &DownloadOptions::default(),
             &RollingSettings::default(),
             None,
-            0,
+            now_secs() - 4 * day,
         )
         .rolls
         .remove(0);
         for p in r.parts.iter_mut().filter(|p| p.added) {
             p.seen = true;
         }
-        // Day 10: the thirteenth is handed over and not listed yet
-        let day = 86_400;
-        r.parts[12].added = true;
-        r.parts[12].added_at = 10 * day;
-        assert!(!finished(&r, 10 * day + 60));
-        assert!(finished(&r, 14 * day));
+        r.parts[0].units[0].watched = true;
+        add_rolls(&teams.services, vec![r]).await.unwrap();
+        // The pass hands over the thirteenth, which the client has not listed yet
+        tick(&teams.downloads, &Quiet, &[]).await;
+        let rolls = load(&teams.services).unwrap();
+        assert_eq!(rolls.len(), 1, "the roll was dropped");
+        let r = &rolls[0];
+        assert!(r.parts[12].added);
+        assert!(!finished(r, now_secs() + 60));
+        // A torrent that never shows still ends the roll in time
+        assert!(finished(r, now_secs() + 4 * day));
+        teams.shutdown();
     }
 
     #[test]
