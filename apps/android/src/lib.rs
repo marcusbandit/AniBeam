@@ -53,6 +53,7 @@ mod thumbs;
 mod tr;
 mod versions;
 mod video;
+mod work;
 mod worker;
 
 pub use app::run;

@@ -239,6 +239,15 @@ impl Engine {
         *recover(&self.held)
     }
 
+    /// The torrents the person paused, by hash, which a hold lifting leaves paused.
+    pub fn paused_by_person(&self) -> Vec<String> {
+        recover(&self.entries)
+            .iter()
+            .filter(|(_, e)| e.paused_by_user)
+            .map(|(hash, _)| hash.clone())
+            .collect()
+    }
+
     /// Adds `release` to download into `<root>/<folder>`, held at once when downloads are.
     /// `torrent` is the `.torrent` file when the core fetched it itself (an http link), so
     /// the engine never looks the host up on its own.
@@ -815,6 +824,40 @@ mod tests {
         let again = engine.add(&r, "Show", Some(bytes)).await.unwrap();
         assert!(first.new && !again.new);
         assert_eq!(first.hash, again.hash);
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_list_says_which_torrents_the_person_paused() {
+        // The phone keeps the download work up for torrents the hold paused, and must tell
+        // them from ones the person paused, which stay paused once it lifts. The person's
+        // pause is set on the entry, as `control` sets it (#1198 for a pause under a hold).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let hash = engine
+            .add_peeked(&r, "Show", peeked, vec![NORMAL; 3])
+            .await
+            .unwrap();
+        engine.set_held(true).await.unwrap();
+        assert!(
+            engine.paused_by_person().is_empty(),
+            "held is not the person's"
+        );
+        let by_person = |on: bool| {
+            recover(&engine.entries)
+                .get_mut(&hash)
+                .unwrap()
+                .paused_by_user = on;
+        };
+        by_person(true);
+        assert_eq!(engine.paused_by_person(), vec![hash.clone()]);
+        by_person(false);
+        assert!(engine.paused_by_person().is_empty());
         engine.session.stop().await;
     }
 }

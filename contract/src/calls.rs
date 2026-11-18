@@ -1060,6 +1060,9 @@ pub enum Reply {
     PhoneTorrents {
         torrents: Vec<Torrent>,
         held: bool,
+        /// The torrents the person paused, by hash: lifting the hold leaves them paused.
+        #[serde(default)]
+        paused_by_person: Vec<String>,
     },
     RollingSettings {
         rolling: RollingSettings,
