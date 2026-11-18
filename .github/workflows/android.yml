@@ -36,6 +36,8 @@ on:
   pull_request:
     paths:
       - 'apps/phone/**'
+      # PRs opened before the move (#1309) still list apps/android; drop once they merge main.
+      - 'apps/android/**'
       - 'contract/**'
       - 'foundation/**'
       - 'net/**'

@@ -44,3 +44,6 @@ apps/linux/.qmlls.ini
 
 # Python bytecode from the packaging scripts
 __pycache__/
+
+# A checkout from before the phone app moved to apps/phone keeps its build output here (#1309).
+/apps/android/

@@ -79,6 +79,8 @@ NO_CRATE = [
     "Casks/",
     "relay/",
     "apps/phone/",
+    # Build output a pull leaves behind in a checkout from before the move (#1309).
+    "apps/android/",
     ".github/",
     "LICENSE",
     ".gitignore",

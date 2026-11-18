@@ -36,8 +36,18 @@ on:
       - 'apps/phone/build.rs'
       - 'rust-toolchain.toml'
       - '.github/workflows/ios.yml'
+      # PRs opened before the move (#1309) still list apps/android; drop once they merge main.
+      - 'apps/android/ios/**'
+      - 'apps/android/src/**'
+      - 'apps/android/ui/**'
+      - 'apps/android/scripts/*ios*'
+      - 'apps/android/companion/**'
+      - 'apps/android/Cargo.toml'
+      - 'apps/android/Cargo.lock'
+      - 'apps/android/build.rs'
       # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
       - '!apps/phone/src/platform/android.rs'
+      - '!apps/android/src/platform/android.rs'
   workflow_dispatch:
 
 permissions:
