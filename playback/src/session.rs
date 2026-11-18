@@ -79,9 +79,10 @@ pub struct Session {
     pub series_title: String,
     pub episode_title: Option<String>,
     /// What the lines these rules write call the file: the series' folder
-    /// name and the episode's own code.
-    pub folder: String,
-    pub code: String,
+    /// name and the episode's own code, shared like `presence` so the clone
+    /// every tick takes stays cheap.
+    pub folder: Arc<str>,
+    pub code: Arc<str>,
     /// Known only once the shell has reported the chapters, so the first
     /// ticks of a session have neither a mark line nor a tail to reach.
     pub duration: Option<f64>,
@@ -624,8 +625,8 @@ pub fn open_for(
             tvmaze_id: s.tvmaze_id,
             series_title: series_title.clone(),
             episode_title: episode_title.clone(),
-            folder: s.folder_name.clone(),
-            code: code.clone(),
+            folder: s.folder_name.as_str().into(),
+            code: code.as_str().into(),
             duration: None,
             outro_start: None,
             opening_start: opening_of(&skip_windows),
@@ -830,7 +831,7 @@ fn mark(playback: &Playback, s: &Session) {
     }
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
-        let folder = &s.folder;
+        let folder = &*s.folder;
         playback.services.bus.say(
             Level::Warn,
             Stage::Playback,
@@ -1017,8 +1018,8 @@ pub(crate) mod tests {
             tvmaze_id: None,
             series_title: "Bebop".to_string(),
             episode_title: None,
-            folder: "Bebop".to_string(),
-            code: "EP 3".to_string(),
+            folder: "Bebop".into(),
+            code: "EP 3".into(),
             duration,
             outro_start: None,
             opening_start: None,

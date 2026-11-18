@@ -130,7 +130,7 @@ pub fn cached(
         Ok(windows) => Ok(Some(windows)),
         // A row nothing can be read out of is worth no more than no row.
         Err(e) => {
-            tracing::warn!("cached skip windows did not parse, asking again: {e}");
+            tracing::warn!("cached skip windows did not parse, read as none: {e}");
             Ok(None)
         }
     }
@@ -238,8 +238,8 @@ async fn resolve(
     let from_file = from_chapters(chapters, duration);
     // An extra, or an episode with no MAL id or number, has nobody to ask:
     // whatever its chapters name is all it gets, cached as before.
-    let askable = aniskip_episode(s).is_some();
-    if from_file.len() == 2 || (!from_file.is_empty() && !askable) {
+    let target = aniskip_episode(s);
+    if from_file.len() == 2 || (!from_file.is_empty() && target.is_none()) {
         write_cache(
             &playback.services,
             s,
@@ -249,7 +249,7 @@ async fn resolve(
         .await?;
         return Ok(from_file);
     }
-    let asked = ask(playback, ctx, s, duration).await?;
+    let asked = ask(playback, ctx, s, target, duration).await?;
     Ok(merge(from_file, asked))
 }
 
@@ -266,24 +266,27 @@ fn merge(from_file: Vec<SkipWindow>, asked: Vec<SkipWindow>) -> Vec<SkipWindow> 
     out
 }
 
-/// The cached answer for the episode, else AniSkip's, cached as found or
-/// as a miss.
+/// The cached answer for the episode, else AniSkip's about `target`, cached
+/// as found or as a miss.
 async fn ask(
     playback: &Playback,
     ctx: &JobCtx,
     s: &Session,
+    target: Option<(u64, u32)>,
     duration: f64,
 ) -> Result<Vec<SkipWindow>, CoreError> {
+    let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
     if let Some(windows) = playback
         .services
         .store
-        .read(|c| cached(c, s.series, &s.episode_key, time::now_secs()))?
+        .write_async(move |c| cached(c, series, &key, now))
+        .await?
     {
         return Ok(windows);
     }
     // An extra has no episode number, so AniSkip has nothing to be asked
     // about and nothing to cache: its chapters are all it can ever have.
-    let Some((mal_id, episode)) = aniskip_episode(s) else {
+    let Some((mal_id, episode)) = target else {
         return Ok(Vec::new());
     };
     // The duration `start` let through is finite and positive.

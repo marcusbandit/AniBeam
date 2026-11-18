@@ -102,16 +102,17 @@ fn language(code: &str) -> Option<&'static Language> {
 /// One code down to the first of its language's codes, with the region suffix gone and
 /// mpv's "und", undetermined, down to nothing.
 fn canon(l: &str) -> String {
-    let (base, _) = split(l);
+    let lower = l.to_ascii_lowercase();
+    let base = lower.split(['-', '_']).next().unwrap_or_default();
     // The whole code, not a substring: a replace would reach inside any code that happened
     // to spell those three letters, and it left an undetermined track unable to match even
     // the ref taken from itself.
     if base == "und" {
         return String::new();
     }
-    match language(&base) {
+    match language(base) {
         Some((_, codes)) => codes[0].to_string(),
-        None => base,
+        None => base.to_string(),
     }
 }
 
