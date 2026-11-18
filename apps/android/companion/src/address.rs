@@ -9,19 +9,14 @@ pub struct HostAddress {
 }
 
 impl HostAddress {
-    /// Reads `desktop`, `desktop:8790`, `http://100.64.0.1:8790/`, `[fd7a::1]:8790` or
-    /// `fd7a::1`. Without a port it is [`DEFAULT_PORT`].
+    /// Reads `desktop`, `desktop:8790`, `http://100.64.0.1:8790/` or `[fd7a::1]:8790`.
+    /// Without a port it is [`DEFAULT_PORT`].
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut rest = text.trim();
-        // A scheme is read in any case, the way a browser reads it.
-        let scheme = |rest: &str, name: &str| {
-            rest.get(..name.len())
-                .is_some_and(|s| s.eq_ignore_ascii_case(name))
-        };
-        if scheme(rest, "http://") {
-            rest = &rest["http://".len()..];
+        if let Some(after) = strip_scheme(rest, "http://") {
+            rest = after;
         }
-        if scheme(rest, "https://") {
+        if strip_scheme(rest, "https://").is_some() {
             return Err(tr!("address-https"));
         }
         let rest = rest.split('/').next().unwrap_or("");
@@ -39,10 +34,14 @@ impl HostAddress {
                 None if after.is_empty() => None,
                 None => return Err(tr!("address-ipv6-port")),
             };
+            if addr.parse::<std::net::Ipv6Addr>().is_err() {
+                return Err(tr!("address-bad-host", text = text.trim()));
+            }
             (format!("[{addr}]"), port)
-        } else if rest.parse::<std::net::Ipv6Addr>().is_ok() {
-            // An IPv6 address without brackets has no room for a port.
-            (format!("[{rest}]"), None)
+        } else if rest.matches(':').count() > 1 {
+            // An IPv6 address without brackets cannot say where a port starts:
+            // fd7a::1:8790 is itself an address.
+            return Err(tr!("address-ipv6-brackets"));
         } else {
             match rest.rsplit_once(':') {
                 Some((h, p)) => (h.to_string(), Some(p)),
@@ -86,6 +85,14 @@ impl HostAddress {
     }
 }
 
+/// What follows `scheme` at the start of `text`, the scheme matched in any case, as a
+/// browser matches it.
+fn strip_scheme<'a>(text: &'a str, scheme: &str) -> Option<&'a str> {
+    let head = text.get(..scheme.len())?;
+    head.eq_ignore_ascii_case(scheme)
+        .then(|| &text[scheme.len()..])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,8 +111,6 @@ mod tests {
         assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
         let a = HostAddress::parse("[fd7a:115c::1]").unwrap();
         assert_eq!(a.port, 8790);
-        let a = HostAddress::parse("fd7a:115c::1").unwrap();
-        assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
         let a = HostAddress::parse("Http://desktop:8791").unwrap();
         assert_eq!(a.display(), "desktop:8791");
         assert_eq!(
@@ -122,5 +127,14 @@ mod tests {
         let https = HostAddress::parse("https://desktop").unwrap_err();
         assert_eq!(HostAddress::parse("HTTPS://desktop"), Err(https));
         assert!(HostAddress::parse("my desk").is_err());
+        // Without brackets an IPv6 address and its port cannot be told apart.
+        let brackets = HostAddress::parse("fd7a:115c::1").unwrap_err();
+        assert_eq!(
+            HostAddress::parse("fd7a:115c::1:8790"),
+            Err(brackets.clone())
+        );
+        assert_eq!(HostAddress::parse("fe80::1%wlan0"), Err(brackets));
+        assert!(HostAddress::parse("[]:8790").is_err());
+        assert!(HostAddress::parse("[desktop]:8790").is_err());
     }
 }
