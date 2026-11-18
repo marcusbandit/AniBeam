@@ -46,41 +46,73 @@ pub fn parse(list: &Value) -> Vec<Track> {
         .unwrap_or_default()
 }
 
-/// The two and three letter codes for the languages a library like this one carries. The
-/// list is deliberately short: a code not on it still matches itself.
-const PAIRS: [(&str, &str); 14] = [
-    ("en", "eng"),
-    ("ja", "jpn"),
-    ("de", "ger"),
-    ("de", "deu"),
-    ("fr", "fre"),
-    ("fr", "fra"),
-    ("es", "spa"),
-    ("it", "ita"),
-    ("pt", "por"),
-    ("ru", "rus"),
-    ("zh", "chi"),
-    ("zh", "zho"),
-    ("ko", "kor"),
-    ("ar", "ara"),
+/// A language: the catalog's name for it, and the codes that tag it.
+type Language = (&'static str, &'static [&'static str]);
+
+/// The languages a library like this one carries: the catalog's name for each and the
+/// codes that tag it, the two letter one first. The list is deliberately short: a code not
+/// on it still matches itself, and a label shows it as it came.
+const LANGUAGES: [Language; 30] = [
+    ("core-playback-lang-english", &["en", "eng"]),
+    ("core-playback-lang-japanese", &["ja", "jpn"]),
+    ("core-playback-lang-spanish", &["es", "spa"]),
+    ("core-playback-lang-portuguese", &["pt", "por"]),
+    ("core-playback-lang-french", &["fr", "fre", "fra"]),
+    ("core-playback-lang-german", &["de", "ger", "deu"]),
+    ("core-playback-lang-italian", &["it", "ita"]),
+    ("core-playback-lang-russian", &["ru", "rus"]),
+    ("core-playback-lang-chinese", &["zh", "chi", "zho"]),
+    ("core-playback-lang-korean", &["ko", "kor"]),
+    ("core-playback-lang-arabic", &["ar", "ara"]),
+    ("core-playback-lang-hindi", &["hi", "hin"]),
+    ("core-playback-lang-indonesian", &["id", "ind"]),
+    ("core-playback-lang-malay", &["ms", "may", "msa"]),
+    ("core-playback-lang-thai", &["th", "tha"]),
+    ("core-playback-lang-vietnamese", &["vi", "vie"]),
+    ("core-playback-lang-polish", &["pl", "pol"]),
+    ("core-playback-lang-turkish", &["tr", "tur"]),
+    ("core-playback-lang-dutch", &["nl", "dut", "nld"]),
+    ("core-playback-lang-swedish", &["sv", "swe"]),
+    ("core-playback-lang-norwegian", &["no", "nor", "nb", "nob"]),
+    ("core-playback-lang-danish", &["da", "dan"]),
+    ("core-playback-lang-finnish", &["fi", "fin"]),
+    ("core-playback-lang-hebrew", &["he", "heb"]),
+    ("core-playback-lang-ukrainian", &["uk", "ukr"]),
+    ("core-playback-lang-czech", &["cs", "cze", "ces"]),
+    ("core-playback-lang-hungarian", &["hu", "hun"]),
+    ("core-playback-lang-greek", &["el", "gre", "ell"]),
+    ("core-playback-lang-romanian", &["ro", "rum", "ron"]),
+    ("core-playback-lang-filipino", &["fil", "tl", "tgl"]),
 ];
 
-/// One code down to its two letter form, with the region suffix gone and mpv's "und",
-/// undetermined, down to nothing.
+/// A tag split into its language code and its region, both lowercased: `pt-BR` is `pt`
+/// and `br`.
+fn split(tag: &str) -> (String, Option<String>) {
+    let lower = tag.to_ascii_lowercase();
+    let mut parts = lower.split(['-', '_']);
+    let base = parts.next().unwrap_or_default().to_string();
+    (base, parts.next().map(str::to_string))
+}
+
+/// The entry of `LANGUAGES` a code is one of.
+fn language(code: &str) -> Option<&'static Language> {
+    LANGUAGES.iter().find(|(_, codes)| codes.contains(&code))
+}
+
+/// One code down to the first of its language's codes, with the region suffix gone and
+/// mpv's "und", undetermined, down to nothing.
 fn canon(l: &str) -> String {
-    let l = l.to_ascii_lowercase();
-    let base = l.split(['-', '_']).next().unwrap_or(&l);
+    let (base, _) = split(l);
     // The whole code, not a substring: a replace would reach inside any code that happened
     // to spell those three letters, and it left an undetermined track unable to match even
     // the ref taken from itself.
     if base == "und" {
         return String::new();
     }
-    PAIRS
-        .iter()
-        .find(|(_, three)| base == *three)
-        .map(|(two, _)| (*two).to_string())
-        .unwrap_or_else(|| base.to_string())
+    match language(&base) {
+        Some((_, codes)) => codes[0].to_string(),
+        None => base,
+    }
 }
 
 /// Two and three letter codes are the same to mpv, so they are the same here. An
@@ -308,44 +340,9 @@ pub fn label(t: &Track) -> String {
 /// (Brazil). None for `und` and for a tag not in the list, which the label then shows as it
 /// came.
 fn language_name(tag: &str) -> Option<String> {
-    let lower = tag.to_ascii_lowercase();
-    let mut parts = lower.split(['-', '_']);
-    let base = parts.next()?;
-    let region = parts.next();
-    let name = match base {
-        "en" | "eng" => "core-playback-lang-english",
-        "ja" | "jpn" => "core-playback-lang-japanese",
-        "es" | "spa" => "core-playback-lang-spanish",
-        "pt" | "por" => "core-playback-lang-portuguese",
-        "fr" | "fre" | "fra" => "core-playback-lang-french",
-        "de" | "ger" | "deu" => "core-playback-lang-german",
-        "it" | "ita" => "core-playback-lang-italian",
-        "ru" | "rus" => "core-playback-lang-russian",
-        "zh" | "chi" | "zho" => "core-playback-lang-chinese",
-        "ko" | "kor" => "core-playback-lang-korean",
-        "ar" | "ara" => "core-playback-lang-arabic",
-        "hi" | "hin" => "core-playback-lang-hindi",
-        "id" | "ind" => "core-playback-lang-indonesian",
-        "ms" | "may" | "msa" => "core-playback-lang-malay",
-        "th" | "tha" => "core-playback-lang-thai",
-        "vi" | "vie" => "core-playback-lang-vietnamese",
-        "pl" | "pol" => "core-playback-lang-polish",
-        "tr" | "tur" => "core-playback-lang-turkish",
-        "nl" | "dut" | "nld" => "core-playback-lang-dutch",
-        "sv" | "swe" => "core-playback-lang-swedish",
-        "no" | "nor" | "nb" | "nob" => "core-playback-lang-norwegian",
-        "da" | "dan" => "core-playback-lang-danish",
-        "fi" | "fin" => "core-playback-lang-finnish",
-        "he" | "heb" => "core-playback-lang-hebrew",
-        "uk" | "ukr" => "core-playback-lang-ukrainian",
-        "cs" | "cze" | "ces" => "core-playback-lang-czech",
-        "hu" | "hun" => "core-playback-lang-hungarian",
-        "el" | "gre" | "ell" => "core-playback-lang-greek",
-        "ro" | "rum" | "ron" => "core-playback-lang-romanian",
-        "fil" | "tl" | "tgl" => "core-playback-lang-filipino",
-        _ => return None,
-    };
-    let region = match region {
+    let (base, region) = split(tag);
+    let (name, _) = language(&base)?;
+    let region = match region.as_deref() {
         Some("br") => Some("core-playback-region-brazil"),
         Some("pt") => Some("core-playback-region-portugal"),
         Some("419") | Some("la") => Some("core-playback-region-latin-america"),
@@ -523,6 +520,9 @@ mod tests {
                 && same_lang("EN", "en")
                 && !same_lang("en", "es")
         );
+        // Every language the labels name matches across its codes, not only the first few
+        assert!(same_lang("hin", "hi") && same_lang("nob", "no") && same_lang("tl", "fil"));
+        assert!(!same_lang("nob", "da"));
     }
 
     /// The Judas layout from #727: two "English" subtitles, the first forced and signs only,

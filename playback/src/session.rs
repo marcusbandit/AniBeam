@@ -28,6 +28,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Playback;
 use crate::presence::Activity;
+use crate::skip;
 use anibeam_contract::*;
 use anibeam_foundation::prefs;
 use anibeam_foundation::services::Services;
@@ -77,6 +78,10 @@ pub struct Session {
     /// The titles the player shows, which a watch together room carries.
     pub series_title: String,
     pub episode_title: Option<String>,
+    /// What the lines these rules write call the file: the series' folder
+    /// name and the episode's own code.
+    pub folder: String,
+    pub code: String,
     /// Known only once the shell has reported the chapters, so the first
     /// ticks of a session have neither a mark line nor a tail to reach.
     pub duration: Option<f64>,
@@ -440,8 +445,6 @@ fn neighbours(
     })
 }
 
-/// The windows the last session on this episode settled on. A `none` row is
-/// a miss the skip windows job will ask about again, so it reads as absent.
 /// The skip windows found so far for an open session, for a player whose
 /// session runs on another machine and so never hears `SkipWindowsReady`.
 pub fn windows_of(playback: &Playback, session: u64) -> Result<Vec<SkipWindow>, CoreError> {
@@ -455,23 +458,10 @@ pub fn windows_of(playback: &Playback, session: u64) -> Result<Vec<SkipWindow>, 
         .read(|c| cached_windows(c, s.series, &s.episode_key))
 }
 
+/// The windows the last session on this episode settled on. A miss is no
+/// windows, whether or not the skip windows job will ask about it again.
 fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipWindow>, CoreError> {
-    let raw: Option<String> = conn
-        .query_row(
-            "SELECT windows FROM skip_windows WHERE series_id = ?1 AND episode_key = ?2 AND source <> 'none'",
-            params![series as i64, key],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let Some(raw) = raw else {
-        return Ok(Vec::new());
-    };
-    Ok(
-        serde_json::from_str::<Vec<SkipWindow>>(&raw).unwrap_or_else(|e| {
-            tracing::warn!("cached skip windows did not parse, asking again: {e}");
-            Vec::new()
-        }),
-    )
+    Ok(skip::cached(conn, series, key, time::now_secs())?.unwrap_or_default())
 }
 
 /// Everything the player needs before the first frame, and the session the
@@ -634,6 +624,8 @@ pub fn open_for(
             tvmaze_id: s.tvmaze_id,
             series_title: series_title.clone(),
             episode_title: episode_title.clone(),
+            folder: s.folder_name.clone(),
+            code: code.clone(),
             duration: None,
             outro_start: None,
             opening_start: opening_of(&skip_windows),
@@ -815,10 +807,9 @@ fn record_view(playback: &Playback, s: &Session) -> Result<(), CoreError> {
     if s.profile != anibeam_foundation::trust::OWNER {
         return Ok(());
     }
-    let (folder, code) = playback.services.store.read(|c| line_labels(c, s))?;
     playback.services.bus.info(
         Stage::Playback,
-        format!("viewed {folder} {code}"),
+        format!("viewed {} {}", s.folder, s.code),
         EventBody::Viewed {
             series: s.series,
             episode: s.episode_key.clone(),
@@ -839,16 +830,11 @@ fn mark(playback: &Playback, s: &Session) {
     }
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
-        let folder = playback
-            .services
-            .store
-            .read(|c| line_labels(c, s))
-            .map(|(folder, _)| folder)
-            .unwrap_or_default();
+        let folder = &s.folder;
         playback.services.bus.say(
             Level::Warn,
             Stage::Playback,
-            anibeam_contract::words!("core-playback-not-saved", folder = &folder),
+            anibeam_contract::words!("core-playback-not-saved", folder = folder),
             format!("watched to the end but {folder} has no AniList or MAL id"),
             EventBody::Notice,
         );
@@ -984,39 +970,6 @@ fn write_resume(services: &Services, s: &Session, position: f64) {
     );
 }
 
-/// What the lines these rules write call the file: the series' folder name
-/// and the episode's own code. Read when a rule fires, at most once each per
-/// session, rather than carried on every session for the two that need it.
-fn line_labels(conn: &Connection, s: &Session) -> Result<(String, String), CoreError> {
-    let row = conn
-        .query_row(
-            "SELECT s.folder_name, f.kind, f.number, f.season, f.extra_kind, f.extra_index
-             FROM files f JOIN series s ON s.id = f.series_id
-             WHERE f.id = ?1",
-            params![s.file as i64],
-            |r| {
-                let folder: String = r.get(0)?;
-                let is_extra: bool = r.get::<_, String>(1)? == "extra";
-                let number: f64 = r.get::<_, Option<f64>>(2)?.unwrap_or(0.0);
-                let season: Option<u32> = r.get::<_, Option<i64>>(3)?.map(|v| v as u32);
-                let kind = r
-                    .get::<_, Option<String>>(4)?
-                    .and_then(|k| ExtraKind::from_column(&k));
-                let index: Option<u32> = r.get::<_, Option<i64>>(5)?.map(|v| v as u32);
-                let code = if is_extra {
-                    labels::extra_code_with_index(kind.unwrap_or(ExtraKind::Other), index)
-                } else {
-                    labels::episode_code(season, number)
-                };
-                Ok((folder, code))
-            },
-        )
-        .optional()?;
-    // The file went away mid-session. The rule still stands, so the line is
-    // written with what the session itself knows.
-    Ok(row.unwrap_or_else(|| (String::new(), s.episode_key.clone())))
-}
-
 // ---------------------------------------------------------------------------
 // The track choice
 // ---------------------------------------------------------------------------
@@ -1046,10 +999,11 @@ pub fn set_track_choice(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn session(is_extra: bool, duration: Option<f64>) -> Session {
+    /// A session on episode 3 of series 2, a show matched on AniList.
+    pub(crate) fn session(is_extra: bool, duration: Option<f64>) -> Session {
         Session {
             id: 1,
             file: 10,
@@ -1063,6 +1017,8 @@ mod tests {
             tvmaze_id: None,
             series_title: "Bebop".to_string(),
             episode_title: None,
+            folder: "Bebop".to_string(),
+            code: "EP 3".to_string(),
             duration,
             outro_start: None,
             opening_start: None,

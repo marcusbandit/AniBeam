@@ -238,8 +238,7 @@ async fn resolve(
     let from_file = from_chapters(chapters, duration);
     // An extra, or an episode with no MAL id or number, has nobody to ask:
     // whatever its chapters name is all it gets, cached as before.
-    let askable =
-        !s.is_extra && s.mal_id.is_some() && s.number.is_some_and(|n| n.is_finite() && n > 0.0);
+    let askable = aniskip_episode(s).is_some();
     if from_file.len() == 2 || (!from_file.is_empty() && !askable) {
         write_cache(
             &playback.services,
@@ -275,29 +274,19 @@ async fn ask(
     s: &Session,
     duration: f64,
 ) -> Result<Vec<SkipWindow>, CoreError> {
-    let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
     if let Some(windows) = playback
         .services
         .store
-        .write_async(move |c| cached(c, series, &key, now))
-        .await?
+        .read(|c| cached(c, s.series, &s.episode_key, time::now_secs()))?
     {
         return Ok(windows);
     }
     // An extra has no episode number, so AniSkip has nothing to be asked
     // about and nothing to cache: its chapters are all it can ever have.
-    if s.is_extra {
-        return Ok(Vec::new());
-    }
-    let (Some(mal_id), Some(number)) = (s.mal_id, s.number) else {
+    let Some((mal_id, episode)) = aniskip_episode(s) else {
         return Ok(Vec::new());
     };
-    if !number.is_finite() || number <= 0.0 {
-        return Ok(Vec::new());
-    }
-    // Both casts stand on the guards above: the number is finite and
-    // positive here, and so is the duration `start` let through.
-    let episode = number.floor() as u32;
+    // The duration `start` let through is finite and positive.
     match playback
         .net
         .aniskip
@@ -334,6 +323,16 @@ async fn ask(
             Ok(Vec::new())
         }
     }
+}
+
+/// What AniSkip is asked about for a session: its MAL id and the episode's
+/// number. None for an extra, a series with no MAL id, or a number that is
+/// not positive.
+fn aniskip_episode(s: &Session) -> Option<(u64, u32)> {
+    let number = s
+        .number
+        .filter(|n| !s.is_extra && n.is_finite() && *n > 0.0)?;
+    Some((s.mal_id?, number.floor() as u32))
 }
 
 /// What the terminal line names: the kinds found, in the order they were
@@ -468,6 +467,27 @@ mod tests {
             merged,
             vec![aniskip(SkipKind::Intro, 72.0, 162.0), outro(1291.0, 1381.0)]
         );
+    }
+
+    /// AniSkip is asked by MAL id and a whole, positive episode number, and
+    /// never about an extra.
+    #[test]
+    fn only_a_numbered_episode_with_a_mal_id_is_asked_about() {
+        let mut s = crate::session::tests::session(false, None);
+        s.mal_id = Some(1);
+        s.number = Some(5.5);
+        assert_eq!(aniskip_episode(&s), Some((1, 5)));
+        for number in [Some(0.0), Some(-1.0), Some(f64::NAN), None] {
+            s.number = number;
+            assert_eq!(aniskip_episode(&s), None, "{number:?}");
+        }
+        s.number = Some(5.0);
+        s.mal_id = None;
+        assert_eq!(aniskip_episode(&s), None);
+        let mut extra = crate::session::tests::session(true, None);
+        extra.mal_id = Some(1);
+        extra.number = Some(5.0);
+        assert_eq!(aniskip_episode(&extra), None);
     }
 
     /// One chapter labelled Opening over the whole episode is a label, not
