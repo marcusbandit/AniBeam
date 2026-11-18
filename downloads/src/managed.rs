@@ -85,45 +85,40 @@ pub fn write_config(profile: &Path, port: u16, save: Option<&Path>) -> std::io::
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut text = std::fs::read_to_string(&file).unwrap_or_default();
     let port = port.to_string();
-    let always = [
-        ("LegalNotice", "Accepted", "true"),
-        ("Preferences", "WebUI\\Enabled", "true"),
-        ("Preferences", "WebUI\\Address", "127.0.0.1"),
-        ("Preferences", "WebUI\\Port", port.as_str()),
-        ("Preferences", "WebUI\\LocalHostAuth", "false"),
-        ("Preferences", "WebUI\\Username", USERNAME),
+    // A backslash is an escape in a QSettings file; qBittorrent writes
+    // Windows paths with forward slashes.
+    let save = save.map(|s| s.to_string_lossy().replace('\\', "/"));
+    // (section, key, value, overwrite): a key without overwrite is only filled in when the
+    // profile has not chosen yet.
+    let mut keys = vec![
+        // Downloads land in the watched library folder (#1005): a file still being written
+        // carries qBittorrent's .!qB on its name, so the scan never reads a part file as an
+        // episode.
+        (
+            "BitTorrent",
+            "Session\\AddExtensionToIncompleteFiles",
+            "true",
+            false,
+        ),
+        ("LegalNotice", "Accepted", "true", true),
+        ("Preferences", "WebUI\\Enabled", "true", true),
+        ("Preferences", "WebUI\\Address", "127.0.0.1", true),
+        ("Preferences", "WebUI\\Port", port.as_str(), true),
+        ("Preferences", "WebUI\\LocalHostAuth", "false", true),
+        ("Preferences", "WebUI\\Username", USERNAME, true),
         // anirss's subscriptions are qBittorrent RSS rules: without these
         // the feeds are never read and nothing downloads by itself.
-        ("RSS", "Session\\EnableProcessing", "true"),
-        ("RSS", "AutoDownloader\\EnableProcessing", "true"),
+        ("RSS", "Session\\EnableProcessing", "true", true),
+        ("RSS", "AutoDownloader\\EnableProcessing", "true", true),
     ];
-    // Downloads land in the watched library folder (#1005): a file still being written
-    // carries qBittorrent's .!qB on its name, so the scan never reads a part file as an
-    // episode. Only a profile that has not chosen yet gets it.
-    text = set_ini(
-        &text,
-        "BitTorrent",
-        "Session\\AddExtensionToIncompleteFiles",
-        "true",
-        false,
-    );
-    for (section, key, value) in always {
-        text = set_ini(&text, section, key, value, true);
+    if let Some(save) = &save {
+        keys.push(("BitTorrent", "Session\\DefaultSavePath", save, false));
+        keys.push(("Preferences", "Downloads\\SavePath", save, false));
     }
-    if let Some(save) = save {
-        // A backslash is an escape in a QSettings file; qBittorrent writes
-        // Windows paths with forward slashes.
-        let save = save.to_string_lossy().replace('\\', "/");
-        text = set_ini(
-            &text,
-            "BitTorrent",
-            "Session\\DefaultSavePath",
-            &save,
-            false,
-        );
-        text = set_ini(&text, "Preferences", "Downloads\\SavePath", &save, false);
+    let mut text = std::fs::read_to_string(&file).unwrap_or_default();
+    for (section, key, value, overwrite) in keys {
+        text = set_ini(&text, section, key, value, overwrite);
     }
     std::fs::write(&file, text)
 }
@@ -196,16 +191,14 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
 
 /// The last lines of the profile's log, for a failure message.
 pub fn log_tail(profile: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(log_file(profile)).unwrap_or_default();
-    let lines: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
-    if lines.is_empty() {
-        return None;
-    }
-    Some(lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / "))
+    last_lines(std::fs::read_to_string(log_file(profile)).ok()?.lines())
+}
+
+/// The last [`LOG_TAIL`] lines that say something, joined, or `None` when none does: what
+/// a helper program said before it failed. The anirss sidecar's stderr goes through it too.
+pub(crate) fn last_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Option<String> {
+    let lines: Vec<&str> = lines.map(str::trim).filter(|l| !l.is_empty()).collect();
+    (!lines.is_empty()).then(|| lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / "))
 }
 
 #[cfg(test)]
