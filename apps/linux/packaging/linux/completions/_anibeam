@@ -4,8 +4,15 @@
 _anibeam() {
   if (( CURRENT == 2 )) && [[ $words[2] != -* ]]; then
     _alternatives \
-      'commands:command:((serve\:"run the library and the tailnet host with no window" anibeam\://room/\:"join a watch together room by its link"))' \
+      'commands:command:((serve\:"run the library and the tailnet host with no window" ctl\:"drive the open window from the terminal" anibeam\://room/\:"join a watch together room by its link"))' \
       'options:option:_anibeam_options'
+    return
+  fi
+  if (( ${words[(I)ctl]} > 0 )); then
+    local at=${words[(I)ctl]}
+    shift $(( at - 1 )) words
+    (( CURRENT -= at - 1 ))
+    _anibeam_ctl
     return
   fi
   if [[ ${words[(I)serve]} -gt 0 ]]; then
@@ -28,7 +35,58 @@ _anibeam_options() {
     '--action[forward an action to the running window]:action:' \
     '--drive[run a JSON drive script offscreen]:script:_files -g "*.json"' \
     '--out[where a drive writes its shots]:directory:_files -/' \
-    '1: :((serve\:"run the library and the tailnet host with no window" anibeam\://room/\:"join a watch together room by its link"))'
+    '1: :((serve\:"run the library and the tailnet host with no window" ctl\:"drive the open window from the terminal" anibeam\://room/\:"join a watch together room by its link"))'
+}
+
+_anibeam_ctl() {
+  local -a cmds
+  cmds=(
+    'open:start a window when none runs, then go to a page'
+    'go:open a page from anywhere'
+    'back:the window'"'"'s Back'
+    'forward:the window'"'"'s Forward'
+    'where:the page, its props and what is open over it'
+    'pages:every page and the props it opens with'
+    'tree:what is on screen, one row each'
+    'click:click a point, an objectName or words on screen'
+    'hover:move the pointer onto a target'
+    'scroll:scroll a target by notches'
+    'key:press keys'
+    'type:type text'
+    'shot:capture the window to a PNG'
+    'eval:run JS in the window'
+    'wait:wait until JS is truthy'
+    'run:run a drive script against the window'
+    'quit:close the window'
+    'help:the guide'
+  )
+  local -a common
+  common=(
+    '--root[the window started with this root]:directory:_files -/'
+    '--json[print the whole reply]'
+    '--timeout[bound the command]:milliseconds:'
+  )
+  if (( CURRENT == 2 )); then
+    _describe -t commands 'ctl command' cmds
+    _arguments -s $common
+    return
+  fi
+  case $words[2] in
+    go|open)
+      if (( CURRENT == 3 )); then
+        compadd -- home library airing feed watching stats metadata downloads settings series player show recommended
+      elif (( CURRENT == 4 )) && [[ $words[3] == settings ]]; then
+        compadd -- library accounts appearance playback downloads keys about developer
+      fi
+      _arguments -s $common '--props[the JSON object the page opens with]:json:' '--offscreen[start it with no window on the desktop]' '*: :' ;;
+    click) _arguments -s $common '--nth[take the nth match]:n:' '--right[right button]' '--double[double click]' '*:target:' ;;
+    hover|scroll) _arguments -s $common '--nth[take the nth match]:n:' '*:target:' ;;
+    type) _arguments -s $common '--focus[ask for the keyboard first]' '*:text:' ;;
+    key) _arguments -s $common '--focus[ask for the keyboard first]'; compadd -- Escape Return Tab Shift+Tab Space Backspace Up Down Left Right Home End PageUp PageDown Ctrl+K Alt+Left Alt+Right F11 ;;
+    shot) _files -g '*.png' ;;
+    run) _alternatives 'files:script:_files -g "*.json"' 'stdin:stdin:(-)' ;;
+    *) _arguments -s $common '*: :' ;;
+  esac
 }
 
 _anibeam "$@"

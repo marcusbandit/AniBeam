@@ -10,7 +10,9 @@
 //                                                              goes on; past "timeout" (default 5000)
 //                                                              the run fails. A throw while polling
 //                                                              counts as not ready yet.
-//   {"click": [x, y] | "objectName", "button": "left"|"right"|"middle", "double": true}
+//   {"click": [x, y] | "objectName" | "words", "button": "left"|"right"|"middle", "double": true}
+//                                                              a string is an objectName first, else
+//                                                              visible words on screen (see "nth")
 //   {"hover": [x, y] | "objectName"}
 //   {"drag": [x1, y1, x2, y2], "steps": n, "button": ...}       press, n moves held, release;
 //                                                              "release": false keeps it held
@@ -39,8 +41,20 @@
 //                                                              its line count and whether it is
 //                                                              cut off. The layout check (#792)
 //                                                              compares these across languages.
+//   {"tree": "filter"}                                         what is on screen, for an agent: every
+//                                                              named item and every piece of words,
+//                                                              its kind and its box; the filter keeps
+//                                                              the rows that contain it
 // An objectName target is the first visible item with that name, depth first from the
-// window's content item, which holds the Controls overlay and so every open Popup too.
+// window's content item, which holds the Controls overlay and so every open Popup too. A
+// string that names no item is matched against the words on screen instead: a whole match
+// before a partial one, case aside, an open Popup's before the page's, and only words
+// that are on screen, not scrolled out of a list. "nth": 2 takes the second such match.
+//
+// A live run (`anibeam ctl`, Control.qml) is the same steps against the window on screen:
+// nothing exits, lines are kept for the reply instead of printed, and the last eval or tree
+// is the result. A key or type step with "focus": true first asks for the keyboard when the
+// window lacks it; without it the window is never raised.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -51,6 +65,14 @@ QtObject {
     property var hostFrame
     property var evaluate          // function(src): Main.qml's eval, so ids resolve there
     property string outDir
+    // A live run: finish(ok, message) is called once at the end instead of Qt.exit
+    property bool live: false
+    property var finish: null
+    // Called as each page step starts, before the page opens
+    property var beforePage: null
+    property var lines: []
+    property var result: undefined
+    property int jobId: 0          // the control request this live run answers
 
     property var steps: []
     property var vars: ({})        // {"eval": ..., "as": "k"} results, readable in evals as vars.k
@@ -67,12 +89,21 @@ QtObject {
     readonly property int gap: 30  // between the move, the press and the release of a click
     readonly property int settle: 50
 
-    function log(s) { Shell.driveLog(s) }
+    function log(s) { if (live) lines.push(s); else Shell.driveLog(s) }
     function fail(reason) {
         if (finished) return
         finished = true; timer.stop(); poller.stop(); queue = []
+        if (live) { finish(false, reason); return }
         log("DRIVE FAIL: " + reason)
         Qt.exit(1)
+    }
+
+    // A live run's steps, already parsed
+    function run(list) {
+        if (started) return
+        started = true
+        steps = list
+        next()
     }
 
     function start() {
@@ -88,6 +119,7 @@ QtObject {
         if (finished) return
         if (at >= steps.length) {
             finished = true
+            if (live) { finish(true, ""); return }
             log("DRIVE DONE: " + steps.length + " steps")
             Qt.exit(0)
             return
@@ -187,7 +219,53 @@ QtObject {
         }
         return null
     }
-    function resolve(target) {
+    // The point in window coordinates where `item` would take a click, or null when that
+    // point is off the window or cut away by a clipping parent (a list scrolled past it)
+    function onScreen(item) {
+        var c = item.mapToItem(null, item.width / 2, item.height / 2)
+        if (c.x < 0 || c.y < 0 || c.x >= hostWindow.width || c.y >= hostWindow.height) return null
+        for (var p = item.parent; p; p = p.parent) {
+            if (!p.clip) continue
+            var q = p.mapFromItem(null, c.x, c.y)
+            if (q.x < 0 || q.y < 0 || q.x > p.width || q.y > p.height) return null
+        }
+        return c
+    }
+    function inPopup(item) {
+        for (var p = item; p; p = p.parent) if (String(p).indexOf("QQuickPopupItem") === 0 || String(p).indexOf("QQuickOverlay") === 0) return true
+        return false
+    }
+    function wordsOf(item) {
+        var t = item.text !== undefined && item.text !== null ? String(item.text) : ""
+        if (t.trim() === "" && item.placeholderText !== undefined) t = String(item.placeholderText)
+        // A poster card paints its title itself (cardface.cpp), so it holds no Text to read
+        if (t.trim() === "" && typeof item.title === "string" && String(item).indexOf("CardFace") === 0) t = item.title
+        // Rich text and mnemonics read as the words they show
+        return t.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").trim()
+    }
+    // Every on-screen item showing these words, best first: whole matches before partial
+    // ones, each in a Popup before the page's
+    function findWords(words) {
+        var want = String(words).toLowerCase(), hits = []
+        // Each entry carries the words of the nearest match above it: a button's own label
+        // shows the button's words again and is not a second match
+        var stack = [[hostWindow.contentItem, ""]]
+        while (stack.length) {
+            var top = stack.pop(), it = top[0], above = top[1]
+            // A layout item with no size of its own still holds what is drawn
+            if (!it.visible || it.opacity <= 0) continue
+            var w = shown(it) ? wordsOf(it).toLowerCase() : ""
+            if (w !== "" && w.indexOf(want) >= 0 && w !== above) {
+                var c = onScreen(it)
+                if (c) { hits.push({ item: it, at: c, rank: (w === want ? 0 : 2) + (inPopup(it) ? 0 : 1), n: hits.length }); above = w }
+            }
+            var kids = it.children
+            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push([kids[i], above])
+        }
+        hits.sort(function(a, b) { return a.rank - b.rank || a.n - b.n })
+        return hits
+    }
+    function resolve(target, nth) {
         if (Array.isArray(target)) {
             if (target.length < 2 || typeof target[0] !== "number" || typeof target[1] !== "number")
                 throw new Error("a point is [x, y] in window coordinates")
@@ -195,11 +273,17 @@ QtObject {
         }
         if (typeof target === "string") {
             var it = findItem(target)
-            if (!it) throw new Error("no visible item named " + target)
-            var c = it.mapToItem(null, it.width / 2, it.height / 2)
-            return { x: c.x, y: c.y }
+            if (it) {
+                var c = it.mapToItem(null, it.width / 2, it.height / 2)
+                return { x: c.x, y: c.y }
+            }
+            var hits = findWords(target), k = nth === undefined ? 1 : nth
+            if (typeof k !== "number" || k < 1) throw new Error("nth counts from 1")
+            if (hits.length >= k) return { x: hits[k - 1].at.x, y: hits[k - 1].at.y }
+            if (hits.length) throw new Error("only " + hits.length + " on screen show " + JSON.stringify(target))
+            throw new Error("no visible item named or showing " + JSON.stringify(target))
         }
-        throw new Error("a target is [x, y] or an objectName")
+        throw new Error("a target is [x, y], an objectName or words on screen")
     }
 
     // ---- keys
@@ -249,9 +333,47 @@ QtObject {
         if (keyPart.length === 1) return charKey(keyPart, mods, parts.length === 0)
         throw new Error("unknown key " + keyPart)
     }
-    function keyActions(k, out) {
+    function keyActions(k, out, focus) {
+        if (live && focus === true) out.push(function() { if (!hostWindow.active) { hostWindow.requestActivate(); return settle } return 0 })
         out.push(function() { Shell.driveKey(hostWindow, true, k.key, k.mods, k.text); return 0 })
         out.push(function() { Shell.driveKey(hostWindow, false, k.key, k.mods, k.text); return 10 })
+    }
+
+    // ---- tree
+
+    // What an agent needs to act on the screen: each on-screen item that has a name or shows
+    // words, in painting order, as { kind, name, text, x, y, w, h } in window coordinates,
+    // plus "on" for a checked or selected control and "focus" for the keyboard's. Bare
+    // layout items are left out, and so is what a list has scrolled away.
+    function kindOf(item) {
+        var s = String(item), m = s.match(/^([A-Za-z0-9]+?)(_QML[A-Za-z0-9_]*)?\(/)
+        var k = m ? m[1] : s
+        return k.indexOf("QQuick") === 0 ? k.slice(6) : k
+    }
+    function tree(filter) {
+        var rows = [], want = String(filter || "").toLowerCase()
+        // As in findWords: a control's own label repeats its words and gets no row of its own
+        var stack = [[hostWindow.contentItem, ""]]
+        while (stack.length) {
+            var top = stack.pop(), it = top[0], above = top[1]
+            if (!it.visible || it.opacity <= 0) continue
+            var name = it.objectName || "", words = wordsOf(it)
+            if (name === "" && words !== "" && words === above) words = ""
+            if ((name !== "" || words !== "") && shown(it) && onScreen(it)) {
+                if (words !== "") above = words
+                var p = it.mapToItem(null, 0, 0)
+                var row = { kind: kindOf(it), x: Math.round(p.x), y: Math.round(p.y), w: Math.round(it.width), h: Math.round(it.height) }
+                if (name !== "") row.name = name
+                if (words !== "") row.text = words.length > 80 ? words.slice(0, 77) + "..." : words
+                if (it.checked === true || it.selected === true || it.current === true) row.on = true
+                if (it.activeFocus === true && (it.cursorPosition !== undefined || it === hostWindow.activeFocusItem)) row.focus = true
+                var hay = (row.kind + " " + name + " " + words).toLowerCase()
+                if (want === "" || hay.indexOf(want) >= 0) rows.push(row)
+            }
+            var kids = it.children
+            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push([kids[i], above])
+        }
+        return rows
     }
 
     // ---- steps
@@ -262,9 +384,9 @@ QtObject {
         if (v === undefined) throw new Error("button is left, right or middle, not " + b)
         return v
     }
-    function moveTo(target) {
+    function moveTo(target, nth) {
         return function() {
-            driver.point = resolve(target)
+            driver.point = resolve(target, nth)
             Shell.driveMouse(hostWindow, 0, point.x, point.y, Qt.NoButton, 0)
             return gap
         }
@@ -327,6 +449,7 @@ QtObject {
             var plain = String(step.page), plainProps = step.props || {}
             out.push(function() {
                 if (!hostFrame.item || !hostFrame.item.go) throw new Error(tag + "no frame to navigate")
+                if (beforePage) beforePage()
                 hostFrame.item.go(plain, plainProps, undefined)
                 return settle * 4
             })
@@ -342,6 +465,7 @@ QtObject {
             throw new Error(tag + "until takes a JS condition")
         out.push(function() {
             if (!hostFrame.item || !hostFrame.item.go) throw new Error(tag + "no frame to navigate")
+            if (beforePage) beforePage()
             prev = hostFrame.item.pageItem
             hostFrame.item.go(step.page, props, undefined)
             return 0
@@ -387,7 +511,7 @@ QtObject {
             })
         } else if (step.click !== undefined) {
             b = button(step)
-            out.push(moveTo(step.click))
+            out.push(moveTo(step.click, step.nth))
             out.push(function() { Shell.driveMouse(hostWindow, 1, point.x, point.y, b, 0); return gap })
             if (step.double === true) {
                 out.push(function() { Shell.driveMouse(hostWindow, 2, point.x, point.y, b, 0); return gap })
@@ -420,7 +544,7 @@ QtObject {
             out.push(moveTo(step.release))
             out.push(function() { Shell.driveMouse(hostWindow, 3, point.x, point.y, b, 0); return settle })
         } else if (step.hover !== undefined) {
-            out.push(moveTo(step.hover))
+            out.push(moveTo(step.hover, step.nth))
             out.push(function() { return settle })
         } else if (step.wheel !== undefined) {
             var w = step.wheel, target = w, dy = step.dy, dx = step.dx || 0
@@ -428,7 +552,7 @@ QtObject {
                 if (w.length < 3 || typeof w[2] !== "number") throw new Error("wheel is [x, y, dy]")
                 target = [w[0], w[1]]; dy = w[2]
             } else if (typeof dy !== "number") throw new Error("wheel on an objectName needs \"dy\"")
-            out.push(moveTo(target))
+            out.push(moveTo(target, step.nth))
             out.push(function() { Shell.driveWheel(hostWindow, point.x, point.y, dx, dy, 0); return settle })
         } else if (step.key !== undefined && step.repeatUntil !== undefined) {
             // Presses the key until the JS is truthy, at most "max" times: a walk past rows
@@ -442,7 +566,7 @@ QtObject {
                 if (pressed >= most) throw new Error("repeatUntil not met after " + most + " presses: " + step.repeatUntil)
                 pressed++
                 var again = []
-                keyActions(pk, again)
+                keyActions(pk, again, step.focus)
                 again.push(function() { return settle })
                 again.push(check)
                 queue = again.concat(queue)
@@ -450,22 +574,26 @@ QtObject {
             }
             out.push(check)
         } else if (step.key !== undefined) {
-            keyActions(parseKey(step.key), out)
+            keyActions(parseKey(step.key), out, step.focus)
             out.push(function() { return settle })
         } else if (step.type !== undefined) {
             if (typeof step.type !== "string") throw new Error("type takes a string")
-            for (var i = 0; i < step.type.length; i++) keyActions(charKey(step.type[i], 0, true), out)
+            for (var i = 0; i < step.type.length; i++) keyActions(charKey(step.type[i], 0, true), out, i === 0 && step.focus)
             out.push(function() { return settle })
         } else if (step.shot !== undefined) {
             out.push(shotAction(step.shot, ""))
         } else if (step.texts !== undefined) {
             out.push(textsAction(step.texts, ""))
+        } else if (step.tree !== undefined) {
+            if (typeof step.tree !== "string") throw new Error("tree takes a filter, \"\" for all")
+            out.push(function() { driver.result = tree(step.tree); log("DRIVE TREE: " + driver.result.length + " rows"); return 0 })
         } else if (step.log !== undefined) {
             // the step line above is the marker
         } else if (step.eval !== undefined) {
             out.push(function() {
                 var r = evaluate(String(step.eval), vars)
                 if (typeof step.as === "string") vars[step.as] = r
+                driver.result = r
                 var shown = show(r)
                 log("DRIVE EVAL: " + shown)
                 if (step.expect !== undefined && JSON.stringify(step.expect) !== shown)
