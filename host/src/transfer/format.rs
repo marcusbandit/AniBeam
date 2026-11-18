@@ -346,22 +346,35 @@ pub struct SortEntry {
 /// The version check reads the raw value first, so a document from a later
 /// core is refused by version rather than by whichever field it added.
 pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(|e| {
-        CoreError::invalid(
-            "format",
-            anibeam_contract::i18n::tr(
+    /// The two fields read first, skipping the rest without building it.
+    #[derive(Deserialize)]
+    struct Head {
+        #[serde(default)]
+        format: Value,
+        #[serde(default)]
+        version: Value,
+    }
+    let head = serde_json::from_slice::<Head>(bytes).map_err(|e| {
+        // Valid JSON that is no object is simply not this format.
+        let message = match serde_json::from_slice::<serde::de::IgnoredAny>(bytes) {
+            Ok(_) => anibeam_contract::i18n::tr(
+                "core-transfer-wrong-format",
+                &[("format", FORMAT.into())],
+            ),
+            Err(_) => anibeam_contract::i18n::tr(
                 "core-transfer-not-json",
                 &[("error", e.to_string().into())],
             ),
-        )
+        };
+        CoreError::invalid("format", message)
     })?;
-    if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
+    if head.format.as_str() != Some(FORMAT) {
         return Err(CoreError::invalid(
             "format",
             anibeam_contract::i18n::tr("core-transfer-wrong-format", &[("format", FORMAT.into())]),
         ));
     }
-    let found = value.get("version").and_then(Value::as_u64).unwrap_or(0);
+    let found = head.version.as_u64().unwrap_or(0);
     let found = u32::try_from(found).unwrap_or(u32::MAX);
     if found > VERSION {
         return Err(CoreError::Version {
@@ -372,7 +385,7 @@ pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
     // Version 1 migrates here by doing nothing: the fields version 2 added
     // are absent, so they read as None and the merge leaves them alone.
     let doc: Document =
-        serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))?;
+        serde_json::from_slice(bytes).map_err(|e| CoreError::invalid("format", e.to_string()))?;
     let ignored = doc.unknown_fields();
     Ok((doc, ignored))
 }
@@ -617,6 +630,17 @@ mod tests {
         assert!(
             matches!(parse(b"not json at all"), Err(CoreError::Invalid { field, .. }) if field == "format")
         );
+    }
+
+    #[test]
+    fn json_that_is_no_object_is_another_format() {
+        for text in ["[]", "\"anibeam-export\"", "3"] {
+            let Err(CoreError::Invalid { field, message }) = parse(text.as_bytes()) else {
+                panic!("{text} parsed");
+            };
+            assert_eq!(field, "format");
+            assert!(message.contains(FORMAT), "{text}: {message}");
+        }
     }
 
     #[test]

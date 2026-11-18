@@ -125,13 +125,17 @@ impl Ids {
         *self == Ids::default()
     }
 
+    /// Each id it has, with which provider's it is.
+    fn keys(&self) -> impl Iterator<Item = (u8, u64)> {
+        [self.anilist, self.mal, self.tvmaze, self.tmdb]
+            .into_iter()
+            .zip(0u8..)
+            .filter_map(|(id, provider)| Some((provider, id?)))
+    }
+
     /// Whether both name the same show by some provider's id.
     fn shared(&self, other: &Ids) -> bool {
-        let same = |a: Option<u64>, b: Option<u64>| a.is_some() && a == b;
-        same(self.anilist, other.anilist)
-            || same(self.mal, other.mal)
-            || same(self.tvmaze, other.tvmaze)
-            || same(self.tmdb, other.tmdb)
+        self.keys().any(|k| other.keys().any(|o| o == k))
     }
 }
 
@@ -178,38 +182,62 @@ fn last_segment(path: &str) -> &str {
 /// and maps to nothing.
 fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
     let name_of = |e: &SeriesEntry| last_segment(&normalise(&e.path)).to_string();
-    let mut names_there: HashMap<(&'static str, String), usize> = HashMap::new();
+    let mut names_there: HashMap<(&str, String), usize> = HashMap::new();
     for entry in remote {
         *names_there
             .entry((kind_column(&entry.kind), name_of(entry)))
             .or_default() += 1;
     }
+    // The series here by kind and folder name, and by kind and each id.
+    let mut named: HashMap<(&str, String), Vec<usize>> = HashMap::new();
+    let mut known: HashMap<(&str, (u8, u64)), Vec<usize>> = HashMap::new();
+    for (i, local) in here.iter().enumerate() {
+        let kind = local.kind.as_str();
+        named
+            .entry((kind, file_name(&local.path)))
+            .or_default()
+            .push(i);
+        for key in local.ids.keys() {
+            known.entry((kind, key)).or_default().push(i);
+        }
+    }
     let mut out = HashMap::new();
     for entry in remote {
         let kind = kind_column(&entry.kind);
-        let name = name_of(entry);
+        let name = (kind, name_of(entry));
         let ids = entry.match_.as_ref().map(Ids::of).unwrap_or_default();
-        let same_kind = |i: usize| here[i].kind == kind;
-        let by_name = |among: &mut dyn Iterator<Item = usize>| -> Option<usize> {
-            if names_there.get(&(kind, name.clone())) != Some(&1) {
+        // The one series here among `hits` with the folder name, when no
+        // other series there has that name too.
+        let by_name = |hits: &mut dyn Iterator<Item = usize>| -> Option<usize> {
+            if names_there.get(&name) != Some(&1) {
                 return None;
             }
-            let hits: Vec<usize> = among
-                .filter(|&i| same_kind(i) && file_name(&here[i].path) == name)
-                .collect();
-            (hits.len() == 1).then(|| hits[0])
+            let (Some(i), None) = (hits.next(), hits.next()) else {
+                return None;
+            };
+            Some(i)
         };
-        let by_id: Vec<usize> = (0..here.len())
-            .filter(|&i| same_kind(i) && !ids.none() && here[i].ids.shared(&ids))
+        let mut by_id: Vec<usize> = ids
+            .keys()
+            .filter_map(|key| known.get(&(kind, key)))
+            .flatten()
+            .copied()
             .collect();
-        let found = match by_id.len() {
-            1 => Some(by_id[0]),
-            0 => by_name(&mut (0..here.len())).filter(|&i| {
+        by_id.sort_unstable();
+        by_id.dedup();
+        let found = match by_id[..] {
+            [i] => Some(i),
+            [] => by_name(&mut named.get(&name).into_iter().flatten().copied()).filter(|&i| {
                 // Both sides chose a match and they differ: not the same show.
                 let local = &here[i];
                 !(local.confirmed && !ids.none() && !local.ids.none() && !local.ids.shared(&ids))
             }),
-            _ => by_name(&mut by_id.iter().copied()),
+            _ => by_name(
+                &mut by_id
+                    .iter()
+                    .copied()
+                    .filter(|&i| file_name(&here[i].path) == name.1),
+            ),
         };
         if let Some(i) = found {
             out.insert(normalise(&entry.path), i);
@@ -250,35 +278,26 @@ fn moved(file: &str, there: &str, here: &str) -> Option<String> {
 /// belongs to no series here is left out.
 fn translate(history: History, paths: &HashMap<String, String>) -> History {
     let series = |there: &str| paths.get(&normalise(there)).cloned();
-    let file_of = |there_series: &str, file: Option<String>| -> Option<Option<String>> {
-        match file {
-            None => Some(None),
-            Some(f) => {
-                let here = series(there_series)?;
-                Some(Some(moved(&f, &normalise(there_series), &here)?))
-            }
+    // A view or a completed episode, onto its series here and the same file
+    // under it. False when it belongs to no series here.
+    let rehome = |series: &mut String, file: &mut Option<String>| -> bool {
+        let there = normalise(series);
+        let Some(here) = paths.get(&there) else {
+            return false;
+        };
+        if let Some(f) = file {
+            let Some(moved) = moved(f, &there, here) else {
+                return false;
+            };
+            *f = moved;
         }
+        series.clone_from(here);
+        true
     };
-    let views = history
-        .views
-        .into_iter()
-        .filter_map(|mut v| {
-            let file = file_of(&v.series, v.file.take())?;
-            v.series = series(&v.series)?;
-            v.file = file;
-            Some(v)
-        })
-        .collect();
-    let completed = history
-        .completed
-        .into_iter()
-        .filter_map(|mut c| {
-            let file = file_of(&c.series, c.file.take())?;
-            c.series = series(&c.series)?;
-            c.file = file;
-            Some(c)
-        })
-        .collect();
+    let mut views = history.views;
+    views.retain_mut(|v| rehome(&mut v.series, &mut v.file));
+    let mut completed = history.completed;
+    completed.retain_mut(|c| rehome(&mut c.series, &mut c.file));
     let resume_points = history
         .resume_points
         .into_iter()

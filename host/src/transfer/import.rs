@@ -94,31 +94,20 @@ async fn run(
         fields_ignored: ignored,
     };
 
-    ctx.progress(
-        0,
-        Some(SECTIONS),
-        &tr("core-transfer-progress-sources", &[]),
-    );
+    let step = |done: u64, id: &str| ctx.progress(done, Some(SECTIONS), &tr(id, &[]));
+    step(0, "core-transfer-progress-sources");
     let now = time::now_secs();
     let sources = import_sources(&host.services, sources, now, &mut summary).await?;
 
-    ctx.progress(1, Some(SECTIONS), &tr("core-transfer-progress-series", &[]));
+    step(1, "core-transfer-progress-series");
     let (touched, unscanned) = import_series(&host.services, series, now, &mut summary).await?;
 
-    ctx.progress(
-        2,
-        Some(SECTIONS),
-        &tr("core-transfer-progress-history", &[]),
-    );
+    step(2, "core-transfer-progress-history");
     if let Some(history) = history {
         import_history(&host.services, history, &mut summary).await?;
     }
 
-    ctx.progress(
-        3,
-        Some(SECTIONS),
-        &tr("core-transfer-progress-accounts", &[]),
-    );
+    step(3, "core-transfer-progress-accounts");
     // There is no TMDB in the native line, so its key is read, named and
     // dropped rather than stored.
     if let Some(keys) = keys.as_ref().and_then(|k| k.as_object()) {
@@ -131,20 +120,12 @@ async fn run(
         import_accounts(&host.services, accounts, now, &mut summary).await?;
     }
 
-    ctx.progress(
-        4,
-        Some(SECTIONS),
-        &tr("core-transfer-progress-preferences", &[]),
-    );
+    step(4, "core-transfer-progress-preferences");
     let imported_preferences = match preferences {
         Some(entry) => Some(import_preferences(&host.services, entry).await?),
         None => None,
     };
-    ctx.progress(
-        SECTIONS,
-        Some(SECTIONS),
-        &tr("core-transfer-progress-done", &[]),
-    );
+    step(SECTIONS, "core-transfer-progress-done");
 
     // What changed, in the order a shell wants to redraw it. The scan the
     // launch runs is what attaches files to the series this created; the
@@ -1033,6 +1014,10 @@ async fn import_preferences(
         .store
         .tx_async(move |tx| {
             let current = prefs::load_preferences(tx)?;
+            // The five the format carries. Every other preference either came
+            // after the format (how the library groups, On hold, Home) or is
+            // this machine's own business (sharing over Tailscale, Discord,
+            // the calendar file, rooms), so an import keeps what is set.
             let preferences = Preferences {
                 title_language: TitleLanguage::from_column(&entry.title_language)
                     .unwrap_or(current.title_language),
@@ -1042,31 +1027,7 @@ async fn import_preferences(
                 library_direction: Direction::from_column(&entry.library_sort.direction)
                     .unwrap_or(current.library_direction),
                 feed_sort: FeedSort::from_column(&entry.feed_sort).unwrap_or(current.feed_sort),
-                // The export format predates the toggle, so an import never
-                // changes it: it keeps whatever was already set.
-                library_show_watched: current.library_show_watched,
-                library_arrange: current.library_arrange,
-                library_group_franchises: current.library_group_franchises,
-                // Whether this machine shares itself is its own business.
-                share_over_tailscale: current.share_over_tailscale,
-                stream_over_tailscale: current.stream_over_tailscale,
-                tailnet_switched_off: current.tailnet_switched_off.clone(),
-                // The export format predates On hold too.
-                on_hold_auto: current.on_hold_auto,
-                on_hold_days: current.on_hold_days,
-                // Telling Discord what plays is this machine's business too.
-                discord_presence: current.discord_presence,
-                // So is a calendar file on this machine's disk.
-                calendar_feed: current.calendar_feed,
-                // And so is whether its desktop says when an episode is out.
-                episode_notifications: current.episode_notifications,
-                // And how its Home board draws the week.
-                home_hide_empty_days: current.home_hide_empty_days,
-                // And which recommendations its Home row holds.
-                home_recommended: current.home_recommended,
-                // And the name and relay its rooms use.
-                room_name: current.room_name.clone(),
-                room_relay: current.room_relay.clone(),
+                ..current
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {
