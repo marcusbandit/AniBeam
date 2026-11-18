@@ -11,7 +11,7 @@
 //! name the way it always has.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use rusqlite::{Connection, params, params_from_iter};
@@ -73,10 +73,6 @@ pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts
 /// and a scan that brings files in clears this for the next read.
 static SEEN: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
-fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
-    recover(&SEEN)
-}
-
 /// Records which finished torrent holds each library file whose origin is
 /// unknown, or older than the file. A torrent that lists its own files (the
 /// phone's engine, #620) is read from that list; otherwise a one-file
@@ -91,7 +87,7 @@ pub async fn record_from(
     torrents: &[Torrent],
 ) -> Result<u64, CoreError> {
     let fresh: Vec<&Torrent> = {
-        let seen = seen();
+        let seen = recover(&SEEN);
         torrents
             .iter()
             .filter(|t| t.progress >= 1.0 && !seen.contains(&t.hash.to_ascii_lowercase()))
@@ -110,7 +106,7 @@ pub async fn record_from(
             )?;
             let unknown = stmt
                 .query_map([], |r| r.get::<_, String>(0))?
-                .collect::<Result<HashSet<_>, _>>()?;
+                .collect::<Result<BTreeSet<_>, _>>()?;
             let mut stmt = c.prepare("SELECT path FROM sources")?;
             let sources = stmt
                 .query_map([], |r| r.get::<_, String>(0))?
@@ -118,12 +114,17 @@ pub async fn record_from(
             Ok((unknown, sources))
         })
         .await?;
-    let local = Local::new(&sources);
+    // A source on a mount that hangs must not hold up a runtime thread
+    let local = services
+        .handle
+        .spawn_blocking(move || Local::new(&sources))
+        .await
+        .map_err(|e| CoreError::internal(format!("sources not read for origins: {e}")))?;
     let mut found: Vec<(String, String, String)> = Vec::new();
     let mut taken: HashSet<String> = HashSet::new();
     for t in fresh {
         let hash = t.hash.to_ascii_lowercase();
-        seen().insert(hash.clone());
+        recover(&SEEN).insert(hash.clone());
         if unknown.is_empty() {
             continue;
         }
@@ -139,14 +140,16 @@ pub async fn record_from(
             }
             let folder = format!("{}/", content.trim_end_matches('/'));
             let Some(client) = client else { continue };
-            if !unknown.iter().any(|p| p.starts_with(&folder)) {
+            // Sorted, so the first path from the folder on is in it if any is
+            let held = unknown.range(folder.clone()..).next();
+            if !held.is_some_and(|p| p.starts_with(&folder)) {
                 continue;
             }
             match client.files(&t.hash).await {
                 Ok(files) => Cow::Owned(files),
                 Err(e) => {
                     tracing::debug!("files of {} not read for origins: {e}", t.name);
-                    seen().remove(&hash);
+                    recover(&SEEN).remove(&hash);
                     continue;
                 }
             }
@@ -189,7 +192,7 @@ pub async fn record_from(
 /// files. Not a job; a failure is a debug line and the files stay
 /// unrecorded until the next read.
 pub fn after_scan(downloads: &Arc<Downloads>) {
-    seen().clear();
+    recover(&SEEN).clear();
     #[cfg(feature = "phone")]
     crate::phone::after_scan(downloads);
     let Some(client) = downloads.state().qbt.clone() else {
@@ -330,10 +333,7 @@ mod tests {
                      VALUES (1, 'show', '/lib/Show', 'Show', 0)",
                     [],
                 )?;
-                for (path, n) in [
-                    ("/lib/Show/[Grp] Show - 01 [1080p].mkv", 1.0),
-                    ("/lib/Show/Batch/Show - 02.mkv", 2.0),
-                ] {
+                for (path, n) in [(ONE, 1.0), (TWO, 2.0)] {
                     c.execute(
                         "INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, sidecars, seen_at)
                          VALUES (1, ?1, 0, 0, 'episode', ?2, 'EP', ?3, '[]', 0)",
@@ -343,6 +343,22 @@ mod tests {
                 Ok(1)
             })
             .unwrap()
+    }
+
+    const ONE: &str = "/lib/Show/[Grp] Show - 01 [1080p].mkv";
+    const TWO: &str = "/lib/Show/Batch/Show - 02.mkv";
+
+    fn record(running: &Running, client: Option<&QbtClient>, torrents: &[Torrent]) -> u64 {
+        let services = &running.services;
+        services
+            .handle
+            .block_on(record_from(services, client, torrents))
+            .unwrap()
+    }
+
+    /// The recorded origins of the library's two files.
+    fn known(running: &Running) -> HashMap<String, Origin> {
+        running.services.store.read(|c| of(c, &[ONE, TWO])).unwrap()
     }
 
     fn torrent(hash: &str, name: &str, content: &str) -> Torrent {
@@ -370,49 +386,17 @@ mod tests {
         );
         let client = QbtClient::new("http://localhost:9090", "me", "pw", http.clone());
         let torrents = vec![
-            torrent(
-                "AAA",
-                "[Grp] Show - 01 [1080p].mkv",
-                "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-            ),
+            torrent("AAA", "[Grp] Show - 01 [1080p].mkv", ONE),
             torrent("R1BBB", "Batch", "/lib/Show/Batch"),
             torrent("R1CCC", "Elsewhere", "/downloads/Elsewhere"),
         ];
-        let n = running
-            .services
-            .handle
-            .block_on(record_from(&running.services, Some(&client), &torrents))
-            .unwrap();
-        assert_eq!(n, 2);
-        let known = running
-            .services
-            .store
-            .read(|c| {
-                of(
-                    c,
-                    &[
-                        "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-                        "/lib/Show/Batch/Show - 02.mkv",
-                    ],
-                )
-            })
-            .unwrap();
-        assert_eq!(
-            known["/lib/Show/[Grp] Show - 01 [1080p].mkv"],
-            origin("aaa", "[Grp] Show - 01 [1080p].mkv")
-        );
-        assert_eq!(
-            known["/lib/Show/Batch/Show - 02.mkv"],
-            origin("r1bbb", "Batch")
-        );
+        assert_eq!(record(&running, Some(&client), &torrents), 2);
+        let found = known(&running);
+        assert_eq!(found[ONE], origin("aaa", "[Grp] Show - 01 [1080p].mkv"));
+        assert_eq!(found[TWO], origin("r1bbb", "Batch"));
 
         let asked = http.requests().len();
-        let again = running
-            .services
-            .handle
-            .block_on(record_from(&running.services, Some(&client), &torrents))
-            .unwrap();
-        assert_eq!(again, 0);
+        assert_eq!(record(&running, Some(&client), &torrents), 0);
         assert_eq!(http.requests().len(), asked);
 
         // Downloaded over by another torrent: the file is newer than its
@@ -431,32 +415,34 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        seen().clear();
-        let over = vec![torrent(
-            "R1DDD",
-            "[Grp] Show - 01 [1080p].mkv",
-            "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-        )];
-        running
-            .services
-            .handle
-            .block_on(record_from(&running.services, Some(&client), &over))
-            .unwrap();
-        let known = running
-            .services
-            .store
-            .read(|c| {
-                of(
-                    c,
-                    &[
-                        "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-                        "/lib/Show/Batch/Show - 02.mkv",
-                    ],
-                )
-            })
-            .unwrap();
-        assert_eq!(known.len(), 1, "{known:?}");
-        assert_eq!(known["/lib/Show/[Grp] Show - 01 [1080p].mkv"].hash, "r1ddd");
+        let over = vec![torrent("R1DDD", "[Grp] Show - 01 [1080p].mkv", ONE)];
+        record(&running, Some(&client), &over);
+        let found = known(&running);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[ONE].hash, "r1ddd");
+        running.shutdown();
+    }
+
+    /// A finished torrent is read once until the library gains files: a batch whose
+    /// folder holds a file it does not list is asked for its files on the first pass
+    /// only, not on every read of the client's torrents after it.
+    #[test]
+    fn a_finished_torrent_is_read_once() {
+        let http = FakeHttp::new();
+        let (_dir, running) = running_with(http.clone());
+        library(&running);
+        http.push_for(
+            "torrents/files",
+            200,
+            r#"[{"name":"Batch/Show - 02.nfo","size":1,"progress":1}]"#,
+        );
+        let client = QbtClient::new("http://localhost:9090", "me", "pw", http.clone());
+        let batch = [torrent("R1SEEN", "Batch", "/lib/Show/Batch")];
+        assert_eq!(record(&running, Some(&client), &batch), 0);
+        let asked = http.requests().len();
+        assert!(asked > 0, "the first pass asks for the batch's files");
+        assert_eq!(record(&running, Some(&client), &batch), 0);
+        assert_eq!(http.requests().len(), asked);
         running.shutdown();
     }
 
@@ -480,47 +466,16 @@ mod tests {
         let mut batch = torrent("EEE", "Show Batch", "/lib/Show/Batch/Show Batch");
         batch.save_path = "/lib/Show/Batch".into();
         batch.files = vec![file("Show - 02.mkv"), file("Show - 03.mkv")];
-        let mut one = torrent(
-            "FFF",
-            "[Grp] Show - 01 [1080p].mkv",
-            "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-        );
+        let mut one = torrent("FFF", "[Grp] Show - 01 [1080p].mkv", ONE);
         one.files = vec![file("[Grp] Show - 01 [1080p].mkv")];
         // Without a list of its own and no client, a batch records nothing, even one
         // whose folder holds a file with no origin.
         let unlisted = torrent("GGG", "Batch", "/lib/Show/Batch");
-        let n = running
-            .services
-            .handle
-            .block_on(record_from(
-                &running.services,
-                None,
-                &[batch, one, unlisted],
-            ))
-            .unwrap();
-        assert_eq!(n, 2);
+        assert_eq!(record(&running, None, &[batch, one, unlisted]), 2);
         assert!(http.requests().is_empty());
-        let known = running
-            .services
-            .store
-            .read(|c| {
-                of(
-                    c,
-                    &[
-                        "/lib/Show/[Grp] Show - 01 [1080p].mkv",
-                        "/lib/Show/Batch/Show - 02.mkv",
-                    ],
-                )
-            })
-            .unwrap();
-        assert_eq!(
-            known["/lib/Show/Batch/Show - 02.mkv"],
-            origin("eee", "Show Batch")
-        );
-        assert_eq!(
-            known["/lib/Show/[Grp] Show - 01 [1080p].mkv"],
-            origin("fff", "[Grp] Show - 01 [1080p].mkv")
-        );
+        let found = known(&running);
+        assert_eq!(found[TWO], origin("eee", "Show Batch"));
+        assert_eq!(found[ONE], origin("fff", "[Grp] Show - 01 [1080p].mkv"));
         running.shutdown();
     }
 
