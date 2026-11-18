@@ -4,6 +4,7 @@
 mod app_icon;
 mod args;
 mod bridge;
+mod control;
 mod dbus;
 mod devstats;
 mod discord_link;
@@ -115,6 +116,9 @@ fn main() {
     if serving {
         std::process::exit(serve::run());
     }
+    if let Some(ctl) = runtime::args().ctl.as_deref() {
+        std::process::exit(control::cli(ctl));
+    }
 
     // Spec 4.5: the flock is the single-instance guarantee and it is taken before
     // anything else opens. A second launch that loses it hands its activation token to the
@@ -160,12 +164,24 @@ fn main() {
             runtime::args().link.as_deref(),
         ));
         match result {
-            Ok(()) => std::process::exit(0),
+            Ok(()) => {}
             Err(e) => {
                 eprintln!("anibeam: another Anibeam is running and {e}");
                 std::process::exit(1);
             }
         }
+        // `anibeam --page <name>` with a window open moves that window there
+        if let Some(page) = runtime::args().page.as_deref() {
+            if let Err(e) = control::go(
+                &runtime::paths().control_socket(),
+                page,
+                runtime::args().props.as_deref(),
+            ) {
+                eprintln!("anibeam: the open window could not go to {page}: {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
     };
 
     // These have to run before the core does: set_render_loop_env is a setenv, as is naming

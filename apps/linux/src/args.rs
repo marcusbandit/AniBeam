@@ -7,7 +7,9 @@
 //! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/linux/captures`).
 //! `serve` runs the core and its tailnet host with no window, for other devices (`serve.rs`).
 //! An `anibeam://room/<code>` link, as the desktop's scheme handler passes it, joins that
-//! watch together room (#846); a second launch hands it to the running window.
+//! watch together room (#846); a second launch hands it to the running window. `ctl ...`
+//! drives the window that is open (control.rs); everything after it is the command's.
+//! With a window already open, `--page` moves that window to the page instead.
 
 use std::path::PathBuf;
 
@@ -26,6 +28,8 @@ pub struct Args {
     pub serve: bool,
     /// An `anibeam://` link to open, as given: a watch together room.
     pub link: Option<String>,
+    /// `anibeam ctl ...`: the command and its arguments, `--root` taken out.
+    pub ctl: Option<Vec<String>>,
 }
 
 impl Default for Args {
@@ -43,6 +47,7 @@ impl Default for Args {
             out: None,
             serve: false,
             link: None,
+            ctl: None,
         }
     }
 }
@@ -79,6 +84,19 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--drive" => a.drive = Some(value("--drive")?),
             "--out" => a.out = Some(PathBuf::from(value("--out")?)),
             "serve" => a.serve = true,
+            "ctl" => {
+                let mut rest = Vec::new();
+                while let Some(x) = it.next() {
+                    if x == "--root" {
+                        let dir = it.next().ok_or("--root needs a value")?;
+                        a.root = Some(PathBuf::from(dir));
+                    } else {
+                        rest.push(x.clone());
+                    }
+                }
+                a.ctl = Some(rest);
+                break;
+            }
             // Qt's own: qmlprofiler and Qt Creator start the app with it, and
             // QGuiApplication reads it from argv after this parse
             other if other.starts_with("-qmljsdebugger") => {}
@@ -112,6 +130,9 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         return Err("--out only means something with --drive".into());
     }
     let windowed = a.shoot.is_some() || a.drive.is_some() || a.page.is_some() || sized;
+    if a.ctl.is_some() && (windowed || a.serve || a.props.is_some() || a.action.is_some()) {
+        return Err("ctl drives the open window; it takes --root and its own arguments".into());
+    }
     if a.serve && (windowed || a.props.is_some() || a.action.is_some() || a.link.is_some()) {
         return Err("serve opens no window; it takes --root and nothing else".into());
     }
@@ -245,6 +266,32 @@ mod tests {
         let a = parse(&argv("discord-1234567890://")).unwrap();
         assert_eq!(a.link.as_deref(), Some("discord-1234567890://"));
         assert!(parse(&argv("discord-abc://")).is_err());
+    }
+
+    #[test]
+    fn ctl_keeps_its_arguments_and_takes_the_root_from_anywhere() {
+        let a = parse(&argv("ctl go settings appearance --root /tmp/x --json")).unwrap();
+        assert_eq!(
+            a.ctl,
+            Some(vec![
+                "go".into(),
+                "settings".into(),
+                "appearance".into(),
+                "--json".into()
+            ])
+        );
+        assert_eq!(a.root.as_deref(), Some(std::path::Path::new("/tmp/x")));
+        let a = parse(&argv("--root /tmp/y ctl where")).unwrap();
+        assert_eq!(a.ctl, Some(vec!["where".to_string()]));
+        assert_eq!(a.root.as_deref(), Some(std::path::Path::new("/tmp/y")));
+        // its own words are never the shell's flags
+        assert_eq!(
+            parse(&argv("ctl click --page")).unwrap().ctl,
+            Some(vec!["click".into(), "--page".into()])
+        );
+        assert_eq!(parse(&argv("ctl")).unwrap().ctl, Some(vec![]));
+        assert!(parse(&argv("--page home ctl where")).is_err());
+        assert!(parse(&argv("serve ctl where")).is_err());
     }
 
     #[test]

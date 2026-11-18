@@ -180,6 +180,32 @@ would only show empty states. `target/debug/anibeam-cli --root <dir> list` print
 
     ANIBEAM_ROOT=<dir> scripts/drive.sh scripts/drive/capture-pages.json   # one PNG per page in captures/
 
+## Driving the open window: `anibeam ctl`
+
+`anibeam ctl` drives the window that is open on this machine, so an agent (or a script, or
+you) can open any page, read what is on screen, click, type and capture without a mouse and
+without installing anything (#1205). The window listens on `anibeam-control.sock` in its
+runtime directory, mode 600, and `--root` picks the window started with that root. A request
+is one line of JSON with `--drive` steps, run by `qml/Control.qml` against the live window, so
+everything in the drive step list above works here too, and a drive script runs unchanged with
+`anibeam ctl run script.json`.
+
+    anibeam ctl open --root /tmp/sb --offscreen    # a sandbox window with no window on the desktop
+    anibeam ctl --root /tmp/sb go settings appearance
+    anibeam ctl --root /tmp/sb tree Theme          # what is on screen, one row each
+    anibeam ctl --root /tmp/sb click "Dark"        # words on screen, an objectName, or x,y
+    anibeam ctl --root /tmp/sb shot /tmp/sb/a.png
+    anibeam ctl --root /tmp/sb where
+    anibeam ctl --root /tmp/sb quit
+
+`anibeam ctl help` is the whole guide: the commands, how targets match and the exit codes.
+`go` closes whatever is open over the page first, so it reaches any page from anywhere, and a
+page's bare words fill its main prop (`go series frieren` opens the first title holding the
+words, `go settings keys` the Keys section). `anibeam --page <name> [--props <json>]` with a
+window already open moves that window to the page. A key step asks for the keyboard when the
+window lacks it, so against a window on the desktop it can take focus; an `--offscreen` window
+never touches the desktop. Not on Windows yet: it needs a Unix socket.
+
 ## macOS
 
 The same shell builds for Apple silicon, from `.github/workflows/macos.yml` on a macos-15
