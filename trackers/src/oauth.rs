@@ -888,6 +888,24 @@ mod tests {
         assert!(FRAGMENT_FORWARDER.contains("window.location.hash"));
     }
 
+    /// Only a finished sign-in closes its tab, and only a failure or a
+    /// cancel wears the red mark.
+    #[test]
+    fn each_page_has_its_own_mark_and_only_success_closes_the_tab() {
+        let finishing = page(Page::Finishing("<b>"));
+        assert!(finishing.contains("class=\"mark\">&#8230;"), "{finishing}");
+        assert!(finishing.contains("&lt;b&gt;"), "{finishing}");
+        assert!(!finishing.contains("<b>"), "{finishing}");
+        let cancelled = page(Page::Cancelled);
+        assert!(cancelled.contains("class=\"mark bad\">&#215;"), "{cancelled}");
+        for shown in [finishing, cancelled] {
+            assert!(!shown.contains("window.close()"), "{shown}");
+            assert!(shown.contains("<span class=\"brand\">Anibeam</span>"), "{shown}");
+            assert!(shown.contains("<title>"), "{shown}");
+            assert!(!shown.contains("<title><span"), "the title is plain: {shown}");
+        }
+    }
+
     #[test]
     fn the_header_end_is_found_across_a_split_read() {
         assert!(!ends_headers(b"GET /callback HTTP/1.1\r\n"));

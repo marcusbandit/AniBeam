@@ -2121,6 +2121,28 @@ fn mal_status(status: ListStatus) -> &'static str {
 mod tests {
     use super::*;
 
+    /// A show is hidden when any series carrying either of its ids is, and
+    /// an AniList id is only ever matched against `anilist_id`.
+    #[test]
+    fn either_id_hides_a_show_and_the_ids_never_cross() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id, mal_id, hidden) VALUES
+                 (1, 1, 'show', '/tv/a', 'a', 0, 10, 110, 1),
+                 (2, 1, 'show', '/tv/b', 'b', 0, 20, 120, 0);",
+        )
+        .unwrap();
+        let hidden = |anilist, mal| any_hidden(&c, anilist, mal).unwrap();
+        assert!(hidden(Some(10), None));
+        assert!(hidden(None, Some(110)));
+        assert!(hidden(Some(20), Some(110)));
+        assert!(!hidden(Some(20), Some(120)));
+        assert!(!hidden(Some(110), Some(10)), "an AniList id is not a MAL id");
+        assert!(!hidden(None, None));
+        assert!(!hidden(Some(0), Some(0)), "nothing carries the id nought");
+    }
+
     #[test]
     fn a_rewatch_slot_is_held_once_and_freed_when_dropped() {
         let set = Rewatching::default();

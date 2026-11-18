@@ -653,6 +653,40 @@ mod tests {
         assert_eq!(normalize_status(Tracker::Mal, Some("CURRENT"), false), None);
     }
 
+    /// The guards read one entry: the owner's, its status in the core's
+    /// words, and nothing for a show the list does not hold.
+    #[test]
+    fn a_cached_entry_is_the_owners_and_absent_when_the_list_has_none() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO tracker_entries (profile_id, tracker, media_id, status, progress, updated_at, fetched_at) VALUES
+                 (1, 'anilist', 10, 'repeating', 4, 70, 0),
+                 (2, 'anilist', 20, 'watching', 1, 90, 0),
+                 (1, 'mal', 30, NULL, 2, NULL, 0);",
+        )
+        .unwrap();
+        assert_eq!(
+            cached(&c, Tracker::Anilist, 10).unwrap(),
+            Some(Cached {
+                status: Some(ListStatus::Repeating),
+                progress: 4,
+                updated_at: Some(70)
+            })
+        );
+        // A friend's entry is not the owner's, and the ids never cross.
+        assert_eq!(cached(&c, Tracker::Anilist, 20).unwrap(), None);
+        assert_eq!(cached(&c, Tracker::Anilist, 30).unwrap(), None);
+        assert_eq!(
+            cached(&c, Tracker::Mal, 30).unwrap(),
+            Some(Cached {
+                status: None,
+                progress: 2,
+                updated_at: None
+            })
+        );
+    }
+
     #[test]
     fn a_cache_inside_the_window_is_fresh_and_one_past_it_is_not() {
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
