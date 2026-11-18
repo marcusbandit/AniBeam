@@ -74,6 +74,10 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The Qt shell needs Qt, MpvQt and libmpv, which this runner lacks; local-ci.sh on a
+      # machine and linux.yml under the `full ci` label check it.
+      SKIP: anibeam
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,16 +93,16 @@ jobs:
 
       # Only the crates this pull request changed and every crate that builds on them (#1075).
       # The log lists what was picked, why, and what was not checked. Main and a run by hand
-      # check every crate, so main keeps the full signal and a cache every PR can restore. The
-      # Qt shell (anibeam) needs Qt, which this runner lacks; local-ci.sh checks it.
+      # check every crate, so main keeps the full signal and a cache every PR can restore.
       - name: Affected crates
         id: affected
         env:
           EVENT: ${{ github.event_name }}
         run: |
           python3 .github/affected-crates.py --self-test
-          if [ "$EVENT" = pull_request ]; then pick=(--base HEAD^1); else pick=(--all); fi
-          python3 .github/affected-crates.py "${pick[@]}" --skip anibeam --github-output
+          if [ "$EVENT" = pull_request ]; then pick="--base HEAD^1"; else pick=--all; fi
+          echo "pick=$pick" >> "$GITHUB_OUTPUT"
+          python3 .github/affected-crates.py $pick --skip "$SKIP" --github-output
 
       - uses: Swatinem/rust-cache@v2
         if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
@@ -116,11 +120,10 @@ jobs:
 
       # Clippy for the picked crates, each crate another builds on by itself, the phone and
       # cast features, the tests, the doctests, any test target picked by itself and the lock:
-      # the same steps local-ci.sh runs on a machine, written down there only.
+      # the same steps local-ci.sh runs on a machine, written down there only. It picks the
+      # crates again from the same arguments, so it checks what the step above gated on.
       - name: Clippy and tests
         if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != '' || steps.affected.outputs.lock == 'true'
         env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT" = pull_request ]; then pick=(--base HEAD^1); else pick=(--all); fi
-          .github/local-ci.sh --cargo --no-build --skip anibeam "${pick[@]}"
+          PICK: ${{ steps.affected.outputs.pick }}
+        run: .github/local-ci.sh --cargo --no-build --skip "$SKIP" $PICK

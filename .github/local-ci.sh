@@ -12,13 +12,15 @@
 #                                    build box can run it on a copy of the files
 #   .github/local-ci.sh --all        clippy and test every crate, not only the changed ones
 #   --base REV                       compare with REV as it is, with no fetch, instead of
-#                                    origin/main (CI passes the merge commit's first parent)
-#   --skip NAME                      leave a crate out, e.g. one this machine cannot build
+#                                    origin/main; CI passes the merge commit's first parent
+#   --skip NAME                      leave a crate out of every step, e.g. one this machine
+#                                    cannot build; CI skips the Qt shell
 #
 # ci.yml runs `--cargo --no-build` itself, so this file is the one place the cargo checks
 # are written down.
 #
-# Clippy and the tests cover the crates changed since the merge base with origin/main, plus
+# Clippy and the tests cover the crates changed since the merge base with origin/main (or
+# --base), plus
 # every crate that builds on them (.github/affected-crates.py, #1075); a file only one test
 # target reads runs that target alone (#1086). The tests run under cargo-nextest when it is
 # installed, as in CI, and under cargo test when not. A copy without .git
@@ -37,6 +39,7 @@ cargo=0
 all=0
 base=""
 skip=()
+skipped=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-build) build=0 ;;
@@ -44,7 +47,7 @@ while [ $# -gt 0 ]; do
     --cargo) cargo=1 ;;
     --all) all=1 ;;
     --base) base="${2:?local-ci: --base needs a revision}"; shift ;;
-    --skip) skip+=(--skip "${2:?local-ci: --skip needs a crate}"); shift ;;
+    --skip) skipped+=("${2:?local-ci: --skip needs a crate}"); skip+=(--skip "$2"); shift ;;
     -h | --help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "local-ci: unknown option $1" >&2; exit 2 ;;
   esac
@@ -59,10 +62,12 @@ fetched=0
 step() {
   local name="$1"
   shift
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::$name"
   echo "== $name"
   local start=$SECONDS
   "$@"
   local code=$?
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
   if [ $code -eq 0 ]; then
     echo "== ok $name ($((SECONDS - start)) s)"
   else
@@ -72,6 +77,9 @@ step() {
   fi
 }
 
+if [ -n "$base" ] && [ $all -eq 1 ]; then
+  echo "local-ci: --all checks every crate, so --base $base only sets the patch note check's base"
+fi
 # The checks compare with main as it is now, not as it was at the last fetch.
 fetch_main() {
   [ $fetched -eq 1 ] && return
@@ -81,7 +89,9 @@ fetch_main() {
 if [ $quick -eq 1 ]; then
   [ -z "$base" ] && fetch_main
   step fmt cargo fmt --all --check
-  step changelog .github/changelog-newest.sh "$(git merge-base HEAD "${base:-origin/main}")"
+  # A base with no merge base fails here rather than letting the script fall back to a stale
+  # origin/main.
+  step changelog bash -c 'mb="$(git merge-base HEAD "$1")" && .github/changelog-newest.sh "$mb"' _ "${base:-origin/main}"
   step strings python3 .github/strings-check.py
   step "no sites" .github/no-site-names.sh
   step "one spelling" .github/one-spelling.sh
@@ -103,6 +113,9 @@ if [ $cargo -eq 1 ]; then
     else
       echo "local-ci: no .git here, so every crate is checked"
     fi
+    if [ -n "$base" ] && [ "${pick[0]}" != --base ]; then
+      echo "local-ci: no .git here, so --base $base is not used"
+    fi
   fi
   picked="$(mktemp)"
   step "affected crates" python3 .github/affected-crates.py "${pick[@]}" "${skip[@]}" --output "$picked"
@@ -121,11 +134,14 @@ if [ $cargo -eq 1 ]; then
   else
     # Not even cargo metadata worked: let cargo say why.
     packages=(--workspace) docs=(--workspace) core=true
+    for crate in "${skipped[@]}"; do packages+=(--exclude "$crate") docs+=(--exclude "$crate"); done
   fi
   if cargo nextest --version >/dev/null 2>&1; then
     run_tests=(cargo nextest run --locked --profile ci)
   else
-    echo "local-ci: cargo-nextest is not installed, so the tests run under cargo test, one binary at a time"
+    if [ ${#packages[@]} -gt 0 ] || [ ${#targets[@]} -gt 0 ]; then
+      echo "local-ci: cargo-nextest is not installed, so the tests run under cargo test, one binary at a time"
+    fi
     run_tests=(cargo test --locked)
     docs=()
   fi
@@ -166,7 +182,13 @@ if [ $cargo -eq 1 ]; then
   if [ "$lock" = true ]; then
     step "lock is current" bash -c 'cargo metadata --locked --format-version 1 >/dev/null'
   fi
-  [ $build -eq 1 ] && step "tester build" cargo build --locked --profile tester -p anibeam -p anibeam-cli
+  if [ $build -eq 1 ]; then
+    shells=()
+    for crate in anibeam anibeam-cli; do
+      [[ " ${skipped[*]} " == *" $crate "* ]] || shells+=(-p "$crate")
+    done
+    [ ${#shells[@]} -gt 0 ] && step "tester build" cargo build --locked --profile tester "${shells[@]}"
+  fi
 fi
 
 if [ $status -eq 0 ]; then echo "== passed"; else echo "== failed"; fi
