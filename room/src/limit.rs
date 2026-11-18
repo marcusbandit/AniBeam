@@ -4,6 +4,8 @@
 
 use std::net::{IpAddr, Ipv6Addr};
 
+use serde::{Deserialize, Serialize};
+
 use crate::proto::{ErrorCode, ServerMsg};
 
 /// The most messages one connection, or one member, may send in a second.
@@ -24,10 +26,13 @@ pub enum Verdict {
     Drop,
 }
 
-/// Counts messages in one second windows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Counts messages in one second windows. A room keeps one in each member's
+/// stored place, under the keys it has always had there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
+    #[serde(rename = "window_ms")]
     start_ms: u64,
+    #[serde(rename = "window_count")]
     count: u32,
 }
 
@@ -41,24 +46,17 @@ impl Window {
 
     /// Counts one message sent at `now_ms`.
     pub fn hit(&mut self, now_ms: u64) -> Verdict {
-        count(&mut self.start_ms, &mut self.count, now_ms)
-    }
-}
-
-/// Counts one message against a window kept as two numbers, for a caller that
-/// stores them itself (the room's members, whose layout is persisted).
-pub(crate) fn count(start_ms: &mut u64, count: &mut u32, now_ms: u64) -> Verdict {
-    if now_ms >= *start_ms + 1_000 || now_ms < *start_ms {
-        *start_ms = now_ms;
-        *count = 0;
-    }
-    *count += 1;
-    if *count <= RATE_PER_SEC {
-        Verdict::Pass
-    } else if *count == RATE_PER_SEC + 1 {
-        Verdict::Refuse
-    } else {
-        Verdict::Drop
+        if now_ms >= self.start_ms + 1_000 || now_ms < self.start_ms {
+            *self = Window::new(now_ms);
+        }
+        self.count += 1;
+        if self.count <= RATE_PER_SEC {
+            Verdict::Pass
+        } else if self.count == RATE_PER_SEC + 1 {
+            Verdict::Refuse
+        } else {
+            Verdict::Drop
+        }
     }
 }
 
