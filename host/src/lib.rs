@@ -125,11 +125,10 @@ struct Run {
 }
 
 impl Run {
-    /// The task winds its servers down by itself, and the runtime reaps it;
-    /// nothing here waits on it.
+    /// The task winds its servers down by itself, and the runtime reaps it,
+    /// so its handle is dropped rather than awaited.
     fn end(self) {
         self.cancel.cancel();
-        drop(self.task);
     }
 }
 
@@ -702,13 +701,6 @@ async fn supervise(
                         Ok(now) => {
                             status.put(Some(&cancel), now.status());
                             serving = Some(now);
-                            if let Some(s) = serving.as_mut()
-                                && bind.is_none()
-                                && let Some(name) = dns_name(&host).await
-                            {
-                                s.name = Some(name);
-                                status.put(Some(&cancel), s.status());
-                            }
                             // Serving on the tailnet: catch up with every
                             // trusted Anibeam that is up. Not on an address a
                             // test or the env var chose, which is no tailnet.
@@ -721,6 +713,22 @@ async fn supervise(
                         Err(message) => status.put(Some(&cancel), waiting(&message)),
                     }
                 }
+            }
+        }
+        // The MagicDNS name, until one is known: Tailscale may not have named
+        // this machine yet when it first serves. Not for an address a test or
+        // the env var chose.
+        if let Some(s) = serving.as_mut()
+            && s.name.is_none()
+            && bind.is_none()
+        {
+            let name = tokio::select! {
+                name = dns_name(&host) => name,
+                _ = cancel.cancelled() => break,
+            };
+            if let Some(name) = name {
+                s.name = Some(name);
+                status.put(Some(&cancel), s.status());
             }
         }
         tokio::select! {
@@ -813,10 +821,11 @@ impl Serving {
     }
 }
 
-/// This machine's MagicDNS name, from the tailnet read the host keeps.
+/// This machine's MagicDNS name, from a read of the tailnet at most
+/// `TAILNET_AGAIN` old.
 async fn dns_name(host: &Weak<Host>) -> Option<String> {
     let host = host.upgrade()?;
-    tokio::task::spawn_blocking(move || host.tailnet(false)?.dns_name.clone())
+    tokio::task::spawn_blocking(move || host.tailnet(true)?.dns_name.clone())
         .await
         .ok()
         .flatten()

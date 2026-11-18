@@ -212,7 +212,7 @@ pub async fn subtitle(
 
 pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Response {
     let Some(front) = st.live().and_then(|team| team.front.get()) else {
-        return not_found();
+        return shutting_down();
     };
     match front.skip_windows(session) {
         Ok(windows) => json(StatusCode::OK, &windows),
@@ -317,7 +317,7 @@ pub async fn hls(
         probe: (*probe).clone(),
     };
     let Some(team) = st.live() else {
-        return not_found();
+        return shutting_down();
     };
     let converter = st
         .streams

@@ -477,8 +477,7 @@ pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> 
 /// its address, so its IPv4 and IPv6 addresses count as one computer.
 fn device(host: &Host, base: &str) -> String {
     super::addr::ip_of(base)
-        .zip(host.tailnet_now())
-        .and_then(|(ip, t)| t.peer(ip).map(|p| p.id.clone()))
+        .and_then(|ip| host.tailnet_now()?.peer(ip).map(|p| p.id.clone()))
         .unwrap_or_else(|| base.to_string())
 }
 

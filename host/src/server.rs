@@ -318,7 +318,13 @@ pub(super) fn json_body(status: StatusCode, body: impl Into<Body>) -> Response {
 pub(super) fn json(status: StatusCode, value: &impl serde::Serialize) -> Response {
     match serde_json::to_vec(value) {
         Ok(body) => json_body(status, body),
-        Err(e) => failed(&e.into()),
+        Err(e) => {
+            tracing::warn!("host answer could not be written: {e}");
+            error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not write the answer",
+            )
+        }
     }
 }
 
