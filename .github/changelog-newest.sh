@@ -12,6 +12,8 @@
 # line folded in from a change file the same diff deletes (.github/changelog-fold.sh): a
 # hotfix branch folds the shipped version's change files under it, then adds its own heading.
 #
+# A file the diff moves is compared with its old path, so a renamed app folder adds nothing.
+#
 # A pull request writes its notes in <app>/changes/, which always ship under the newest
 # version, so this only ever catches a line written straight into CHANGELOG.md.
 set -euo pipefail
@@ -20,10 +22,14 @@ root="$(git rev-parse --show-toplevel)"
 status=0
 for file in apps/linux/CHANGELOG.md apps/phone/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
+  # Where the file was at the base, when this diff moved it there.
+  old="$(git -C "$root" diff --name-status -M --diff-filter=R "$base...HEAD" |
+    awk -v f="$file" '$3 == f { print $2 }')"
+  old="${old:-$file}"
   # The lines of the change files this diff deletes, which may land in the file as they are.
-  moved="$(git -C "$root" diff -U0 --no-color --diff-filter=D "$base...HEAD" -- "${file%CHANGELOG.md}changes" |
+  moved="$(git -C "$root" diff -U0 -M --no-color --diff-filter=D "$base...HEAD" -- "${old%CHANGELOG.md}changes" "${file%CHANGELOG.md}changes" |
     awk '/^---/ { next } /^-- / { s = substr($0, 3); sub(/^ +/, "", s); sub(/[ \t\r]+$/, "", s); print s }')"
-  git -C "$root" diff -U0 --no-color "$base...HEAD" -- "$file" | MOVED="$moved" awk -v file="$file" '
+  git -C "$root" diff -U0 -M --no-color "$base...HEAD" -- "$old" "$file" | MOVED="$moved" awk -v file="$file" '
     BEGIN {
       count_moved = split(ENVIRON["MOVED"], m, "\n")
       for (i = 1; i <= count_moved; i++) if (m[i] != "") folded[m[i]]++
