@@ -7,16 +7,25 @@
 //! nightly; the phone's `android-v*` tags never count here, and neither does a draft or a
 //! pull request's test build. The Stable track is offered stable versions only, the Nightly
 //! track both, so a nightly user moves on to the stable release its nightlies led up to.
+//!
+//! The phone reads the same list for its own `android-v*` tags (`check_phone`, #809), on the
+//! track its build is on, and the desktop's tags never count there.
 
 use serde::Deserialize;
 
 use crate::changelog::digits;
-use crate::contract::CoreError;
+use crate::contract::{CoreError, PhoneUpdate, Reply};
+use crate::foundation::services::Services;
 use crate::net::{Http, HttpRequest};
 
 pub mod install;
 
 const RELEASES: &str = "https://api.github.com/repos/marcusbandit/Anibeam/releases?per_page=100";
+
+/// What a desktop release's tag starts with, before its version.
+const DESKTOP_TAG: &str = "v";
+/// What a phone release's tag starts with: `android-v2.4.3-nightly.20261117.97`.
+const PHONE_TAG: &str = "android-v";
 
 /// Which builds a person wants to hear about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,9 +143,34 @@ fn title_of(name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The newest release on `track` in `releases`, GitHub's list as it sends it, when it is
-/// newer than `current`. A `current` that names no version is offered the newest.
+/// The newest desktop release on `track` in `releases`, GitHub's list as it sends it, when
+/// it is newer than `current`. A `current` that names no version is offered the newest.
 pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Update>, CoreError> {
+    newest_tagged(releases, DESKTOP_TAG, current, track)
+}
+
+/// The newest phone release in `releases` newer than `current`, on the track `current` is
+/// on, with where to get it: the release's APK, or its page when it has none.
+pub fn newest_phone(releases: &[u8], current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
+    Ok(
+        newest_tagged(releases, PHONE_TAG, current, Track::of(current))?.map(|u| PhoneUpdate {
+            url: u
+                .assets
+                .iter()
+                .find(|a| a.name.ends_with(".apk"))
+                .map_or(u.url.clone(), |a| a.url.clone()),
+            version: u.version,
+        }),
+    )
+}
+
+/// The newest release whose tag is `prefix` and a version, on `track`, newer than `current`.
+fn newest_tagged(
+    releases: &[u8],
+    prefix: &str,
+    current: &str,
+    track: Track,
+) -> Result<Option<Update>, CoreError> {
     let releases: Vec<Release> = serde_json::from_slice(releases)
         .map_err(|e| CoreError::internal(format!("releases: {e}")))?;
     let running = Version::parse(current);
@@ -145,7 +179,7 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
         if r.draft {
             continue;
         }
-        let Some(name) = r.tag_name.strip_prefix('v') else {
+        let Some(name) = r.tag_name.strip_prefix(prefix) else {
             continue;
         };
         let Some(v) = Version::parse(name) else {
@@ -176,6 +210,24 @@ pub async fn check(
     current: &str,
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
+    newest(&releases(http).await?, current, track)
+}
+
+/// Asks GitHub for the phone, as `check` does for the desktop.
+pub async fn check_phone(http: &dyn Http, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
+    newest_phone(&releases(http).await?, current)
+}
+
+/// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime.
+pub fn phone_call(services: &Services, current: &str) -> Result<Reply, CoreError> {
+    let update = services
+        .handle
+        .block_on(check_phone(services.http.as_ref(), current))?;
+    Ok(Reply::PhoneUpdate { update })
+}
+
+/// GitHub's list of the repo's releases, newest first, as it sends it.
+async fn releases(http: &dyn Http) -> Result<Vec<u8>, CoreError> {
     let res = http
         .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
         .await
@@ -186,7 +238,7 @@ pub async fn check(
             res.status
         )));
     }
-    newest(&res.body, current, track)
+    Ok(res.body)
 }
 
 const AUR_INFO: &str = "https://aur.archlinux.org/rpc/v5/info?arg[]=";
@@ -422,6 +474,88 @@ mod tests {
         assert_eq!(aur_newer(&info("r120.abc1234-1"), "2.3.1").unwrap(), None);
         let none = br#"{"resultcount":0,"results":[]}"#;
         assert_eq!(aur_newer(none, "2.3.1").unwrap(), None);
+    }
+
+    #[test]
+    fn the_desktop_never_hears_of_a_phone_release() {
+        let list = serde_json::json!([
+            { "tag_name": "android-v2.6.0", "html_url": "a260" },
+            { "tag_name": "android-v2.6.0-nightly.20261117.97", "html_url": "an97" },
+            { "tag_name": "v2.4.0", "html_url": "u240" }
+        ])
+        .to_string();
+        let stable = newest(list.as_bytes(), "2.4.0", Track::Stable).unwrap();
+        assert_eq!(stable, None);
+        let nightly = newest(list.as_bytes(), "2.4.0", Track::Nightly).unwrap();
+        assert_eq!(nightly, None);
+    }
+
+    fn phone_list() -> Vec<u8> {
+        serde_json::json!([
+            { "tag_name": "v2.6.0", "html_url": "u260" },
+            { "tag_name": "v2.5.0-nightly.20261118.99", "html_url": "n99" },
+            { "tag_name": "android-v2.4.3-nightly.20261117.97", "html_url": "a97",
+              "assets": [{ "name": "Anibeam-2.4.3-nightly.20261117.97.apk", "size": 9,
+                           "browser_download_url": "https://dl/a97.apk" }] },
+            { "tag_name": "android-v2.4.3-nightly.20261116.96", "html_url": "a96" },
+            { "tag_name": "android-v2.4.3-nightly.20261118.98", "html_url": "a98", "draft": true },
+            { "tag_name": "android-v2.4.2", "html_url": "a242",
+              "assets": [{ "name": "Anibeam-2.4.2.apk.sha256", "size": 1,
+                           "browser_download_url": "https://dl/a242.sha256" }] }
+        ])
+        .to_string()
+        .into_bytes()
+    }
+
+    fn phone(current: &str) -> Option<PhoneUpdate> {
+        newest_phone(&phone_list(), current).unwrap()
+    }
+
+    #[test]
+    fn a_phone_nightly_hears_of_a_later_run() {
+        let u = phone("2.4.3-nightly.20261116.96").unwrap();
+        assert_eq!(u.version, "2.4.3-nightly.20261117.97");
+        // Run 98 is still a draft, and a draft is not out yet
+        assert_eq!(phone("2.4.3-nightly.20261117.97"), None);
+    }
+
+    #[test]
+    fn a_phone_update_opens_its_apk_or_else_its_page() {
+        let u = phone("2.4.3-nightly.20261116.96").unwrap();
+        assert_eq!(u.url, "https://dl/a97.apk");
+        let u = phone("2.4.1").unwrap();
+        assert_eq!(u.version, "2.4.2");
+        assert_eq!(u.url, "a242");
+    }
+
+    #[test]
+    fn a_stable_phone_hears_of_stable_phone_releases_only() {
+        assert_eq!(phone("2.4.2"), None);
+        assert_eq!(phone("2.4.1").map(|u| u.version).as_deref(), Some("2.4.2"));
+    }
+
+    #[test]
+    fn a_phone_nightly_moves_on_to_the_stable_release_it_led_up_to() {
+        let list = serde_json::json!([
+            { "tag_name": "android-v2.4.3", "html_url": "a243" },
+            { "tag_name": "android-v2.4.3-nightly.20261117.97", "html_url": "a97" }
+        ])
+        .to_string();
+        let u = newest_phone(list.as_bytes(), "2.4.3-nightly.20261117.97").unwrap();
+        assert_eq!(u.map(|u| u.version).as_deref(), Some("2.4.3"));
+        assert_eq!(newest_phone(list.as_bytes(), "2.4.3").unwrap(), None);
+    }
+
+    #[test]
+    fn the_phone_never_hears_of_a_desktop_release() {
+        let list = serde_json::json!([
+            { "tag_name": "v2.6.0", "html_url": "u260" },
+            { "tag_name": "v2.6.0-nightly.20261118.99", "html_url": "n99" }
+        ])
+        .to_string();
+        assert_eq!(newest_phone(list.as_bytes(), "2.4.2").unwrap(), None);
+        let nightly = newest_phone(list.as_bytes(), "2.4.3-nightly.20261117.97").unwrap();
+        assert_eq!(nightly, None);
     }
 
     #[test]

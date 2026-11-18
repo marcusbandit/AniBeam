@@ -37,6 +37,7 @@ use crate::store::Store;
 use crate::sync::recover;
 use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
+use crate::update;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -638,6 +639,7 @@ impl Core {
             } => stats::get_call(&self.services, year, utc_offset, &month_starts),
             Call::ScheduleAgent => agent::available_call(),
             Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
+            Call::CheckPhoneUpdate { current } => update::phone_call(&self.services, &current),
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),

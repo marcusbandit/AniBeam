@@ -733,6 +733,13 @@ pub enum Call {
     /// The phone's sources and the endpoints installed from repos, in the order a search
     /// tries them, with secrets left out of each address.
     PhoneSearchSources,
+    /// Whether GitHub has a phone release newer than `current`, the version the phone runs,
+    /// on that build's own track: a nightly hears of nightlies and the stable release they
+    /// lead up to, a stable build of stable releases only. Blocks the calling thread on one
+    /// request; answers `PhoneUpdate` (#809).
+    CheckPhoneUpdate {
+        current: String,
+    },
     // Endpoint repos (#143). Not jobs: the ones that fetch block the calling thread, so a
     // shell calls them off its UI thread.
     /// The repos, what they offer and what is installed.
@@ -1056,6 +1063,10 @@ pub enum Reply {
     },
     PhoneNetCheck {
         checks: Vec<NetCheck>,
+    },
+    /// The newer phone release, none when the phone is up to date.
+    PhoneUpdate {
+        update: Option<PhoneUpdate>,
     },
     PhoneTorrents {
         torrents: Vec<Torrent>,
