@@ -222,7 +222,13 @@ fn spans(list: &[u32]) -> Vec<(u32, u32)> {
 pub fn runs(list: &[u32]) -> String {
     let parts: Vec<String> = spans(list)
         .into_iter()
-        .map(|(a, b)| if a == b { a.to_string() } else { format!("{a}-{b}") })
+        .map(|(a, b)| {
+            if a == b {
+                a.to_string()
+            } else {
+                format!("{a}-{b}")
+            }
+        })
         .collect();
     parts.join(", ")
 }
@@ -576,7 +582,10 @@ mod tests {
             ..Default::default()
         };
         assert!(names_show(&show_words(&s), "[Lumen] Naruto - 01 (1080p)"));
-        assert!(!names_show(&show_words(&s), "[Naruto-Kun.Hu] One Piece - 1100"));
+        assert!(!names_show(
+            &show_words(&s),
+            "[Naruto-Kun.Hu] One Piece - 1100"
+        ));
     }
 
     #[test]
@@ -641,7 +650,10 @@ mod tests {
     fn a_plan_names_its_episodes_as_runs() {
         assert_eq!(episodes_phrase(&[]), "");
         assert_eq!(episodes_phrase(&[7]), "Episode 7");
-        assert_eq!(episodes_phrase(&[1, 2, 3, 5, 9, 10]), "Episodes 1 to 3, 5, 9 to 10");
+        assert_eq!(
+            episodes_phrase(&[1, 2, 3, 5, 9, 10]),
+            "Episodes 1 to 3, 5, 9 to 10"
+        );
         assert_eq!(runs(&[]), "");
         assert_eq!(runs(&[4]), "4");
     }

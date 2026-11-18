@@ -80,8 +80,7 @@ pub async fn fetch(
 ) -> Result<Vec<Release>, CoreError> {
     let body =
         super::fetch::get_json(http, url, source, timeout, "core-releases-feed-answered").await?;
-    parse(&body, source)
-        .map_err(|message| CoreError::service(source, "unreadable", message))
+    parse(&body, source).map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

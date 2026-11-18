@@ -216,16 +216,9 @@ pub async fn fetch(
     source: &str,
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
-    let body = super::fetch::get_json(
-        http,
-        url,
-        source,
-        timeout,
-        "core-releases-search-answered",
-    )
-    .await?;
-    parse(&body, map, source)
-        .map_err(|message| CoreError::service(source, "unreadable", message))
+    let body =
+        super::fetch::get_json(http, url, source, timeout, "core-releases-search-answered").await?;
+    parse(&body, map, source).map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

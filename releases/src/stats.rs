@@ -608,7 +608,11 @@ impl Backend for Net<'_> {
 
 /// Drive `pending` with at most `limit` in flight, until all finish or `wait` runs out.
 /// What did not finish by then is dropped.
-async fn run_bounded<T>(pending: Vec<impl Future<Output = T>>, limit: usize, wait: Duration) -> Vec<T> {
+async fn run_bounded<T>(
+    pending: Vec<impl Future<Output = T>>,
+    limit: usize,
+    wait: Duration,
+) -> Vec<T> {
     let deadline = tokio::time::Instant::now() + wait;
     let mut running = std::pin::pin!(futures_util::stream::iter(pending).buffer_unordered(limit));
     let mut done = Vec::new();
