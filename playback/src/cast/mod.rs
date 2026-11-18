@@ -71,7 +71,7 @@ mod imp {
 
     use super::discover::{self, Found};
     use super::media::{Prepared, Receiver, Subs};
-    use super::server::{self as served, Piece, Registry, Relay, Served};
+    use super::server::{self as served, Piece, Registry, Served};
     use super::{castv2, dlna};
     use crate::Playback;
     use anibeam_contract::i18n::tr;
@@ -352,28 +352,8 @@ mod imp {
 
     /// Serves `path` under `token`, as it is and, once prepared, cut into fragments.
     fn serve_file(inner: &Inner, token: &str, path: &Path, prepared: Option<Arc<Prepared>>) {
-        inner.registry.add(
-            token.to_string(),
-            Served {
-                path: path.to_path_buf(),
-                mime: mime(path).to_string(),
-                prepared,
-                relay: None,
-            },
-        );
-    }
-
-    /// Passes on under `token` what another machine serves from `dir`.
-    fn serve_relay(inner: &Inner, token: &str, mime: &str, dir: String, pieces: Arc<Vec<Piece>>) {
-        inner.registry.add(
-            token.to_string(),
-            Served {
-                path: PathBuf::new(),
-                mime: mime.to_string(),
-                prepared: None,
-                relay: Some(Relay { dir, pieces }),
-            },
-        );
+        let served = Served::file(path.to_path_buf(), mime(path), prepared);
+        inner.registry.add(token.to_string(), served);
     }
 
     /// Ends any cast and starts a session on `found`, connecting: its id, the token its
@@ -388,7 +368,6 @@ mod imp {
         mode: Mode,
     ) -> (u64, String, CastState) {
         let inner = inner(playback);
-        stop(playback);
         let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
         let token = format!("{:032x}", rand::random::<u128>());
         let state = CastState {
@@ -400,7 +379,9 @@ mod imp {
             duration,
             error: None,
         };
-        *recover(&inner.session) = Some(Session {
+        // Swapped in under one lock, so a start that races another still retires the
+        // session it replaces.
+        let old = recover(&inner.session).replace(Session {
             id,
             token: token.clone(),
             state: state.clone(),
@@ -412,6 +393,9 @@ mod imp {
             pieces: None,
             hevc_doubt: false,
         });
+        if let Some(old) = old {
+            retire(playback, old);
+        }
         emit(&playback.services, &state, false);
         (id, token, state)
     }
@@ -619,11 +603,16 @@ mod imp {
     }
 
     fn stop(playback: &Playback) {
-        let inner = inner(playback);
-        let Some(session) = recover(&inner.session).take() else {
-            return;
-        };
-        inner.registry.remove(&session.token);
+        let taken = recover(&inner(playback).session).take();
+        if let Some(session) = taken {
+            retire(playback, session);
+        }
+    }
+
+    /// A session that is no longer the one casting: its files come off the server, the
+    /// shells hear it stopped, and its device is stopped.
+    fn retire(playback: &Playback, session: Session) {
+        inner(playback).registry.remove(&session.token);
         let mut state = session.state.clone();
         if !matches!(state.state, CastPlayState::Ended | CastPlayState::Failed) {
             state.state = CastPlayState::Stopped;
@@ -649,8 +638,14 @@ mod imp {
 
     /// Hands session `id` the controller its cast started with, and the mode it plays in.
     /// A session stopped or replaced while it started is not there to take it, so what it
-    /// started is stopped here.
-    fn take_control(playback: &Playback, id: u64, mode: Option<Mode>, control: Control) {
+    /// started is stopped here and its files come off the server.
+    fn take_control(
+        playback: &Playback,
+        id: u64,
+        token: &str,
+        mode: Option<Mode>,
+        control: Control,
+    ) {
         let inner = inner(playback);
         let mut s = recover(&inner.session);
         match s.as_mut().filter(|s| s.id == id) {
@@ -662,9 +657,37 @@ mod imp {
             }
             None => {
                 drop(s);
+                inner.registry.remove(token);
                 end(playback, control);
             }
         }
+    }
+
+    /// Whether session `id` is still the one casting, checked before each step that
+    /// reaches the device or the server. A session stopped or replaced meanwhile has its
+    /// files taken off the server, in case one went up after the stop took them down.
+    fn still(inner: &Inner, id: u64, token: &str) -> bool {
+        let on = current(inner, id);
+        if !on {
+            inner.registry.remove(token);
+        }
+        on
+    }
+
+    /// A TV's start that failed: its error, unless the session was stopped while it
+    /// started. Then the TV, which may have started all the same, is told to stop.
+    async fn failed_start(
+        inner: &Inner,
+        id: u64,
+        token: &str,
+        client: &dlna::Client,
+        error: String,
+    ) -> Result<(), String> {
+        if still(inner, id, token) {
+            return Err(error);
+        }
+        let _ = client.stop().await;
+        Ok(())
     }
 
     /// A Chromecast's controller for `load`, its status read into session `id`.
@@ -706,13 +729,11 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
-        serve_relay(
-            &inner,
-            &token,
-            "application/vnd.apple.mpegurl",
-            dir,
-            Arc::new(Vec::new()),
-        );
+        if !still(&inner, id, &token) {
+            return Ok(());
+        }
+        let served = Served::relayed("application/vnd.apple.mpegurl", dir, Arc::default());
+        inner.registry.add(token.clone(), served);
         update(playback, id, |s| s.base = base.clone());
         let load = castv2::Load {
             url: format!("{base}/{playlist}"),
@@ -722,7 +743,8 @@ mod imp {
             duration,
             title,
         };
-        take_control(playback, id, None, cast_control(playback, id, &found, load));
+        let control = cast_control(playback, id, &found, load);
+        take_control(playback, id, &token, None, control);
         Ok(())
     }
 
@@ -756,7 +778,7 @@ mod imp {
             .map_err(not_handed)?;
         // The fetch can take as long as the other computer needs to start converting; a
         // cast stopped or replaced meanwhile is left alone, and so is the TV.
-        if !current(&inner, id) {
+        if !still(&inner, id, &token) {
             return Ok(());
         }
         let pieces = Arc::new(served::read_pieces(&list));
@@ -764,7 +786,11 @@ mod imp {
             return Err(tr("core-cast-empty-playlist", &[]));
         }
         let base = base(&inner, &found, &token).await?;
-        serve_relay(&inner, &token, "video/mp2t", dir, pieces.clone());
+        if !still(&inner, id, &token) {
+            return Ok(());
+        }
+        let served = Served::relayed("video/mp2t", dir, pieces.clone());
+        inner.registry.add(token.clone(), served);
         let offset = pieces
             .get(served::piece_at(&pieces, start))
             .map_or(0.0, |p| p.start);
@@ -775,9 +801,20 @@ mod imp {
         });
         let url = format!("{base}/stream.ts?t={start:.3}");
         let meta = dlna::didl(&url, "video/mp2t", &title, None);
-        client.set_uri(&url, &meta).await?;
-        client.play().await?;
-        take_control(playback, id, None, dlna_control(playback, id, client));
+        let started = async {
+            client.set_uri(&url, &meta).await?;
+            client.play().await
+        };
+        if let Err(e) = started.await {
+            return failed_start(&inner, id, &token, &client, e).await;
+        }
+        take_control(
+            playback,
+            id,
+            &token,
+            None,
+            dlna_control(playback, id, client),
+        );
         Ok(())
     }
 
@@ -813,6 +850,9 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
+        if !still(&inner, id, &token) {
+            return Ok(());
+        }
         let mkv = is_matroska(&path);
         let receiver = match found.device.kind {
             CastKind::Chromecast => Receiver::Cast,
@@ -830,6 +870,10 @@ mod imp {
                 .and_then(|p| p.probe.video.as_ref())
                 .is_some_and(|v| matches!(v.codec, super::mkv::VideoCodec::Hevc { .. }))
             && !discover::decodes_hevc(found.device.model.as_deref());
+        // Reading the file can take a while, and the session may be gone by the end of it.
+        if !still(&inner, id, &token) {
+            return Ok(());
+        }
         serve_file(&inner, &token, &path, prepared.clone());
         let duration = prepared
             .as_ref()
@@ -861,7 +905,7 @@ mod imp {
                 };
                 let mode = if hls { Mode::Hls } else { Mode::Direct };
                 let control = cast_control(playback, id, &found, load);
-                take_control(playback, id, Some(mode), control);
+                take_control(playback, id, &token, Some(mode), control);
             }
             CastKind::Dlna => {
                 let client = Arc::new(dlna::Client::new(
@@ -873,44 +917,51 @@ mod imp {
                     .map(|_| format!("{base}/subs.srt"));
                 let direct = format!("{base}/file");
                 let meta = dlna::didl(&direct, mime(&path), &title, srt.as_deref());
-                let mode = match client.set_uri(&direct, &meta).await {
-                    Ok(()) => {
-                        client.play().await?;
-                        if start > 2.0 {
-                            // Some TVs take a seek only once playing; a refusal still plays from the start.
-                            tokio::time::sleep(Duration::from_millis(1500)).await;
-                            let _ = client.seek(start).await;
-                        }
-                        Mode::Direct
-                    }
-                    Err(first) => {
-                        // The TV would not take the file as it is; the fragments as one MP4 it may.
-                        if !mkv {
-                            return Err(first);
-                        }
-                        let p = match prepared {
-                            Some(p) => p,
-                            None => {
-                                let p = prepare(&path, audio_track, None).await?;
-                                serve_file(&inner, &token, &path, Some(p.clone()));
-                                p
+                let started = async {
+                    Ok::<_, String>(match client.set_uri(&direct, &meta).await {
+                        Ok(()) => {
+                            client.play().await?;
+                            if start > 2.0 {
+                                // Some TVs take a seek only once playing; a refusal still plays from the start.
+                                tokio::time::sleep(Duration::from_millis(1500)).await;
+                                let _ = client.seek(start).await;
                             }
-                        };
-                        let url = format!("{base}/stream.mp4?t={start:.3}");
-                        let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
-                        client.set_uri(&url, &meta).await.map_err(|e| {
-                            tr(
-                                "core-cast-refused-both",
-                                &[("error", e.into()), ("first", first.into())],
-                            )
-                        })?;
-                        client.play().await?;
-                        Mode::Progressive {
-                            offset: p.stream_start(start),
+                            Mode::Direct
                         }
-                    }
+                        Err(first) => {
+                            // The TV would not take the file as it is; the fragments as one MP4 it may.
+                            if !mkv {
+                                return Err(first);
+                            }
+                            let p = match prepared {
+                                Some(p) => p,
+                                None => {
+                                    let p = prepare(&path, audio_track, None).await?;
+                                    serve_file(&inner, &token, &path, Some(p.clone()));
+                                    p
+                                }
+                            };
+                            let url = format!("{base}/stream.mp4?t={start:.3}");
+                            let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
+                            client.set_uri(&url, &meta).await.map_err(|e| {
+                                tr(
+                                    "core-cast-refused-both",
+                                    &[("error", e.into()), ("first", first.into())],
+                                )
+                            })?;
+                            client.play().await?;
+                            Mode::Progressive {
+                                offset: p.stream_start(start),
+                            }
+                        }
+                    })
                 };
-                take_control(playback, id, Some(mode), dlna_control(playback, id, client));
+                let mode = match started.await {
+                    Ok(mode) => mode,
+                    Err(e) => return failed_start(&inner, id, &token, &client, e).await,
+                };
+                let control = dlna_control(playback, id, client);
+                take_control(playback, id, &token, Some(mode), control);
             }
         }
         Ok(())
@@ -1079,6 +1130,8 @@ mod imp {
             actions: Vec<String>,
             /// Answers Play only after a while, as a TV that is slow to start does.
             slow_play: bool,
+            /// Answers Play with an error, as a TV that started anyway may.
+            refuse_play: bool,
         }
 
         fn piece(i: u8) -> Vec<u8> {
@@ -1098,7 +1151,12 @@ mod imp {
                 .unwrap_or_default()
         }
 
-        async fn tv(State(tv): State<Arc<Mutex<Tv>>>, headers: HeaderMap, body: Bytes) -> String {
+        async fn tv(
+            State(tv): State<Arc<Mutex<Tv>>>,
+            headers: HeaderMap,
+            body: Bytes,
+        ) -> (axum::http::StatusCode, String) {
+            let ok = |body: &str| (axum::http::StatusCode::OK, body.to_string());
             let action = headers
                 .get("SOAPAction")
                 .and_then(|v| v.to_str().ok())
@@ -1108,9 +1166,16 @@ mod imp {
             if !action.contains("#Get") {
                 tv.lock().unwrap().actions.push(action.clone());
             }
-            let slow = tv.lock().unwrap().slow_play;
+            let (slow, refuse) = {
+                let t = tv.lock().unwrap();
+                (t.slow_play, t.refuse_play)
+            };
             if slow && action.contains("#Play") {
-                tokio::time::sleep(Duration::from_millis(800)).await;
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+            }
+            if refuse && action.contains("#Play") {
+                let fault = "<r><errorCode>701</errorCode></r>".to_string();
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, fault);
             }
             if action.contains("#SetAVTransportURI") {
                 let mut t = tv.lock().unwrap();
@@ -1130,13 +1195,14 @@ mod imp {
                     tv.lock().unwrap().read.push(got);
                 });
             } else if action.contains("#GetTransportInfo") {
-                return "<r><CurrentTransportState>PLAYING</CurrentTransportState></r>".into();
+                return ok("<r><CurrentTransportState>PLAYING</CurrentTransportState></r>");
             } else if action.contains("#GetPositionInfo") {
                 // Counted from the start of the stream it was handed, as many TVs do.
-                return "<r><RelTime>0:00:02</RelTime><TrackDuration>0:00:00</TrackDuration></r>"
-                    .into();
+                return ok(
+                    "<r><RelTime>0:00:02</RelTime><TrackDuration>0:00:00</TrackDuration></r>",
+                );
             }
-            "<ok/>".into()
+            ok("<ok/>")
         }
 
         async fn computer(
@@ -1233,12 +1299,22 @@ mod imp {
         }
 
         /// A file cast to a TV that is stopped before the TV has started it: the TV is told
-        /// to stop once it answers, rather than left playing with nothing to control it.
+        /// to stop once it answers, rather than left playing with nothing to control it,
+        /// whether it answers Play with yes or with an error.
         #[test]
         fn a_stop_while_the_tv_starts_stops_the_tv() {
+            stop_while_starting(false);
+            stop_while_starting(true);
+        }
+
+        fn stop_while_starting(refuse_play: bool) {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let (tv_state, _dir, teams) = tv_and_teams(&rt);
-            tv_state.lock().unwrap().slow_play = true;
+            {
+                let mut t = tv_state.lock().unwrap();
+                t.slow_play = true;
+                t.refuse_play = refuse_play;
+            }
             teams
                 .playback
                 .services

@@ -29,6 +29,28 @@ pub struct Served {
     pub relay: Option<Relay>,
 }
 
+impl Served {
+    /// A file on this machine, and once prepared, its fragments.
+    pub fn file(path: PathBuf, mime: &str, prepared: Option<Arc<Prepared>>) -> Served {
+        Served {
+            path,
+            mime: mime.to_string(),
+            prepared,
+            relay: None,
+        }
+    }
+
+    /// What another machine serves from `dir`, passed on.
+    pub fn relayed(mime: &str, dir: String, pieces: Arc<Vec<Piece>>) -> Served {
+        Served {
+            path: PathBuf::new(),
+            mime: mime.to_string(),
+            prepared: None,
+            relay: Some(Relay { dir, pieces }),
+        }
+    }
+}
+
 /// A stream another machine serves.
 pub struct Relay {
     /// The address of its playlist's directory: every name under the token is fetched
