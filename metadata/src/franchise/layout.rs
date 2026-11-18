@@ -15,8 +15,8 @@ use super::closure::{Closure, Node};
 use anibeam_contract::GraphEdge as Edge;
 
 /// One card, in layout units: the poster at 180 by 270 and about 150 of
-/// body under it. The shell scales; the
-/// positions below are in the same units, so a card and its slot agree.
+/// body under it. The shell scales; the positions below are in the same
+/// units, so a card and its slot agree.
 pub const NODE_W: f64 = 180.0;
 pub const NODE_H: f64 = 420.0;
 
@@ -57,12 +57,13 @@ fn is_print(n: Option<&&Node>) -> bool {
 
 /// How structural a relation is. AniList tags one link two ways often
 /// enough that a pair of nodes can carry both a SPIN_OFF and a SIDE_STORY;
-/// the lower number is the one the graph draws.
+/// the lower number is the one the graph draws. PREQUEL, SOURCE and PARENT
+/// never get here: `canonical_edges` has turned each into its twin first.
 fn priority(relation: &str) -> u8 {
     match relation {
-        "SEQUEL" | "PREQUEL" => 0,
-        "ADAPTATION" | "SOURCE" => 1,
-        "SIDE_STORY" | "PARENT" => 2,
+        "SEQUEL" => 0,
+        "ADAPTATION" => 1,
+        "SIDE_STORY" => 2,
         "SPIN_OFF" => 3,
         "SUMMARY" | "COMPILATION" | "CONTAINS" => 4,
         "ALTERNATIVE" => 5,
@@ -77,9 +78,9 @@ fn priority(relation: &str) -> u8 {
 ///
 /// Two passes: the direction is fixed, which turns every PARENT, PREQUEL
 /// and SOURCE into the twin it names, and then the relations on one ordered
-/// pair collapse to the most structural of them. A reciprocal pair and an
-/// exact duplicate both end up on one ordered pair with equal priority, so
-/// the second pass keeps the first of them.
+/// pair collapse to the most structural of them, the first of equals kept.
+/// So an exact duplicate is drawn once, and so is a reciprocal pair whose
+/// two sides normalise to the same edge.
 fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
     let e = |from, to, relation: &str| Edge {
         from,
@@ -312,8 +313,7 @@ fn order_rows(
         |x: &Edge| x.to == root && (x.relation == "ADAPTATION" || x.relation == "SIDE_STORY");
     let mut placed: Vec<usize> = Vec::new();
     for x in edges.iter().filter(|x| is_parent_edge(x)) {
-        let other = if x.from == root { x.to } else { x.from };
-        let Some(&chain) = chain_of.get(&other) else {
+        let Some(&chain) = chain_of.get(&x.from) else {
             continue;
         };
         if chain != root_chain && !placed.contains(&chain) {

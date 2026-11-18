@@ -32,8 +32,9 @@ use anibeam_net::images;
 /// provider saying stop is never answered with a burst.
 const DEFERRAL: i64 = 60;
 
-/// A franchise opened twice inside a minute is crawled once. The limiter paces the requests either way; this
-/// stops repeated opens from queueing the same component over and over.
+/// A franchise opened twice inside a minute is crawled once. The limiter
+/// paces the requests either way; this stops repeated opens from queueing
+/// the same component over and over.
 const REFRESH_THROTTLE: Duration = Duration::from_secs(60);
 
 /// Starts the Crawl job over these seeds, taking each seed again even
@@ -185,7 +186,7 @@ async fn run(
             // no edges, which is exactly what a node that genuinely has
             // none looks like, so the walk moves on instead of circling;
             // the next full refresh is the recovery.
-            tracing::debug!("the crawl failed at {id}: {failure}");
+            tracing::debug!("the crawl stamped {id} with no edges: {failure}");
             failed += 1;
             first_failure.get_or_insert(failure);
             mark(&metadata.services, id, STAMP, time::now_secs()).await?;
@@ -382,8 +383,8 @@ fn gap_seeds(conn: &mut Connection) -> Result<Vec<u64>, CoreError> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-/// The crawl bar's two numbers: how many owned AniList-matched series have their node's edges, out of
-/// how many there are.
+/// The crawl bar's two numbers: how many owned AniList-matched series have
+/// their node's edges, out of how many there are.
 fn progress(conn: &mut Connection) -> Result<(u64, u64), CoreError> {
     let (done, total): (i64, i64) = conn.query_row(
         "SELECT count(m.relations_fetched_at), count(*)
