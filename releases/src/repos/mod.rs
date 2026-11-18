@@ -63,7 +63,9 @@ fn forget_credentials<'a>(
     fields: impl IntoIterator<Item = &'a index::AuthField>,
 ) -> Result<(), CoreError> {
     for field in fields {
-        services.secrets().delete(&secret_key(install, &field.key))?;
+        services
+            .secrets()
+            .delete(&secret_key(install, &field.key))?;
     }
     Ok(())
 }
@@ -77,9 +79,13 @@ fn execute(services: &Services, sql: &'static str, values: Vec<Value>) -> Result
 
 /// A line in the activity log about the repos and what is installed from them.
 fn notice(services: &Services, plain: Words, message: String) {
-    services
-        .bus
-        .say(Level::Info, Stage::Downloads, plain, message, EventBody::Notice);
+    services.bus.say(
+        Level::Info,
+        Stage::Downloads,
+        plain,
+        message,
+        EventBody::Notice,
+    );
 }
 
 /// A definition as the store keeps it.
@@ -308,7 +314,12 @@ fn update_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreE
     )
 }
 
-fn write_index(services: &Services, sql: &'static str, url: &str, idx: &Index) -> Result<(), CoreError> {
+fn write_index(
+    services: &Services,
+    sql: &'static str,
+    url: &str,
+    idx: &Index,
+) -> Result<(), CoreError> {
     let values = vec![
         url.to_string().into(),
         idx.name.clone().into(),
@@ -479,7 +490,11 @@ pub fn add_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
         key: idx.key.clone(),
         fingerprint: index::fingerprint(&idx.key),
         serial: idx.serial,
-        endpoints: idx.endpoints.iter().map(|d| offered(&url, d, None)).collect(),
+        endpoints: idx
+            .endpoints
+            .iter()
+            .map(|d| offered(&url, d, None))
+            .collect(),
         trusted,
     };
     // One preview at a time: a shell shows one, so an older one is let go.
