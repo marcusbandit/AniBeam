@@ -39,7 +39,7 @@
 //! they act on that user's roll.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, LazyLock};
@@ -61,7 +61,7 @@ use anibeam_foundation::time::now_secs;
 use anibeam_releases::facts;
 
 /// The rolls, as JSON in the settings table.
-pub const ROLLS: &str = "download_rolls";
+const ROLLS: &str = "download_rolls";
 
 /// A torrent counts as this roll's if the client stamped it up to this long
 /// before the roll was made (clock skew on a remote host).
@@ -75,7 +75,7 @@ pub const MAX_AHEAD: u32 = 500;
 /// engine keeps the same numbers.
 pub const SKIP: i64 = 0;
 pub const NORMAL: i64 = 1;
-pub const FIRST: i64 = 7;
+const FIRST: i64 = 7;
 
 /// What a pass asks of the torrent client. qBittorrent answers it on the
 /// desktop, the phone's own engine on the phone.
@@ -116,36 +116,25 @@ pub trait RollClient: Sync {
 }
 
 impl RollClient for QbtClient {
-    fn files(
-        &self,
-        hash: &str,
-    ) -> impl Future<Output = Result<Vec<TorrentFile>, CoreError>> + Send {
-        QbtClient::files(self, hash)
+    async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
+        QbtClient::files(self, hash).await
     }
-    fn set_file_priority(
+    async fn set_file_priority(
         &self,
         hash: &str,
         ids: &[usize],
         priority: i64,
-    ) -> impl Future<Output = Result<(), CoreError>> + Send {
-        QbtClient::set_file_priority(self, hash, ids, priority)
+    ) -> Result<(), CoreError> {
+        QbtClient::set_file_priority(self, hash, ids, priority).await
     }
-    fn set_sequential(
-        &self,
-        hashes: &[String],
-        on: bool,
-    ) -> impl Future<Output = Result<(), CoreError>> + Send {
-        QbtClient::set_sequential(self, hashes, on)
+    async fn set_sequential(&self, hashes: &[String], on: bool) -> Result<(), CoreError> {
+        QbtClient::set_sequential(self, hashes, on).await
     }
-    fn delete(
-        &self,
-        hashes: &[String],
-        files: bool,
-    ) -> impl Future<Output = Result<(), CoreError>> + Send {
-        QbtClient::delete(self, hashes, files)
+    async fn delete(&self, hashes: &[String], files: bool) -> Result<(), CoreError> {
+        QbtClient::delete(self, hashes, files).await
     }
-    fn recheck(&self, hashes: &[String]) -> impl Future<Output = Result<(), CoreError>> + Send {
-        QbtClient::recheck(self, hashes)
+    async fn recheck(&self, hashes: &[String]) -> Result<(), CoreError> {
+        QbtClient::recheck(self, hashes).await
     }
     fn files_here(&self, services: &Services) -> bool {
         settings::read(services)
@@ -240,8 +229,34 @@ pub struct Part {
     pub gone: bool,
 }
 
+impl Part {
+    /// A part as a plan makes it: a single knows its one episode at once, a
+    /// batch counts its episodes once the client has its file list.
+    fn new(release: &Release, single: bool, added: bool, now: i64) -> Part {
+        let units = if single {
+            vec![Unit {
+                name: release.title.clone(),
+                ..Default::default()
+            }]
+        } else {
+            Vec::new()
+        };
+        Part {
+            release: release.clone(),
+            hash: magnet::hash(&release.link).unwrap_or_default(),
+            added,
+            added_at: now,
+            single,
+            units,
+            counted: single,
+            seen: false,
+            gone: false,
+        }
+    }
+}
+
 /// One episode of a part.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Unit {
     /// The file's index in the torrent; `None` for a single's whole torrent.
     pub file: Option<usize>,
@@ -285,10 +300,10 @@ pub fn plan(
     let ahead = s.ahead.clamp(1, MAX_AHEAD);
     let read: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
     let single = |f: &ReleaseFacts| !f.batch && f.episode.is_some();
-    let base = |title: String, over: Option<u32>, parts: Vec<Part>| Roll {
+    let base = |release: &Release, over: Option<u32>, parts: Vec<Part>| Roll {
         id: 0,
         created_at: now,
-        title,
+        title: name.map_or_else(|| show_title(&release.title), str::to_string),
         name: name.map(str::to_string),
         ahead,
         delete_watched: s.delete_watched,
@@ -311,25 +326,13 @@ pub fn plan(
     let mut rolls: Vec<Roll> = others
         .iter()
         .map(|&i| {
-            let r = &items[i];
-            let part = Part {
-                release: r.clone(),
-                hash: magnet::hash(&r.link).unwrap_or_default(),
-                added: true,
-                added_at: now,
-                single: false,
-                units: Vec::new(),
-                counted: false,
-                seen: false,
-                gone: false,
-            };
-            let title = name
-                .map(str::to_string)
-                .unwrap_or_else(|| show_title(&r.title));
-            base(title, over, vec![part])
+            base(
+                &items[i],
+                over,
+                vec![Part::new(&items[i], false, true, now)],
+            )
         })
         .collect();
-    let mut now_items: Vec<Release> = others.iter().map(|&i| items[i].clone()).collect();
     // The single episodes of the pick roll together, in episode order
     let roll_singles = singles.len() > 1 && (wish == Some(true) || singles.len() > s.over as usize);
     if !roll_singles {
@@ -350,31 +353,11 @@ pub fn plan(
     let parts: Vec<Part> = order
         .iter()
         .enumerate()
-        .map(|(n, &i)| {
-            let r = &items[i];
-            Part {
-                release: r.clone(),
-                hash: magnet::hash(&r.link).unwrap_or_default(),
-                added: n < ahead as usize,
-                added_at: now,
-                single: true,
-                units: vec![Unit {
-                    file: None,
-                    name: r.title.clone(),
-                    watched: false,
-                    gone: false,
-                }],
-                counted: true,
-                seen: false,
-                gone: false,
-            }
-        })
+        .map(|(n, &i)| Part::new(&items[i], true, n < ahead as usize, now))
         .collect();
+    let mut now_items: Vec<Release> = others.iter().map(|&i| items[i].clone()).collect();
     now_items.extend(parts.iter().filter(|p| p.added).map(|p| p.release.clone()));
-    let title = name
-        .map(str::to_string)
-        .unwrap_or_else(|| show_title(&items[order[0]].title));
-    rolls.push(base(title, None, parts));
+    rolls.push(base(&items[order[0]], None, parts));
     Plan {
         now: now_items,
         rolls,
@@ -394,13 +377,13 @@ pub fn describe(plan: &Plan) -> String {
         Some(r) if held > 0 => format!(
             ", rolling {} ahead with {} waiting",
             r.ahead,
-            plural(held, "episode", "episodes")
+            crate::plural(held as u64, "episode", "episodes")
         ),
-        Some(r) if r.over.is_some() => format!(
-            ", rolling {} ahead if it holds more than {} episodes",
-            r.ahead,
-            r.over.unwrap_or_default()
-        ),
+        Some(Roll {
+            ahead,
+            over: Some(over),
+            ..
+        }) => format!(", rolling {ahead} ahead if it holds more than {over} episodes"),
         Some(r) => format!(", rolling {} ahead", r.ahead),
     }
 }
@@ -430,7 +413,7 @@ fn show_title(title: &str) -> String {
 
 /// The episodes of a batch: its video files in name order, numbers read as
 /// numbers ("Episode 2" before "Episode 10").
-pub fn units_of(files: &[TorrentFile]) -> Vec<Unit> {
+fn units_of(files: &[TorrentFile]) -> Vec<Unit> {
     let mut v: Vec<(usize, &TorrentFile)> = files
         .iter()
         .enumerate()
@@ -441,14 +424,13 @@ pub fn units_of(files: &[TorrentFile]) -> Vec<Unit> {
         .map(|(i, f)| Unit {
             file: Some(i),
             name: f.name.clone(),
-            watched: false,
-            gone: false,
+            ..Default::default()
         })
         .collect()
 }
 
 /// Compares names with runs of digits read as numbers.
-pub fn natural_cmp(a: &str, b: &str) -> Ordering {
+fn natural_cmp(a: &str, b: &str) -> Ordering {
     let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
     loop {
         match (x.peek().copied(), y.peek().copied()) {
@@ -487,7 +469,7 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
 
 /// The episodes of a roll in order, as far as they are known: every
 /// counted part's, up to the first part not counted yet.
-pub fn order(roll: &Roll) -> Vec<Key> {
+fn order(roll: &Roll) -> Vec<Key> {
     let mut out = Vec::new();
     for (p, part) in roll.parts.iter().enumerate() {
         if !part.counted {
@@ -504,7 +486,7 @@ fn unit(roll: &Roll, k: Key) -> &Unit {
 
 /// Where the window stands, by position in `order`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Window {
+struct Window {
     /// The last episode watched since the roll began.
     pub last: Option<usize>,
     /// The next episode to watch.
@@ -514,35 +496,31 @@ pub struct Window {
     pub total: usize,
 }
 
-pub fn window(roll: &Roll, keys: &[Key]) -> Window {
+fn window(roll: &Roll, keys: &[Key]) -> Window {
     let total = keys.len();
     let last = keys.iter().rposition(|&k| unit(roll, k).watched);
     let start = last.map_or(0, |p| p + 1);
-    if roll.released {
-        return Window {
-            last,
-            start,
-            end: total,
-            total,
-        };
-    }
-    let mut end = start + roll.ahead.max(1) as usize;
-    if let Some(mark) = roll.until
-        && let Some(p) = keys.iter().position(|&k| k == mark)
-    {
-        end = end.max(p + 1);
-    }
+    let end = if roll.released {
+        total
+    } else {
+        // The pre-download mark reaches further when it is past the window
+        let mark = roll
+            .until
+            .and_then(|mark| keys.iter().position(|&k| k == mark))
+            .map_or(0, |p| p + 1);
+        (start + roll.ahead.max(1) as usize).max(mark).min(total)
+    };
     Window {
         last,
         start,
-        end: end.min(total),
+        end,
         total,
     }
 }
 
 /// What a pass does to each episode.
 #[derive(Debug, Default, PartialEq)]
-pub struct Moves {
+struct Moves {
     /// Batch files, by part, with the priority each should have.
     pub priorities: HashMap<usize, Vec<(usize, i64)>>,
     /// Held singles to add now, by part.
@@ -554,8 +532,9 @@ pub struct Moves {
 /// The moves that put a roll's episodes where the window says. Inside the
 /// window an episode is wanted, the next one first; the last one watched
 /// keeps its file; everything else is skipped (a held single simply stays
-/// held). Deletion takes the watched episodes before the last one.
-pub fn moves(roll: &Roll) -> Moves {
+/// held). Deletion takes the watched episodes more than `keep_watched`
+/// behind the last one.
+fn moves(roll: &Roll) -> Moves {
     let keys = order(roll);
     let w = window(roll, &keys);
     // The last watched and the ones kept behind it keep their files
@@ -609,20 +588,18 @@ pub fn moves(roll: &Roll) -> Moves {
 
 /// The priority changes a batch needs: the files whose current priority
 /// differs from the wish, grouped by the priority to set.
-pub fn priority_changes(wish: &[(usize, i64)], files: &[TorrentFile]) -> Vec<(i64, Vec<usize>)> {
-    let mut by: HashMap<i64, Vec<usize>> = HashMap::new();
+fn priority_changes(wish: &[(usize, i64)], files: &[TorrentFile]) -> Vec<(i64, Vec<usize>)> {
+    let mut by: BTreeMap<i64, Vec<usize>> = BTreeMap::new();
     for &(i, p) in wish {
         if files.get(i).is_some_and(|f| f.priority != p) {
             by.entry(p).or_default().push(i);
         }
     }
-    let mut out: Vec<(i64, Vec<usize>)> = by.into_iter().collect();
-    out.sort_by_key(|(p, _)| *p);
-    out
+    by.into_iter().collect()
 }
 
 /// The roll as the downloads page shows it.
-pub fn view(roll: &Roll) -> RollView {
+fn view(roll: &Roll) -> RollView {
     let keys = order(roll);
     let w = window(roll, &keys);
     let total: usize = roll.parts.iter().map(|p| p.units.len()).sum();
@@ -643,16 +620,29 @@ pub fn view(roll: &Roll) -> RollView {
 }
 
 /// Moves the pre-download mark `count` episodes past the window's end.
-pub fn more(roll: &mut Roll, count: u32) {
+fn more(roll: &mut Roll, count: u32) {
     let keys = order(roll);
-    if keys.is_empty() {
-        return;
-    }
     let w = window(roll, &keys);
     let to = (w.end + count as usize).min(keys.len());
     if to > 0 {
         roll.until = Some(keys[to - 1]);
     }
+}
+
+/// Whether the roll rolls, judged by `over` once every part is counted:
+/// `None` while a part is not, `Some(false)` when it holds no more episodes
+/// than `over`. A roll that does roll has `over` cleared, so it is judged once.
+fn does_roll(r: &mut Roll) -> Option<bool> {
+    if let Some(over) = r.over {
+        if !r.parts.iter().all(|p| p.counted) {
+            return None;
+        }
+        if r.parts.iter().map(|p| p.units.len()).sum::<usize>() <= over as usize {
+            return Some(false);
+        }
+        r.over = None;
+    }
+    Some(true)
 }
 
 /// The priority of each file of a batch about to be added, from its file list, for a
@@ -664,16 +654,7 @@ pub fn first_window(roll: &Roll, part: usize, files: &[TorrentFile]) -> Option<V
     let p = r.parts.get_mut(part)?;
     p.units = units_of(files);
     p.counted = true;
-    if let Some(over) = r.over
-        && r.parts.iter().all(|p| p.counted)
-    {
-        let total: usize = r.parts.iter().map(|p| p.units.len()).sum();
-        if total <= over as usize {
-            return None;
-        }
-        r.over = None;
-    }
-    if r.over.is_some() {
+    if does_roll(&mut r) != Some(true) {
         return None;
     }
     let mut out = vec![NORMAL; files.len()];
@@ -690,7 +671,7 @@ pub fn first_window(roll: &Roll, part: usize, files: &[TorrentFile]) -> Option<V
 /// Binds each added part with no hash to its torrent: the earliest one added
 /// since the roll was made whose name matches the release and that no
 /// other part holds.
-pub fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
+fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
     let mut taken: HashSet<String> = rolls
         .iter()
         .flat_map(|r| &r.parts)
@@ -728,7 +709,7 @@ fn same_release(torrent_name: &str, title: &str) -> bool {
 
 /// Gives the parts just handed to the client the hashes the add answered
 /// with, in the order they were added, when it answered one for each.
-pub fn take_hashes(parts: &mut [&mut Part], hashes: &[String]) {
+fn take_hashes(parts: &mut [&mut Part], hashes: &[String]) {
     if hashes.len() != parts.len() {
         return;
     }
@@ -743,7 +724,7 @@ pub fn take_hashes(parts: &mut [&mut Part], hashes: &[String]) {
 /// A roll with nothing left to do: every torrent it added gone, one whose
 /// torrent never showed, or one whose every episode was watched (and,
 /// when it deletes them, deleted all but the last).
-pub fn finished(roll: &Roll, now: i64) -> bool {
+fn finished(roll: &Roll, now: i64) -> bool {
     let added: Vec<&Part> = roll.parts.iter().filter(|p| p.added).collect();
     if !added.is_empty() && added.iter().all(|p| p.gone) {
         return true;
@@ -760,9 +741,9 @@ pub fn finished(roll: &Roll, now: i64) -> bool {
     if !all_counted || keys.is_empty() {
         return false;
     }
-    let done = |&(p, u): &Key| {
-        let unit = &roll.parts[p].units[u];
-        unit.watched || unit.gone || roll.parts[p].gone
+    let done = |&k: &Key| {
+        let u = unit(roll, k);
+        u.watched || u.gone || roll.parts[k.0].gone
     };
     keys.iter().all(done) && (!roll.delete_watched || moves(roll).delete.is_empty())
 }
@@ -772,12 +753,7 @@ pub fn finished(roll: &Roll, now: i64) -> bool {
 /// Whether the library has the file at `path` (or, with `under`, any
 /// episode file inside that folder) as an episode completed at or after
 /// `since`.
-pub fn watched_since(
-    c: &Connection,
-    path: &str,
-    under: bool,
-    since: i64,
-) -> Result<bool, CoreError> {
+fn watched_since(c: &Connection, path: &str, under: bool, since: i64) -> Result<bool, CoreError> {
     let trimmed = path.trim_end_matches('/');
     let like = format!(
         "{}/%",
@@ -846,7 +822,11 @@ fn users_part(r: &Roll) -> (u32, bool, Option<Key>, bool) {
 /// while the pass ran is kept as it is, and one the user changed meanwhile
 /// (`SetRoll`, `RollMore`) keeps the change: the pass's copy takes the
 /// user's settings, and a roll the pass would drop stays for the next pass.
-fn save_changes(services: &Services, before: &[Roll], after: &[Roll]) -> Result<(), CoreError> {
+async fn save_changes(
+    services: &Services,
+    before: &[Roll],
+    after: &[Roll],
+) -> Result<(), CoreError> {
     let mut changes: HashMap<u64, (Roll, Option<Roll>)> = HashMap::new();
     for b in before {
         match after.iter().find(|a| a.id == b.id) {
@@ -862,28 +842,31 @@ fn save_changes(services: &Services, before: &[Roll], after: &[Roll]) -> Result<
     if changes.is_empty() {
         return Ok(());
     }
-    services.store.write(move |c| {
-        let cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
-        let next: Vec<Roll> = cur
-            .into_iter()
-            .filter_map(|r| match changes.get(&r.id) {
-                None => Some(r),
-                Some((b, change)) => {
-                    let edited = users_part(&r) != users_part(b);
-                    match change {
-                        None if edited => Some(r),
-                        None => None,
-                        Some(new) => {
-                            let mut n = new.clone();
-                            (n.ahead, n.delete_watched, n.until, n.released) = users_part(&r);
-                            Some(n)
+    services
+        .store
+        .write_async(move |c| {
+            let cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
+            let next: Vec<Roll> = cur
+                .into_iter()
+                .filter_map(|r| match changes.get(&r.id) {
+                    None => Some(r),
+                    Some((b, change)) => {
+                        let edited = users_part(&r) != users_part(b);
+                        match change {
+                            None if edited => Some(r),
+                            None => None,
+                            Some(new) => {
+                                let mut n = new.clone();
+                                (n.ahead, n.delete_watched, n.until, n.released) = users_part(&r);
+                                Some(n)
+                            }
                         }
                     }
-                }
-            })
-            .collect();
-        kv::set(c, ROLLS, &next)
-    })
+                })
+                .collect();
+            kv::set(c, ROLLS, &next)
+        })
+        .await
 }
 
 /// Saves new rolls, numbering them after the stored ones.
@@ -951,26 +934,22 @@ pub async fn tick<C: RollClient>(
     let mut rolls = before.clone();
     bind(&mut rolls, torrents);
     let now = now_secs();
-    let mut drop = HashSet::new();
     let mut changed = false;
-    for roll in rolls.iter_mut() {
-        if step(downloads, client, roll, torrents, here, &mut changed).await == Step::Drop {
-            drop.insert(roll.id);
+    let mut kept = Vec::with_capacity(rolls.len());
+    for mut roll in rolls {
+        if step(downloads, client, &mut roll, torrents, here, &mut changed).await
+            && !finished(&roll, now)
+        {
+            kept.push(roll);
         }
     }
-    rolls.retain(|r| !drop.contains(&r.id) && !finished(r, now));
-    if let Err(e) = save_changes(&downloads.services, &before, &rolls) {
+    if let Err(e) = save_changes(&downloads.services, &before, &kept).await {
         tracing::warn!("rolling downloads not saved: {e}");
     }
     changed
 }
 
-#[derive(PartialEq)]
-enum Step {
-    Keep,
-    Drop,
-}
-
+/// One roll's pass. False when the roll has nothing left to do and goes.
 async fn step<C: RollClient>(
     downloads: &Arc<Downloads>,
     client: &C,
@@ -978,8 +957,9 @@ async fn step<C: RollClient>(
     torrents: &[Torrent],
     here: bool,
     changed: &mut bool,
-) -> Step {
+) -> bool {
     // Find the torrents, and count a batch's episodes once its list is in
+    let mut found: HashMap<usize, &Torrent> = HashMap::new();
     let mut files_of: HashMap<usize, Vec<TorrentFile>> = HashMap::new();
     let mut counted_now = false;
     for (i, part) in roll.parts.iter_mut().enumerate() {
@@ -1004,6 +984,7 @@ async fn step<C: RollClient>(
             tracing::warn!("{} not set to download in order: {e}", t.name);
         }
         part.seen = true;
+        found.insert(i, t);
         if part.single {
             continue;
         }
@@ -1024,39 +1005,21 @@ async fn step<C: RollClient>(
         }
         files_of.insert(i, files);
     }
-    if let Some(over) = roll.over
-        && roll.parts.iter().all(|p| p.counted)
-    {
-        let total: usize = roll.parts.iter().map(|p| p.units.len()).sum();
-        if total <= over as usize {
-            return Step::Drop;
-        }
-        roll.over = None;
-    }
-    if roll.over.is_some() {
-        return Step::Keep;
+    match does_roll(roll) {
+        Some(true) => {}
+        Some(false) => return false,
+        None => return true,
     }
     // Known now: say once how the download rolls
-    let before = if counted_now {
-        Window {
-            last: None,
-            start: usize::MAX,
-            end: usize::MAX,
-            total: 0,
-        }
-    } else {
-        window(roll, &order(roll))
-    };
-    // Watched since the roll began
+    let before = (!counted_now).then(|| {
+        let w = window(roll, &order(roll));
+        (w.start, w.end)
+    });
+    // Watched since the roll began. The parts found above are the ones the
+    // client lists: a part seen before and missing now went gone there.
     let since = roll.created_at;
     for (i, part) in roll.parts.iter_mut().enumerate() {
-        if !part.seen || part.gone {
-            continue;
-        }
-        let Some(t) = torrents
-            .iter()
-            .find(|t| t.hash.eq_ignore_ascii_case(&part.hash))
-        else {
+        let Some(t) = found.get(&i) else {
             continue;
         };
         let files = files_of.get(&i);
@@ -1137,7 +1100,7 @@ async fn step<C: RollClient>(
                 take_hashes(&mut parts, &hashes);
                 acted.push(format!(
                     "added {}",
-                    plural(m.add.len(), "episode", "episodes")
+                    crate::plural(m.add.len() as u64, "episode", "episodes")
                 ));
             }
             Err(e) => tracing::warn!("{}: held episodes not added: {e}", roll.title),
@@ -1148,10 +1111,7 @@ async fn step<C: RollClient>(
     let mut deleted = 0;
     for &(p, u) in &m.delete {
         let part = &roll.parts[p];
-        let Some(t) = torrents
-            .iter()
-            .find(|t| t.hash.eq_ignore_ascii_case(&part.hash))
-        else {
+        let Some(t) = found.get(&p) else {
             continue;
         };
         if part.single {
@@ -1203,13 +1163,11 @@ async fn step<C: RollClient>(
     if deleted > 0 {
         acted.push(format!(
             "removed {} watched",
-            plural(deleted, "episode", "episodes")
+            crate::plural(deleted, "episode", "episodes")
         ));
     }
     let after = window(roll, &order(roll));
-    if after.total > 0
-        && (after.start != before.start || after.end != before.end || !acted.is_empty())
-    {
+    if after.total > 0 && (before != Some((after.start, after.end)) || !acted.is_empty()) {
         let mut line = format!(
             "{}: episodes {} to {} of {}",
             roll.title,
@@ -1234,18 +1192,11 @@ async fn step<C: RollClient>(
             EventBody::Notice,
         );
     }
-    if roll.released && m.add.is_empty() && all_set {
-        return Step::Drop;
-    }
-    Step::Keep
+    !(roll.released && m.add.is_empty() && all_set)
 }
 
 fn one() -> u32 {
     1
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 // Entry points --------------------------------------------------------------------
@@ -1281,14 +1232,8 @@ pub async fn after_add(
     handle.spawn(async move {
         for _ in 0..60 {
             tokio::time::sleep(Duration::from_secs(3)).await;
-            let Ok(client) = super::qbt_client(&downloads).await else {
+            if !qbt_pass(&downloads).await {
                 continue;
-            };
-            match client.torrents().await {
-                Ok(torrents) => {
-                    tick(&downloads, client.as_ref(), &torrents).await;
-                }
-                Err(e) => tracing::debug!("rolling read failed: {e}"),
             }
             match load(&downloads.services) {
                 Ok(r) if r.iter().all(settled) => break,
@@ -1299,7 +1244,7 @@ pub async fn after_add(
     });
 }
 
-/// Every added part of the roll is found and counted.
+/// Every added part of the roll is found and counted, and its count judged.
 fn settled(r: &Roll) -> bool {
     r.over.is_none()
         && r.parts
@@ -1319,9 +1264,7 @@ pub fn nudge(downloads: &Arc<Downloads>) {
     {
         return;
     }
-    let owner = downloads.clone();
-    let handle = owner.services.handle.clone();
-    handle.spawn(async move { pass_now(&owner).await });
+    kick(downloads);
 }
 
 /// A pass with a fresh read, then a torrent read for the page. Where the
@@ -1338,21 +1281,29 @@ async fn pass_now(downloads: &Arc<Downloads>) {
             let _ = super::list_torrents(downloads);
             return;
         }
-        let client = match super::qbt_client(downloads).await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::debug!("rolling pass skipped: {e}");
-                return;
-            }
-        };
-        match client.torrents().await {
-            Ok(torrents) => {
-                tick(downloads, client.as_ref(), &torrents).await;
-            }
-            Err(e) => tracing::debug!("rolling read failed: {e}"),
+        if qbt_pass(downloads).await {
+            let _ = super::list_torrents(downloads);
         }
-        let _ = super::list_torrents(downloads);
     }
+}
+
+/// A pass over qBittorrent's torrents as they are now. False when the client
+/// was not reached.
+async fn qbt_pass(downloads: &Arc<Downloads>) -> bool {
+    let client = match super::qbt_client(downloads).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!("rolling pass skipped: {e}");
+            return false;
+        }
+    };
+    match client.torrents().await {
+        Ok(torrents) => {
+            tick(downloads, client.as_ref(), &torrents).await;
+        }
+        Err(e) => tracing::debug!("rolling read failed: {e}"),
+    }
+    true
 }
 
 /// `SetRoll`: how far ahead, whether watched episodes go, or stop rolling.
@@ -1453,20 +1404,8 @@ mod tests {
     use super::*;
 
     fn release(title: &str) -> Release {
-        Release {
-            title: title.to_string(),
-            link: format!("https://example.org/{}.torrent", title.len()),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
-        }
+        let link = format!("https://example.org/{}.torrent", title.len());
+        serde_json::from_value(serde_json::json!({ "title": title, "link": link })).unwrap()
     }
 
     fn file(name: &str, priority: i64) -> TorrentFile {
@@ -1497,21 +1436,28 @@ mod tests {
             sequential: false,
             home: None,
             parts: vec![Part {
-                release: release("[G] Show (01-170) [Batch]"),
                 hash: "aa".into(),
-                added: true,
-                added_at: 100,
-                single: false,
                 units: units_of(&files),
                 counted: true,
                 seen: true,
-                gone: false,
+                ..Part::new(&release("[G] Show (01-170) [Batch]"), false, true, 100)
             }],
         }
     }
 
-    fn singles(titles: &[&str]) -> Vec<Release> {
-        titles.iter().map(|t| release(t)).collect()
+    fn singles<S: AsRef<str>>(titles: &[S]) -> Vec<Release> {
+        titles.iter().map(|t| release(t.as_ref())).collect()
+    }
+
+    /// `n` single episodes of one show, in order.
+    fn show_singles(n: usize) -> Vec<Release> {
+        let titles: Vec<String> = (1..=n).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
+        singles(&titles)
+    }
+
+    /// The plan for a pick under the default settings.
+    fn plan_of(items: &[Release], options: DownloadOptions) -> Plan {
+        plan(items, &options, &RollingSettings::default(), None, 5)
     }
 
     fn watch(r: &mut Roll, upto: usize) {
@@ -1579,6 +1525,29 @@ mod tests {
         // More again counts from the window's end
         more(&mut r, 4);
         assert_eq!(window(&r, &order(&r)).end, 30);
+    }
+
+    #[test]
+    fn more_on_a_roll_not_counted_yet_sets_no_mark() {
+        let mut r = batch(3, 2);
+        r.parts[0].counted = false;
+        more(&mut r, 5);
+        assert_eq!(r.until, None);
+    }
+
+    #[test]
+    fn a_roll_is_judged_by_its_count_once_every_part_is_counted() {
+        let mut r = batch(20, 3);
+        assert_eq!(does_roll(&mut r), Some(true), "no count to judge");
+        r.over = Some(30);
+        r.parts[0].counted = false;
+        assert_eq!(does_roll(&mut r), None);
+        assert_eq!(r.over, Some(30));
+        r.parts[0].counted = true;
+        assert_eq!(does_roll(&mut r), Some(false), "20 is not more than 30");
+        r.over = Some(10);
+        assert_eq!(does_roll(&mut r), Some(true));
+        assert_eq!(r.over, None, "judged once");
     }
 
     #[test]
@@ -1658,9 +1627,7 @@ mod tests {
             .rev()
             .map(|i| format!("[Kumo-Subs] Black Clover - {i:03} [1080p].mkv"))
             .collect();
-        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
-        let s = RollingSettings::default();
-        let p = plan(&items, &DownloadOptions::default(), &s, None, 5);
+        let p = plan_of(&singles(&titles), DownloadOptions::default());
         assert_eq!(p.now.len(), 12);
         assert!(p.now[0].title.contains("- 001"));
         assert!(p.now[11].title.contains("- 012"));
@@ -1679,7 +1646,7 @@ mod tests {
     fn a_short_pick_or_a_no_does_not_roll() {
         let items = singles(&["[G] Show - 01.mkv", "[G] Show - 02.mkv"]);
         let s = RollingSettings::default();
-        let p = plan(&items, &DownloadOptions::default(), &s, None, 5);
+        let p = plan_of(&items, DownloadOptions::default());
         assert!(p.rolls.is_empty());
         assert_eq!(p.now.len(), 2);
         let on = DownloadOptions {
@@ -1690,13 +1657,12 @@ mod tests {
         s1.ahead = 1;
         let p = plan(&items, &on, &s1, None, 5);
         assert_eq!((p.now.len(), p.rolls.len()), (1, 1));
-        let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
-        let many = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let many = show_singles(40);
         let off = DownloadOptions {
             rolling: Some(false),
             ..Default::default()
         };
-        assert!(plan(&many, &off, &s, None, 5).rolls.is_empty());
+        assert!(plan_of(&many, off).rolls.is_empty());
         let quiet = RollingSettings {
             big: false,
             ..Default::default()
@@ -1711,13 +1677,7 @@ mod tests {
     #[test]
     fn a_batch_is_added_whole_and_judged_by_its_count() {
         let items = singles(&["[Judas] Black Clover (Season 1-4) [1080p][Batch]"]);
-        let p = plan(
-            &items,
-            &DownloadOptions::default(),
-            &RollingSettings::default(),
-            None,
-            5,
-        );
+        let p = plan_of(&items, DownloadOptions::default());
         assert_eq!(p.now.len(), 1);
         assert_eq!(p.rolls.len(), 1);
         assert_eq!(p.rolls[0].over, Some(30));
@@ -1735,13 +1695,7 @@ mod tests {
     #[test]
     fn a_long_batch_starts_with_only_its_first_window_fetched() {
         let items = singles(&["[Judas] Black Clover (001-040) [1080p][Batch]"]);
-        let p = plan(
-            &items,
-            &DownloadOptions::default(),
-            &RollingSettings::default(),
-            None,
-            5,
-        );
+        let p = plan_of(&items, DownloadOptions::default());
         let wish = first_window(&p.rolls[0], 0, &batch_files(40)).unwrap();
         assert_eq!(wish.len(), 41);
         assert_eq!(wish[0], FIRST);
@@ -1754,23 +1708,14 @@ mod tests {
     #[test]
     fn a_short_batch_has_no_first_window_unless_asked_to_roll() {
         let items = singles(&["[Judas] Black Clover (001-020) [1080p][Batch]"]);
-        let p = plan(
-            &items,
-            &DownloadOptions::default(),
-            &RollingSettings::default(),
-            None,
-            5,
-        );
+        let p = plan_of(&items, DownloadOptions::default());
         assert_eq!(first_window(&p.rolls[0], 0, &batch_files(20)), None);
-        let asked = plan(
+        let asked = plan_of(
             &items,
-            &DownloadOptions {
+            DownloadOptions {
                 rolling: Some(true),
                 ..Default::default()
             },
-            &RollingSettings::default(),
-            None,
-            5,
         );
         let wish = first_window(&asked.rolls[0], 0, &batch_files(20)).unwrap();
         assert_eq!(wish.iter().filter(|&&w| w == SKIP).count(), 8);
@@ -1858,12 +1803,10 @@ mod tests {
     fn a_held_single_added_late_is_given_its_own_time_to_show() {
         let dir = tempfile::tempdir().unwrap();
         let teams = crate::testing::Teams::open(dir.path(), anibeam_net::FakeHttp::new());
-        let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
-        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let day = 86_400;
         // Picked four days ago; the first twelve were listed and the first is watched
         let mut r = plan(
-            &items,
+            &show_singles(40),
             &DownloadOptions::default(),
             &RollingSettings::default(),
             None,
@@ -1892,16 +1835,9 @@ mod tests {
 
     #[test]
     fn a_pick_with_one_odd_title_still_rolls_its_singles() {
-        let mut titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
-        titles.push("[G] Show OVA [Batch]".into());
-        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
-        let p = plan(
-            &items,
-            &DownloadOptions::default(),
-            &RollingSettings::default(),
-            None,
-            5,
-        );
+        let mut items = show_singles(40);
+        items.push(release("[G] Show OVA [Batch]"));
+        let p = plan_of(&items, DownloadOptions::default());
         assert_eq!(p.now.len(), 13, "the odd one and the first twelve");
         assert_eq!(p.rolls.len(), 2);
     }
