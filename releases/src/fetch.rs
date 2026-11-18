@@ -11,7 +11,7 @@ use regex::Regex;
 use roxmltree::Node;
 
 use anibeam_contract::{CoreError, Release};
-use anibeam_net::{Http, HttpRequest};
+use anibeam_net::{Http, HttpRequest, HttpResponse};
 
 /// anirss `fetch_rss` default: a blackholed endpoint must fail fast so the fallback probe
 /// can move on instead of feeling like a hang.
@@ -89,22 +89,7 @@ fn str_text(elem: Option<Node>) -> String {
     text(elem).map(|t| t.trim().to_string()).unwrap_or_default()
 }
 
-/// Bytes in the binary notation tracker feeds write ("284.7 MiB").
-fn human_size(n: f64) -> String {
-    let mut f = n;
-    for unit in ["B", "KiB", "MiB", "GiB", "TiB"] {
-        if f < 1024.0 || unit == "TiB" {
-            return if unit == "B" {
-                format!("{} B", f as u64)
-            } else {
-                format!("{f:.1} {unit}")
-            };
-        }
-        f /= 1024.0;
-    }
-    format!("{n} B")
-}
-
+#[derive(Default)]
 struct Torznab {
     seeders: Option<i64>,
     leechers: Option<i64>,
@@ -131,13 +116,7 @@ fn torznab(entry: Node) -> Torznab {
         }
     }
     if attrs.is_empty() {
-        return Torznab {
-            seeders: None,
-            leechers: None,
-            grabs: None,
-            size: String::new(),
-            category: String::new(),
-        };
+        return Torznab::default();
     }
     let get = |key: &str| {
         attrs
@@ -159,7 +138,7 @@ fn torznab(entry: Node) -> Torznab {
         && raw.bytes().all(|b| b.is_ascii_digit())
         && let Ok(n) = raw.parse::<f64>()
     {
-        size = human_size(n);
+        size = size_text(n as u64);
     }
     let cat = get("category").unwrap_or("");
     let category = match cat.chars().next() {
@@ -286,7 +265,7 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
 
 /// Parse an RSS feed into releases. Reads a tracker's extension fields when present;
 /// otherwise falls back to Size: and Category: hints in `<description>`. Errors on malformed XML.
-pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreError> {
+fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreError> {
     let data = data.strip_prefix('\u{feff}').unwrap_or(data);
     let doc = roxmltree::Document::parse(data).map_err(|e| {
         CoreError::service(
@@ -361,6 +340,49 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
     Ok(out)
 }
 
+/// GET `url` from a source, asking for `accept`: the reply whatever its status, or the
+/// source unreachable. `source` names it in errors.
+async fn get(
+    http: &dyn Http,
+    url: &str,
+    accept: &str,
+    source: &str,
+    timeout: Duration,
+) -> Result<HttpResponse, CoreError> {
+    let request = HttpRequest::get(url)
+        .header("User-Agent", USER_AGENT)
+        .header("Accept", accept)
+        .timeout(timeout);
+    http.send(request)
+        .await
+        .map_err(|e| CoreError::service(source, "unreachable", e.message))
+}
+
+/// A source's status that was no success, said in the words of the catalog's `id`.
+fn answered(source: &str, status: u16, id: &str) -> CoreError {
+    CoreError::service(
+        source,
+        format!("http_{status}"),
+        anibeam_contract::i18n::tr(id, &[("status", status.to_string().into())]),
+    )
+}
+
+/// GET `url` from a JSON source: the body of a successful reply, else the status said in
+/// the words of the catalog's `answered` id.
+pub(super) async fn get_json(
+    http: &dyn Http,
+    url: &str,
+    source: &str,
+    timeout: Duration,
+    answered_id: &str,
+) -> Result<Vec<u8>, CoreError> {
+    let response = get(http, url, "application/json", source, timeout).await?;
+    if !response.is_success() {
+        return Err(answered(source, response.status, answered_id));
+    }
+    Ok(response.body)
+}
+
 /// GET `url` and parse it as an RSS feed. `source_name` names the endpoint in errors; the
 /// URL stays out of them, since a torznab URL carries the indexer's API key.
 pub async fn fetch_rss(
@@ -370,18 +392,8 @@ pub async fn fetch_rss(
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
     tracing::debug!("GET {}", anibeam_net::url_shown(url));
-    let response = http
-        .send(
-            HttpRequest::get(url)
-                .header("User-Agent", USER_AGENT)
-                .header(
-                    "Accept",
-                    "application/rss+xml, application/xml, text/xml, */*",
-                )
-                .timeout(timeout),
-        )
-        .await
-        .map_err(|e| CoreError::service(source_name, "unreachable", e.message))?;
+    let accept = "application/rss+xml, application/xml, text/xml, */*";
+    let response = get(http, url, accept, source_name, timeout).await?;
     if !response.is_success() {
         // Prowlarr can send its error document with a 401 or a 403; its reason beats a status.
         let body = String::from_utf8_lossy(&response.body);
@@ -392,13 +404,10 @@ pub async fn fetch_rss(
         {
             return Err(e);
         }
-        return Err(CoreError::service(
+        return Err(answered(
             source_name,
-            format!("http_{}", response.status),
-            anibeam_contract::i18n::tr(
-                "core-releases-feed-answered",
-                &[("status", response.status.to_string().into())],
-            ),
+            response.status,
+            "core-releases-feed-answered",
         ));
     }
     let body = String::from_utf8_lossy(&response.body);
@@ -744,12 +753,12 @@ mod tests {
     }
 
     #[test]
-    fn human_size_uses_binary_units() {
-        assert_eq!(human_size(0.0), "0 B");
-        assert_eq!(human_size(1023.0), "1023 B");
-        assert_eq!(human_size(1024.0), "1.0 KiB");
-        assert_eq!(human_size(298_513_817.0), "284.7 MiB");
-        assert_eq!(human_size(2.0 * 1024f64.powi(5)), "2048.0 TiB");
+    fn size_text_uses_binary_units() {
+        assert_eq!(size_text(0), "0 B");
+        assert_eq!(size_text(1023), "1023 B");
+        assert_eq!(size_text(1024), "1.0 KiB");
+        assert_eq!(size_text(298_513_817), "284.7 MiB");
+        assert_eq!(size_text(2 << 50), "2048.0 TiB");
     }
 
     #[test]

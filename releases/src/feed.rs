@@ -20,27 +20,20 @@ use anibeam_library::snapshot::{NextEpisode, Snapshot};
 /// list sorts on. A series with no files at all has no entry.
 ///
 /// `best_aired` is the latest on-disk episode with a known past air date.
-/// The instant is that episode's own past air date (`Aired`), else the
-/// newest file's `mtime` (`Downloaded`), else `best_aired`'s own date
-/// (`Aired`), else no entry at all. A film always reads `Downloaded` from
-/// its newest file's `mtime`, this plan's decision, since a film's single
-/// file is never usefully described as "aired".
+/// The instant is the highest episode's own past air date (`Aired`), else
+/// the newest file's `mtime` (`Downloaded`). A film always reads
+/// `Downloaded` from its newest file's `mtime`, this plan's decision, since
+/// a film's single file is never usefully described as "aired".
 pub fn recent_entry(
     snapshot: &Snapshot,
     series_id: u64,
     now: SystemTime,
 ) -> Option<(FeedReason, f64, i64)> {
     let row = snapshot.row(series_id)?;
-    let files = snapshot
-        .files
-        .get(&series_id)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    if files.is_empty() {
-        return None;
-    }
+    let files = snapshot.files.get(&series_id)?;
+    // No files, no entry.
+    let newest_mtime = files.iter().map(|f| f.mtime).max()?;
     let now_secs = time::to_secs(now);
-    let newest_mtime = files.iter().map(|f| f.mtime).max();
 
     // A TVmaze match numbers its episodes within a season, so only the
     // card's own season is matched against that season's list.
@@ -66,52 +59,27 @@ pub fn recent_entry(
 
     let highest = highest_on_disk.max(f64::from(best_aired.map_or(0, |(_, e)| e)));
 
-    if row.kind == SeriesKind::Movie {
-        let at = newest_mtime?;
-        return Some((
-            FeedReason::Downloaded {
-                at: time::from_secs(at),
-            },
-            highest,
-            at,
-        ));
-    }
-
     let shown_air = airing
         .iter()
         .find(|a| f64::from(a.number) == highest)
         .and_then(|a| a.aired_at)
         .filter(|t| *t <= now_secs);
-    if let Some(at) = shown_air {
-        return Some((
+    let (reason, at) = match shown_air {
+        Some(at) if row.kind != SeriesKind::Movie => (
             FeedReason::Aired {
                 episode: highest as u32,
                 at: time::from_secs(at),
             },
-            highest,
             at,
-        ));
-    }
-    if let Some(at) = newest_mtime {
-        return Some((
+        ),
+        _ => (
             FeedReason::Downloaded {
-                at: time::from_secs(at),
+                at: time::from_secs(newest_mtime),
             },
-            highest,
-            at,
-        ));
-    }
-    if let Some((at, episode)) = best_aired {
-        return Some((
-            FeedReason::Aired {
-                episode,
-                at: time::from_secs(at),
-            },
-            highest,
-            at,
-        ));
-    }
-    None
+            newest_mtime,
+        ),
+    };
+    Some((reason, highest, at))
 }
 
 /// The earliest future episode for this series, matched or not on disk:
@@ -185,18 +153,17 @@ pub fn list(
         }
     }
 
+    // Newest first; the Upcoming sort keeps this order for the series it does not schedule.
+    recents.sort_by(|a, b| {
+        b.instant
+            .cmp(&a.instant)
+            .then_with(|| a.series_id.cmp(&b.series_id))
+    });
     let cards = match sort {
-        FeedSort::Recent => {
-            recents.sort_by(|a, b| {
-                b.instant
-                    .cmp(&a.instant)
-                    .then_with(|| a.series_id.cmp(&b.series_id))
-            });
-            recents
-                .into_iter()
-                .filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest))
-                .collect()
-        }
+        FeedSort::Recent => recents
+            .into_iter()
+            .filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest))
+            .collect(),
         FeedSort::Upcoming => {
             let mut scheduled: Vec<(u64, NextEpisode, f64)> = Vec::new();
             let mut rest: Vec<Recent> = Vec::new();
@@ -207,11 +174,6 @@ pub fn list(
                 }
             }
             scheduled.sort_by(|a, b| a.1.at.cmp(&b.1.at).then_with(|| a.0.cmp(&b.0)));
-            rest.sort_by(|a, b| {
-                b.instant
-                    .cmp(&a.instant)
-                    .then_with(|| a.series_id.cmp(&b.series_id))
-            });
 
             scheduled
                 .into_iter()
