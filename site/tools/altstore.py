@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 
 BASE = "https://anibeam.app"
-IOS = Path(__file__).resolve().parent.parent.parent / "apps" / "android" / "ios"
+IOS = Path(__file__).resolve().parent.parent.parent / "apps" / "phone" / "ios"
 SOURCE = {
     "name": "Anibeam",
     "identifier": "com.marcusrosado.anibeam.source",
