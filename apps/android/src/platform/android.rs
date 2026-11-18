@@ -23,7 +23,11 @@ fn android_main(android: slint::android::AndroidApp) {
     let on_resume = commands.clone();
     slint::android::init_with_event_listener(android, move |event| {
         if let PollEvent::Main(MainEvent::Resume { .. }) = event {
+            ON_SCREEN.store(true, std::sync::atomic::Ordering::Relaxed);
             let _ = on_resume.send(crate::worker::Command::Sync);
+        }
+        if let PollEvent::Main(MainEvent::Pause) = event {
+            ON_SCREEN.store(false, std::sync::atomic::Ordering::Relaxed);
         }
         // The phone's light or dark setting or its language changed: Appearance's System mode
         // and a language left to follow the phone follow it.
@@ -36,6 +40,16 @@ fn android_main(android: slint::android::AndroidApp) {
     if let Err(e) = crate::run(data_dir, commands, inbox) {
         eprintln!("Anibeam stopped: {e}");
     }
+}
+
+/// The activity is resumed: in front, from its Resume to its Pause. It starts in front, as
+/// the activity is what runs the app.
+static ON_SCREEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The app is in front, not only kept up by the download work: from the activity's own
+/// Resume and Pause, so asking costs nothing.
+pub fn on_screen() -> bool {
+    ON_SCREEN.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Writes `line` to logcat, under AnibeamCore.
@@ -504,8 +518,7 @@ pub fn rest_service() {
     service_void("rest", "the download work did not rest");
 }
 
-/// The person asked a download to go on: a stop by Android or by them ends
-/// (`TorrentService.goOn`).
+/// The app is in front again: a stop by Android or the rest ends (`TorrentService.goOn`).
 pub fn service_go_on() {
     service_void("goOn", "the download work did not go on");
 }
@@ -514,8 +527,8 @@ pub fn service_go_on() {
 /// is not logged again.
 static STATE_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Where the download work stands (`TorrentService.state`). Opening the app ends a stop.
-/// None when the read failed: that says nothing about the work, so the app keeps what it
+/// Where the download work stands (`TorrentService.state`): a read of two numbers under
+/// Java's lock, cheap enough for every second. None when the read failed: that says nothing about the work, so the app keeps what it
 /// last read. A run of failures is logged once.
 pub fn work_state() -> Option<super::Work> {
     use std::sync::atomic::Ordering;

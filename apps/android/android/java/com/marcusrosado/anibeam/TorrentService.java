@@ -13,7 +13,6 @@ import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
-import android.util.Log;
 
 /**
  * Keeps the process alive while episodes download. It holds no logic: the downloads run in
@@ -34,7 +33,6 @@ import android.util.Log;
  * language changes. The English below is only for a call that carries none.
  */
 public class TorrentService extends Service {
-    private static final String TAG = "Anibeam";
     private static final String CHANNEL = "downloads";
     /** Finished episodes: a channel of its own, so it can go quiet and the ongoing one stays. */
     private static final String READY = "ready";
@@ -64,18 +62,14 @@ public class TorrentService extends Service {
     static final int WAITING = 2;
     /** Android stopped the work, or the app rested it; it goes on when the app is opened. */
     static final int STOPPED = 3;
-    /** Stopped from the phone's list of running apps: stopped until the app is opened again. */
-    static final int STOPPED_BY_USER = 4;
     static final Object LOCK = new Object();
     private static int work = IDLE;
     /** Goes up on every change of `work`, so Rust sees a stop and a rerun between two looks. */
     private static int generation;
-    /** The app was seen away from the screen since the person stopped the work. */
-    private static boolean away;
 
-    /** Android or the person stopped the work. Called with LOCK held. */
+    /** Android stopped the work, or the app rested it. Called with LOCK held. */
     static boolean stoppedNow() {
-        return work == STOPPED || work == STOPPED_BY_USER;
+        return work == STOPPED;
     }
 
     /** The job runs or the service is up. Called with LOCK held. */
@@ -88,27 +82,11 @@ public class TorrentService extends Service {
         return work == WAITING;
     }
 
-    /** Android refused to start the work since it last started, which is logged once. */
-    private static boolean refusalSaid;
-
-    /** Android refused to start the work: said once for a run of refusals. LOCK is held. */
-    static void refused(String what, RuntimeException e) {
-        if (refusalSaid) return;
-        refusalSaid = true;
-        Log.w(TAG, what, e);
-    }
-
-    /** The work started: the next refusal is said again. LOCK is held. */
-    static void started() {
-        refusalSaid = false;
-    }
-
     /** Moves the work to `state`. Called with LOCK held. */
     static void set(int state) {
         if (state == work) return;
         work = state;
         generation++;
-        away = false;
     }
 
     /** Android 14 and later run downloads as a user-initiated data transfer job. */
@@ -125,7 +103,7 @@ public class TorrentService extends Service {
     /**
      * Starts the work that keeps downloads going, showing `title`, `text` and `progress`.
      * False when Android refused, as it does for an app in the background; the app tries
-     * again on its next look.
+     * again on its next look, and logs the refusal.
      */
     public static boolean start(Context context, String title, String text, int progress,
             String channelDownloads, String channelReady, String fallback) {
@@ -139,13 +117,11 @@ public class TorrentService extends Service {
             Intent intent = new Intent().setClassName(context, TorrentService.class.getName());
             try {
                 context.startForegroundService(intent);
-                started();
-                set(RUNNING);
-                return true;
             } catch (RuntimeException e) {
-                refused("the download service did not start", e);
                 return false;
             }
+            set(RUNNING);
+            return true;
         }
     }
 
@@ -249,7 +225,11 @@ public class TorrentService extends Service {
         }
     }
 
-    /** The person asked a paused download to go on: a stop ends here. */
+    /**
+     * The app is in front again: a stop ends here. The run Android holds back after a stop
+     * goes with it, since it backs off first and after a few timeouts a day waits for
+     * hours, and the app starts a fresh one.
+     */
     public static void goOn(Context context) {
         synchronized (LOCK) {
             if (stoppedNow()) {
@@ -270,37 +250,20 @@ public class TorrentService extends Service {
     }
 
     /**
-     * The work's state for Rust: the generation in the bits from 4 up, 8 while the app is on
-     * the screen, and IDLE to STOPPED_BY_USER below. Opening the app is when a stop ends:
-     * a stop by Android at once, a stop by the person once the app was away and came back.
-     * The job Android holds back after a stop then goes (it backs off, and after a few
-     * timeouts a day it waits for hours), and the app starts a fresh one.
+     * The work's state for Rust: the generation in the bits from 2 up, IDLE to STOPPED
+     * below. Only a read, so the app may call it every second: the job and the service set
+     * it as they start and stop.
      */
     public static int state(Context context) {
-        boolean shown = onScreen();
-        boolean lifted = false;
-        int out;
         synchronized (LOCK) {
-            if (work == STOPPED && shown) {
-                if (jobs()) DownloadJob.cancel(context);
-                set(IDLE);
-                lifted = true;
-            } else if (work == STOPPED_BY_USER) {
-                if (!shown) {
-                    away = true;
-                } else if (away) {
-                    if (jobs()) DownloadJob.cancel(context);
-                    set(IDLE);
-                    lifted = true;
-                }
-            }
-            out = (generation << 4) | (shown ? 8 : 0) | work;
+            return (generation << 2) | work;
         }
-        if (lifted) cancelPaused(context);
-        return out;
     }
 
-    /** The app is in front: on the screen, not only kept up by the job or the service. */
+    /**
+     * The app is in front: on the screen, not only kept up by the job or the service. A
+     * binder call, so only when the job starts or stops, never on the app's every look.
+     */
     static boolean onScreen() {
         ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
         ActivityManager.getMyMemoryState(info);

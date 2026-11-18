@@ -38,9 +38,9 @@ use crate::worker::Command;
 // `other.rs`'s stand-ins for the calls the iPhone does not answer yet.
 pub use super::other::{
     ask_notifications, bars, brightness, copy_text, downloads_paused, episode_ready, line_colours,
-    log, multicast, notification_settings, notifications_allowed, open_url, pick_file, relocalize,
-    rest_service, service_go_on, set_brightness, set_volume, start_service, stop_service,
-    unmetered, update_service, volume, work_state,
+    log, multicast, notification_settings, notifications_allowed, on_screen, open_url, pick_file,
+    relocalize, rest_service, service_go_on, set_brightness, set_volume, start_service,
+    stop_service, unmetered, update_service, volume, work_state,
 };
 
 /// Called by `main.rs`: runs the app over its data directory in the app's container.

@@ -158,11 +158,12 @@ pub enum Step {
     Forget,
 }
 
-/// What a list read does to the work. `stopped`: Android, the person or the rest stopped it.
+/// What a list read does to the work. `stopped`: Android or the rest stopped it.
 /// `unfinished`: a download is not whole yet. `shows`: there are words to show, something
 /// working or waiting. `up`: it runs or is about to. `changed`: the words differ from the
 /// ones up. `settled`: the read was taken after the hold landed and since the work last ran,
-/// so it may end the work.
+/// so downloads it shows paused are paused still. With nothing left to download the work
+/// ends either way, so a hold the core keeps refusing never keeps it up.
 pub fn step(
     stopped: bool,
     unfinished: bool,
@@ -174,11 +175,7 @@ pub fn step(
     // Stopped, the downloads are held and the work goes on as Android says; only the last
     // download going ends the stop, so its Paused does not outlive it.
     if stopped {
-        return if !unfinished && settled {
-            Step::End
-        } else {
-            Step::Keep
-        };
+        return if unfinished { Step::Keep } else { Step::End };
     }
     match (shows, up) {
         // Running: the words change in place. Starting it again on every look would be
@@ -186,7 +183,7 @@ pub fn step(
         (true, true) if changed => Step::Update,
         (true, true) => Step::Keep,
         (true, false) => Step::Start,
-        (false, true) if settled => Step::End,
+        (false, true) if settled || !unfinished => Step::End,
         (false, true) => Step::Keep,
         (false, false) => Step::Forget,
     }
@@ -290,10 +287,18 @@ mod tests {
     fn removing_the_last_download_ends_a_stop() {
         // Stopped with nothing left to download: the stop and its Paused end.
         assert_eq!(step(true, false, false, false, false, true), Step::End);
-        // Not on a read from before the hold landed.
-        assert_eq!(step(true, false, false, false, false, false), Step::Keep);
         // Something still waits: the stop stands.
         assert_eq!(step(true, true, false, false, false, true), Step::Keep);
+    }
+
+    #[test]
+    fn nothing_left_ends_the_work_with_the_hold_unknown() {
+        // The core keeps refusing the hold, so no read settles: the last download going
+        // still ends a stop and a running work.
+        assert_eq!(step(true, false, false, false, false, false), Step::End);
+        assert_eq!(step(false, false, false, true, false, false), Step::End);
+        // A download left that reads paused from before the hold lifted keeps it up.
+        assert_eq!(step(false, true, false, true, false, false), Step::Keep);
     }
 
     #[test]
@@ -301,8 +306,8 @@ mod tests {
         assert_eq!(step(false, true, true, true, true, false), Step::Update);
         assert_eq!(step(false, true, true, true, false, true), Step::Keep);
         assert_eq!(step(false, true, true, false, false, false), Step::Start);
-        assert_eq!(step(false, false, false, true, false, true), Step::End);
-        assert_eq!(step(false, false, false, true, false, false), Step::Keep);
+        assert_eq!(step(false, true, false, true, false, true), Step::End);
+        assert_eq!(step(false, true, false, true, false, false), Step::Keep);
         assert_eq!(step(false, false, false, false, false, true), Step::Forget);
     }
 

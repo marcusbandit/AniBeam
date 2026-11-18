@@ -83,6 +83,11 @@ pub fn rest_service() {
 /// Nothing stops the stand-in work, so nothing goes on.
 pub fn service_go_on() {}
 
+/// Off the phone the app is always in front.
+pub fn on_screen() -> bool {
+    true
+}
+
 /// Up from `start_service` to `stop_service`, never stopped by anything else.
 pub fn work_state() -> Option<super::Work> {
     let up = UP.load(std::sync::atomic::Ordering::Relaxed);
