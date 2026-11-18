@@ -160,10 +160,7 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
         let mut slot = rooms.lock();
         let a = slot.as_mut().ok_or_else(not_in_room)?;
         if !a.can_fetch() {
-            return Err(error(
-                "cannot_fetch",
-                anibeam_contract::words!("core-room-media-cannot"),
-            ));
+            return Err(cannot_fetch());
         }
         let (host, theirs) = a.host_key().ok_or_else(not_in_room)?;
         let e = a.episode.clone().ok_or_else(not_in_room)?;
@@ -171,12 +168,10 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
             episode_key: e.episode_key.clone(),
         };
         let plain = serde_json::to_vec(&ask).map_err(|e| CoreError::internal(e.to_string()))?;
-        let data = a.keys.seal(&a.code, &theirs, &plain).ok_or_else(|| {
-            error(
-                "cannot_fetch",
-                anibeam_contract::words!("core-room-media-cannot"),
-            )
-        })?;
+        let data = a
+            .keys
+            .seal(&a.code, &theirs, &plain)
+            .ok_or_else(cannot_fetch)?;
         a.send(ClientMsg::Seal { to: host, data });
         let id = begin(a, RoomFetch::Asking);
         a.whole_show = whole_show && !e.film;
@@ -202,6 +197,13 @@ pub(super) fn get(rooms: &Rooms, whole_show: bool) -> Result<Option<RoomInfo>, C
     };
     emit(&rooms.services, out);
     Ok(info)
+}
+
+fn cannot_fetch() -> CoreError {
+    error(
+        "cannot_fetch",
+        anibeam_contract::words!("core-room-media-cannot"),
+    )
 }
 
 /// Numbers each fetch, so a task that outlived its fetch finds it gone.
@@ -264,13 +266,7 @@ pub(super) fn on_secret(rooms: &Rooms, serial: u64, from: MemberId, secret: Secr
                         .is_some_and(|e| e.episode_key == episode_key)
                     && a.host_key().is_some_and(|(h, _)| h == from)
             };
-            let id = rooms
-                .lock()
-                .as_ref()
-                .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
-            if let Some(id) = id {
-                stop(rooms, serial, id, fits, Why::Nothing);
-            }
+            stop_current(rooms, serial, fits, Why::Nothing);
         }
     }
 }
@@ -279,15 +275,8 @@ pub(super) fn on_secret(rooms: &Rooms, serial: u64, from: MemberId, secret: Secr
 /// connected, the host having just dropped. An ask waiting on it stops now
 /// rather than when its timer runs out.
 pub(super) fn seal_refused(rooms: &Rooms, serial: u64) {
-    let id = rooms
-        .lock()
-        .as_ref()
-        .filter(|a| a.serial == serial && a.fetch == RoomFetch::Asking)
-        .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
-    if let Some(id) = id {
-        let asking = |a: &Active| a.fetch == RoomFetch::Asking;
-        stop(rooms, serial, id, asking, Why::NoAnswer);
-    }
+    let asking = |a: &Active| a.fetch == RoomFetch::Asking;
+    stop_current(rooms, serial, asking, Why::NoAnswer);
 }
 
 /// The host's offer, when it answers this member's ask: the download starts.
@@ -324,29 +313,25 @@ fn take_offer(rooms: &Rooms, serial: u64, from: MemberId, mut offer: Offer) {
             return;
         };
         let whole_show = a.whole_show;
-        a.fetch = if offer.magnet.is_some() {
-            RoomFetch::Downloading
-        } else {
-            RoomFetch::Searching
-        };
-        let say = if offer.magnet.is_some() {
-            Say::said(
-                Level::Info,
+        let (fetch, words, what) = match offer.magnet {
+            Some(_) => (
+                RoomFetch::Downloading,
                 anibeam_contract::words!("core-room-media-torrent"),
-                format!("Room {}: downloading the host's torrent", a.code),
-                a.changed(),
-            )
-        } else {
-            Say::said(
-                Level::Info,
+                "downloading the host's torrent",
+            ),
+            None => (
+                RoomFetch::Searching,
                 anibeam_contract::words!("core-room-media-searching"),
-                format!(
-                    "Room {}: searching the sources for the host's release",
-                    a.code
-                ),
-                a.changed(),
-            )
+                "searching the sources for the host's release",
+            ),
         };
+        a.fetch = fetch;
+        let say = Say::said(
+            Level::Info,
+            words,
+            format!("Room {}: {what}", a.code),
+            a.changed(),
+        );
         Some((id, token, e, say, whole_show))
     };
     let Some((id, token, e, say, whole_show)) = started else {
@@ -404,6 +389,18 @@ fn stop(rooms: &Rooms, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool,
         )
     };
     emit(&rooms.services, vec![say]);
+}
+
+/// Stops the fetch running in room `serial` now, as `stop` does.
+fn stop_current(rooms: &Rooms, serial: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
+    let id = rooms
+        .lock()
+        .as_ref()
+        .filter(|a| a.serial == serial)
+        .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
+    if let Some(id) = id {
+        stop(rooms, serial, id, fits, why);
+    }
 }
 
 /// The episode is in the library: the fetch ends, and the room's episode is
@@ -1036,9 +1033,14 @@ pub fn queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
         }
         out.push(e.series_title.trim().to_string());
     }
-    let mut seen = std::collections::HashSet::new();
-    out.retain(|q| !q.is_empty() && seen.insert(q.to_lowercase()));
-    out
+    distinct(out)
+}
+
+/// Each query once, ignoring case, and none that is empty.
+fn distinct(mut queries: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    queries.retain(|q| !q.trim().is_empty() && seen.insert(q.to_lowercase()));
+    queries
 }
 
 /// A name without its bracketed tags: "Film (BD 1080p) [ABCD1234]" reads "Film".
@@ -1255,9 +1257,7 @@ pub fn show_queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
         out.push(show);
     }
     out.push(e.series_title.trim().to_string());
-    let mut seen = std::collections::HashSet::new();
-    out.retain(|q| !q.trim().is_empty() && seen.insert(q.to_lowercase()));
-    out
+    distinct(out)
 }
 
 /// The other episodes of the host's release among search results: single
@@ -1390,7 +1390,9 @@ fn seal_one(keys: &super::seal::Keys, code: &str, theirs: &str, s: &Secret) -> O
 }
 
 /// Seals an offer under the relay's cap: a magnet too long sheds its trackers
-/// from the end, and one still too long goes, leaving the release's name.
+/// from the end, and one still too long goes, leaving the release's name. How
+/// long a payload seals to follows from its own length, so only the offer that
+/// fits is sealed.
 fn seal_offer(
     keys: &super::seal::Keys,
     code: &str,
@@ -1398,8 +1400,9 @@ fn seal_offer(
     mut offer: Offer,
 ) -> Option<String> {
     loop {
-        if let Some(sealed) = seal_one(keys, code, theirs, &Secret::Offer(offer.clone())) {
-            return Some(sealed);
+        let plain = serde_json::to_vec(&Secret::Offer(offer.clone())).ok()?;
+        if super::seal::sealed_len(plain.len()) <= proto::MAX_SEALED {
+            return keys.seal(code, theirs, &plain);
         }
         if let Some(m) = offer.magnet.take() {
             if let Some(cut) = m.rfind("&tr=") {
@@ -2026,8 +2029,17 @@ mod tests {
 
     #[test]
     fn a_long_magnet_sheds_trackers_to_fit_the_cap() {
-        let keys = super::super::seal::Keys::new();
-        let theirs = super::super::seal::Keys::new().public();
+        let (host, member) = (
+            super::super::seal::Keys::new(),
+            super::super::seal::Keys::new(),
+        );
+        let opened = |sealed: &str| {
+            let plain = member.open("K7QM2X", &host.public(), sealed).unwrap();
+            match serde_json::from_slice::<Secret>(&plain).unwrap() {
+                Secret::Offer(o) => o,
+                other => panic!("{other:?}"),
+            }
+        };
         let trackers: String = (0..400)
             .map(|i| format!("&tr=udp%3A%2F%2Ftracker{i}.example%3A1337"))
             .collect();
@@ -2035,7 +2047,18 @@ mod tests {
             magnet: Some(format!("{}{trackers}", magnet(1))),
             ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
         };
-        let sealed = seal_offer(&keys, "K7QM2X", &theirs, long).unwrap();
+        let sealed = seal_offer(&host, "K7QM2X", &member.public(), long).unwrap();
         assert!(sealed.len() <= proto::MAX_SEALED);
+        // The trackers that fit stay, from the front
+        let kept = opened(&sealed).magnet.unwrap();
+        assert!(kept.starts_with(&format!("{}&tr=", magnet(1))), "{kept}");
+        assert!(kept.matches("&tr=").count() < 400);
+        // Names too long for the cap are cut
+        let named = Offer {
+            name: "x".repeat(20_000),
+            ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
+        };
+        let sealed = seal_offer(&host, "K7QM2X", &member.public(), named).unwrap();
+        assert_eq!(opened(&sealed).name.len(), 300);
     }
 }

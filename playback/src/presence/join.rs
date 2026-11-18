@@ -356,8 +356,8 @@ fn room_create(playback: &Playback, session: Option<u64>) -> Result<RoomInfo, Co
     }
 }
 
-/// The error a room call gives outside a room, with the same code and words
-/// as the room team's own; a room test holds the two the same.
+/// The error a room call gives outside a room, here and in the room team's own
+/// calls, which sit above presence and use this one.
 pub(crate) fn not_in_room() -> CoreError {
     CoreError::service(
         anibeam_contract::i18n::tr("core-room-service", &[]),

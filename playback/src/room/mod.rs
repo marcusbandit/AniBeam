@@ -45,6 +45,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::sync::{Clock, Drift, LocalTick};
 use crate::presence::JoinRooms;
+use crate::presence::join::not_in_room;
 use crate::{Follower, Playback};
 use anibeam_contract::*;
 use anibeam_downloads::Downloads;
@@ -338,6 +339,16 @@ impl Active {
         self.fetch_error = None;
     }
 
+    /// Stops what the room runs here: Get media, and the connection's task, which says
+    /// goodbye first when `bye`.
+    fn end(&mut self, bye: bool) {
+        self.stop_fetch();
+        if bye {
+            self.send(ClientMsg::Bye);
+        }
+        self.cancel.cancel();
+    }
+
     fn is_host(&self) -> bool {
         self.you
             .is_some_and(|you| self.members.iter().any(|m| m.id == you && m.host))
@@ -485,6 +496,17 @@ fn apply(session: u64, playing: bool, seek_to: Option<f64>, speed: f64) -> Say {
     )
 }
 
+/// The room paused at the start of its timeline, as of `at_ms` on the relay's clock.
+fn at_start(at_ms: u64, rev: u64) -> PlayState {
+    PlayState {
+        playing: false,
+        position: 0.0,
+        rate: 1.0,
+        at_ms,
+        rev,
+    }
+}
+
 /// Milliseconds since the Unix epoch on this machine's clock.
 pub(crate) fn local_ms() -> u64 {
     SystemTime::now()
@@ -500,10 +522,6 @@ pub(crate) fn error(code: &str, words: Words) -> CoreError {
         code.to_string(),
         words.render(),
     )
-}
-
-fn not_in_room() -> CoreError {
-    error("not_in_room", anibeam_contract::words!("core-room-not-in"))
 }
 
 // A name as the relay takes it, and whether a relay address can be used: the
@@ -620,22 +638,15 @@ fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreErro
         Some(e) => format!("for {} {}", e.series_title, e.episode_key),
         None => "with nothing picked yet".into(),
     };
-    rooms.services.bus.emit_said(
-        Level::Info,
-        Stage::Playback,
-        Some(anibeam_contract::words!(
-            "core-room-created",
-            code = &info.code
-        )),
+    announce(
+        rooms,
+        anibeam_contract::words!("core-room-created", code = &info.code),
         format!(
             "Room {} created on {} {what}",
             info.code,
             anibeam_net::url_shown(&relay),
         ),
-        None,
-        EventBody::RoomChanged {
-            room: Some(info.clone()),
-        },
+        &info,
     );
     Ok(info)
 }
@@ -662,24 +673,31 @@ fn join(rooms: &Arc<Rooms>, code: &str) -> Result<RoomInfo, CoreError> {
             session: None,
         },
     )?;
-    rooms.services.bus.emit_said(
-        Level::Info,
-        Stage::Playback,
-        Some(anibeam_contract::words!(
-            "core-room-joined",
-            code = &info.code
-        )),
+    announce(
+        rooms,
+        anibeam_contract::words!("core-room-joined", code = &info.code),
         format!(
             "Joined room {} on {}",
             info.code,
             anibeam_net::url_shown(&relay)
         ),
+        &info,
+    );
+    Ok(info)
+}
+
+/// Says this member is in a room now, made or joined, and what it is.
+fn announce(rooms: &Rooms, words: Words, message: String, info: &RoomInfo) {
+    rooms.services.bus.emit_said(
+        Level::Info,
+        Stage::Playback,
+        Some(words),
+        message,
         None,
         EventBody::RoomChanged {
             room: Some(info.clone()),
         },
     );
-    Ok(info)
 }
 
 /// Starts the room's task and waits for its first welcome.
@@ -692,13 +710,7 @@ fn start(rooms: &Arc<Rooms>, b: Begin) -> Result<RoomInfo, CoreError> {
     let (first, answer) = oneshot::channel();
     let hosting = b.session.is_some();
     let keys = Arc::new(seal::Keys::new());
-    let paused = PlayState {
-        playing: false,
-        position: 0.0,
-        rate: 1.0,
-        at_ms: 0,
-        rev: 0,
-    };
+    let paused = at_start(0, 0);
     *rooms.lock() = Some(Active {
         serial,
         relay: b.relay.clone(),
@@ -858,13 +870,7 @@ fn attach(rooms: &Rooms, session: u64) -> Result<Option<RoomInfo>, CoreError> {
             a.offset = 0.0;
             a.offset_fixed = true;
             a.suggested = None;
-            let reset = PlayState {
-                playing: false,
-                position: 0.0,
-                rate: 1.0,
-                at_ms: a.clock.server_now(local_ms()),
-                rev: a.relayed.rev,
-            };
+            let reset = at_start(a.clock.server_now(local_ms()), a.relayed.rev);
             a.settle(a.relayed);
             a.state = reset;
             a.episode = Some(mine.clone());
@@ -1084,9 +1090,7 @@ fn leave(rooms: &Rooms) {
     let Some(mut a) = taken else {
         return;
     };
-    a.stop_fetch();
-    a.send(ClientMsg::Bye);
-    a.cancel.cancel();
+    a.end(true);
     rooms.services.bus.emit_said(
         Level::Info,
         Stage::Playback,
@@ -1100,9 +1104,7 @@ fn leave(rooms: &Rooms) {
 /// The core is closing: say goodbye, quietly.
 pub fn shutdown(rooms: &Rooms) {
     if let Some(mut a) = rooms.lock().take() {
-        a.stop_fetch();
-        a.send(ClientMsg::Bye);
-        a.cancel.cancel();
+        a.end(true);
     }
 }
 
@@ -1259,13 +1261,7 @@ fn on_welcome(rooms: &Rooms, serial: u64, you: MemberId, room: RoomView, server_
             .flatten()
             .filter(|mine| !same(Some(mine), room.episode.as_ref()));
         if let Some(mine) = remake {
-            a.state = PlayState {
-                playing: false,
-                position: 0.0,
-                rate: 1.0,
-                at_ms: a.clock.server_now(local_ms()),
-                rev: room.state.rev,
-            };
+            a.state = at_start(a.clock.server_now(local_ms()), room.state.rev);
             a.episode = Some(mine.clone());
             a.send(ClientMsg::Episode { episode: mine });
             to_match = None;
@@ -1566,19 +1562,11 @@ fn on_lost(rooms: &Rooms, serial: u64) -> bool {
 /// The room is gone: the relay closed it or refused this member, or two minutes
 /// of trying again came to nothing.
 fn finish(rooms: &Rooms, serial: u64) {
-    let taken = {
-        let mut slot = rooms.lock();
-        if slot.as_ref().is_some_and(|a| a.serial == serial) {
-            slot.take()
-        } else {
-            None
-        }
-    };
+    let taken = rooms.lock().take_if(|a| a.serial == serial);
     let Some(mut a) = taken else {
         return;
     };
-    a.stop_fetch();
-    a.cancel.cancel();
+    a.end(false);
     rooms.services.bus.emit_said(
         Level::Warn,
         Stage::Playback,
@@ -1777,12 +1765,5 @@ mod tests {
         assert!(!relay_ok("rooms.example.com"));
         assert!(!relay_ok("https://"));
         assert!(!relay_ok(""));
-    }
-
-    /// Discord's join answers a call that needs a room with the room's own
-    /// error, though presence, below the room, builds it itself (#854).
-    #[test]
-    fn presence_says_not_in_room_as_the_room_does() {
-        assert_eq!(crate::presence::join::not_in_room(), not_in_room());
     }
 }

@@ -27,6 +27,15 @@ const INFO: &[u8] = b"anibeam room seal v1";
 
 const NONCE: usize = 24;
 
+/// What Poly1305 adds to every ciphertext.
+const TAG: usize = 16;
+
+/// How long a payload of `plain` bytes is once sealed: the base64 of the nonce, the
+/// ciphertext and its tag.
+pub fn sealed_len(plain: usize) -> usize {
+    (NONCE + plain + TAG).div_ceil(3) * 4
+}
+
 /// This member's key pair for one room.
 pub struct Keys {
     secret: StaticSecret,
@@ -203,6 +212,16 @@ mod tests {
         let to_member = host.seal(CODE, &member.public(), b"offer").unwrap();
         // The host opening its own payload as if the member had sent it
         assert_eq!(host.open(CODE, &member.public(), &to_member), None);
+    }
+
+    /// The length a payload seals to is known before it is sealed.
+    #[test]
+    fn a_sealed_length_follows_from_the_payload_s() {
+        let (host, member) = (Keys::new(), Keys::new());
+        for n in [0, 1, 2, 3, 100, 8000] {
+            let sealed = host.seal(CODE, &member.public(), &vec![7; n]).unwrap();
+            assert_eq!(sealed.len(), sealed_len(n), "{n} bytes");
+        }
     }
 
     #[test]
