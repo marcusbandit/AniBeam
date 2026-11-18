@@ -2128,6 +2128,8 @@ mod tests {
         let c = anibeam_foundation::store::testing::conn();
         c.execute_batch(
             "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO anilist_media (id, mal_id, media_type, title_romaji) VALUES
+                 (10, 110, 'ANIME', 'a'), (20, 120, 'ANIME', 'b');
              INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id, mal_id, hidden) VALUES
                  (1, 1, 'show', '/tv/a', 'a', 0, 10, 110, 1),
                  (2, 1, 'show', '/tv/b', 'b', 0, 20, 120, 0);",
