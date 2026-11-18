@@ -1088,6 +1088,8 @@ mod tests {
                 .add_peeked(&r, "Show", peeked, Vec::new())
                 .await
                 .unwrap();
+            // While it checks its files, its progress counts the bytes checked.
+            settled(&engine, &hash).await;
             let h = engine.handle(&hash).unwrap();
             let total = h.stats().total_bytes;
             for _ in 0..1200 {
