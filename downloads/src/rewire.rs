@@ -45,24 +45,20 @@ fn split(query: &str) -> (Vec<String>, Vec<String>) {
     let mut excluded = Vec::new();
     for m in FIELDS.find_iter(query) {
         let field = m.as_str();
-        if let Some(rest) = field.strip_prefix('-')
-            && !rest.is_empty()
-        {
-            let core = rest.trim_matches('"').trim();
-            if !core.is_empty() {
-                excluded.push(core.to_string());
-            }
-            continue;
-        }
-        // qBittorrent reads `[` as a wildcard set, and a feed title rarely
-        // carries a group's brackets anyway: the word alone
-        let core = field
+        let (into, word) = match field.strip_prefix('-') {
+            Some(rest) if !rest.is_empty() => (&mut excluded, rest),
+            _ => (&mut positive, field),
+        };
+        // qBittorrent reads `[` as a wildcard set, in a rule's exclusions as
+        // much as in its words, and a feed title rarely carries a group's
+        // brackets anyway: the word alone
+        let core = word
             .trim_matches('"')
             .trim_start_matches('[')
             .trim_end_matches(']')
             .trim();
         if !core.is_empty() {
-            positive.push(core.to_string());
+            into.push(core.to_string());
         }
     }
     (positive, excluded)
@@ -236,6 +232,11 @@ mod tests {
         assert_eq!(t.not, vec!["x265"]);
 
         assert!(local_terms("Frieren 1080p", "Frieren 1080p").is_empty());
+
+        // An excluded group loses its brackets as a wanted one does
+        let t = local_terms("Show -[Group-raws] [TBK]", "Show");
+        assert_eq!(t.must, vec!["TBK"]);
+        assert_eq!(t.not, vec!["Group-raws"]);
     }
 
     #[test]

@@ -86,6 +86,10 @@ pub struct Followup {
     pub series: Option<u64>,
     #[serde(default)]
     pub replace: Vec<Replacement>,
+    /// The client has listed the bound torrent: from then on a torrent
+    /// that is gone from its list was removed rather than still arriving.
+    #[serde(default)]
+    pub seen: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -493,6 +497,7 @@ pub fn prepare(
             sequential: options.sequential,
             series: options.series,
             replace: entries,
+            seen: false,
         });
     }
     Ok(out)
@@ -725,6 +730,7 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
         else {
             continue;
         };
+        f.seen = true;
         if f.sequential {
             match client
                 .set_sequential(std::slice::from_ref(&t.hash), true)
@@ -781,17 +787,21 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
         if !f.sequential && f.replace.is_empty() {
             return false;
         }
-        if now - f.created_at > MAX_AGE_SECS {
-            return false;
-        }
-        if f.hash.is_empty() {
-            return now - f.created_at <= UNBOUND_AGE_SECS;
-        }
-        live.contains(&f.hash.to_lowercase())
+        now - f.created_at <= MAX_AGE_SECS && waits(f, &live, now)
     });
     if let Err(e) = save_changes(services, &before, &fus) {
         tracing::warn!("download followups not saved: {e}");
     }
+}
+
+/// Whether a followup still has a torrent to wait for: one the client
+/// lists now, or one it has not listed yet (unbound, or bound from a magnet
+/// before the client took it) that is young enough to still arrive.
+fn waits(f: &Followup, live: &HashSet<String>, now: i64) -> bool {
+    if !f.hash.is_empty() && live.contains(&f.hash.to_lowercase()) {
+        return true;
+    }
+    !f.seen && now - f.created_at <= UNBOUND_AGE_SECS
 }
 
 /// Trashes the old files of one episode and tidies the old torrents.
@@ -920,6 +930,7 @@ mod tests {
             sequential: false,
             series: Some(1),
             replace: Vec::new(),
+            seen: false,
         }
     }
 
@@ -1423,5 +1434,33 @@ mod tests {
         assert_eq!(got, vec![bound, c]);
         // A tick that changed nothing changes nothing
         assert!(diff(&[followup("x", 1)], &[followup("x", 1)]).is_empty());
+    }
+
+    #[test]
+    fn a_followup_waits_for_a_torrent_the_client_has_not_listed_yet() {
+        let day = 86_400;
+        let live: HashSet<String> = HashSet::from(["aa".to_string()]);
+        let unbound = followup("a", 0);
+        assert!(waits(&unbound, &live, day));
+        assert!(!waits(&unbound, &live, 4 * day));
+        // Bound from a magnet before the client took it
+        let from_magnet = Followup {
+            hash: "bb".into(),
+            ..followup("b", 0)
+        };
+        assert!(waits(&from_magnet, &live, 60));
+        assert!(!waits(&from_magnet, &live, 4 * day));
+        // Listed once, then removed from the client
+        let removed = Followup {
+            seen: true,
+            ..from_magnet.clone()
+        };
+        assert!(!waits(&removed, &live, 60));
+        let listed = Followup {
+            hash: "AA".into(),
+            seen: true,
+            ..followup("c", 0)
+        };
+        assert!(waits(&listed, &live, 20 * day));
     }
 }
