@@ -209,6 +209,9 @@ Window {
         active: Shell.driveOut !== ""
         sourceComponent: Driver { hostWindow: window; hostFrame: frame; outDir: Shell.driveOut; evaluate: window.driveEval }
     }
+    // `anibeam ctl` (#1205): steps from the control socket, run against this window as it is
+    // on screen, through the same driver and the same eval scope as a drive script
+    Control { id: control; hostWindow: window; hostFrame: frame; evaluate: window.driveEval }
     // A drive script's {"eval": ...}: direct eval here, so window, frame and theme resolve,
     // and `vars` holds what earlier evals stored with "as".
     function driveEval(src, vars) { return eval(src) }
