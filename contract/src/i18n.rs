@@ -56,40 +56,12 @@ impl Lang {
 
     /// The BCP 47 tag, which is also the language's folder under `i18n/`.
     pub fn code(self) -> &'static str {
-        match self {
-            Lang::En => "en",
-            Lang::Da => "da",
-            Lang::De => "de",
-            Lang::Es => "es",
-            Lang::Fr => "fr",
-            Lang::PtBr => "pt-BR",
-            Lang::It => "it",
-            Lang::Nl => "nl",
-            Lang::Pl => "pl",
-            Lang::Ru => "ru",
-            Lang::Ja => "ja",
-            Lang::Ko => "ko",
-            Lang::ZhCn => "zh-CN",
-        }
+        LANGS[self.index()].code
     }
 
     /// The language's name in itself, as a picker shows it: "Dansk", "日本語".
     pub fn native_name(self) -> &'static str {
-        match self {
-            Lang::En => "English",
-            Lang::Da => "Dansk",
-            Lang::De => "Deutsch",
-            Lang::Es => "Español",
-            Lang::Fr => "Français",
-            Lang::PtBr => "Português (Brasil)",
-            Lang::It => "Italiano",
-            Lang::Nl => "Nederlands",
-            Lang::Pl => "Polski",
-            Lang::Ru => "Русский",
-            Lang::Ja => "日本語",
-            Lang::Ko => "한국어",
-            Lang::ZhCn => "简体中文",
-        }
+        LANGS[self.index()].name
     }
 
     /// The language a locale string asks for, in any of the shapes systems hand out:
@@ -105,21 +77,10 @@ impl Lang {
             .next()
             .unwrap_or_default()
             .to_ascii_lowercase();
-        match lang.as_str() {
-            "da" => Lang::Da,
-            "de" => Lang::De,
-            "es" => Lang::Es,
-            "fr" => Lang::Fr,
-            "pt" => Lang::PtBr,
-            "it" => Lang::It,
-            "nl" => Lang::Nl,
-            "pl" => Lang::Pl,
-            "ru" => Lang::Ru,
-            "ja" => Lang::Ja,
-            "ko" => Lang::Ko,
-            "zh" => Lang::ZhCn,
-            _ => Lang::En,
-        }
+        Lang::ALL
+            .into_iter()
+            .find(|l| l.code().split('-').next() == Some(lang.as_str()))
+            .unwrap_or(Lang::En)
     }
 
     /// The language with this exact code from [`Lang::code`], as a saved setting holds it.
@@ -178,12 +139,22 @@ macro_rules! num_arg {
 }
 num_arg!(i32, i64, u32, u64, usize, f32, f64);
 
-/// One language's code and its files, in the order they are added to its bundle.
-macro_rules! files {
-    ($code:literal) => {
-        (
-            $code,
-            [
+/// What the app keeps of one language: its tag, its name in itself, the locale chrono
+/// names months and weekdays in, and its files, in the order they go into its bundle.
+struct Info {
+    code: &'static str,
+    name: &'static str,
+    locale: chrono::Locale,
+    files: [(&'static str, &'static str); 3],
+}
+
+macro_rules! lang {
+    ($code:literal, $name:literal, $locale:ident) => {
+        Info {
+            code: $code,
+            name: $name,
+            locale: chrono::Locale::$locale,
+            files: [
                 (
                     "core.ftl",
                     include_str!(concat!("../../i18n/", $code, "/core.ftl")),
@@ -197,26 +168,25 @@ macro_rules! files {
                     include_str!(concat!("../../i18n/", $code, "/android.ftl")),
                 ),
             ],
-        )
+        }
     };
 }
 
-/// Every file of every language, in [`Lang::ALL`]'s order; a test holds each code to its
-/// place.
-const CATALOG: [(&str, [(&str, &str); 3]); 13] = [
-    files!("en"),
-    files!("da"),
-    files!("de"),
-    files!("es"),
-    files!("fr"),
-    files!("pt-BR"),
-    files!("it"),
-    files!("nl"),
-    files!("pl"),
-    files!("ru"),
-    files!("ja"),
-    files!("ko"),
-    files!("zh-CN"),
+/// Every language, in [`Lang::ALL`]'s order.
+const LANGS: [Info; 13] = [
+    lang!("en", "English", en_GB),
+    lang!("da", "Dansk", da_DK),
+    lang!("de", "Deutsch", de_DE),
+    lang!("es", "Español", es_ES),
+    lang!("fr", "Français", fr_FR),
+    lang!("pt-BR", "Português (Brasil)", pt_BR),
+    lang!("it", "Italiano", it_IT),
+    lang!("nl", "Nederlands", nl_NL),
+    lang!("pl", "Polski", pl_PL),
+    lang!("ru", "Русский", ru_RU),
+    lang!("ja", "日本語", ja_JP),
+    lang!("ko", "한국어", ko_KR),
+    lang!("zh-CN", "简体中文", zh_CN),
 ];
 
 type Bundle = FluentBundle<FluentResource>;
@@ -235,7 +205,7 @@ fn bundle(lang: Lang) -> &'static Bundle {
         if lang.decimal_mark() == ',' {
             bundle.set_formatter(Some(decimal_comma));
         }
-        for (name, text) in CATALOG[lang.index()].1 {
+        for (name, text) in LANGS[lang.index()].files {
             let resource = FluentResource::try_new(text.to_string()).unwrap_or_else(|(r, e)| {
                 tracing::warn!("i18n/{}/{name}: {} parse errors", lang.code(), e.len());
                 r
@@ -251,22 +221,7 @@ fn bundle(lang: Lang) -> &'static Bundle {
 /// The locale chrono names months and weekdays in, for a date pattern from the catalog
 /// formatted with `format_localized`. English reads the British way: 17 Oct, 24-hour.
 pub fn chrono_locale(lang: Lang) -> chrono::Locale {
-    use chrono::Locale as L;
-    match lang {
-        Lang::En => L::en_GB,
-        Lang::Da => L::da_DK,
-        Lang::De => L::de_DE,
-        Lang::Es => L::es_ES,
-        Lang::Fr => L::fr_FR,
-        Lang::PtBr => L::pt_BR,
-        Lang::It => L::it_IT,
-        Lang::Nl => L::nl_NL,
-        Lang::Pl => L::pl_PL,
-        Lang::Ru => L::ru_RU,
-        Lang::Ja => L::ja_JP,
-        Lang::Ko => L::ko_KR,
-        Lang::ZhCn => L::zh_CN,
-    }
+    LANGS[lang.index()].locale
 }
 
 /// Fluent's formatter for a language that writes "12,5": every number with a fraction.
@@ -358,7 +313,7 @@ fn format(bundle: &Bundle, id: &str, args: &[(&str, Arg)]) -> Option<(String, bo
     let mut fluent_args = FluentArgs::new();
     for (key, arg) in args {
         let value = match arg {
-            Arg::Str(s) => FluentValue::from(s.to_string()),
+            Arg::Str(s) => FluentValue::from(s.as_ref()),
             Arg::Num(n) => FluentValue::from(*n),
         };
         fluent_args.set(*key, value);
@@ -404,10 +359,9 @@ mod tests {
     }
 
     #[test]
-    fn the_catalog_lists_each_language_at_its_place() {
+    fn every_language_is_at_its_place() {
         for (i, lang) in Lang::ALL.into_iter().enumerate() {
             assert_eq!(lang.index(), i);
-            assert_eq!(CATALOG[i].0, lang.code());
         }
     }
 
@@ -415,7 +369,7 @@ mod tests {
     fn every_file_parses_and_no_id_is_defined_twice() {
         for lang in Lang::ALL {
             let mut bundle: Bundle = FluentBundle::new_concurrent(vec![]);
-            for (name, text) in CATALOG[lang.index()].1 {
+            for (name, text) in LANGS[lang.index()].files {
                 let resource = FluentResource::try_new(text.to_string())
                     .unwrap_or_else(|(_, e)| panic!("i18n/{}/{name}: {e:?}", lang.code()));
                 bundle
@@ -429,62 +383,75 @@ mod tests {
     /// variables it reads.
     fn patterns(lang: Lang) -> Vec<(String, &'static str, BTreeSet<String>)> {
         let mut out = Vec::new();
-        for (name, text) in CATALOG[lang.index()].1 {
+        for (name, text) in LANGS[lang.index()].files {
             let resource = FluentResource::try_new(text.to_string()).unwrap();
             for entry in resource.entries() {
                 let Entry::Message(m) = entry else { continue };
                 if let Some(value) = &m.value {
-                    out.push((m.id.name.to_string(), name, vars(value)));
+                    out.push((m.id.name.to_string(), name, Refs::of(value).vars));
                 }
                 for a in &m.attributes {
                     let id = format!("{}.{}", m.id.name, a.id.name);
-                    out.push((id, name, vars(&a.value)));
+                    out.push((id, name, Refs::of(&a.value).vars));
                 }
             }
         }
         out
     }
 
-    fn vars(value: &ast::Pattern<&str>) -> BTreeSet<String> {
-        fn inline(e: &ast::InlineExpression<&str>, out: &mut BTreeSet<String>) {
+    /// The variables and the `-terms` patterns read, however deep in a select or a call.
+    #[derive(Default)]
+    struct Refs {
+        vars: BTreeSet<String>,
+        terms: BTreeSet<String>,
+    }
+
+    impl Refs {
+        fn of(p: &ast::Pattern<&str>) -> Refs {
+            let mut refs = Refs::default();
+            refs.pattern(p);
+            refs
+        }
+
+        fn pattern(&mut self, p: &ast::Pattern<&str>) {
+            for el in &p.elements {
+                if let ast::PatternElement::Placeable { expression } = el {
+                    self.expr(expression);
+                }
+            }
+        }
+
+        fn expr(&mut self, e: &ast::Expression<&str>) {
+            match e {
+                ast::Expression::Inline(e) => self.inline(e),
+                ast::Expression::Select { selector, variants } => {
+                    self.inline(selector);
+                    variants.iter().for_each(|v| self.pattern(&v.value));
+                }
+            }
+        }
+
+        fn inline(&mut self, e: &ast::InlineExpression<&str>) {
             match e {
                 ast::InlineExpression::VariableReference { id } => {
-                    out.insert(id.name.to_string());
+                    self.vars.insert(id.name.to_string());
                 }
-                ast::InlineExpression::FunctionReference { arguments, .. } => call(arguments, out),
-                ast::InlineExpression::TermReference {
-                    arguments: Some(arguments),
-                    ..
-                } => call(arguments, out),
-                ast::InlineExpression::Placeable { expression } => expr(expression, out),
+                ast::InlineExpression::TermReference { id, arguments, .. } => {
+                    self.terms.insert(id.name.to_string());
+                    if let Some(a) = arguments {
+                        self.call(a);
+                    }
+                }
+                ast::InlineExpression::FunctionReference { arguments, .. } => self.call(arguments),
+                ast::InlineExpression::Placeable { expression } => self.expr(expression),
                 _ => {}
             }
         }
-        fn call(a: &ast::CallArguments<&str>, out: &mut BTreeSet<String>) {
-            a.positional.iter().for_each(|e| inline(e, out));
-            a.named.iter().for_each(|n| inline(&n.value, out));
+
+        fn call(&mut self, a: &ast::CallArguments<&str>) {
+            a.positional.iter().for_each(|e| self.inline(e));
+            a.named.iter().for_each(|n| self.inline(&n.value));
         }
-        fn expr(e: &ast::Expression<&str>, out: &mut BTreeSet<String>) {
-            match e {
-                ast::Expression::Inline(e) => inline(e, out),
-                ast::Expression::Select { selector, variants } => {
-                    inline(selector, out);
-                    for v in variants {
-                        pattern(&v.value, out);
-                    }
-                }
-            }
-        }
-        fn pattern(p: &ast::Pattern<&str>, out: &mut BTreeSet<String>) {
-            for el in &p.elements {
-                if let ast::PatternElement::Placeable { expression } = el {
-                    expr(expression, out);
-                }
-            }
-        }
-        let mut out = BTreeSet::new();
-        pattern(value, &mut out);
-        out
     }
 
     #[test]
@@ -512,68 +479,31 @@ mod tests {
         patterns(lang).into_iter().map(|(id, _, _)| id).collect()
     }
 
-    /// The `-terms` a pattern refers to, however deep in a select or a call.
-    fn terms_in(p: &ast::Pattern<&str>, out: &mut BTreeSet<String>) {
-        fn inline(e: &ast::InlineExpression<&str>, out: &mut BTreeSet<String>) {
-            match e {
-                ast::InlineExpression::TermReference { id, arguments, .. } => {
-                    out.insert(id.name.to_string());
-                    if let Some(a) = arguments {
-                        call(a, out);
-                    }
-                }
-                ast::InlineExpression::FunctionReference { arguments, .. } => call(arguments, out),
-                ast::InlineExpression::Placeable { expression } => expr(expression, out),
-                _ => {}
-            }
-        }
-        fn call(a: &ast::CallArguments<&str>, out: &mut BTreeSet<String>) {
-            a.positional.iter().for_each(|e| inline(e, out));
-            a.named.iter().for_each(|n| inline(&n.value, out));
-        }
-        fn expr(e: &ast::Expression<&str>, out: &mut BTreeSet<String>) {
-            match e {
-                ast::Expression::Inline(e) => inline(e, out),
-                ast::Expression::Select { selector, variants } => {
-                    inline(selector, out);
-                    variants.iter().for_each(|v| terms_in(&v.value, out));
-                }
-            }
-        }
-        for el in &p.elements {
-            if let ast::PatternElement::Placeable { expression } = el {
-                expr(expression, out);
-            }
-        }
-    }
-
     #[test]
     fn every_term_a_language_uses_is_defined_in_that_language() {
         // A bundle reads only its own language's files, so a `-term` defined in English alone
         // is an error everywhere else, and the whole message falls back to English
         for lang in Lang::ALL {
-            let (mut defined, mut used) = (BTreeSet::new(), BTreeSet::new());
-            for (_, text) in CATALOG[lang.index()].1 {
+            let (mut defined, mut used) = (BTreeSet::new(), Refs::default());
+            for (_, text) in LANGS[lang.index()].files {
                 let resource = FluentResource::try_new(text.to_string()).unwrap();
                 for entry in resource.entries() {
                     match entry {
                         Entry::Term(t) => {
                             defined.insert(t.id.name.to_string());
-                            terms_in(&t.value, &mut used);
+                            used.pattern(&t.value);
                         }
                         Entry::Message(m) => {
                             if let Some(v) = &m.value {
-                                terms_in(v, &mut used);
+                                used.pattern(v);
                             }
-                            m.attributes
-                                .iter()
-                                .for_each(|a| terms_in(&a.value, &mut used));
+                            m.attributes.iter().for_each(|a| used.pattern(&a.value));
                         }
                         _ => {}
                     }
                 }
             }
-            let missing: Vec<_> = used.difference(&defined).collect();
+            let missing: Vec<_> = used.terms.difference(&defined).collect();
             assert!(
                 missing.is_empty(),
                 "i18n/{} uses {missing:?} without defining them",
