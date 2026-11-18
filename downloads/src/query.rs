@@ -1,10 +1,9 @@
 //! A feed's search, read back from its feed URL.
 
 /// A feed's `q` parameter, read as `rewire::search_param` reads a feed's
-/// search, with any `#fragment` left out first. `None` for a URL with no
-/// query, no `q` in it, or a `q` that decodes to nothing but spaces.
+/// search. `None` for a URL with no query, no `q` in it, or a `q` that
+/// decodes to nothing but spaces.
 pub fn decode_search_query(url: &str) -> Option<String> {
-    let url = url.split('#').next().unwrap_or(url);
     crate::rewire::search_param(url)
         .filter(|(key, _)| key == "q")
         .map(|(_, value)| value)
@@ -25,6 +24,7 @@ mod tests {
                 "https://t.example/?q=Frieren%201080p#top",
                 Some("Frieren 1080p"),
             ),
+            ("https://t.example/#/feed?q=Frieren", Some("Frieren")),
             ("https://t.example/?page=rss&c=1_2", None),
             ("https://t.example/?q=&s=Frieren", None),
             ("https://t.example/feed", None),
