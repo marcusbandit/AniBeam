@@ -358,11 +358,11 @@ fn matching(w: &AppWindow, label: &str) -> Vec<Element> {
     hits
 }
 
-/// What a target lands on: the element, if it named one, and the point.
-fn resolve(
-    w: &AppWindow,
-    target: &Target,
-) -> Result<(Option<Element>, (f32, f32), String), String> {
+/// Where a touch lands: the element, if a label named one, the point, and how to say it.
+type Landing = (Option<Element>, (f32, f32), String);
+
+/// What a target lands on.
+fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
     match target {
         Target::Point(x, y) => Ok((None, (*x, *y), format!("{x:.0},{y:.0}"))),
         Target::Label { label, nth } => {

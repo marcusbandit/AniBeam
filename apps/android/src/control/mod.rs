@@ -260,7 +260,7 @@ fn perf(secs: f32) -> String {
         })
         .filter(|(_, _, ms)| *ms > 0)
         .collect();
-    busy.sort_by(|a, b| b.2.cmp(&a.2));
+    busy.sort_by_key(|b| std::cmp::Reverse(b.2));
     out.push(format!(
         "threads: {}, {} used the CPU",
         after.len(),
