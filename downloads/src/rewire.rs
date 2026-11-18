@@ -16,15 +16,11 @@
 //! already moves its terms into the rule (its per-show feed), and a
 //! filtered-rss endpoint searches server-side.
 
-use std::sync::LazyLock;
-
-use regex::Regex;
 use serde_json::Value;
 
 use anibeam_contract::{FeedEntry, Release};
-
-/// anirss's own field split: a `-"quoted phrase"`, a `"quoted"` or a word.
-static FIELDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"-?"[^"]*"|\S+"#).unwrap());
+// anirss's own field split: a `-"quoted phrase"`, a `"quoted"` or a word
+use anibeam_releases::endpoints::FIELD_RE as FIELDS;
 
 /// What the search narrowed on anirss's side, past the query the endpoint
 /// was asked: words every release must hold, and words none may.
@@ -72,55 +68,45 @@ fn contains(list: &[String], word: &str) -> bool {
     list.iter().any(|w| w.eq_ignore_ascii_case(word))
 }
 
+/// Adds each of `words` that neither `into` nor `skip` holds yet, case aside.
+fn add_new(into: &mut Vec<String>, words: impl IntoIterator<Item = String>, skip: &[String]) {
+    for w in words {
+        if !contains(skip, &w) && !contains(into, &w) {
+            into.push(w);
+        }
+    }
+}
+
 /// The words in `query` that `wire` (the query the endpoint was asked)
 /// does not carry.
 pub fn local_terms(query: &str, wire: &str) -> LocalTerms {
     let (q_pos, q_not) = split(query);
     let (w_pos, w_not) = split(wire);
     let mut out = LocalTerms::default();
-    for w in q_pos {
-        if !contains(&w_pos, &w) && !contains(&out.must, &w) {
-            out.must.push(w);
-        }
-    }
-    for w in q_not {
-        if !contains(&w_not, &w) && !contains(&out.not, &w) {
-            out.not.push(w);
-        }
-    }
+    add_new(&mut out.must, q_pos, &w_pos);
+    add_new(&mut out.not, q_not, &w_not);
     out
 }
 
 /// The rule as qBittorrent holds it, reading `feed_url` and keeping the
 /// local terms: each must-word added to `mustContain` (space is qBittorrent's
-/// AND), each not-word to `mustNotContain` (`|` is its OR). Everything else
-/// in the rule (save path, tags, episode filter) stays as anirss wrote it.
+/// AND, so a phrase goes in as its words), each not-word to `mustNotContain`
+/// (`|` is its OR). A word the rule already holds is not added again.
+/// Everything else in the rule (save path, tags, episode filter) stays as
+/// anirss wrote it.
 pub fn narrowed(def: &Value, terms: &LocalTerms, feed_url: &str) -> Value {
     let mut out = def.clone();
-    let must_now = def
-        .get("mustContain")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let mut must: Vec<String> = must_now.split_whitespace().map(str::to_string).collect();
-    for w in &terms.must {
-        if !contains(&must, w) {
-            must.push(w.clone());
-        }
-    }
-    let not_now = def
-        .get("mustNotContain")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let mut not: Vec<String> = not_now
+    let words = |s: &str| s.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+    let mut must = words(def["mustContain"].as_str().unwrap_or(""));
+    add_new(&mut must, terms.must.iter().flat_map(|w| words(w)), &[]);
+    let mut not: Vec<String> = def["mustNotContain"]
+        .as_str()
+        .unwrap_or("")
         .split('|')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    for w in &terms.not {
-        if !contains(&not, w) {
-            not.push(w.clone());
-        }
-    }
+    add_new(&mut not, terms.not.iter().cloned(), &[]);
     if let Some(map) = out.as_object_mut() {
         map.insert("mustContain".to_string(), Value::String(must.join(" ")));
         map.insert("mustNotContain".to_string(), Value::String(not.join("|")));
@@ -262,6 +248,20 @@ mod tests {
     }
 
     #[test]
+    fn narrowing_again_adds_no_word_twice() {
+        let terms = local_terms("Show 1080p \"AMZN WEB\" -x265", "Show");
+        let once = narrowed(
+            &json!({"mustContain": "", "mustNotContain": ""}),
+            &terms,
+            "u",
+        );
+        assert_eq!(once["mustContain"], "1080p AMZN WEB");
+        let twice = narrowed(&once, &terms, "u");
+        assert_eq!(twice["mustContain"], "1080p AMZN WEB");
+        assert_eq!(twice["mustNotContain"], "x265");
+    }
+
+    #[test]
     fn a_feed_holds_the_picked_releases_by_title() {
         let entry = |t: &str| FeedEntry {
             title: t.to_string(),
@@ -275,9 +275,7 @@ mod tests {
             downloads: None,
             info_hash: String::new(),
         };
-        let pick = |t: &str| -> Release {
-            serde_json::from_value(json!({"title": t, "link": "http://j/dl/other"})).unwrap()
-        };
+        let pick = |t: &str| crate::testing::release(t, "http://j/dl/other");
         let feed = [entry("Show.S03E04-TBK"), entry("Show  S03E05 TBK")];
         assert!(holds_all(
             &feed,

@@ -49,10 +49,10 @@ use anibeam_library::trash;
 use anibeam_releases::facts;
 
 /// Followups still to do, as JSON in the settings table.
-pub const FOLLOWUPS: &str = "download_followups";
+const FOLLOWUPS: &str = "download_followups";
 /// Which endpoint each release came from, so Activity can say where a
 /// download comes from; qBittorrent keeps nothing of the kind.
-pub const SOURCES: &str = "download_sources";
+const SOURCES: &str = "download_sources";
 
 const MAX_AGE_SECS: i64 = 30 * 24 * 3600;
 const UNBOUND_AGE_SECS: i64 = 3 * 24 * 3600;
@@ -63,7 +63,7 @@ const MAX_SOURCES: usize = 400;
 
 /// One episode a new torrent replaces, and the files it replaces.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Replacement {
+pub(crate) struct Replacement {
     pub episode: u32,
     /// The library's files for the episode as they were when asked.
     pub old: Vec<String>,
@@ -71,7 +71,7 @@ pub struct Replacement {
 
 /// What to do to one new torrent once the client has it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Followup {
+pub(crate) struct Followup {
     pub id: u64,
     pub created_at: i64,
     /// The release title, to find the torrent by when the link gave no hash.
@@ -89,10 +89,10 @@ pub struct Followup {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Source {
-    pub key: String,
-    pub endpoint: String,
-    pub at: i64,
+struct Source {
+    key: String,
+    endpoint: String,
+    at: i64,
 }
 
 /// One tick at a time: the page's poll and the burst after an add both
@@ -112,13 +112,9 @@ pub fn names_match(torrent_name: &str, title: &str) -> bool {
     a == b || (a.len() >= 16 && b.len() >= 16 && (a.contains(&b) || b.contains(&a)))
 }
 
-fn read_name(name: &str) -> ReleaseFacts {
-    facts::read_name(name)
-}
-
 /// The whole-number episode a file or torrent name carries.
-pub fn episode_of(name: &str) -> Option<u32> {
-    let f = read_name(name);
+fn episode_of(name: &str) -> Option<u32> {
+    let f = facts::read_name(name);
     if f.batch {
         return None;
     }
@@ -132,7 +128,7 @@ pub fn episode_of(name: &str) -> Option<u32> {
 /// Binds each unbound followup to the torrent that is its own: the earliest
 /// one added since the followup was made whose name matches the title and
 /// that no other followup holds. Returns whether anything bound.
-pub fn bind(followups: &mut [Followup], torrents: &[Torrent]) -> bool {
+fn bind(followups: &mut [Followup], torrents: &[Torrent]) -> bool {
     let mut taken: HashSet<String> = followups
         .iter()
         .filter(|f| !f.hash.is_empty())
@@ -159,7 +155,7 @@ pub fn bind(followups: &mut [Followup], torrents: &[Torrent]) -> bool {
 
 /// The path of each file the torrent wrote, or its content path when the
 /// client gave no file list.
-pub fn written_paths(t: &Torrent, files: &[TorrentFile]) -> Vec<String> {
+fn written_paths(t: &Torrent, files: &[TorrentFile]) -> Vec<String> {
     if files.is_empty() {
         return if t.content_path.is_empty() {
             Vec::new()
@@ -181,7 +177,7 @@ pub fn written_paths(t: &Torrent, files: &[TorrentFile]) -> Vec<String> {
 /// This torrent has finished the file of `episode`. A single-file torrent is
 /// its episode (unless its file name says another); a batch is read file
 /// by file, and a skipped file never counts.
-pub fn episode_ready(episode: u32, t: &Torrent, files: &[TorrentFile]) -> bool {
+fn episode_ready(episode: u32, t: &Torrent, files: &[TorrentFile]) -> bool {
     if files.len() <= 1 {
         let name = files.first().map(|f| f.name.as_str()).unwrap_or(&t.name);
         let said = episode_of(name);
@@ -194,7 +190,7 @@ pub fn episode_ready(episode: u32, t: &Torrent, files: &[TorrentFile]) -> bool {
 
 /// The old files to trash: those the library listed, minus any path the new
 /// torrent wrote.
-pub fn old_to_trash(old: &[String], written: &[String]) -> Vec<String> {
+fn old_to_trash(old: &[String], written: &[String]) -> Vec<String> {
     old.iter()
         .filter(|p| !written.iter().any(|w| same_file(p, w)))
         .cloned()
@@ -228,44 +224,35 @@ fn same_file(a: &str, b: &str) -> bool {
 // The old torrents ------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Effect {
+enum Effect {
     /// Every file of the torrent was trashed: it leaves the client.
     Remove { hash: String },
     /// Some files were: they are set to "do not download".
     Skip { hash: String, ids: Vec<usize> },
 }
 
-/// What to do to the torrents that carried the trashed files. A torrent in
-/// `keep` (the new ones) is never touched, and one whose files are not
-/// all known stays as it is.
-pub fn plan_old(
-    trashed: &[PathBuf],
-    torrents: &[(Torrent, Vec<TorrentFile>)],
-    keep: &HashSet<String>,
-) -> Vec<Effect> {
+/// What to do to the old torrents that carried the trashed files. One with
+/// no file list is judged by its content path alone, so a folder whose
+/// files went one by one stays as it is.
+fn plan_old(trashed: &[PathBuf], torrents: &[(Torrent, Vec<TorrentFile>)]) -> Vec<Effect> {
     let mut out = Vec::new();
     for (t, files) in torrents {
-        if keep.contains(&t.hash.to_lowercase()) {
-            continue;
-        }
-        let paths: Vec<PathBuf> = written_paths(t, files)
-            .into_iter()
-            .map(PathBuf::from)
-            .collect();
+        let paths = written_paths(t, files);
         let hit: Vec<usize> = paths
             .iter()
             .enumerate()
-            .filter(|(_, p)| trashed.contains(p))
+            .filter(|(_, p)| trashed.iter().any(|x| x == Path::new(p)))
             .map(|(i, _)| i)
             .collect();
         if hit.is_empty() {
             continue;
         }
+        // Fewer hits than paths means a file list: a torrent without one has a single path
         if hit.len() == paths.len() {
             out.push(Effect::Remove {
                 hash: t.hash.clone(),
             });
-        } else if !files.is_empty() {
+        } else {
             out.push(Effect::Skip {
                 hash: t.hash.clone(),
                 ids: hit,
@@ -276,7 +263,7 @@ pub fn plan_old(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum CancelPlan {
+enum CancelPlan {
     /// Leave it alone.
     Nothing,
     /// Every episode it fetches is being replaced: it goes, with what it wrote.
@@ -290,7 +277,7 @@ pub enum CancelPlan {
 /// a finished file inside an unfinished batch: the batch goes whole only
 /// when none of its files is done. A file whose episode cannot be read
 /// counts as one that is not being replaced.
-pub fn cancel_plan(replace: &BTreeSet<u32>, t: &Torrent, files: &[TorrentFile]) -> CancelPlan {
+fn cancel_plan(replace: &BTreeSet<u32>, t: &Torrent, files: &[TorrentFile]) -> CancelPlan {
     if t.progress >= 1.0 || replace.is_empty() {
         return CancelPlan::Nothing;
     }
@@ -302,30 +289,23 @@ pub fn cancel_plan(replace: &BTreeSet<u32>, t: &Torrent, files: &[TorrentFile]) 
             _ => CancelPlan::Nothing,
         };
     }
-    let wanted: Vec<(usize, Option<u32>)> = files
+    let wanted = files.iter().filter(|f| f.priority > 0).count();
+    let skip: Vec<usize> = files
         .iter()
         .enumerate()
-        .filter(|(_, f)| f.priority > 0)
-        .map(|(i, f)| (i, episode_of(&f.name)))
+        .filter(|(_, f)| {
+            f.priority > 0
+                && f.progress < 1.0
+                && episode_of(&f.name).is_some_and(|e| replace.contains(&e))
+        })
+        .map(|(i, _)| i)
         .collect();
     // Whole only while nothing of it is finished: a done episode is a playable file, which
     // goes to the trash once its replacement finishes, never before
-    if !wanted.is_empty()
-        && wanted
-            .iter()
-            .all(|(i, e)| files[*i].progress < 1.0 && e.is_some_and(|e| replace.contains(&e)))
-    {
-        return CancelPlan::Whole;
-    }
-    let skip: Vec<usize> = wanted
-        .iter()
-        .filter(|(i, e)| files[*i].progress < 1.0 && e.is_some_and(|e| replace.contains(&e)))
-        .map(|(i, _)| *i)
-        .collect();
-    if skip.is_empty() {
-        CancelPlan::Nothing
-    } else {
-        CancelPlan::Skip(skip)
+    match skip.len() {
+        0 => CancelPlan::Nothing,
+        n if n == wanted => CancelPlan::Whole,
+        _ => CancelPlan::Skip(skip),
     }
 }
 
@@ -343,49 +323,34 @@ fn library_files(
     let rows = stmt.query_map(params![series as i64, episode as f64], |r| {
         r.get::<_, String>(0)
     })?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 fn library_sources(c: &rusqlite::Connection) -> Result<Vec<String>, CoreError> {
     let mut stmt = c.prepare("SELECT path FROM sources")?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-/// What to trash for one replacement, decided against the library as it is
-/// now: only paths the library still lists for this series and episode,
-/// that were asked for, that the new torrent did not write, and that are
-/// plain files. Returns the paths and the library sources for the checks.
-pub fn trash_candidates(
-    c: &rusqlite::Connection,
-    series: u64,
-    entry: &Replacement,
-    written: &[String],
-) -> Result<(Vec<String>, Vec<String>), CoreError> {
-    let listed = library_files(c, series, entry.episode)?;
+/// What to trash for one replacement, decided against `listed`, the
+/// library's files for the episode as they are now: only paths it still
+/// lists, that were asked for, that the new torrent did not write, and that
+/// are plain files. The disk is read here, outside the store.
+fn trash_candidates(listed: &[String], entry: &Replacement, written: &[String]) -> Vec<String> {
     let asked: Vec<String> = entry
         .old
         .iter()
         .filter(|p| listed.contains(p))
         .cloned()
         .collect();
-    let paths: Vec<String> = old_to_trash(&asked, written)
+    old_to_trash(&asked, written)
         .into_iter()
         .filter(|p| {
             std::fs::symlink_metadata(p)
                 .map(|m| m.is_file())
                 .unwrap_or(false)
         })
-        .collect();
-    Ok((paths, library_sources(c)?))
+        .collect()
 }
 
 // Storage ----------------------------------------------------------------------
@@ -425,7 +390,7 @@ fn merge(cur: Vec<Followup>, changes: &HashMap<u64, Option<Followup>>) -> Vec<Fo
         .collect()
 }
 
-fn save_changes(
+async fn save_changes(
     services: &Services,
     before: &[Followup],
     after: &[Followup],
@@ -434,10 +399,22 @@ fn save_changes(
     if changes.is_empty() {
         return Ok(());
     }
-    services.store.write(move |c| {
-        let cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
-        settings::set(c, FOLLOWUPS, &merge(cur, &changes))
-    })
+    services
+        .store
+        .write_async(move |c| {
+            let cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
+            settings::set(c, FOLLOWUPS, &merge(cur, &changes))
+        })
+        .await
+}
+
+/// The hashes of the followups bound to a torrent: the new torrents.
+fn bound(followups: &[Followup]) -> HashSet<String> {
+    followups
+        .iter()
+        .filter(|f| !f.hash.is_empty())
+        .map(|f| f.hash.clone())
+        .collect()
 }
 
 // Asking for a download -------------------------------------------------------------
@@ -446,12 +423,12 @@ fn save_changes(
 /// order or that replaces episodes. The old files are read from the
 /// library here, before anything is added, and an item index that is not
 /// one of the items is refused.
-pub fn prepare(
+pub(crate) fn prepare(
     store: &Store,
     items: &[Release],
     options: &DownloadOptions,
 ) -> Result<Vec<Followup>, CoreError> {
-    let mut replace: HashMap<usize, Vec<u32>> = HashMap::new();
+    let mut replace: HashMap<usize, BTreeSet<u32>> = HashMap::new();
     for r in &options.replace {
         if r.item as usize >= items.len() {
             return Err(CoreError::invalid(
@@ -470,17 +447,18 @@ pub fn prepare(
     let now = now_secs();
     let mut out = Vec::new();
     for (i, item) in items.iter().enumerate() {
-        let mut episodes = replace.remove(&i).unwrap_or_default();
-        episodes.sort_unstable();
-        episodes.dedup();
+        let episodes = replace.remove(&i).unwrap_or_default();
         let mut entries = Vec::new();
         if let Some(series) = options.series {
-            for e in episodes {
-                let old = store.read(|c| library_files(c, series, e))?;
-                if !old.is_empty() {
-                    entries.push(Replacement { episode: e, old });
+            store.read(|c| {
+                for e in episodes {
+                    let old = library_files(c, series, e)?;
+                    if !old.is_empty() {
+                        entries.push(Replacement { episode: e, old });
+                    }
                 }
-            }
+                Ok(())
+            })?;
         }
         if !options.sequential && entries.is_empty() {
             continue;
@@ -499,7 +477,7 @@ pub fn prepare(
 }
 
 /// A line for the job's message: what the download will also do.
-pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
+pub(crate) fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
     let mut bits = Vec::new();
     if options.sequential {
         bits.push("in order".to_string());
@@ -522,7 +500,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
 /// came from, stop the torrents being replaced, and keep reading the client
 /// for a while so a followup binds without waiting for the page. Failures
 /// are logged; the add already happened and must not read as failed.
-pub async fn after_add(
+pub(crate) async fn after_add(
     downloads: &Arc<Downloads>,
     client: &Arc<QbtClient>,
     items: &[Release],
@@ -542,11 +520,7 @@ pub async fn after_add(
             })
             .collect()
     };
-    let new_hashes: HashSet<String> = followups
-        .iter()
-        .filter(|f| !f.hash.is_empty())
-        .map(|f| f.hash.clone())
-        .collect();
+    let new_hashes = bound(&followups);
     let saved = downloads.services.store.write_async(move |c| {
         let mut cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
         let mut next = cur.iter().map(|f| f.id).max().unwrap_or(0);
@@ -585,9 +559,8 @@ pub async fn after_add(
         )
         .await;
     }
-    let (downloads, client) = (downloads.clone(), client.clone());
-    let wants_ticks = options.sequential || !replacing.is_empty();
-    if wants_ticks {
+    if options.sequential || !replacing.is_empty() {
+        let (downloads, client) = (downloads.clone(), client.clone());
         let handle = downloads.services.handle.clone();
         handle.spawn(async move {
             // The client may take a moment to list a torrent it was just given
@@ -633,10 +606,10 @@ async fn cancel_in_flight(
         let plan = cancel_plan(replacing, &t, &files);
         let done = match &plan {
             CancelPlan::Nothing => continue,
-            CancelPlan::Skip(ids) => client
-                .set_file_priority(&t.hash, ids, 0)
-                .await
-                .map(|_| format!("Skipped {} in {}", plural_files(ids.len()), t.name)),
+            CancelPlan::Skip(ids) => client.set_file_priority(&t.hash, ids, 0).await.map(|_| {
+                let files = crate::plural(ids.len() as u64, "file", "files");
+                format!("Skipped {files} in {}", t.name)
+            }),
             CancelPlan::Whole => cancel_whole(services, client, &t).await,
         };
         match done {
@@ -645,14 +618,6 @@ async fn cancel_in_flight(
             }
             Err(e) => tracing::warn!("{} not cancelled: {e}", t.name),
         }
-    }
-}
-
-fn plural_files(n: usize) -> String {
-    if n == 1 {
-        "1 file".to_string()
-    } else {
-        format!("{n} files")
     }
 }
 
@@ -696,7 +661,7 @@ async fn cancel_whole(
 // The tick ---------------------------------------------------------------------
 
 /// One pass over the stored followups against a fresh torrent read.
-pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent]) {
+pub(crate) async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent]) {
     let _one = TICK.lock().await;
     let before = match load(services) {
         Ok(f) if !f.is_empty() => f,
@@ -710,11 +675,7 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
     bind(&mut fus, torrents);
     let now = now_secs();
     let live: HashSet<String> = torrents.iter().map(|t| t.hash.to_lowercase()).collect();
-    let new_hashes: HashSet<String> = fus
-        .iter()
-        .filter(|f| !f.hash.is_empty())
-        .map(|f| f.hash.clone())
-        .collect();
+    let new_hashes = bound(&fus);
     for f in fus.iter_mut() {
         if f.hash.is_empty() {
             continue;
@@ -789,7 +750,7 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
         }
         live.contains(&f.hash.to_lowercase())
     });
-    if let Err(e) = save_changes(services, &before, &fus) {
+    if let Err(e) = save_changes(services, &before, &fus).await {
         tracing::warn!("download followups not saved: {e}");
     }
 }
@@ -804,11 +765,13 @@ async fn replace_episode(
     torrents: &[Torrent],
     new_hashes: &HashSet<String>,
 ) -> Result<(), CoreError> {
-    let entry_c = entry.clone();
-    let written_c = written.to_vec();
-    let (paths, sources) = services
-        .store
-        .read(move |c| trash_candidates(c, series, &entry_c, &written_c))?;
+    let (listed, sources) = services.store.read(|c| {
+        Ok((
+            library_files(c, series, entry.episode)?,
+            library_sources(c)?,
+        ))
+    })?;
+    let paths = trash_candidates(&listed, entry, written);
     if paths.is_empty() {
         return Ok(());
     }
@@ -834,12 +797,12 @@ async fn replace_episode(
         format!(
             "Replaced episode {}: {} {}",
             entry.episode,
-            plural_files(targets.len()),
+            crate::plural(targets.len() as u64, "file", "files"),
             trash::WHERE
         ),
         EventBody::Notice,
     );
-    // The torrents that carried those files
+    // The old torrents that carried those files; the new ones are never touched
     let mut carriers = Vec::new();
     for t in torrents {
         if new_hashes.contains(&t.hash.to_lowercase()) {
@@ -851,7 +814,7 @@ async fn replace_episode(
             carriers.push((t.clone(), files));
         }
     }
-    for effect in plan_old(&targets, &carriers, new_hashes) {
+    for effect in plan_old(&targets, &carriers) {
         let outcome = match &effect {
             Effect::Remove { hash } => client.delete(std::slice::from_ref(hash), false).await,
             Effect::Skip { hash, ids } => client.set_file_priority(hash, ids, 0).await,
@@ -867,7 +830,7 @@ async fn replace_episode(
 
 /// Fills what the torrents' names and the saved sources say: the group and
 /// resolution of the release, and the endpoint it was picked on.
-pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
+pub(crate) fn annotate(services: &Services, torrents: &mut [Torrent]) {
     let sources: HashMap<String, String> = services
         .store
         .read(|c| Ok(settings::get::<Vec<Source>>(c, SOURCES)?.unwrap_or_default()))
@@ -876,7 +839,7 @@ pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
         .map(|s| (s.key, s.endpoint))
         .collect();
     for t in torrents.iter_mut() {
-        let f = read_name(&t.name);
+        let f = facts::read_name(&t.name);
         t.group = f.group;
         t.resolution = f.resolution;
         if !sources.is_empty()
@@ -891,6 +854,7 @@ pub fn annotate(services: &Services, torrents: &mut [Torrent]) {
 mod tests {
     use super::*;
     use crate::qbt::tests_torrent;
+    use crate::testing::release;
     use anibeam_foundation::store::Store;
 
     fn torrent(hash: &str, name: &str, added_on: i64) -> Torrent {
@@ -947,11 +911,13 @@ mod tests {
     #[test]
     fn binding_takes_the_earliest_new_torrent_with_the_name_and_never_twice() {
         let title = "[Kumo-Subs] Show - 03 [1080p][Multiple Subtitle]";
-        let mut fus = vec![followup(title, 1000), {
-            let mut f = followup(title, 1000);
-            f.id = 2;
-            f
-        }];
+        let mut fus = vec![
+            followup(title, 1000),
+            Followup {
+                id: 2,
+                ..followup(title, 1000)
+            },
+        ];
         let ts = vec![
             torrent("old", title, 100),
             torrent("a", title, 1010),
@@ -1044,21 +1010,12 @@ mod tests {
             file("Show/e02.mkv", 1.0, 1),
             file("Show/e03.mkv", 1.0, 1),
         ];
-        let mut fresh = torrent("fresh", "[H] Show - 02", 0);
-        fresh.save_path = "/dl".into();
-        fresh.content_path = "/dl/[H] Show - 02.mkv".into();
         let trashed = vec![
             PathBuf::from("/dl/[G] Show - 02 (1080p).mkv"),
             PathBuf::from("/dl/Show/e02.mkv"),
-            PathBuf::from("/dl/[H] Show - 02.mkv"),
         ];
-        let pairs = vec![
-            (single, Vec::new()),
-            (batch, batch_files),
-            (fresh, Vec::new()),
-        ];
-        let keep: HashSet<String> = ["fresh".to_string()].into();
-        let plan = plan_old(&trashed, &pairs, &keep);
+        let pairs = vec![(single, Vec::new()), (batch, batch_files)];
+        let plan = plan_old(&trashed, &pairs);
         assert_eq!(
             plan,
             vec![
@@ -1070,7 +1027,7 @@ mod tests {
                     ids: vec![1]
                 },
             ],
-            "the new torrent is never touched, the batch only loses episode 2"
+            "the batch only loses episode 2"
         );
     }
 
@@ -1079,14 +1036,7 @@ mod tests {
         let mut t = torrent("h", "x", 0);
         t.save_path = "/dl".into();
         t.content_path = "/dl/x.mkv".into();
-        assert!(
-            plan_old(
-                &[PathBuf::from("/dl/other.mkv")],
-                &[(t, Vec::new())],
-                &HashSet::new()
-            )
-            .is_empty()
-        );
+        assert!(plan_old(&[PathBuf::from("/dl/other.mkv")], &[(t, Vec::new())]).is_empty());
     }
 
     fn eps(list: &[u32]) -> BTreeSet<u32> {
@@ -1227,6 +1177,19 @@ mod tests {
         (dir, store, paths)
     }
 
+    /// `trash_candidates` against what the library lists now, as `replace_episode` reads it.
+    fn candidates(
+        store: &Store,
+        series: u64,
+        entry: &Replacement,
+        written: &[String],
+    ) -> Vec<String> {
+        let listed = store
+            .read(|c| library_files(c, series, entry.episode))
+            .unwrap();
+        trash_candidates(&listed, entry, written)
+    }
+
     #[test]
     fn only_the_listed_episode_files_are_candidates() {
         let (_d, store, paths) = library();
@@ -1235,13 +1198,12 @@ mod tests {
             episode: 2,
             old: vec![paths[1].clone(), paths[3].clone(), "/etc/passwd".into()],
         };
-        let (got, sources) = store.read(|c| trash_candidates(c, 1, &entry, &[])).unwrap();
         assert_eq!(
-            got,
+            candidates(&store, 1, &entry, &[]),
             vec![paths[1].clone()],
             "an extra and a stranger are not episode 2"
         );
-        assert_eq!(sources.len(), 1);
+        assert_eq!(store.read(library_sources).unwrap().len(), 1);
     }
 
     #[test]
@@ -1251,16 +1213,17 @@ mod tests {
             episode: 1,
             old: vec![paths[0].clone()],
         };
-        let (got, _) = store
-            .read(|c| trash_candidates(c, 1, &entry, std::slice::from_ref(&paths[0])))
-            .unwrap();
-        assert!(got.is_empty(), "the new file landed on the old path");
+        assert!(
+            candidates(&store, 1, &entry, std::slice::from_ref(&paths[0])).is_empty(),
+            "the new file landed on the old path"
+        );
         std::fs::remove_file(&paths[0]).unwrap();
-        let (got, _) = store.read(|c| trash_candidates(c, 1, &entry, &[])).unwrap();
-        assert!(got.is_empty(), "already gone");
+        assert!(
+            candidates(&store, 1, &entry, &[]).is_empty(),
+            "already gone"
+        );
         // Another series' episode 1 is no candidate for this one
-        let (got, _) = store.read(|c| trash_candidates(c, 2, &entry, &[])).unwrap();
-        assert!(got.is_empty());
+        assert!(candidates(&store, 2, &entry, &[]).is_empty());
     }
 
     #[test]
@@ -1272,25 +1235,7 @@ mod tests {
             episode: 3,
             old: vec![paths[2].clone()],
         };
-        let (got, _) = store.read(|c| trash_candidates(c, 1, &entry, &[])).unwrap();
-        assert!(got.is_empty());
-    }
-
-    fn release(title: &str, link: &str) -> Release {
-        Release {
-            title: title.into(),
-            link: link.into(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
-        }
+        assert!(candidates(&store, 1, &entry, &[]).is_empty());
     }
 
     #[test]
