@@ -964,8 +964,10 @@ mod tests {
         );
         let next = tr_in(Lang::En, "onb-continue", &[]);
         let pressed = say(&format!("click {next:?}"));
-        assert!(pressed.starts_with("pressed button"), "{pressed}");
-        assert_eq!(data.get_step(), 5);
+        // The app's Button declares no accessible action, so the click taps its label, and the
+        // touch reaches the button under it as a finger would.
+        assert!(pressed.starts_with("tapped text"), "{pressed}");
+        assert_eq!(data.get_step(), 5, "{pressed}");
         assert!(say("onboarding back").ends_with("step 4 of 8"));
         assert!(say("tree").contains("onboarding step 4 of 8"));
 

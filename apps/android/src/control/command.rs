@@ -552,7 +552,12 @@ mod tests {
             split(r#"type "say \"hi\"""#).unwrap(),
             vec![vec!["type", r#"say "hi""#]]
         );
-        assert_eq!(split("press 'it\\'s").unwrap_err(), "a ' is not closed");
+        // Inside single quotes a backslash is a plain character, as in sh.
+        assert_eq!(
+            split(r"press 'it\'s").unwrap(),
+            vec![vec!["press", r"it\s"]]
+        );
+        assert_eq!(split("press 'open").unwrap_err(), "a ' is not closed");
         assert!(split("type \"open").is_err());
         assert!(split("type trailing\\").is_err());
     }
