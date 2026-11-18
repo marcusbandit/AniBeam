@@ -51,9 +51,7 @@ impl MalClient {
             .send(HttpRequest::post(url).body(Body::Form(form)))
             .await
     }
-}
 
-impl MalClient {
     /// `get` with a cap on each request, for a call a user is waiting on.
     pub async fn get_within(
         &self,

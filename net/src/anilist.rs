@@ -4,6 +4,7 @@
 //! exactly what the Electron line asked it.
 
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use super::limiter::ProviderClient;
 use super::{Body, HttpRequest, null_to_default};
@@ -716,14 +717,11 @@ impl AnilistClient {
             .body(Body::Json(
                 serde_json::json!({ "query": query, "variables": variables }),
             ));
-        let response = match timeout {
-            Some(d) => self.client.send_within(request, d).await?,
-            None => self.client.send(request).await?,
-        };
+        let response = self.client.send_capped(request, timeout).await?;
         // AniList answers a GraphQL failure with a 200 and an `errors`
         // array as often as it answers with the status, so the body is
         // read first and the status is only the fallback.
-        let value = match response.json::<serde_json::Value>() {
+        let mut value = match response.json::<serde_json::Value>() {
             Ok(value) => value,
             Err(e) => {
                 if response.is_success() {
@@ -749,8 +747,8 @@ impl AnilistClient {
                 response.text(),
             ));
         }
-        match value.get("data") {
-            Some(data) if !data.is_null() => Ok(data.clone()),
+        match value.get_mut("data").map(serde_json::Value::take) {
+            Some(data) if !data.is_null() => Ok(data),
             _ => Err(provider_error(
                 None,
                 anibeam_contract::i18n::tr("core-net-no-data", &[]),
@@ -766,11 +764,7 @@ impl AnilistClient {
                 None,
             )
             .await?;
-        let media = &data["Page"]["media"];
-        if media.is_null() {
-            return Ok(Vec::new());
-        }
-        Ok(serde_json::from_value(media.clone())?)
+        Ok(Option::<Vec<Media>>::deserialize(&data["Page"]["media"])?.unwrap_or_default())
     }
 
     /// The typed reply and the JSON it was parsed from, together. A match
@@ -781,11 +775,7 @@ impl AnilistClient {
         &self,
         id: u64,
     ) -> Result<(Option<Media>, serde_json::Value), CoreError> {
-        let data = self
-            .graphql(MEDIA_BY_ID_QUERY, serde_json::json!({ "id": id }), None)
-            .await?;
-        let raw = data["Media"].clone();
-        Ok((parse_media(&raw)?, raw))
+        self.media(MEDIA_BY_ID_QUERY, id).await
     }
 
     /// The MAL id to its AniList id. AniList answers a MAL id it has never
@@ -814,14 +804,8 @@ impl AnilistClient {
     /// The schedule and the JSON behind it, for the same reason
     /// `media_by_id_raw` exists.
     pub async fn schedule_raw(&self, id: u64) -> Result<(Schedule, serde_json::Value), CoreError> {
-        let data = self
-            .graphql(AIRING_SCHEDULE_QUERY, serde_json::json!({ "id": id }), None)
-            .await?;
-        let raw = data["Media"].clone();
-        if raw.is_null() {
-            return Ok((Schedule::default(), raw));
-        }
-        Ok((serde_json::from_value(raw.clone())?, raw))
+        let (schedule, raw) = self.media(AIRING_SCHEDULE_QUERY, id).await?;
+        Ok((schedule.unwrap_or_default(), raw))
     }
 
     /// The series page and the JSON behind it, for the same reason
@@ -830,26 +814,28 @@ impl AnilistClient {
         &self,
         id: u64,
     ) -> Result<(Option<Enrichment>, serde_json::Value), CoreError> {
-        let data = self
-            .graphql(ENRICHMENT_QUERY, serde_json::json!({ "id": id }), None)
+        self.media(ENRICHMENT_QUERY, id).await
+    }
+
+    /// The `Media` a query by id answers with, read as `T`, beside the JSON
+    /// it was read from. A null `Media` is a series AniList does not have.
+    async fn media<T: DeserializeOwned>(
+        &self,
+        query: &str,
+        id: u64,
+    ) -> Result<(Option<T>, serde_json::Value), CoreError> {
+        let mut data = self
+            .graphql(query, serde_json::json!({ "id": id }), None)
             .await?;
-        let raw = data["Media"].clone();
-        if raw.is_null() {
-            return Ok((None, raw));
-        }
-        Ok((Some(serde_json::from_value(raw.clone())?), raw))
+        let raw = data
+            .get_mut("Media")
+            .map_or(serde_json::Value::Null, serde_json::Value::take);
+        Ok((Option::<T>::deserialize(&raw)?, raw))
     }
 }
 
 fn provider_error(status: Option<u32>, message: impl Into<String>) -> CoreError {
     CoreError::provider(Provider::Anilist, status, message)
-}
-
-fn parse_media(value: &serde_json::Value) -> Result<Option<Media>, CoreError> {
-    if value.is_null() {
-        return Ok(None);
-    }
-    Ok(Some(serde_json::from_value(value.clone())?))
 }
 
 #[cfg(test)]

@@ -267,23 +267,27 @@ fn parse(body: &serde_json::Value) -> Option<(Vec<IpAddr>, u64)> {
     Some((ips, ttl))
 }
 
+impl Doh {
+    /// The addresses for `host` as a resolver hands them to the client: what the resolvers
+    /// say, else, for a home name, a name they have no address for, or when none answered,
+    /// the system's DNS for this name.
+    pub(crate) async fn addresses(&self, host: &str) -> std::io::Result<Addrs> {
+        let ips = match self.lookup(host).await {
+            Some(ips) => ips,
+            None => tokio::net::lookup_host((host, 0))
+                .await?
+                .map(|a| a.ip())
+                .collect(),
+        };
+        Ok(Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0))))
+    }
+}
+
 impl Resolve for Doh {
     fn resolve(&self, name: Name) -> Resolving {
         let doh = self.clone();
         let host = name.as_str().to_string();
-        Box::pin(async move {
-            let ips = match doh.lookup(&host).await {
-                Some(ips) => ips,
-                // A home name, a name the resolvers have no address for, or no resolver
-                // answered: the system's DNS, for this name.
-                None => tokio::net::lookup_host((host.as_str(), 0))
-                    .await?
-                    .map(|a| a.ip())
-                    .collect(),
-            };
-            let addrs: Addrs = Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)));
-            Ok(addrs)
-        })
+        Box::pin(async move { Ok(doh.addresses(&host).await?) })
     }
 }
 

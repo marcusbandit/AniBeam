@@ -181,7 +181,7 @@ fn tenths(field: &[u8]) -> Option<u32> {
 
 /// ASCII digits as a number. Nothing at all, a sign, a space or a number
 /// too big for a `u64` is not one.
-fn digits(field: &[u8]) -> Option<u64> {
+pub(crate) fn digits(field: &[u8]) -> Option<u64> {
     if field.is_empty() {
         return None;
     }

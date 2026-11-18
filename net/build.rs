@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 /// `phone_os`, as in library/build.rs, and the build's version for `VERSION` in
@@ -15,7 +15,6 @@ fn main() {
         println!("cargo::rustc-cfg=phone_os");
     }
     watch_git();
-    rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3,
     // and is named by it; core/build.rs reads the same variable for `RELEASE`. A build
@@ -74,11 +73,13 @@ fn main() {
     println!("cargo:rustc-env=ANIBEAM_VERSION={version}");
 }
 
-/// On a branch, `.git/HEAD` names the ref and never changes when a commit lands; the ref
-/// file does. Watch HEAD in the git dir (a worktree's own), the ref it points to in the
-/// common dir, and packed-refs, so the described hash is never stale. Only files that
-/// exist are named: cargo reruns a script on every build for a missing one.
-fn rerun_when_head_moves() {
+/// The version below changes with HEAD and the tags, so those are watched. On a branch,
+/// `HEAD` names the ref and never changes when a commit lands; the ref file does. So this
+/// watches HEAD in the git dir (a worktree's own), and in the common dir the ref it points
+/// to, packed-refs and the tags. The dirs are asked of git rather than spelled `../.git`:
+/// in a worktree `.git` is a file. Only files that exist are named: Cargo reads a missing
+/// one as changed on every build. Without git there is nothing to watch.
+fn watch_git() {
     let rev_parse = |arg: &str| {
         Command::new("git")
             .args(["rev-parse", arg])
@@ -86,14 +87,18 @@ fn rerun_when_head_moves() {
             .ok()
             .filter(|o| o.status.success())
             .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| std::path::PathBuf::from(s.trim()))
+            .map(|s| PathBuf::from(s.trim()))
     };
     let (Some(git_dir), Some(common)) = (rev_parse("--git-dir"), rev_parse("--git-common-dir"))
     else {
         return;
     };
     let head = git_dir.join("HEAD");
-    let mut watch = vec![head.clone(), common.join("packed-refs")];
+    let mut watch = vec![
+        head.clone(),
+        common.join("packed-refs"),
+        common.join("refs").join("tags"),
+    ];
     if let Ok(text) = std::fs::read_to_string(&head)
         && let Some(r) = text.trim().strip_prefix("ref: ")
     {
@@ -101,24 +106,5 @@ fn rerun_when_head_moves() {
     }
     for path in watch.into_iter().filter(|p| p.exists()) {
         println!("cargo:rerun-if-changed={}", path.display());
-    }
-}
-
-/// The version below changes with HEAD and the tags, so those are watched. Asked of git
-/// rather than spelled `../.git/HEAD`: in a worktree `.git` is a file and HEAD lives under
-/// the main checkout's `.git/worktrees/`, and a path that does not exist reads to Cargo as
-/// changed on every build. Without git there is nothing to watch.
-fn watch_git() {
-    let paths = Command::new("git")
-        .args(["rev-parse", "--git-path", "HEAD", "--git-path", "refs/tags"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .unwrap_or_default();
-    for path in paths.lines().map(str::trim).filter(|p| !p.is_empty()) {
-        if Path::new(path).exists() {
-            println!("cargo:rerun-if-changed={path}");
-        }
     }
 }

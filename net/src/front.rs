@@ -6,11 +6,10 @@
 //! and the site asked for travels inside the encrypted request, in its Host header. Which
 //! host has which front is the endpoint definition's `front`; the core knows none itself.
 
-use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use reqwest::dns::{Name, Resolve, Resolving};
 
 use super::doh::Doh;
 use anibeam_contract::CoreError;
@@ -58,23 +57,19 @@ pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)
 /// The gap between the end of one fronted request and the start of the next. A front's edge
 /// can quietly stop answering an address that asks for dozens of pages within seconds, which
 /// a new subscription or a batch pick on a long show used to do (#135).
-#[cfg_attr(not(phone_os), allow(dead_code))]
 pub const GAP: Duration = Duration::from_secs(1);
 /// How long a front is left alone after a request it did not answer, so an address it has
 /// stopped answering is not asked again and again, each time for a whole timeout.
-#[cfg_attr(not(phone_os), allow(dead_code))]
 pub const QUIET: Duration = Duration::from_secs(120);
 
 /// Paces the requests to fronted hosts. Held for the whole of one request, so they go one at
 /// a time, `GAP` apart, and none during `QUIET` after one that went unanswered.
 #[derive(Default)]
-#[cfg_attr(not(phone_os), allow(dead_code))]
 pub struct Gate {
     done: Option<Instant>,
     quiet_until: Option<Instant>,
 }
 
-#[cfg_attr(not(phone_os), allow(dead_code))]
 impl Gate {
     /// How long a request at `now` waits before it goes; Err with what is left of the
     /// quiet when it must not go at all.
@@ -110,17 +105,7 @@ impl Resolve for FrontResolve {
         let doh = self.doh.clone();
         let asked = name.as_str().to_string();
         let real = self.fronts.host_of(&asked).unwrap_or(asked);
-        Box::pin(async move {
-            let ips = match doh.lookup(&real).await {
-                Some(ips) => ips,
-                None => tokio::net::lookup_host((real.as_str(), 0))
-                    .await?
-                    .map(|a| a.ip())
-                    .collect(),
-            };
-            let addrs: Addrs = Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)));
-            Ok(addrs)
-        })
+        Box::pin(async move { Ok(doh.addresses(&real).await?) })
     }
 }
 
@@ -134,16 +119,11 @@ pub fn client(
     roots: Option<Vec<reqwest::Certificate>>,
     timeout: Duration,
 ) -> Result<reqwest::Client, CoreError> {
-    let builder = reqwest::Client::builder()
-        .user_agent(format!("Anibeam/{}", crate::VERSION))
+    let builder = crate::agent()
         .timeout(timeout)
         .http1_only()
         .redirect(reqwest::redirect::Policy::none());
-    let builder = match roots {
-        Some(roots) => builder.tls_certs_only(roots),
-        None => builder,
-    };
-    builder
+    crate::with_roots(builder, roots)
         .dns_resolver(Arc::new(FrontResolve {
             doh: doh.clone(),
             fronts: fronts.clone(),

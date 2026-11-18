@@ -223,9 +223,9 @@ impl Front {
     async fn send(
         &self,
         #[cfg_attr(not(phone_os), allow(unused_mut))] mut req: HttpRequest,
-        url: String,
-        host: String,
+        front: (String, String),
     ) -> Result<HttpResponse, HttpError> {
+        let host = &front.1;
         let mut gate = self.gate.lock().await;
         let wait = gate
             .admit(std::time::Instant::now())
@@ -248,7 +248,7 @@ impl Front {
         {
             req.headers.push(("Cookie".into(), cookies.to_string()));
         }
-        let answer = request(self.client.clone(), req, url, Some(host)).await;
+        let answer = request(&self.client, req, Some(&front)).await;
         gate.finished(std::time::Instant::now(), answer.is_ok());
         #[cfg(phone_os)]
         if let (Ok(response), Some(real)) = (&answer, &real) {
@@ -275,21 +275,16 @@ impl ReqwestHttp {
         let fronted = None;
         #[cfg(phone_os)]
         let fronted;
-        let builder = reqwest::Client::builder()
-            .user_agent(format!("Anibeam/{}", crate::VERSION))
-            .timeout(timeout);
+        let builder = agent().timeout(timeout);
         #[cfg(phone_os)]
         let builder = {
             let roots = bundled_roots()?;
             // Names are looked up over HTTPS: phone networks that block release sites by
             // name do it in plain DNS (see doh.rs). The resolvers' own client goes by
             // address, so it needs no lookup of its own.
-            let resolvers = with_roots(
-                reqwest::Client::builder().user_agent(format!("Anibeam/{}", crate::VERSION)),
-                roots.clone(),
-            )
-            .build()
-            .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
+            let resolvers = with_roots(agent(), roots.clone())
+                .build()
+                .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
             let doh = doh::Doh::new(resolvers);
             fronted = Some(Front::new(front::client(
                 &doh,
@@ -332,8 +327,12 @@ pub fn room_client(connect_timeout: Duration) -> Result<reqwest::Client, CoreErr
 
 /// A client builder with the user agent and, on Android, the bundled Mozilla roots.
 fn plain_builder() -> Result<reqwest::ClientBuilder, CoreError> {
-    let builder = reqwest::Client::builder().user_agent(format!("Anibeam/{}", crate::VERSION));
-    Ok(with_roots(builder, bundled_roots()?))
+    Ok(with_roots(agent(), bundled_roots()?))
+}
+
+/// A client builder with the user agent every client here sends.
+fn agent() -> reqwest::ClientBuilder {
+    reqwest::Client::builder().user_agent(format!("Anibeam/{VERSION}"))
 }
 
 /// The builder checking against `roots` only, or the platform's verifier without them.
@@ -419,18 +418,14 @@ fn describe(e: reqwest::Error) -> String {
 
 impl Http for ReqwestHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
-        let url = req.url.clone();
-        Box::pin(request(self.client.clone(), req, url, None))
+        Box::pin(request(&self.client, req, None))
     }
 
     fn send_endpoint(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
         // A host a network blocks by name goes to its server under its front's name.
         match (&self.fronted, self.fronts.fronted(&req.url)) {
-            (Some(fronted), Some((url, host))) => Box::pin(fronted.send(req, url, host)),
-            _ => {
-                let url = req.url.clone();
-                Box::pin(request(self.client.clone(), req, url, None))
-            }
+            (Some(fronted), Some(front)) => Box::pin(fronted.send(req, front)),
+            _ => self.send(req),
         }
     }
 
@@ -439,12 +434,12 @@ impl Http for ReqwestHttp {
     }
 }
 
-/// One request on `client` to `url`, with `host` as its Host header when it is fronted.
+/// One request on `client`. A fronted one goes to the front's URL, with the real host as
+/// its Host header.
 async fn request(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     req: HttpRequest,
-    url: String,
-    host: Option<String>,
+    front: Option<&(String, String)>,
 ) -> Result<HttpResponse, HttpError> {
     let method = match req.method {
         Method::Get => reqwest::Method::GET,
@@ -452,10 +447,10 @@ async fn request(
         Method::Patch => reqwest::Method::PATCH,
         Method::Delete => reqwest::Method::DELETE,
     };
-    let mut builder = client.request(method, &url);
-    if let Some(host) = host {
-        builder = builder.header("Host", host);
-    }
+    let mut builder = match front {
+        Some((url, host)) => client.request(method, url).header("Host", host),
+        None => client.request(method, &req.url),
+    };
     if let Some(timeout) = req.timeout {
         builder = builder.timeout(timeout);
     }
