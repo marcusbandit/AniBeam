@@ -111,24 +111,25 @@ impl<S: Stream> Connection<S> {
         // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
         // activities, and the replies are skipped by nonce on the way to the next one.
         for evt in SUBSCRIBED {
-            conn.nonce += 1;
-            let nonce = format!("anibeam-{}-{}", std::process::id(), conn.nonce);
+            let nonce = conn.next_nonce();
             let command = json!({"cmd": "SUBSCRIBE", "evt": evt, "args": {}, "nonce": nonce});
             conn.stream.write_all(&encode(FRAME, &command))?;
         }
         Ok(conn)
     }
 
+    /// A nonce no other command on this connection has carried.
+    fn next_nonce(&mut self) -> String {
+        self.nonce += 1;
+        format!("anibeam-{}-{}", std::process::id(), self.nonce)
+    }
+
     /// Sends one command and reads its reply, so the socket never fills. An
     /// ERROR reply is a rejection; anything else that goes wrong means the
     /// connection is gone.
-    fn command(&mut self, cmd: &str, evt: Option<&str>, args: Value) -> Result<Value, SendError> {
-        self.nonce += 1;
-        let nonce = format!("anibeam-{}-{}", std::process::id(), self.nonce);
-        let mut command = json!({"cmd": cmd, "args": args, "nonce": nonce});
-        if let Some(evt) = evt {
-            command["evt"] = json!(evt);
-        }
+    fn command(&mut self, cmd: &str, args: Value) -> Result<Value, SendError> {
+        let nonce = self.next_nonce();
+        let command = json!({"cmd": cmd, "args": args, "nonce": nonce});
         self.stream.write_all(&encode(FRAME, &command))?;
         let reply = self.next_reply(|v| v["nonce"] == nonce.as_str())?;
         if reply["evt"] == "ERROR" {
@@ -141,7 +142,7 @@ impl<S: Stream> Connection<S> {
     /// Sets the activity, or clears it with `None`.
     pub fn set_activity(&mut self, activity: Option<&Value>) -> Result<(), SendError> {
         let args = json!({"pid": std::process::id(), "activity": activity});
-        self.command("SET_ACTIVITY", None, args).map(|_| ())
+        self.command("SET_ACTIVITY", args).map(|_| ())
     }
 
     /// Answers someone's Ask to Join: an invite, which hands them the join
@@ -152,8 +153,7 @@ impl<S: Stream> Connection<S> {
         } else {
             "CLOSE_ACTIVITY_JOIN_REQUEST"
         };
-        self.command(cmd, None, json!({"user_id": user_id}))
-            .map(|_| ())
+        self.command(cmd, json!({"user_id": user_id})).map(|_| ())
     }
 
     /// Everything Discord has said unasked since the last poll, reading only
@@ -374,14 +374,8 @@ impl Transport for Discord {
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(SendError::Gone("not connected".to_string()));
-        };
-        let result = conn.set_activity(activity.map(Activity::to_json).as_ref());
-        if matches!(result, Err(SendError::Gone(_))) {
-            self.conn = None;
-        }
-        result
+        let activity = activity.map(Activity::to_json);
+        self.command(|conn| conn.set_activity(activity.as_ref()))
     }
 
     fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
@@ -396,18 +390,28 @@ impl Transport for Discord {
     }
 
     fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(SendError::Gone("not connected".to_string()));
-        };
-        let result = conn.answer(user_id, invite);
-        if matches!(result, Err(SendError::Gone(_))) {
-            self.conn = None;
-        }
-        result
+        self.command(|conn| conn.answer(user_id, invite))
     }
 
     fn close(&mut self) {
         self.conn = None;
+    }
+}
+
+impl Discord {
+    /// One command on the open connection, which a connection found gone is let go of.
+    fn command(
+        &mut self,
+        f: impl FnOnce(&mut Connection<Box<dyn Stream>>) -> Result<(), SendError>,
+    ) -> Result<(), SendError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(SendError::Gone("not connected".to_string()));
+        };
+        let result = f(conn);
+        if matches!(result, Err(SendError::Gone(_))) {
+            self.conn = None;
+        }
+        result
     }
 }
 

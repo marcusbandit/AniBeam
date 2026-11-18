@@ -131,8 +131,7 @@ pub(super) fn adopt_room(inner: &mut Inner, show: Option<RoomShow>) -> bool {
 
 /// The room open now, as Discord shows it.
 pub(super) fn room_now(playback: &Playback) -> Option<RoomShow> {
-    let rooms = playback.presence.rooms.get()?;
-    rooms.status().as_ref().map(show_of)
+    room_status(playback).as_ref().map(show_of)
 }
 
 /// The room as Discord shows it, from the room team's word on it.
