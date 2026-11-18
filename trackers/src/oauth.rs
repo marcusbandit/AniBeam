@@ -289,11 +289,7 @@ async fn sign_in(
                 redirect_url,
             )
             .await?;
-            let profile = trackers
-                .net
-                .mal
-                .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
-                .await?;
+            let profile = trackers.net.mal.get(MAL_ME, &tokens.access_token).await?;
             if !profile.is_success() {
                 return Err(CoreError::provider(
                     Provider::Mal,
@@ -358,7 +354,7 @@ async fn exchange(
     let response = trackers
         .net
         .mal
-        .post_form_within(accounts::MAL_TOKEN_URL, form, TRACKER_TIMEOUT)
+        .post_form(accounts::MAL_TOKEN_URL, form)
         .await?;
     if !response.is_success() {
         return Err(accounts::token_failure(&response, client_secret.is_some()));

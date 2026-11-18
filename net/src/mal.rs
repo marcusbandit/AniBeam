@@ -51,31 +51,6 @@ impl MalClient {
             .send(HttpRequest::post(url).body(Body::Form(form)))
             .await
     }
-
-    /// `get` with a cap on each request, for a call a user is waiting on.
-    pub async fn get_within(
-        &self,
-        url: &str,
-        token: &str,
-        timeout: std::time::Duration,
-    ) -> Result<HttpResponse, CoreError> {
-        self.client
-            .send_within(HttpRequest::get(url).headers(bearer(token)), timeout)
-            .await
-    }
-
-    /// `post_form` with a cap on each request: the sign-in's exchange,
-    /// which a browser tab is held open for.
-    pub async fn post_form_within(
-        &self,
-        url: &str,
-        form: Vec<(String, String)>,
-        timeout: std::time::Duration,
-    ) -> Result<HttpResponse, CoreError> {
-        self.client
-            .send_within(HttpRequest::post(url).body(Body::Form(form)), timeout)
-            .await
-    }
 }
 
 fn bearer(token: &str) -> Vec<(String, String)> {
