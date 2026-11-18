@@ -109,24 +109,22 @@ fn finished_at(done: &[(String, i64)], log: &[(String, i64)]) -> Option<i64> {
 }
 
 /// The calendar year and month (1 to 12) of a moment, `offset` seconds east of UTC.
-pub fn year_month(at: i64, offset: i64) -> (i32, u32) {
-    let days = (at + offset).div_euclid(86_400);
-    // Howard Hinnant's civil-from-days.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    let year = (yoe + era * 400 + i64::from(month <= 2)) as i32;
-    (year, month)
+fn year_month(at: i64, offset: i64) -> (i32, u32) {
+    ::time::OffsetDateTime::from_unix_timestamp(at + offset)
+        .map_or((1970, 1), |t| (t.year(), u32::from(u8::from(t.month()))))
 }
 
 #[derive(Default)]
 struct Tally {
     episodes: u32,
-    series: std::collections::HashSet<u64>,
+    series: HashSet<u64>,
+}
+
+/// Adds a series' episodes under `name`.
+fn tally(map: &mut HashMap<String, Tally>, name: String, series: u64, episodes: u32) {
+    let t = map.entry(name).or_default();
+    t.episodes += episodes;
+    t.series.insert(series);
 }
 
 fn top(map: HashMap<String, Tally>) -> Vec<StatCount> {
@@ -215,28 +213,15 @@ pub fn compute(
             continue;
         }
         let media = row.media.as_ref();
-        for g in media.map(|m| m.genres.clone()).unwrap_or_default() {
-            let t: &mut Tally = genres.entry(g).or_default();
-            t.episodes += episodes;
-            t.series.insert(row.id);
+        for g in media.iter().flat_map(|m| &m.genres) {
+            tally(&mut genres, g.clone(), row.id, episodes);
         }
-        if let Some(studio) = media
-            .and_then(|m| m.studio.clone())
-            .filter(|s| !s.is_empty())
-        {
-            let t: &mut Tally = studios.entry(studio).or_default();
-            t.episodes += episodes;
-            t.series.insert(row.id);
+        if let Some(studio) = media.and_then(|m| m.studio.as_ref()).filter(|s| !s.is_empty()) {
+            tally(&mut studios, studio.clone(), row.id, episodes);
         }
-        if let (Some(season), Some(y)) = (
-            media.and_then(|m| m.season.clone()),
-            media.and_then(|m| m.year),
-        ) {
-            let t: &mut Tally = seasons
-                .entry(format!("{} {y}", title_case(&season)))
-                .or_default();
-            t.episodes += episodes;
-            t.series.insert(row.id);
+        if let Some((season, y)) = media.and_then(|m| m.season.as_deref().zip(m.year)) {
+            let name = format!("{} {y}", title_case(season));
+            tally(&mut seasons, name, row.id, episodes);
         }
         per_series.push(StatSeries {
             series: row.id,
@@ -304,4 +289,21 @@ pub(crate) fn get_call(
         ))
     })?;
     Ok(Reply::Stats { stats })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::year_month;
+
+    #[test]
+    fn a_moment_falls_in_its_local_month() {
+        // 2026-01-01 00:30 UTC: an hour west of UTC it is still December
+        let at = 1_767_227_400;
+        assert_eq!(year_month(at, 0), (2026, 1));
+        assert_eq!(year_month(at, -3600), (2025, 12));
+        assert_eq!(year_month(at, 9 * 3600), (2026, 1));
+        // A leap day, and a moment before 1970
+        assert_eq!(year_month(1_709_164_800, 0), (2024, 2));
+        assert_eq!(year_month(-1, 0), (1969, 12));
+    }
 }

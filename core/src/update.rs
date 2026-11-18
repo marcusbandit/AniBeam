@@ -81,36 +81,23 @@ struct Version {
 
 impl Version {
     fn parse(v: &str) -> Option<Version> {
-        let (base, suffix) = match v.split_once('-') {
-            Some((base, suffix)) => (base, Some(suffix)),
-            None => (v, None),
-        };
-        let numbers = digits::<3>(base)?;
-        match suffix {
-            None => Some(Version {
-                numbers,
-                stable: true,
-                nightly: None,
-            }),
-            Some(s) => {
-                if let Some(n) = s.strip_prefix("nightly.") {
-                    Some(Version {
-                        numbers,
-                        stable: false,
-                        nightly: Some(digits::<2>(n)?),
-                    })
-                } else if let Some(n) = s.strip_prefix("pr.") {
-                    digits::<2>(n)?;
-                    Some(Version {
-                        numbers,
-                        stable: false,
-                        nightly: None,
-                    })
-                } else {
+        let (base, suffix) = v.split_once('-').map_or((v, None), |(b, s)| (b, Some(s)));
+        let nightly = match suffix {
+            None => None,
+            Some(s) => match s.strip_prefix("nightly.") {
+                Some(n) => Some(digits::<2>(n)?),
+                // A test build's PR and run, which order nothing
+                None => {
+                    digits::<2>(s.strip_prefix("pr.")?)?;
                     None
                 }
-            }
-        }
+            },
+        };
+        Some(Version {
+            numbers: digits::<3>(base)?,
+            stable: suffix.is_none(),
+            nightly,
+        })
     }
 }
 
@@ -176,17 +163,29 @@ pub async fn check(
     current: &str,
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
+    let req = HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json");
+    newest(&get(http, req, "releases").await?, current, track)
+}
+
+/// The body of a GET that succeeded; `what` names the request in the error.
+async fn get(http: &dyn Http, req: HttpRequest, what: &str) -> Result<Vec<u8>, CoreError> {
     let res = http
-        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
+        .send(req)
         .await
-        .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
+        .map_err(|e| CoreError::internal(format!("{what}: {}", e.message)))?;
     if !res.is_success() {
-        return Err(CoreError::internal(format!(
-            "releases: HTTP {}",
-            res.status
-        )));
+        return Err(CoreError::internal(format!("{what}: HTTP {}", res.status)));
     }
-    newest(&res.body, current, track)
+    Ok(res.body)
+}
+
+/// `theirs` when it is a version newer than `current`. A `current` that names no version
+/// is offered any.
+fn newer_than(theirs: &str, current: &str) -> Option<String> {
+    let version = Version::parse(theirs)?;
+    Version::parse(current)
+        .is_none_or(|run| version > run)
+        .then(|| theirs.to_string())
 }
 
 const AUR_INFO: &str = "https://aur.archlinux.org/rpc/v5/info?arg[]=";
@@ -214,11 +213,7 @@ pub fn aur_newer(info: &[u8], current: &str) -> Result<Option<String>, CoreError
         .rsplit_once(':')
         .map_or(package.version.as_str(), |(_, v)| v);
     let version = version.rsplit_once('-').map_or(version, |(v, _)| v);
-    let Some(theirs) = Version::parse(version) else {
-        return Ok(None);
-    };
-    let newer = Version::parse(current).is_none_or(|run| theirs > run);
-    Ok(newer.then(|| version.to_string()))
+    Ok(newer_than(version, current))
 }
 
 /// What the apt and dnf repos on anibeam.app carry, written by each site deploy
@@ -228,28 +223,17 @@ const REPOS: &str = "https://anibeam.app/repos.json";
 /// The version the apt and dnf repos carry, when it is newer than `current`. An install from
 /// them is offered only what they already have, so the command it is given finds it.
 pub async fn check_repos(http: &dyn Http, current: &str) -> Result<Option<String>, CoreError> {
-    let res = http
-        .send(HttpRequest::get(REPOS))
-        .await
-        .map_err(|e| CoreError::internal(format!("repos: {}", e.message)))?;
-    if !res.is_success() {
-        return Err(CoreError::internal(format!("repos: HTTP {}", res.status)));
-    }
-    repos_newer(&res.body, current)
+    repos_newer(&get(http, HttpRequest::get(REPOS), "repos").await?, current)
 }
 
 fn repos_newer(body: &[u8], current: &str) -> Result<Option<String>, CoreError> {
-    #[derive(serde::Deserialize)]
+    #[derive(Deserialize)]
     struct Repos {
         version: String,
     }
     let repos: Repos =
         serde_json::from_slice(body).map_err(|e| CoreError::internal(format!("repos: {e}")))?;
-    let Some(theirs) = Version::parse(&repos.version) else {
-        return Ok(None);
-    };
-    let newer = Version::parse(current).is_none_or(|run| theirs > run);
-    Ok(newer.then_some(repos.version))
+    Ok(newer_than(&repos.version, current))
 }
 
 /// Asks the AUR what version `package` is at. A failure is the caller's to drop.
@@ -258,18 +242,9 @@ pub async fn check_aur(
     package: &str,
     current: &str,
 ) -> Result<Option<String>, CoreError> {
-    let res = http
-        // Names are [a-z0-9@._+-]; a raw + would read as a space
-        .send(HttpRequest::get(format!(
-            "{AUR_INFO}{}",
-            package.replace('+', "%2B")
-        )))
-        .await
-        .map_err(|e| CoreError::internal(format!("aur: {}", e.message)))?;
-    if !res.is_success() {
-        return Err(CoreError::internal(format!("aur: HTTP {}", res.status)));
-    }
-    aur_newer(&res.body, current)
+    // Names are [a-z0-9@._+-]; a raw + would read as a space
+    let req = HttpRequest::get(format!("{AUR_INFO}{}", package.replace('+', "%2B")));
+    aur_newer(&get(http, req, "aur").await?, current)
 }
 
 #[cfg(test)]

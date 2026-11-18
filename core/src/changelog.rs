@@ -133,7 +133,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                         "line {n}: a title of {len} characters, {MAX_TITLE} at most: \"{title}\""
                     ));
                 }
-                if parts(&v).is_none() {
+                if digits::<3>(&v).is_none() {
                     problems.push(format!("line {n}: \"{v}\" is not a version like 2.0.8"));
                 }
                 if !date.is_empty() && day_parts(&date).is_none() {
@@ -160,13 +160,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 section(&mut problems, n, kind, &mut kinds, "one version");
                 open = Some((n, 0));
             }
-            Line::Item(item) => {
-                match open.as_mut() {
-                    Some((_, count)) => *count += 1,
-                    None => problems.push(format!("line {n}: a line before any section")),
-                }
-                problems.extend(item_problems(n, &item));
-            }
+            Line::Item(item) => item_problems(&mut problems, n, &item, open.as_mut()),
             // Words above the first version are the file's own; under one, nothing but
             // sections and their lines.
             Line::Other(text) => {
@@ -257,11 +251,7 @@ pub fn lint_change(text: &str) -> Vec<String> {
             }
             Line::Item(item) => {
                 lines += 1;
-                match open.as_mut() {
-                    Some((_, count)) => *count += 1,
-                    None => problems.push(format!("line {n}: a line before any section")),
-                }
-                problems.extend(item_problems(n, &item));
+                item_problems(&mut problems, n, &item, open.as_mut());
             }
             Line::Other(text) => problems.push(format!(
                 "line {n}: \"{text}\" is not a section or a \"- \" line"
@@ -325,8 +315,17 @@ fn section(
     kinds.push(kind);
 }
 
-fn item_problems(n: usize, item: &str) -> Vec<String> {
-    let mut problems = Vec::new();
+/// A `- item` at line `n`, counted in the section open above it.
+fn item_problems(
+    problems: &mut Vec<String>,
+    n: usize,
+    item: &str,
+    open: Option<&mut (usize, usize)>,
+) {
+    match open {
+        Some((_, count)) => *count += 1,
+        None => problems.push(format!("line {n}: a line before any section")),
+    }
     let len = item.chars().count();
     if len > MAX_LINE {
         problems.push(format!(
@@ -336,13 +335,12 @@ fn item_problems(n: usize, item: &str) -> Vec<String> {
     if item.ends_with('.') {
         problems.push(format!("line {n}: no full stop at the end of a line"));
     }
-    problems
 }
 
 /// Whether `a` is a later version than `b`. Versions are three numbers, 2.0.8; one that is
 /// not is never the later.
 pub fn newer(a: &str, b: &str) -> bool {
-    match (parts(a), parts(b)) {
+    match (digits::<3>(a), digits::<3>(b)) {
         (Some(a), Some(b)) => a > b,
         (Some(_), None) => true,
         _ => false,
@@ -362,7 +360,7 @@ pub fn version_of(logged: &str) -> Option<String> {
         numbers.next()?,
         numbers.next()?
     );
-    parts(&version).map(|_| version)
+    digits::<3>(&version).map(|_| version)
 }
 
 /// What a shell keeps between runs, so the notes know what this person has read: the newest
@@ -583,10 +581,6 @@ fn heading(text: &str) -> Line {
         date,
         exact,
     }
-}
-
-fn parts(v: &str) -> Option<[u64; 3]> {
-    digits::<3>(v)
 }
 
 /// Exactly `N` dot-separated whole numbers: `digits::<3>("2.1.0")`. The update check reads
