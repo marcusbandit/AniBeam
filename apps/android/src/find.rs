@@ -2457,7 +2457,7 @@ fn new_posters<'a>(
 ) -> Vec<String> {
     paths
         .into_iter()
-        .filter(|p| !shown(*p) && asked.insert((*p).to_owned()))
+        .filter(|p| !shown(p) && asked.insert((*p).to_owned()))
         .map(str::to_string)
         .collect()
 }
