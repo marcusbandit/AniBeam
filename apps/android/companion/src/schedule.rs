@@ -110,7 +110,6 @@ mod tests {
         anilist.shows.insert(
             182255,
             Schedule {
-                status: None,
                 upcoming: vec![airing(9, 1_793_019_600)],
             },
         );
