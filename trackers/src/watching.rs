@@ -243,7 +243,7 @@ pub fn refresh_call(trackers: &Arc<Trackers>, force: bool) -> Result<Reply, Core
 }
 
 fn is_connected(conn: &Connection) -> Result<bool, CoreError> {
-    Ok(accounts::load_row(conn, Tracker::Anilist)?.is_some_and(|row| row.connected_at.is_some()))
+    Ok(accounts::connected(conn, Tracker::Anilist)?.is_some())
 }
 
 /// A cached image's absolute path, and only while its file is still there:
