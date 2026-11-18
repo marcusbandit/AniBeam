@@ -74,6 +74,10 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The Qt shell needs Qt, MpvQt and libmpv, which this runner lacks; local-ci.sh on a
+      # machine and linux.yml under the `full ci` label check it.
+      SKIP: anibeam
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,16 +93,16 @@ jobs:
 
       # Only the crates this pull request changed and every crate that builds on them (#1075).
       # The log lists what was picked, why, and what was not checked. Main and a run by hand
-      # check every crate, so main keeps the full signal and a cache every PR can restore. The
-      # Qt shell (anibeam) needs Qt, which this runner lacks; local-ci.sh checks it.
+      # check every crate, so main keeps the full signal and a cache every PR can restore.
       - name: Affected crates
         id: affected
         env:
           EVENT: ${{ github.event_name }}
         run: |
           python3 .github/affected-crates.py --self-test
-          if [ "$EVENT" = pull_request ]; then pick=(--base HEAD^1); else pick=(--all); fi
-          python3 .github/affected-crates.py "${pick[@]}" --skip anibeam --github-output
+          if [ "$EVENT" = pull_request ]; then pick="--base HEAD^1"; else pick=--all; fi
+          echo "pick=$pick" >> "$GITHUB_OUTPUT"
+          python3 .github/affected-crates.py $pick --skip "$SKIP" --github-output
 
       - uses: Swatinem/rust-cache@v2
         if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
@@ -107,48 +111,6 @@ jobs:
           # longer push the repo past its 10 GB and evict the ones every PR needs.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Clippy
-        if: steps.affected.outputs.crates != ''
-        env:
-          CRATES: ${{ steps.affected.outputs.crates }}
-        run: cargo clippy --locked $(printf -- '-p %s ' $CRATES) --all-targets -- -D warnings
-
-      # Each picked crate another one builds on, by itself: one cargo call over several crates
-      # merges their features, and would hide a use the crate does not turn on itself, such as
-      # rusqlite in the contract, whose sqlite feature only the core turns on.
-      - name: Clippy (each crate alone)
-        if: steps.affected.outputs.alone != ''
-        env:
-          ALONE: ${{ steps.affected.outputs.alone }}
-        run: |
-          status=0
-          for crate in $ALONE; do
-            echo "::group::$crate alone"
-            cargo clippy --locked -p "$crate" --all-targets -- -D warnings || { status=1; echo "::error::clippy $crate alone failed"; }
-            echo "::endgroup::"
-          done
-          exit $status
-
-      # Only the phone build compiles the core's phone and cast features, and no other
-      # workflow builds the phone, so without this a desktop change can break the APK and
-      # stay green (#309). The host target is enough: these features need no NDK.
-      - name: Clippy (phone features)
-        if: steps.affected.outputs.core == 'true'
-        run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
-
-      # The phone's torrent engine and its tests sit behind the downloads crate's own `phone`
-      # feature. The core's `phone` turns it on for the library only, so without this nothing
-      # compiles those tests, which the step above did while they were in the core.
-      - name: Clippy (downloads with phone)
-        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-downloads ')
-        run: cargo clippy --locked -p anibeam-downloads --features phone --all-targets -- -D warnings
-
-      # Casting and its tests sit behind the playback crate's own `cast` feature, for the same
-      # reason.
-      - name: Clippy (playback with cast)
-        if: contains(format(' {0} ', steps.affected.outputs.crates), ' anibeam-playback ')
-        run: cargo clippy --locked -p anibeam-playback --features cast --all-targets -- -D warnings
-
       # cargo-nextest runs every test binary at once, where cargo test runs them one after
       # another (#1086). .config/nextest.toml holds its ci profile.
       - uses: taiki-e/install-action@v2
@@ -156,34 +118,12 @@ jobs:
         with:
           tool: cargo-nextest@0.9.151
 
-      - name: Test
-        if: steps.affected.outputs.crates != ''
+      # Clippy for the picked crates, each crate another builds on by itself, the phone and
+      # cast features, the tests, the doctests, any test target picked by itself and the lock:
+      # the same steps local-ci.sh runs on a machine, written down there only. It picks the
+      # crates again from the same arguments, so it checks what the step above gated on.
+      - name: Clippy and tests
+        if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != '' || steps.affected.outputs.lock == 'true'
         env:
-          CRATES: ${{ steps.affected.outputs.crates }}
-        run: cargo nextest run --locked --profile ci $(printf -- '-p %s ' $CRATES)
-
-      # nextest skips doctests. Only a crate with a library has any.
-      - name: Doctests
-        if: steps.affected.outputs.doc != ''
-        env:
-          CRATES: ${{ steps.affected.outputs.doc }}
-        run: cargo test --locked --doc $(printf -- '-p %s ' $CRATES)
-
-      # A test target picked by itself, such as the core's changelog test for a patch note: no
-      # clippy, since no Rust changed, and none of the crate's other tests (#1086).
-      - name: Test (single targets)
-        if: steps.affected.outputs.tests != ''
-        env:
-          TESTS: ${{ steps.affected.outputs.tests }}
-        run: |
-          status=0
-          for t in $TESTS; do
-            cargo nextest run --locked --profile ci -p "${t%%:*}" --test "${t#*:}" || { status=1; echo "::error::$t failed"; }
-          done
-          exit $status
-
-      # A lock change that reaches no crate runs no cargo step above, so --locked never checks
-      # it against the manifests. This does, without building anything.
-      - name: Lock is current
-        if: steps.affected.outputs.lock == 'true'
-        run: cargo metadata --locked --format-version 1 >/dev/null
+          PICK: ${{ steps.affected.outputs.pick }}
+        run: .github/local-ci.sh --cargo --no-build --skip "$SKIP" $PICK

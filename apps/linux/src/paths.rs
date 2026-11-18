@@ -206,6 +206,10 @@ impl ShellPaths {
     pub fn service_socket(&self) -> PathBuf {
         self.runtime_dir.join("anibeam-host.sock")
     }
+    /// Where the open window takes `anibeam ctl` requests (#1205).
+    pub fn control_socket(&self) -> PathBuf {
+        self.runtime_dir.join("anibeam-control.sock")
+    }
     /// Where the subtitle preview writes its generated sample.srt: the same directory the
     /// core's own image cache lives under.
     pub fn cache_dir(&self) -> PathBuf {
@@ -247,6 +251,10 @@ mod tests {
         assert_eq!(
             p.service_socket(),
             PathBuf::from("/tmp/sandbox/runtime/anibeam-host.sock")
+        );
+        assert_eq!(
+            p.control_socket(),
+            PathBuf::from("/tmp/sandbox/runtime/anibeam-control.sock")
         );
         assert_eq!(p.bundled_mpv_conf(), share_dir().join("mpv.conf"));
         assert_eq!(p.cache_dir(), PathBuf::from("/tmp/sandbox/cache"));

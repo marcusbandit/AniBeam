@@ -26,6 +26,7 @@ fn main() {
             .version(1, 0)
             .qml_file("qml/Main.qml")
             .qml_file("qml/Driver.qml")
+            .qml_file("qml/Control.qml")
             .qml_file("qml/Tokens.qml")
             .qml_file("qml/Words.qml")
             .qml_file("qml/TokensPage.qml")
