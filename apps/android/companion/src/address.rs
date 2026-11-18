@@ -9,16 +9,19 @@ pub struct HostAddress {
 }
 
 impl HostAddress {
-    /// Reads `desktop`, `desktop:8790`, `http://100.64.0.1:8790/` or `[fd7a::1]:8790`.
-    /// Without a port it is [`DEFAULT_PORT`].
+    /// Reads `desktop`, `desktop:8790`, `http://100.64.0.1:8790/`, `[fd7a::1]:8790` or
+    /// `fd7a::1`. Without a port it is [`DEFAULT_PORT`].
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut rest = text.trim();
-        for scheme in ["http://", "HTTP://"] {
-            if let Some(stripped) = rest.strip_prefix(scheme) {
-                rest = stripped;
-            }
+        // A scheme is read in any case, the way a browser reads it.
+        let scheme = |rest: &str, name: &str| {
+            rest.get(..name.len())
+                .is_some_and(|s| s.eq_ignore_ascii_case(name))
+        };
+        if scheme(rest, "http://") {
+            rest = &rest["http://".len()..];
         }
-        if rest.starts_with("https://") {
+        if scheme(rest, "https://") {
             return Err(tr!("address-https"));
         }
         let rest = rest.split('/').next().unwrap_or("");
@@ -37,6 +40,9 @@ impl HostAddress {
                 None => return Err(tr!("address-ipv6-port")),
             };
             (format!("[{addr}]"), port)
+        } else if rest.parse::<std::net::Ipv6Addr>().is_ok() {
+            // An IPv6 address without brackets has no room for a port.
+            (format!("[{rest}]"), None)
         } else {
             match rest.rsplit_once(':') {
                 Some((h, p)) => (h.to_string(), Some(p)),
@@ -98,6 +104,11 @@ mod tests {
         assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
         let a = HostAddress::parse("[fd7a:115c::1]").unwrap();
         assert_eq!(a.port, 8790);
+        let a = HostAddress::parse("fd7a:115c::1").unwrap();
+        assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
+        let a = HostAddress::parse("Http://desktop:8791").unwrap();
+        assert_eq!(a.display(), "desktop:8791");
+        assert_eq!(HostAddress::parse("HTTP://desktop").unwrap().host, "desktop");
     }
 
     #[test]
@@ -105,7 +116,8 @@ mod tests {
         assert!(HostAddress::parse("").is_err());
         assert!(HostAddress::parse("desktop:http").is_err());
         assert!(HostAddress::parse("desktop:0").is_err());
-        assert!(HostAddress::parse("https://desktop").is_err());
+        let https = HostAddress::parse("https://desktop").unwrap_err();
+        assert_eq!(HostAddress::parse("HTTPS://desktop"), Err(https));
         assert!(HostAddress::parse("my desk").is_err());
     }
 }
