@@ -22,6 +22,7 @@ QtObject {
     property Connections link: Connections {
         target: Shell
         function onControlRequested(id, request) { control.take(id, request) }
+        function onControlCancelled(id) { control.cancel(id) }
     }
 
     function reply(id, r) {
@@ -35,6 +36,12 @@ QtObject {
         try { req = JSON.parse(text) } catch (e) { reply(id, { ok: false, error: "bad JSON: " + e.message, log: [] }); return }
         queue = queue.concat([{ id: id, req: req }])
         if (!running) Qt.callLater(control.runNext)
+    }
+
+    // The caller stopped waiting: a queued request is dropped, a running one fails where it is
+    function cancel(id) {
+        queue = queue.filter(function(j) { return j.id !== id })
+        if (running && running.jobId === id) running.fail("cancelled: the caller stopped waiting")
     }
 
     function runNext() {
@@ -54,6 +61,7 @@ QtObject {
         var d = driverComponent.createObject(control, { hostWindow: hostWindow, hostFrame: hostFrame, evaluate: evaluate,
                                                          outDir: String(job.req.out || ""), live: true,
                                                          beforePage: control.closeOverlays })
+        d.jobId = job.id
         running = d
         d.finish = function(ok, message) {
             var r = ok ? { ok: true, result: plain(d.result, 0), log: d.lines } : { ok: false, error: message, log: d.lines }
@@ -101,10 +109,11 @@ QtObject {
         if (v === undefined) return null
         if (v === null || typeof v === "number" || typeof v === "boolean" || typeof v === "string") return v
         if (typeof v === "function") return String(v)
+        if (depth > 6) return "..."
+        if (Array.isArray(v)) return v.slice(0, 2000).map(function(x) { return plain(x, depth + 1) })
+        // A QObject prints as Type(0x...): its type name stands for it
         var s = String(v)
         if (/\(0x[0-9a-f]+/.test(s)) return s.replace(/\(0x[0-9a-f]+.*$/, "")
-        if (depth > 6) return s
-        if (Array.isArray(v)) return v.slice(0, 2000).map(function(x) { return plain(x, depth + 1) })
         var o = {}
         Object.keys(v).forEach(function(k) { o[k] = plain(v[k], depth + 1) })
         return o
@@ -130,9 +139,9 @@ QtObject {
         if (open.length) r.open = open
         return r
     }
-    // Each page and the props it opens with
+    // Each page in Frame.pages and the props it opens with, where they are known
     function pages() {
-        return {
+        var known = {
             home: {}, library: { q: "search", sort: "", group: "", genre: "", arrange: "", box: "" },
             airing: { season: "", filter: "" }, feed: {}, watching: { tab: "" }, stats: { year: "" },
             metadata: { q: "search" }, downloads: { query: "search", series: "series id" },
@@ -140,5 +149,8 @@ QtObject {
             series: { id: "series id", find: "words of the title" }, player: { file: "path", speed: "" },
             show: { anilist: "AniList id" }, recommended: {}
         }
+        var r = {}
+        Object.keys(hostFrame.item.pages).forEach(function(p) { r[p] = known[p] || {} })
+        return r
     }
 }

@@ -203,8 +203,9 @@ everything in the drive step list above works here too, and a drive script runs 
 page's bare words fill its main prop (`go series frieren` opens the first title holding the
 words, `go settings keys` the Keys section). `anibeam --page <name> [--props <json>]` with a
 window already open moves that window to the page. A key step asks for the keyboard when the
-window lacks it, so against a window on the desktop it can take focus; an `--offscreen` window
-never touches the desktop. Not on Windows yet: it needs a Unix socket.
+window lacks it only with `--focus`, since asking can take focus from what you are doing; an
+`--offscreen` window (it needs `--root`) never touches the desktop. A request whose caller stops
+waiting is stopped too. Not on Windows yet: it needs a Unix socket.
 
 ## macOS
 

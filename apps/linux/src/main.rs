@@ -170,16 +170,16 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        // `anibeam --page <name>` with a window open moves that window there
-        if let Some(page) = runtime::args().page.as_deref() {
-            if let Err(e) = control::go(
-                &runtime::paths().control_socket(),
-                page,
-                runtime::args().props.as_deref(),
-            ) {
-                eprintln!("anibeam: the open window could not go to {page}: {e}");
-                std::process::exit(1);
-            }
+        // `anibeam --page <name>` with a window open moves that window there. The raise has
+        // worked either way, so a window that cannot take it (an older build) only warns.
+        let a = runtime::args();
+        if let Some(page) = a.page.as_deref()
+            && a.shoot.is_none()
+            && a.drive.is_none()
+            && let Err(e) =
+                control::go(&runtime::paths().control_socket(), page, a.props.as_deref())
+        {
+            eprintln!("anibeam: the open window stayed where it was: {e}");
         }
         std::process::exit(0);
     };

@@ -66,10 +66,11 @@ _anibeam_ctl() {
       fi ;;
     click) COMPREPLY=($(compgen -W "--nth --right --double --json --timeout" -- "$cur")) ;;
     hover|scroll) COMPREPLY=($(compgen -W "--nth --json --timeout" -- "$cur")) ;;
-    key) COMPREPLY=($(compgen -W "Escape Return Tab Shift+Tab Space Backspace Up Down Left Right Home End PageUp PageDown Ctrl+K Alt+Left Alt+Right F11" -- "$cur")) ;;
+    key) COMPREPLY=($(compgen -W "--focus Escape Return Tab Shift+Tab Space Backspace Up Down Left Right Home End PageUp PageDown Ctrl+K Alt+Left Alt+Right F11" -- "$cur")) ;;
     shot) COMPREPLY=($(compgen -f -X '!*.png' -- "$cur")) ;;
     run) COMPREPLY=($(compgen -f -X '!*.json' -- "$cur") -) ;;
     wait) COMPREPLY=($(compgen -W "--timeout" -- "$cur")) ;;
+    type) COMPREPLY=($(compgen -W "--focus" -- "$cur")) ;;
     *) COMPREPLY=($(compgen -W "--json --timeout" -- "$cur")) ;;
   esac
 }

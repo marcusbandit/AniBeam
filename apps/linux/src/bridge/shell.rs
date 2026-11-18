@@ -68,6 +68,9 @@ pub mod qobject {
         /// whose steps Control.qml runs, answering through controlReply.
         #[qsignal]
         fn control_requested(self: Pin<&mut Self>, id: i32, request: QString);
+        /// The caller of control request `id` stopped waiting: stop it.
+        #[qsignal]
+        fn control_cancelled(self: Pin<&mut Self>, id: i32);
         /// Control.qml's JSON answer to control request `id`.
         #[qinvokable]
         fn control_reply(self: &Self, id: i32, reply: &QString);

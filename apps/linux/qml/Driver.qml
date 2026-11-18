@@ -52,8 +52,9 @@
 // that are on screen, not scrolled out of a list. "nth": 2 takes the second such match.
 //
 // A live run (`anibeam ctl`, Control.qml) is the same steps against the window on screen:
-// nothing exits, lines are kept for the reply instead of printed, the last eval or tree is
-// the result, and a key step asks for the window first when it does not have the keyboard.
+// nothing exits, lines are kept for the reply instead of printed, and the last eval or tree
+// is the result. A key or type step with "focus": true first asks for the keyboard when the
+// window lacks it; without it the window is never raised.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -71,6 +72,7 @@ QtObject {
     property var beforePage: null
     property var lines: []
     property var result: undefined
+    property int jobId: 0          // the control request this live run answers
 
     property var steps: []
     property var vars: ({})        // {"eval": ..., "as": "k"} results, readable in evals as vars.k
@@ -245,18 +247,20 @@ QtObject {
     // ones, each in a Popup before the page's
     function findWords(words) {
         var want = String(words).toLowerCase(), hits = []
-        var stack = [hostWindow.contentItem]
+        // Each entry carries the words of the nearest match above it: a button's own label
+        // shows the button's words again and is not a second match
+        var stack = [[hostWindow.contentItem, ""]]
         while (stack.length) {
-            var it = stack.pop()
+            var top = stack.pop(), it = top[0], above = top[1]
             // A layout item with no size of its own still holds what is drawn
             if (!it.visible || it.opacity <= 0) continue
             var w = shown(it) ? wordsOf(it).toLowerCase() : ""
-            if (w !== "" && w.indexOf(want) >= 0) {
+            if (w !== "" && w.indexOf(want) >= 0 && w !== above) {
                 var c = onScreen(it)
-                if (c) hits.push({ item: it, at: c, rank: (w === want ? 0 : 2) + (inPopup(it) ? 0 : 1), n: hits.length })
+                if (c) { hits.push({ item: it, at: c, rank: (w === want ? 0 : 2) + (inPopup(it) ? 0 : 1), n: hits.length }); above = w }
             }
             var kids = it.children
-            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push(kids[i])
+            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push([kids[i], above])
         }
         hits.sort(function(a, b) { return a.rank - b.rank || a.n - b.n })
         return hits
@@ -329,8 +333,8 @@ QtObject {
         if (keyPart.length === 1) return charKey(keyPart, mods, parts.length === 0)
         throw new Error("unknown key " + keyPart)
     }
-    function keyActions(k, out) {
-        if (live) out.push(function() { if (!hostWindow.active) { hostWindow.requestActivate(); return settle } return 0 })
+    function keyActions(k, out, focus) {
+        if (live && focus === true) out.push(function() { if (!hostWindow.active) { hostWindow.requestActivate(); return settle } return 0 })
         out.push(function() { Shell.driveKey(hostWindow, true, k.key, k.mods, k.text); return 0 })
         out.push(function() { Shell.driveKey(hostWindow, false, k.key, k.mods, k.text); return 10 })
     }
@@ -348,12 +352,15 @@ QtObject {
     }
     function tree(filter) {
         var rows = [], want = String(filter || "").toLowerCase()
-        var stack = [hostWindow.contentItem]
+        // As in findWords: a control's own label repeats its words and gets no row of its own
+        var stack = [[hostWindow.contentItem, ""]]
         while (stack.length) {
-            var it = stack.pop()
+            var top = stack.pop(), it = top[0], above = top[1]
             if (!it.visible || it.opacity <= 0) continue
             var name = it.objectName || "", words = wordsOf(it)
+            if (name === "" && words !== "" && words === above) words = ""
             if ((name !== "" || words !== "") && shown(it) && onScreen(it)) {
+                if (words !== "") above = words
                 var p = it.mapToItem(null, 0, 0)
                 var row = { kind: kindOf(it), x: Math.round(p.x), y: Math.round(p.y), w: Math.round(it.width), h: Math.round(it.height) }
                 if (name !== "") row.name = name
@@ -364,7 +371,7 @@ QtObject {
                 if (want === "" || hay.indexOf(want) >= 0) rows.push(row)
             }
             var kids = it.children
-            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push(kids[i])
+            for (var i = kids.length - 1; i >= 0; i--) if (kids[i].visible) stack.push([kids[i], above])
         }
         return rows
     }
@@ -559,7 +566,7 @@ QtObject {
                 if (pressed >= most) throw new Error("repeatUntil not met after " + most + " presses: " + step.repeatUntil)
                 pressed++
                 var again = []
-                keyActions(pk, again)
+                keyActions(pk, again, step.focus)
                 again.push(function() { return settle })
                 again.push(check)
                 queue = again.concat(queue)
@@ -567,11 +574,11 @@ QtObject {
             }
             out.push(check)
         } else if (step.key !== undefined) {
-            keyActions(parseKey(step.key), out)
+            keyActions(parseKey(step.key), out, step.focus)
             out.push(function() { return settle })
         } else if (step.type !== undefined) {
             if (typeof step.type !== "string") throw new Error("type takes a string")
-            for (var i = 0; i < step.type.length; i++) keyActions(charKey(step.type[i], 0, true), out)
+            for (var i = 0; i < step.type.length; i++) keyActions(charKey(step.type[i], 0, true), out, i === 0 && step.focus)
             out.push(function() { return settle })
         } else if (step.shot !== undefined) {
             out.push(shotAction(step.shot, ""))

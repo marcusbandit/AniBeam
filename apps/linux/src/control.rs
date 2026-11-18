@@ -23,7 +23,7 @@ nothing needs installing. --root <dir> picks the window started with that root.
 
   open [page ...] [--offscreen]   start a window when none runs, then go to the page.
                                   --offscreen starts it with no window on the desktop
-                                  and no sound, for a sandbox root
+                                  and no sound; it needs --root
   go <page> [words] [key=value ...]
                                   open a page from anywhere: whatever is open over the
                                   page closes first. words fill the page's main prop:
@@ -37,25 +37,28 @@ nothing needs installing. --root <dir> picks the window started with that root.
   click <target> [--nth n] [--right] [--double]
   hover <target> [--nth n]
   scroll <target> <notches>       positive scrolls down, one notch is 100 px
-  key <combo> ...                 Escape, Return, Ctrl+K, Alt+Left, Shift+Tab, a
-  type <text>                     into whatever has the keyboard
+  key <combo> ... [--focus]       Escape, Return, Ctrl+K, Alt+Left, Shift+Tab, a
+  type <text> [--focus]           into whatever has the keyboard. --focus first asks
+                                  for the keyboard, for a window on the desktop that
+                                  lacks it; it can take focus from what you are doing
   shot [file.png]                 the window as it is; prints the file
   eval <js>                       in Main.qml's scope: window, frame, Door, Player,
                                   Theme, control. Prints the value as JSON
   wait <js> [--timeout ms]        until the JS is truthy
-  run <script.json | ->           a --drive script, against this window
+  run <script.json | ->           a --drive script, against this window (10 minutes
+                                  unless --timeout says otherwise)
   quit                            close the window
 
 A target is x,y in window pixels, an objectName, or words on screen. Words match whole
 before partial, case aside, an open popup before the page, and only what is on screen;
 --nth 2 takes the second match. Read `tree` to see what there is.
 
---json prints the whole reply. --timeout <ms> bounds any command (30000 unless set).
+--json prints the whole reply. --timeout <ms> bounds each wait (30000 unless set).
+-- ends the flags: type -- --focus types the word.
 A failure prints why on stderr and exits 1; no window running exits 3.
 
 Useful in eval: control.where(), frame.item.nav.current, frame.item.pageItem,
 control.find("objectName"), Door.listSeries("All", "", "Alpha", "Asc", false).
-Keys go to the window with the keyboard; a key step asks for it when it lacks it.
 "#;
 
 /// Why a request got no answer.
@@ -96,6 +99,8 @@ struct Plan {
     steps: Value,
     out: Option<PathBuf>,
     print: Print,
+    /// How long the whole request may take, in ms: a step's own wait is `timeout`
+    budget: u64,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -106,6 +111,7 @@ struct Opts {
     right: bool,
     double: bool,
     offscreen: bool,
+    focus: bool,
     props: Option<String>,
 }
 
@@ -115,6 +121,10 @@ fn split_opts(args: &[String]) -> Result<(Vec<String>, Opts), String> {
     let mut rest = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
+        if a == "--" {
+            rest.extend(it.cloned());
+            break;
+        }
         let mut num = |name: &str| -> Result<u64, String> {
             it.next()
                 .and_then(|v| v.parse().ok())
@@ -127,6 +137,7 @@ fn split_opts(args: &[String]) -> Result<(Vec<String>, Opts), String> {
             "--right" => o.right = true,
             "--double" => o.double = true,
             "--offscreen" => o.offscreen = true,
+            "--focus" => o.focus = true,
             "--props" => o.props = Some(it.next().cloned().ok_or("--props needs a JSON object")?),
             _ => rest.push(a.clone()),
         }
@@ -210,6 +221,12 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
         steps,
         out: None,
         print: Print::Result,
+        budget: timeout,
+    };
+    // A move waits twice: for the page to be built, then for it to settle
+    let moves = |steps: Value| Plan {
+        budget: timeout * 2 + 5000,
+        ..one(steps)
     };
     let need = |n: usize, usage: &str| -> Result<(), String> {
         if args.len() < n {
@@ -236,12 +253,12 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
                 steps.push(step);
             }
             steps.extend(settled(timeout));
-            one(Value::Array(steps))
+            moves(Value::Array(steps))
         }
         "back" | "forward" => {
             let mut steps = vec![json!({"eval": format!("frame.item.{cmd}()")})];
             steps.extend(settled(timeout));
-            one(Value::Array(steps))
+            moves(Value::Array(steps))
         }
         "where" => one(json!([{"eval": "control.where()"}])),
         "pages" => one(json!([{"eval": "control.pages()"}])),
@@ -249,6 +266,7 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
             steps: json!([{"tree": args.join(" ")}]),
             out: None,
             print: Print::Tree,
+            budget: timeout,
         },
         "click" => {
             need(1, "click <target> [--nth n] [--right] [--double]")?;
@@ -282,12 +300,24 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
         "key" => {
             need(1, "key <combo> ...")?;
             one(Value::Array(
-                args.iter().map(|k| json!({"key": k})).collect(),
+                args.iter()
+                    .map(|k| {
+                        let mut step = json!({"key": k});
+                        if o.focus {
+                            step["focus"] = json!(true);
+                        }
+                        step
+                    })
+                    .collect(),
             ))
         }
         "type" => {
             need(1, "type <text>")?;
-            one(json!([{"type": args.join(" ")}]))
+            let mut step = json!({"type": args.join(" ")});
+            if o.focus {
+                step["focus"] = json!(true);
+            }
+            one(json!([step]))
         }
         "shot" => {
             let file = match args.first() {
@@ -309,6 +339,7 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
                 steps: json!([{"shot": name}]),
                 out: Some(dir),
                 print: Print::Shot(file),
+                budget: timeout,
             }
         }
         "eval" => {
@@ -341,6 +372,7 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
                 steps,
                 out: Some(std::path::absolute(&out).unwrap_or(out)),
                 print: Print::Log,
+                budget: o.timeout.unwrap_or(600_000),
             }
         }
         "quit" => one(json!([{"eval": "Qt.callLater(Qt.quit)"}])),
@@ -414,7 +446,7 @@ pub fn cli(argv: &[String]) -> i32 {
         }
     };
     let socket = crate::runtime::paths().control_socket();
-    let wait = o.timeout.map_or(DEFAULT_TIMEOUT, Duration::from_millis);
+    let wait = Duration::from_millis(plan.budget);
     if cmd == "open"
         && let Err(e) = ensure_running(&socket, o.offscreen)
     {
@@ -443,7 +475,7 @@ pub fn cli(argv: &[String]) -> i32 {
     if reply["ok"] != json!(true) {
         for line in reply["log"].as_array().into_iter().flatten() {
             if let Some(l) = line.as_str() {
-                eout(l);
+                eprintln!("{l}");
             }
         }
         eprintln!(
@@ -481,10 +513,14 @@ pub fn go(socket: &Path, page: &str, props: Option<&str>) -> Result<(), String> 
     if cfg!(not(unix)) {
         return Ok(());
     }
-    let mut steps = vec![page_step(page, &[], props)?];
-    steps.extend(settled(DEFAULT_TIMEOUT.as_millis() as u64));
-    let req = json!({"steps": steps, "timeout": DEFAULT_TIMEOUT.as_millis() as u64});
-    let reply = request(socket, &req, DEFAULT_TIMEOUT).map_err(|e| e.to_string())?;
+    let t = DEFAULT_TIMEOUT.as_millis() as u64;
+    let mut step = page_step(page, &[], props)?;
+    step["timeout"] = json!(t);
+    let mut steps = vec![step];
+    steps.extend(settled(t));
+    let wait = Duration::from_millis(t * 2 + 5000);
+    let req = json!({"steps": steps, "timeout": wait.as_millis() as u64});
+    let reply = request(socket, &req, wait).map_err(|e| e.to_string())?;
     if reply["ok"] == json!(true) {
         Ok(())
     } else {
@@ -498,10 +534,20 @@ pub fn go(socket: &Path, page: &str, props: Option<&str>) -> Result<(), String> 
 /// Starts a window for this root when none answers, and waits until it does.
 fn ensure_running(socket: &Path, offscreen: bool) -> Result<(), String> {
     fits(socket)?;
+    if offscreen && crate::runtime::args().root.is_none() {
+        // A hidden window on the real library would hold the single-instance lock, and the
+        // app would seem not to open from the menu
+        return Err("--offscreen needs --root <dir>".into());
+    }
     if alive(socket) {
         return Ok(());
     }
-    let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
+    // The AppImage file, not its mount: the mount goes once this process exits
+    let exe = std::env::var_os("APPIMAGE")
+        .filter(|a| !a.is_empty())
+        .map(PathBuf::from)
+        .map_or_else(std::env::current_exe, Ok)
+        .map_err(|e| format!("cannot find this program: {e}"))?;
     let log = socket.with_file_name("anibeam-ctl-open.log");
     if let Some(dir) = log.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -600,7 +646,7 @@ mod unix {
 
     /// The longest request line taken: a long drive script fits many times over.
     const REQUEST_MAX: u64 = 4 << 20;
-    /// Beyond the request's own timeout, the time the window gets to say it ran out.
+    /// Beyond the request's own budget, the time the window gets to answer.
     const GRACE: Duration = Duration::from_secs(3);
 
     /// Requests waiting on the window, by id.
@@ -677,6 +723,8 @@ mod unix {
             json!({"ok": false, "error": "the window is closing"}).to_string()
         } else {
             rx.recv_timeout(wait).unwrap_or_else(|_| {
+                // Stopped, so it neither runs on nor holds up the requests behind it
+                let _ = shell.queue(move |shell| shell.control_cancelled(id));
                 json!({"ok": false, "error": format!("no answer within {} ms", wait.as_millis())})
                     .to_string()
             })
@@ -758,6 +806,11 @@ mod tests {
         assert_eq!(st[0]["props"], json!({"q": "a=b", "sort": "Alpha"}));
         let st = steps("go", &["show", "21"]);
         assert_eq!(st[0]["props"], json!({"anilist": 21}));
+        let (rest, o) = split_opts(&s(&["settings", "--", "--focus"])).unwrap();
+        assert_eq!(
+            plan("go", &rest, &o, 0).unwrap().steps[0]["props"],
+            json!({"tab": "--focus"})
+        );
         let (rest, o) = split_opts(&s(&["home", "hello"])).unwrap();
         assert!(
             plan("go", &rest, &o, 0)
@@ -810,11 +863,32 @@ mod tests {
             json!([{"type": "hello there"}])
         );
         assert_eq!(
+            steps("type", &["--focus", "--", "--right"]),
+            json!([{"type": "--right", "focus": true}])
+        );
+        assert_eq!(
+            steps("key", &["a", "--focus"]),
+            json!([{"key": "a", "focus": true}])
+        );
+        assert_eq!(
             steps("wait", &["Door.ready", "--timeout", "900"]),
             json!([{"until": "Door.ready", "timeout": 900}])
         );
         assert_eq!(steps("eval", &["1", "+", "1"]), json!([{"eval": "1 + 1"}]));
         assert_eq!(steps("tree", &[]), json!([{"tree": ""}]));
+    }
+
+    #[test]
+    fn a_move_and_a_script_get_room_for_their_waits() {
+        let t = DEFAULT_TIMEOUT.as_millis() as u64;
+        let budget = |cmd: &str, args: &[&str]| {
+            let (rest, o) = split_opts(&s(args)).unwrap();
+            plan(cmd, &rest, &o, 0).unwrap().budget
+        };
+        assert_eq!(budget("where", &[]), t);
+        assert_eq!(budget("go", &["home"]), t * 2 + 5000);
+        assert_eq!(budget("back", &["--timeout", "1000"]), 7000);
+        assert_eq!(budget("eval", &["1", "--timeout", "50"]), 50);
     }
 
     #[test]

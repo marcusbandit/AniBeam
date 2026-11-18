@@ -87,6 +87,12 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "ctl" => {
                 let mut rest = Vec::new();
                 while let Some(x) = it.next() {
+                    // Past `--` every word is the command's own, --root included
+                    if x == "--" {
+                        rest.push(x.clone());
+                        rest.extend(it.cloned());
+                        break;
+                    }
                     if x == "--root" {
                         let dir = it.next().ok_or("--root needs a value")?;
                         a.root = Some(PathBuf::from(dir));
@@ -290,6 +296,9 @@ mod tests {
             Some(vec!["click".into(), "--page".into()])
         );
         assert_eq!(parse(&argv("ctl")).unwrap().ctl, Some(vec![]));
+        let a = parse(&argv("ctl type -- see --root later")).unwrap();
+        assert_eq!(a.root, None);
+        assert_eq!(a.ctl.unwrap(), ["type", "--", "see", "--root", "later"]);
         assert!(parse(&argv("--page home ctl where")).is_err());
         assert!(parse(&argv("serve ctl where")).is_err());
     }
