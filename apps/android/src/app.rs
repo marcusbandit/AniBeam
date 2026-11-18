@@ -100,6 +100,8 @@ enum Open {
 /// What a reload read off the UI thread: the phone's cards, the open series's detail by its
 /// id, and the trackers, each None when its read failed.
 struct Reloaded {
+    /// The app's reload generation when the read was asked for.
+    generation: u64,
     cards: Option<Vec<SeriesCard>>,
     detail: Option<(u64, Result<Reply, anibeam_core::CoreError>)>,
     trackers: Option<(TrackerAccount, TrackerAccount)>,
@@ -118,7 +120,6 @@ struct App {
     detail: Option<SeriesDetail>,
     art: Art,
     asked: HashSet<u64>,
-    posters: Sender<(u64, String)>,
     trackers: Option<(TrackerAccount, TrackerAccount)>,
     /// The tracker a sign-in was last started for (0 AniList, 1 MAL), and why it failed,
     /// which More shows in place of "Not signed in" until it is tried again.
@@ -144,6 +145,9 @@ struct App {
     read_on: Option<chrono::NaiveDate>,
     /// The cards, the open detail and the trackers are read again, off the UI thread.
     reload_due: crate::reads::Due,
+    /// Moves on with every write of the open detail on the UI thread, so a reload asked for
+    /// before it never lands over what it wrote.
+    reload_generation: u64,
     /// Each card's titles, lower case with single spaces, for naming a torrent's show.
     plain_titles: Vec<(u64, Vec<String>)>,
     /// Whose calendar shows: 0 this phone, 1 the computer.
@@ -184,6 +188,9 @@ struct App {
     sources: Vec<PhoneSource>,
     /// The sources are being read for Downloads and More.
     sources_reading: bool,
+    /// Moves on with every write of the sources, so a read asked for before it never lands
+    /// over what it wrote.
+    sources_generation: u64,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
     /// The rolling settings were asked for.
@@ -211,10 +218,13 @@ pub fn endpoints_changed() {
     with_app(App::show_search_sources);
 }
 
-/// The pages are built again from what is held, as the clock's tick does: a read that
-/// landed off the UI thread shows at once.
-pub fn redraw() {
-    with_app(App::tick);
+/// Home's feed is built again from what it holds, so a read of it that landed off the UI
+/// thread shows at once.
+pub fn redraw_feed() {
+    with_app(|app| {
+        let window = app.window.clone_strong();
+        crate::feed::tick(&window, false, &app.art, anibeam_companion::now());
+    });
 }
 
 /// Downloads calls this once the core took a download or a subscription: the first one
@@ -419,6 +429,7 @@ impl App {
             Some(Open::Phone(id)) => Some(id),
             _ => None,
         };
+        let generation = self.reload_generation;
         let started = crate::reads::read(
             move |core| {
                 let library = Call::ListLibrary {
@@ -438,6 +449,7 @@ impl App {
                     _ => None,
                 };
                 Reloaded {
+                    generation,
                     cards,
                     detail,
                     trackers,
@@ -452,6 +464,13 @@ impl App {
 
     fn reloaded(&mut self, reloaded: Reloaded) {
         self.reload_due.landed();
+        // Read before the UI thread last wrote the open detail: what it holds may be older
+        // than that write, so it is read again instead.
+        if reloaded.generation != self.reload_generation {
+            self.reload_due.mark();
+            self.reload();
+            return;
+        }
         if let Some(series) = reloaded.cards {
             self.cards = series;
             self.read_on = Some(anibeam_companion::calendar::today(anibeam_companion::now()));
@@ -481,7 +500,7 @@ impl App {
             if let Some(path) = &card.poster
                 && self.asked.insert(card.id)
             {
-                let _ = self.posters.send((card.id, path.clone()));
+                load_poster(card.id, path.clone());
             }
         }
         // Only for the series still open: another may have opened while the read was out.
@@ -498,7 +517,8 @@ impl App {
         if let Some(trackers) = reloaded.trackers {
             self.trackers = Some(trackers);
         }
-        self.tick();
+        // Drawn from what landed. The core's change flag stays for the clock's next tick.
+        self.draw(false);
     }
 
     /// The computer's line for the last sync, in the language the app speaks now.
@@ -520,9 +540,13 @@ impl App {
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
     /// run every second; the models only repaint what changed.
     fn tick(&mut self) {
-        // A new day moves the calendar's window, so the airings around it are read again.
-        let changed = crate::local::take_changed();
+        self.draw(crate::local::take_changed());
+    }
+
+    /// `tick`, with whether the core reported a change since the last one.
+    fn draw(&mut self, changed: bool) {
         crate::find::tick(changed);
+        // A new day moves the calendar's window, so the airings around it are read again.
         if changed
             || self
                 .read_on
@@ -559,7 +583,7 @@ impl App {
             ("home-recently-downloaded", home.downloaded),
         ]);
         crate::feed::tick(&window, changed, &self.art, now);
-        crate::disk::tick(&window, changed, &self.cards);
+        crate::disk::tick(&window, changed);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
@@ -708,7 +732,7 @@ impl App {
             &self.art,
         ) {
             if self.asked.insert(key) {
-                let _ = self.posters.send((key, path));
+                load_poster(key, path);
             }
         }
 
@@ -1046,7 +1070,7 @@ impl App {
             if let Some(path) = &show.poster
                 && self.asked.insert(key)
             {
-                let _ = self.posters.send((key, path.clone()));
+                load_poster(key, path.clone());
             }
         }
     }
@@ -1187,14 +1211,19 @@ impl App {
         if self.sources_reading {
             return;
         }
+        let generation = self.sources_generation;
         self.sources_reading = crate::reads::read(
             |core| match core.call(Call::PhoneSources) {
                 Ok(Reply::PhoneSources { sources }) => Some(sources),
                 _ => None,
             },
-            |sources| {
+            move |sources| {
                 with_app(|app| {
                     app.sources_reading = false;
+                    // A write since the read was asked for showed what it saved already.
+                    if app.sources_generation != generation {
+                        return;
+                    }
                     if let Some(sources) = sources {
                         app.show_sources(sources);
                     }
@@ -1376,6 +1405,7 @@ impl App {
         }
         let mut sources = self.sources.clone();
         sources.remove(index);
+        self.sources_generation = self.sources_generation.wrapping_add(1);
         if let Ok(Reply::PhoneSources { sources }) = core.call(Call::SetPhoneSources { sources }) {
             self.show_sources(sources);
         }
@@ -1951,6 +1981,7 @@ impl App {
 
     fn reload_open(&mut self) {
         if let (Some(Open::Phone(id)), Some(core)) = (self.open, crate::local::core()) {
+            self.reload_generation = self.reload_generation.wrapping_add(1);
             self.detail = match core.call(Call::GetSeries { series: id }) {
                 Ok(Reply::SeriesDetail { detail }) => Some(*detail),
                 _ => None,
@@ -2270,30 +2301,20 @@ fn finished(t: &Torrent) -> bool {
     t.progress >= 1.0 && t.roll.is_none()
 }
 
-/// Reads poster files off the UI thread and hands each decoded one back.
-fn start_poster_loader() -> Sender<(u64, String)> {
-    let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
-    let _ = std::thread::Builder::new()
-        .name("posters".into())
-        .spawn(move || {
-            for (id, path) in rx {
-                let Some(decoded) = std::fs::read(&path)
-                    .ok()
-                    .and_then(|b| crate::posters::decode(&b))
-                else {
-                    continue;
-                };
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        app.art
-                            .posters
-                            .insert(id, Image::from_rgba8(decoded.buffer));
-                        app.art.tones.insert(id, decoded.tone);
-                    });
-                });
-            }
+/// Decodes the poster file for `id` off the UI thread; the pages show it from their next
+/// draw.
+fn load_poster(id: u64, path: String) {
+    crate::posters::load(path, move |decoded| {
+        let Some(decoded) = decoded else {
+            return;
+        };
+        with_app(|app| {
+            app.art
+                .posters
+                .insert(id, Image::from_rgba8(decoded.buffer));
+            app.art.tones.insert(id, decoded.tone);
         });
-    tx
+    });
 }
 
 /// Each streamable file of the other device's, with its episode number.
@@ -2602,7 +2623,6 @@ pub fn run(
         detail: None,
         art: Art::default(),
         asked: HashSet::new(),
-        posters: start_poster_loader(),
         trackers: None,
         signing_in: HashMap::new(),
         sign_in_error: None,
@@ -2624,6 +2644,7 @@ pub fn run(
         cal_models: Vec::new(),
         read_on: None,
         reload_due: crate::reads::Due::now(),
+        reload_generation: 0,
         plain_titles: Vec::new(),
         cal_device: 0,
         airing: None,
@@ -2650,6 +2671,7 @@ pub fn run(
         delete_busy: false,
         sources: Vec::new(),
         sources_reading: false,
+        sources_generation: 0,
         downloads,
         polling: false,
         rolling_loaded: false,

@@ -91,13 +91,14 @@ fn list(core: &anibeam_core::Core, tab: Tab) -> Vec<SeriesCard> {
     }
 }
 
-/// Reads the disk and the hidden shows again: every show with a file on the phone, from
-/// `all` and the watched and hidden tabs, and the hidden ones apart.
-fn read(core: &anibeam_core::Core, all: Vec<SeriesCard>) -> (Vec<SeriesCard>, Vec<SeriesCard>) {
+/// Reads the disk and the hidden shows again: every show with a file on the phone, from the
+/// all, watched and hidden tabs, and the hidden ones apart. Each tab is read here, in the
+/// same read, so the figures never mix a list from before a change with one from after.
+fn read(core: &anibeam_core::Core) -> (Vec<SeriesCard>, Vec<SeriesCard>) {
     let mut seen = HashSet::new();
     let mut disk = Vec::new();
     let hidden = list(core, Tab::Hidden);
-    for c in all
+    for c in list(core, Tab::All)
         .into_iter()
         .chain(list(core, Tab::Watched))
         .chain(hidden.iter().cloned())
@@ -228,9 +229,9 @@ fn sheet_text(d: &DiskData, finished: bool, u: &Usage) {
     }
 }
 
-/// Called each second with whether the core said something and the library's cards. The
-/// read runs off the UI thread and shows the figures when it lands (#1206).
-pub fn tick(window: &AppWindow, changed: bool, cards: &[SeriesCard]) {
+/// Called each second with whether the core said something. The read runs off the UI thread
+/// and shows the figures when it lands (#1206).
+pub fn tick(window: &AppWindow, changed: bool) {
     if changed {
         STATE.with(|s| s.borrow_mut().due.mark());
     }
@@ -241,8 +242,7 @@ pub fn tick(window: &AppWindow, changed: bool, cards: &[SeriesCard]) {
     if !STATE.with(|s| s.borrow_mut().due.start()) {
         return;
     }
-    let all = cards.to_vec();
-    if !crate::reads::read(move |core| read(core, all), landed) {
+    if !crate::reads::read(read, landed) {
         STATE.with(|s| s.borrow_mut().due.failed());
     }
 }

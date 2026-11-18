@@ -26,6 +26,9 @@ struct State {
     /// The sort has been read from the preferences.
     sort_read: bool,
     cards: Vec<FeedCard>,
+    /// The sort `cards` were read for. A pick changes `sort` at once and these once its read
+    /// lands, so the cards are always cut by the sort they came in.
+    cards_sort: FeedSort,
     /// The cards are read again, off the UI thread, while Home shows.
     due: crate::reads::Due,
     /// The cards changed since the tiles were built from them.
@@ -218,16 +221,20 @@ fn landed(read: Read) {
             s.sort_read = true;
         }
         match read.cards {
-            // A sort picked while the read was out has a read of its own coming.
-            Ok(cards) if read.used == s.sort => {
+            Ok(cards) => {
                 s.cards = cards;
-                s.fresh = true;
+                s.cards_sort = read.used;
+                // A sort picked while the read was out gets a read of its own.
+                if read.used != s.sort {
+                    s.due.mark();
+                }
             }
-            Ok(_) => s.due.mark(),
+            // The tiles are built from what is held, as a failed read always left them.
             Err(e) => crate::local::log(&format!("feed: {e}")),
         }
+        s.fresh = true;
     });
-    crate::app::redraw();
+    crate::app::redraw_feed();
 }
 
 /// The sort goes into the preferences the desktop reads too, off the UI thread, in the order
@@ -257,6 +264,7 @@ pub fn install(window: &AppWindow) {
             sort: FeedSort::Recent,
             sort_read: false,
             cards: Vec::new(),
+            cards_sort: FeedSort::Recent,
             due: crate::reads::Due::now(),
             fresh: false,
             built_at: 0,
@@ -319,8 +327,8 @@ pub fn tick(window: &AppWindow, changed: bool, art: &Art, now: i64) {
         s.fresh = false;
         s.built_at = now;
         data.set_sort(i32::from(s.sort == FeedSort::Upcoming));
-        data.set_summary(summary(&s.cards, s.sort, now).into());
-        let rows = cut(&s.cards, s.sort, now)
+        data.set_summary(summary(&s.cards, s.cards_sort, now).into());
+        let rows = cut(&s.cards, s.cards_sort, now)
             .into_iter()
             .map(|(title, idx)| {
                 let tiles = idx
