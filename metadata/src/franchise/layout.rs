@@ -86,36 +86,34 @@ fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
         to,
         relation: relation.to_string(),
     };
-    let normalized = edges
-        .iter()
-        .map(|x| match x.relation.as_str() {
-            "PARENT" => e(x.to, x.from, "SIDE_STORY"),
-            "PREQUEL" => e(x.to, x.from, "SEQUEL"),
-            "ALTERNATIVE" => {
-                if x.from <= x.to {
-                    x.clone()
-                } else {
-                    e(x.to, x.from, "ALTERNATIVE")
-                }
+    let normalized = edges.iter().map(|x| match x.relation.as_str() {
+        "PARENT" => e(x.to, x.from, "SIDE_STORY"),
+        "PREQUEL" => e(x.to, x.from, "SEQUEL"),
+        "ALTERNATIVE" => {
+            if x.from <= x.to {
+                x.clone()
+            } else {
+                e(x.to, x.from, "ALTERNATIVE")
             }
-            "ADAPTATION" => {
-                let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp {
-                    e(x.to, x.from, "ADAPTATION")
-                } else {
-                    x.clone()
-                }
+        }
+        "ADAPTATION" => {
+            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
+            if !fp && tp {
+                e(x.to, x.from, "ADAPTATION")
+            } else {
+                x.clone()
             }
-            "SOURCE" => {
-                let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp {
-                    e(x.to, x.from, "ADAPTATION")
-                } else {
-                    e(x.from, x.to, "ADAPTATION")
-                }
+        }
+        "SOURCE" => {
+            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
+            if !fp && tp {
+                e(x.to, x.from, "ADAPTATION")
+            } else {
+                e(x.from, x.to, "ADAPTATION")
             }
-            _ => x.clone(),
-        });
+        }
+        _ => x.clone(),
+    });
 
     let mut best: Vec<Edge> = Vec::new();
     let mut index: HashMap<(u64, u64), usize> = HashMap::new();
@@ -875,10 +873,7 @@ mod tests {
             &map,
         );
         let rows = order_rows(chains(&nodes, &edges), &edges, &map, 1, 1);
-        assert_eq!(
-            rows,
-            vec![vec![10, 11], vec![1, 2], vec![20, 21]]
-        );
+        assert_eq!(rows, vec![vec![10, 11], vec![1, 2], vec![20, 21]]);
     }
 
     #[test]
