@@ -631,7 +631,9 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
 @media (max-width: 760px) {
   .rd .nav-gh { display: none; }
   .bhero { min-height: max(640px, min(100svh, 860px)); padding-bottom: 40px; }
-  .bhero .hero-actions { gap: 4px; }
+  /* the tight gap sits over the Other platforms link; an iPhone shows a second full button
+     there instead, which keeps the phone block's 10px */
+  html:not([data-os="ios"]) .bhero .hero-actions { gap: 4px; }
   .bhero .dl-other, .endcard .dl-other { height: 44px; background: none; box-shadow: none; color: var(--fg-2); font-weight: 560; }
   .bhero .dl-other::after, .endcard .dl-other::after { display: none; }
 }
