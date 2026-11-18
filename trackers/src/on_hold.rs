@@ -30,7 +30,7 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Trackers;
-use crate::{NO_TOKEN, accounts, cache, no_token, writes};
+use crate::{NO_TOKEN, accounts, cache, writes};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::prefs;
@@ -648,7 +648,13 @@ async fn move_one(
             if status == ListStatus::Watching.as_str() && stamp == entry.updated_at => {}
         _ => return Ok(Some("it changed here during the pass")),
     }
-    let Some(live) = writes::read_live(trackers, t, media_id, user_id, token).await? else {
+    let remote = writes::Remote {
+        trackers,
+        t,
+        media_id,
+        token,
+    };
+    let Some(live) = remote.read_live(user_id).await? else {
         return Ok(Some("it is no longer on the list"));
     };
     let (anilist_id, mal_id, progress) = (entry.anilist_id, entry.mal_id, live.progress);
@@ -660,8 +666,8 @@ async fn move_one(
     if let Err(why) = decide(&live, &here, time::now_secs(), days) {
         return Ok(Some(why));
     }
-    let stamp = writes::send_status(trackers, t, media_id, token, ListStatus::Paused).await?;
-    writes::record_status(&trackers.services, t, media_id, ListStatus::Paused, stamp).await?;
+    let stamp = remote.send_status(ListStatus::Paused).await?;
+    remote.record_status(ListStatus::Paused, stamp).await?;
     let images_dir = trackers.services.paths.images_dir();
     let cards = trackers
         .services
@@ -881,17 +887,19 @@ async fn back_to_watching(
     for (t, media_id, user_id) in paused {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&trackers, t)
-                .await?
-                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
+            let token = accounts::token(&trackers, t).await?;
+            let remote = writes::Remote {
+                trackers: &trackers,
+                t,
+                media_id,
+                token: &token,
+            };
+            let live = remote.read_live(user_id).await?;
             if live.is_none_or(|l| l.status != Some(ListStatus::Paused)) {
                 return Ok(false);
             }
-            let stamp =
-                writes::send_status(&trackers, t, media_id, &token, ListStatus::Watching).await?;
-            writes::record_status(&trackers.services, t, media_id, ListStatus::Watching, stamp)
-                .await?;
+            let stamp = remote.send_status(ListStatus::Watching).await?;
+            remote.record_status(ListStatus::Watching, stamp).await?;
             Ok::<bool, CoreError>(true)
         };
         match attempt.await {

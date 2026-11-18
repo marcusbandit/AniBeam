@@ -27,7 +27,7 @@ use crate::Trackers;
 use crate::accounts;
 use crate::on_hold;
 use crate::writes;
-use crate::{TRACKER_TIMEOUT, as_count, no_token};
+use crate::{TRACKER_TIMEOUT, as_count};
 use anibeam_contract::*;
 use anibeam_foundation::events::Signal;
 use anibeam_foundation::jobs::{Finished, JobCtx};
@@ -98,6 +98,15 @@ pub fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> O
     }
 }
 
+/// A MAL list status in the core's words, its rewatch flag read beside it.
+pub(crate) fn mal_list_status(list: &serde_json::Value) -> Option<ListStatus> {
+    normalize_status(
+        Tracker::Mal,
+        list["status"].as_str(),
+        list["is_rewatching"].as_bool().unwrap_or(false),
+    )
+}
+
 // The fetches ----------------------------------------------------------------
 
 /// AniList's whole anime list in one query, keyed by the AniList media id
@@ -157,16 +166,9 @@ pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, C
             "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at,comments}}&limit={MAL_PAGE}&offset={offset}"
         );
         let response = trackers.net.mal.get(&url, token).await?;
-        if !response.is_success() {
-            return Err(CoreError::provider(
-                Provider::Mal,
-                Some(u32::from(response.status)),
-                response.text(),
-            ));
-        }
-        let body: serde_json::Value = response.json()?;
-        let page_entries = body["data"].as_array().cloned().unwrap_or_default();
-        for item in &page_entries {
+        let body = writes::mal_json(&response)?;
+        let page_entries = body["data"].as_array().map_or(&[][..], Vec::as_slice);
+        for item in page_entries {
             let Some(media_id) = item["node"]["id"].as_u64() else {
                 continue;
             };
@@ -174,11 +176,7 @@ pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, C
             entries.push(Entry {
                 media_id,
                 progress: as_count(status["num_episodes_watched"].as_u64()),
-                status: normalize_status(
-                    Tracker::Mal,
-                    status["status"].as_str(),
-                    status["is_rewatching"].as_bool().unwrap_or(false),
-                ),
+                status: mal_list_status(status),
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
                 updated_at: status["updated_at"].as_str().and_then(mal_instant),
@@ -529,9 +527,7 @@ async fn fetch_and_replace(
     t: Tracker,
     user_id: Option<u64>,
 ) -> Result<usize, CoreError> {
-    let token = accounts::access_token(trackers, t)
-        .await?
-        .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
+    let token = accounts::token(trackers, t).await?;
     let entries = match t {
         Tracker::Anilist => {
             // AniList's collection is asked for by user id, so an account

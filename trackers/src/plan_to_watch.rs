@@ -8,7 +8,7 @@ use std::sync::Arc;
 use rusqlite::{OptionalExtension, params};
 
 use crate::Trackers;
-use crate::{accounts, no_token, writes};
+use crate::{accounts, writes};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::prefs;
@@ -145,35 +145,25 @@ async fn plan(
     for (t, media_id, user_id) in targets {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&trackers, t)
-                .await?
-                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
-            if let Some(live) = live
-                && let Some(status) = live.status
-            {
-                writes::record_progress(
-                    &trackers.services,
-                    t,
-                    media_id,
-                    live.progress,
-                    status,
-                    live.updated_at,
-                )
-                .await?;
-                return Ok::<Option<ListStatus>, CoreError>(Some(status));
-            }
-            let stamp =
-                writes::send_status(&trackers, t, media_id, &token, ListStatus::Planning).await?;
-            writes::record_progress(
-                &trackers.services,
+            let token = accounts::token(&trackers, t).await?;
+            let remote = writes::Remote {
+                trackers: &trackers,
                 t,
                 media_id,
-                0,
-                ListStatus::Planning,
-                stamp,
-            )
-            .await?;
+                token: &token,
+            };
+            if let Some(live) = remote.read_live(user_id).await?
+                && let Some(status) = live.status
+            {
+                remote
+                    .record_progress(live.progress, status, live.updated_at)
+                    .await?;
+                return Ok::<Option<ListStatus>, CoreError>(Some(status));
+            }
+            let stamp = remote.send_status(ListStatus::Planning).await?;
+            remote
+                .record_progress(0, ListStatus::Planning, stamp)
+                .await?;
             Ok(None)
         };
         match attempt.await {
