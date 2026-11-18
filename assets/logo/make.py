@@ -23,7 +23,7 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 linux = root / "apps/linux"
-android = root / "apps/android"
+android = root / "apps/phone"
 res = android / "android/res"
 
 YELLOW = "#FDC901"

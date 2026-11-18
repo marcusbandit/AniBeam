@@ -5,7 +5,7 @@
   <out>/whats-new/<version>/index.html        one page per desktop release
   <out>/whats-new/android-<version>/index.html  one page per phone release
 
-The desktop's apps/linux/CHANGELOG.md and the phone's apps/android/CHANGELOG.md hold the shipped
+The desktop's apps/linux/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold the shipped
 versions. The change files in apps/*/changes/ hold what has merged since the last stable release
 and ships in the next nightly; they show as "Coming next". The page for a version that ships
 appears with the site deploy the release starts, and the Coming next block with the one each
@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
-APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Android", root / "apps/android")]
+APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Android", root / "apps/phone")]
 SECTIONS = ["New", "Changed", "Fixed", "Removed"]
 HEAD = re.compile(r"^## (\d+\.\d+\.\d+)(?: · (.+?))? · (\d{4}-\d{2}-\d{2})\s*$")
 

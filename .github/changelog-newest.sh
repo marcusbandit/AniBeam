@@ -18,7 +18,7 @@ set -euo pipefail
 base="${1:-origin/main}"
 root="$(git rev-parse --show-toplevel)"
 status=0
-for file in apps/linux/CHANGELOG.md apps/android/CHANGELOG.md; do
+for file in apps/linux/CHANGELOG.md apps/phone/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
   # The lines of the change files this diff deletes, which may land in the file as they are.
   moved="$(git -C "$root" diff -U0 --no-color --diff-filter=D "$base...HEAD" -- "${file%CHANGELOG.md}changes" |

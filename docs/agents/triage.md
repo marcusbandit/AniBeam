@@ -81,7 +81,7 @@ triage label when someone deletes it.
   (#135), so a reproduction makes a single request there or reads a saved response.
 - The desktop shell: `apps/linux/scripts/shoot.sh` and `drive.sh` with `ANIBEAM_ROOT` set to the
   sandbox root; `apps/linux/README.md` has the steps. Look at the capture before you trust it.
-- Android: the `apps/android/scripts/` loop (`emulator.sh`, `run.sh`, `shot.sh`), headless, as
+- Android: the `apps/phone/scripts/` loop (`emulator.sh`, `run.sh`, `shot.sh`), headless, as
   `~/.claude/rules/android-emulator.md` says.
 - macOS only: this box cannot show it. Comment the exact steps and what passing looks like, tag
   @LiamPalmqvist, who tests on a Mac, and leave the issue open under its category without

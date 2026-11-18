@@ -46,11 +46,11 @@ The scope is the crate the change belongs to: `core`, `shell` for
 in one part of the window can name it instead: `home`, `library`, `series`,
 `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
-`apps/android` is the phone app for Android and the iPhone alike, so its scope
+`apps/phone` is the phone app for Android and the iPhone alike, so its scope
 says whose code a change touches. `android` covers Android's own files only:
 `android/` and `src/platform/android.rs`. `ios` covers the iPhone's own only:
 `ios/`, `src/platform/ios.rs` and the `*ios*` scripts. Anything else in
-`apps/android` builds into both phones and is `phone core`, even when only one
+`apps/phone` builds into both phones and is `phone core`, even when only one
 phone shows the difference: `feat(phone core): the phone app builds and opens
 on the iPhone simulator`.
 
@@ -140,7 +140,7 @@ saving it reruns the check.
 ## Patch notes
 
 Each app keeps its own `CHANGELOG.md`: `apps/linux/CHANGELOG.md` for the desktop,
-`apps/android/CHANGELOG.md` for the phone. The app builds it in and shows it as What's new
+`apps/phone/CHANGELOG.md` for the phone. The app builds it in and shows it as What's new
 after an update, so it is written for the person using the app, the way Mojang writes
 Minecraft's patch notes: a version, a few sections, one short line per change.
 
@@ -148,7 +148,7 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
   gets a line for each. Tests, CI, refactors and docs get none.
 - The line goes in a change file of its own, never into `CHANGELOG.md`: a PR on
   `fix/160-seek-jump` adds `apps/linux/changes/160-seek-jump.md`, and
-  `apps/android/changes/160-seek-jump.md` for the phone. It holds the line under New,
+  `apps/phone/changes/160-seek-jump.md` for the phone. It holds the line under New,
   Changed, Fixed or Removed, as a version does, with no heading. Use only the sections you
   need, in that order. Every PR writing into the same spot of `CHANGELOG.md` made each merge
   conflict with every other open PR (#504); separate files never do.
@@ -310,8 +310,8 @@ update track from that version:
 
 The workspace version in `Cargo.toml` is always the next stable version, and every build
 between two releases carries it as its base. The phone has a number of its own, the
-`version` in `apps/android/Cargo.toml`, and the same rule holds for it. Its APK's
-versionCode follows from the version (`apps/android/scripts/build.sh`), so a nightly
+`version` in `apps/phone/Cargo.toml`, and the same rule holds for it. Its APK's
+versionCode follows from the version (`apps/phone/scripts/build.sh`), so a nightly
 installs over the stable version before it, the stable version over its nightlies, and the
 next version's nightlies over both. Nobody bumps a versionCode by hand.
 
@@ -352,7 +352,7 @@ release needs. Nobody writes these pages by hand.
 - **Phone stable.** The same Release workflow with app set to `phone`: it promotes the
   newest phone nightly, so `android-v2.4.3-nightly.20261113.41` ships as `android-v2.4.3`,
   an APK built from that commit. It is never the Latest release, which stays the desktop's
-  for the site and `install.sh`. Then it folds `apps/android/changes` into the phone's
+  for the site and `install.sh`. Then it folds `apps/phone/changes` into the phone's
   `CHANGELOG.md` and moves the phone to `2.5.0` with a new heading. A phone version that
   needs a fix gets it on main and ships in the next phone version.
 - **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:

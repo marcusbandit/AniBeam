@@ -13,7 +13,7 @@ Usage:
 
 --demo       adds six currently airing AniList shows (ids 100 to 105), their
              subscriptions and torrents. Needs the network once; the AniList
-             reply is cached in apps/android/build/mock/demo.json.
+             reply is cached in apps/phone/build/mock/demo.json.
 --profile    names whose progress the hello says it answers with; --guest makes
              them someone other than the computer's owner.
 --aired      makes Frieren (id 12) episode 8 air two hours ago, as if the

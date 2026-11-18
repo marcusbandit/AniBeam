@@ -195,7 +195,7 @@ fn the_release_folds_change_files_under_the_newest_version_as_the_apps_read_them
             "### New\n- Never shown\n".to_string(),
         ),
     ];
-    for app in ["apps/linux", "apps/android"] {
+    for app in ["apps/linux", "apps/phone"] {
         let version = changelog::parse(&read(&format!("{app}/CHANGELOG.md")))[0]
             .version
             .clone();
@@ -211,17 +211,17 @@ fn the_desktop_notes_are_whole_and_name_its_version() {
 
 #[test]
 fn the_phone_notes_are_whole_and_name_its_version() {
-    let cargo = read("apps/android/Cargo.toml");
+    let cargo = read("apps/phone/Cargo.toml");
     let version = cargo
         .lines()
         .find_map(|l| l.strip_prefix("version = \"")?.strip_suffix('"'))
-        .expect("a version in apps/android/Cargo.toml");
+        .expect("a version in apps/phone/Cargo.toml");
     // The APK takes its version from Cargo.toml alone (build.sh); the manifest names none,
     // so nothing can drift from it.
-    let manifest = read("apps/android/android/AndroidManifest.xml");
+    let manifest = read("apps/phone/android/AndroidManifest.xml");
     assert!(
         !manifest.contains("android:versionName") && !manifest.contains("android:versionCode"),
         "the manifest names a version; build.sh writes it from Cargo.toml"
     );
-    check("apps/android", version);
+    check("apps/phone", version);
 }

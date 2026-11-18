@@ -23,7 +23,7 @@ so nightly.yml names the IPA of a nightly with the nightly id Anibeam-Nightly-<v
 only nightlies holding such an asset are listed; the old ones are skipped.
 
 An IPA's short version is the base of the release's version and its build number the run number
-of a nightly, 1 for a release (apps/android/scripts/build-ios.sh); AltStore checks a downloaded
+of a nightly, 1 for a release (apps/phone/scripts/build-ios.sh); AltStore checks a downloaded
 IPA against them, so they are derived the same way here.
 """
 import json
