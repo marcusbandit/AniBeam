@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use librqbit::{
     AddTorrent, AddTorrentOptions, AddTorrentResponse, Session, SessionOptions,
@@ -77,12 +78,94 @@ pub struct Engine {
     session: Arc<Session>,
     shelf: Shelf,
     root: PathBuf,
+    /// librqbit's own record of its torrents, where it keeps which pieces each one has.
+    session_dir: PathBuf,
     entries_path: PathBuf,
-    entries: Mutex<HashMap<String, Entry>>,
+    entries: Arc<Mutex<HashMap<String, Entry>>>,
     /// Held from taking the list to its landing on disk, so saves land in the order
     /// their lists were taken (#582), while the list itself is let go at once.
     saving: Mutex<()>,
-    held: Mutex<bool>,
+    held: Arc<Mutex<bool>>,
+    /// The torrents a task waits on to finish their first check (`follow`).
+    following: Arc<Mutex<HashSet<String>>>,
+    /// Counts each hold, pause and resume, so a `follow` task can tell one came while it
+    /// was settling a torrent.
+    asks: Arc<AtomicU64>,
+}
+
+/// How often the pieces each torrent has are written down while the app runs.
+const KEEP_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Starts or stops one unfinished torrent so it matches the hold and the person's own pause.
+/// It goes by librqbit's state, never its paused flag alone: librqbit keeps the flag it was
+/// last asked for, and an ask that lands while it still checks the torrent's files changes
+/// the flag but not what the torrent does once the check is done (#1186).
+async fn steer(
+    session: &Arc<Session>,
+    h: &Arc<librqbit::ManagedTorrent>,
+    held: bool,
+    by_user: bool,
+) -> anyhow::Result<()> {
+    use librqbit::TorrentStatsState as S;
+    let stats = h.stats();
+    if stats.finished {
+        return Ok(());
+    }
+    let stop = held || by_user;
+    match stats.state {
+        S::Live | S::Initializing { paused: false } if stop => session.pause(h).await,
+        S::Paused | S::Initializing { paused: true } if !stop => session.unpause(h).await,
+        _ => Ok(()),
+    }
+}
+
+fn checking(h: &librqbit::ManagedTorrent) -> bool {
+    h.with_state(|s| matches!(s, librqbit::ManagedTorrentState::Initializing(_)))
+}
+
+/// Writes the pieces each torrent has into librqbit's own record of them. librqbit writes
+/// that record only every 16 MiB and when a torrent finishes, so a process that ends without
+/// a clean stop, the way Android ends one, came back with what the last of those writes held
+/// and fetched the rest again (#1181).
+fn keep_progress(session: &Arc<Session>, dir: &Path) {
+    let api = librqbit::Api::new(session.clone(), None);
+    let hashes: Vec<librqbit::dht::Id20> =
+        session.with_torrents(|it| it.map(|(_, h)| h.info_hash()).collect());
+    for hash in hashes {
+        // A torrent still checking its files has nothing to write yet.
+        let Ok((haves, _)) = api.api_dump_haves(librqbit::api::TorrentIdOrHash::Hash(hash)) else {
+            continue;
+        };
+        let path = dir.join(format!("{hash:?}.bitv"));
+        if let Err(e) = write_progress(&path, haves.as_raw_slice()) {
+            tracing::warn!(
+                "the pieces of {} were not written down: {e}",
+                hash.as_string()
+            );
+        }
+    }
+}
+
+/// Writes `haves` over the record at `path`, in place, when it adds pieces to it, and says
+/// whether it did. librqbit holds the file open and writes it itself now and then, so the
+/// file is never replaced, and a record that already holds a piece `haves` lacks is newer
+/// than this read and stays. One that is missing or of another length belongs to a torrent
+/// librqbit has not checked yet.
+fn write_progress(path: &Path, haves: &[u8]) -> std::io::Result<bool> {
+    use std::os::unix::fs::FileExt;
+    let on_disk = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    let newer = on_disk.iter().zip(haves).any(|(d, h)| d & !h != 0);
+    if on_disk.len() != haves.len() || on_disk == haves || newer {
+        return Ok(false);
+    }
+    let file = std::fs::OpenOptions::new().write(true).open(path)?;
+    file.write_all_at(haves, 0)?;
+    file.sync_data()?;
+    Ok(true)
 }
 
 fn fail(e: impl std::fmt::Display) -> CoreError {
@@ -191,7 +274,7 @@ impl Engine {
             SessionOptions {
                 fastresume: true,
                 persistence: Some(SessionPersistenceConfig::Json {
-                    folder: Some(session_dir),
+                    folder: Some(session_dir.clone()),
                 }),
                 default_storage_factory: Some(shelf.factory(None, root.to_path_buf())),
                 dht: Some(librqbit::DhtSessionConfig {
@@ -206,15 +289,76 @@ impl Engine {
         )
         .await
         .map_err(fail)?;
+        // The pieces are written down every few seconds from here, until the session stops.
+        let weak = Arc::downgrade(&session);
+        let stopped = session.cancellation_token().clone();
+        let dir = session_dir.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(KEEP_PROGRESS_EVERY).await;
+                let Some(session) = weak.upgrade().filter(|_| !stopped.is_cancelled()) else {
+                    return;
+                };
+                keep_progress(&session, &dir);
+            }
+        });
         Ok(Engine {
             session,
             shelf,
             root: root.to_path_buf(),
+            session_dir,
             entries_path,
-            entries: Mutex::new(entries),
+            entries: Arc::new(Mutex::new(entries)),
             saving: Mutex::new(()),
-            held: Mutex::new(true),
+            held: Arc::new(Mutex::new(true)),
+            following: Arc::default(),
+            asks: Arc::default(),
         })
+    }
+
+    /// Writes down the pieces every torrent has now, so they are there after the process
+    /// ends without a clean stop. The engine also does it every few seconds by itself.
+    pub fn keep_progress(&self) {
+        keep_progress(&self.session, &self.session_dir);
+    }
+
+    /// For a torrent that was still checking its files when it was asked to start or stop:
+    /// waits for the check and then starts or stops it as the hold and the person ask at that
+    /// point, since librqbit lets an ask made during the check go (#1186). The caller looks
+    /// before it asks, as the check can end in between. One task a torrent; it ends when the
+    /// torrent or the session does, and goes again when an ask came while it settled one.
+    fn follow(&self, h: &Arc<librqbit::ManagedTorrent>) {
+        let hash = h.info_hash().as_string();
+        if !recover(&self.following).insert(hash.clone()) {
+            return;
+        }
+        let session = self.session.clone();
+        let h = h.clone();
+        let held = self.held.clone();
+        let entries = self.entries.clone();
+        let asks = self.asks.clone();
+        let following = self.following.clone();
+        tokio::spawn(async move {
+            let id = librqbit::api::TorrentIdOrHash::Hash(h.info_hash());
+            while !session.cancellation_token().is_cancelled() && session.get(id).is_some() {
+                if checking(&h) {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+                let seen = asks.load(Ordering::SeqCst);
+                let held = *recover(&held);
+                let by_user = recover(&entries)
+                    .get(&hash)
+                    .is_some_and(|e| e.paused_by_user);
+                if let Err(e) = steer(&session, &h, held, by_user).await {
+                    tracing::warn!("hold {held} for {hash} after its check: {e}");
+                }
+                if asks.load(Ordering::SeqCst) == seen {
+                    break;
+                }
+            }
+            recover(&following).remove(&hash);
+        });
     }
 
     /// Saves the list on its own turn, so two saves from separate paths land in the
@@ -398,6 +542,9 @@ impl Engine {
         };
         if held && !handle.is_paused() {
             self.session.pause(&handle).await.map_err(fail)?;
+        }
+        if held {
+            self.follow(&handle);
         }
         let hash = handle.info_hash().as_string();
         recover(&self.entries).insert(
@@ -611,22 +758,33 @@ impl Engine {
     }
 
     pub async fn control(&self, hashes: &[String], action: PhoneAction) -> Result<(), CoreError> {
+        self.asks.fetch_add(1, Ordering::SeqCst);
         for hash in hashes {
             let Some(h) = self.handle(hash) else { continue };
+            if checking(&h) && matches!(action, PhoneAction::Pause | PhoneAction::Resume) {
+                self.follow(&h);
+            }
             match action {
+                // The person's pause is kept before librqbit is asked: a torrent the hold
+                // already stopped refuses a second pause, and the hold lifting must not
+                // start it again (#1198).
                 PhoneAction::Pause => {
-                    self.session.pause(&h).await.map_err(fail)?;
                     recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = true;
+                    let stopped = matches!(h.stats().state, librqbit::TorrentStatsState::Paused);
+                    if !stopped {
+                        self.session.pause(&h).await.map_err(fail)?;
+                    }
                 }
                 PhoneAction::Resume => {
                     recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
                         .paused_by_user = false;
-                    if !self.held() {
+                    let running = matches!(h.stats().state, librqbit::TorrentStatsState::Live);
+                    if !self.held() && !running {
                         self.session.unpause(&h).await.map_err(fail)?;
                     }
                 }
@@ -642,34 +800,35 @@ impl Engine {
             }
         }
         self.save_entries();
+        self.keep_progress();
         Ok(())
     }
 
     /// Holds every unfinished download, or lets the ones the person did not pause run again.
+    /// One still checking its files is settled again once the check is done (`follow`).
     pub async fn set_held(&self, held: bool) -> Result<(), CoreError> {
         *recover(&self.held) = held;
+        self.asks.fetch_add(1, Ordering::SeqCst);
         let handles: Vec<_> = self
             .session
             .with_torrents(|it| it.map(|(_, h)| h.clone()).collect());
         for h in handles {
-            if h.stats().finished {
-                continue;
-            }
             let by_user = recover(&self.entries)
                 .get(&h.info_hash().as_string())
                 .is_some_and(|e| e.paused_by_user);
+            if checking(&h) {
+                self.follow(&h);
+            }
             // One torrent the engine will not pause or start (in error, say) must not leave
             // the rest running on mobile data: each is tried, failures only logged.
-            let r = if held && !h.is_paused() {
-                self.session.pause(&h).await
-            } else if !held && !by_user && h.is_paused() {
-                self.session.unpause(&h).await
-            } else {
-                Ok(())
-            };
-            if let Err(e) = r {
+            if let Err(e) = steer(&self.session, &h, held, by_user).await {
                 tracing::warn!("hold {held} for {}: {e}", h.info_hash().as_string());
             }
+        }
+        // A hold comes when Android stops the download work, often just before it ends the
+        // process: what came in so far is written down now.
+        if held {
+            self.keep_progress();
         }
         Ok(())
     }
@@ -698,10 +857,15 @@ mod tests {
 
     /// A three-episode batch made here, as a `.torrent` file's bytes.
     async fn batch(dir: &Path) -> Vec<u8> {
+        batch_of(dir, 50_000).await
+    }
+
+    /// The same batch with `len` bytes an episode, its files under `<dir>/made/Show`.
+    async fn batch_of(dir: &Path, len: usize) -> Vec<u8> {
         let src = dir.join("made").join("Show");
         std::fs::create_dir_all(&src).unwrap();
         for i in 1..=3u8 {
-            std::fs::write(src.join(format!("Show - 0{i}.mkv")), vec![i; 50_000]).unwrap();
+            std::fs::write(src.join(format!("Show - 0{i}.mkv")), vec![i; len]).unwrap();
         }
         let made = librqbit::create_torrent(
             &src,
@@ -815,6 +979,238 @@ mod tests {
         let again = engine.add(&r, "Show", Some(bytes)).await.unwrap();
         assert!(first.new && !again.new);
         assert_eq!(first.hash, again.hash);
+        engine.session.stop().await;
+    }
+
+    /// Waits up to ten seconds for `hash` to run, and says whether it did.
+    async fn runs(engine: &Engine, hash: &str) -> bool {
+        for _ in 0..200 {
+            let state = engine.handle(hash).unwrap().stats().state;
+            if matches!(state, librqbit::TorrentStatsState::Live) {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        false
+    }
+
+    /// A session that seeds the batch under `<dir>/made/Show` to whoever connects, sending
+    /// at most `bps` bytes a second, and the address it listens on.
+    async fn seeder(
+        dir: &Path,
+        bytes: Vec<u8>,
+        bps: u32,
+    ) -> (
+        Arc<Session>,
+        Arc<librqbit::ManagedTorrent>,
+        std::net::SocketAddr,
+    ) {
+        let session = Session::new_with_opts(
+            dir.join("seed"),
+            SessionOptions {
+                dht: None,
+                listen: Some(librqbit::ListenerOptions {
+                    listen_addr: (std::net::Ipv4Addr::LOCALHOST, 0).into(),
+                    ..Default::default()
+                }),
+                disable_local_service_discovery: true,
+                ratelimits: librqbit::limits::LimitsConfig {
+                    upload_bps: std::num::NonZeroU32::new(bps),
+                    download_bps: None,
+                },
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let made = dir.join("made").join("Show");
+        let seeding = session
+            .add_torrent(
+                AddTorrent::from_bytes(bytes),
+                Some(AddTorrentOptions {
+                    overwrite: true,
+                    output_folder: Some(made.to_string_lossy().into_owned()),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap()
+            .into_handle()
+            .unwrap();
+        seeding.wait_until_initialized().await.unwrap();
+        assert!(seeding.stats().finished, "the seeder has the whole batch");
+        let addr = session.listen_addr().unwrap();
+        (session, seeding, addr)
+    }
+
+    #[test]
+    fn the_record_of_pieces_only_ever_grows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc.bitv");
+        assert!(!write_progress(&path, &[0b1000_0000, 0]).unwrap());
+        assert!(!path.exists(), "a torrent not checked yet gets no record");
+        std::fs::write(&path, [0b1000_0000u8, 0]).unwrap();
+        assert!(write_progress(&path, &[0b1100_0000, 0b0000_0001]).unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), [0b1100_0000, 0b0000_0001]);
+        // A read from before librqbit wrote more leaves the newer record be.
+        assert!(!write_progress(&path, &[0b1010_0000, 0b0000_0001]).unwrap());
+        assert!(
+            !write_progress(&path, &[0b1110_0000]).unwrap(),
+            "another length"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), [0b1100_0000, 0b0000_0001]);
+    }
+
+    #[test]
+    fn a_download_goes_on_from_where_it_was_after_the_process_dies() {
+        // librqbit writes down the pieces a torrent has only every 16 MiB and when it
+        // finishes, so a process ended part way, the way Android ends one, came back with
+        // none of them and fetched it all again (#1181).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Anime");
+        let state = dir.path().join("state");
+        let runtime = || {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+        };
+        let first = runtime();
+        let (had, total, hash, alive) = first.block_on(async {
+            let bytes = batch_of(dir.path(), 300_000).await;
+            let (seed, seeding, addr) = seeder(dir.path(), bytes.clone(), 32 * 1024).await;
+            let engine = Engine::open(&root, &state).await.unwrap();
+            engine.set_held(false).await.unwrap();
+            let r = release("[G] Show (01-03) [Batch]");
+            let mut peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+            peeked.peers = vec![addr];
+            let hash = engine
+                .add_peeked(&r, "Show", peeked, Vec::new())
+                .await
+                .unwrap();
+            let h = engine.handle(&hash).unwrap();
+            let total = h.stats().total_bytes;
+            for _ in 0..1200 {
+                if h.stats().progress_bytes >= total / 4 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            // A quarter in, the seeder stops sending, and what came in has settled.
+            seed.pause(&seeding).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let had = h.stats().progress_bytes;
+            engine.keep_progress();
+            (had, total, hash, (seed, seeding, engine, h))
+        });
+        // The process dies: none of what librqbit does on a clean stop or a drop runs.
+        first.shutdown_background();
+        std::mem::forget(alive);
+        assert!(had > 0 && had < total, "part way: {had} of {total}");
+
+        runtime().block_on(async {
+            let engine = Engine::open(&root, &state).await.unwrap();
+            settled(&engine, &hash).await;
+            let back = engine.handle(&hash).unwrap().stats().progress_bytes;
+            assert!(back >= had, "came back with {back} of the {had} it had");
+            engine.session.stop().await;
+        });
+    }
+
+    // The files are held across the add on purpose: the check runs on another thread and
+    // waits for them, which is what keeps it checking while the hold lifts.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_hold_lifted_during_the_first_check_lets_the_download_run() {
+        // librqbit drops a start asked for while it still checks a torrent's files, and a
+        // download brought back held after the process ended is checking just when the
+        // app lifts the hold, so it stayed paused (#1186).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let root = dir.path().join("Anime");
+        let engine = Engine::open(&root, &dir.path().join("state"))
+            .await
+            .unwrap();
+        assert!(engine.held());
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        // The check reads through the storage, so holding its files keeps it checking.
+        let files = engine.shelf.files(&peeked.hash, &root.join("Show"));
+        let hash = {
+            let _checking = files.busy();
+            let hash = engine
+                .add_peeked(&r, "Show", peeked, Vec::new())
+                .await
+                .unwrap();
+            assert!(matches!(
+                engine.handle(&hash).unwrap().stats().state,
+                librqbit::TorrentStatsState::Initializing { .. }
+            ));
+            engine.set_held(false).await.unwrap();
+            hash
+        };
+        assert!(
+            runs(&engine, &hash).await,
+            "still {:?}",
+            engine.handle(&hash).unwrap().stats().state
+        );
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_held_when_the_process_ended_runs_once_the_hold_lifts() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let root = dir.path().join("Anime");
+        let state = dir.path().join("state");
+        let engine = Engine::open(&root, &state).await.unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let hash = engine
+            .add_peeked(&r, "Show", peeked, Vec::new())
+            .await
+            .unwrap();
+        settled(&engine, &hash).await;
+        engine.session.stop().await;
+        drop(engine);
+
+        let engine = Engine::open(&root, &state).await.unwrap();
+        engine.set_held(false).await.unwrap();
+        assert!(
+            runs(&engine, &hash).await,
+            "still {:?}",
+            engine.handle(&hash).unwrap().stats().state
+        );
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pause_on_a_held_download_stays_once_the_hold_lifts() {
+        // The hold had paused it already, so librqbit refused the pause and the person's
+        // pause was never kept: lifting the hold started it again (#1198).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let hash = engine
+            .add_peeked(&r, "Show", peeked, Vec::new())
+            .await
+            .unwrap();
+        settled(&engine, &hash).await;
+        engine
+            .control(std::slice::from_ref(&hash), PhoneAction::Pause)
+            .await
+            .unwrap();
+        engine.set_held(false).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let state = engine.handle(&hash).unwrap().stats().state;
+        assert!(
+            matches!(state, librqbit::TorrentStatsState::Paused),
+            "{state:?}"
+        );
         engine.session.stop().await;
     }
 }

@@ -117,6 +117,12 @@ impl Files {
         Ok(f)
     }
 
+    /// Holds the open files, so a read or a write through them waits until it is let go.
+    #[cfg(test)]
+    pub(super) fn busy(&self) -> std::sync::MutexGuard<'_, HashMap<usize, (bool, Arc<File>)>> {
+        recover(&self.open)
+    }
+
     /// Takes the torrent's part files off the disk.
     pub fn remove_parts(&self) {
         self.close();
