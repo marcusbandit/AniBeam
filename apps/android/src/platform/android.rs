@@ -405,15 +405,25 @@ pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
             )?
             .z()?)
     });
+    use std::sync::atomic::Ordering;
     match logged(r, "the download work did not start") {
-        Some(true) => true,
+        Some(true) => {
+            START_REFUSED.store(false, Ordering::Relaxed);
+            true
+        }
         Some(false) => {
-            crate::local::log("the download work did not start");
+            if !START_REFUSED.swap(true, Ordering::Relaxed) {
+                crate::local::log("the download work did not start");
+            }
             false
         }
         None => false,
     }
 }
+
+/// Android refused to start the download work since it last started, so the next refusal,
+/// one every look while the app is in the background, is not logged again.
+static START_REFUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Changes the running download work's notification to `shown`, in place
 /// (`TorrentService.update`). False when the call failed, or the job could not be scheduled

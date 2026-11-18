@@ -78,6 +78,31 @@ public class TorrentService extends Service {
         return work == STOPPED || work == STOPPED_BY_USER;
     }
 
+    /** The job runs or the service is up. Called with LOCK held. */
+    static boolean runningNow() {
+        return work == RUNNING;
+    }
+
+    /** The job is scheduled and has not run yet. Called with LOCK held. */
+    static boolean waitingNow() {
+        return work == WAITING;
+    }
+
+    /** Android refused to start the work since it last started, which is logged once. */
+    private static boolean refusalSaid;
+
+    /** Android refused to start the work: said once for a run of refusals. LOCK is held. */
+    static void refused(String what, RuntimeException e) {
+        if (refusalSaid) return;
+        refusalSaid = true;
+        Log.w(TAG, what, e);
+    }
+
+    /** The work started: the next refusal is said again. LOCK is held. */
+    static void started() {
+        refusalSaid = false;
+    }
+
     /** Moves the work to `state`. Called with LOCK held. */
     static void set(int state) {
         if (state == work) return;
@@ -114,10 +139,11 @@ public class TorrentService extends Service {
             Intent intent = new Intent().setClassName(context, TorrentService.class.getName());
             try {
                 context.startForegroundService(intent);
+                started();
                 set(RUNNING);
                 return true;
             } catch (RuntimeException e) {
-                Log.w(TAG, "the download service did not start", e);
+                refused("the download service did not start", e);
                 return false;
             }
         }

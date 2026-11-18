@@ -6,6 +6,10 @@ import android.app.job.JobScheduler;
 import android.app.job.JobService;
 import android.content.ComponentName;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PersistableBundle;
+import android.os.SystemClock;
 import android.util.Log;
 
 /**
@@ -24,9 +28,24 @@ import android.util.Log;
 public class DownloadJob extends JobService {
     private static final String TAG = "Anibeam";
     static final int ID = 1;
+    /** The extra that numbers each run the app schedules. */
+    private static final String RUN = "run";
+    private static final int NONE = 0;
     /** The job while it runs, and its parameters: null while it waits or after it ended. */
     private static DownloadJob self;
     private static JobParameters running;
+    /**
+     * The run the app wants, by its number, or NONE once the app ended the work. A run
+     * Android starts after the app ended it, as a cancel and a start cross, ends at once.
+     */
+    private static int wanted = NONE;
+    /** The last run's number; from the clock, so a run left by an earlier process differs. */
+    private static int last = (int) SystemClock.elapsedRealtime();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+    private static int runOf(PersistableBundle extras) {
+        return extras == null ? NONE : extras.getInt(RUN, NONE);
+    }
 
     /**
      * Makes sure the job is running or waiting to, and that a running one shows the newest
@@ -45,22 +64,45 @@ public class DownloadJob extends JobService {
         if (TorrentService.stoppedNow()) return !fresh;
         JobScheduler js = context.getSystemService(JobScheduler.class);
         if (js == null) return false;
-        if (js.getPendingJob(ID) != null && !(fresh && TorrentService.onScreen())) {
-            TorrentService.set(TorrentService.WAITING);
-            return true;
+        JobInfo pending = js.getPendingJob(ID);
+        if (pending != null) {
+            // Android's, or one an earlier process scheduled: it is the run wanted.
+            wanted = runOf(pending.getExtras());
+            if (!(fresh && TorrentService.onScreen())) {
+                TorrentService.set(TorrentService.WAITING);
+                return true;
+            }
         }
+        return schedule(context, js);
+    }
+
+    /**
+     * Schedules a run that starts now, in place of one Android holds back. False when
+     * Android refused. Called with TorrentService.LOCK held.
+     */
+    private static boolean schedule(Context context, JobScheduler js) {
+        int run = ++last;
+        if (run == NONE) run = ++last;
+        PersistableBundle extras = new PersistableBundle();
+        extras.putInt(RUN, run);
         JobInfo info = new JobInfo.Builder(ID, new ComponentName(context, DownloadJob.class))
                 .setUserInitiated(true)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setExtras(extras)
                 .build();
         try {
-            if (js.schedule(info) != JobScheduler.RESULT_SUCCESS) return false;
-            TorrentService.set(TorrentService.WAITING);
-            return true;
+            if (js.schedule(info) != JobScheduler.RESULT_SUCCESS) {
+                TorrentService.refused("the download job was not scheduled", null);
+                return false;
+            }
         } catch (RuntimeException e) {
-            Log.w(TAG, "the download job was not scheduled", e);
+            TorrentService.refused("the download job was not scheduled", e);
             return false;
         }
+        TorrentService.started();
+        wanted = run;
+        TorrentService.set(TorrentService.WAITING);
+        return true;
     }
 
     /** Ends the job, running or waiting. Called with TorrentService.LOCK held. */
@@ -70,13 +112,13 @@ public class DownloadJob extends JobService {
         }
         self = null;
         running = null;
+        wanted = NONE;
         JobScheduler js = context.getSystemService(JobScheduler.class);
         if (js != null) js.cancel(ID);
     }
 
     /** Puts the notification up, or changes it in place. Called with TorrentService.LOCK held. */
     private void show() {
-        TorrentService.channels(this);
         setNotification(running, TorrentService.NOTIFICATION,
                 TorrentService.ongoing(this, TorrentService.shownTitle, TorrentService.shownText,
                         TorrentService.shownProgress),
@@ -90,8 +132,12 @@ public class DownloadJob extends JobService {
             // native side never started in it. Nothing to hold up, so the job ends, and the
             // Paused notification stays true until the app is opened.
             if (!TorrentService.live) return false;
+            // The app ended the work while Android was starting this run.
+            if (runOf(params.getExtras()) != wanted) return false;
             self = this;
             running = params;
+            // Once a run, not on every change of the words: words() renames them in place.
+            TorrentService.channels(this);
             show();
             TorrentService.set(TorrentService.RUNNING);
         }
@@ -102,14 +148,20 @@ public class DownloadJob extends JobService {
     @Override
     public boolean onStopJob(JobParameters params) {
         int reason = params.getStopReason();
+        final int run = runOf(params.getExtras());
         synchronized (TorrentService.LOCK) {
-            // The app's own cancel, which already let go of the job and said where the work
-            // stands; a run it scheduled since must stay.
-            if (reason == JobParameters.STOP_REASON_CANCELLED_BY_APP) return false;
-            // There is one job, and Android hands this call parameters of its own, never the
-            // object the run started with, so the run is let go of without comparing them.
+            // Android hands this call parameters of its own, never the object the run started
+            // with, so the run is told by its number.
+            boolean current = running != null && runOf(running.getExtras()) == run;
+            if (!current) return false;
             self = null;
             running = null;
+            // The app's own cancel already said where the work stands; one that left this
+            // run recorded (a schedule that replaced it) ends it here.
+            if (reason == JobParameters.STOP_REASON_CANCELLED_BY_APP) {
+                if (TorrentService.runningNow()) TorrentService.set(TorrentService.IDLE);
+                return false;
+            }
             Log.i(TAG, "Android stopped the download job, reason " + reason);
             // Stopped from the phone's list of running apps: the person's call, so it stays
             // stopped until they open the app again.
@@ -117,15 +169,37 @@ public class DownloadJob extends JobService {
                 TorrentService.set(TorrentService.STOPPED_BY_USER);
                 return false;
             }
-            // With the app open nothing pauses: the job ends, and the app schedules a fresh
-            // one on its next look, which runs at once where a rerun would back off first.
+            // With the app open nothing pauses: a fresh run replaces the rerun as soon as
+            // this stop is through, which starts at once where a rerun backs off first.
             if (TorrentService.onScreen()) {
-                TorrentService.set(TorrentService.IDLE);
-                return false;
+                TorrentService.set(TorrentService.WAITING);
+                final Context context = getApplicationContext();
+                MAIN.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        replace(context, run);
+                    }
+                });
+                return true;
             }
             // Anything else runs again when Android lets it.
             TorrentService.set(TorrentService.STOPPED);
             return true;
+        }
+    }
+
+    /**
+     * After Android stopped `run` with the app open: schedules a run that starts now, if the
+     * app may still. If it has gone from the screen, or Android refused, the rerun Android
+     * holds is what is left, and the downloads pause until it runs or the app is opened.
+     */
+    private static void replace(Context context, int run) {
+        synchronized (TorrentService.LOCK) {
+            // Moved on since: the app ended the work, or scheduled or started a run itself.
+            if (wanted != run || self != null || !TorrentService.waitingNow()) return;
+            JobScheduler js = context.getSystemService(JobScheduler.class);
+            if (js != null && TorrentService.onScreen() && schedule(context, js)) return;
+            TorrentService.set(TorrentService.STOPPED);
         }
     }
 }
