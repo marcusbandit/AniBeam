@@ -1854,8 +1854,8 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_held_single_added_late_is_given_its_own_time_to_show() {
+    #[test]
+    fn a_held_single_added_late_is_given_its_own_time_to_show() {
         let dir = tempfile::tempdir().unwrap();
         let teams = crate::testing::Teams::open(dir.path(), anibeam_net::FakeHttp::new());
         let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
@@ -1875,9 +1875,11 @@ mod tests {
             p.seen = true;
         }
         r.parts[0].units[0].watched = true;
-        add_rolls(&teams.services, vec![r]).await.unwrap();
         // The pass hands over the thirteenth, which the client has not listed yet
-        tick(&teams.downloads, &Quiet, &[]).await;
+        teams.services.handle.block_on(async {
+            add_rolls(&teams.services, vec![r]).await.unwrap();
+            tick(&teams.downloads, &Quiet, &[]).await;
+        });
         let rolls = load(&teams.services).unwrap();
         assert_eq!(rolls.len(), 1, "the roll was dropped");
         let r = &rolls[0];
