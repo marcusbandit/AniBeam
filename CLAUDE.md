@@ -50,6 +50,8 @@ install -m755 target/tester/anibeam ~/.local/opt/anibeam-dev/anibeam
 
 `--pull` brings the binary back when buildq builds on another box. `install` replaces the file, so it works while the old one runs; `cp` over a running binary fails with "Text file busy". When nothing outside `apps/linux/qml/`, `apps/linux/themes/` and `apps/linux/mpv.conf` changed since the checkout's last tester build, buildq answers at once and compiles nothing: the binary already in `target/tester/` is current, so install it anyway, since Dev may be running another branch's. The Dev install runs on the owner's real data, so a branch that migrates the store is tried against a `--root` sandbox instead, never there. Never run a release build just to look at a change.
 
+**Drive the app with `anibeam ctl`, not the mouse** (#1205). Any Anibeam window on this machine takes commands from the terminal: `anibeam ctl help` is the guide. `ctl open --root <dir> --offscreen` starts a sandbox window that never shows on the desktop, then `go <page> [words]`, `tree`, `click <words|objectName|x,y>`, `type`, `key`, `shot <file.png>`, `where`, `eval <js>` and `quit`. Use it to reach and check a page instead of clicking there.
+
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
 ## Architecture
