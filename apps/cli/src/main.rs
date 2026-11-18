@@ -1,3 +1,6 @@
+//! `anibeam-cli`: Anibeam's core from the terminal. Completion for zsh and
+//! bash lives in `apps/cli/completions/`.
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,7 +11,31 @@ use anibeam_core::{
     Call, Core, CorePaths, Direction, Event, EventBody, EventListener, JobPhase, Level, Reply,
     Sort, Tab,
 };
+use clap::builder::{PossibleValuesParser, TypedValueParser};
 use clap::{Parser, Subcommand};
+
+/// The values a flag takes, as the core's own columns spell them. The
+/// completions in `apps/cli/completions/` list the same, and a test holds
+/// both to these.
+const TABS: [&str; 5] = ["all", "series", "movies", "watched", "hidden"];
+const SORTS: [&str; 6] = [
+    "alpha",
+    "lastViewed",
+    "progress",
+    "communityScore",
+    "myScore",
+    "downloaded",
+];
+const DIRECTIONS: [&str; 2] = ["asc", "desc"];
+const LEVELS: [&str; 4] = ["debug", "info", "warn", "error"];
+
+/// A flag that takes one of `values`, read into the core's type by `read`.
+fn one_of<T: Clone + Send + Sync + 'static, const N: usize>(
+    values: [&'static str; N],
+    read: fn(&str) -> Option<T>,
+) -> impl TypedValueParser<Value = T> {
+    PossibleValuesParser::new(values).try_map(move |s| read(&s).ok_or("not a value the core reads"))
+}
 
 #[derive(Parser)]
 #[command(name = "anibeam-cli", version = anibeam_core::VERSION, about = "Anibeam's core from the terminal")]
@@ -35,8 +62,8 @@ enum Command {
     Events {
         #[arg(long)]
         follow: bool,
-        #[arg(long, default_value = "info")]
-        level: String,
+        #[arg(long, default_value = "info", value_parser = one_of(LEVELS, Level::from_column))]
+        level: Level,
     },
     /// The sources: id, path, available, series count.
     Sources,
@@ -49,12 +76,12 @@ enum Command {
     },
     /// One line per card: id, code, title, watched/total.
     List {
-        #[arg(long, default_value = "all")]
-        tab: String,
-        #[arg(long, default_value = "alpha")]
-        sort: String,
-        #[arg(long, default_value = "asc")]
-        direction: String,
+        #[arg(long, default_value = "all", value_parser = one_of(TABS, Tab::from_column))]
+        tab: Tab,
+        #[arg(long, default_value = "alpha", value_parser = one_of(SORTS, Sort::from_column))]
+        sort: Sort,
+        #[arg(long, default_value = "asc", value_parser = one_of(DIRECTIONS, Direction::from_column))]
+        direction: Direction,
         #[arg(long, default_value = "")]
         query: String,
     },
@@ -245,11 +272,6 @@ fn dash(value: Option<String>) -> String {
     value.unwrap_or_else(|| "-".to_string())
 }
 
-fn bad(what: &str, value: &str) -> ! {
-    eprintln!("unknown {what}: {value}");
-    std::process::exit(2);
-}
-
 fn run_sources(core: &Core) {
     if let Reply::Sources { sources } = ask(core, Call::ListSources) {
         for s in sources {
@@ -258,14 +280,10 @@ fn run_sources(core: &Core) {
     }
 }
 
-fn run_list(core: &Core, tab: &str, sort: &str, direction: &str, query: &str) {
-    let tab = Tab::from_column(tab).unwrap_or_else(|| bad("tab", tab));
-    let sort = Sort::from_column(sort).unwrap_or_else(|| bad("sort", sort));
-    let direction =
-        Direction::from_column(direction).unwrap_or_else(|| bad("direction", direction));
+fn run_list(core: &Core, tab: Tab, sort: Sort, direction: Direction, query: String) {
     let call = Call::ListSeries {
         tab,
-        query: query.to_string(),
+        query,
         sort,
         direction,
         reveal_hidden: false,
@@ -311,8 +329,7 @@ fn run_show(core: &Core, series: u64) {
 /// Prints the ring's recent events at or above `level`, then with `follow`
 /// set, blocks on the live stream until the channel closes (Ctrl-C ends
 /// the process through the default handler).
-fn run_events(core: &Core, follow: bool, level: &str) {
-    let min = Level::from_column(level).unwrap_or(Level::Info);
+fn run_events(core: &Core, follow: bool, min: Level) {
     if let Ok(Reply::Events { events }) = core.call(Call::RecentEvents { limit: 2000 }) {
         for e in events.into_iter().filter(|e| e.level >= min) {
             println!("{}", serde_json::to_string(&e).unwrap());
@@ -335,7 +352,7 @@ fn main() {
     let code = match cli.command {
         Command::Call { name, json, wait } => run_call(&core, &name, json.as_deref(), wait),
         Command::Events { follow, level } => {
-            run_events(&core, follow, &level);
+            run_events(&core, follow, level);
             0
         }
         Command::Sources => {
@@ -349,7 +366,7 @@ fn main() {
             direction,
             query,
         } => {
-            run_list(&core, &tab, &sort, &direction, &query);
+            run_list(&core, tab, sort, direction, query);
             0
         }
         Command::Show { series } => {
@@ -380,10 +397,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{follow, parse_call};
+    use super::{Cli, DIRECTIONS, LEVELS, SORTS, TABS, follow, parse_call};
     use anibeam_core::{
         Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
     };
+    use clap::{CommandFactory, Parser};
     use std::collections::HashSet;
 
     fn event(job: u64, phase: JobPhase, body: EventBody) -> Event {
@@ -412,6 +430,53 @@ mod tests {
             Call::Scan { source: None }
         );
         assert!(parse_call("Nope", None).is_err());
+    }
+
+    #[test]
+    fn every_value_a_flag_lists_is_one_the_core_reads() {
+        use anibeam_core::{Direction, Level, Sort, Tab};
+        assert!(TABS.iter().all(|v| Tab::from_column(v).is_some()));
+        assert!(SORTS.iter().all(|v| Sort::from_column(v).is_some()));
+        assert!(
+            DIRECTIONS
+                .iter()
+                .all(|v| Direction::from_column(v).is_some())
+        );
+        assert!(LEVELS.iter().all(|v| Level::from_column(v).is_some()));
+        assert!(Cli::try_parse_from(["anibeam-cli", "list", "--sort", "lastViewed"]).is_ok());
+        assert!(Cli::try_parse_from(["anibeam-cli", "list", "--tab", "nope"]).is_err());
+        assert!(Cli::try_parse_from(["anibeam-cli", "events", "--level", "loud"]).is_err());
+    }
+
+    /// Every subcommand, every flag and every value a flag takes is in both
+    /// completions, so neither falls behind the CLI.
+    #[test]
+    fn the_completions_know_every_subcommand_flag_and_value() {
+        let zsh = include_str!("../completions/_anibeam-cli");
+        let bash = include_str!("../completions/anibeam-cli.bash");
+        let cli = Cli::command();
+        let mut words: Vec<String> = Vec::new();
+        for arg in cli.get_arguments() {
+            words.extend(arg.get_long().map(|l| format!("--{l}")));
+        }
+        for sub in cli.get_subcommands() {
+            words.push(sub.get_name().to_string());
+            for arg in sub.get_arguments() {
+                words.extend(arg.get_long().map(|l| format!("--{l}")));
+                // A switch's own true and false are no words to complete.
+                if arg.get_action().takes_values() {
+                    words.extend(
+                        arg.get_possible_values()
+                            .iter()
+                            .map(|v| v.get_name().to_string()),
+                    );
+                }
+            }
+        }
+        for word in &words {
+            assert!(zsh.contains(word.as_str()), "zsh completion lacks {word}");
+            assert!(bash.contains(word.as_str()), "bash completion lacks {word}");
+        }
     }
 
     #[test]
