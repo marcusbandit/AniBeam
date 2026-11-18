@@ -29,19 +29,31 @@ fn jobs() -> Option<&'static Sender<Job>> {
 }
 
 /// Runs `read` against the core on the reads thread and hands what it gives to `land` on
-/// the UI thread. False, and nothing runs, when the core is not open yet.
+/// the UI thread. False, and nothing runs, only when the core is not open yet: with the core
+/// open, `land` always comes.
 pub fn read<T: Send + 'static>(
     read: impl FnOnce(&Core) -> T + Send + 'static,
     land: impl FnOnce(T) + Send + 'static,
 ) -> bool {
-    let (Some(core), Some(jobs)) = (crate::local::core(), jobs()) else {
+    let Some(core) = crate::local::core() else {
         return false;
     };
-    jobs.send(Box::new(move || {
+    let job: Job = Box::new(move || {
         let answer = read(core.as_ref());
         let _ = slint::invoke_from_event_loop(move || land(answer));
-    }))
-    .is_ok()
+    });
+    let job = match jobs() {
+        Some(jobs) => match jobs.send(job) {
+            Ok(()) => return true,
+            Err(std::sync::mpsc::SendError(job)) => job,
+        },
+        None => job,
+    };
+    // With no reads thread, this read gets a thread of its own, so its landing still comes.
+    let _ = std::thread::Builder::new()
+        .name("screen-read".into())
+        .spawn(job);
+    true
 }
 
 /// Whether a read is due: marked when what it reads may have changed, and started one at a

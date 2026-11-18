@@ -86,6 +86,51 @@ fn clamp_lightness([r, g, b]: [f32; 3], low: f32, high: f32) -> [f32; 3] {
     }
 }
 
+type Landing = Box<dyn FnOnce(Option<Decoded>) + Send>;
+type Job = (String, Landing);
+
+/// Reads and decodes the poster file at `path` off the UI thread and hands it to `land` on
+/// the UI thread, `None` when it could not be read or decoded. One thread serves every page,
+/// in the order asked (#1206).
+pub fn load(path: String, land: impl FnOnce(Option<Decoded>) + Send + 'static) {
+    let job: Job = (path, Box::new(land));
+    let job = match loader() {
+        Some(jobs) => match jobs.send(job) {
+            Ok(()) => return,
+            Err(std::sync::mpsc::SendError(job)) => job,
+        },
+        None => job,
+    };
+    // With no loader thread, this poster gets a thread of its own, so its landing still comes.
+    let _ = std::thread::Builder::new()
+        .name("poster".into())
+        .spawn(move || run(job));
+}
+
+fn run((path, land): Job) {
+    let decoded = std::fs::read(&path).ok().and_then(|b| decode(&b));
+    let _ = slint::invoke_from_event_loop(move || land(decoded));
+}
+
+fn loader() -> Option<&'static std::sync::mpsc::Sender<Job>> {
+    static LOADER: std::sync::OnceLock<Option<std::sync::mpsc::Sender<Job>>> =
+        std::sync::OnceLock::new();
+    LOADER
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<Job>();
+            std::thread::Builder::new()
+                .name("posters".into())
+                .spawn(move || {
+                    for job in rx {
+                        run(job);
+                    }
+                })
+                .ok()
+                .map(|_| tx)
+        })
+        .as_ref()
+}
+
 /// The band behind a poster: its hue darkened most of the way into the ground.
 pub fn band(tone: Option<[u8; 3]>) -> slint::Color {
     const GROUND: [u8; 3] = [0x0c, 0x0d, 0x10];

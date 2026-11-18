@@ -6,7 +6,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use anibeam_companion::format;
@@ -175,10 +174,14 @@ struct Find {
     posters: BTreeMap<String, Image>,
     /// The poster files asked of the loader and not back yet.
     posters_asked: HashSet<String>,
-    /// The one thread that reads and decodes this page's posters, once it is needed.
-    poster_loader: Option<Sender<String>>,
+    /// The poster files that did not decode, not asked for again until the core reports a
+    /// change: the image cache may have written them by then.
+    posters_failed: HashSet<String>,
     /// A draw for the posters that came in is on its way.
     poster_redraw: bool,
+    /// Counts what the person did on the page. A read that acts for them when it lands acts
+    /// only if nothing was done since it was asked for.
+    epoch: u64,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -237,6 +240,15 @@ fn with(f: impl FnOnce(&mut Find)) {
     });
 }
 
+/// `with`, for what the person does on the page: anything a read was going to do for an
+/// earlier action is called off.
+fn act(f: impl FnOnce(&mut Find)) {
+    with(|find| {
+        find.epoch = find.epoch.wrapping_add(1);
+        f(find);
+    });
+}
+
 /// A core error as a person reads it. A source that cannot be reached gets the reason it
 /// most likely is: the network blocks it. Anibeam already looks names up privately, so
 /// what is left is a block on the address, or the site being down.
@@ -282,7 +294,12 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
 
 /// The app's tick, with whether the core reported a change since the last one.
 pub fn tick(changed: bool) {
-    with(|f| f.list_tick(changed));
+    with(|f| {
+        if changed {
+            f.posters_failed.clear();
+        }
+        f.list_tick(changed);
+    });
 }
 
 /// The language changed: every line this page pushed as a string is pushed again.
@@ -318,8 +335,9 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             list_from_show: false,
             posters: BTreeMap::new(),
             posters_asked: HashSet::new(),
-            poster_loader: None,
+            posters_failed: HashSet::new(),
             poster_redraw: false,
+            epoch: 0,
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -341,21 +359,21 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.set_lenses(model(
         LENSES.iter().map(|l| SharedString::from(tr!(*l))).collect(),
     ));
-    d.on_open(|text| with(|f| f.open(text.to_string())));
-    d.on_close(|| with(Find::close));
-    d.on_back(|| with(Find::back));
-    d.on_search(|text| with(|f| f.search(text.to_string())));
+    d.on_open(|text| act(|f| f.open(text.to_string())));
+    d.on_close(|| act(Find::close));
+    d.on_back(|| act(Find::back));
+    d.on_search(|text| act(|f| f.search(text.to_string())));
     d.on_find_series(|id| {
-        with(|f| {
+        act(|f| {
             f.with_data(|d| d.set_shown(true));
             f.refresh_then(move |f| f.open_series(id));
             f.with_data(|d| d.set_text(SharedString::new()));
             f.clear_suggestions();
         })
     });
-    d.on_suggest(|text| with(|f| f.suggest(text.to_string())));
+    d.on_suggest(|text| act(|f| f.suggest(text.to_string())));
     d.on_pick_suggestion(|i| {
-        with(|f| {
+        act(|f| {
             let Some(offer) = usize::try_from(i)
                 .ok()
                 .and_then(|i| f.suggestions.get(i))
@@ -368,12 +386,12 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
         })
     });
     d.on_pick_lens(|i| {
-        with(|f| {
+        act(|f| {
             f.lens = usize::try_from(i).unwrap_or(0).min(LENSES.len() - 1);
             f.show_lens();
         })
     });
-    d.on_open_tile(|i| with(|f| f.open_offer(i)));
+    d.on_open_tile(|i| act(|f| f.open_offer(i)));
     d.on_fetch(|i| with(|f| f.fetch(i)));
     d.on_pick_row(|r| with(|f| f.pick_row(r)));
     d.on_toggle_cube(|r, n| with(|f| f.toggle_cube(r, n)));
@@ -522,12 +540,14 @@ impl Find {
         self.refresh_then(|_| {});
     }
 
-    /// `refresh`, and `then` once the library is in.
+    /// `refresh`, and `then` once the library is in, unless the person did something else
+    /// on the page meanwhile.
     fn refresh_then(&mut self, then: impl FnOnce(&mut Find) + Send + 'static) {
         if crate::local::core().is_none() {
             then(self);
             return;
         }
+        let epoch = self.epoch;
         let library = Call::ListLibrary {
             tab: Tab::All,
             query: String::new(),
@@ -544,7 +564,9 @@ impl Find {
                     }
                     f.show_lens();
                     f.draw_show();
-                    then(f);
+                    if f.epoch == epoch {
+                        then(f);
+                    }
                 })
             },
         );
@@ -968,23 +990,24 @@ impl Find {
     fn load_posters(&mut self, offers: &[Offer]) {
         let wanted = new_posters(
             offers.iter().filter_map(|o| o.poster.as_deref()),
-            |p| self.posters.contains_key(p),
+            |p| self.posters.contains_key(p) || self.posters_failed.contains(p),
             &mut self.posters_asked,
         );
-        if wanted.is_empty() {
-            return;
-        }
-        let loader = self.poster_loader.get_or_insert_with(start_poster_loader);
         for path in wanted {
-            let _ = loader.send(path);
+            let key = path.clone();
+            crate::posters::load(path, move |decoded| {
+                with(|f| f.poster_landed(key, decoded));
+            });
         }
     }
 
-    /// A poster came back from the loader. One that did not decode is let go, so a later
-    /// draw asks for it again: the image cache may not have had it on disk yet.
+    /// A poster came back from the loader. One that did not decode waits for the core's
+    /// next change before it is asked for again: the image cache may not have had it on
+    /// disk yet.
     fn poster_landed(&mut self, path: String, decoded: Option<crate::posters::Decoded>) {
         self.posters_asked.remove(&path);
         let Some(decoded) = decoded else {
+            self.posters_failed.insert(path);
             return;
         };
         self.posters.insert(path, Image::from_rgba8(decoded.buffer));
@@ -2447,7 +2470,6 @@ impl Find {
     }
 }
 
-/// A folder's own name, the last part of `path`.
 /// The poster files among `paths` that are neither `shown` nor asked for yet, each once, and
 /// noted as asked for.
 fn new_posters<'a>(
@@ -2462,24 +2484,7 @@ fn new_posters<'a>(
         .collect()
 }
 
-/// The thread that reads and decodes Downloads' posters, in the order asked, and hands
-/// each back to the page, decoded or not.
-fn start_poster_loader() -> Sender<String> {
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    let _ = std::thread::Builder::new()
-        .name("find-posters".into())
-        .spawn(move || {
-            for path in rx {
-                let decoded = std::fs::read(&path)
-                    .ok()
-                    .and_then(|b| crate::posters::decode(&b));
-                let _ =
-                    slint::invoke_from_event_loop(move || with(|f| f.poster_landed(path, decoded)));
-            }
-        });
-    tx
-}
-
+/// A folder's own name, the last part of `path`.
 fn last_folder(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -2688,7 +2693,7 @@ fn fresh_show(title: String, queries: Vec<String>, total: u32, airing: bool) -> 
 /// now only knows from its Out now strip.
 pub fn search_for(title: &str) {
     let title = title.to_string();
-    with(|f| {
+    act(|f| {
         // The library's shows lead the suggestions, so they wait for the library read.
         f.open_then(String::new(), move |f| {
             f.with_data(|d| d.set_text(title.clone().into()));
@@ -2708,7 +2713,7 @@ pub fn open_airing(a: &anibeam_core::AiringShow) {
         a.next_airing.is_some(),
         a.poster.clone(),
     );
-    with(|f| {
+    act(|f| {
         f.with_data(|d| d.set_shown(true));
         f.refresh();
         // Opened from Airing now, Downloads may not have read the list yet.
