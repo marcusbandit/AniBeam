@@ -2278,6 +2278,8 @@ pub fn run(
 
     let window = AppWindow::new()?;
     crate::platform::window_up(&window);
+    #[cfg(control)]
+    crate::control::install(&window);
     // First, so everything below that words a line already speaks the picked language.
     crate::lang::install(&window, &data_dir);
     crate::player::install(&window);

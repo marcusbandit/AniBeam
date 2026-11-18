@@ -454,6 +454,8 @@ pub fn install(window: &AppWindow) {
         .window()
         .set_rendering_notifier(move |state, api| match state {
             slint::RenderingState::BeforeRendering => {
+                #[cfg(control)]
+                crate::control::rendering();
                 let Some(share) = crate::video::current_share(api) else {
                     return;
                 };
@@ -461,6 +463,8 @@ pub fn install(window: &AppWindow) {
                 with_player(|p| p.ensure_video(share, size));
             }
             slint::RenderingState::RenderingTeardown => with_player(|p| p.drop_video()),
+            #[cfg(control)]
+            slint::RenderingState::AfterRendering => crate::control::rendered(),
             _ => {}
         });
     if let Err(e) = r {

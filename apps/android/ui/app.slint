@@ -32,6 +32,8 @@ import { DateTile, ScheduleData } from "show-dates.slint";
 import { ShowSheets } from "show-sheets.slint";
 
 export { Theme, Tr, LangChoice, LangData }
+// What is open over a page, for control over adb's dump (src/control/).
+export { Ask }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
 export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, DateTile, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, ScheduleData, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
@@ -348,7 +350,8 @@ export component AppWindow inherits Window {
     }
     changed player-shown => { keys.focus(); }
 
-    function go(to: int) {
+    // Public for control over adb's `go` (src/control/).
+    public function go(to: int) {
         root.series-cut = true;
         AppData.close-series();
         // Downloads opens on its lenses; a show or a list left open stays as it was.
