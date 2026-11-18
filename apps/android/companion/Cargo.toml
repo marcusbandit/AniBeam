@@ -8,8 +8,10 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
-# The word catalog and its lookup (#792); no feature of the core is needed for it.
-anibeam-core = { path = "../../../core" }
+# The word catalog and its lookup (#792), from the contract rather than the whole core (#873).
+anibeam-contract = { path = "../../../contract" }
+# The core's atomic file write (#575).
+anibeam-foundation = { path = "../../../foundation" }
 anibeam-host-api = { path = "../../../host-api", features = ["proof"] }
 # The device key's seed and each proof's nonce (#555).
 getrandom = "0.3"
