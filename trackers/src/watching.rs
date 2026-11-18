@@ -69,7 +69,7 @@ const AIRING_SQL: &str = "SELECT e.anilist_id, e.number, e.aired_at
 /// last refresh left behind. Ordered by the tracker's own timestamp, most
 /// recently updated first, with an entry AniList gave none for at the
 /// bottom and ties settled by title.
-pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+pub(crate) fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
     list_of(
         conn,
         images_dir,
@@ -78,7 +78,7 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
 }
 
 /// The planning list (#210): the same read over the Planning entries.
-pub fn planning(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+pub(crate) fn planning(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
     list_of(conn, images_dir, &[ListStatus::Planning])
 }
 
@@ -217,7 +217,7 @@ pub fn planning_call(services: &Services) -> Result<Reply, CoreError> {
 
 /// How old the cached list may be before `RefreshWatching` without `force`
 /// goes back to AniList.
-pub const STALE_AFTER_SECS: i64 = 5 * 60;
+pub(crate) const STALE_AFTER_SECS: i64 = 5 * 60;
 
 /// The `RefreshWatching` call: the job when the cache is stale (or never
 /// filled) or `force` says so, `Ok` when it is fresh or there is no account
@@ -272,7 +272,7 @@ struct Row {
 /// Starts the RefreshWatching job, one at a time per kind: a second call
 /// while one runs hands back the running job's id. Refuses only when there
 /// is no account to ask, which the call itself has already ruled out.
-pub fn start_refresh(trackers: &Arc<Trackers>) -> Result<u64, CoreError> {
+pub(crate) fn start_refresh(trackers: &Arc<Trackers>) -> Result<u64, CoreError> {
     if !trackers.services.store.read(is_connected)? {
         return Err(CoreError::NotConnected {
             tracker: Tracker::Anilist,

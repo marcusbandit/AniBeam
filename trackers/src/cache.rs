@@ -38,7 +38,7 @@ use anibeam_net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
-pub const PROGRESS_FRESH: Duration = Duration::from_secs(5 * 60);
+pub(crate) const PROGRESS_FRESH: Duration = Duration::from_secs(5 * 60);
 
 /// MAL pages its list, and hands back a `paging.next` while there is more.
 /// The page count is a hard bound rather than a real limit: fifty pages is
@@ -51,7 +51,7 @@ const MAL_MAX_PAGES: u32 = 50;
 /// nothing there is optional; `score` and `status` are absent when the
 /// entry carries neither.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub media_id: u64,
     pub progress: u32,
     pub status: Option<ListStatus>,
@@ -74,7 +74,7 @@ pub(crate) fn note_of(raw: Option<&str>) -> Option<String> {
 /// rewatching status at all: it keeps `watching` and raises a flag, so the
 /// flag is what promotes an entry to Repeating and makes the two trackers
 /// comparable. Anything unrecognised is no status rather than a guess.
-pub fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> Option<ListStatus> {
+pub(crate) fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> Option<ListStatus> {
     let raw = raw?;
     match t {
         Tracker::Anilist => match raw {
@@ -113,7 +113,7 @@ pub(crate) fn mal_list_status(list: &serde_json::Value) -> Option<ListStatus> {
 /// a match carries. `score(format: POINT_10_DECIMAL)` is what makes the
 /// number comparable whatever display format the user picked, and a score
 /// of 0 is AniList's unrated rather than a rating.
-pub async fn fetch_anilist(
+pub(crate) async fn fetch_anilist(
     trackers: &Trackers,
     user_id: u64,
     token: &str,
@@ -158,7 +158,7 @@ pub async fn fetch_anilist(
 /// MAL's list, a page at a time, keyed by the MAL anime id a match
 /// carries. The walk ends when MAL stops sending a next cursor or hands
 /// back a page that was not full, whichever comes first.
-pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, CoreError> {
+pub(crate) async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, CoreError> {
     let mut entries = Vec::new();
     let mut offset = 0u64;
     for _page in 0..MAL_MAX_PAGES {
@@ -231,7 +231,7 @@ pub(crate) fn cached(conn: &Connection, t: Tracker, media_id: u64) -> Result<Opt
 /// is the truth about itself, so a row the tracker no longer carries goes;
 /// what survives is an `updated_at` for an entry the fetch brought none
 /// for, so a timestamp once known is never lost to a provider's blank.
-pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Result<(), CoreError> {
+pub(crate) fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Result<(), CoreError> {
     let mut kept: HashMap<u64, i64> = HashMap::new();
     {
         let mut stmt = tx.prepare("SELECT media_id, updated_at FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1 AND updated_at IS NOT NULL")?;
@@ -285,7 +285,7 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
 /// before the next fetch does; with none the stored stamp stands, since the
 /// column is the tracker's clock and never this machine's. Electron's
 /// `setProgressEntry`.
-pub fn patch_progress(
+pub(crate) fn patch_progress(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
@@ -318,7 +318,7 @@ pub fn patch_progress(
 /// are left alone, a score of `None` is stored as unrated rather than
 /// dropped, and `updated_at` follows `patch_progress`'s rule. Electron's
 /// `setProgressScoreAndStatus`.
-pub fn patch_score(
+pub(crate) fn patch_score(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
@@ -351,7 +351,7 @@ pub fn patch_score(
 /// the rewatch count are the list's and are left alone, and `updated_at`
 /// follows `patch_progress`'s rule. A row the cache does not hold stays
 /// absent, since On hold only ever moves a cached entry.
-pub fn patch_status(
+pub(crate) fn patch_status(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
@@ -375,7 +375,7 @@ pub fn patch_status(
 
 /// One entry's notes, after a notes write: everything else is left as the
 /// cache has it, and an entry not cached yet is added with its notes alone.
-pub fn patch_notes(
+pub(crate) fn patch_notes(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
@@ -399,7 +399,7 @@ pub fn patch_notes(
 /// entry's stamp moves to now at the least, even when the tracker's reply
 /// carried none, so the episodes watched for this rewatch are never
 /// evidence for the next one.
-pub fn patch_repeat(
+pub(crate) fn patch_repeat(
     conn: &Connection,
     t: Tracker,
     media_id: u64,

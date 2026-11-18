@@ -8,7 +8,7 @@
 
 pub mod accounts;
 pub mod cache;
-pub mod local;
+mod local;
 mod mal_lookup;
 pub mod move_up;
 pub mod oauth;

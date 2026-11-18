@@ -11,7 +11,7 @@ use rusqlite::{Connection, params};
 use anibeam_contract::*;
 
 /// A status on the list kept here. The score stays as it was.
-pub fn set_status(
+pub(crate) fn set_status(
     conn: &Connection,
     series: u64,
     status: ListStatus,
@@ -26,7 +26,7 @@ pub fn set_status(
 }
 
 /// A score on the list kept here, None for unrated. The status stays.
-pub fn set_score(
+pub(crate) fn set_score(
     conn: &Connection,
     series: u64,
     score: Option<f64>,

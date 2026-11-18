@@ -115,7 +115,7 @@ pub(crate) fn any_hidden(
 /// total that decides whether a write completes the list, and the name the
 /// activity log calls the series by.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Targets {
+pub(crate) struct Targets {
     pub series: u64,
     pub anilist: Option<u64>,
     pub mal: Option<u64>,
@@ -145,7 +145,7 @@ impl Targets {
 /// One series' write targets, or `NotFound`. A series whose path is gone
 /// answers the same way a series that never existed does: a missing series
 /// is absent from every tracker write, and no refusal names it.
-pub fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
+pub(crate) fn targets(conn: &Connection, series: u64) -> Result<Targets, CoreError> {
     let row = conn
         .query_row(
             "SELECT anilist_id, mal_id, folder_name, missing_since FROM series WHERE id = ?1",
@@ -805,7 +805,7 @@ fn push_card(services: &Services, series: u64, line: &str) {
 
 /// The longest note a write sends, one limit for both trackers so a note
 /// never fits one and fails on the other. Short of what either keeps.
-pub const NOTES_MAX: usize = 2000;
+pub(crate) const NOTES_MAX: usize = 2000;
 
 /// Writes the series' notes to every connected tracker: AniList's notes,
 /// MAL's comments. Blank clears them on both.

@@ -51,7 +51,7 @@ const RUNS_HERE: bool = !cfg!(feature = "phone");
 
 /// What the sweep reads about one Watching entry.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Facts {
+pub(crate) struct Facts {
     /// The entry's own progress on the list.
     pub progress: u32,
     /// The published episode count, when there is one.
@@ -69,7 +69,7 @@ pub struct Facts {
 
 /// The instant an entry's untouched clock runs from, or `None` when the
 /// entry is not waiting on the user at all.
-pub fn idle_since(f: &Facts, now: i64) -> Option<i64> {
+pub(crate) fn idle_since(f: &Facts, now: i64) -> Option<i64> {
     // Every episode seen: whatever the list says, nothing is left to watch.
     if f.total.is_some_and(|total| f.progress >= total) {
         return None;
@@ -89,13 +89,13 @@ pub fn idle_since(f: &Facts, now: i64) -> Option<i64> {
 }
 
 /// Whether an entry has sat untouched for more than `days` days.
-pub fn is_due(f: &Facts, now: i64, days: u32) -> bool {
+pub(crate) fn is_due(f: &Facts, now: i64, days: u32) -> bool {
     idle_since(f, now).is_some_and(|since| now - since > i64::from(days) * DAY)
 }
 
 /// Whether a provider's airing word says the media is still coming out:
 /// airing, on a break, or not started yet.
-pub fn still_coming(status: &str) -> bool {
+pub(crate) fn still_coming(status: &str) -> bool {
     matches!(
         AiringStatus::from_provider(status),
         Some(AiringStatus::Releasing | AiringStatus::Hiatus | AiringStatus::NotYetReleased)
@@ -107,7 +107,7 @@ pub fn still_coming(status: &str) -> bool {
 /// episode itself, or one further on, in which case the one after
 /// `progress` is taken to have aired a week per episode before it. The
 /// guess runs late across a break in the run, which only ever moves less.
-pub fn next_out(progress: u32, scheduled: Option<i64>, next: Option<(u32, i64)>) -> Option<i64> {
+pub(crate) fn next_out(progress: u32, scheduled: Option<i64>, next: Option<(u32, i64)>) -> Option<i64> {
     if scheduled.is_some() {
         return scheduled;
     }
@@ -137,7 +137,7 @@ fn bounded(days: u32) -> u32 {
 
 /// One entry the pre-check found due, with what the live check needs.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Due {
+pub(crate) struct Due {
     pub media_id: u64,
     /// Both ids the media goes by, whichever list this is.
     pub anilist_id: Option<i64>,
@@ -152,7 +152,7 @@ pub struct Due {
 /// An entry as the tracker has it right now, read just before a status
 /// write: the decision is made again on this, never on the list alone.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Live {
+pub(crate) struct Live {
     pub status: Option<ListStatus>,
     pub progress: u32,
     pub updated_at: Option<i64>,
@@ -240,7 +240,7 @@ fn local(
 /// The entries on one tracker's cached list that look due, longest idle
 /// first. Each one is read live and decided again before anything is
 /// written (`move_one`), so this errs toward including an entry.
-pub fn due(conn: &Connection, t: Tracker, now: i64, days: u32) -> Result<Vec<Due>, CoreError> {
+pub(crate) fn due(conn: &Connection, t: Tracker, now: i64, days: u32) -> Result<Vec<Due>, CoreError> {
     struct Row {
         media_id: u64,
         progress: u32,
@@ -393,7 +393,7 @@ pub fn kick(trackers: &Arc<Trackers>) {
 
 /// Starts the sweep. One at a time: a start while one runs answers with
 /// the running one's id.
-pub fn start(trackers: &Arc<Trackers>) -> u64 {
+pub(crate) fn start(trackers: &Arc<Trackers>) -> u64 {
     let owner = trackers.clone();
     trackers
         .services

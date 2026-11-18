@@ -204,7 +204,7 @@ fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount 
 /// connect with nothing to connect with never becomes a job. A missing
 /// secret is not one of them: MAL decides whether it wanted one, and
 /// `token_failure` turns its answer into something a user can act on.
-pub fn effective_credentials(
+pub(crate) fn effective_credentials(
     services: &Services,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
@@ -353,7 +353,7 @@ pub fn set_main(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
 ///
 /// Async because a job is the only caller: the keyring reads and writes go
 /// through the blocking pool.
-pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<String>, CoreError> {
+pub(crate) async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<String>, CoreError> {
     let row = trackers
         .services
         .store

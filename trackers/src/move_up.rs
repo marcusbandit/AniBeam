@@ -33,7 +33,7 @@ pub fn preview_call(services: &Services, t: Tracker) -> Result<Reply, CoreError>
 /// the phone), the tracker's word is the newer one and nothing here may
 /// overwrite it. A show that any hidden folder shares a match with is left
 /// out, the way every tracker write leaves it out.
-pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError> {
+pub(crate) fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError> {
     offered(conn, t, None)
 }
 
