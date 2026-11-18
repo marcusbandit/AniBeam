@@ -308,6 +308,10 @@ export global AppData {
     in property <string> free-line;
     in property <string> trackers-line;
     in property <string> version;
+    // A newer version of the app on its own track (#809), empty when there is none, and
+    // the browser opened on its download.
+    in property <string> update-version;
+    callback open-update();
     // About's IMDb row, from the catalog: its name and IMDb's credit line.
     in property <string> ratings-label;
     in property <string> ratings-credit;

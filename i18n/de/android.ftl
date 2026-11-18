@@ -224,6 +224,8 @@ more-whats-new-note = Was sich in jeder Version geändert hat, neueste zuerst.
 more-set-onboarding = Neu einrichten
 more-onboarding-note = Die Fragen vom ersten Start noch einmal durchgehen.
 more-set-version = Version
+more-update-out = Anibeam { $version } ist da
+more-update-download = Laden
 
 ## Status lines Rust writes on the pages
 

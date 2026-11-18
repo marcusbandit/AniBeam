@@ -33,6 +33,7 @@ mod look;
 mod mpv;
 #[cfg(test)]
 mod narrow;
+mod newer;
 mod notes;
 mod notify;
 mod phone;

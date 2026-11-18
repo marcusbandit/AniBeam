@@ -2515,6 +2515,7 @@ pub fn run(
     crate::activity::install(&window);
     crate::listmove::install(&window);
     crate::look::install(&window, &data_dir);
+    crate::newer::install(&window);
 
     let mut app = App {
         window: window.clone_strong(),

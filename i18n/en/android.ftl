@@ -263,6 +263,10 @@ more-whats-new-note = What changed in each version, newest first.
 more-set-onboarding = Set up again
 more-onboarding-note = Walk through the first-run questions once more.
 more-set-version = Version
+# A newer version of the app is out, in More's About and on its row in the index.
+more-update-out = Anibeam { $version } is out
+# The button beside it, which opens the new version's download in the browser.
+more-update-download = Download
 
 ## Status lines Rust writes on the pages
 

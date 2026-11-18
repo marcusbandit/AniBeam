@@ -206,6 +206,8 @@ more-whats-new-note = 每个版本的更改，最新在前。
 more-set-onboarding = 重新设置
 more-onboarding-note = 再走一遍首次使用的设置问题。
 more-set-version = 版本
+more-update-out = Anibeam { $version } 已发布
+more-update-download = 下载
 
 ## Status lines Rust writes on the pages
 
