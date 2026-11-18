@@ -149,15 +149,8 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
             .as_deref()
             .map(|p| fill_page(p, item))
             .unwrap_or_default(),
-        title,
-        seeders: None,
-        leechers: None,
-        downloads: None,
-        category: String::new(),
         source: source.to_string(),
-        resolution: String::new(),
-        infomkv: String::new(),
-        linktype: String::new(),
+        ..crate::titled(&title)
     })
 }
 

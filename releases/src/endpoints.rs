@@ -39,7 +39,7 @@ pub fn answers_rss(kind: &str) -> bool {
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
-pub fn json_needs_repo() -> String {
+fn json_needs_repo() -> String {
     anibeam_contract::i18n::tr("core-releases-json-needs-repo", &[])
 }
 
@@ -60,26 +60,26 @@ fn seconds(s: f64) -> Duration {
 /// (duplicate names) or the on-demand fields. Values are judged after trimming, like
 /// anirss does before it builds the `Endpoint`. A phone source gets the same (#260).
 pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
-    let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
+    let name = name.trim();
     if name.is_empty() {
-        return Err(CoreError::invalid(
-            "endpoint name",
-            anibeam_contract::i18n::tr("core-releases-endpoint-no-name", &[]),
-        ));
+        return Err(bad("endpoint name", "core-releases-endpoint-no-name", &[]));
     }
     if !name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
     {
-        return Err(CoreError::invalid(
+        return Err(bad(
             "endpoint name",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-bad-name",
-                &[("name", format!("{name:?}").into())],
-            ),
+            "core-releases-endpoint-bad-name",
+            &[("name", format!("{name:?}").into())],
         ));
     }
     check_shape(name, kind, url)
+}
+
+/// An endpoint's `field` refused, in the words of the catalog's `id`.
+fn bad(field: &str, id: &str, args: &[(&str, anibeam_contract::i18n::Arg)]) -> CoreError {
+    CoreError::invalid(field, anibeam_contract::i18n::tr(id, args))
 }
 
 /// The part of `validate` a source saved earlier is held to before it is searched: a known
@@ -88,77 +88,44 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
 /// own search takes none, or the search would go in twice.
 pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
+    let quoted = format!("{name:?}");
     if kind == "json" {
-        return Err(CoreError::invalid(
+        return Err(bad(
             "endpoint kind",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-json",
-                &[
-                    ("name", format!("{name:?}").into()),
-                    ("why", json_needs_repo().into()),
-                ],
-            ),
+            "core-releases-endpoint-json",
+            &[("name", quoted.into()), ("why", json_needs_repo().into())],
         ));
     }
     if !VALID_KINDS.contains(&kind) {
-        return Err(CoreError::invalid(
+        let valid: Vec<&str> = VALID_KINDS.into_iter().filter(|k| *k != "json").collect();
+        return Err(bad(
             "endpoint kind",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-unknown-kind",
-                &[
-                    ("name", format!("{name:?}").into()),
-                    ("kind", format!("{kind:?}").into()),
-                    (
-                        "valid",
-                        VALID_KINDS
-                            .iter()
-                            .filter(|k| **k != "json")
-                            .copied()
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                            .into(),
-                    ),
-                ],
-            ),
+            "core-releases-endpoint-unknown-kind",
+            &[
+                ("name", quoted.into()),
+                ("kind", format!("{kind:?}").into()),
+                ("valid", valid.join(", ").into()),
+            ],
         ));
     }
-    if url.is_empty() {
-        return Err(CoreError::invalid(
-            "endpoint url",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-no-url",
-                &[("name", format!("{name:?}").into())],
-            ),
-        ));
-    }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(CoreError::invalid(
-            "endpoint url",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-not-http",
-                &[("name", format!("{name:?}").into())],
-            ),
-        ));
-    }
-    if needs_query(kind) && !url.contains("{query}") {
-        return Err(CoreError::invalid(
-            "endpoint url",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-needs-query",
-                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
-            ),
-        ));
-    }
-    if !needs_query(kind) && url.contains("{query}") {
-        return Err(CoreError::invalid(
-            "endpoint url",
-            anibeam_contract::i18n::tr(
-                "core-releases-endpoint-no-query",
-                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
-            ),
-        ));
-    }
-    Ok(())
+    let wrong = if url.is_empty() {
+        "core-releases-endpoint-no-url"
+    } else if !(url.starts_with("http://") || url.starts_with("https://")) {
+        "core-releases-endpoint-not-http"
+    } else if needs_query(kind) != url.contains("{query}") {
+        if needs_query(kind) {
+            "core-releases-endpoint-needs-query"
+        } else {
+            "core-releases-endpoint-no-query"
+        }
+    } else {
+        return Ok(());
+    };
+    Err(bad(
+        "endpoint url",
+        wrong,
+        &[("name", quoted.into()), ("kind", kind.into())],
+    ))
 }
 
 // Python urllib.parse helpers the URL code leans on, kept byte for byte --------------
@@ -245,12 +212,14 @@ pub(crate) struct UrlParts {
 }
 
 impl UrlParts {
+    /// The netloc without its userinfo: host and port.
+    fn host_port(&self) -> &str {
+        self.netloc.rsplit_once('@').map_or(&self.netloc, |(_, h)| h)
+    }
+
     /// `parts.hostname`: lower case, userinfo and brackets gone.
     pub fn hostname(&self) -> Option<String> {
-        let host = self
-            .netloc
-            .rsplit_once('@')
-            .map_or(self.netloc.as_str(), |(_, h)| h);
+        let host = self.host_port();
         let host = if let Some(rest) = host.strip_prefix('[') {
             rest.split(']').next().unwrap_or("")
         } else {
@@ -261,10 +230,7 @@ impl UrlParts {
 
     /// `parts.port`: `None` when absent or not a valid port.
     pub fn port(&self) -> Option<u16> {
-        let host = self
-            .netloc
-            .rsplit_once('@')
-            .map_or(self.netloc.as_str(), |(_, h)| h);
+        let host = self.host_port();
         let after = if host.starts_with('[') {
             host.split_once(']')?.1
         } else {
@@ -321,7 +287,7 @@ pub(crate) fn split_url(url: &str) -> Result<UrlParts, ()> {
 
 /// Tags results a filtered-rss endpoint found only with its filter off, after the endpoint's
 /// name: the results list heads them with it, and a subscription to them keeps the filter off.
-pub const ALL_UPLOADS: &str = ": all uploads";
+const ALL_UPLOADS: &str = ": all uploads";
 
 /// `ep` with its filter off: every upload, trusted or not.
 fn unfiltered(ep: &Endpoint) -> Endpoint {
@@ -354,21 +320,16 @@ pub fn search_url(ep: &Endpoint, query: &str) -> String {
 /// Split `query` into (positive-terms query, exclusion terms). An exclusion is a `-tag` or
 /// `-"quoted phrase"` field (filtered-rss syntax). Generic RSS endpoints do not understand `-tag`,
 /// so exclusions are applied client-side after the fetch instead.
-pub fn split_exclusions(query: &str) -> (String, Vec<String>) {
+fn split_exclusions(query: &str) -> (String, Vec<String>) {
     let mut positive: Vec<&str> = Vec::new();
     let mut excluded: Vec<String> = Vec::new();
     for field in FIELD_RE.find_iter(query).map(|m| m.as_str()) {
-        if field.starts_with('-') && field.chars().count() > 1 {
-            let mut core = &field[1..];
-            if core.chars().count() >= 2 && core.starts_with('"') && core.ends_with('"') {
-                core = &core[1..core.len() - 1];
-            }
-            if !core.is_empty() {
-                excluded.push(core.to_string());
-                continue;
-            }
+        let core = quirks::field_core(field);
+        if field.starts_with('-') && !core.is_empty() {
+            excluded.push(core.to_string());
+        } else {
+            positive.push(field);
         }
-        positive.push(field);
     }
     (positive.join(" "), excluded)
 }
@@ -439,7 +400,7 @@ pub fn subscription_feed_resolved(
 
 /// (feed_url, mustContain, excluded) to persist as a qB subscription. A `show_feed` source
 /// costs one probe request here, to resolve the show's own feed from `items`.
-pub async fn subscription_feed(
+async fn subscription_feed(
     http: &dyn Http,
     ep: &Endpoint,
     query: &str,
@@ -480,7 +441,7 @@ pub async fn build_subscription(
 }
 
 /// Drop items whose title contains any excluded term (case-insensitive).
-pub fn filter_excluded(items: Vec<Release>, terms: &[String]) -> Vec<Release> {
+fn filter_excluded(items: Vec<Release>, terms: &[String]) -> Vec<Release> {
     if terms.is_empty() {
         return items;
     }
@@ -554,37 +515,26 @@ async fn fetch_exact(
     if ep.kind == FILTERED_RSS {
         return fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await;
     }
-    if ep.kind == JSON_FEED {
-        // Exclusions are applied here: a json-feed search does not take `-tag`.
-        let (positive, excluded) = split_exclusions(query);
-        let items =
-            super::json_feed::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
-        return Ok(filter_excluded(items, &excluded));
-    }
-    if ep.kind == "json" {
-        // Which search syntax an API takes is the site's business, so exclusions are applied
-        // here rather than sent.
-        let Some(map) = &ep.json else {
-            return Err(CoreError::service(
-                ep.name.clone(),
-                "unmapped",
-                json_needs_repo(),
-            ));
-        };
-        let (positive, excluded) = split_exclusions(query);
-        let items =
-            super::json::fetch(http, &search_url(ep, &positive), map, &ep.name, timeout).await?;
-        return Ok(filter_excluded(items, &excluded));
-    }
-    if ep.kind == "torznab" {
-        // Prowlarr and Jackett do not take `-tag` either, and keep every quality term.
-        let (positive, excluded) = split_exclusions(query);
-        let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
-        return Ok(filter_excluded(items, &excluded));
-    }
+    // Every other kind takes no `-tag`: a json-feed search does not, which search syntax a
+    // json API takes is the site's business, and Prowlarr and Jackett do not either. So
+    // exclusions are applied here rather than sent.
     let (positive, excluded) = split_exclusions(query);
     let (positive, quality) = quality_split(ep, &positive);
-    let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
+    let url = search_url(ep, &positive);
+    let items = match ep.kind.as_str() {
+        JSON_FEED => super::json_feed::fetch(http, &url, &ep.name, timeout).await?,
+        "json" => {
+            let Some(map) = &ep.json else {
+                return Err(CoreError::service(
+                    ep.name.clone(),
+                    "unmapped",
+                    json_needs_repo(),
+                ));
+            };
+            super::json::fetch(http, &url, map, &ep.name, timeout).await?
+        }
+        _ => fetch::fetch_rss(http, &url, &ep.name, timeout).await?,
+    };
     let mut items = filter_excluded(items, &excluded);
     if !quality.is_empty() {
         // The quality facets cannot be searched server-side (they would zero the s= search
@@ -598,7 +548,7 @@ async fn fetch_exact(
 /// starts with, the longest such, then the one whose template past `{query}` the feed also
 /// ends with, then the first listed. Two sources on one host told apart only by a parameter
 /// after the search (`&fmt=json`) are told apart by it, not by their order.
-pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint> {
+fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint> {
     let score = |e: &Endpoint| {
         let (base, tail) = e.url.split_once("{query}").unwrap_or((e.url.as_str(), ""));
         let tail = if url.ends_with(tail) {
@@ -608,13 +558,12 @@ pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint
         };
         (base.len(), tail)
     };
-    let mut best: Option<&Endpoint> = None;
-    for e in endpoints.iter().filter(|e| e.owns_url(url)) {
-        if best.is_none_or(|b| score(e) > score(b)) {
-            best = Some(e);
-        }
-    }
-    best
+    // `max_by_key` keeps the last of equals, which read backwards is the first listed.
+    endpoints
+        .iter()
+        .filter(|e| e.owns_url(url))
+        .rev()
+        .max_by_key(|e| score(e))
 }
 
 /// Whether a subscription on `feed_url` can fetch new episodes: false when its source
@@ -683,18 +632,8 @@ pub(crate) mod tests {
 
     pub(crate) fn rel(title: &str, link: &str) -> Release {
         Release {
-            title: title.to_string(),
             link: link.to_string(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled(title)
         }
     }
 
@@ -919,6 +858,27 @@ pub(crate) mod tests {
             http.requests()[0].url,
             "http://10.0.0.2:9696/1/api?t=search&q=show&apikey=k"
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_items_json_kinds_apply_exclusions_and_need_their_map() {
+        let http = FakeHttp::new();
+        http.push(
+            200,
+            r#"[{"title":"Show 05 HEVC","magnet_uri":"magnet:?xt=urn:btih:A"},
+                {"title":"Show 05 AVC","magnet_uri":"magnet:?xt=urn:btih:B"}]"#,
+        );
+        let ep = Endpoint::new("anime", JSON_FEED, "https://d.example/feed?q={query}");
+        let items = fetch_items(http.as_ref(), &ep, "show -HEVC").await.unwrap();
+        assert_eq!(
+            items.iter().map(|i| i.link.as_str()).collect::<Vec<_>>(),
+            ["magnet:?xt=urn:btih:B"]
+        );
+        assert_eq!(http.requests()[0].url, "https://d.example/feed?q=show");
+        let unmapped = Endpoint::new("api", "json", "https://c.example/api?q={query}");
+        let err = fetch_items(http.as_ref(), &unmapped, "show").await.unwrap_err();
+        assert!(matches!(err, CoreError::Service { ref code, .. } if code == "unmapped"));
+        assert_eq!(http.requests().len(), 1, "an unmapped json source asks nothing");
     }
 
     #[test]

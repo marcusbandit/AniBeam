@@ -131,7 +131,7 @@ pub fn source_of(title: &str) -> Option<(&'static str, String)> {
 /// (canonical name, literal match) of the first audio-variant tag found, else None. Same
 /// contract as `source_of`: the literal is what the title actually says (`DUAL` against
 /// `Dual-Audio`) so it can be pinned back into a query and still match.
-pub fn audio_of(title: &str) -> Option<(&'static str, String)> {
+fn audio_of(title: &str) -> Option<(&'static str, String)> {
     AUDIO_PATTERNS.iter().find_map(|(name, pattern)| {
         pattern
             .find(title)
@@ -144,18 +144,22 @@ pub fn audio_of(title: &str) -> Option<(&'static str, String)> {
 /// Rank of the title's audio variant in the pattern order (first is highest), 0 when the
 /// title carries no audio tag.
 fn audio_rank(title: &str) -> i64 {
-    let Some((found, _)) = audio_of(title) else {
-        return 0;
-    };
-    let index = AUDIO_PATTERNS
+    let found = AUDIO_PATTERNS
         .iter()
-        .position(|(name, _)| *name == found)
-        .unwrap_or(0);
-    (AUDIO_PATTERNS.len() - index) as i64
+        .position(|(_, pattern)| pattern.is_match(title).unwrap_or(false));
+    found.map_or(0, |index| (AUDIO_PATTERNS.len() - index) as i64)
+}
+
+/// Where `name`, in lower case, sits in `list`, told apart without case: the first entry
+/// ranks highest, at the list's length; 0 when it is not there.
+fn rank_in(list: &[String], name: &str) -> i64 {
+    list.iter()
+        .position(|entry| entry.to_lowercase() == name)
+        .map_or(0, |index| (list.len() - index) as i64)
 }
 
 /// Highest `<n>p` resolution in the title (1080, say), or 0 if none.
-pub fn resolution_of(title: &str) -> i64 {
+fn resolution_of(title: &str) -> i64 {
     RES_RE
         .captures_iter(title)
         .filter_map(|c| c[1].parse::<i64>().ok())
@@ -163,7 +167,7 @@ pub fn resolution_of(title: &str) -> i64 {
         .unwrap_or(0)
 }
 
-pub fn has_subs(title: &str) -> bool {
+fn has_subs(title: &str) -> bool {
     SUBS_RE.is_match(title)
 }
 
@@ -173,12 +177,7 @@ fn group_rank(title: &str, preferred: &[String]) -> i64 {
     let Some(poster) = poster_of(title) else {
         return 0;
     };
-    let core = poster.trim_matches(['[', ']']).to_lowercase();
-    let lowered: Vec<String> = preferred.iter().map(|g| g.to_lowercase()).collect();
-    match lowered.iter().position(|g| *g == core) {
-        Some(index) => (lowered.len() - index) as i64,
-        None => 0,
-    }
+    rank_in(preferred, &poster.trim_matches(['[', ']']).to_lowercase())
 }
 
 /// Rank of the title's source type in `source_order` (first is highest), 0 when the type
@@ -196,11 +195,7 @@ fn source_rank(title: &str, source_order: &[String], assumed: &str) -> i64 {
     if name.is_empty() {
         return 0;
     }
-    let lowered: Vec<String> = source_order.iter().map(|s| s.to_lowercase()).collect();
-    match lowered.iter().position(|s| *s == name) {
-        Some(index) => (lowered.len() - index) as i64,
-        None => 0,
-    }
+    rank_in(source_order, &name)
 }
 
 /// Score a resolution. "highest" rewards bigger numbers; a target like "1080" rewards
@@ -218,13 +213,13 @@ fn resolution_score(res: i64, preferred_resolution: &str) -> i64 {
 }
 
 /// A feed's size string ("6.2 GiB", "301.4 MiB") in MiB, or None if unreadable.
-pub fn size_mib(size: &str) -> Option<f64> {
+fn size_mib(size: &str) -> Option<f64> {
     anibeam_foundation::size::size_in_bytes(size).map(|b| b / (1024.0 * 1024.0))
 }
 
 /// How many times smaller this title's codec can be than x264 for equal quality. 1.0
 /// when no codec is tagged.
-pub fn codec_efficiency(title: &str) -> f64 {
+fn codec_efficiency(title: &str) -> f64 {
     CODEC_EFFICIENCY
         .iter()
         .find(|(_, _, pattern)| pattern.is_match(title))
@@ -262,7 +257,7 @@ pub fn episode_span(title: &str) -> Option<i64> {
 /// spell out "01-12" tell us what the ones that only say "S01" contain. Most-declared
 /// wins; a tie goes to the wider span, since a full season is likelier to be the shared
 /// truth than a half-batch.
-pub fn consensus_episode_count(items: &[Release]) -> Option<i64> {
+fn consensus_episode_count(items: &[Release]) -> Option<i64> {
     let spans: Vec<i64> = items
         .iter()
         .filter_map(|i| episode_span(&i.title))
@@ -278,7 +273,7 @@ pub fn consensus_episode_count(items: &[Release]) -> Option<i64> {
 ///
 /// The title's own declared span wins; `fallback_episodes` (the result set's consensus)
 /// is used only for titles that look like season batches.
-pub fn per_episode_mib(item: &Release, fallback_episodes: Option<i64>) -> Option<f64> {
+fn per_episode_mib(item: &Release, fallback_episodes: Option<i64>) -> Option<f64> {
     let total = size_mib(&item.size)?;
     let mut episodes = episode_span(&item.title);
     if episodes.is_none() && BATCH_RE.is_match(&item.title) {
@@ -326,12 +321,10 @@ fn size_rank(item: &Release, cfg: &BestfitConfig, fallback_episodes: Option<i64>
     if ratio > cfg.max_size_ratio {
         return UNKNOWN_SIZE_RANK;
     }
-    for (minimum, rank) in SIZE_BANDS {
-        if ratio >= minimum {
-            return rank;
-        }
-    }
-    SIZE_BANDS[SIZE_BANDS.len() - 1].1
+    SIZE_BANDS
+        .iter()
+        .find(|(minimum, _)| ratio >= *minimum)
+        .map_or(SIZE_BANDS[SIZE_BANDS.len() - 1].1, |(_, rank)| *rank)
 }
 
 /// Comparable ranking tuple; higher sorts as better. See the module docs.
@@ -359,14 +352,11 @@ pub fn score(item: &Release, cfg: &BestfitConfig, fallback_episodes: Option<i64>
 /// the tied releases wins, as Python's `max` does.
 pub fn best_item<'a>(items: &'a [Release], cfg: &BestfitConfig) -> Option<&'a Release> {
     let episodes = consensus_episode_count(items);
-    let mut best: Option<(&Release, Score)> = None;
-    for item in items {
-        let s = score(item, cfg, episodes);
-        if best.as_ref().is_none_or(|(_, top)| s > *top) {
-            best = Some((item, s));
-        }
-    }
-    best.map(|(item, _)| item)
+    // `max_by_key` keeps the last of equals, which read backwards is the first.
+    items
+        .iter()
+        .rev()
+        .max_by_key(|item| score(item, cfg, episodes))
 }
 
 /// The facets `best_fit_query` would pin (poster, season, resolution, source, audio) as
@@ -404,7 +394,7 @@ pub fn matches_profile(title: &str, parts: &[String]) -> bool {
 /// The real show name from a release title, with search-noise punctuation removed and
 /// whitespace collapsed ("Heroine? Seijo? Iie, ... desu (Hokori)!" becomes "Heroine Seijo
 /// Iie ... desu (Hokori)").
-pub fn clean_show_name(title: &str) -> String {
+fn clean_show_name(title: &str) -> String {
     let name = TITLE_NOISE_RE
         .replace_all(&show_name(title), " ")
         .into_owned();
@@ -421,26 +411,12 @@ pub fn clean_show_name(title: &str) -> String {
 /// pinned: groups that post a DUAL and a MULTi copy of every episode would otherwise come
 /// back as duplicate pairs. Subtitles are left out so the refetch is not over-narrowed.
 pub fn best_fit_query(item: &Release) -> String {
-    let mut parts = Vec::new();
-    if let Some(poster) = poster_of(&item.title) {
-        parts.push(poster);
-    }
+    let mut parts = profile_parts(item);
     let name = clean_show_name(&item.title);
     if !name.is_empty() {
-        parts.push(name);
-    }
-    if let Some(season) = season_of(&item.title) {
-        parts.push(season);
-    }
-    let res = resolution_of(&item.title);
-    if res != 0 {
-        parts.push(format!("{res}p"));
-    }
-    if let Some((_, literal)) = source_of(&item.title) {
-        parts.push(literal);
-    }
-    if let Some((_, literal)) = audio_of(&item.title) {
-        parts.push(literal);
+        // After the poster, before the rest of the profile.
+        let at = usize::from(poster_of(&item.title).is_some());
+        parts.insert(at, name);
     }
     parts.join(" ")
 }
@@ -451,18 +427,8 @@ mod tests {
 
     fn item(title: &str) -> Release {
         Release {
-            title: title.to_string(),
             link: "l".to_string(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled(title)
         }
     }
 

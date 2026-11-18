@@ -534,18 +534,10 @@ mod tests {
 
     fn rel(title: &str, seeders: i64) -> Release {
         Release {
-            title: title.into(),
             link: format!("magnet:?xt=urn:btih:{title}"),
             seeders: Some(seeders),
-            leechers: None,
-            downloads: None,
             size: "1.4 GiB".into(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled(title)
         }
     }
 

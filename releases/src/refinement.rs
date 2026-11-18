@@ -4,50 +4,33 @@
 //! Nothing here prints, prompts or touches a terminal. `apply` takes the refetch as a callback,
 //! so the caller decides how a feed is read.
 
-use super::bestfit;
-use super::titles::{RES_RE, poster_of, title_tokens};
-use super::{BestfitConfig, Endpoint};
-use anibeam_contract::{BestFit, CoreError, RefineOp, Release, ReleaseGroup};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
-use std::pin::Pin;
-
-/// A boxed, sendable future, what the refetch callback hands back.
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
-/// Reads a feed: the endpoint and the query to ask it.
-pub type FetchFn<'f> = dyn for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Result<Vec<Release>, CoreError>>
-    + Send
-    + Sync
-    + 'f;
 
 use super::endpoints::FIELD_RE;
-use super::quirks::metadata_hit;
+use super::quirks::{field_core, matches_token, metadata_hit};
+use super::titles::{RES_RE, poster_of, title_tokens};
+use super::{BestfitConfig, Endpoint, bestfit};
+use anibeam_contract::{BestFit, CoreError, RefineOp, Release, ReleaseGroup};
 
-/// What `auto_resolution` decided.
+/// What `auto_resolution` decided: the query with its `<n>p` appended, the items at that
+/// resolution, and the token.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AutoResolution {
     pub query: String,
     pub items: Vec<Release>,
-    /// The `<n>p` appended, empty when nothing was.
     pub token: String,
-    /// How many titles lacked a `<n>p`, which is why it was skipped.
-    pub skipped_missing: usize,
 }
 
 /// If `query` lacks a `<n>p` token and every item has one, append the highest and keep
-/// only the items at that resolution.
-pub fn auto_resolution(query: &str, items: &[Release]) -> AutoResolution {
-    let unchanged = |skipped_missing| AutoResolution {
-        query: query.to_string(),
-        items: items.to_vec(),
-        token: String::new(),
-        skipped_missing,
-    };
+/// only the items at that resolution. None when it changes nothing: no items, a query that
+/// names a resolution already, or a title without one.
+pub fn auto_resolution(query: &str, items: &[Release]) -> Option<AutoResolution> {
     if items.is_empty() || RES_RE.is_match(query) {
-        return unchanged(0);
+        return None;
     }
-    let per_max: Vec<Option<i64>> = items
+    let per_max: Vec<i64> = items
         .iter()
         .map(|item| {
             RES_RE
@@ -55,25 +38,20 @@ pub fn auto_resolution(query: &str, items: &[Release]) -> AutoResolution {
                 .filter_map(|c| c[1].parse::<i64>().ok())
                 .max()
         })
-        .collect();
-    let missing = per_max.iter().filter(|res| res.is_none()).count();
-    if missing > 0 {
-        return unchanged(missing);
-    }
-    let highest = per_max.iter().flatten().copied().max().unwrap_or(0);
+        .collect::<Option<_>>()?;
+    let highest = per_max.iter().copied().max().unwrap_or(0);
     let token = format!("{highest}p");
     let kept = items
         .iter()
         .zip(&per_max)
-        .filter(|(_, res)| **res == Some(highest))
+        .filter(|(_, res)| **res == highest)
         .map(|(item, _)| item.clone())
         .collect();
-    AutoResolution {
+    Some(AutoResolution {
         query: format!("{query} {token}"),
         items: kept,
         token,
-        skipped_missing: 0,
-    }
+    })
 }
 
 /// A release's poster and tokens, read once.
@@ -89,36 +67,29 @@ fn parse(item: &Release) -> Parsed {
     }
 }
 
-fn members_of(selected: &[Release], parsed: &[Parsed], token: &str) -> Vec<usize> {
-    let is_poster = token.starts_with('[');
-    (0..selected.len())
-        .filter(|&i| {
-            if is_poster {
-                parsed[i].poster.as_deref() == Some(token)
-            } else {
-                parsed[i].tokens.iter().any(|t| t == token) || metadata_hit(&selected[i], token)
-            }
-        })
-        .collect()
+/// Whether `item`, read into `parsed`, carries `token`: a poster as its own poster, any other
+/// token among its title's tokens or in the source's structured fields.
+fn has_token(item: &Release, parsed: &Parsed, token: &str) -> bool {
+    if token.starts_with('[') {
+        parsed.poster.as_deref() == Some(token)
+    } else {
+        parsed.tokens.iter().any(|t| t == token) || metadata_hit(item, token)
+    }
 }
 
 fn matches_all_tokens(item: &Release, tokens: &[String]) -> bool {
-    let poster = poster_of(&item.title);
-    let toks = title_tokens(&item.title);
-    tokens.iter().all(|t| {
-        if t.starts_with('[') {
-            poster.as_deref() == Some(t.as_str())
-        } else {
-            toks.contains(t) || metadata_hit(item, t)
-        }
-    })
+    let parsed = parse(item);
+    tokens.iter().all(|t| has_token(item, &parsed, t))
 }
 
-/// Custom-term match: title substring, plus the source's structured fields (the polished title
-/// drops the linktype, so "Torrent" only exists there; items without source metadata match
-/// on the title alone).
-fn custom_hit(item: &Release, term_lc: &str) -> bool {
-    item.title.to_lowercase().contains(term_lc) || metadata_hit(item, term_lc)
+/// A group's tokens in their order: the poster first, then the longest, then alphabetical.
+fn token_order(token: &str) -> (bool, Reverse<usize>, &str) {
+    (!token.starts_with('['), Reverse(token.chars().count()), token)
+}
+
+/// The groups in their order: poster groups first, then the larger, then by label.
+fn group_order(group: &ReleaseGroup) -> (bool, Reverse<u64>, &str) {
+    (!group.has_poster, Reverse(group.member_count), &group.label)
 }
 
 /// Find tokens that partition `selected` into refinable subsets, grouped by membership.
@@ -127,13 +98,7 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
     let parsed: Vec<Parsed> = selected.iter().map(parse).collect();
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for p in &parsed {
-        let mut seen: BTreeSet<&str> = BTreeSet::new();
-        if let Some(poster) = &p.poster {
-            seen.insert(poster);
-        }
-        for token in &p.tokens {
-            seen.insert(token);
-        }
+        let seen: BTreeSet<&str> = p.poster.iter().chain(&p.tokens).map(String::as_str).collect();
         for token in seen {
             *counts.entry(token).or_insert(0) += 1;
         }
@@ -147,7 +112,9 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
     let mut slot: HashMap<Vec<usize>, usize> = HashMap::new();
     let mut by_members: Vec<(Vec<usize>, Vec<&str>)> = Vec::new();
     for token in refinable {
-        let members = members_of(selected, &parsed, token);
+        let members: Vec<usize> = (0..total)
+            .filter(|&i| has_token(&selected[i], &parsed[i], token))
+            .collect();
         match slot.get(&members) {
             Some(&at) => by_members[at].1.push(token),
             None => {
@@ -159,60 +126,33 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
 
     let mut groups: Vec<ReleaseGroup> = by_members
         .into_iter()
-        .map(|(members, tokens)| {
-            let mut tokens_sorted: Vec<String> = tokens.iter().map(|t| t.to_string()).collect();
-            tokens_sorted.sort_by(|a, b| {
-                (!a.starts_with('['), std::cmp::Reverse(a.chars().count()), a).cmp(&(
-                    !b.starts_with('['),
-                    std::cmp::Reverse(b.chars().count()),
-                    b,
-                ))
-            });
-            let has_poster = tokens_sorted.iter().any(|t| t.starts_with('['));
+        .map(|(members, mut tokens)| {
+            tokens.sort_by(|a, b| token_order(a).cmp(&token_order(b)));
             ReleaseGroup {
-                label: tokens_sorted.join("+"),
+                label: tokens.join("+"),
                 member_count: members.len() as u64,
-                has_poster,
+                has_poster: tokens.iter().any(|t| t.starts_with('[')),
                 members: members.iter().map(|&i| i as u64).collect(),
-                tokens: tokens_sorted,
+                tokens: tokens.iter().map(|t| t.to_string()).collect(),
             }
         })
         .collect();
-
-    groups.sort_by(|a, b| {
-        (!a.has_poster, std::cmp::Reverse(a.member_count), &a.label).cmp(&(
-            !b.has_poster,
-            std::cmp::Reverse(b.member_count),
-            &b.label,
-        ))
-    });
+    groups.sort_by(|a, b| group_order(a).cmp(&group_order(b)));
     groups
 }
 
-/// The query the best-fit step would refetch with, or "" when running it would be a no-op
-/// (nothing to rank, empty rebuild, or the current query already matching the top
-/// release's profile).
-fn best_fit_query_for(query: &str, selected: &[Release], cfg: &BestfitConfig) -> String {
-    let Some(best) = bestfit::best_item(selected, cfg) else {
-        return String::new();
-    };
+/// The query the best-fit step would refetch with, and the release it pins; None when
+/// running it would be a no-op (nothing to rank, empty rebuild, or the current query
+/// already matching the top release's profile).
+fn best_fit_query_for<'a>(
+    query: &str,
+    selected: &'a [Release],
+    cfg: &BestfitConfig,
+) -> Option<(String, &'a Release)> {
+    let best = bestfit::best_item(selected, cfg)?;
     let new_query = bestfit::best_fit_query(best);
-    if new_query.is_empty() || new_query.to_lowercase() == query.to_lowercase() {
-        return String::new();
-    }
-    new_query
-}
-
-/// The matchable core of a query field: drop a leading `-` and any quotes.
-fn field_text(field: &str) -> String {
-    let core = field.strip_prefix('-').unwrap_or(field);
-    let chars: Vec<char> = core.chars().collect();
-    let core = if chars.len() >= 2 && chars[0] == '"' && chars[chars.len() - 1] == '"' {
-        chars[1..chars.len() - 1].iter().collect::<String>()
-    } else {
-        core.to_string()
-    };
-    core.to_lowercase()
+    (!new_query.is_empty() && new_query.to_lowercase() != query.to_lowercase())
+        .then_some((new_query, best))
 }
 
 /// Median index (in characters) at which `text` appears across the selected titles.
@@ -249,20 +189,15 @@ fn title_position(text: &str, selected: &[Release]) -> f64 {
 fn insert_positional(query: &str, token: &str, selected: &[Release]) -> String {
     let mut fields: Vec<&str> = FIELD_RE.find_iter(query).map(|m| m.as_str()).collect();
     let token_pos = title_position(&token.to_lowercase(), selected);
-    let mut insert_at = fields.len();
-    for (i, field) in fields.iter().enumerate() {
-        if field.starts_with('[') {
-            continue; // never slot in front of a poster
-        }
-        if field.starts_with('-') {
-            insert_at = i; // exclusions stay at the end
-            break;
-        }
-        if title_position(&field_text(field), selected) > token_pos {
-            insert_at = i;
-            break;
-        }
-    }
+    let insert_at = fields
+        .iter()
+        // Never slot in front of a poster; exclusions stay at the end.
+        .position(|field| {
+            !field.starts_with('[')
+                && (field.starts_with('-')
+                    || title_position(&field_core(field).to_lowercase(), selected) > token_pos)
+        })
+        .unwrap_or(fields.len());
     fields.insert(insert_at, token);
     fields.join(" ")
 }
@@ -273,7 +208,7 @@ fn insert_positional(query: &str, token: &str, selected: &[Release]) -> String {
 /// starts with one. Every other token is positioned by where it occurs in the titles. The
 /// caller refetches the source with the rebuilt query rather than filtering locally, so
 /// episodes beyond the first RSS page can surface.
-pub fn build_refined_query(query: &str, tokens: &[String], selected: &[Release]) -> String {
+fn build_refined_query(query: &str, tokens: &[String], selected: &[Release]) -> String {
     let mut new_query = query.to_string();
     for token in tokens {
         if token.starts_with('[') {
@@ -287,33 +222,30 @@ pub fn build_refined_query(query: &str, tokens: &[String], selected: &[Release])
     new_query
 }
 
+/// `query` with `term` after `sign` (`-` for an exclusion), quoted when it holds a space;
+/// unchanged when the term is empty.
+fn with_term(query: &str, sign: &str, term: &str) -> String {
+    match term {
+        "" => query.to_string(),
+        _ if term.contains(' ') => format!("{query} {sign}\"{term}\""),
+        _ => format!("{query} {sign}{term}"),
+    }
+}
+
+/// An exclusion's term without its spaces and leading `-`.
+fn excluded_term(term: &str) -> &str {
+    term.trim().trim_start_matches('-').trim()
+}
+
 /// Append a `-tag` exclusion to `query`. The query comes back unchanged when the term is
 /// empty after stripping.
-pub fn add_exclude_to_query(query: &str, term: &str) -> String {
-    let term = term.trim().trim_start_matches('-').trim();
-    if term.is_empty() {
-        return query.to_string();
-    }
-    let flag = if term.contains(' ') {
-        format!("-\"{term}\"")
-    } else {
-        format!("-{term}")
-    };
-    format!("{query} {flag}")
+fn add_exclude_to_query(query: &str, term: &str) -> String {
+    with_term(query, "-", excluded_term(term))
 }
 
 /// Append a positive search term to `query`, quoting it if it contains spaces.
-pub fn add_term_to_query(query: &str, term: &str) -> String {
-    let term = term.trim();
-    if term.is_empty() {
-        return query.to_string();
-    }
-    let flag = if term.contains(' ') {
-        format!("\"{term}\"")
-    } else {
-        term.to_string()
-    };
-    format!("{query} {flag}")
+fn add_term_to_query(query: &str, term: &str) -> String {
+    with_term(query, "", term.trim())
 }
 
 // One stateless refine step.
@@ -338,52 +270,41 @@ pub struct Outcome {
     pub reason: Option<String>,
 }
 
-/// Ask the endpoint for `new_query`; None when it came back empty, else the releases.
-async fn refetch(
-    ep: &Endpoint,
-    new_query: &str,
-    fetch: &FetchFn<'_>,
-) -> Result<Option<Vec<Release>>, CoreError> {
-    let fetched = fetch(ep, new_query).await?;
-    Ok((!fetched.is_empty()).then_some(fetched))
-}
+/// Which releases a refine step keeps when it filters them here.
+type Keep = Box<dyn Fn(&Release) -> bool + Send + Sync>;
 
 /// Apply one refine action the way anirss's refine loop does.
 ///
 /// `Tokens` narrows to a `compute_groups` group's tokens, `Term` is a custom substring,
 /// `Exclude` drops a term, `BestFit` pins the top release's profile. filtered-rss endpoints
-/// refetch with the rebuilt query; rss endpoints filter `items` client-side. A failed
-/// refetch is the fetch callback's error.
-pub async fn apply(
+/// refetch with the rebuilt query through `refetch`, called at most once; rss endpoints
+/// filter `items` client-side. A failed refetch is the callback's error.
+pub async fn apply<F, Fut>(
     ep: &Endpoint,
     query: &str,
     items: &[Release],
     op: &RefineOp,
     cfg: &BestfitConfig,
-    fetch: &FetchFn<'_>,
-) -> Result<Outcome, CoreError> {
+    refetch: F,
+) -> Result<Outcome, CoreError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<Vec<Release>, CoreError>>,
+{
     let prev = items.len();
     let client = is_client_side(ep);
-    let mode = if client { "client" } else { "refetch" };
-
-    let unchanged = |reason: &str| Outcome {
-        applied: false,
-        query: query.to_string(),
-        items: items.to_vec(),
-        mode: mode.to_string(),
+    let outcome = |query: String, items: Vec<Release>, reason: Option<&str>| Outcome {
+        applied: reason.is_none(),
+        query,
+        items,
+        mode: if client { "client" } else { "refetch" }.to_string(),
         previous_count: prev,
-        reason: Some(reason.to_string()),
+        reason: reason.map(String::from),
     };
-    let changed = |new_query: String, new_items: Vec<Release>| Outcome {
-        applied: true,
-        query: new_query,
-        items: new_items,
-        mode: mode.to_string(),
-        previous_count: prev,
-        reason: None,
-    };
+    let unchanged = |reason| outcome(query.to_string(), items.to_vec(), Some(reason));
 
-    match op {
+    // The rebuilt query, and which of `items` it keeps when they are filtered here.
+    let (new_query, keep): (String, Keep) = match op {
         RefineOp::Tokens { tokens } => {
             let tokens: Vec<String> = tokens.iter().filter(|t| !t.is_empty()).cloned().collect();
             if tokens.is_empty() {
@@ -393,103 +314,69 @@ pub async fn apply(
                 ));
             }
             let new_query = build_refined_query(query, &tokens, items);
-            if !client {
-                return Ok(match refetch(ep, &new_query, fetch).await? {
-                    None => unchanged("zero_results"),
-                    Some(new_items) => changed(new_query, new_items),
-                });
-            }
-            let kept: Vec<Release> = items
-                .iter()
-                .filter(|it| matches_all_tokens(it, &tokens))
-                .cloned()
-                .collect();
-            if kept.is_empty() || kept == items {
-                return Ok(unchanged("noop"));
-            }
-            Ok(changed(new_query, kept))
+            (new_query, Box::new(move |it| matches_all_tokens(it, &tokens)))
         }
         RefineOp::Term { term } => {
             let term = term.trim();
             if term.is_empty() {
                 return Ok(unchanged("empty_term"));
             }
-            let term_lc = term.to_lowercase();
-            if !items.iter().any(|it| custom_hit(it, &term_lc)) {
+            if !items.iter().any(|it| matches_token(it, term)) {
                 return Ok(unchanged("no_match"));
             }
+            let term_lc = term.to_lowercase();
             let new_query = add_term_to_query(query, term);
-            if !client {
-                return Ok(match refetch(ep, &new_query, fetch).await? {
-                    None => unchanged("zero_results"),
-                    Some(new_items) => changed(new_query, new_items),
-                });
-            }
-            let kept = items
-                .iter()
-                .filter(|it| custom_hit(it, &term_lc))
-                .cloned()
-                .collect();
-            Ok(changed(new_query, kept))
+            (new_query, Box::new(move |it| matches_token(it, &term_lc)))
         }
         RefineOp::Exclude { term } => {
             let new_query = add_exclude_to_query(query, term);
             if new_query == query {
                 return Ok(unchanged("empty_term"));
             }
-            if !client {
-                return Ok(match refetch(ep, &new_query, fetch).await? {
-                    None => unchanged("zero_results"),
-                    Some(new_items) => changed(new_query, new_items),
-                });
-            }
-            let term_lc = term.trim().trim_start_matches('-').trim().to_lowercase();
-            let kept: Vec<Release> = items
-                .iter()
-                .filter(|it| !it.title.to_lowercase().contains(&term_lc))
-                .cloned()
-                .collect();
-            if kept.is_empty() {
-                return Ok(unchanged("zero_results"));
-            }
-            Ok(changed(new_query, kept))
+            let term_lc = excluded_term(term).to_lowercase();
+            let keep = move |it: &Release| !it.title.to_lowercase().contains(&term_lc);
+            (new_query, Box::new(keep))
         }
         RefineOp::BestFit => {
-            let best_query = best_fit_query_for(query, items, cfg);
-            if best_query.is_empty() {
-                return Ok(unchanged("noop"));
-            }
-            if !client {
-                return Ok(match refetch(ep, &best_query, fetch).await? {
-                    None => unchanged("zero_results"),
-                    Some(new_items) => changed(best_query, new_items),
-                });
-            }
-            let Some(best) = bestfit::best_item(items, cfg) else {
+            let Some((new_query, best)) = best_fit_query_for(query, items, cfg) else {
                 return Ok(unchanged("noop"));
             };
             let parts = bestfit::profile_parts(best);
-            let kept: Vec<Release> = items
-                .iter()
-                .filter(|it| bestfit::matches_profile(&it.title, &parts))
-                .cloned()
-                .collect();
-            if kept.is_empty() || kept.len() == items.len() {
-                return Ok(unchanged("noop"));
-            }
-            Ok(changed(best_query, kept))
+            let keep = move |it: &Release| bestfit::matches_profile(&it.title, &parts);
+            (new_query, Box::new(keep))
         }
+    };
+
+    if !client {
+        let found = refetch(new_query.clone()).await?;
+        if found.is_empty() {
+            return Ok(unchanged("zero_results"));
+        }
+        return Ok(outcome(new_query, found, None));
     }
+    let kept: Vec<Release> = items.iter().filter(|it| keep(it)).cloned().collect();
+    // Excluding everything finds nothing; a narrowing that keeps all or none changes nothing.
+    let reason = match op {
+        RefineOp::Exclude { .. } if kept.is_empty() => Some("zero_results"),
+        RefineOp::Tokens { .. } | RefineOp::BestFit if kept.is_empty() || kept.len() == prev => {
+            Some("noop")
+        }
+        _ => None,
+    };
+    Ok(match reason {
+        Some(reason) => unchanged(reason),
+        None => outcome(new_query, kept, None),
+    })
 }
 
 /// What the best-fit step would do: whether it is available, the query it would refetch
 /// with, the release it pins, and that release's profile.
 pub fn best_fit_info(query: &str, items: &[Release], cfg: &BestfitConfig) -> BestFit {
     let best = bestfit::best_item(items, cfg);
-    let best_query = best_fit_query_for(query, items, cfg);
+    let best_query = best_fit_query_for(query, items, cfg).map(|(q, _)| q);
     BestFit {
-        available: !best_query.is_empty(),
-        query: best_query,
+        available: best_query.is_some(),
+        query: best_query.unwrap_or_default(),
         item: best.cloned(),
         profile: best.map(bestfit::profile_parts).unwrap_or_default(),
     }
@@ -502,18 +389,8 @@ mod tests {
 
     fn item(title: &str, link: &str) -> Release {
         Release {
-            title: title.to_string(),
             link: link.to_string(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled(title)
         }
     }
 
@@ -554,35 +431,25 @@ mod tests {
         items.iter().map(|i| i.link.as_str()).collect()
     }
 
-    type Calls = Arc<Mutex<Vec<(String, String)>>>;
+    type Calls = Arc<Mutex<Vec<String>>>;
     type Fetched = Result<Vec<Release>, CoreError>;
 
-    /// A fetch callback answering `result` and recording every call.
-    fn fetcher(
-        result: Fetched,
-    ) -> (
-        Calls,
-        impl for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Fetched>,
-    ) {
+    /// A refetch answering `result` and recording every query it was asked.
+    fn fetcher(result: Fetched) -> (Calls, impl Fn(String) -> std::future::Ready<Fetched>) {
         let calls: Calls = Arc::default();
         let log = calls.clone();
-        let result = Mutex::new(Some(result));
-        (calls, move |ep: &Endpoint, q: &str| {
-            log.lock().unwrap().push((ep.name.clone(), q.to_string()));
-            let answer = match &*result.lock().unwrap() {
-                Some(Ok(items)) => Ok(items.clone()),
-                Some(Err(e)) => Err(CoreError::internal(e.to_string())),
-                None => Ok(Vec::new()),
-            };
-            Box::pin(async move { answer })
+        (calls, move |q: String| {
+            log.lock().unwrap().push(q);
+            std::future::ready(match &result {
+                Ok(items) => Ok(items.clone()),
+                Err(e) => Err(CoreError::internal(e.to_string())),
+            })
         })
     }
 
-    /// A fetch callback that fails the test when called.
-    fn never()
-    -> impl for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Result<Vec<Release>, CoreError>>
-    {
-        |_: &Endpoint, _: &str| panic!("this step must not fetch")
+    /// A refetch that fails the test when called.
+    fn never() -> impl Fn(String) -> std::future::Ready<Fetched> {
+        |_| panic!("this step must not fetch")
     }
 
     async fn run(
@@ -590,7 +457,7 @@ mod tests {
         query: &str,
         items: &[Release],
         op: RefineOp,
-        fetch: &FetchFn<'_>,
+        fetch: impl FnOnce(String) -> std::future::Ready<Fetched>,
     ) -> Outcome {
         apply(ep, query, items, &op, &BestfitConfig::default(), fetch)
             .await
@@ -619,10 +486,9 @@ mod tests {
     fn auto_resolution_appends_the_highest_and_keeps_those_items() {
         let mut items = frieren(2, "Lumen", "720p");
         items.extend(frieren(2, "Lumen", "1080p"));
-        let out = auto_resolution("Frieren", &items);
+        let out = auto_resolution("Frieren", &items).unwrap();
         assert_eq!(out.query, "Frieren 1080p");
         assert_eq!(out.token, "1080p");
-        assert_eq!(out.skipped_missing, 0);
         assert_eq!(out.items, items[2..].to_vec());
     }
 
@@ -630,21 +496,15 @@ mod tests {
     fn auto_resolution_skips_when_a_title_lacks_one() {
         let mut items = frieren(2, "Lumen", "1080p");
         items.push(item("[Group] Frieren - 03", "l3"));
-        let out = auto_resolution("Frieren", &items);
-        assert_eq!(out.query, "Frieren");
-        assert_eq!(out.items, items);
-        assert_eq!((out.token.as_str(), out.skipped_missing), ("", 1));
+        assert_eq!(auto_resolution("Frieren", &items), None);
     }
 
     #[test]
     fn auto_resolution_leaves_a_query_with_a_resolution_alone() {
         let mut items = frieren(1, "Lumen", "720p");
         items.extend(frieren(1, "Lumen", "1080p"));
-        let out = auto_resolution("Frieren 720p", &items);
-        assert_eq!(out.query, "Frieren 720p");
-        assert_eq!(out.items, items);
-        assert_eq!((out.token.as_str(), out.skipped_missing), ("", 0));
-        assert_eq!(auto_resolution("Frieren", &[]).query, "Frieren");
+        assert_eq!(auto_resolution("Frieren 720p", &items), None);
+        assert_eq!(auto_resolution("Frieren", &[]), None);
     }
 
     #[test]
@@ -654,7 +514,7 @@ mod tests {
             item("Show [1080p]", "b"),
             item("Show [720p]", "c"),
         ];
-        let out = auto_resolution("Show", &items);
+        let out = auto_resolution("Show", &items).unwrap();
         assert_eq!(out.items, items[..2].to_vec());
     }
 
@@ -729,7 +589,7 @@ mod tests {
             item("[A] Show - 03 (1080p) [v2]", "x2"),
             item("[B] Show - 04 (1080p) [v2]", "x3"),
         ];
-        let kept = auto_resolution("Show", &items);
+        let kept = auto_resolution("Show", &items).unwrap();
         assert_eq!(links(&kept.items), vec!["x1", "x2", "x3"]);
         let groups = compute_groups(&kept.items);
         let members: HashMap<&str, &Vec<u64>> = groups
@@ -741,7 +601,7 @@ mod tests {
 
     #[test]
     fn groups_use_extension_fields_for_membership() {
-        let mut items = vec![
+        let mut items = [
             item("Show - 01 [1080p]", "l1"),
             item("Show - 02 [1080p]", "l2"),
             item("Show - 03 [1080p]", "l3"),
@@ -749,8 +609,10 @@ mod tests {
         items[0].linktype = "Torrent".into();
         items[1].linktype = "Torrent".into();
         items[2].linktype = "Magnet".into();
-        let parsed: Vec<Parsed> = items.iter().map(parse).collect();
-        assert_eq!(members_of(&items, &parsed, "Torrent"), vec![0, 1]);
+        let members: Vec<usize> = (0..items.len())
+            .filter(|&i| has_token(&items[i], &parse(&items[i]), "Torrent"))
+            .collect();
+        assert_eq!(members, vec![0, 1]);
     }
 
     // query building
@@ -846,10 +708,7 @@ mod tests {
         assert_eq!(out.query, "Show 1080p Hevc");
         assert_eq!(out.items, items[..2].to_vec());
         assert_eq!((out.previous_count, out.items.len()), (3, 2));
-        assert_eq!(
-            *calls.lock().unwrap(),
-            vec![("tracker".to_string(), "Show 1080p Hevc".to_string())]
-        );
+        assert_eq!(*calls.lock().unwrap(), vec!["Show 1080p Hevc"]);
     }
 
     #[tokio::test]
@@ -916,9 +775,8 @@ mod tests {
         assert_eq!(out.query, "Show -Hevc");
         let out = run(&tracker(), "Show", &items, exclude_op("a b"), &fetch).await;
         assert_eq!(out.query, "Show -\"a b\"");
-        let queries: Vec<String> = calls.lock().unwrap().iter().map(|c| c.1.clone()).collect();
         assert_eq!(
-            queries,
+            *calls.lock().unwrap(),
             vec!["Show \"two words\"", "Show -Hevc", "Show -\"a b\""]
         );
     }
@@ -944,7 +802,7 @@ mod tests {
         let out = run(&tracker(), "Show", &items, RefineOp::BestFit, &fetch).await;
         assert!(out.applied);
         assert_eq!(out.query, want);
-        assert_eq!(*calls.lock().unwrap(), vec![("tracker".to_string(), want)]);
+        assert_eq!(*calls.lock().unwrap(), vec![want]);
     }
 
     #[tokio::test]
