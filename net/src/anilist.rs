@@ -436,12 +436,28 @@ pub struct Named {
     pub name: String,
 }
 
+/// A list AniList hands back inside an object, `{ "edges": [...] }`.
 #[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct StudioNodes {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub nodes: Vec<Named>,
+#[serde(default, bound(deserialize = "T: Deserialize<'de> + Default"))]
+pub struct Edges<T> {
+    #[serde(deserialize_with = "null_to_default")]
+    pub edges: Vec<T>,
 }
+
+/// The same, as `{ "nodes": [...] }`.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, bound(deserialize = "T: Deserialize<'de> + Default"))]
+pub struct Nodes<T> {
+    #[serde(deserialize_with = "null_to_default")]
+    pub nodes: Vec<T>,
+}
+
+pub type StudioNodes = Nodes<Named>;
+pub type StudioEdges = Edges<StudioEdge>;
+pub type CharacterEdges = Edges<CharacterEdge>;
+pub type RecommendationEdges = Edges<RecommendationEdge>;
+pub type RelationEdges = Edges<RelationEdge>;
+pub type AiringNodes = Nodes<AiringNode>;
 
 /// One search hit or one `Media` by id: everything a match writes to the
 /// series row.
@@ -517,13 +533,6 @@ pub struct StudioEdge {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct StudioEdges {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub edges: Vec<StudioEdge>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
 pub struct CharacterName {
     pub full: Option<String>,
 }
@@ -550,13 +559,6 @@ pub struct CharacterEdge {
     pub role: Option<String>,
     #[serde(default, deserialize_with = "null_to_default")]
     pub node: CharacterNode,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct CharacterEdges {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub edges: Vec<CharacterEdge>,
 }
 
 /// A neighbour on the graph: a relation's other end, or a recommendation.
@@ -592,25 +594,11 @@ pub struct RecommendationEdge {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct RecommendationEdges {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub edges: Vec<RecommendationEdge>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
 pub struct RelationEdge {
     #[serde(default, deserialize_with = "null_to_default")]
     pub relation_type: String,
     #[serde(default, deserialize_with = "null_to_default")]
     pub node: RelatedNode,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct RelationEdges {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub edges: Vec<RelationEdge>,
 }
 
 /// The series page in one reply.
@@ -643,13 +631,6 @@ pub struct Enrichment {
 pub struct AiringNode {
     pub episode: u32,
     pub airing_at: i64,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct AiringNodes {
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub nodes: Vec<AiringNode>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
