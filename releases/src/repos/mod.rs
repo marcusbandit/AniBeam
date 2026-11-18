@@ -17,7 +17,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rusqlite::params;
-use rusqlite::types::Value;
 
 use crate::{AnirssView, EndpointSync, Releases};
 use anibeam_contract::i18n::tr;
@@ -47,12 +46,16 @@ fn secret_key(install: &str, key: &str) -> String {
 }
 
 /// The value stored for `key` of the endpoint installed as `install`, if any.
+/// A store that cannot be read says so in the log, so an endpoint it leaves out of the search
+/// is not taken for one whose value was never given.
 fn stored_secret(secrets: &Secrets, install: &str, key: &str) -> Option<String> {
-    secrets
-        .get(&secret_key(install, key), None)
-        .ok()
-        .flatten()
-        .map(|(v, _)| v)
+    match secrets.get(&secret_key(install, key), None) {
+        Ok(found) => found.map(|(v, _)| v),
+        Err(e) => {
+            tracing::warn!("endpoint {install}: its {key} could not be read: {e}");
+            None
+        }
+    }
 }
 
 /// Takes the stored values of `fields` of the endpoint installed as `install` out of the
@@ -71,10 +74,13 @@ fn forget_credentials<'a>(
 }
 
 /// Runs one statement on the store's writer; how many rows it changed.
-fn execute(services: &Services, sql: &'static str, values: Vec<Value>) -> Result<usize, CoreError> {
+fn execute<P>(services: &Services, sql: &'static str, params: P) -> Result<usize, CoreError>
+where
+    P: rusqlite::Params + Send + 'static,
+{
     services
         .store
-        .write(move |conn| Ok(conn.execute(sql, rusqlite::params_from_iter(values))?))
+        .write(move |conn| Ok(conn.execute(sql, params)?))
 }
 
 /// A line in the activity log about the repos and what is installed from them.
@@ -86,11 +92,6 @@ fn notice(services: &Services, plain: Words, message: String) {
         message,
         EventBody::Notice,
     );
-}
-
-/// A definition as the store keeps it.
-fn json_of(def: &Definition) -> Result<String, CoreError> {
-    serde_json::to_string(def).map_err(|e| CoreError::internal(e.to_string()))
 }
 
 /// What a repo offers of `def`, as the catalog and a preview list it.
@@ -320,15 +321,15 @@ fn write_index(
     url: &str,
     idx: &Index,
 ) -> Result<(), CoreError> {
-    let values = vec![
-        url.to_string().into(),
-        idx.name.clone().into(),
-        idx.nsfw.into(),
-        idx.key.clone().into(),
-        (idx.serial as i64).into(),
-        idx.payload.clone().into(),
-        anibeam_foundation::time::now_secs().into(),
-    ];
+    let values = (
+        url.to_string(),
+        idx.name.clone(),
+        idx.nsfw,
+        idx.key.clone(),
+        idx.serial as i64,
+        idx.payload.clone(),
+        anibeam_foundation::time::now_secs(),
+    );
     execute(services, sql, values).map(drop)
 }
 
@@ -336,7 +337,7 @@ fn save_error(services: &Services, url: &str, error: &str) -> Result<(), CoreErr
     execute(
         services,
         "UPDATE endpoint_repos SET error = ?2 WHERE url = ?1",
-        vec![url.to_string().into(), error.to_string().into()],
+        (url.to_string(), error.to_string()),
     )
     .map(drop)
 }
@@ -380,7 +381,7 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
                 .map(move |d| (r.url.clone(), d))
         })
         .collect();
-    let offered = offered_defs
+    let offers = offered_defs
         .iter()
         .map(|(repo, d)| {
             let id = installed
@@ -450,7 +451,7 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
         .collect();
     Ok(EndpointCatalog {
         repos,
-        offered,
+        offered: offers,
         installed,
     })
 }
@@ -599,7 +600,7 @@ pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError>
     execute(
         &releases.services,
         "DELETE FROM endpoint_repos WHERE url = ?1",
-        vec![url.into()],
+        (url,),
     )?;
     notice(
         &releases.services,
@@ -777,13 +778,13 @@ fn insert_install(
         &releases.services,
         "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
          VALUES (?1, ?2, ?3, ?4, ?5, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
-        vec![
-            install_id.into(),
-            repo.to_string().into(),
-            def.id.clone().into(),
-            i64::from(def.version).into(),
-            json_of(def)?.into(),
-        ],
+        (
+            install_id,
+            repo.to_string(),
+            def.id.clone(),
+            def.version,
+            serde_json::to_string(def)?,
+        ),
     )?;
     if say {
         // One added by hand is the person's own; one from a repo was installed from it.
@@ -819,11 +820,7 @@ pub fn update(
     execute(
         &releases.services,
         "UPDATE installed_endpoints SET version = ?2, definition = ?3 WHERE install_id = ?1",
-        vec![
-            install.into(),
-            i64::from(next.version).into(),
-            json_of(&next)?.into(),
-        ],
+        (install, next.version, serde_json::to_string(&next)?),
     )?;
     notice(
         &releases.services,
@@ -842,7 +839,7 @@ pub fn remove(releases: &Releases, install: String) -> Result<Reply, CoreError> 
     execute(
         &releases.services,
         "DELETE FROM installed_endpoints WHERE install_id = ?1",
-        vec![install.into()],
+        (install,),
     )?;
     notice(
         &releases.services,
@@ -871,7 +868,7 @@ pub fn set_enabled(
     let rows = execute(
         &releases.services,
         "UPDATE installed_endpoints SET enabled = ?2 WHERE install_id = ?1",
-        vec![install.into(), enabled.into()],
+        (install, enabled),
     )?;
     if rows == 0 {
         return Err(CoreError::invalid(
@@ -911,8 +908,6 @@ fn id_of(name: &str) -> String {
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
     let mut fields: Vec<index::AuthField> = Vec::new();
     let mut lifted: Vec<(String, String)> = Vec::new();
-    // Whether `key` now holds `value`: a key lifted already with another value keeps the
-    // second one written out, so it is not filled with the first.
     let field = |key: &str, label: &str| index::AuthField {
         key: key.to_string(),
         label: label.to_string(),
@@ -920,6 +915,8 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
         help: String::new(),
         help_url: None,
     };
+    // Whether `key` now holds `value`: a key lifted already with another value keeps the
+    // second one written out, so it is not filled with the first.
     let mut lift = |key: &str, label: &str, value: &str| {
         if let Some((_, held)) = lifted.iter().find(|(k, _)| k == key) {
             return held == value;
@@ -1149,7 +1146,7 @@ pub fn edit_custom(
     execute(
         &releases.services,
         "UPDATE installed_endpoints SET endpoint_id = ?2, definition = ?3 WHERE install_id = ?1",
-        vec![install.into(), def.id.clone().into(), json_of(&def)?.into()],
+        (install, def.id.clone(), serde_json::to_string(&def)?),
     )?;
     notice(
         &releases.services,
@@ -1258,7 +1255,7 @@ fn lift_one(
     execute(
         services,
         "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
-        vec![row.install_id.clone().into(), json_of(def)?.into()],
+        (row.install_id.clone(), serde_json::to_string(def)?),
     )
     .map(drop)
 }
@@ -1646,13 +1643,13 @@ pub fn rekeep_old_rules(
 /// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
 fn endpoint_for(def: &Definition, url: &str) -> crate::Endpoint {
     let mut endpoint = crate::Endpoint::new(&def.id, &def.kind, url);
-    fn set(value: &Option<String>) -> Option<&str> {
-        value.as_deref().map(str::trim).filter(|v| !v.is_empty())
+    fn given(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|v| !v.is_empty())
     }
-    if let Some(c) = set(&def.category) {
+    if let Some(c) = given(def.category.as_deref()) {
         endpoint.category = c.to_string();
     }
-    if let Some(f) = set(&def.filter) {
+    if let Some(f) = given(def.filter.as_deref()) {
         endpoint.filter = f.to_string();
     }
     endpoint.json = def.json.clone();

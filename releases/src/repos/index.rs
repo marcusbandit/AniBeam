@@ -420,21 +420,17 @@ pub fn reread(payload: &[u8], core_version: &str) -> Vec<Definition> {
         .unwrap_or_default()
 }
 
-/// The definitions of an index this core can run, each id once: the first one counts.
+/// The definitions of an index this core can run, each id once: of those that pass `check`
+/// and `runs_on`, the first listed counts, so a core that cannot run an id's first entry
+/// takes the next one this core can.
 fn definitions(values: Vec<serde_json::Value>, core_version: &str) -> Vec<Definition> {
-    let mut endpoints: Vec<Definition> = Vec::new();
-    for value in values {
-        let Ok(def) = serde_json::from_value::<Definition>(value) else {
-            continue;
-        };
-        if check(&def).is_ok()
-            && runs_on(&def, core_version)
-            && !endpoints.iter().any(|d| d.id == def.id)
-        {
-            endpoints.push(def);
-        }
-    }
-    endpoints
+    let mut seen = std::collections::HashSet::new();
+    values
+        .into_iter()
+        .filter_map(|value| serde_json::from_value::<Definition>(value).ok())
+        .filter(|def| check(def).is_ok() && runs_on(def, core_version))
+        .filter(|def| seen.insert(def.id.clone()))
+        .collect()
 }
 
 fn plain_id(s: &str) -> bool {
@@ -935,6 +931,25 @@ pub(crate) mod tests {
         let names = |defs: Vec<Definition>| defs.into_iter().map(|d| d.name).collect::<Vec<_>>();
         assert_eq!(names(idx.endpoints.clone()), vec!["twice"]);
         assert_eq!(names(reread(&idx.payload, "2.1.0")), vec!["twice"]);
+    }
+
+    #[test]
+    fn an_id_this_core_cannot_run_first_falls_back_to_its_next_entry() {
+        let k = signing_key(1);
+        let mut newer = def("twice", "rss", "https://a.example/?q={query}");
+        newer["name"] = "Newer".into();
+        newer["min_core"] = "9.0.0".into();
+        let file = sign(
+            &index(
+                &k,
+                vec![newer, def("twice", "rss", "https://b.example/?q={query}")],
+            ),
+            &k,
+        );
+        let idx = parse(&file, "2.1.0").unwrap();
+        let names = |defs: Vec<Definition>| defs.into_iter().map(|d| d.name).collect::<Vec<_>>();
+        assert_eq!(names(idx.endpoints.clone()), vec!["twice"]);
+        assert_eq!(names(reread(&idx.payload, "9.0.0")), vec!["Newer"]);
     }
 
     #[test]
