@@ -64,6 +64,16 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
+        /// `anibeam ctl` sent request `id` over the control socket (#1205): a JSON object
+        /// whose steps Control.qml runs, answering through controlReply.
+        #[qsignal]
+        fn control_requested(self: Pin<&mut Self>, id: i32, request: QString);
+        /// The caller of control request `id` stopped waiting: stop it.
+        #[qsignal]
+        fn control_cancelled(self: Pin<&mut Self>, id: i32);
+        /// Control.qml's JSON answer to control request `id`.
+        #[qinvokable]
+        fn control_reply(self: &Self, id: i32, reply: &QString);
         /// A desktop build newer than this one is out on `track`: its version, its title
         /// (empty when it has none), its page and how this copy takes it. `how` is
         /// `install` (installUpdate does it), `command` (the package manager does it, with
@@ -644,6 +654,9 @@ impl cxx_qt::Initialize for qobject::Shell {
         // names taken and says so; it draws its page either way. The Mac starts the bus
         // name alone: its Now Playing starts with the page's first publish, on this thread,
         // which is the one MediaPlayer wants and never the runtime's (macnp.rs).
+        // `anibeam ctl` reaches this window from here on (#1205)
+        #[cfg(unix)]
+        crate::control::start(&crate::runtime::paths().control_socket(), self.qt_thread());
         let shell = self.qt_thread();
         #[cfg(not(target_os = "macos"))]
         crate::runtime::runtime().spawn(async move {
@@ -723,6 +736,9 @@ impl qobject::Shell {
 
     pub fn drive_log(&self, line: &QString) {
         eprintln!("{line}");
+    }
+    pub fn control_reply(&self, id: i32, reply: &QString) {
+        crate::control::reply(id, reply.to_string());
     }
     pub fn set_cursor_hidden(&self, hidden: bool) {
         crate::bridge::helpers::ffi::set_cursor_hidden(hidden);
