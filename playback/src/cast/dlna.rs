@@ -176,15 +176,16 @@ impl Client {
     }
 
     pub async fn pause(&self) -> Result<(), String> {
-        self.action("Pause", &[("InstanceID", "0".into())])
-            .await
-            .map(|_| ())
+        self.on_instance("Pause").await.map(|_| ())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
-        self.action("Stop", &[("InstanceID", "0".into())])
-            .await
-            .map(|_| ())
+        self.on_instance("Stop").await.map(|_| ())
+    }
+
+    /// An action that names the one instance every renderer has, and nothing else.
+    async fn on_instance(&self, action: &str) -> Result<String, String> {
+        self.action(action, &[("InstanceID", "0".into())]).await
     }
 
     pub async fn seek(&self, to: f64) -> Result<(), String> {
@@ -199,13 +200,9 @@ impl Client {
     /// The transport state (PLAYING, PAUSED_PLAYBACK, STOPPED, TRANSITIONING, NO_MEDIA_PRESENT)
     /// and the position and duration in seconds.
     pub async fn status(&self) -> Result<(String, Option<f64>, Option<f64>), String> {
-        let info = self
-            .action("GetTransportInfo", &[("InstanceID", "0".into())])
-            .await?;
+        let info = self.on_instance("GetTransportInfo").await?;
         let state = field(&info, "CurrentTransportState").unwrap_or_default();
-        let pos = self
-            .action("GetPositionInfo", &[("InstanceID", "0".into())])
-            .await?;
+        let pos = self.on_instance("GetPositionInfo").await?;
         let at = field(&pos, "RelTime").and_then(|t| parse_hms(&t));
         let duration = field(&pos, "TrackDuration")
             .and_then(|t| parse_hms(&t))
@@ -216,10 +213,7 @@ impl Client {
 
 fn field(xml: &str, name: &str) -> Option<String> {
     let doc = roxmltree::Document::parse(xml).ok()?;
-    doc.descendants()
-        .find(|n| n.has_tag_name(name))
-        .and_then(|n| n.text())
-        .map(|s| s.trim().to_string())
+    child_text(doc.root(), name).map(str::to_string)
 }
 
 #[cfg(test)]
@@ -233,11 +227,11 @@ mod tests {
           <service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType><controlURL>/rc</controlURL></service>
           <service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><controlURL>upnp/control/AVTransport1</controlURL></service>
           </serviceList></device></root>"#;
-        let r = parse_description(xml, "http://192.168.1.40:9197/dmr").unwrap();
+        let r = parse_description(xml, "http://198.51.100.40:9197/dmr").unwrap();
         assert_eq!(r.name, "[TV] Living Room");
         assert_eq!(
             r.control,
-            "http://192.168.1.40:9197/upnp/control/AVTransport1"
+            "http://198.51.100.40:9197/upnp/control/AVTransport1"
         );
     }
 

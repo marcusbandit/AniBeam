@@ -171,8 +171,8 @@ fn connect(addr: SocketAddr) -> io::Result<Tls> {
     Ok(rustls::StreamOwned::new(conn, tcp))
 }
 
-/// What to play: the media URL, its type, where to start, and a WebVTT URL to load as a
-/// side track when the media is not HLS (HLS carries its subtitles in the playlist).
+/// What to play: the media URL, its type and where to start. HLS carries its subtitles in
+/// the playlist.
 #[derive(Clone, Debug)]
 pub struct Load {
     pub url: String,
@@ -181,7 +181,6 @@ pub struct Load {
     pub start: f64,
     pub duration: f64,
     pub title: String,
-    pub subtitles: Option<String>,
 }
 
 /// The receiver's state, as its media status said.
@@ -194,6 +193,19 @@ pub struct Status {
     /// FINISHED, CANCELLED, INTERRUPTED or ERROR once IDLE.
     pub idle_reason: Option<String>,
     pub error: Option<String>,
+}
+
+impl Status {
+    /// The receiver gone idle for `reason`, with nothing more known.
+    fn idle(reason: &str, error: Option<String>) -> Status {
+        Status {
+            player: "IDLE".into(),
+            position: 0.0,
+            duration: None,
+            idle_reason: Some(reason.into()),
+            error,
+        }
+    }
 }
 
 pub enum Command {
@@ -231,13 +243,7 @@ pub fn start(
         .name("cast-chromecast".into())
         .spawn(move || {
             if let Err(e) = run(addr, &load, &rx, &on_status) {
-                on_status(Status {
-                    player: "IDLE".into(),
-                    position: 0.0,
-                    duration: None,
-                    idle_reason: Some("ERROR".into()),
-                    error: Some(e),
-                });
+                on_status(Status::idle("ERROR", Some(e)));
             }
         })
         .expect("a thread for the Chromecast");
@@ -321,12 +327,6 @@ fn media_info(load: &Load) -> Value {
         media["hlsSegmentFormat"] = json!("fmp4");
         media["hlsVideoSegmentFormat"] = json!("fmp4");
     }
-    if let Some(vtt) = &load.subtitles {
-        media["tracks"] = json!([{
-            "trackId": 1, "type": "TEXT", "subtype": "SUBTITLES",
-            "trackContentId": vtt, "trackContentType": "text/vtt", "name": "Subtitles", "language": "und",
-        }]);
-    }
     media
 }
 
@@ -370,7 +370,7 @@ fn run(
     let mut session_id: Option<String> = None;
     let mut media_session: Option<i64> = None;
     let mut loaded = false;
-    let mut text_tracks_set = load.subtitles.is_some();
+    let mut text_tracks_set = false;
     let mut last_poll = Instant::now();
     let mut last_ping = Instant::now();
     let launched_at = Instant::now();
@@ -463,26 +463,17 @@ fn run(
                         link.send(&t, NS_CONNECTION, json!({"type": "CONNECT"}))
                             .map_err(io)?;
                         let id = link.next_id();
-                        let mut req = json!({
+                        let req = json!({
                             "type": "LOAD", "requestId": id, "sessionId": session_id,
                             "media": media_info(load), "autoplay": true, "currentTime": load.start,
                         });
-                        if load.subtitles.is_some() {
-                            req["activeTrackIds"] = json!([1]);
-                        }
                         link.send(&t, NS_MEDIA, req).map_err(io)?;
                         transport = Some(t);
                         loaded = true;
                     }
                     // Someone else took the TV over: the media receiver is gone.
                     None if loaded => {
-                        on_status(Status {
-                            player: "IDLE".into(),
-                            position: 0.0,
-                            duration: None,
-                            idle_reason: Some("CANCELLED".into()),
-                            error: None,
-                        });
+                        on_status(Status::idle("CANCELLED", None));
                         return Ok(());
                     }
                     _ => {}
@@ -536,13 +527,7 @@ fn run(
                 }
             }
             (NS_CONNECTION, "CLOSE") if Some(&m.source) == transport.as_ref() => {
-                on_status(Status {
-                    player: "IDLE".into(),
-                    position: 0.0,
-                    duration: None,
-                    idle_reason: Some("CANCELLED".into()),
-                    error: None,
-                });
+                on_status(Status::idle("CANCELLED", None));
                 return Ok(());
             }
             _ => {}
@@ -619,13 +604,12 @@ mod tests {
     #[test]
     fn a_load_for_hls_names_the_fmp4_segments_and_no_side_track() {
         let l = Load {
-            url: "http://192.168.1.2:8000/c/x/master.m3u8".into(),
+            url: "http://198.51.100.2:8000/c/x/master.m3u8".into(),
             content_type: "application/x-mpegurl".into(),
             hls_fmp4: true,
             start: 0.0,
             duration: 1420.0,
             title: "EP 1".into(),
-            subtitles: None,
         };
         let m = media_info(&l);
         assert_eq!(m["hlsSegmentFormat"], "fmp4");
