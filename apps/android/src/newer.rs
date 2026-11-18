@@ -42,9 +42,12 @@ fn with(f: impl FnOnce(&mut Newer)) {
     });
 }
 
+/// The flavor build.rs passed through: `play` for the Play Store's bundle, empty for the APK.
+const FLAVOR: &str = env!("ANIBEAM_FLAVOR");
+
 /// Whether this build hears about its own updates: only an APK put on the phone by hand.
 fn offered() -> bool {
-    cfg!(target_os = "android") && env!("ANIBEAM_FLAVOR") != "play"
+    cfg!(target_os = "android") && FLAVOR != "play"
 }
 
 pub fn install(window: &AppWindow) {
@@ -115,6 +118,8 @@ impl Newer {
             None => (String::new(), String::new()),
         };
         self.url = url;
-        window.global::<AppData>().set_update_version(version.into());
+        window
+            .global::<AppData>()
+            .set_update_version(version.into());
     }
 }
