@@ -15,13 +15,12 @@ use crate::{AppWindow, DiskData, HiddenRow};
 /// Nav.page of Downloads.
 const DOWNLOADS_PAGE: i32 = 2;
 
-#[derive(Default)]
 struct State {
     /// Every show with a file on the phone, the watched and hidden ones too.
     disk: Vec<SeriesCard>,
     hidden: Vec<SeriesCard>,
-    /// Read again at the next tick.
-    dirty: bool,
+    /// Read again, off the UI thread, while Downloads shows.
+    due: crate::reads::Due,
     deleting: bool,
     /// What the open sheet will delete.
     finished: bool,
@@ -29,7 +28,14 @@ struct State {
 }
 
 thread_local! {
-    static STATE: RefCell<State> = RefCell::new(State { dirty: true, ..State::default() });
+    static STATE: RefCell<State> = RefCell::new(State {
+        disk: Vec::new(),
+        hidden: Vec::new(),
+        due: crate::reads::Due::now(),
+        deleting: false,
+        finished: false,
+        window: Weak::default(),
+    });
 }
 
 /// The figures behind the usage line and the sheet.
@@ -85,30 +91,36 @@ fn list(core: &anibeam_core::Core, tab: Tab) -> Vec<SeriesCard> {
     }
 }
 
-/// Reads the disk and the hidden shows again.
-fn read(all: &[SeriesCard]) {
-    let Some(core) = crate::local::core() else {
-        return;
-    };
+/// Reads the disk and the hidden shows again: every show with a file on the phone, from
+/// `all` and the watched and hidden tabs, and the hidden ones apart.
+fn read(core: &anibeam_core::Core, all: Vec<SeriesCard>) -> (Vec<SeriesCard>, Vec<SeriesCard>) {
     let mut seen = HashSet::new();
     let mut disk = Vec::new();
-    let hidden = list(&core, Tab::Hidden);
+    let hidden = list(core, Tab::Hidden);
     for c in all
-        .iter()
-        .cloned()
-        .chain(list(&core, Tab::Watched))
+        .into_iter()
+        .chain(list(core, Tab::Watched))
         .chain(hidden.iter().cloned())
     {
         if c.bytes_on_disk > 0 && seen.insert(c.id) {
             disk.push(c);
         }
     }
-    STATE.with(|s| {
+    (disk, hidden)
+}
+
+/// The read landed: the figures show at once.
+fn landed((disk, hidden): (Vec<SeriesCard>, Vec<SeriesCard>)) {
+    let window = STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.disk = disk;
         s.hidden = hidden;
-        s.dirty = false;
+        s.due.landed();
+        s.window.upgrade()
     });
+    if let Some(window) = window {
+        show(&window);
+    }
 }
 
 fn show(window: &AppWindow) {
@@ -174,7 +186,7 @@ fn show(window: &AppWindow) {
 pub fn relocalize() {
     let (window, finished) = STATE.with(|s| {
         let mut s = s.borrow_mut();
-        s.dirty = true;
+        s.due.mark();
         (s.window.upgrade(), s.finished)
     });
     if let Some(window) = window {
@@ -216,18 +228,22 @@ fn sheet_text(d: &DiskData, finished: bool, u: &Usage) {
     }
 }
 
-/// Called each second with whether the core said something and the library's cards.
+/// Called each second with whether the core said something and the library's cards. The
+/// read runs off the UI thread and shows the figures when it lands (#1206).
 pub fn tick(window: &AppWindow, changed: bool, cards: &[SeriesCard]) {
     if changed {
-        STATE.with(|s| s.borrow_mut().dirty = true);
+        STATE.with(|s| s.borrow_mut().due.mark());
     }
     // Only Downloads shows these figures, so the extra reads wait until it is open.
     if window.global::<crate::Nav>().get_page() != DOWNLOADS_PAGE {
         return;
     }
-    if STATE.with(|s| s.borrow().dirty) && crate::local::core().is_some() {
-        read(cards);
-        show(window);
+    if !STATE.with(|s| s.borrow_mut().due.start()) {
+        return;
+    }
+    let all = cards.to_vec();
+    if !crate::reads::read(move |core| read(core, all), landed) {
+        STATE.with(|s| s.borrow_mut().due.failed());
     }
 }
 
@@ -317,7 +333,7 @@ pub fn install(window: &AppWindow) {
                         STATE.with(|s| {
                             let mut s = s.borrow_mut();
                             s.deleting = false;
-                            s.dirty = true;
+                            s.due.mark();
                         });
                         crate::local::touch();
                         let Some(window) = window.upgrade() else {

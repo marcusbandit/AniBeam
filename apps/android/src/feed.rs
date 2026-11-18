@@ -26,8 +26,10 @@ struct State {
     /// The sort has been read from the preferences.
     sort_read: bool,
     cards: Vec<FeedCard>,
-    /// Read the cards again on the next tick.
-    dirty: bool,
+    /// The cards are read again, off the UI thread, while Home shows.
+    due: crate::reads::Due,
+    /// The cards changed since the tiles were built from them.
+    fresh: bool,
     built_at: i64,
     shelves: Shelves,
 }
@@ -164,24 +166,84 @@ fn tile(card: &FeedCard, art: &Art, now: i64) -> Tile {
     t
 }
 
-fn read_sort() -> Option<FeedSort> {
-    match crate::local::core()?.call(Call::GetPreferences) {
+fn read_sort(core: &anibeam_core::Core) -> Option<FeedSort> {
+    match core.call(Call::GetPreferences) {
         Ok(Reply::Preferences { preferences }) => Some(preferences.feed_sort),
         _ => None,
     }
 }
 
-/// The sort goes into the preferences the desktop reads too.
-fn keep_sort(sort: FeedSort) {
-    let Some(core) = crate::local::core() else {
-        return;
-    };
-    if let Ok(Reply::Preferences { mut preferences }) = core.call(Call::GetPreferences) {
-        preferences.feed_sort = sort;
-        if let Err(e) = core.call(Call::SetPreferences { preferences }) {
-            crate::local::log(&format!("feed: sort not kept: {e}"));
+/// What a read of the feed brought: the sort it read from the preferences, when it was asked
+/// to, and the cards for the sort it used.
+struct Read {
+    sort_read: Option<FeedSort>,
+    used: FeedSort,
+    cards: Result<Vec<FeedCard>, String>,
+}
+
+/// Reads the feed off the UI thread, the sort first until it is known (#1206).
+fn read(sort: Option<FeedSort>) -> bool {
+    crate::reads::read(
+        move |core| {
+            let sort_read = if sort.is_none() {
+                read_sort(core)
+            } else {
+                None
+            };
+            let used = sort.or(sort_read).unwrap_or(FeedSort::Recent);
+            let cards = match core.call(Call::ListFeed { sort: used }) {
+                Ok(Reply::Feed { cards }) => Ok(cards),
+                Ok(_) => Ok(Vec::new()),
+                Err(e) => Err(e.to_string()),
+            };
+            Read {
+                sort_read,
+                used,
+                cards,
+            }
+        },
+        landed,
+    )
+}
+
+fn landed(read: Read) {
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let Some(s) = s.as_mut() else { return };
+        s.due.landed();
+        if let Some(sort) = read.sort_read
+            && !s.sort_read
+        {
+            s.sort = sort;
+            s.sort_read = true;
         }
-    }
+        match read.cards {
+            // A sort picked while the read was out has a read of its own coming.
+            Ok(cards) if read.used == s.sort => {
+                s.cards = cards;
+                s.fresh = true;
+            }
+            Ok(_) => s.due.mark(),
+            Err(e) => crate::local::log(&format!("feed: {e}")),
+        }
+    });
+    crate::app::redraw();
+}
+
+/// The sort goes into the preferences the desktop reads too, off the UI thread, in the order
+/// the picks were made.
+fn keep_sort(sort: FeedSort) {
+    crate::reads::read(
+        move |core| {
+            if let Ok(Reply::Preferences { mut preferences }) = core.call(Call::GetPreferences) {
+                preferences.feed_sort = sort;
+                if let Err(e) = core.call(Call::SetPreferences { preferences }) {
+                    crate::local::log(&format!("feed: sort not kept: {e}"));
+                }
+            }
+        },
+        |()| {},
+    );
 }
 
 /// Wires the sort. Once, at startup.
@@ -195,7 +257,8 @@ pub fn install(window: &AppWindow) {
             sort: FeedSort::Recent,
             sort_read: false,
             cards: Vec::new(),
-            dirty: true,
+            due: crate::reads::Due::now(),
+            fresh: false,
             built_at: 0,
             shelves,
         });
@@ -211,7 +274,7 @@ pub fn install(window: &AppWindow) {
             if let Some(s) = s.borrow_mut().as_mut() {
                 s.sort = sort;
                 s.sort_read = true;
-                s.dirty = true;
+                s.due.mark();
             }
         });
         if let Some(window) = window.upgrade() {
@@ -225,47 +288,35 @@ pub fn install(window: &AppWindow) {
 pub fn relocalize() {
     STATE.with(|s| {
         if let Some(s) = s.borrow_mut().as_mut() {
-            s.built_at = 0;
+            s.fresh = true;
         }
     });
 }
 
 /// Called each second with whether the core said something: reads the feed again when it
 /// did, or when the sort changed, and rebuilds the tiles every half minute so the lines
-/// that count time move.
+/// that count time move. The read runs off the UI thread and builds the tiles when it lands.
 pub fn tick(window: &AppWindow, changed: bool, art: &Art, now: i64) {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         let Some(s) = s.as_mut() else { return };
         let data = window.global::<FeedData>();
+        if changed {
+            s.due.mark();
+        }
         // Only Home shows the feed, so the reads wait until it is open.
         if window.global::<crate::Nav>().get_page() != HOME_PAGE {
-            if changed {
-                s.dirty = true;
-            }
             return;
         }
-        if !s.sort_read
-            && let Some(sort) = read_sort()
-        {
-            s.sort = sort;
-            s.sort_read = true;
-            s.dirty = true;
+        if s.due.start() && !read(s.sort_read.then_some(s.sort)) {
+            s.due.failed();
         }
-        if !(changed || s.dirty || now - s.built_at >= REBUILD_EVERY) {
+        // Built once the first read has landed, again as each one does, and every half
+        // minute in between.
+        if !(s.fresh || (s.built_at > 0 && now - s.built_at >= REBUILD_EVERY)) {
             return;
         }
-        if changed || s.dirty {
-            let Some(core) = crate::local::core() else {
-                return;
-            };
-            match core.call(Call::ListFeed { sort: s.sort }) {
-                Ok(Reply::Feed { cards }) => s.cards = cards,
-                Ok(_) => {}
-                Err(e) => crate::local::log(&format!("feed: {e}")),
-            }
-            s.dirty = false;
-        }
+        s.fresh = false;
         s.built_at = now;
         data.set_sort(i32::from(s.sort == FeedSort::Upcoming));
         data.set_summary(summary(&s.cards, s.sort, now).into());

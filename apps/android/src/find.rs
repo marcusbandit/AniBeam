@@ -4,8 +4,10 @@
 //! Every core call runs on a thread of its own and answers through the event loop.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 use anibeam_companion::format;
 use anibeam_core::releases::grid;
@@ -27,6 +29,9 @@ const LENSES: [&str; 5] = [
     "find-lens-following",
     "find-lens-downloaded",
 ];
+
+/// How long the page waits for more posters before it draws the ones that came in.
+const POSTER_REDRAW: Duration = Duration::from_millis(150);
 
 /// A show a lens offers, enough to open the show view.
 #[derive(Clone, Debug, Default)]
@@ -168,6 +173,12 @@ struct Find {
     /// Whether the list was opened from the show view, so Back returns there.
     list_from_show: bool,
     posters: BTreeMap<String, Image>,
+    /// The poster files asked of the loader and not back yet.
+    posters_asked: HashSet<String>,
+    /// The one thread that reads and decodes this page's posters, once it is needed.
+    poster_loader: Option<Sender<String>>,
+    /// A draw for the posters that came in is on its way.
+    poster_redraw: bool,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -306,6 +317,9 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             history: Vec::new(),
             list_from_show: false,
             posters: BTreeMap::new(),
+            posters_asked: HashSet::new(),
+            poster_loader: None,
+            poster_redraw: false,
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -334,20 +348,9 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_find_series(|id| {
         with(|f| {
             f.with_data(|d| d.set_shown(true));
-            f.refresh();
+            f.refresh_then(move |f| f.open_series(id));
             f.with_data(|d| d.set_text(SharedString::new()));
             f.clear_suggestions();
-            let card = f.cards.iter().find(|c| c.id as i32 == id).cloned();
-            match card {
-                Some(card) => f.open_show(Find::offer_of(&card)),
-                None => {
-                    f.show = None;
-                    f.list = None;
-                    f.set_view(0);
-                    f.show_lens();
-                    f.line("", &tr!("find-show-gone"));
-                }
-            }
         })
     });
     d.on_suggest(|text| with(|f| f.suggest(text.to_string())));
@@ -460,8 +463,13 @@ impl Find {
     // ---- Opening, closing, the lenses
 
     fn open(&mut self, text: String) {
+        self.open_then(text, |_| {});
+    }
+
+    /// `open`, and `then` once the library is in.
+    fn open_then(&mut self, text: String, then: impl FnOnce(&mut Find) + Send + 'static) {
         self.with_data(|d| d.set_shown(true));
-        self.refresh();
+        self.refresh_then(then);
         // AniList is asked only here, and the core skips it when the list is fresh.
         self.load_list(true);
         if text.trim().is_empty() {
@@ -508,11 +516,18 @@ impl Find {
         }
     }
 
-    /// Reads the library, the torrents and the subscriptions again, for the lenses.
+    /// Reads the library, the torrents and the subscriptions again, for the lenses, all
+    /// off the UI thread (#1206).
     fn refresh(&mut self) {
-        let Some(core) = crate::local::core() else {
+        self.refresh_then(|_| {});
+    }
+
+    /// `refresh`, and `then` once the library is in.
+    fn refresh_then(&mut self, then: impl FnOnce(&mut Find) + Send + 'static) {
+        if crate::local::core().is_none() {
+            then(self);
             return;
-        };
+        }
         let library = Call::ListLibrary {
             tab: Tab::All,
             query: String::new(),
@@ -520,9 +535,19 @@ impl Find {
             direction: Direction::Asc,
             reveal_hidden: false,
         };
-        if let Ok(Reply::Library { series, .. }) = core.call(library) {
-            self.cards = series;
-        }
+        crate::reads::read(
+            move |core| core.call(library),
+            move |answer| {
+                with(|f| {
+                    if let Ok(Reply::Library { series, .. }) = answer {
+                        f.cards = series;
+                    }
+                    f.show_lens();
+                    f.draw_show();
+                    then(f);
+                })
+            },
+        );
         ask(Call::PhoneTorrents, |f, answer| {
             if let Ok(Reply::PhoneTorrents { torrents, .. }) = answer {
                 f.torrents = torrents;
@@ -539,6 +564,21 @@ impl Find {
             }
         });
         self.show_lens();
+    }
+
+    /// Opens the library series `id` in the show view, or says it is gone.
+    fn open_series(&mut self, id: i32) {
+        let card = self.cards.iter().find(|c| c.id as i32 == id).cloned();
+        match card {
+            Some(card) => self.open_show(Find::offer_of(&card)),
+            None => {
+                self.show = None;
+                self.list = None;
+                self.set_view(0);
+                self.show_lens();
+                self.line("", &tr!("find-show-gone"));
+            }
+        }
     }
 
     fn offer_of(card: &SeriesCard) -> Offer {
@@ -920,35 +960,47 @@ impl Find {
         });
     }
 
-    fn load_posters(&self, offers: &[Offer]) {
-        let wanted: Vec<String> = offers
-            .iter()
-            .filter_map(|o| o.poster.clone())
-            .filter(|p| !self.posters.contains_key(p))
-            .collect();
+    /// Asks the loader for the posters the offers show that are neither in nor asked for.
+    /// Each file is read and decoded once, on one thread, however often the page draws
+    /// (#1206). This used to start a thread on every draw for every poster not in yet, and
+    /// each poster that came in drew the page again: a long list made threads, and decoded
+    /// copies waiting for the UI thread, faster than they finished.
+    fn load_posters(&mut self, offers: &[Offer]) {
+        let wanted = new_posters(
+            offers.iter().filter_map(|o| o.poster.as_deref()),
+            |p| self.posters.contains_key(p),
+            &mut self.posters_asked,
+        );
         if wanted.is_empty() {
             return;
         }
-        let _ = std::thread::Builder::new()
-            .name("find-posters".into())
-            .spawn(move || {
-                for path in wanted {
-                    let Some(decoded) = std::fs::read(&path)
-                        .ok()
-                        .and_then(|b| crate::posters::decode(&b))
-                    else {
-                        continue;
-                    };
-                    let _ = slint::invoke_from_event_loop(move || {
-                        with(|f| {
-                            f.posters.insert(path, Image::from_rgba8(decoded.buffer));
-                            f.show_lens();
-                            f.draw_show();
-                            f.draw_suggestions();
-                        })
-                    });
-                }
-            });
+        let loader = self.poster_loader.get_or_insert_with(start_poster_loader);
+        for path in wanted {
+            let _ = loader.send(path);
+        }
+    }
+
+    /// A poster came back from the loader. One that did not decode is let go, so a later
+    /// draw asks for it again: the image cache may not have had it on disk yet.
+    fn poster_landed(&mut self, path: String, decoded: Option<crate::posters::Decoded>) {
+        self.posters_asked.remove(&path);
+        let Some(decoded) = decoded else {
+            return;
+        };
+        self.posters.insert(path, Image::from_rgba8(decoded.buffer));
+        // Posters come in a run: the page draws once for those that came in together.
+        if self.poster_redraw {
+            return;
+        }
+        self.poster_redraw = true;
+        slint::Timer::single_shot(POSTER_REDRAW, || {
+            with(|f| {
+                f.poster_redraw = false;
+                f.show_lens();
+                f.draw_show();
+                f.draw_suggestions();
+            })
+        });
     }
 
     // ---- The suggestions: shows first, the way the desktop's field works
@@ -2396,6 +2448,38 @@ impl Find {
 }
 
 /// A folder's own name, the last part of `path`.
+/// The poster files among `paths` that are neither `shown` nor asked for yet, each once, and
+/// noted as asked for.
+fn new_posters<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+    shown: impl Fn(&str) -> bool,
+    asked: &mut HashSet<String>,
+) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter(|p| !shown(*p) && asked.insert((*p).to_owned()))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The thread that reads and decodes Downloads' posters, in the order asked, and hands
+/// each back to the page, decoded or not.
+fn start_poster_loader() -> Sender<String> {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let _ = std::thread::Builder::new()
+        .name("find-posters".into())
+        .spawn(move || {
+            for path in rx {
+                let decoded = std::fs::read(&path)
+                    .ok()
+                    .and_then(|b| crate::posters::decode(&b));
+                let _ =
+                    slint::invoke_from_event_loop(move || with(|f| f.poster_landed(path, decoded)));
+            }
+        });
+    tx
+}
+
 fn last_folder(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -2605,9 +2689,11 @@ fn fresh_show(title: String, queries: Vec<String>, total: u32, airing: bool) -> 
 pub fn search_for(title: &str) {
     let title = title.to_string();
     with(|f| {
-        f.open(String::new());
-        f.with_data(|d| d.set_text(title.clone().into()));
-        f.suggest(title);
+        // The library's shows lead the suggestions, so they wait for the library read.
+        f.open_then(String::new(), move |f| {
+            f.with_data(|d| d.set_text(title.clone().into()));
+            f.suggest(title);
+        });
     });
 }
 
@@ -2665,6 +2751,48 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The page draws again as each poster comes in, and every draw asks for the posters
+    /// it shows (#1206). A poster is asked for once, however many draws ask, until it
+    /// comes back.
+    #[test]
+    fn a_poster_is_asked_for_once_however_often_the_page_draws() {
+        let list: Vec<String> = (0..40).map(|i| format!("/images/{i}.jpg")).collect();
+        let mut shown: HashSet<String> = HashSet::new();
+        let mut asked = HashSet::new();
+        let draw = |shown: &HashSet<String>, asked: &mut HashSet<String>| {
+            new_posters(
+                list.iter().map(String::as_str),
+                |p| shown.contains(p),
+                asked,
+            )
+        };
+        assert_eq!(draw(&shown, &mut asked), list);
+        // Each poster that lands draws the page again, and nothing is asked a second time.
+        let mut asks = 0;
+        for path in &list {
+            asked.remove(path);
+            shown.insert(path.clone());
+            asks += draw(&shown, &mut asked).len();
+        }
+        assert_eq!(asks, 0);
+        assert!(asked.is_empty());
+    }
+
+    #[test]
+    fn a_poster_that_did_not_decode_is_asked_for_again_on_a_later_draw() {
+        let shown = |_: &str| false;
+        let mut asked = HashSet::new();
+        let paths = ["/images/a.jpg", "/images/a.jpg", "/images/b.jpg"];
+        assert_eq!(
+            new_posters(paths, shown, &mut asked),
+            ["/images/a.jpg", "/images/b.jpg"]
+        );
+        assert!(new_posters(paths, shown, &mut asked).is_empty());
+        // `a` came back undecoded and was let go; `b` is still out.
+        asked.remove("/images/a.jpg");
+        assert_eq!(new_posters(paths, shown, &mut asked), ["/images/a.jpg"]);
+    }
 
     #[test]
     fn a_show_with_nothing_here_has_no_gap() {

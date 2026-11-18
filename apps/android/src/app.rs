@@ -97,6 +97,14 @@ enum Open {
     Remote(u64),
 }
 
+/// What a reload read off the UI thread: the phone's cards, the open series's detail by its
+/// id, and the trackers, each None when its read failed.
+struct Reloaded {
+    cards: Option<Vec<SeriesCard>>,
+    detail: Option<(u64, Result<Reply, anibeam_core::CoreError>)>,
+    trackers: Option<(TrackerAccount, TrackerAccount)>,
+}
+
 struct App {
     window: AppWindow,
     commands: Commands,
@@ -134,6 +142,8 @@ struct App {
     cal_models: Vec<Rc<VecModel<CalItem>>>,
     /// The day the cards were read on: the core's week airings are a window around then.
     read_on: Option<chrono::NaiveDate>,
+    /// The cards, the open detail and the trackers are read again, off the UI thread.
+    reload_due: crate::reads::Due,
     /// Each card's titles, lower case with single spaces, for naming a torrent's show.
     plain_titles: Vec<(u64, Vec<String>)>,
     /// Whose calendar shows: 0 this phone, 1 the computer.
@@ -172,6 +182,8 @@ struct App {
     delete_busy: bool,
     // Downloads.
     sources: Vec<PhoneSource>,
+    /// The sources are being read for Downloads and More.
+    sources_reading: bool,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
     /// The rolling settings were asked for.
@@ -197,6 +209,12 @@ thread_local! {
 /// Endpoints were installed, removed or switched: the search page's chips follow.
 pub fn endpoints_changed() {
     with_app(App::show_search_sources);
+}
+
+/// The pages are built again from what is held, as the clock's tick does: a read that
+/// landed off the UI thread shows at once.
+pub fn redraw() {
+    with_app(App::tick);
 }
 
 /// Downloads calls this once the core took a download or a subscription: the first one
@@ -391,19 +409,50 @@ impl App {
         self.tick();
     }
 
-    /// Reads the phone's cards, the open detail and the trackers again from the core.
+    /// Reads the phone's cards, the open detail and the trackers again from the core, off
+    /// the UI thread: the pages show what they hold until the answer lands (#1206).
     fn reload(&mut self) {
-        let Some(core) = crate::local::core() else {
+        if !self.reload_due.start() {
             return;
+        }
+        let open = match self.open {
+            Some(Open::Phone(id)) => Some(id),
+            _ => None,
         };
-        let library = Call::ListLibrary {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        };
-        if let Ok(Reply::Library { series, .. }) = core.call(library) {
+        let started = crate::reads::read(
+            move |core| {
+                let library = Call::ListLibrary {
+                    tab: Tab::All,
+                    query: String::new(),
+                    sort: Sort::Alpha,
+                    direction: Direction::Asc,
+                    reveal_hidden: false,
+                };
+                let cards = match core.call(library) {
+                    Ok(Reply::Library { series, .. }) => Some(series),
+                    _ => None,
+                };
+                let detail = open.map(|id| (id, core.call(Call::GetSeries { series: id })));
+                let trackers = match core.call(Call::GetTrackers) {
+                    Ok(Reply::Trackers { state }) => Some((state.anilist, state.mal)),
+                    _ => None,
+                };
+                Reloaded {
+                    cards,
+                    detail,
+                    trackers,
+                }
+            },
+            |reloaded| with_app(|app| app.reloaded(reloaded)),
+        );
+        if !started {
+            self.reload_due.failed();
+        }
+    }
+
+    fn reloaded(&mut self, reloaded: Reloaded) {
+        self.reload_due.landed();
+        if let Some(series) = reloaded.cards {
             self.cards = series;
             self.read_on = Some(anibeam_companion::calendar::today(anibeam_companion::now()));
             self.plain_titles = self
@@ -435,17 +484,21 @@ impl App {
                 let _ = self.posters.send((card.id, path.clone()));
             }
         }
-        if let Some(Open::Phone(id)) = self.open {
+        // Only for the series still open: another may have opened while the read was out.
+        if let Some((id, answer)) = reloaded.detail
+            && matches!(self.open, Some(Open::Phone(open)) if open == id)
+        {
             // A failed read keeps the page as it was; only a series that is gone closes it.
-            match core.call(Call::GetSeries { series: id }) {
+            match answer {
                 Ok(Reply::SeriesDetail { detail }) => self.detail = Some(*detail),
                 Err(anibeam_core::CoreError::NotFound { .. }) => self.detail = None,
                 _ => {}
             }
         }
-        if let Ok(Reply::Trackers { state }) = core.call(Call::GetTrackers) {
-            self.trackers = Some((state.anilist, state.mal));
+        if let Some(trackers) = reloaded.trackers {
+            self.trackers = Some(trackers);
         }
+        self.tick();
     }
 
     /// The computer's line for the last sync, in the language the app speaks now.
@@ -475,8 +528,9 @@ impl App {
                 .read_on
                 .is_some_and(|d| d != anibeam_companion::calendar::today(anibeam_companion::now()))
         {
-            self.reload();
+            self.reload_due.mark();
         }
+        self.reload();
         self.show_notify();
         let now = anibeam_companion::now();
         // A handle of its own, so `data` does not hold `self` while the models change.
@@ -1127,14 +1181,26 @@ impl App {
         self.show_airing();
     }
 
-    /// Reads the sources once the core is open, for the search page and More.
+    /// Reads the sources once the core is open, for the search page and More, off the UI
+    /// thread, one read at a time.
     fn load_sources(&mut self) {
-        let Some(core) = crate::local::core() else {
+        if self.sources_reading {
             return;
-        };
-        if let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSources) {
-            self.show_sources(sources);
         }
+        self.sources_reading = crate::reads::read(
+            |core| match core.call(Call::PhoneSources) {
+                Ok(Reply::PhoneSources { sources }) => Some(sources),
+                _ => None,
+            },
+            |sources| {
+                with_app(|app| {
+                    app.sources_reading = false;
+                    if let Some(sources) = sources {
+                        app.show_sources(sources);
+                    }
+                })
+            },
+        );
     }
 
     fn show_sources(&mut self, sources: Vec<PhoneSource>) {
@@ -1152,14 +1218,23 @@ impl App {
         self.show_search_sources();
     }
 
-    /// The Downloads chips: the sources and the installed endpoints, in search order.
+    /// The Downloads chips: the sources and the installed endpoints, in search order, read
+    /// off the UI thread.
     fn show_search_sources(&mut self) {
-        let Some(core) = crate::local::core() else {
-            return;
-        };
-        let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSearchSources) else {
-            return;
-        };
+        crate::reads::read(
+            |core| match core.call(Call::PhoneSearchSources) {
+                Ok(Reply::PhoneSources { sources }) => Some(sources),
+                _ => None,
+            },
+            |sources| {
+                if let Some(sources) = sources {
+                    with_app(|app| app.set_search_sources(&sources));
+                }
+            },
+        );
+    }
+
+    fn set_search_sources(&self, sources: &[PhoneSource]) {
         let rows: Vec<SourceRow> = sources
             .iter()
             .map(|s| SourceRow {
@@ -2548,6 +2623,7 @@ pub fn run(
         calendar,
         cal_models: Vec::new(),
         read_on: None,
+        reload_due: crate::reads::Due::now(),
         plain_titles: Vec::new(),
         cal_device: 0,
         airing: None,
@@ -2573,6 +2649,7 @@ pub fn run(
         picked: HashSet::new(),
         delete_busy: false,
         sources: Vec::new(),
+        sources_reading: false,
         downloads,
         polling: false,
         rolling_loaded: false,
