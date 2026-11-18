@@ -29,12 +29,15 @@ pub struct Poster {
     pub tag: String,
 }
 
-/// The library half of a snapshot, and the posters its tags name. Kept
-/// together so a poster is served by the file the tag was made from.
+/// The poster each series' tag names, by series id, so a poster is served by
+/// the file the tag was made from.
+pub type Posters = HashMap<u64, Poster>;
+
+/// The library half of a snapshot, and the posters its tags name.
 #[derive(Clone, Debug, Default)]
 pub struct LibraryPart {
     pub series: Vec<wire::Series>,
-    pub posters: HashMap<u64, Poster>,
+    pub posters: Posters,
 }
 
 /// A short hash of a poster file's path, size and modification time: it
@@ -209,7 +212,7 @@ pub async fn snapshot(
     host: &Arc<Host>,
     hostname: &str,
     profile: u64,
-) -> Result<(wire::Snapshot, LibraryPart), CoreError> {
+) -> Result<(wire::Snapshot, Posters), CoreError> {
     let reader = host.clone();
     let library = async move {
         tokio::task::spawn_blocking(move || library_part(&reader.services, profile))
@@ -220,7 +223,7 @@ pub async fn snapshot(
         library,
         downloads::host_read(&host.downloads, DOWNLOADS_LIMIT)
     );
-    let library = library?;
+    let LibraryPart { series, posters } = library?;
     let mut problems = Vec::new();
     let subscriptions = match rules {
         Ok(rules) => subscriptions(rules),
@@ -243,12 +246,12 @@ pub async fn snapshot(
         host: hostname.to_string(),
         version: anibeam_net::VERSION.to_string(),
         generated_at: time::now_secs(),
-        series: library.series.clone(),
+        series,
         subscriptions,
         torrents,
         problems,
     };
-    Ok((snapshot, library))
+    Ok((snapshot, posters))
 }
 
 #[cfg(test)]

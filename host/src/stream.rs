@@ -19,7 +19,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::Front;
 use super::convert::{self, Converter, Key, Source};
-use super::server::{Served, error};
+use super::server::{Served, error, json, not_found, shutting_down};
 use anibeam_contract::{Call, CoreError, Sidecar, call_name};
 use anibeam_foundation::range::{Range, byte_range};
 use anibeam_foundation::services::Services;
@@ -33,12 +33,12 @@ pub struct Streams {
     subtitles: Mutex<HashMap<(u64, usize), Bytes>>,
 }
 
-/// The file and its sidecars, by row id.
-fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
+/// The file and its sidecars, by row id. The reader connection is shared, so
+/// the read waits off the async threads.
+async fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
     let team = st.live()?;
-    team.services
-        .store
-        .read(|c| {
+    let (path, side) = tokio::task::spawn_blocking(move || {
+        team.services.store.read(|c| {
             Ok(c.query_row(
                 "SELECT path, sidecars FROM files WHERE id = ?1",
                 params![id as i64],
@@ -46,18 +46,14 @@ fn file_of(st: &Served, id: u64) -> Option<(PathBuf, Vec<Sidecar>)> {
             )
             .optional()?)
         })
-        .ok()
-        .flatten()
-        .map(|(path, side)| {
-            (
-                PathBuf::from(path),
-                anibeam_library::sidecar::sidecars_of(&side),
-            )
-        })
-}
-
-fn not_found() -> Response {
-    error(StatusCode::NOT_FOUND, "not found")
+    })
+    .await
+    .ok()?
+    .ok()??;
+    Some((
+        PathBuf::from(path),
+        anibeam_library::sidecar::sidecars_of(&side),
+    ))
 }
 
 /// A file whose probed length is missing, broken or past a day, which no
@@ -91,7 +87,7 @@ pub async fn file(
     method: Method,
     headers: HeaderMap,
 ) -> Response {
-    let Some((path, _)) = file_of(&st, id) else {
+    let Some((path, _)) = file_of(&st, id).await else {
         return not_found();
     };
     let kind = video_type(&path);
@@ -104,7 +100,10 @@ pub async fn sidecar(
     method: Method,
     headers: HeaderMap,
 ) -> Response {
-    let Some(side) = file_of(&st, id).and_then(|(_, s)| s.into_iter().nth(index)) else {
+    let Some(side) = file_of(&st, id)
+        .await
+        .and_then(|(_, s)| s.into_iter().nth(index))
+    else {
         return not_found();
     };
     ranged(
@@ -156,7 +155,7 @@ async fn ranged(path: PathBuf, kind: &str, method: &Method, headers: &HeaderMap)
 }
 
 async fn probe_of(st: &Served, id: u64) -> Option<(PathBuf, Arc<wire::Probe>)> {
-    let (path, _) = file_of(st, id)?;
+    let (path, _) = file_of(st, id).await?;
     if let Some(p) = recover(&st.streams.probes).get(&id) {
         return Some((path, p.clone()));
     }
@@ -171,10 +170,7 @@ async fn probe_of(st: &Served, id: u64) -> Option<(PathBuf, Arc<wire::Probe>)> {
 
 pub async fn probe(State(st): State<Arc<Served>>, Path(id): Path<u64>) -> Response {
     match probe_of(&st, id).await {
-        Some((_, p)) => match serde_json::to_vec(&*p) {
-            Ok(body) => json(StatusCode::OK, body),
-            Err(_) => not_found(),
-        },
+        Some((_, p)) => json(StatusCode::OK, &*p),
         None => error(
             StatusCode::SERVICE_UNAVAILABLE,
             "this machine cannot read the file: is ffprobe installed?",
@@ -219,10 +215,7 @@ pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Re
         return not_found();
     };
     match front.skip_windows(session) {
-        Ok(windows) => match serde_json::to_vec(&windows) {
-            Ok(body) => json(StatusCode::OK, body),
-            Err(_) => not_found(),
-        },
+        Ok(windows) => json(StatusCode::OK, &windows),
         Err(_) => not_found(),
     }
 }
@@ -336,18 +329,6 @@ pub async fn hls(
     }
 }
 
-fn json(status: StatusCode, body: Vec<u8>) -> Response {
-    (
-        status,
-        [
-            (header::CONTENT_TYPE, "application/json"),
-            (header::CACHE_CONTROL, "no-cache"),
-        ],
-        body,
-    )
-        .into_response()
-}
-
 /// What a device of someone else on the tailnet is told when it sends a download.
 pub const DOWNLOADS_OWNER_ONLY: &str =
     "Only the devices of the person this computer belongs to can download to it.";
@@ -444,7 +425,7 @@ pub async fn call(
         .live()
         .and_then(|team| team.front.get().map(|front| (team, front)))
     else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+        return shutting_down();
     };
     let hiding = matches!(name.as_str(), "SetNotInterested" | "ListNotInterested");
     if !hiding && !download && !team.streaming() {
@@ -459,32 +440,21 @@ pub async fn call(
     })
     .await;
     match reply {
-        Ok(Ok(reply)) => match serde_json::to_vec(&reply) {
-            Ok(body) => json(StatusCode::OK, body),
-            Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-        },
-        Ok(Err(e)) => match serde_json::to_vec(&CallError::from(&e)) {
-            Ok(body) => json(StatusCode::UNPROCESSABLE_ENTITY, body),
-            Err(_) => error(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()),
-        },
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    }
-}
-
-/// A refused call: the plain message, and the core's error for a client that
-/// reads it.
-#[derive(serde::Serialize)]
-struct CallError {
-    error: String,
-    core: CoreError,
-}
-
-impl From<&CoreError> for CallError {
-    fn from(e: &CoreError) -> Self {
-        CallError {
-            error: e.to_string(),
-            core: e.clone(),
+        Ok(Ok(reply)) => json(StatusCode::OK, &reply),
+        Ok(Err(e)) => {
+            /// The plain message, and the core's error for a client that reads it.
+            #[derive(serde::Serialize)]
+            struct Refused<'a> {
+                error: String,
+                core: &'a CoreError,
+            }
+            let refused = Refused {
+                error: e.to_string(),
+                core: &e,
+            };
+            json(StatusCode::UNPROCESSABLE_ENTITY, &refused)
         }
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
 

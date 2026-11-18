@@ -52,6 +52,7 @@ pub enum Proof {
     Refused(&'static str),
 }
 
+#[derive(Default)]
 pub struct Keys {
     /// Held while the key is read or made, so two first requests make one.
     mine: Mutex<Mine>,
@@ -73,21 +74,7 @@ struct Seen {
     order: VecDeque<(i64, (String, String))>,
 }
 
-impl Default for Keys {
-    fn default() -> Self {
-        Keys::new()
-    }
-}
-
 impl Keys {
-    pub fn new() -> Keys {
-        Keys {
-            mine: Mutex::new(Mine::default()),
-            paired: Mutex::new(Vec::new()),
-            seen: Mutex::new(Seen::default()),
-        }
-    }
-
     /// This machine's key, kept at `path` and made there on first use. None
     /// when it can be neither read nor made, and then not tried again for
     /// `RETRY_AFTER`. Reads the file the first time.
@@ -107,11 +94,6 @@ impl Keys {
     /// This machine's key if it was already read, without touching the file.
     pub fn mine_now(&self) -> Option<Arc<DeviceKey>> {
         recover(&self.mine).key.clone()
-    }
-
-    /// Uses `key` as this machine's key, for a test.
-    pub fn set_mine(&self, key: DeviceKey) {
-        recover(&self.mine).key = Some(Arc::new(key));
     }
 
     pub fn set_paired(&self, list: Vec<Paired>) {
@@ -232,23 +214,26 @@ pub fn pair(host: &Host, key: &str, name: &str) -> Result<(), CoreError> {
         key: proof::hex(&bytes),
         name: name.to_string(),
     };
-    let list = host.services.store.write(move |c| {
-        let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
+    edit_paired(host, move |list| {
         list.retain(|p| p.key != entry.key);
         list.push(entry);
-        settings::set(c, settings::PAIRED_DEVICES, &list)?;
-        Ok(list)
-    })?;
-    host.keys.set_paired(list);
-    Ok(())
+    })
 }
 
 /// Forgets the pairing with `key`.
 pub fn unpair(host: &Host, key: &str) -> Result<(), CoreError> {
     let key = key.to_ascii_lowercase();
+    edit_paired(host, move |list| list.retain(|p| p.key != key))
+}
+
+/// Changes the paired keys in the store, and the host's copy with them.
+fn edit_paired(
+    host: &Host,
+    edit: impl FnOnce(&mut Vec<Paired>) + Send + 'static,
+) -> Result<(), CoreError> {
     let list = host.services.store.write(move |c| {
         let mut list: Vec<Paired> = settings::get_or_default(c, settings::PAIRED_DEVICES)?;
-        list.retain(|p| p.key != key);
+        edit(&mut list);
         settings::set(c, settings::PAIRED_DEVICES, &list)?;
         Ok(list)
     })?;
@@ -263,8 +248,8 @@ mod tests {
     const NOW: i64 = 1_800_000_000;
 
     fn keys() -> (Keys, String) {
-        let k = Keys::new();
-        k.set_mine(DeviceKey::from_seed([9; 32]));
+        let k = Keys::default();
+        recover(&k.mine).key = Some(Arc::new(DeviceKey::from_seed([9; 32])));
         let host = k.mine_now().unwrap().public();
         (k, host)
     }
@@ -357,7 +342,7 @@ mod tests {
     fn without_a_proof_or_a_key_the_address_decides() {
         let (k, host) = keys();
         assert_eq!(k.judge(None, "GET", "/", NOW), Proof::None);
-        let keyless = Keys::new();
+        let keyless = Keys::default();
         let h = phone().sign(&host, NOW, "a1", "GET", "/");
         assert_eq!(keyless.judge(Some(&h), "GET", "/", NOW), Proof::None);
     }
@@ -366,8 +351,8 @@ mod tests {
     fn the_key_is_made_once_and_kept_in_its_own_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("device-key");
-        let first = Keys::new().mine(&path).unwrap().public();
-        let again = Keys::new().mine(&path).unwrap().public();
+        let first = Keys::default().mine(&path).unwrap().public();
+        let again = Keys::default().mine(&path).unwrap().public();
         assert_eq!(first, again);
         #[cfg(unix)]
         {
@@ -382,12 +367,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("device-key");
         std::fs::write(&path, "not a key").unwrap();
-        let k = Keys::new();
+        let k = Keys::default();
         assert!(k.mine(&path).is_none());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "not a key");
         // Fixed on disk, it still waits out the pause before the next try.
         std::fs::write(&path, proof::hex(&[5; 32])).unwrap();
         assert!(k.mine(&path).is_none());
-        assert!(Keys::new().mine(&path).is_some());
+        assert!(Keys::default().mine(&path).is_some());
     }
 }
