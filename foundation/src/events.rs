@@ -13,12 +13,20 @@ use anibeam_contract::*;
 /// Info-and-above rows, oldest dropped first.
 pub const RING_SIZE: u64 = 2000;
 
+/// The ring is trimmed back to [`RING_SIZE`] once every this many stored
+/// events rather than after each one: the trim walks the whole ring, which
+/// cost several times the insert it followed. Between trims the table holds
+/// up to this many rows more than the ring, and `recent` never reads them.
+const TRIM_EVERY: u64 = 64;
+
 /// Every call and every job emits through this. Persistence is
 /// fire-and-forget (`Store::post`), so `emit` never blocks on a database
 /// round trip; listeners are called inline, by value, on the emitting
 /// thread.
 pub struct EventBus {
     seq: AtomicU64,
+    /// Every event stored since the bus started, for [`TRIM_EVERY`].
+    stored: AtomicU64,
     /// Bumped by every event that can stand for a change of state, before
     /// any listener hears it. A shell's read cache stamps what it keeps
     /// with this and drops it the moment the number moves.
@@ -64,6 +72,7 @@ impl EventBus {
         scrub_stored(&store)?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
+            stored: AtomicU64::new(0),
             generation: AtomicU64::new(0),
             next_listener: AtomicU64::new(1),
             listeners: RwLock::new(Vec::new()),
@@ -232,6 +241,10 @@ impl EventBus {
             .plain_words
             .as_ref()
             .and_then(|w| serde_json::to_string(w).ok());
+        let trim = self
+            .stored
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(TRIM_EVERY);
         self.store.post(move |c| {
             let (job_id, job_kind, job_phase) = match &e.job {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
@@ -244,14 +257,18 @@ impl EventBus {
                     return;
                 }
             };
-            if let Err(err) = c.execute(
-                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain, plain_words],
-            ) {
+            let inserted = c
+                .prepare_cached(
+                    "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                )
+                .and_then(|mut stmt| {
+                    stmt.execute(params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain, plain_words])
+                });
+            if let Err(err) = inserted {
                 tracing::warn!("failed to insert event seq {}: {err}", e.seq);
                 return;
             }
-            if let Err(err) = c.execute(
+            if trim && let Err(err) = c.execute(
                 "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)",
                 params![RING_SIZE as i64],
             ) {
@@ -843,15 +860,25 @@ mod tests {
     #[test]
     fn the_ring_keeps_the_last_2000_oldest_first() {
         let (_d, bus) = bus();
-        for i in 0..2010 {
+        for i in 0..2100 {
             bus.info(Stage::System, format!("m{i}"), EventBody::Notice);
         }
         let all = bus.recent(5000).unwrap();
         assert_eq!(all.len(), 2000);
-        assert_eq!(all[0].message, "m10");
-        assert_eq!(all[1999].message, "m2009");
+        assert_eq!(all[0].message, "m100");
+        assert_eq!(all[1999].message, "m2099");
         let last = bus.recent(2).unwrap();
-        assert_eq!(last[0].message, "m2008");
+        assert_eq!(last[0].message, "m2098");
+        // Trimmed in batches: never more than one batch over the ring.
+        let stored: i64 = bus
+            .store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM events", [], |r| r.get(0))?))
+            .unwrap();
+        let stored = stored as u64;
+        assert!(
+            (RING_SIZE..RING_SIZE + TRIM_EVERY).contains(&stored),
+            "{stored}"
+        );
         bus.clear().unwrap();
         assert!(bus.recent(10).unwrap().is_empty());
     }

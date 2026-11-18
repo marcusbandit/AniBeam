@@ -116,14 +116,6 @@ impl Secrets {
         unavailable && !self.announced.swap(true, Ordering::SeqCst)
     }
 
-    /// `None` until the store choice has been made, then whether the
-    /// machine turned out to have no keyring. Reading it never starts the
-    /// probe, so a caller that only wants to report the state does not
-    /// cause one.
-    pub fn keyring_unavailable(&self) -> Option<bool> {
-        self.primary.get().map(Option::is_none)
-    }
-
     /// Whether the core holds this secret, answered off memory whenever it
     /// can be. The file store's keys are in the known set from `init` and
     /// from every `set`, so a file-stored key never costs a read; anything
@@ -683,19 +675,19 @@ mod tests {
         empty.delete("anilist.access_token").unwrap();
     }
 
-    /// `init` makes no store choice, so nothing here reaches D-Bus:
-    /// `keyring_unavailable` stays `None` until someone asks for a secret
-    /// or `start` warms the probe. `file_only` made the choice itself, so
-    /// it answers at once and has nothing to announce.
+    /// `init` makes no store choice, so nothing here reaches D-Bus: the
+    /// choice stays unmade until someone asks for a secret or `start` warms
+    /// the probe. `file_only` made the choice itself, no keyring, and has
+    /// nothing to announce.
     #[test]
     fn the_store_choice_is_lazy_and_file_only_makes_it_up_front() {
         let dir = tempfile::tempdir().unwrap();
         let lazy = Secrets::init(dir.path().join("secrets.json"));
-        assert_eq!(lazy.keyring_unavailable(), None);
+        assert!(lazy.primary.get().is_none());
         let file_only = Secrets::file_only(dir.path().join("other.json"));
-        assert_eq!(file_only.keyring_unavailable(), Some(true));
+        assert!(matches!(file_only.primary.get(), Some(None)));
         assert!(!file_only.warm());
-        assert_eq!(file_only.keyring_unavailable(), Some(true));
+        assert!(matches!(file_only.primary.get(), Some(None)));
     }
 
     /// The machine gained a keyring, so the write lands there and the old

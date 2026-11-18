@@ -99,24 +99,19 @@ fn in_turn<T>(target: &Path, save: impl FnOnce() -> T) -> T {
 /// over the target, on the file's own turn. A failed fill or rename removes the sibling,
 /// so a half-written copy (of the secrets, say) does not stay on disk.
 fn replace(target: &Path, fill: impl FnOnce(&Path) -> io::Result<()>) -> Result<(), WriteError> {
-    in_turn(target, || replace_now(target, fill))
-}
-
-fn replace_now(
-    target: &Path,
-    fill: impl FnOnce(&Path) -> io::Result<()>,
-) -> Result<(), WriteError> {
-    let tmp = tmp_sibling(target)?;
-    if let Some(dir) = parent(target) {
-        std::fs::create_dir_all(dir).map_err(at(dir))?;
-    }
-    let done = fill(&tmp)
-        .map_err(at(&tmp))
-        .and_then(|()| std::fs::rename(&tmp, target).map_err(at(target)));
-    if done.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    done
+    in_turn(target, || {
+        let tmp = tmp_sibling(target)?;
+        if let Some(dir) = parent(target) {
+            std::fs::create_dir_all(dir).map_err(at(dir))?;
+        }
+        let done = fill(&tmp)
+            .map_err(at(&tmp))
+            .and_then(|()| std::fs::rename(&tmp, target).map_err(at(target)));
+        if done.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        done
+    })
 }
 
 /// Replaces `target` with `bytes` in one step.

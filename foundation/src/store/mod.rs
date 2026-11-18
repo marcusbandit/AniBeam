@@ -48,6 +48,34 @@ fn apply_pragmas(conn: &Connection) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// A read-only connection to the file, with the writer's foreign keys and
+/// busy timeout.
+fn open_reader(path: &Path) -> Result<Connection, CoreError> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.busy_timeout(Duration::from_secs(5))?;
+    Ok(conn)
+}
+
+/// `f` inside an immediate transaction, committed when it returns Ok and
+/// rolled back when it fails.
+fn in_tx<T>(
+    conn: &mut Connection,
+    f: impl FnOnce(&Transaction) -> Result<T, CoreError>,
+) -> Result<T, CoreError> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let out = f(&tx)?;
+    tx.commit()?;
+    Ok(out)
+}
+
+fn dropped_reply<E>(_: E) -> CoreError {
+    CoreError::internal("store thread dropped the reply")
+}
+
 /// Waits on the writer's reply from whatever thread called. A plain thread
 /// blocks on the receiver. Inside a runtime `blocking_recv` panics, and a
 /// shell listener runs inline on the tokio thread that emitted the event,
@@ -66,7 +94,7 @@ fn recv_blocking<T>(rrx: oneshot::Receiver<T>) -> Result<T, CoreError> {
     } else {
         rrx.blocking_recv()
     };
-    received.map_err(|_| CoreError::internal("store thread dropped the reply"))
+    received.map_err(dropped_reply)
 }
 
 impl Store {
@@ -79,15 +107,9 @@ impl Store {
         apply_pragmas(&conn)?;
         migrations::apply(&mut conn)?;
 
-        // Same flags and pragmas as `reader()`, kept open for the life of
-        // the store behind a mutex so `read` never opens a fresh file
-        // handle per call.
-        let reader_conn = Connection::open_with_flags(
-            db_path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        reader_conn.pragma_update(None, "foreign_keys", "ON")?;
-        reader_conn.busy_timeout(Duration::from_secs(5))?;
+        // Kept open for the life of the store behind a mutex, so `read`
+        // never opens a fresh file handle per call.
+        let reader_conn = open_reader(db_path)?;
 
         let (tx, rx) = mpsc::channel::<Task>();
         let thread = std::thread::Builder::new()
@@ -118,6 +140,19 @@ impl Store {
             .map_err(|_| CoreError::internal("store thread is gone"))
     }
 
+    /// Queues `f` on the writer thread; its result comes back on the receiver.
+    fn queue<T, F>(&self, f: F) -> Result<oneshot::Receiver<Result<T, CoreError>>, CoreError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, CoreError> + Send + 'static,
+    {
+        let (rtx, rrx) = oneshot::channel();
+        self.send_task(Box::new(move |conn| {
+            let _ = rtx.send(f(conn));
+        }))?;
+        Ok(rrx)
+    }
+
     /// Runs `f` on the writer thread and blocks the calling thread for the
     /// result. For a plain thread: a shell's calling thread, the event bus,
     /// a test. A job body on the runtime uses `write_async` instead, but
@@ -128,11 +163,7 @@ impl Store {
         T: Send + 'static,
         F: FnOnce(&mut Connection) -> Result<T, CoreError> + Send + 'static,
     {
-        let (rtx, rrx) = oneshot::channel::<Result<T, CoreError>>();
-        self.send_task(Box::new(move |conn| {
-            let _ = rtx.send(f(conn));
-        }))?;
-        recv_blocking(rrx)?
+        recv_blocking(self.queue(f)?)?
     }
 
     /// The `write` a job body on the tokio runtime calls instead: same
@@ -142,12 +173,7 @@ impl Store {
         T: Send + 'static,
         F: FnOnce(&mut Connection) -> Result<T, CoreError> + Send + 'static,
     {
-        let (rtx, rrx) = oneshot::channel::<Result<T, CoreError>>();
-        self.send_task(Box::new(move |conn| {
-            let _ = rtx.send(f(conn));
-        }))?;
-        rrx.await
-            .map_err(|_| CoreError::internal("store thread dropped the reply"))?
+        self.queue(f)?.await.map_err(dropped_reply)?
     }
 
     pub fn tx<T, F>(&self, f: F) -> Result<T, CoreError>
@@ -155,12 +181,7 @@ impl Store {
         T: Send + 'static,
         F: FnOnce(&Transaction) -> Result<T, CoreError> + Send + 'static,
     {
-        self.write(move |conn| {
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let out = f(&tx)?;
-            tx.commit()?;
-            Ok(out)
-        })
+        self.write(move |conn| in_tx(conn, f))
     }
 
     /// The `tx` a job body on the tokio runtime calls instead.
@@ -169,13 +190,7 @@ impl Store {
         T: Send + 'static,
         F: FnOnce(&Transaction) -> Result<T, CoreError> + Send + 'static,
     {
-        self.write_async(move |conn| {
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let out = f(&tx)?;
-            tx.commit()?;
-            Ok(out)
-        })
-        .await
+        self.write_async(move |conn| in_tx(conn, f)).await
     }
 
     /// Queues `f` on the writer thread with no reply, for a fire-and-forget
@@ -206,13 +221,7 @@ impl Store {
     }
 
     pub fn reader(&self) -> Result<Connection, CoreError> {
-        let conn = Connection::open_with_flags(
-            &self.path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.busy_timeout(Duration::from_secs(5))?;
-        Ok(conn)
+        open_reader(&self.path)
     }
 
     pub fn checkpoint(&self) {
@@ -236,6 +245,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::types::FromSql;
 
     fn open_temp() -> (tempfile::TempDir, Arc<Store>) {
         let dir = tempfile::tempdir().unwrap();
@@ -243,40 +253,75 @@ mod tests {
         (dir, store)
     }
 
+    /// A database migrated as far as `version` and holding `seed`, then
+    /// opened as the store, which takes it through every later migration.
+    fn migrated_from(version: usize, seed: &str) -> (tempfile::TempDir, Arc<Store>) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        let mut c = Connection::open(&path).unwrap();
+        migrations::MIGRATIONS.to_version(&mut c, version).unwrap();
+        c.execute_batch(seed).unwrap();
+        drop(c);
+        let store = Store::open(&path).unwrap();
+        (dir, store)
+    }
+
+    /// Every row `sql` returns, read on the writer so it sees every write
+    /// queued before it.
+    fn rows<T>(store: &Store, sql: &str) -> Vec<T>
+    where
+        T: for<'a> TryFrom<&'a rusqlite::Row<'a>, Error = rusqlite::Error> + Send + 'static,
+    {
+        let sql = sql.to_string();
+        store
+            .write(move |c| {
+                let mut stmt = c.prepare(&sql)?;
+                let rows = stmt.query_map([], |r| T::try_from(r))?;
+                Ok(rows.collect::<Result<Vec<T>, _>>()?)
+            })
+            .unwrap()
+    }
+
+    /// The first column of the one row `sql` returns.
+    fn one<T: FromSql + Send + 'static>(store: &Store, sql: &str) -> T {
+        let sql = sql.to_string();
+        store
+            .write(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
+            .unwrap()
+    }
+
     #[test]
     fn open_creates_the_directory_and_sets_wal() {
         let (dir, store) = open_temp();
         assert!(dir.path().join("data").join("anibeam.db").exists());
-        let mode: String = store
-            .write(|c| Ok(c.query_row("PRAGMA journal_mode", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(mode, "wal");
-        let fk: i64 = store
-            .write(|c| Ok(c.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(fk, 1);
+        assert_eq!(one::<String>(&store, "PRAGMA journal_mode"), "wal");
+        assert_eq!(one::<i64>(&store, "PRAGMA foreign_keys"), 1);
     }
 
     #[test]
     fn migrations_validate_and_reach_the_latest_version() {
         migrations::MIGRATIONS.validate().unwrap();
         let (_dir, store) = open_temp();
-        let v: i64 = store
-            .write(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(v as usize, migrations::SCHEMA_VERSION);
-        let tables: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('sources','series','files','anilist_media','anilist_episodes','recommendations','relations','tracker_accounts','tracker_entries','views','completed','resume_points','skip_windows','settings','images','events')", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(tables, 16);
-        let tvmaze: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tvmaze_shows','tvmaze_episodes')", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(tvmaze, 2);
-        let imdb: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('imdb_ratings','imdb_links')", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(imdb, 2);
+        assert_eq!(
+            one::<i64>(&store, "PRAGMA user_version") as usize,
+            migrations::SCHEMA_VERSION
+        );
+        let tables = |names: &str| -> i64 {
+            one(
+                &store,
+                &format!(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ({names})"
+                ),
+            )
+        };
+        assert_eq!(
+            tables(
+                "'sources','series','files','anilist_media','anilist_episodes','recommendations','relations','tracker_accounts','tracker_entries','views','completed','resume_points','skip_windows','settings','images','events'"
+            ),
+            16
+        );
+        assert_eq!(tables("'tvmaze_shows','tvmaze_episodes'"), 2);
+        assert_eq!(tables("'imdb_ratings','imdb_links'"), 2);
     }
 
     /// A version 1 database takes every later migration in place: its
@@ -284,45 +329,24 @@ mod tests {
     /// two TVmaze tables arrive empty.
     #[test]
     fn a_version_1_database_migrates_to_2_keeping_its_rows() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            rusqlite_migration::Migrations::new(vec![rusqlite_migration::M::up(include_str!(
-                "sql/0001_initial.sql"
-            ))])
-            .to_latest(&mut c)
-            .unwrap();
-            c.execute_batch(
-                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
-                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at, attempted_at, attempt_version)
-                 VALUES (58, 1, 'show', '/tv/Avatar Seven Havens', 'Avatar Seven Havens', 0, 100, 1);",
-            )
-            .unwrap();
-            let v: i64 = c
-                .query_row("PRAGMA user_version", [], |r| r.get(0))
-                .unwrap();
-            assert_eq!(v, 1);
-        }
-        let store = Store::open(&path).unwrap();
-        let (v, row): (i64, (String, Option<i64>, Option<i64>)) = store
-            .write(|c| {
-                Ok((
-                    c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
-                    c.query_row(
-                        "SELECT folder_name, attempted_at, tvmaze_id FROM series WHERE id = 58",
-                        [],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-                    )?,
-                ))
-            })
-            .unwrap();
-        assert_eq!(v as usize, migrations::SCHEMA_VERSION);
-        assert_eq!(row, ("Avatar Seven Havens".to_string(), Some(100), None));
-        let shows: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM tvmaze_shows", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(shows, 0);
+        let (_dir, store) = migrated_from(
+            1,
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at, attempted_at, attempt_version)
+             VALUES (58, 1, 'show', '/tv/Avatar Seven Havens', 'Avatar Seven Havens', 0, 100, 1);",
+        );
+        assert_eq!(
+            one::<i64>(&store, "PRAGMA user_version") as usize,
+            migrations::SCHEMA_VERSION
+        );
+        assert_eq!(
+            rows::<(String, Option<i64>, Option<i64>)>(
+                &store,
+                "SELECT folder_name, attempted_at, tvmaze_id FROM series WHERE id = 58"
+            ),
+            [("Avatar Seven Havens".to_string(), Some(100), None)]
+        );
+        assert_eq!(one::<i64>(&store, "SELECT count(*) FROM tvmaze_shows"), 0);
     }
 
     /// A version 2 database keys every episode by its bare number. 0003
@@ -332,72 +356,52 @@ mod tests {
     /// number the row is ambiguous and stays season 1's.
     #[test]
     fn a_version_2_database_migrates_its_season_keys_keeping_unambiguous_history() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            rusqlite_migration::Migrations::new(vec![
-                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
-            ])
-            .to_latest(&mut c)
-            .unwrap();
-            c.execute_batch(
-                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
-                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
-                   (1, 1, 'show', '/tv/Only S2', 'Only S2', 0),
-                   (2, 1, 'show', '/tv/Both', 'Both', 0);
-                 INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at) VALUES
-                   (10, 1, '/tv/Only S2/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
-                   (11, 1, '/tv/Only S2/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
-                   (20, 2, '/tv/Both/S01E01.mkv', 0, 0, 'episode', 1, 1, 'S01E01', '1', '[]', 0),
-                   (21, 2, '/tv/Both/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
-                   (22, 2, '/tv/Both/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
-                   (23, 2, '/tv/Both/OP1.mkv', 0, 0, 'extra', 0, NULL, 'OP1', 'OP1.mkv', '[]', 0);
-                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (2, '1', 6), (2, '2', 7), (2, 'OP1.mkv', 8);
-                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '2', 10, 100, 5);
-                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 5), (2, '1', 6);",
-            )
-            .unwrap();
-        }
-        let store = Store::open(&path).unwrap();
-        let read = |sql: &str| -> Vec<(i64, String)> {
-            let sql = sql.to_string();
-            store
-                .write(move |c| {
-                    let mut stmt = c.prepare(&sql)?;
-                    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
-                })
-                .unwrap()
-        };
+        let (_dir, store) = migrated_from(
+            2,
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
+               (1, 1, 'show', '/tv/Only S2', 'Only S2', 0),
+               (2, 1, 'show', '/tv/Both', 'Both', 0);
+             INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at) VALUES
+               (10, 1, '/tv/Only S2/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
+               (11, 1, '/tv/Only S2/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
+               (20, 2, '/tv/Both/S01E01.mkv', 0, 0, 'episode', 1, 1, 'S01E01', '1', '[]', 0),
+               (21, 2, '/tv/Both/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
+               (22, 2, '/tv/Both/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
+               (23, 2, '/tv/Both/OP1.mkv', 0, 0, 'extra', 0, NULL, 'OP1', 'OP1.mkv', '[]', 0);
+             INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (2, '1', 6), (2, '2', 7), (2, 'OP1.mkv', 8);
+             INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '2', 10, 100, 5);
+             INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 5), (2, '1', 6);",
+        );
+        let keys = |sql: &str| -> Vec<(i64, String)> { rows(&store, sql) };
+        let key = |n: i64, k: &str| (n, k.to_string());
         assert_eq!(
-            read("SELECT id, episode_key FROM files ORDER BY id"),
-            vec![
-                (10, "S02E01".to_string()),
-                (11, "S02E02".to_string()),
-                (20, "1".to_string()),
-                (21, "S02E01".to_string()),
-                (22, "S02E02".to_string()),
-                (23, "OP1.mkv".to_string()),
+            keys("SELECT id, episode_key FROM files ORDER BY id"),
+            [
+                key(10, "S02E01"),
+                key(11, "S02E02"),
+                key(20, "1"),
+                key(21, "S02E01"),
+                key(22, "S02E02"),
+                key(23, "OP1.mkv"),
             ]
         );
         assert_eq!(
-            read("SELECT series_id, episode_key FROM completed ORDER BY series_id, at"),
-            vec![
-                (1, "S02E01".to_string()),
-                (2, "1".to_string()),
-                (2, "S02E02".to_string()),
-                (2, "OP1.mkv".to_string()),
+            keys("SELECT series_id, episode_key FROM completed ORDER BY series_id, at"),
+            [
+                key(1, "S02E01"),
+                key(2, "1"),
+                key(2, "S02E02"),
+                key(2, "OP1.mkv")
             ]
         );
         assert_eq!(
-            read("SELECT series_id, episode_key FROM resume_points"),
-            vec![(1, "S02E02".to_string())]
+            keys("SELECT series_id, episode_key FROM resume_points"),
+            [key(1, "S02E02")]
         );
         assert_eq!(
-            read("SELECT series_id, episode_key FROM views ORDER BY series_id"),
-            vec![(1, "S02E02".to_string()), (2, "1".to_string())]
+            keys("SELECT series_id, episode_key FROM views ORDER BY series_id"),
+            [key(1, "S02E02"), key(2, "1")]
         );
     }
 
@@ -406,35 +410,17 @@ mod tests {
     /// keeps every other event.
     #[test]
     fn a_version_4_database_loses_only_the_events_with_an_api_key() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            rusqlite_migration::Migrations::new(vec![
-                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0003_season_keys.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0004_imdb.sql")),
-            ])
-            .to_latest(&mut c)
-            .unwrap();
-            c.execute_batch(
-                "INSERT INTO events (seq, at, level, stage, message, body) VALUES
-                   (1, 0, 'Warn', 'Downloads', 'feed failed: error sending request for url (https://x/api?t=tvsearch&apikey=abc)', '{}'),
-                   (2, 0, 'Warn', 'Downloads', 'feed failed', '{\"message\":\"https://x/api?apikey=abc\"}'),
-                   (3, 0, 'Info', 'Library', 'Every folder: nothing changed', '{}');",
-            )
-            .unwrap();
-        }
-        let store = Store::open(&path).unwrap();
-        let left: Vec<i64> = store
-            .write(|c| {
-                let mut stmt = c.prepare("SELECT seq FROM events ORDER BY seq")?;
-                let rows = stmt.query_map([], |r| r.get(0))?;
-                Ok(rows.collect::<Result<Vec<_>, _>>()?)
-            })
-            .unwrap();
-        assert_eq!(left, vec![3]);
+        let (_dir, store) = migrated_from(
+            4,
+            "INSERT INTO events (seq, at, level, stage, message, body) VALUES
+               (1, 0, 'Warn', 'Downloads', 'feed failed: error sending request for url (https://x/api?t=tvsearch&apikey=abc)', '{}'),
+               (2, 0, 'Warn', 'Downloads', 'feed failed', '{\"message\":\"https://x/api?apikey=abc\"}'),
+               (3, 0, 'Info', 'Library', 'Every folder: nothing changed', '{}');",
+        );
+        assert_eq!(
+            rows::<(i64,)>(&store, "SELECT seq FROM events ORDER BY seq"),
+            [(3,)]
+        );
     }
 
     /// Version 6 clears a match to a short (under five minutes, or MUSIC)
@@ -442,50 +428,28 @@ mod tests {
     /// again, and leaves every other match, confirmed or not, as it was.
     #[test]
     fn a_version_5_database_unmatches_its_shorts_for_the_auto_match() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            rusqlite_migration::Migrations::new(vec![
-                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0003_season_keys.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0004_imdb.sql")),
-                rusqlite_migration::M::up(include_str!("sql/0005_events_without_keys.sql")),
-            ])
-            .to_latest(&mut c)
-            .unwrap();
-            c.execute_batch(
-                "INSERT INTO sources (id, path, added_at) VALUES (1, '/a', 0);
-                 INSERT INTO anilist_media (id, format, duration, fetched_at, raw) VALUES
-                   (97962, 'SPECIAL', 1, 0, '{}'),
-                   (21519, 'MOVIE', 106, 0, '{}'),
-                   (500, 'MUSIC', NULL, 0, '{}'),
-                   (600, 'SPECIAL', 24, 0, '{}');
-                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at,
-                                     provider, anilist_id, mal_id, confirmed, matched_at) VALUES
-                   (1, 1, 'movie', '/a/Kimi no Na Wa.mkv', 'Kimi no Na Wa', 0, 'anilist', 97962, 33902, 1, 5),
-                   (2, 1, 'movie', '/a/Koe no Katachi.mkv', 'Koe no Katachi', 0, 'anilist', 21519, 28851, 1, 5),
-                   (3, 1, 'show', '/a/OP', 'OP', 0, 'anilist', 500, NULL, 1, 5),
-                   (4, 1, 'show', '/a/Specials', 'Specials', 0, 'anilist', 600, NULL, 0, 5);",
-            )
-            .unwrap();
-        }
-        let store = Store::open(&path).unwrap();
-        let rows: Vec<(i64, Option<i64>, i64, Option<i64>)> = store
-            .write(|c| {
-                let mut stmt = c.prepare(
-                    "SELECT id, anilist_id, confirmed, attempted_at FROM series
-                     WHERE provider IS NULL OR anilist_id IS NOT NULL ORDER BY id",
-                )?;
-                let rows =
-                    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
-                Ok(rows.collect::<Result<Vec<_>, _>>()?)
-            })
-            .unwrap();
+        let (_dir, store) = migrated_from(
+            5,
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/a', 0);
+             INSERT INTO anilist_media (id, format, duration, fetched_at, raw) VALUES
+               (97962, 'SPECIAL', 1, 0, '{}'),
+               (21519, 'MOVIE', 106, 0, '{}'),
+               (500, 'MUSIC', NULL, 0, '{}'),
+               (600, 'SPECIAL', 24, 0, '{}');
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at,
+                                 provider, anilist_id, mal_id, confirmed, matched_at) VALUES
+               (1, 1, 'movie', '/a/Kimi no Na Wa.mkv', 'Kimi no Na Wa', 0, 'anilist', 97962, 33902, 1, 5),
+               (2, 1, 'movie', '/a/Koe no Katachi.mkv', 'Koe no Katachi', 0, 'anilist', 21519, 28851, 1, 5),
+               (3, 1, 'show', '/a/OP', 'OP', 0, 'anilist', 500, NULL, 1, 5),
+               (4, 1, 'show', '/a/Specials', 'Specials', 0, 'anilist', 600, NULL, 0, 5);",
+        );
         assert_eq!(
-            rows,
-            vec![
+            rows::<(i64, Option<i64>, i64, Option<i64>)>(
+                &store,
+                "SELECT id, anilist_id, confirmed, attempted_at FROM series
+                 WHERE provider IS NULL OR anilist_id IS NOT NULL ORDER BY id"
+            ),
+            [
                 (1, None, 0, None),
                 (2, Some(21519), 1, None),
                 (3, None, 0, None),
@@ -498,12 +462,11 @@ mod tests {
     fn a_newer_database_is_refused_naming_both_versions() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("anibeam.db");
-        {
-            let c = rusqlite::Connection::open(&path).unwrap();
-            c.pragma_update(None, "user_version", 99).unwrap();
-        }
-        let err = Store::open(&path).err().unwrap();
-        match err {
+        Connection::open(&path)
+            .unwrap()
+            .pragma_update(None, "user_version", 99)
+            .unwrap();
+        match Store::open(&path).err().unwrap() {
             CoreError::Storage { message } => {
                 assert!(message.contains("99"), "{message}");
                 assert!(
@@ -515,44 +478,47 @@ mod tests {
         }
     }
 
+    const ADD_SOURCE: &str = "INSERT INTO sources (path, added_at) VALUES ('/a', 1)";
+    const SOURCES: &str = "SELECT count(*) FROM sources";
+
     #[test]
     fn tx_rolls_back_on_error_and_commits_on_ok() {
         let (_dir, store) = open_temp();
         let err = store.tx(|t| {
-            t.execute("INSERT INTO sources (path, added_at) VALUES ('/a', 1)", [])?;
+            t.execute(ADD_SOURCE, [])?;
             Err::<(), _>(CoreError::internal("boom"))
         });
         assert!(err.is_err());
-        let n: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(n, 0);
+        assert_eq!(one::<i64>(&store, SOURCES), 0);
         store
             .tx(|t| {
-                t.execute("INSERT INTO sources (path, added_at) VALUES ('/a', 1)", [])?;
+                t.execute(ADD_SOURCE, [])?;
                 Ok(())
             })
             .unwrap();
-        let n: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(n, 1);
+        assert_eq!(one::<i64>(&store, SOURCES), 1);
     }
 
+    /// A committed write is seen by a fresh `reader` and by `read`'s shared
+    /// connection alike.
     #[test]
     fn readers_see_committed_writes() {
         let (_dir, store) = open_temp();
         store
             .tx(|t| {
-                t.execute("INSERT INTO sources (path, added_at) VALUES ('/b', 1)", [])?;
+                t.execute(ADD_SOURCE, [])?;
                 Ok(())
             })
             .unwrap();
-        let reader = store.reader().unwrap();
-        let n: i64 = reader
-            .query_row("SELECT count(*) FROM sources", [], |r| r.get(0))
+        let fresh: i64 = store
+            .reader()
+            .unwrap()
+            .query_row(SOURCES, [], |r| r.get(0))
             .unwrap();
-        assert_eq!(n, 1);
+        let shared: i64 = store
+            .read(|c| Ok(c.query_row(SOURCES, [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!((fresh, shared), (1, 1));
     }
 
     #[test]
@@ -567,40 +533,26 @@ mod tests {
         assert_eq!(v, Some(3));
         let missing: Option<u32> = store.write(|c| settings::get(c, "nope")).unwrap();
         assert_eq!(missing, None);
+        store
+            .write(|c| settings::remove(c, settings::AUTO_MATCH_VERSION))
+            .unwrap();
+        let fallback: u32 = store
+            .write(|c| settings::get_or_default(c, settings::AUTO_MATCH_VERSION))
+            .unwrap();
+        assert_eq!(fallback, 0);
     }
 
     #[test]
     fn post_is_seen_by_a_write_queued_after_it() {
         let (_dir, store) = open_temp();
         store.post(|c| {
-            if let Err(e) = c.execute(
-                "INSERT INTO sources (path, added_at) VALUES ('/posted', 1)",
-                [],
-            ) {
+            if let Err(e) = c.execute(ADD_SOURCE, []) {
                 tracing::warn!("posted write failed: {e}");
             }
         });
         // The writer thread runs tasks in the order they were queued, so
         // this write only sees the posted row if post really ran first.
-        let n: i64 = store
-            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(n, 1);
-    }
-
-    #[test]
-    fn read_sees_a_committed_write() {
-        let (_dir, store) = open_temp();
-        store
-            .tx(|t| {
-                t.execute("INSERT INTO sources (path, added_at) VALUES ('/c', 1)", [])?;
-                Ok(())
-            })
-            .unwrap();
-        let n: i64 = store
-            .read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
-            .unwrap();
-        assert_eq!(n, 1);
+        assert_eq!(one::<i64>(&store, SOURCES), 1);
     }
 
     #[test]
@@ -617,7 +569,7 @@ mod tests {
         // The mutex would be poisoned here without the recovery in `read`;
         // this must not panic at the lock.
         let n: i64 = store
-            .read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .read(|c| Ok(c.query_row(SOURCES, [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(n, 0);
     }
@@ -640,8 +592,8 @@ mod tests {
             .block_on(async move {
                 tokio::spawn(async move {
                     inner.write(|c| {
-                        c.execute("INSERT INTO sources (path, added_at) VALUES ('/e', 1)", [])?;
-                        Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)
+                        c.execute(ADD_SOURCE, [])?;
+                        Ok(c.query_row(SOURCES, [], |r| r.get(0))?)
                     })
                 })
                 .await
@@ -652,20 +604,34 @@ mod tests {
     }
 
     #[test]
-    fn write_async_runs_from_a_tokio_runtime() {
+    fn write_async_and_tx_async_run_from_a_tokio_runtime() {
         let (_dir, store) = open_temp();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(store.write_async(|c| {
-            c.execute("INSERT INTO sources (path, added_at) VALUES ('/d', 1)", [])?;
+            c.execute(ADD_SOURCE, [])?;
             Ok(())
         }))
         .unwrap();
+        let failed = rt.block_on(store.tx_async(|t| {
+            t.execute("INSERT INTO sources (path, added_at) VALUES ('/b', 1)", [])?;
+            Err::<(), _>(CoreError::internal("boom"))
+        }));
+        assert!(failed.is_err(), "a failed tx_async rolls back");
         let n: i64 = rt
-            .block_on(store.write_async(|c| {
-                Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)
-            }))
+            .block_on(store.tx_async(|t| Ok(t.query_row(SOURCES, [], |r| r.get(0))?)))
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    /// Once closed, the store refuses work rather than hanging, and a
+    /// second close is a no-op.
+    #[test]
+    fn a_closed_store_refuses_writes_and_closes_twice() {
+        let (_dir, store) = open_temp();
+        store.close();
+        assert!(store.write(|_| Ok(())).is_err());
+        store.post(|_| panic!("a closed store runs nothing"));
+        store.close();
     }
 
     /// The watch log (#593) starts from the history already there: every
@@ -673,61 +639,37 @@ mod tests {
     /// finish, copied once, and `completed` keeps every row it had.
     #[test]
     fn the_version_before_the_watch_log_copies_its_history_in_keeping_every_row() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            migrations::MIGRATIONS
-                .to_version(&mut c, migrations::WATCH_LOG - 1)
-                .unwrap();
-            c.execute_batch(
-                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
-                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
-                   (1, 1, 'show', '/tv/A', 'A', 0),
-                   (2, 1, 'show', '/tv/B', 'B', 0);
-                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6), (2, 'S02E01', 7);
-                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
-                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (2, 'S02E02', 10, 100, 8);",
-            )
-            .unwrap();
-        }
-        let store = Store::open(&path).unwrap();
-        let read = |sql: &str| -> Vec<(i64, String, i64)> {
-            let sql = sql.to_string();
-            store
-                .read(move |c| {
-                    let mut stmt = c.prepare(&sql)?;
-                    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
-                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
-                })
-                .unwrap()
-        };
-        let history = vec![
-            (1, "1".to_string(), 5),
-            (1, "2".to_string(), 6),
-            (2, "S02E01".to_string(), 7),
-        ];
+        let (_dir, store) = migrated_from(
+            migrations::WATCH_LOG - 1,
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
+               (1, 1, 'show', '/tv/A', 'A', 0),
+               (2, 1, 'show', '/tv/B', 'B', 0);
+             INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6), (2, 'S02E01', 7);
+             INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
+             INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (2, 'S02E02', 10, 100, 8);",
+        );
+        let history = |sql: &str| -> Vec<(i64, String, i64)> { rows(&store, sql) };
+        let row = |s: i64, k: &str, at: i64| (s, k.to_string(), at);
+        let finished = [row(1, "1", 5), row(1, "2", 6), row(2, "S02E01", 7)];
         assert_eq!(
-            read("SELECT series_id, episode_key, at FROM completed ORDER BY at"),
-            history
+            history("SELECT series_id, episode_key, at FROM completed ORDER BY at"),
+            finished
         );
         assert_eq!(
-            read(
+            history(
                 "SELECT series_id, episode_key, at FROM watch_log WHERE how = 'copied' ORDER BY at"
             ),
-            history
+            finished
+        );
+        assert_eq!(one::<i64>(&store, "SELECT count(*) FROM watch_log"), 3);
+        assert_eq!(
+            history("SELECT series_id, episode_key, at FROM views"),
+            [row(1, "2", 6)]
         );
         assert_eq!(
-            read("SELECT count(*), '', 0 FROM watch_log"),
-            vec![(3, String::new(), 0)]
-        );
-        assert_eq!(
-            read("SELECT series_id, episode_key, at FROM views"),
-            vec![(1, "2".to_string(), 6)]
-        );
-        assert_eq!(
-            read("SELECT series_id, episode_key, at FROM resume_points"),
-            vec![(2, "S02E02".to_string(), 8)]
+            history("SELECT series_id, episode_key, at FROM resume_points"),
+            [row(2, "S02E02", 8)]
         );
     }
 
@@ -737,32 +679,18 @@ mod tests {
     /// sits beside the owner's instead of replacing it.
     #[test]
     fn the_version_before_profiles_keeps_every_row_as_the_owners() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("anibeam.db");
-        {
-            let mut c = rusqlite::Connection::open(&path).unwrap();
-            migrations::MIGRATIONS
-                .to_version(&mut c, migrations::PROFILES - 1)
-                .unwrap();
-            c.execute_batch(
-                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
-                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES (1, 1, 'show', '/tv/A', 'A', 0);
-                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
-                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6);
-                 INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (1, '1', 4, 'played'), (1, '1', 5, 'played');
-                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '3', 10, 100, 8);
-                 INSERT INTO tracker_accounts (tracker, user_id, username, connected_at, secret_store) VALUES ('anilist', 42, 'owner', 1, 'file');
-                 INSERT INTO tracker_entries (tracker, media_id, status, progress, fetched_at, notes) VALUES ('anilist', 7, 'CURRENT', 2, 9, 'good');",
-            )
-            .unwrap();
-        }
-        let store = Store::open(&path).unwrap();
-        let count = |sql: &str| -> i64 {
-            let sql = sql.to_string();
-            store
-                .read(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
-                .unwrap()
-        };
+        let (_dir, store) = migrated_from(
+            migrations::PROFILES - 1,
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES (1, 1, 'show', '/tv/A', 'A', 0);
+             INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
+             INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6);
+             INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (1, '1', 4, 'played'), (1, '1', 5, 'played');
+             INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '3', 10, 100, 8);
+             INSERT INTO tracker_accounts (tracker, user_id, username, connected_at, secret_store) VALUES ('anilist', 42, 'owner', 1, 'file');
+             INSERT INTO tracker_entries (tracker, media_id, status, progress, fetched_at, notes) VALUES ('anilist', 7, 'CURRENT', 2, 9, 'good');",
+        );
+        let count = |sql: &str| -> i64 { one(&store, sql) };
         for (table, rows) in [
             ("views", 1),
             ("completed", 2),
