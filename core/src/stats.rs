@@ -110,8 +110,17 @@ fn finished_at(done: &[(String, i64)], log: &[(String, i64)]) -> Option<i64> {
 
 /// The calendar year and month (1 to 12) of a moment, `offset` seconds east of UTC.
 fn year_month(at: i64, offset: i64) -> (i32, u32) {
-    ::time::OffsetDateTime::from_unix_timestamp(at + offset)
-        .map_or((1970, 1), |t| (t.year(), u32::from(u8::from(t.month()))))
+    let days = (at + offset).div_euclid(86_400);
+    // Howard Hinnant's civil-from-days, which answers for every moment the log can hold.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = (yoe + era * 400 + i64::from(month <= 2)) as i32;
+    (year, month)
 }
 
 #[derive(Default)]
@@ -121,8 +130,11 @@ struct Tally {
 }
 
 /// Adds a series' episodes under `name`.
-fn tally(map: &mut HashMap<String, Tally>, name: String, series: u64, episodes: u32) {
-    let t = map.entry(name).or_default();
+fn tally(map: &mut HashMap<String, Tally>, name: &str, series: u64, episodes: u32) {
+    if !map.contains_key(name) {
+        map.insert(name.to_string(), Tally::default());
+    }
+    let t = map.get_mut(name).expect("just inserted");
     t.episodes += episodes;
     t.series.insert(series);
 }
@@ -214,17 +226,17 @@ pub fn compute(
         }
         let media = row.media.as_ref();
         for g in media.iter().flat_map(|m| &m.genres) {
-            tally(&mut genres, g.clone(), row.id, episodes);
+            tally(&mut genres, g, row.id, episodes);
         }
         if let Some(studio) = media
             .and_then(|m| m.studio.as_ref())
             .filter(|s| !s.is_empty())
         {
-            tally(&mut studios, studio.clone(), row.id, episodes);
+            tally(&mut studios, studio, row.id, episodes);
         }
         if let Some((season, y)) = media.and_then(|m| m.season.as_deref().zip(m.year)) {
             let name = format!("{} {y}", title_case(season));
-            tally(&mut seasons, name, row.id, episodes);
+            tally(&mut seasons, &name, row.id, episodes);
         }
         per_series.push(StatSeries {
             series: row.id,

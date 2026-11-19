@@ -195,9 +195,10 @@ fn win_arch(arch: &str) -> &str {
     }
 }
 
-/// Where the apt and dnf repos on anibeam.app are set up; a package installed from a file
-/// without them has no source that brings updates.
+/// Where the apt repo on anibeam.app is set up; a package installed from a file without it
+/// has no source that brings updates.
 const APT_SOURCE: &str = "/etc/apt/sources.list.d/anibeam.sources";
+/// The same for the dnf repo.
 const DNF_REPO: &str = "/etc/yum.repos.d/anibeam.repo";
 
 /// The package manager that owns `exe`, and its name for the package. A system has one of

@@ -160,7 +160,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 section(&mut problems, n, kind, &mut kinds, "one version");
                 open = Some((n, 0));
             }
-            Line::Item(item) => item_problems(&mut problems, n, &item, open.as_mut()),
+            Line::Item(item) => check_item(&mut problems, n, &item, open.as_mut()),
             // Words above the first version are the file's own; under one, nothing but
             // sections and their lines.
             Line::Other(text) => {
@@ -251,7 +251,7 @@ pub fn lint_change(text: &str) -> Vec<String> {
             }
             Line::Item(item) => {
                 lines += 1;
-                item_problems(&mut problems, n, &item, open.as_mut());
+                check_item(&mut problems, n, &item, open.as_mut());
             }
             Line::Other(text) => problems.push(format!(
                 "line {n}: \"{text}\" is not a section or a \"- \" line"
@@ -315,13 +315,9 @@ fn section(
     kinds.push(kind);
 }
 
-/// A `- item` at line `n`, counted in the section open above it.
-fn item_problems(
-    problems: &mut Vec<String>,
-    n: usize,
-    item: &str,
-    open: Option<&mut (usize, usize)>,
-) {
+/// A `- item` at line `n`: counts it in the section open above it and notes what is wrong
+/// with it.
+fn check_item(problems: &mut Vec<String>, n: usize, item: &str, open: Option<&mut (usize, usize)>) {
     match open {
         Some((_, count)) => *count += 1,
         None => problems.push(format!("line {n}: a line before any section")),
@@ -613,16 +609,9 @@ fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
     if it.next().is_some() || y.len() != 4 || m.len() != 2 || d.len() != 2 {
         return None;
     }
-    let (y, m, d): (i32, u32, u32) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let days = match m {
-        2 if leap => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        1..=12 => 31,
-        _ => return None,
-    };
-    (1..=days).contains(&d).then_some((y, m, d))
+    let (y, m, d): (i32, u8, u8) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
+    ::time::Date::from_calendar_date(y, ::time::Month::try_from(m).ok()?, d).ok()?;
+    Some((y, m.into(), d.into()))
 }
 
 #[cfg(test)]

@@ -139,7 +139,7 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
             continue;
         };
         let on_track = v.stable || (track == Track::Nightly && v.nightly.is_some());
-        if !on_track || running.is_some_and(|run| v <= run) {
+        if !on_track || !newer(v, running) {
             continue;
         }
         if best.as_ref().is_none_or(|(b, _)| v > *b) {
@@ -179,13 +179,14 @@ async fn get(http: &dyn Http, req: HttpRequest, what: &str) -> Result<Vec<u8>, C
     Ok(res.body)
 }
 
-/// `theirs` when it is a version newer than `current`. A `current` that names no version
-/// is offered any.
+/// Whether `v` comes after the running build. A build that names no version is offered any.
+fn newer(v: Version, running: Option<Version>) -> bool {
+    running.is_none_or(|run| v > run)
+}
+
+/// `theirs` when it is a version newer than `current`.
 fn newer_than(theirs: &str, current: &str) -> Option<String> {
-    let version = Version::parse(theirs)?;
-    Version::parse(current)
-        .is_none_or(|run| version > run)
-        .then(|| theirs.to_string())
+    newer(Version::parse(theirs)?, Version::parse(current)).then(|| theirs.to_string())
 }
 
 const AUR_INFO: &str = "https://aur.archlinux.org/rpc/v5/info?arg[]=";
@@ -397,6 +398,45 @@ mod tests {
         assert_eq!(aur_newer(&info("r120.abc1234-1"), "2.3.1").unwrap(), None);
         let none = br#"{"resultcount":0,"results":[]}"#;
         assert_eq!(aur_newer(none, "2.3.1").unwrap(), None);
+    }
+
+    #[test]
+    fn a_version_with_any_other_suffix_or_shape_names_no_build() {
+        for v in [
+            "2.6.0-rc.1",
+            "2.6.0-nightly.20261102",
+            "2.6.0-nightly.x.1",
+            "2.6.0-pr.280",
+            "2.6.0-",
+            "2.6",
+            "2.6.0.1",
+        ] {
+            assert_eq!(Version::parse(v), None, "{v}");
+        }
+        assert!(Version::parse("2.6.0-pr.280.3").is_some_and(|v| !v.stable && v.nightly.is_none()));
+    }
+
+    #[test]
+    fn each_check_names_itself_when_the_request_fails() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let http = crate::net::FakeHttp::new();
+        http.push(503, "down");
+        let message = |e: CoreError| match e {
+            CoreError::Internal { message } => message,
+            other => panic!("{other:?}"),
+        };
+        let e = rt.block_on(check_repos(&*http, "2.4.0")).unwrap_err();
+        assert_eq!(message(e), "repos: HTTP 503");
+        http.fail_next("no route");
+        let e = rt
+            .block_on(check_aur(&*http, "anibeam", "2.4.0"))
+            .unwrap_err();
+        assert_eq!(message(e), "aur: no route");
+        http.push(200, r#"{"version": "2.5.0"}"#);
+        let newer = rt.block_on(check_repos(&*http, "2.4.0")).unwrap();
+        assert_eq!(newer.as_deref(), Some("2.5.0"));
     }
 
     #[test]
