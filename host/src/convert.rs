@@ -125,15 +125,18 @@ impl Encoder {
                 // flag it and no piece starts there.
                 "-forced-idr",
                 "1",
+                "-maxrate",
+                rate,
+                "-bufsize",
+                rate,
             ],
-            Encoder::Vaapi => &["-c:v", "h264_vaapi", "-b:v", rate],
-            Encoder::X264 => &["-c:v", "libx264", "-preset", "veryfast", "-crf", "22"],
+            Encoder::Vaapi => &["-c:v", "h264_vaapi", "-b:v", rate, "-maxrate", rate],
+            Encoder::X264 => &[
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", rate,
+                "-bufsize", rate,
+            ],
         };
         push(out, codec);
-        push(out, &["-maxrate", rate]);
-        if self != Encoder::Vaapi {
-            push(out, &["-bufsize", rate]);
-        }
         push(out, &["-profile:v", "high"]);
     }
 
@@ -448,12 +451,13 @@ impl Converter {
             j.asked = i;
             let file = j.dir.join(format!("seg{i}.ts"));
             if let Ok(bytes) = tokio::fs::read(&file).await {
-                let written = j.written(i).await;
-                pace(&mut j, written);
+                if let Some(written) = j.written().await {
+                    pace(&mut j, written);
+                }
                 return Some(bytes);
             }
             let from = j.run.as_ref().map(|r| r.from);
-            let written = j.written(i).await;
+            let written = j.written().await;
             let alive = j.run.as_mut().is_some_and(Run::alive);
             let covers = from.is_some_and(|f| f <= i);
             if covers && !alive {
@@ -485,7 +489,7 @@ impl Converter {
                 );
                 return None;
             }
-            if covers && i <= written + NEAR {
+            if covers && written.is_some_and(|w| i <= w + NEAR) {
                 if let Some(r) = j.run.as_mut() {
                     r.signal(false);
                 }
@@ -589,8 +593,9 @@ async fn pacer(job: std::sync::Weak<tokio::sync::Mutex<Job>>, run: u64) {
             }
             return;
         }
-        let written = j.written(0).await;
-        pace(&mut j, written);
+        if let Some(written) = j.written().await {
+            pace(&mut j, written);
+        }
     }
 }
 
@@ -608,20 +613,17 @@ fn pace(j: &mut Job, written: u32) {
 }
 
 impl Job {
-    /// The last piece on disk, counting up from the last count of this run,
-    /// or from `idle` while no ffmpeg runs.
-    async fn written(&mut self, idle: u32) -> u32 {
-        let mut n = self.run.as_ref().map_or(idle, |r| r.written);
-        while tokio::fs::try_exists(self.dir.join(format!("seg{}.ts", n + 1)))
+    /// The last piece of this run on disk, counting up from its last count.
+    /// None while no ffmpeg runs, which writes nothing to count.
+    async fn written(&mut self) -> Option<u32> {
+        let r = self.run.as_mut()?;
+        while tokio::fs::try_exists(self.dir.join(format!("seg{}.ts", r.written + 1)))
             .await
             .unwrap_or(false)
         {
-            n += 1;
+            r.written += 1;
         }
-        if let Some(r) = self.run.as_mut() {
-            r.written = n;
-        }
-        n
+        Some(r.written)
     }
 }
 
@@ -944,8 +946,8 @@ mod tests {
             runs: 0,
         };
         (0..3).for_each(touch);
-        // No ffmpeg: counted from the piece asked for.
-        assert_eq!(job.written(1).await, 2);
+        // No ffmpeg, nothing to count.
+        assert_eq!(job.written().await, None);
         job.run = Some(Run {
             child,
             from: 0,
@@ -953,12 +955,12 @@ mod tests {
             stopped: false,
             ended: None,
         });
-        assert_eq!(job.written(0).await, 2);
+        assert_eq!(job.written().await, Some(2));
         (3..6).for_each(touch);
-        assert_eq!(job.written(0).await, 5);
+        assert_eq!(job.written().await, Some(5));
         // A piece before the last count is never looked at again.
         std::fs::remove_file(dir.path().join("seg1.ts")).unwrap();
-        assert_eq!(job.written(0).await, 5);
+        assert_eq!(job.written().await, Some(5));
     }
 
     #[test]
