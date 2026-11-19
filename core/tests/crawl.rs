@@ -356,7 +356,7 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     );
     assert!(asked(&http).is_empty());
 
-    let job = crawl::start(core.metadata(), vec![7], true);
+    let job = crawl::start(core.metadata(), vec![7]);
     let finished = common::wait_job(&c, job);
     assert!(
         matches!(
