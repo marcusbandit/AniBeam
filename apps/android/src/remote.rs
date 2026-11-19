@@ -361,7 +361,7 @@ pub fn calendar(
             let (poster, has_poster) = art.poster(e.series_id);
             let (state, when) = match e.state {
                 State::Upcoming => (0, format::countdown(e.at - now)),
-                State::OnDisk { .. } => (1, tr!("remote-on-computer")),
+                State::OnDisk => (1, tr!("remote-on-computer")),
                 State::Missing => (2, tr!("remote-out", ago = format::ago(now - e.at))),
             };
             let item = CalItem {

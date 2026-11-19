@@ -309,7 +309,10 @@ mod tests {
     #[test]
     fn a_series_page_has_facts_episodes_and_its_rule() {
         crate::i18n::set_lang(crate::i18n::Lang::En);
-        let cache = cache();
+        let mut cache = cache();
+        let rule = &mut cache.snapshot.subscriptions[0];
+        rule.missing = vec![9, 10];
+        rule.missing_season = Some(2);
         let page = detail(&cache, &AniListCache::default(), 12, cache.synced_at + 60).unwrap();
         assert_eq!(page.facts, vec!["TV", "Fall 2026", "Airing", "12 episodes"]);
         assert_eq!(
@@ -318,7 +321,14 @@ mod tests {
         );
         assert_eq!(page.upcoming.len(), 5);
         assert_eq!(page.episodes.len(), 7);
-        assert!(page.subscription.is_some(), "Frieren has a rule");
+        assert_eq!(
+            page.subscription,
+            Some(SubscriptionInfo {
+                missing: vec![9, 10],
+                missing_season: Some(2),
+            }),
+            "the rule's missing episodes come through as the host counted them"
+        );
         assert!(detail(&cache, &AniListCache::default(), 999, 0).is_none());
     }
 }

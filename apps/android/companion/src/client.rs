@@ -454,6 +454,17 @@ mod proof_tests {
     }
 
     #[test]
+    fn the_stream_base_is_an_address_the_player_can_open() {
+        let base = |text: &str| {
+            HostClient::new(agent(), HostAddress::parse(text).unwrap())
+                .stream_base()
+                .unwrap()
+        };
+        assert_eq!(base("127.0.0.1:8790"), "http://127.0.0.1:8790");
+        assert_eq!(base("[::1]:8791"), "http://[::1]:8791");
+    }
+
+    #[test]
     fn a_host_that_does_not_read_proofs_gets_none() {
         let (address, seen) = host(hello(&[], "", crate::now()), 2);
         let client = HostClient::new(agent(), address).with_key(DeviceKey::from_seed([7; 32]));
