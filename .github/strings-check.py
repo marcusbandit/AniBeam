@@ -33,6 +33,7 @@ UI = [
 # frame-time HUD and the token sheet. Their words stay English.
 DEV_ONLY = {
     "apps/linux/qml/Driver.qml",
+    "apps/linux/qml/Control.qml",
     "apps/linux/qml/DevHud.qml",
     "apps/linux/qml/DevRecorder.qml",
     "apps/linux/qml/TokensPage.qml",

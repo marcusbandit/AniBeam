@@ -166,7 +166,14 @@ pub(crate) async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<En
             "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at,comments}}&limit={MAL_PAGE}&offset={offset}"
         );
         let response = trackers.net.mal.get(&url, token).await?;
-        let body = writes::mal_json(&response)?;
+        if !response.is_success() {
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                response.text(),
+            ));
+        }
+        let body: serde_json::Value = response.json()?;
         let page_entries = body["data"].as_array().map_or(&[][..], Vec::as_slice);
         for item in page_entries {
             let Some(media_id) = item["node"]["id"].as_u64() else {
@@ -211,7 +218,11 @@ pub(crate) struct Cached {
 }
 
 /// One entry off the cache, None when the list does not hold it.
-pub(crate) fn cached(conn: &Connection, t: Tracker, media_id: u64) -> Result<Option<Cached>, CoreError> {
+pub(crate) fn cached(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+) -> Result<Option<Cached>, CoreError> {
     Ok(conn
         .prepare_cached(
             "SELECT status, progress, updated_at FROM tracker_entries
@@ -219,7 +230,10 @@ pub(crate) fn cached(conn: &Connection, t: Tracker, media_id: u64) -> Result<Opt
         )?
         .query_row(params![t.as_str(), media_id as i64], |r| {
             Ok(Cached {
-                status: r.get::<_, Option<String>>(0)?.as_deref().and_then(ListStatus::from_column),
+                status: r
+                    .get::<_, Option<String>>(0)?
+                    .as_deref()
+                    .and_then(ListStatus::from_column),
                 progress: u32::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
                 updated_at: r.get(2)?,
             })

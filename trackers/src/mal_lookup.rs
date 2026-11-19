@@ -253,7 +253,7 @@ pub(crate) async fn resolve(
         encode(query)
     );
     let response = trackers.net.mal.get(&url, token).await?;
-    let found = pick(&wanted, &super::writes::mal_json(&response)?);
+    let found = pick(&wanted, &crate::mal_json(&response)?);
     let now = time::now_secs();
     trackers
         .services
