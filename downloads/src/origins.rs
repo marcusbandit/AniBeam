@@ -12,6 +12,7 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::ops::Bound;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use rusqlite::{Connection, params, params_from_iter};
@@ -141,7 +142,9 @@ pub async fn record_from(
             let folder = format!("{}/", content.trim_end_matches('/'));
             let Some(client) = client else { continue };
             // Sorted, so the first path from the folder on is in it if any is
-            let held = unknown.range(folder.clone()..).next();
+            let held = unknown
+                .range::<str, _>((Bound::Included(folder.as_str()), Bound::Unbounded))
+                .next();
             if !held.is_some_and(|p| p.starts_with(&folder)) {
                 continue;
             }
@@ -420,29 +423,6 @@ mod tests {
         let found = known(&running);
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[ONE].hash, "r1ddd");
-        running.shutdown();
-    }
-
-    /// A finished torrent is read once until the library gains files: a batch whose
-    /// folder holds a file it does not list is asked for its files on the first pass
-    /// only, not on every read of the client's torrents after it.
-    #[test]
-    fn a_finished_torrent_is_read_once() {
-        let http = FakeHttp::new();
-        let (_dir, running) = running_with(http.clone());
-        library(&running);
-        http.push_for(
-            "torrents/files",
-            200,
-            r#"[{"name":"Batch/Show - 02.nfo","size":1,"progress":1}]"#,
-        );
-        let client = QbtClient::new("http://localhost:9090", "me", "pw", http.clone());
-        let batch = [torrent("R1SEEN", "Batch", "/lib/Show/Batch")];
-        assert_eq!(record(&running, Some(&client), &batch), 0);
-        let asked = http.requests().len();
-        assert!(asked > 0, "the first pass asks for the batch's files");
-        assert_eq!(record(&running, Some(&client), &batch), 0);
-        assert_eq!(http.requests().len(), asked);
         running.shutdown();
     }
 

@@ -50,24 +50,18 @@ pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
 /// The stored blob, or the defaults; every `has_*` flag is false here and
 /// set by `load`, which asks the secret store.
 pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSettings, CoreError> {
-    let mut s = match settings::get::<serde_json::Value>(conn, KEY) {
-        Ok(Some(blob)) => DownloadSettings::deserialize(&blob).unwrap_or_else(|e| {
+    let mut s: DownloadSettings = match settings::get(conn, KEY) {
+        Ok(Some(s)) => s,
+        Ok(None) => fresh(home),
+        Err(e) if e.is_decode_failure() => {
             tracing::warn!("reading the downloads settings as the defaults: {e}");
             // A stored anirss outlives a blob this build cannot read: the defaults
             // would move the person onto the native engine without a word (#552).
             let mut d = fresh(home);
-            if blob.get("engine").is_some_and(|e| {
-                DownloadsEngine::deserialize(e).ok() == Some(DownloadsEngine::Anirss)
-            }) {
+            if stored_engine_value(conn) == Some(DownloadsEngine::Anirss) {
                 d.engine = DownloadsEngine::Anirss;
             }
             d
-        }),
-        Ok(None) => fresh(home),
-        // Not JSON at all
-        Err(e) if e.is_decode_failure() => {
-            tracing::warn!("reading the downloads settings as the defaults: {e}");
-            fresh(home)
         }
         Err(e) => return Err(e),
     };
@@ -496,6 +490,14 @@ pub(crate) fn anirss_endpoints(doc: &toml::Table) -> impl Iterator<Item = &toml:
         .into_iter()
         .flatten()
         .filter_map(|e| e.as_table())
+}
+
+/// The engine the stored blob names, read on its own, so a blob the rest of
+/// which this build cannot decode still says which engine it picked. Only a
+/// blob that fails to decode pays for this second read.
+fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
+    let blob = settings::get::<serde_json::Value>(conn, KEY).ok()??;
+    DownloadsEngine::deserialize(blob.get("engine")?).ok()
 }
 
 /// How many endpoints anirss's own `config.toml` names, nought when there is
