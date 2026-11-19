@@ -384,6 +384,14 @@ pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<Stri
     }
 }
 
+/// [`access_token`] for a call that cannot go on without one: no token is
+/// the tracker's failure, in the words a person reads.
+pub(crate) async fn token(trackers: &Trackers, t: Tracker) -> Result<String, CoreError> {
+    access_token(trackers, t)
+        .await?
+        .ok_or_else(|| tracker_error(t, crate::no_token()))
+}
+
 /// Whether a token is close enough to its expiry to be worth replacing.
 /// An unknown expiry is left alone: a token that still works is worth more
 /// than a refresh nothing asked for.

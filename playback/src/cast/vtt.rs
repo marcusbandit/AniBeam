@@ -68,9 +68,10 @@ fn escape(text: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn stamp(ms: u64) -> String {
+/// A cue's time, with `sep` before its milliseconds: a dot in WebVTT, a comma in SRT.
+fn stamp(ms: u64, sep: char) -> String {
     format!(
-        "{:02}:{:02}:{:02}.{:03}",
+        "{:02}:{:02}:{:02}{sep}{:03}",
         ms / 3_600_000,
         ms / 60_000 % 60,
         ms / 1000 % 60,
@@ -92,8 +93,8 @@ pub fn render(cues: &[Cue]) -> String {
         }
         out.push_str(&format!(
             "{} --> {}\n{}\n\n",
-            stamp(c.start),
-            stamp(c.end),
+            stamp(c.start, '.'),
+            stamp(c.end, '.'),
             escape(&c.text)
         ));
         last = Some(c);
@@ -104,22 +105,13 @@ pub fn render(cues: &[Cue]) -> String {
 /// The same cues as SRT. A DLNA renderer plays the file from its start time, so these keep
 /// the episode's own times.
 pub fn render_srt(cues: &[Cue]) -> String {
-    let stamp = |ms: u64| {
-        format!(
-            "{:02}:{:02}:{:02},{:03}",
-            ms / 3_600_000,
-            ms / 60_000 % 60,
-            ms / 1000 % 60,
-            ms % 1000
-        )
-    };
     let mut out = String::new();
     for (i, c) in cues.iter().filter(|c| c.end > c.start).enumerate() {
         out.push_str(&format!(
             "{}\n{} --> {}\n{}\n\n",
             i + 1,
-            stamp(c.start),
-            stamp(c.end),
+            stamp(c.start, ','),
+            stamp(c.end, ','),
             c.text
         ));
     }
