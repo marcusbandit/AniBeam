@@ -111,26 +111,26 @@ impl<S: Stream> Connection<S> {
         // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
         // activities, and the replies are skipped by nonce on the way to the next one.
         for evt in SUBSCRIBED {
-            let nonce = conn.next_nonce();
-            let command = json!({"cmd": "SUBSCRIBE", "evt": evt, "args": {}, "nonce": nonce});
-            conn.stream.write_all(&encode(FRAME, &command))?;
+            conn.write_command(json!({"cmd": "SUBSCRIBE", "evt": evt, "args": {}}))?;
         }
         Ok(conn)
     }
 
-    /// A nonce no other command on this connection has carried.
-    fn next_nonce(&mut self) -> String {
+    /// Writes one command frame, with a nonce no other command on this
+    /// connection has carried, and gives the nonce its reply will carry.
+    fn write_command(&mut self, mut command: Value) -> Result<String, SendError> {
         self.nonce += 1;
-        format!("anibeam-{}-{}", std::process::id(), self.nonce)
+        let nonce = format!("anibeam-{}-{}", std::process::id(), self.nonce);
+        command["nonce"] = json!(nonce);
+        self.stream.write_all(&encode(FRAME, &command))?;
+        Ok(nonce)
     }
 
     /// Sends one command and reads its reply, so the socket never fills. An
     /// ERROR reply is a rejection; anything else that goes wrong means the
     /// connection is gone.
     fn command(&mut self, cmd: &str, args: Value) -> Result<Value, SendError> {
-        let nonce = self.next_nonce();
-        let command = json!({"cmd": cmd, "args": args, "nonce": nonce});
-        self.stream.write_all(&encode(FRAME, &command))?;
+        let nonce = self.write_command(json!({"cmd": cmd, "args": args}))?;
         let reply = self.next_reply(|v| v["nonce"] == nonce.as_str())?;
         if reply["evt"] == "ERROR" {
             let message = reply["data"]["message"].as_str().unwrap_or("rejected");
@@ -374,10 +374,11 @@ impl Transport for Discord {
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
-        let activity = activity.map(Activity::to_json);
-        self.command(|conn| conn.set_activity(activity.as_ref()))
+        self.with_conn(|conn| conn.set_activity(activity.map(Activity::to_json).as_ref()))
     }
 
+    /// Not through `with_conn`: a poll with no connection has nothing to read rather than
+    /// failing, and any error, not only a gone one, ends the connection.
     fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
         let Some(conn) = self.conn.as_mut() else {
             return Ok(Vec::new());
@@ -390,7 +391,7 @@ impl Transport for Discord {
     }
 
     fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
-        self.command(|conn| conn.answer(user_id, invite))
+        self.with_conn(|conn| conn.answer(user_id, invite))
     }
 
     fn close(&mut self) {
@@ -400,7 +401,7 @@ impl Transport for Discord {
 
 impl Discord {
     /// One command on the open connection, which a connection found gone is let go of.
-    fn command(
+    fn with_conn(
         &mut self,
         f: impl FnOnce(&mut Connection<Box<dyn Stream>>) -> Result<(), SendError>,
     ) -> Result<(), SendError> {

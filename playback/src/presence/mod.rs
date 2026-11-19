@@ -987,12 +987,23 @@ struct Worker {
     parties: bool,
 }
 
+/// A new desired state, as the worker takes it: every field named here and where it is
+/// read, so a new one cannot be posted and never reach Discord.
+struct Change {
+    want: Option<Activity>,
+    party: Option<Party>,
+    idle: Option<Activity>,
+    listen: Option<Instant>,
+    answers: Vec<(String, bool)>,
+    disconnect: bool,
+    version: u64,
+}
+
 /// What the worker does next.
 enum Step {
     /// The desired state changed: show `want`, letting the connection go
-    /// first if asked. What the worker takes of the desired state, which
-    /// keeps what it shows and gives up what is to be done once.
-    Apply(Box<Desired>),
+    /// first if asked.
+    Apply(Box<Change>),
     /// Time to try reaching Discord again.
     Retry,
     /// The connection has been quiet for `CHECK`.
@@ -1008,7 +1019,7 @@ impl Worker {
         loop {
             match self.next(mailbox, seen) {
                 Step::Apply(change) => {
-                    let Desired {
+                    let Change {
                         want,
                         party,
                         idle,
@@ -1016,7 +1027,6 @@ impl Worker {
                         answers,
                         disconnect,
                         version,
-                        ..
                     } = *change;
                     seen = version;
                     if disconnect {
@@ -1086,7 +1096,7 @@ impl Worker {
                 return Step::Quit;
             }
             if d.version != seen {
-                return Step::Apply(Box::new(Desired {
+                return Step::Apply(Box::new(Change {
                     want: d.want.clone(),
                     party: d.party.clone(),
                     idle: d.idle.clone(),
@@ -1094,7 +1104,6 @@ impl Worker {
                     answers: std::mem::take(&mut d.answers),
                     disconnect: std::mem::take(&mut d.disconnect),
                     version: d.version,
-                    ..Desired::default()
                 }));
             }
             let wants_up = (self.dirty && self.shown().is_some()) || self.listening();
