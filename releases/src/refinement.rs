@@ -69,7 +69,7 @@ fn parse(item: &Release) -> Parsed {
 
 /// Whether `item`, read into `parsed`, carries `token`: a poster as its own poster, any other
 /// token among its title's tokens or in the source's structured fields.
-fn has_token(item: &Release, parsed: &Parsed, token: &str) -> bool {
+fn carries_token(item: &Release, parsed: &Parsed, token: &str) -> bool {
     if token.starts_with('[') {
         parsed.poster.as_deref() == Some(token)
     } else {
@@ -79,7 +79,7 @@ fn has_token(item: &Release, parsed: &Parsed, token: &str) -> bool {
 
 fn matches_all_tokens(item: &Release, tokens: &[String]) -> bool {
     let parsed = parse(item);
-    tokens.iter().all(|t| has_token(item, &parsed, t))
+    tokens.iter().all(|t| carries_token(item, &parsed, t))
 }
 
 /// A group's tokens in their order: the poster first, then the longest, then alphabetical.
@@ -122,7 +122,7 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
     let mut by_members: Vec<(Vec<usize>, Vec<&str>)> = Vec::new();
     for token in refinable {
         let members: Vec<usize> = (0..total)
-            .filter(|&i| has_token(&selected[i], &parsed[i], token))
+            .filter(|&i| carries_token(&selected[i], &parsed[i], token))
             .collect();
         match slot.get(&members) {
             Some(&at) => by_members[at].1.push(token),
@@ -150,18 +150,12 @@ pub fn compute_groups(selected: &[Release]) -> Vec<ReleaseGroup> {
     groups
 }
 
-/// The query the best-fit step would refetch with, and the release it pins; None when
+/// The query the best-fit step would refetch with for `best`, the top release; None when
 /// running it would be a no-op (nothing to rank, empty rebuild, or the current query
 /// already matching the top release's profile).
-fn best_fit_query_for<'a>(
-    query: &str,
-    selected: &'a [Release],
-    cfg: &BestfitConfig,
-) -> Option<(String, &'a Release)> {
-    let best = bestfit::best_item(selected, cfg)?;
-    let new_query = bestfit::best_fit_query(best);
-    (!new_query.is_empty() && new_query.to_lowercase() != query.to_lowercase())
-        .then_some((new_query, best))
+fn best_fit_query_for(query: &str, best: Option<&Release>) -> Option<String> {
+    let new_query = bestfit::best_fit_query(best?);
+    (!new_query.is_empty() && new_query.to_lowercase() != query.to_lowercase()).then_some(new_query)
 }
 
 /// Median index (in characters) at which `text` appears across the selected titles.
@@ -336,9 +330,9 @@ where
             if !items.iter().any(|it| matches_token(it, term)) {
                 return Ok(unchanged("no_match"));
             }
-            let term_lc = term.to_lowercase();
             let new_query = add_term_to_query(query, term);
-            (new_query, Box::new(move |it| matches_token(it, &term_lc)))
+            let term = term.to_string();
+            (new_query, Box::new(move |it| matches_token(it, &term)))
         }
         RefineOp::Exclude { term } => {
             let new_query = add_exclude_to_query(query, term);
@@ -350,7 +344,8 @@ where
             (new_query, Box::new(keep))
         }
         RefineOp::BestFit => {
-            let Some((new_query, best)) = best_fit_query_for(query, items, cfg) else {
+            let best = bestfit::best_item(items, cfg);
+            let (Some(new_query), Some(best)) = (best_fit_query_for(query, best), best) else {
                 return Ok(unchanged("noop"));
             };
             let parts = bestfit::profile_parts(best);
@@ -385,7 +380,7 @@ where
 /// with, the release it pins, and that release's profile.
 pub fn best_fit_info(query: &str, items: &[Release], cfg: &BestfitConfig) -> BestFit {
     let best = bestfit::best_item(items, cfg);
-    let best_query = best_fit_query_for(query, items, cfg).map(|(q, _)| q);
+    let best_query = best_fit_query_for(query, best);
     BestFit {
         available: best_query.is_some(),
         query: best_query.unwrap_or_default(),
@@ -622,7 +617,7 @@ mod tests {
         items[1].linktype = "Torrent".into();
         items[2].linktype = "Magnet".into();
         let members: Vec<usize> = (0..items.len())
-            .filter(|&i| has_token(&items[i], &parse(&items[i]), "Torrent"))
+            .filter(|&i| carries_token(&items[i], &parse(&items[i]), "Torrent"))
             .collect();
         assert_eq!(members, vec![0, 1]);
     }

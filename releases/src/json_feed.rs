@@ -61,7 +61,7 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
                     .unwrap_or_default(),
                 page: e.link.unwrap_or_default(),
                 source: source.to_string(),
-                ..crate::titled(&title)
+                ..crate::titled(title)
             })
         })
         .collect())

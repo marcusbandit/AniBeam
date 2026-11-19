@@ -88,12 +88,12 @@ fn bad(field: &str, id: &str, args: &[(&str, anibeam_contract::i18n::Arg)]) -> C
 /// own search takes none, or the search would go in twice.
 pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
-    let quoted = format!("{name:?}");
+    let quoted = || format!("{name:?}");
     if kind == "json" {
         return Err(bad(
             "endpoint kind",
             "core-releases-endpoint-json",
-            &[("name", quoted.into()), ("why", json_needs_repo().into())],
+            &[("name", quoted().into()), ("why", json_needs_repo().into())],
         ));
     }
     if !VALID_KINDS.contains(&kind) {
@@ -102,7 +102,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             "endpoint kind",
             "core-releases-endpoint-unknown-kind",
             &[
-                ("name", quoted.into()),
+                ("name", quoted().into()),
                 ("kind", format!("{kind:?}").into()),
                 ("valid", valid.join(", ").into()),
             ],
@@ -124,7 +124,7 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     Err(bad(
         "endpoint url",
         wrong,
-        &[("name", quoted.into()), ("kind", kind.into())],
+        &[("name", quoted().into()), ("kind", kind.into())],
     ))
 }
 

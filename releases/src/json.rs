@@ -150,7 +150,7 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
             .map(|p| fill_page(p, item))
             .unwrap_or_default(),
         source: source.to_string(),
-        ..crate::titled(&title)
+        ..crate::titled(title)
     })
 }
 

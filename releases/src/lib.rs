@@ -35,9 +35,9 @@ pub use team::{AnirssView, EndpointSync, Searcher};
 
 /// A release that names only its title: no link, its counts unknown, every other field empty.
 /// The readers fill in what their feed gives with `..titled(...)`.
-pub(crate) fn titled(title: &str) -> anibeam_contract::Release {
+pub(crate) fn titled(title: impl Into<String>) -> anibeam_contract::Release {
     anibeam_contract::Release {
-        title: title.to_string(),
+        title: title.into(),
         link: String::new(),
         seeders: None,
         leechers: None,
