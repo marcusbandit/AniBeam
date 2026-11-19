@@ -135,8 +135,8 @@ impl Wants {
     /// torrent right once a running one ends. Run with `steering` held.
     async fn settle(&self, h: &Arc<librqbit::ManagedTorrent>, retry: Retry) -> anyhow::Result<()> {
         use librqbit::TorrentStatsState as S;
-        let held = *recover(&self.wants.held);
-        let by_user = recover(&self.wants.entries)
+        let held = *recover(&self.held);
+        let by_user = recover(&self.entries)
             .get(&h.info_hash().as_string())
             .is_some_and(|e| e.paused_by_user);
         let stats = h.stats();
@@ -162,7 +162,7 @@ impl Wants {
     /// paused, finished or failed torrent changes only when the engine is asked to.
     async fn tick(&self, every: std::time::Duration) -> Option<std::time::Duration> {
         use librqbit::TorrentStatsState as S;
-        let _turn = self.wants.steering.lock().await;
+        let _turn = self.steering.lock().await;
         let handles: Vec<_> = self
             .session
             .with_torrents(|it| it.map(|(_, h)| h.clone()).collect());
