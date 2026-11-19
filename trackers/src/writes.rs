@@ -2,7 +2,8 @@
 //! progress, a score, a list status and the entry's notes. Every one of them answers the shell
 //! before a request is made if it can, and otherwise becomes a job that
 //! writes to every connected tracker the match carries an id for. The On
-//! hold sweep (`on_hold`) also sends a status alone, through `send_status`.
+//! hold sweep (`on_hold`) also sends a status alone, through
+//! `Remote::send_status`.
 //!
 //! Three rules shape the file. A write goes to *both* trackers, because a
 //! user with two accounts connected expects both lists to move, so the
@@ -10,8 +11,8 @@
 //! provider failure is that tracker's, never the job's, so one dead
 //! account cannot cost the other its write; and nothing a provider says
 //! reaches the shell raw, because a GraphQL blob or an HTML error page in
-//! a toast is worse than no message at all. `sanitize` below is that last
-//! rule, and it is the port of Electron's `sanitizeTrackerError`.
+//! a toast is worse than no message at all. `sanitize_error` below is that
+//! last rule, and it is the port of Electron's `sanitizeTrackerError`.
 //!
 //! Carried from `src/main/handlers/trackerHandler.ts` (`markEpisode`,
 //! `setEpisodeProgress`, `setScore` and the six provider halves under
@@ -35,7 +36,6 @@ use anibeam_foundation::time;
 use anibeam_library::history::How;
 use anibeam_metadata::apply::card_for;
 use anibeam_metadata::fetch::message_of;
-use anibeam_net::HttpResponse;
 use anibeam_net::anilist::{
     MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_LIST_STATUS_MUTATION, SAVE_NOTES_MUTATION,
     SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
@@ -741,14 +741,14 @@ fn out_of_ten(score: f64) -> Result<f64, CoreError> {
 
 /// A status the menus may set. Repeating is a rewatch the trackers keep
 /// their own count for, so no menu sets it.
-fn settable(status: ListStatus) -> Result<ListStatus, CoreError> {
+fn settable(status: ListStatus) -> Result<(), CoreError> {
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
             "status",
             tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
-    Ok(status)
+    Ok(())
 }
 
 /// Whether a status or a score stays on this device: the series has no
@@ -850,7 +850,10 @@ pub fn start_many(
             score: out_of_ten(score.unwrap_or(0.0))?,
         },
         ManyWrite::Status(status) => Action::Status {
-            status: settable(status)?,
+            status: {
+                settable(status)?;
+                status
+            },
         },
     };
     let mut reachable = Vec::new();
@@ -930,7 +933,11 @@ async fn run_many(
         if outcomes.iter().any(|o| o.ok) {
             done += 1;
             named = Some(target.folder_name.clone());
-            landed.extend(outcomes.iter().filter(|o| o.ok).map(|o| o.tracker));
+            for o in outcomes.iter().filter(|o| o.ok) {
+                if !landed.contains(&o.tracker) {
+                    landed.push(o.tracker);
+                }
+            }
         } else {
             failed += 1;
             if reason.is_none() {
@@ -1010,11 +1017,10 @@ impl LeftOut {
 /// The sites a write landed on, as the catalog's `$sites` names them: `anilist`, `mal`, or
 /// `both` for "AniList and MyAnimeList". None when it landed nowhere.
 fn sites_of(landed: impl Iterator<Item = Tracker>) -> Option<&'static str> {
-    let landed: Vec<Tracker> = landed.collect();
-    match (
-        landed.contains(&Tracker::Anilist),
-        landed.contains(&Tracker::Mal),
-    ) {
+    let (anilist, mal) = landed.fold((false, false), |(a, m), t| {
+        (a || t == Tracker::Anilist, m || t == Tracker::Mal)
+    });
+    match (anilist, mal) {
         (true, true) => Some("both"),
         (true, false) => Some("anilist"),
         (false, true) => Some("mal"),
@@ -1325,33 +1331,29 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         ),
         // A score of nought is unrated on both trackers, so the event
         // carries no score rather than a rating of nothing.
-        Action::Score { score } => match (score > 0.0).then_some(score) {
-            Some(score) => (
-                sites.map(|s| {
-                    words!(
+        Action::Score { score } => {
+            let rated = (score > 0.0).then_some(score);
+            (
+                sites.map(|s| match rated {
+                    Some(score) => words!(
                         "core-trackers-scored",
                         score = score.to_string(),
                         show = show,
                         sites = s
-                    )
+                    ),
+                    None => words!("core-trackers-score-cleared", show = show, sites = s),
                 }),
-                format!("score of {show} set to {score}"),
+                match rated {
+                    Some(score) => format!("score of {show} set to {score}"),
+                    None => format!("score of {show} cleared"),
+                },
                 EventBody::Scored {
                     series,
-                    score: Some(score),
+                    score: rated,
                     outcomes,
                 },
-            ),
-            None => (
-                sites.map(|s| words!("core-trackers-score-cleared", show = show, sites = s)),
-                format!("score of {show} cleared"),
-                EventBody::Scored {
-                    series,
-                    score: None,
-                    outcomes,
-                },
-            ),
-        },
+            )
+        }
         Action::Status { status } => (
             sites.map(|s| {
                 words!(
@@ -1448,13 +1450,7 @@ pub(crate) async fn attempt(
     user_id: Option<u64>,
     action: &Action,
 ) -> Result<TrackerOutcome, CoreError> {
-    let token = accounts::token(trackers, t).await?;
-    let remote = Remote {
-        trackers,
-        t,
-        media_id,
-        token: &token,
-    };
+    let remote = Remote::connect(trackers, t, media_id).await?;
     let entry = remote.read_entry(user_id).await?;
     let current = entry.progress;
     let today = today();
@@ -1720,7 +1716,7 @@ pub(crate) struct Remote<'a> {
     pub trackers: &'a Trackers,
     pub t: Tracker,
     pub media_id: u64,
-    pub token: &'a str,
+    pub token: String,
 }
 
 /// One MAL form field.
@@ -1728,7 +1724,22 @@ fn field(name: &str, value: impl ToString) -> (String, String) {
     (name.to_string(), value.to_string())
 }
 
-impl Remote<'_> {
+impl<'a> Remote<'a> {
+    /// The entry on a tracker whose token is read now: no token is the
+    /// tracker's failure, in the words a person reads.
+    pub(crate) async fn connect(
+        trackers: &'a Trackers,
+        t: Tracker,
+        media_id: u64,
+    ) -> Result<Remote<'a>, CoreError> {
+        Ok(Remote {
+            trackers,
+            t,
+            media_id,
+            token: accounts::token(trackers, t).await?,
+        })
+    }
+
     /// The entry off an AniList query that takes the user and the media,
     /// `Null` for one the list does not hold. `MediaList(mediaId)` without
     /// the user id ignores the bearer token and answers with some other
@@ -1746,10 +1757,15 @@ impl Remote<'_> {
             .trackers
             .net
             .anilist
-            .graphql_within(query, variables, Some(self.token), TRACKER_TIMEOUT)
+            .graphql_within(query, variables, Some(&self.token), TRACKER_TIMEOUT)
             .await
         {
-            Ok(mut data) => Ok(data["MediaList"].take()),
+            // `get_mut` rather than indexing: a reply whose `data` is not an
+            // object is no entry, never a panic.
+            Ok(mut data) => Ok(data
+                .get_mut("MediaList")
+                .map(serde_json::Value::take)
+                .unwrap_or_default()),
             Err(e) if e.is_provider_not_found() => Ok(serde_json::Value::Null),
             Err(e) => Err(e),
         }
@@ -1758,11 +1774,11 @@ impl Remote<'_> {
     /// The anime off MAL with these fields, None for one MAL does not have.
     async fn mal_anime(&self, fields: &str) -> Result<Option<serde_json::Value>, CoreError> {
         let url = format!("{MAL_API}/anime/{}?fields={fields}", self.media_id);
-        let response = self.trackers.net.mal.get(&url, self.token).await?;
+        let response = self.trackers.net.mal.get(&url, &self.token).await?;
         if response.status == 404 {
             return Ok(None);
         }
-        mal_json(&response).map(Some)
+        crate::mal_json(&response).map(Some)
     }
 
     /// The entry as the tracker itself has it. An anime the user has never
@@ -1855,7 +1871,7 @@ impl Remote<'_> {
             .trackers
             .net
             .anilist
-            .graphql_within(mutation, variables, Some(self.token), TRACKER_TIMEOUT)
+            .graphql_within(mutation, variables, Some(&self.token), TRACKER_TIMEOUT)
             .await?;
         Ok(data["SaveMediaListEntry"]["updatedAt"]
             .as_i64()
@@ -1870,10 +1886,10 @@ impl Remote<'_> {
             .trackers
             .net
             .mal
-            .patch_form(&url, self.token, form)
+            .patch_form(&url, &self.token, form)
             .await?;
         if !response.is_success() {
-            return Err(mal_failure(&response));
+            return Err(crate::mal_failure(&response));
         }
         Ok(response
             .json::<serde_json::Value>()
@@ -2077,27 +2093,6 @@ impl Remote<'_> {
             .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat, now))
             .await
     }
-}
-
-/// A MAL reply's body, or the failure `mal_failure` makes of it.
-pub(crate) fn mal_json(response: &HttpResponse) -> Result<serde_json::Value, CoreError> {
-    if !response.is_success() {
-        return Err(mal_failure(response));
-    }
-    response.json()
-}
-
-/// MAL's failure with the `message` field it usually carries lifted out of
-/// the body: the body is JSON, and a truncated blob of it reads as nothing
-/// at all in a toast.
-fn mal_failure(response: &HttpResponse) -> CoreError {
-    let message = response
-        .json::<serde_json::Value>()
-        .ok()
-        .and_then(|body| body["message"].as_str().map(str::to_string))
-        .filter(|message| !message.is_empty())
-        .unwrap_or_else(|| response.text());
-    CoreError::provider(Provider::Mal, Some(u32::from(response.status)), message)
 }
 
 // Vocabulary -----------------------------------------------------------------

@@ -166,7 +166,14 @@ pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, C
             "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at,comments}}&limit={MAL_PAGE}&offset={offset}"
         );
         let response = trackers.net.mal.get(&url, token).await?;
-        let body = writes::mal_json(&response)?;
+        if !response.is_success() {
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                response.text(),
+            ));
+        }
+        let body: serde_json::Value = response.json()?;
         let page_entries = body["data"].as_array().map_or(&[][..], Vec::as_slice);
         for item in page_entries {
             let Some(media_id) = item["node"]["id"].as_u64() else {

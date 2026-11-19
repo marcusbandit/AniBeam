@@ -133,13 +133,7 @@ async fn plan(
     for (t, media_id, user_id) in targets {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::token(&trackers, t).await?;
-            let remote = writes::Remote {
-                trackers: &trackers,
-                t,
-                media_id,
-                token: &token,
-            };
+            let remote = writes::Remote::connect(&trackers, t, media_id).await?;
             if let Some(live) = remote.read_live(user_id).await?
                 && let Some(status) = live.status
             {
