@@ -698,8 +698,9 @@ pub fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
         .map(|p| p.hash.clone())
         .collect();
     for r in rolls.iter_mut() {
-        let since = r.created_at - BIND_SLACK_SECS;
         for p in r.parts.iter_mut().filter(|p| p.added && p.hash.is_empty()) {
+            // A held single handed over late looks from its own handover on
+            let since = p.added_at.max(r.created_at) - BIND_SLACK_SECS;
             let found = torrents
                 .iter()
                 .filter(|t| {
@@ -954,7 +955,7 @@ pub async fn tick<C: RollClient>(
     let mut drop = HashSet::new();
     let mut changed = false;
     for roll in rolls.iter_mut() {
-        if step(downloads, client, roll, torrents, here, &mut changed).await == Step::Drop {
+        if step(downloads, client, roll, torrents, here, now, &mut changed).await == Step::Drop {
             drop.insert(roll.id);
         }
     }
@@ -977,6 +978,7 @@ async fn step<C: RollClient>(
     roll: &mut Roll,
     torrents: &[Torrent],
     here: bool,
+    now: i64,
     changed: &mut bool,
 ) -> Step {
     // Find the torrents, and count a batch's episodes once its list is in
@@ -1122,7 +1124,6 @@ async fn step<C: RollClient>(
         match client.add(downloads, &items, roll).await {
             Ok(hashes) => {
                 *changed = true;
-                let now = now_secs();
                 for &p in &m.add {
                     roll.parts[p].added = true;
                     roll.parts[p].added_at = now;
@@ -1887,6 +1888,25 @@ mod tests {
         assert!(!finished(r, now_secs() + 60));
         // A torrent that never shows still ends the roll in time
         assert!(finished(r, now_secs() + 4 * day));
+        // The next pass binds it to the torrent the client took at the handover, not to an
+        // older one of the same name from before it
+        let listed = |hash: String, added_on: i64| Torrent {
+            hash,
+            name: "[G] Show - 13.mkv".into(),
+            added_on,
+            ..crate::qbt::tests_torrent()
+        };
+        let torrents = [
+            listed("a".repeat(40), now_secs() - 2 * day),
+            listed("b".repeat(40), now_secs()),
+        ];
+        teams
+            .services
+            .handle
+            .block_on(tick(&teams.downloads, &Quiet, &torrents));
+        let r = &load(&teams.services).unwrap()[0];
+        assert_eq!(r.parts[12].hash, "b".repeat(40));
+        assert!(r.parts[12].seen);
         teams.shutdown();
     }
 
