@@ -28,7 +28,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::Trackers;
 use crate::accounts::{self, Tokens};
-use crate::{TRACKER_TIMEOUT, cache, writes};
+use crate::{TRACKER_TIMEOUT, cache};
 use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
@@ -183,7 +183,10 @@ async fn run(
         Ok(signed_in) => {
             match &signed_in {
                 Ok(_) => tab.answer(OK, &page(Page::Connected(site_name(t)))).await,
-                Err(e) => tab.answer(BAD_REQUEST, &page(Page::Failed(&page_message(e)))).await,
+                Err(e) => {
+                    tab.answer(BAD_REQUEST, &page(Page::Failed(&page_message(e))))
+                        .await
+                }
             }
             signed_in
         }
@@ -272,7 +275,14 @@ async fn sign_in(
                 .mal
                 .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
                 .await?;
-            let profile = writes::mal_json(&profile)?;
+            if !profile.is_success() {
+                return Err(CoreError::provider(
+                    Provider::Mal,
+                    Some(u32::from(profile.status)),
+                    profile.text(),
+                ));
+            }
+            let profile: serde_json::Value = profile.json()?;
             (profile["id"].as_u64(), name_of(t, &profile)?, tokens)
         }
     };
@@ -878,7 +888,9 @@ mod tests {
         assert!(shown.contains("MyAnimeList is connected to"), "{shown}");
         assert!(shown.contains("You can close this tab."), "{shown}");
         assert!(shown.contains("window.close()"), "{shown}");
-        assert!(page(Page::Connected(site_name(Tracker::Anilist))).contains("AniList is connected to"));
+        assert!(
+            page(Page::Connected(site_name(Tracker::Anilist))).contains("AniList is connected to")
+        );
         let shown = page(Page::Failed("<script>alert(1)</script>"));
         assert!(!shown.contains("<script>alert"));
         assert!(shown.contains("&lt;script&gt;"));
