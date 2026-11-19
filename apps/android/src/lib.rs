@@ -40,7 +40,6 @@ mod platform;
 mod player;
 mod posters;
 mod prefs;
-mod reads;
 mod remote;
 mod repos;
 mod schedule;

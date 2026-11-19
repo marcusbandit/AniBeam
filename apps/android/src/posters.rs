@@ -3,6 +3,10 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::OnceLock;
+use std::sync::mpsc::{Sender, channel};
+use std::time::Duration;
 
 use image::RgbaImage;
 use image::imageops::FilterType;
@@ -99,22 +103,23 @@ pub struct Poster {
 type Waiting = Vec<Box<dyn FnOnce(Option<Poster>)>>;
 
 thread_local! {
-    /// Every poster file the screens decoded, by path, shared by all of them (#1206): one
-    /// decode and one copy in memory, however many pages show it.
+    /// Every poster file the screens decoded, by path, shared by all of them: one decode and
+    /// one copy in memory, however many pages show it.
     static SHOWN: RefCell<HashMap<String, Poster>> = RefCell::new(HashMap::new());
     /// The pages waiting on a file being decoded now.
     static WAITING: RefCell<HashMap<String, Waiting>> = RefCell::new(HashMap::new());
 }
 
-/// The one thread that reads and decodes poster files, in the order asked.
-static LOADER: crate::reads::Worker = crate::reads::Worker::new("posters");
-
 /// Decodes the poster file at `path` off the UI thread, once however many pages ask, and
-/// hands it to `land` on the UI thread: `None` when it could not be read or decoded. Called on
-/// the UI thread; `land` always runs later, never inside this call.
+/// hands it to `land` on the UI thread: `None` when it could not be read or decoded. Called
+/// on the UI thread; `land` always runs later, never inside this call.
+///
+/// One thread does every poster (#1206). Downloads used to start a thread for each draw's
+/// posters, and each poster that came in drew the page again, so a long list made threads,
+/// and decoded copies waiting for the UI thread, faster than they finished.
 pub fn load(path: String, land: impl FnOnce(Option<Poster>) + 'static) {
     if let Some(poster) = SHOWN.with(|s| s.borrow().get(&path).cloned()) {
-        slint::Timer::single_shot(std::time::Duration::ZERO, move || land(Some(poster)));
+        slint::Timer::single_shot(Duration::ZERO, move || land(Some(poster)));
         return;
     }
     let first = WAITING.with(|w| {
@@ -126,14 +131,37 @@ pub fn load(path: String, land: impl FnOnce(Option<Poster>) + 'static) {
     if !first {
         return;
     }
-    let landing = crate::reads::Landing::new({
-        let path = path.clone();
-        move |decoded: Option<Option<Decoded>>| landed(path, decoded.flatten())
-    });
-    LOADER.run(Box::new(move || {
-        let decoded = std::fs::read(&path).ok().and_then(|b| decode(&b));
-        landing.land(decoded);
-    }));
+    let sent = loader().is_some_and(|loader| loader.send(path.clone()).is_ok());
+    if !sent {
+        // No thread to decode it: the pages hear it did not come, rather than wait for good.
+        slint::Timer::single_shot(Duration::ZERO, move || landed(path, None));
+    }
+}
+
+/// The posters thread: each file in the order asked, read, decoded and handed back. A decode
+/// that panics is caught and handed back as not decoded, so the thread and the files queued
+/// behind it carry on.
+fn loader() -> Option<&'static Sender<String>> {
+    static LOADER: OnceLock<Option<Sender<String>>> = OnceLock::new();
+    LOADER
+        .get_or_init(|| {
+            let (tx, rx) = channel::<String>();
+            std::thread::Builder::new()
+                .name("posters".into())
+                .spawn(move || {
+                    for path in rx {
+                        let decoded = catch_unwind(AssertUnwindSafe(|| {
+                            std::fs::read(&path).ok().and_then(|b| decode(&b))
+                        }))
+                        .ok()
+                        .flatten();
+                        let _ = slint::invoke_from_event_loop(move || landed(path, decoded));
+                    }
+                })
+                .ok()
+                .map(|_| tx)
+        })
+        .as_ref()
 }
 
 fn landed(path: String, decoded: Option<Decoded>) {

@@ -114,11 +114,6 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
     let paths = CorePaths::under(&data_dir.join("core"));
     let secrets = Secrets::file_only(paths.secrets_path());
     let core = Core::open_with_secrets(paths, secrets)?;
-    // Every write the phone makes goes through a call that emits, so the core may keep its
-    // whole-library load for the rest of a generation, as the desktop's does: the pages that
-    // read the library in one beat (the reload, Downloads' figures, Find) share one load
-    // rather than each reading the store again (#1206).
-    core.set_snapshot_cache(true);
     let listener = core.subscribe(Arc::new(Logcat));
 
     let library = data_dir.join(LIBRARY_DIR);

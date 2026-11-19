@@ -11,9 +11,9 @@ use std::time::Duration;
 use anibeam_companion::format;
 use anibeam_core::releases::grid;
 use anibeam_core::{
-    BestFit, Call, CoreError, Direction, DownloadOptions, PhoneSource, RefineOp, Refinement,
-    Release, ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, RollingSettings, SearchResult,
-    SeriesCard, Sort, SubscriptionRule, Tab, Torrent, WatchingEntry,
+    BestFit, Call, CoreError, Direction, DownloadOptions, RefineOp, Refinement, Release,
+    ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, RollingSettings, SearchResult, SeriesCard,
+    Sort, SubscriptionRule, Tab, Torrent, WatchingEntry,
 };
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 
@@ -179,19 +179,6 @@ struct Find {
     posters_failed: HashSet<String>,
     /// A draw for the posters that came in is on its way.
     poster_redraw: bool,
-    /// Counts what the person did on the page. A read that acts for them when it lands acts
-    /// only if nothing was done since it was asked for.
-    epoch: u64,
-    /// Library reads on their way. The library's shows lead the suggestions, so typed words
-    /// wait for them in `suggest_waiting`, the newest words only.
-    library_reads: u32,
-    suggest_waiting: Option<String>,
-    /// Counts the shows opened in the show view, so a read of the sources for one that was
-    /// left fills nothing.
-    show_serial: u64,
-    /// The search sources as last read, which a show view starts from while they are read
-    /// again.
-    known_sources: Option<Vec<PhoneSource>>,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -247,15 +234,6 @@ fn with(f: impl FnOnce(&mut Find)) {
         if let Some(find) = cell.borrow_mut().as_mut() {
             f(find);
         }
-    });
-}
-
-/// `with`, for what the person does on the page: anything a read was going to do for an
-/// earlier action is called off.
-fn act(f: impl FnOnce(&mut Find)) {
-    with(|find| {
-        find.epoch = find.epoch.wrapping_add(1);
-        f(find);
     });
 }
 
@@ -347,11 +325,6 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             posters_asked: HashSet::new(),
             posters_failed: HashSet::new(),
             poster_redraw: false,
-            epoch: 0,
-            library_reads: 0,
-            suggest_waiting: None,
-            show_serial: 0,
-            known_sources: None,
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -373,27 +346,32 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.set_lenses(model(
         LENSES.iter().map(|l| SharedString::from(tr!(*l))).collect(),
     ));
-    d.on_open(|text| act(|f| f.open(text.to_string())));
-    d.on_close(|| act(Find::close));
-    d.on_back(|| act(Find::back));
-    d.on_search(|text| act(|f| f.search(text.to_string())));
+    d.on_open(|text| with(|f| f.open(text.to_string())));
+    d.on_close(|| with(Find::close));
+    d.on_back(|| with(Find::back));
+    d.on_search(|text| with(|f| f.search(text.to_string())));
     d.on_find_series(|id| {
-        act(|f| {
+        with(|f| {
             f.with_data(|d| d.set_shown(true));
-            // The lenses show while the library is read, never a show left open before.
-            f.show = None;
-            f.list = None;
-            f.history.clear();
-            f.set_view(0);
-            f.line("", "");
-            f.refresh_then(move |f| f.open_series(id));
+            f.refresh();
             f.with_data(|d| d.set_text(SharedString::new()));
             f.clear_suggestions();
+            let card = f.cards.iter().find(|c| c.id as i32 == id).cloned();
+            match card {
+                Some(card) => f.open_show(Find::offer_of(&card)),
+                None => {
+                    f.show = None;
+                    f.list = None;
+                    f.set_view(0);
+                    f.show_lens();
+                    f.line("", &tr!("find-show-gone"));
+                }
+            }
         })
     });
-    d.on_suggest(|text| act(|f| f.suggest(text.to_string())));
+    d.on_suggest(|text| with(|f| f.suggest(text.to_string())));
     d.on_pick_suggestion(|i| {
-        act(|f| {
+        with(|f| {
             let Some(offer) = usize::try_from(i)
                 .ok()
                 .and_then(|i| f.suggestions.get(i))
@@ -406,15 +384,15 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
         })
     });
     d.on_pick_lens(|i| {
-        act(|f| {
+        with(|f| {
             f.lens = usize::try_from(i).unwrap_or(0).min(LENSES.len() - 1);
             f.show_lens();
         })
     });
-    d.on_open_tile(|i| act(|f| f.open_offer(i)));
-    d.on_fetch(|i| act(|f| f.fetch(i)));
-    d.on_pick_row(|r| act(|f| f.pick_row(r)));
-    d.on_toggle_cube(|r, n| act(|f| f.toggle_cube(r, n)));
+    d.on_open_tile(|i| with(|f| f.open_offer(i)));
+    d.on_fetch(|i| with(|f| f.fetch(i)));
+    d.on_pick_row(|r| with(|f| f.pick_row(r)));
+    d.on_toggle_cube(|r, n| with(|f| f.toggle_cube(r, n)));
     d.on_set_follow(|on| {
         with(|f| {
             if let Some(s) = f.show.as_mut() {
@@ -439,7 +417,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             f.draw_show();
         })
     });
-    d.on_go(|| act(Find::go));
+    d.on_go(|| with(Find::go));
     d.on_list_all(|| with(Find::list_all));
     d.on_apply_group(|i| {
         with(|f| {
@@ -501,13 +479,8 @@ impl Find {
     // ---- Opening, closing, the lenses
 
     fn open(&mut self, text: String) {
-        self.open_then(text, |_| {});
-    }
-
-    /// `open`, and `then` once the library is in.
-    fn open_then(&mut self, text: String, then: impl FnOnce(&mut Find) + Send + 'static) {
         self.with_data(|d| d.set_shown(true));
-        self.refresh_then(then);
+        self.refresh();
         // AniList is asked only here, and the core skips it when the list is fresh.
         self.load_list(true);
         if text.trim().is_empty() {
@@ -554,20 +527,11 @@ impl Find {
         }
     }
 
-    /// Reads the library, the torrents and the subscriptions again, for the lenses, all
-    /// off the UI thread (#1206).
+    /// Reads the library, the torrents and the subscriptions again, for the lenses.
     fn refresh(&mut self) {
-        self.refresh_then(|_| {});
-    }
-
-    /// `refresh`, and `then` once the library is in, unless the person did something else
-    /// on the page meanwhile.
-    fn refresh_then(&mut self, then: impl FnOnce(&mut Find) + Send + 'static) {
-        if crate::local::core().is_none() {
-            then(self);
+        let Some(core) = crate::local::core() else {
             return;
-        }
-        let epoch = self.epoch;
+        };
         let library = Call::ListLibrary {
             tab: Tab::All,
             query: String::new(),
@@ -575,36 +539,9 @@ impl Find {
             direction: Direction::Asc,
             reveal_hidden: false,
         };
-        // A person waits on these, so they go ahead of the pages' own reads.
-        crate::reads::read_now(read_sources, |listed| {
-            with(|f| {
-                if let Some(listed) = listed.flatten() {
-                    f.known_sources = Some(listed);
-                }
-            })
-        });
-        self.library_reads += 1;
-        crate::reads::read_now(
-            move |core| core.call(library),
-            move |answer| {
-                with(|f| {
-                    f.library_reads = f.library_reads.saturating_sub(1);
-                    if let Some(Ok(Reply::Library { series, .. })) = answer {
-                        f.cards = series;
-                    }
-                    f.show_lens();
-                    f.draw_show();
-                    if f.epoch == epoch {
-                        then(f);
-                    }
-                    if f.library_reads == 0
-                        && let Some(text) = f.suggest_waiting.take()
-                    {
-                        f.suggest(text);
-                    }
-                })
-            },
-        );
+        if let Ok(Reply::Library { series, .. }) = core.call(library) {
+            self.cards = series;
+        }
         ask(Call::PhoneTorrents, |f, answer| {
             if let Ok(Reply::PhoneTorrents { torrents, .. }) = answer {
                 f.torrents = torrents;
@@ -621,21 +558,6 @@ impl Find {
             }
         });
         self.show_lens();
-    }
-
-    /// Opens the library series `id` in the show view, or says it is gone.
-    fn open_series(&mut self, id: i32) {
-        let card = self.cards.iter().find(|c| c.id as i32 == id).cloned();
-        match card {
-            Some(card) => self.open_show(Find::offer_of(&card)),
-            None => {
-                self.show = None;
-                self.list = None;
-                self.set_view(0);
-                self.show_lens();
-                self.line("", &tr!("find-show-gone"));
-            }
-        }
     }
 
     fn offer_of(card: &SeriesCard) -> Offer {
@@ -1017,11 +939,12 @@ impl Find {
         });
     }
 
-    /// Asks the loader for the posters the offers show that are neither in nor asked for.
-    /// Each file is read and decoded once, on one thread, however often the page draws
-    /// (#1206). This used to start a thread on every draw for every poster not in yet, and
-    /// each poster that came in drew the page again: a long list made threads, and decoded
-    /// copies waiting for the UI thread, faster than they finished.
+    /// Asks the posters thread for the posters the offers show that are not in, not asked
+    /// for and not failed since the last change. Each file is asked for once until it comes
+    /// back, however often the page draws (#1206). This used to start a thread on every draw
+    /// for every poster not in yet, and each poster that came in drew the page again: a long
+    /// list made threads, and decoded copies waiting for the UI thread, faster than they
+    /// finished, until Android killed the app.
     fn load_posters(&mut self, offers: &[Offer]) {
         let wanted = new_posters(
             offers.iter().filter_map(|o| o.poster.as_deref()),
@@ -1036,9 +959,8 @@ impl Find {
         }
     }
 
-    /// A poster came back from the loader. One that did not decode waits for the core's
-    /// next change before it is asked for again: the image cache may not have had it on
-    /// disk yet.
+    /// A poster came back. One that did not decode waits for the core's next change before
+    /// it is asked for again: the image cache may not have had it on disk yet.
     fn poster_landed(&mut self, path: String, poster: Option<crate::posters::Poster>) {
         self.posters_asked.remove(&path);
         let Some(poster) = poster else {
@@ -1064,11 +986,6 @@ impl Find {
     // ---- The suggestions: shows first, the way the desktop's field works
 
     fn suggest(&mut self, text: String) {
-        // The library is being read: the words are matched once it is in.
-        if self.library_reads > 0 {
-            self.suggest_waiting = Some(text);
-            return;
-        }
         let text = text.trim().to_string();
         if text.chars().count() < 2 {
             self.clear_suggestions();
@@ -1249,10 +1166,21 @@ impl Find {
     fn open_show(&mut self, offer: Offer) {
         // A confirm left open on another show never carries over.
         self.with_data(|d| d.set_unfollow_ask(false));
-        self.show_serial = self.show_serial.wrapping_add(1);
-        let serial = self.show_serial;
-        // The sources as last read, while they are read again off the UI thread.
-        let (sources, no_feed) = show_sources(self.known_sources.as_deref().unwrap_or_default());
+        let listed: Vec<_> = crate::local::core()
+            .and_then(|c| match c.call(Call::PhoneSearchSources) {
+                Ok(Reply::PhoneSources { sources }) => Some(sources),
+                _ => None,
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| s.enabled)
+            .collect();
+        let no_feed = listed
+            .iter()
+            .filter(|s| !anibeam_core::releases::endpoints::answers_rss(&s.kind))
+            .map(|s| s.name.clone())
+            .collect();
+        let sources = listed.into_iter().map(|s| (s.name, Answer::Idle)).collect();
         let follow = offer.show.airing;
         self.show = Some(ShowState {
             offer,
@@ -1275,38 +1203,10 @@ impl Find {
         self.set_view(1);
         self.line("", "");
         self.draw_show();
-        let reading = crate::reads::read_now(read_sources, move |listed| {
-            with(|f| f.sources_read(serial, listed.flatten()))
-        });
-        if !reading {
-            // The first source is asked at once, as a tap on it would.
-            self.fetch(0);
-        }
+        // The first source is asked at once, as a tap on it would.
+        self.fetch(0);
         self.probe_desk(false);
         self.draw_targets();
-    }
-
-    /// The sources were read again for the show opened as `serial`. The first is asked at
-    /// once, as a tap on it would, unless the person tapped one meanwhile, which keeps the
-    /// list it was tapped on.
-    fn sources_read(&mut self, serial: u64, listed: Option<Vec<PhoneSource>>) {
-        if let Some(listed) = &listed {
-            self.known_sources = Some(listed.clone());
-        }
-        if serial != self.show_serial {
-            return;
-        }
-        let Some(state) = self.show.as_mut() else {
-            return;
-        };
-        if state.active.is_some() {
-            return;
-        }
-        if let Some(listed) = &listed {
-            (state.sources, state.no_feed) = show_sources(listed);
-        }
-        self.draw_show();
-        self.fetch(0);
     }
 
     /// Asks the connected computer, off the UI thread, whether it takes downloads, and
@@ -2527,30 +2427,6 @@ impl Find {
     }
 }
 
-/// The search sources, in search order, read on a reads thread.
-fn read_sources(core: &anibeam_core::Core) -> Option<Vec<PhoneSource>> {
-    match core.call(Call::PhoneSearchSources) {
-        Ok(Reply::PhoneSources { sources }) => Some(sources),
-        _ => None,
-    }
-}
-
-/// The sources a show view searches, the enabled ones, each not yet asked, and the names of
-/// those with no feed to follow.
-fn show_sources(listed: &[PhoneSource]) -> (Vec<(String, Answer)>, Vec<String>) {
-    let listed: Vec<&PhoneSource> = listed.iter().filter(|s| s.enabled).collect();
-    let no_feed = listed
-        .iter()
-        .filter(|s| !anibeam_core::releases::endpoints::answers_rss(&s.kind))
-        .map(|s| s.name.clone())
-        .collect();
-    let sources = listed
-        .into_iter()
-        .map(|s| (s.name.clone(), Answer::Idle))
-        .collect();
-    (sources, no_feed)
-}
-
 /// The poster files among `paths` that are neither `shown` nor asked for yet, each once, and
 /// noted as asked for.
 fn new_posters<'a>(
@@ -2774,12 +2650,10 @@ fn fresh_show(title: String, queries: Vec<String>, total: u32, airing: bool) -> 
 /// now only knows from its Out now strip.
 pub fn search_for(title: &str) {
     let title = title.to_string();
-    act(|f| {
-        // The library's shows lead the suggestions, so they wait for the library read.
-        f.open_then(String::new(), move |f| {
-            f.with_data(|d| d.set_text(title.clone().into()));
-            f.suggest(title);
-        });
+    with(|f| {
+        f.open(String::new());
+        f.with_data(|d| d.set_text(title.clone().into()));
+        f.suggest(title);
     });
 }
 
@@ -2794,7 +2668,7 @@ pub fn open_airing(a: &anibeam_core::AiringShow) {
         a.next_airing.is_some(),
         a.poster.clone(),
     );
-    act(|f| {
+    with(|f| {
         f.with_data(|d| d.set_shown(true));
         f.refresh();
         // Opened from Airing now, Downloads may not have read the list yet.
@@ -2838,9 +2712,9 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
 mod tests {
     use super::*;
 
-    /// The page draws again as each poster comes in, and every draw asks for the posters
-    /// it shows (#1206). A poster is asked for once, however many draws ask, until it
-    /// comes back.
+    /// The page draws again as posters come in, and every draw asks for the posters it
+    /// shows (#1206). A poster is asked for once, however many draws ask, until it comes
+    /// back.
     #[test]
     fn a_poster_is_asked_for_once_however_often_the_page_draws() {
         let list: Vec<String> = (0..40).map(|i| format!("/images/{i}.jpg")).collect();
@@ -2866,7 +2740,7 @@ mod tests {
     }
 
     #[test]
-    fn a_poster_that_did_not_decode_is_asked_for_again_on_a_later_draw() {
+    fn a_poster_that_came_back_is_asked_for_again_only_once_let_go() {
         let shown = |_: &str| false;
         let mut asked = HashSet::new();
         let paths = ["/images/a.jpg", "/images/a.jpg", "/images/b.jpg"];
@@ -2875,7 +2749,7 @@ mod tests {
             ["/images/a.jpg", "/images/b.jpg"]
         );
         assert!(new_posters(paths, shown, &mut asked).is_empty());
-        // `a` came back undecoded and was let go; `b` is still out.
+        // `a` came back and was let go; `b` is still out.
         asked.remove("/images/a.jpg");
         assert_eq!(new_posters(paths, shown, &mut asked), ["/images/a.jpg"]);
     }
