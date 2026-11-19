@@ -2145,7 +2145,10 @@ mod tests {
         assert!(hidden(None, Some(110)));
         assert!(hidden(Some(20), Some(110)));
         assert!(!hidden(Some(20), Some(120)));
-        assert!(!hidden(Some(110), Some(10)), "an AniList id is not a MAL id");
+        assert!(
+            !hidden(Some(110), Some(10)),
+            "an AniList id is not a MAL id"
+        );
         assert!(!hidden(None, None));
         assert!(!hidden(Some(0), Some(0)), "nothing carries the id nought");
     }

@@ -909,12 +909,21 @@ mod tests {
         assert!(finishing.contains("&lt;b&gt;"), "{finishing}");
         assert!(!finishing.contains("<b>"), "{finishing}");
         let cancelled = page(Page::Cancelled);
-        assert!(cancelled.contains("class=\"mark bad\">&#215;"), "{cancelled}");
+        assert!(
+            cancelled.contains("class=\"mark bad\">&#215;"),
+            "{cancelled}"
+        );
         for shown in [finishing, cancelled] {
             assert!(!shown.contains("window.close()"), "{shown}");
-            assert!(shown.contains("<span class=\"brand\">Anibeam</span>"), "{shown}");
+            assert!(
+                shown.contains("<span class=\"brand\">Anibeam</span>"),
+                "{shown}"
+            );
             assert!(shown.contains("<title>"), "{shown}");
-            assert!(!shown.contains("<title><span"), "the title is plain: {shown}");
+            assert!(
+                !shown.contains("<title><span"),
+                "the title is plain: {shown}"
+            );
         }
     }
 

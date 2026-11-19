@@ -74,7 +74,11 @@ pub(crate) fn note_of(raw: Option<&str>) -> Option<String> {
 /// rewatching status at all: it keeps `watching` and raises a flag, so the
 /// flag is what promotes an entry to Repeating and makes the two trackers
 /// comparable. Anything unrecognised is no status rather than a guess.
-pub(crate) fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> Option<ListStatus> {
+pub(crate) fn normalize_status(
+    t: Tracker,
+    raw: Option<&str>,
+    is_rewatching: bool,
+) -> Option<ListStatus> {
     let raw = raw?;
     match t {
         Tracker::Anilist => match raw {
@@ -245,7 +249,12 @@ pub(crate) fn cached(
 /// is the truth about itself, so a row the tracker no longer carries goes;
 /// what survives is an `updated_at` for an entry the fetch brought none
 /// for, so a timestamp once known is never lost to a provider's blank.
-pub(crate) fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Result<(), CoreError> {
+pub(crate) fn replace(
+    tx: &Transaction,
+    t: Tracker,
+    entries: &[Entry],
+    now: i64,
+) -> Result<(), CoreError> {
     let mut kept: HashMap<u64, i64> = HashMap::new();
     {
         let mut stmt = tx.prepare("SELECT media_id, updated_at FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1 AND updated_at IS NOT NULL")?;

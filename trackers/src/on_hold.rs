@@ -107,7 +107,11 @@ pub(crate) fn still_coming(status: &str) -> bool {
 /// episode itself, or one further on, in which case the one after
 /// `progress` is taken to have aired a week per episode before it. The
 /// guess runs late across a break in the run, which only ever moves less.
-pub(crate) fn next_out(progress: u32, scheduled: Option<i64>, next: Option<(u32, i64)>) -> Option<i64> {
+pub(crate) fn next_out(
+    progress: u32,
+    scheduled: Option<i64>,
+    next: Option<(u32, i64)>,
+) -> Option<i64> {
     if scheduled.is_some() {
         return scheduled;
     }
@@ -240,7 +244,12 @@ fn local(
 /// The entries on one tracker's cached list that look due, longest idle
 /// first. Each one is read live and decided again before anything is
 /// written (`move_one`), so this errs toward including an entry.
-pub(crate) fn due(conn: &Connection, t: Tracker, now: i64, days: u32) -> Result<Vec<Due>, CoreError> {
+pub(crate) fn due(
+    conn: &Connection,
+    t: Tracker,
+    now: i64,
+    days: u32,
+) -> Result<Vec<Due>, CoreError> {
     struct Row {
         media_id: u64,
         progress: u32,
