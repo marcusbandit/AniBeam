@@ -191,14 +191,17 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
 
 /// The last lines of the profile's log, for a failure message.
 pub fn log_tail(profile: &Path) -> Option<String> {
-    last_lines(std::fs::read_to_string(log_file(profile)).ok()?.lines())
+    last_lines(
+        std::fs::read_to_string(log_file(profile)).ok()?.lines(),
+        LOG_TAIL,
+    )
 }
 
-/// The last [`LOG_TAIL`] lines that say something, joined, or `None` when none does: what
-/// a helper program said before it failed. The anirss sidecar's stderr goes through it too.
-pub(crate) fn last_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Option<String> {
+/// The last `n` lines that say something, joined, or `None` when none does: what a helper
+/// program said before it failed. The anirss sidecar's stderr goes through it too.
+pub(crate) fn last_lines<'a>(lines: impl Iterator<Item = &'a str>, n: usize) -> Option<String> {
     let lines: Vec<&str> = lines.map(str::trim).filter(|l| !l.is_empty()).collect();
-    (!lines.is_empty()).then(|| lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / "))
+    (!lines.is_empty()).then(|| lines[lines.len().saturating_sub(n)..].join(" / "))
 }
 
 #[cfg(test)]

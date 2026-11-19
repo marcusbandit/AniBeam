@@ -40,6 +40,8 @@ const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a fresh sidecar gets to answer `/health`.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_POLL: Duration = Duration::from_millis(200);
+/// How many lines of the sidecar's stderr a failure message quotes.
+const STDERR_TAIL: usize = 3;
 /// Lines of the sidecar's stderr kept for the failure message.
 const STDERR_TAIL: usize = 40;
 /// How long `anirss --version` gets when a sidecar failed to come up.
@@ -500,7 +502,7 @@ fn best_fit(v: &Value) -> BestFit {
     BestFit {
         available: v["available"].as_bool().unwrap_or(false),
         query: v["query"].as_str().unwrap_or("").to_string(),
-        item: serde_json::from_value(v["item"].clone()).ok(),
+        item: Release::deserialize(&v["item"]).ok(),
         profile: list(&v["profile"]),
     }
 }
@@ -649,8 +651,11 @@ impl Sidecar {
                     ),
                 });
             }
-            // A server that binds but stalls must not stretch the wait past its timeout.
-            let left = READY_TIMEOUT.saturating_sub(started.elapsed());
+            // A server that binds but stalls must not stretch the wait past its timeout,
+            // and the last look still gets a poll's worth of time to answer.
+            let left = READY_TIMEOUT
+                .saturating_sub(started.elapsed())
+                .max(READY_POLL);
             if let Ok(Ok(health)) = tokio::time::timeout(left, client.health()).await {
                 return Ok(health);
             }
@@ -683,7 +688,10 @@ impl Sidecar {
 
     /// The last few lines stderr said, joined, or `None` when it said nothing.
     fn stderr_tail(&self) -> Option<String> {
-        super::managed::last_lines(recover(&self.stderr).iter().map(String::as_str))
+        super::managed::last_lines(
+            recover(&self.stderr).iter().map(String::as_str),
+            STDERR_TAIL,
+        )
     }
 }
 
@@ -1188,23 +1196,29 @@ mod tests {
         };
         // An anirss whose `/health` does not list endpoint writes has no endpoint API,
         // whatever its version says: nothing is sent.
+        let health = |version: &str, features: &[&str]| Health {
+            version: version.into(),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        };
+        let without = health("0.6.0", &["qbt_env_session"]);
         let have = vec![theirs("proxied", "http://elsewhere/")];
         assert!(!teams.services.handle.block_on(sync_anirss(
             &teams.services,
             &anirss,
-            false,
+            without.has(ENDPOINT_WRITES),
             &have
         )));
         assert!(http.requests().is_empty());
 
-        // One that lists it takes them.
+        // One that lists it takes them, even with a version no parser reads.
+        let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
         http.push_json(201, serde_json::json!({}));
-        assert!(
-            teams
-                .services
-                .handle
-                .block_on(sync_anirss(&teams.services, &anirss, true, &have))
-        );
+        assert!(teams.services.handle.block_on(sync_anirss(
+            &teams.services,
+            &anirss,
+            writes.has(ENDPOINT_WRITES),
+            &have
+        )));
         let sent = http.requests();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].method, Method::Post);
