@@ -3,7 +3,7 @@
 //! sites step must keep every element inside the page in every language, so nothing scrolls
 //! sideways and no button is cut off at the edge.
 
-use i_slint_backend_testing::ElementHandle;
+use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::tr::{Arg, Lang, tr_in};
@@ -182,8 +182,10 @@ fn fits(lang: Lang) {
             .collect();
         assert!(!found.is_empty(), "{lang:?}: no {label:?} on the page");
     }
+    // The texts only: a button carries its label too, and sits around its own text.
     let texts: Vec<_> = all
         .iter()
+        .filter(|e| e.accessible_role() == Some(AccessibleRole::Text))
         .filter(|e| e.accessible_label().is_some_and(|l| !l.is_empty()))
         .filter(|e| e.size().width > 0.0 && e.size().height > 0.0)
         .collect();
