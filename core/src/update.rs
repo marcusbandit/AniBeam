@@ -159,9 +159,9 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
 pub fn newest_phone(releases: &[u8], current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
     Ok(
         newest_tagged(releases, PHONE_TAG, current, Track::of(current))?.map(|u| {
-            // The workflow names the APK after the version, `AniBeam-` before 2.4.3's later
-            // nightlies; any other APK on the release (a split or a debug build) may not run
-            // on this phone
+            // The workflow names the APK after the version, and older releases capitalise
+            // the name differently, so case is ignored; any other APK on the release (a
+            // split or a debug build) may not run on this phone
             let apk = format!("Anibeam-{}.apk", u.version);
             PhoneUpdate {
                 url: u
@@ -618,7 +618,7 @@ mod tests {
         assert_eq!(u.url, "a243");
         let old_spelling = serde_json::json!([{
             "tag_name": "android-v2.4.3", "html_url": "a243",
-            "assets": [{ "name": "AniBeam-2.4.3.apk", "size": 9,
+            "assets": [{ "name": "ANIBEAM-2.4.3.apk", "size": 9,
                          "browser_download_url": "https://dl/old.apk" }]
         }])
         .to_string();
