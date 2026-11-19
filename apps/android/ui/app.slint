@@ -544,7 +544,7 @@ export component AppWindow inherits Window {
                 icon: destination.icon;
                 label: destination.label;
                 active: root.page == destination.page;
-                dot: destination.page == 3 && AppData.update-version != "";
+                dot: destination.page == 3 && AppData.update-unseen;
                 clicked => { root.go(destination.page); }
             }
         }

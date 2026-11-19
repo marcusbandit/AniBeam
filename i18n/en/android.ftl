@@ -259,14 +259,14 @@ more-icon-note = The icon on your home screen and in the app drawer.
 more-icon-line-note = Line art takes your wallpaper's colours, like your other Material You icons.
 more-icon-moved-note = Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.
 more-set-whats-new = What's new
-more-whats-new-note = What changed in each version, newest first.
 more-set-onboarding = Set up again
-more-onboarding-note = Walk through the first-run questions once more.
 more-set-version = Version
 # A newer version of the app is out, in More's About and on its row in the index.
 more-update-out = Anibeam { $version } is out
 # The button beside it, which opens the new version's download in the browser.
 more-update-download = Download
+# About's line in More's index while a newer version is out.
+more-about-status-update = A new version is out
 
 ## Status lines Rust writes on the pages
 

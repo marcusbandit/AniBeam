@@ -230,12 +230,11 @@ more-icon-note = Значок на главном экране и в списк�
 more-icon-line-note = Контурный значок берёт цвета обоев, как другие значки Material You.
 more-icon-moved-note = Некоторые лаунчеры убирают значок с главного экрана при смене. В списке приложений он остаётся: перетащите его оттуда обратно.
 more-set-whats-new = Что нового
-more-whats-new-note = Что изменилось в каждой версии, сначала новое.
 more-set-onboarding = Настроить заново
-more-onboarding-note = Пройти вопросы первого запуска ещё раз.
 more-set-version = Версия
 more-update-out = Вышел Anibeam { $version }
 more-update-download = Скачать
+more-about-status-update = Вышла новая версия
 
 ## Строки состояния, которые Rust пишет на страницах
 

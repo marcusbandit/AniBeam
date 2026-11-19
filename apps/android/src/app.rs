@@ -724,6 +724,7 @@ impl App {
     /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
     fn second(&mut self) {
         self.tick();
+        crate::newer::tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -1600,6 +1601,7 @@ impl App {
             )
             .into(),
         );
+        data.set_update_seen(self.prefs.update_seen.as_str().into());
         data.set_ratings_label(tr!("about-ratings").into());
         data.set_mark_watched_label(tr!("mark-menu-watched").into());
         data.set_mark_unwatched_label(tr!("mark-menu-unwatched").into());
@@ -1686,6 +1688,17 @@ impl App {
             self.save_prefs();
             self.data().set_notify_ask(true);
         }
+    }
+
+    /// About was open with a newer version on it: the More tab stops pointing at it.
+    fn mark_update_seen(&mut self) {
+        let version = self.data().get_update_version().to_string();
+        if version.is_empty() || version == self.prefs.update_seen {
+            return;
+        }
+        self.data().set_update_seen(version.as_str().into());
+        self.prefs.update_seen = version;
+        self.save_prefs();
     }
 
     fn save_prefs(&mut self) {
@@ -2454,6 +2467,7 @@ pub fn run(
         }
     });
     data.on_close_notes(|| with_app(App::close_notes));
+    data.on_mark_update_seen(|| with_app(App::mark_update_seen));
     data.on_restart_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = false;

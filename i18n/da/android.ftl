@@ -220,12 +220,11 @@ more-icon-note = Ikonet på din startskærm og i appoversigten.
 more-icon-line-note = Stregtegning låner din baggrunds farver, som dine andre Material You-ikoner.
 more-icon-moved-note = Nogle launchere fjerner ikonet fra startskærmen, når det skifter. Det bliver i appoversigten; træk det tilbage derfra.
 more-set-whats-new = Nyheder
-more-whats-new-note = Hvad der ændrede sig i hver version, nyeste først.
 more-set-onboarding = Opsæt igen
-more-onboarding-note = Gennemgå spørgsmålene fra første start en gang til.
 more-set-version = Version
 more-update-out = Anibeam { $version } er udkommet
 more-update-download = Download
+more-about-status-update = Der er en ny version
 
 ## Statuslinjer, Rust skriver på siderne
 

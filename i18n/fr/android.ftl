@@ -220,12 +220,11 @@ more-icon-note = L'icône sur votre écran d'accueil et dans la liste des applis
 more-icon-line-note = Trait fin reprend les couleurs de votre fond d'écran, comme vos autres icônes Material You.
 more-icon-moved-note = Certains lanceurs retirent l'icône de l'écran d'accueil quand elle change. Elle reste dans la liste des applis ; faites-la glisser de là.
 more-set-whats-new = Nouveautés
-more-whats-new-note = Ce qui a changé à chaque version, du plus récent.
 more-set-onboarding = Reconfigurer
-more-onboarding-note = Refaire les questions du premier lancement.
 more-set-version = Version
 more-update-out = Anibeam { $version } est sorti
 more-update-download = Télécharger
+more-about-status-update = Une nouvelle version est sortie
 
 ## Status lines Rust writes on the pages
 

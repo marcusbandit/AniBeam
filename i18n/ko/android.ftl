@@ -206,12 +206,11 @@ more-icon-note = 홈 화면과 앱 서랍에 표시되는 아이콘이에요.
 more-icon-line-note = 라인 아트는 다른 Material You 아이콘처럼 배경화면 색을 따라가요.
 more-icon-moved-note = 일부 런처는 아이콘이 바뀌면 홈 화면에서 지워요. 앱 서랍에는 남아 있으니 거기서 다시 끌어다 놓으세요.
 more-set-whats-new = 새로운 기능
-more-whats-new-note = 버전별 변경 사항, 최신순.
 more-set-onboarding = 다시 설정
-more-onboarding-note = 첫 실행 질문을 한 번 더 진행해요.
 more-set-version = 버전
 more-update-out = Anibeam { $version } 출시
 more-update-download = 다운로드
+more-about-status-update = 새 버전이 나왔습니다
 
 ## Status lines Rust writes on the pages
 

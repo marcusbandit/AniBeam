@@ -311,7 +311,12 @@ export global AppData {
     // A newer version of the app on its own track (#809), empty when there is none, and
     // the browser opened on its download.
     in property <string> update-version;
+    out property <bool> update-new: self.update-version != "";
+    // The newer version About last showed: the More tab's dot is for one not seen yet.
+    in-out property <string> update-seen;
+    out property <bool> update-unseen: self.update-new && self.update-version != self.update-seen;
     callback open-update();
+    callback mark-update-seen();
     // About's IMDb row, from the catalog: its name and IMDb's credit line.
     in property <string> ratings-label;
     in property <string> ratings-credit;

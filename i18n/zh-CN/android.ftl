@@ -202,12 +202,11 @@ more-icon-note = 主屏幕和应用抽屉里的图标。
 more-icon-line-note = 线条图标会采用壁纸的颜色，和你的其他 Material You 图标一样。
 more-icon-moved-note = 有些启动器在图标更换后会把它从主屏幕移除。它仍在应用抽屉里，从那里拖回来即可。
 more-set-whats-new = 更新内容
-more-whats-new-note = 每个版本的更改，最新在前。
 more-set-onboarding = 重新设置
-more-onboarding-note = 再走一遍首次使用的设置问题。
 more-set-version = 版本
 more-update-out = Anibeam { $version } 已发布
 more-update-download = 下载
+more-about-status-update = 有新版本
 
 ## Status lines Rust writes on the pages
 

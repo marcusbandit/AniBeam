@@ -221,12 +221,11 @@ more-icon-note = L'icona nella schermata Home e nel drawer delle app.
 more-icon-line-note = Line art prende i colori dello sfondo, come le altre icone Material You.
 more-icon-moved-note = Alcuni launcher tolgono l'icona dalla Home quando cambia. Resta nel drawer delle app: trascinala da lì.
 more-set-whats-new = Novità
-more-whats-new-note = Cosa è cambiato in ogni versione, dalla più recente.
 more-set-onboarding = Ripeti setup
-more-onboarding-note = Ripercorri ancora una volta le domande del primo avvio.
 more-set-version = Versione
 more-update-out = È uscito Anibeam { $version }
 more-update-download = Scarica
+more-about-status-update = È uscita una nuova versione
 
 ## Status lines Rust writes on the pages
 

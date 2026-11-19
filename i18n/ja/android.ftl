@@ -200,12 +200,11 @@ more-icon-note = ホーム画面とアプリ一覧に表示されるアイコン
 more-icon-line-note = ラインは壁紙の色を取り入れます。ほかのMaterial Youアイコンと同じです。
 more-icon-moved-note = アイコンを変更すると、ホーム画面から消えるランチャーがあります。アプリ一覧には残るので、そこからドラッグして戻してください。
 more-set-whats-new = 更新内容
-more-whats-new-note = 各バージョンの変更点です。新しい順に表示します。
 more-set-onboarding = 再セットアップ
-more-onboarding-note = 初回の質問をもう一度確認します。
 more-set-version = バージョン
 more-update-out = Anibeam { $version }が公開されました
 more-update-download = ダウンロード
+more-about-status-update = 新しいバージョンがあります
 
 ## Status lines Rust writes on the pages
 

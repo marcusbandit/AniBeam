@@ -220,12 +220,11 @@ more-icon-note = Das Symbol auf dem Startbildschirm und in der App-Übersicht.
 more-icon-line-note = Linien übernimmt die Farben deines Hintergrundbilds, wie deine anderen Material-You-Symbole.
 more-icon-moved-note = Manche Launcher nehmen das Symbol vom Startbildschirm, wenn es sich ändert. In der App-Übersicht bleibt es; zieh es von dort zurück.
 more-set-whats-new = Neuerungen
-more-whats-new-note = Was sich in jeder Version geändert hat, neueste zuerst.
 more-set-onboarding = Neu einrichten
-more-onboarding-note = Die Fragen vom ersten Start noch einmal durchgehen.
 more-set-version = Version
 more-update-out = Anibeam { $version } ist da
 more-update-download = Laden
+more-about-status-update = Eine neue Version ist da
 
 ## Status lines Rust writes on the pages
 

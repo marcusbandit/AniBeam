@@ -220,12 +220,11 @@ more-icon-note = Het icoon op je startscherm en in het appmenu.
 more-icon-line-note = Lijntekening neemt de kleuren van je achtergrond over, zoals je andere Material You-iconen.
 more-icon-moved-note = Sommige launchers halen het icoon van het startscherm als het wijzigt. Het blijft in het appmenu; sleep het daar terug.
 more-set-whats-new = Wat is nieuw
-more-whats-new-note = Wat er in elke versie veranderde, nieuwste eerst.
 more-set-onboarding = Opnieuw starten
-more-onboarding-note = Doorloop de vragen van de eerste start nog een keer.
 more-set-version = Versie
 more-update-out = Anibeam { $version } is uit
 more-update-download = Download
+more-about-status-update = Er is een nieuwe versie
 
 ## Statusregels die Rust op de pagina's schrijft
 

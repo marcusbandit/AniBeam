@@ -35,6 +35,8 @@ pub struct Prefs {
     pub download_to_desk: bool,
     /// The computer's name as it last answered, so Download to names it while it is off.
     pub desk_name: String,
+    /// The newer version About last showed; the More tab's dot is for one not seen yet.
+    pub update_seen: String,
 }
 
 impl Default for Prefs {
@@ -51,6 +53,7 @@ impl Default for Prefs {
             notify_offered: false,
             download_to_desk: false,
             desk_name: String::new(),
+            update_seen: String::new(),
         }
     }
 }
@@ -170,6 +173,7 @@ mod tests {
             notify_offered: true,
             download_to_desk: true,
             desk_name: "computer".into(),
+            update_seen: "2.4.3-nightly.20261117.97".into(),
         };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);
