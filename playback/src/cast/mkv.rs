@@ -76,7 +76,6 @@ pub struct SubTrack {
     pub number: u64,
     pub codec: SubCodec,
     pub strip: Option<Vec<u8>>,
-    pub zlib: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +104,12 @@ impl Probe {
 
     fn to_ms(&self, ts: u64) -> u64 {
         ((ts as u128 * self.scale_ns as u128) / 1_000_000) as u64
+    }
+
+    /// The frame's data, taken out of it, with track `number`'s compression undone.
+    fn payload(&self, frame: &mut Frame, number: u64, strip: Option<&[u8]>) -> Vec<u8> {
+        let data = std::mem::take(&mut frame.data);
+        payload(data, strip, self.zlib.contains(&number))
     }
 
     fn units(&self, ms: u64) -> u64 {
@@ -251,7 +256,6 @@ pub fn probe(mkv: &Mkv) -> Probe {
                     number,
                     codec,
                     strip,
-                    zlib,
                 });
             }
             _ => {}
@@ -363,11 +367,7 @@ pub fn scan(mkv: &mut Mkv, probe: &Probe) -> Result<Scan, String> {
         if let Some(v) = &video
             && frame.track == v.number
         {
-            let data = payload(
-                std::mem::take(&mut frame.data),
-                v.strip.as_deref(),
-                probe.zlib.contains(&v.number),
-            );
+            let data = probe.payload(&mut frame, v.number, v.strip.as_deref());
             if is_keyframe(&v.codec, &v.config, &data, frame.is_keyframe) {
                 scan.reorder_ms = scan.reorder_ms.max(reorder(&gop));
                 gop.clear();
@@ -380,11 +380,7 @@ pub fn scan(mkv: &mut Mkv, probe: &Probe) -> Result<Scan, String> {
         }
         if let Some((_, cues)) = subs.iter_mut().find(|(n, _)| *n == frame.track) {
             let track = probe.subs.iter().find(|s| s.number == frame.track).unwrap();
-            let data = payload(
-                std::mem::take(&mut frame.data),
-                track.strip.as_deref(),
-                track.zlib,
-            );
+            let data = probe.payload(&mut frame, track.number, track.strip.as_deref());
             let text = String::from_utf8_lossy(&data);
             let end = frame
                 .duration
@@ -472,11 +468,7 @@ pub fn segment(
         }
         let ms = probe.to_ms(frame.timestamp);
         if frame.track == video.number {
-            let data = payload(
-                std::mem::take(&mut frame.data),
-                video.strip.as_deref(),
-                probe.zlib.contains(&video.number),
-            );
+            let data = probe.payload(&mut frame, video.number, video.strip.as_deref());
             let key = is_keyframe(&video.codec, &video.config, &data, frame.is_keyframe);
             if !started {
                 if !(key && ms >= from) {
@@ -511,11 +503,7 @@ pub fn segment(
                 }
                 continue;
             }
-            let data = payload(
-                std::mem::take(&mut frame.data),
-                at.strip.as_deref(),
-                probe.zlib.contains(&at.number),
-            );
+            let data = probe.payload(&mut frame, at.number, at.strip.as_deref());
             a.push(Sample {
                 pts: ms,
                 dts: ms,
@@ -587,11 +575,7 @@ pub fn first_frame(mkv: &mut Mkv, probe: &Probe, track: u64) -> Option<Vec<u8>> 
         }
         if frame.track == track {
             let t = probe.audio.iter().find(|a| a.number == track)?;
-            return Some(payload(
-                std::mem::take(&mut frame.data),
-                t.strip.as_deref(),
-                probe.zlib.contains(&track),
-            ));
+            return Some(probe.payload(&mut frame, track, t.strip.as_deref()));
         }
     }
     None

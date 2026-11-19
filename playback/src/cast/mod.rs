@@ -371,13 +371,13 @@ mod imp {
     /// device fetches under, and its state as the call answers.
     fn new_session(
         playback: &Playback,
-        found: &Found,
+        found: Found,
         file: u64,
         title: String,
         start: f64,
         duration: f64,
         mode: Mode,
-    ) -> (u64, String, CastState) {
+    ) -> (Start, CastState) {
         let inner = inner(playback);
         let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
         let token = format!("{:032x}", rand::random::<u128>());
@@ -403,7 +403,7 @@ mod imp {
             },
             mode,
             base: String::new(),
-            title,
+            title: title.clone(),
             prepared: None,
             pieces: None,
             hevc_doubt: false,
@@ -413,7 +413,24 @@ mod imp {
             retire(playback, old, here);
         }
         emit(&playback.services, &state, false);
-        (id, token, state)
+        let start = Start {
+            id,
+            found,
+            token,
+            title,
+            start,
+        };
+        (start, state)
+    }
+
+    /// A cast on its way to its device: its session, the device, the token the device
+    /// fetches under, its title and where it starts.
+    struct Start {
+        id: u64,
+        found: Found,
+        token: String,
+        title: String,
+        start: f64,
     }
 
     pub fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
@@ -444,34 +461,16 @@ mod imp {
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                let (id, token, state) = new_session(
-                    playback,
-                    &found,
-                    file,
-                    title.clone(),
-                    start,
-                    0.0,
-                    Mode::Direct,
-                );
+                let (s, state) =
+                    new_session(playback, found, file, title, start, 0.0, Mode::Direct);
                 let subs = match subtitle {
                     CastSubtitle::None => None,
                     CastSubtitle::Track { number } => Some(Subs::Track(number)),
                     CastSubtitle::File { path } => Some(Subs::File(PathBuf::from(path))),
                 };
                 let arc = playback.clone();
-                spawn_start(playback, id, async move {
-                    begin(
-                        &arc,
-                        id,
-                        found,
-                        path,
-                        token,
-                        title,
-                        start,
-                        audio_track,
-                        subs,
-                    )
-                    .await
+                spawn_start(playback, s.id, async move {
+                    begin(&arc, s, path, audio_track, subs).await
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
@@ -499,20 +498,13 @@ mod imp {
                     CastKind::Chromecast => Mode::Hls,
                     CastKind::Dlna => Mode::Progressive { offset: start },
                 };
-                let (id, token, state) =
-                    new_session(playback, &found, 0, title.clone(), start, duration, mode);
+                let kind = found.device.kind;
+                let (s, state) = new_session(playback, found, 0, title, start, duration, mode);
                 let arc = playback.clone();
-                spawn_start(playback, id, async move {
-                    match found.device.kind {
-                        CastKind::Chromecast => {
-                            relay(
-                                &arc, id, found, dir, playlist, token, title, start, duration,
-                            )
-                            .await
-                        }
-                        CastKind::Dlna => {
-                            relay_dlna(&arc, id, found, dir, playlist, token, title, start).await
-                        }
+                spawn_start(playback, s.id, async move {
+                    match kind {
+                        CastKind::Chromecast => relay(&arc, s, dir, playlist, duration).await,
+                        CastKind::Dlna => relay_dlna(&arc, s, dir, playlist).await,
                     }
                 });
                 Ok(Reply::CastState { state: Some(state) })
@@ -766,18 +758,20 @@ mod imp {
 
     /// Starts a relayed stream on a Chromecast: the playlist under this machine's own
     /// server, every request passed on to `dir`.
-    #[allow(clippy::too_many_arguments)]
     async fn relay(
         playback: &Arc<Playback>,
-        id: u64,
-        found: Found,
+        s: Start,
         dir: String,
         playlist: String,
-        token: String,
-        title: String,
-        start: f64,
         duration: f64,
     ) -> Result<(), String> {
+        let Start {
+            id,
+            found,
+            token,
+            title,
+            start,
+        } = s;
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
         let served = Served::relayed("application/vnd.apple.mpegurl", dir, Arc::default());
@@ -800,17 +794,19 @@ mod imp {
     /// so this machine reads the playlist once and hands the TV its pieces from the one
     /// holding `start` as one progressive MPEG-TS stream, fetching each from `dir` as the
     /// TV reads. A seek starts that stream again (`seek`).
-    #[allow(clippy::too_many_arguments)]
     async fn relay_dlna(
         playback: &Arc<Playback>,
-        id: u64,
-        found: Found,
+        s: Start,
         dir: String,
         playlist: String,
-        token: String,
-        title: String,
-        start: f64,
     ) -> Result<(), String> {
+        let Start {
+            id,
+            found,
+            token,
+            title,
+            start,
+        } = s;
         let inner = inner(playback);
         let client = Arc::new(dlna::Client::new(
             found.control.clone().ok_or_else(no_control)?,
@@ -866,18 +862,20 @@ mod imp {
             .map(Arc::new)
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn begin(
         playback: &Arc<Playback>,
-        id: u64,
-        found: Found,
+        s: Start,
         path: PathBuf,
-        token: String,
-        title: String,
-        start: f64,
         audio_track: Option<u64>,
         subs: Option<Subs>,
     ) -> Result<(), String> {
+        let Start {
+            id,
+            found,
+            token,
+            title,
+            start,
+        } = s;
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
         let mkv = is_matroska(&path);
