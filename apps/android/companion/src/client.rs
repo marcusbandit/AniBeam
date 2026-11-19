@@ -168,8 +168,8 @@ impl HostClient {
         response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
         limit: u64,
     ) -> Result<(u16, Vec<u8>), HostError> {
-        let mut response = response
-            .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
+        let mut response =
+            response.map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
         let body = response
             .body_mut()
             .with_config()
@@ -216,10 +216,7 @@ impl HostClient {
             .ok()
             .and_then(|mut all| all.next())
             .ok_or_else(|| {
-                HostError::Unreachable(tr!(
-                    "client-cannot-find",
-                    host = self.address.host.as_str()
-                ))
+                HostError::Unreachable(tr!("client-cannot-find", host = self.address.host.as_str()))
             })
     }
 
