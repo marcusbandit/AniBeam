@@ -987,8 +987,9 @@ struct Worker {
     parties: bool,
 }
 
-/// A new desired state, as the worker takes it: every field named here and where it is
-/// read, so a new one cannot be posted and never reach Discord.
+/// A new desired state, as the worker takes it. Every field here is named where `next`
+/// builds it and where `run` takes it apart, so one of these left unread does not
+/// compile; a field added to `Desired` still needs adding here by hand.
 struct Change {
     want: Option<Activity>,
     party: Option<Party>,
