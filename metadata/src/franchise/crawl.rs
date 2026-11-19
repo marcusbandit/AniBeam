@@ -1,11 +1,11 @@
 //! The crawl: the job that turns what a closure says it is owed into
 //! AniList requests, one node at a time, and writes the edges back.
 //!
-//! Electron's `franchiseCrawler` is carried over: one crawl at a time, a
-//! rate limit parks a node rather than losing it, a node whose fetch fails
-//! for any other reason is stamped as having no edges (a benign failure
-//! and an empty list look the same from outside, and nothing must ask
-//! again for ever), and a read only re-crawls a root once a minute.
+//! One crawl at a time, a rate limit parks a node rather than losing it, a
+//! node whose fetch fails for any other reason is stamped as having no
+//! edges (a benign failure and an empty list look the same from outside,
+//! and nothing must ask again for ever), and a read only re-crawls a root
+//! once a minute.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -32,25 +32,25 @@ use anibeam_net::images;
 /// provider saying stop is never answered with a burst.
 const DEFERRAL: i64 = 60;
 
-/// Electron's `REFRESH_THROTTLE_MS`: a franchise opened twice inside a
-/// minute is crawled once. The limiter paces the requests either way; this
-/// stops repeated opens from queueing the same component over and over.
+/// A franchise opened twice inside a minute is crawled once. The limiter
+/// paces the requests either way; this stops repeated opens from queueing
+/// the same component over and over.
 const REFRESH_THROTTLE: Duration = Duration::from_secs(60);
 
-/// Starts the Crawl job over these seeds. `refetch_seeds` takes each seed
-/// again even though its edges are already known, which is what a series
-/// page's own read asks for: AniList may have added a relation since.
+/// Starts the Crawl job over these seeds, taking each seed again even
+/// though its edges are already known, which is what a series page's own
+/// read asks for: AniList may have added a relation since.
 ///
 /// Crawl runs one at a time, so a second call while one is running is
 /// handed the running job's id and starts nothing.
-pub fn start(metadata: &Arc<Metadata>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
+pub fn start(metadata: &Arc<Metadata>, seeds: Vec<u64>) -> u64 {
     let owner = metadata.clone();
     metadata
         .services
         .jobs
         .clone()
         .start(JobKind::Crawl, move |ctx| async move {
-            run(&owner, &ctx, seeds, refetch_seeds).await
+            run(&owner, &ctx, seeds, true).await
         })
 }
 
@@ -80,7 +80,7 @@ pub fn maybe_crawl_for_read(metadata: &Arc<Metadata>, seed: u64, root: u64) {
     // Dropped before the job starts: nothing the job does should be able
     // to wait on this gate.
     drop(recent);
-    start(metadata, vec![seed], true);
+    start(metadata, vec![seed]);
 }
 
 /// Whether this root is due a read-driven crawl, recording the instant when
@@ -141,7 +141,7 @@ async fn run(
             let (done, total) = metadata.services.store.write_async(progress).await?;
             ctx.progress(done, Some(total), &format!("AniList {id}"));
 
-            match metadata.net.anilist.enrichment_raw(id).await {
+            let failure = match metadata.net.anilist.enrichment_raw(id).await {
                 // The reply and the JSON behind it. The raw half is not
                 // written: a crawl asks for the series page alone, and
                 // that partial bundle must never displace the four-part
@@ -155,15 +155,11 @@ async fn run(
                         format!("franchise {} changed", graph.root),
                         EventBody::GraphChanged { root: graph.root },
                     );
+                    continue;
                 }
                 // AniList answered, and the answer was that it carries no
                 // entry. Nothing more will ever come of asking again.
-                Ok((None, _raw)) => {
-                    tracing::debug!("AniList has no entry for {id}");
-                    failed += 1;
-                    first_failure.get_or_insert_with(|| format!("AniList has no entry for {id}"));
-                    stamp_empty(&metadata.services, id, time::now_secs()).await?;
-                }
+                Ok((None, _raw)) => format!("AniList has no entry for {id}"),
                 // AniList saying stop. The node keeps owing its edges and
                 // is left alone for a minute rather than counted as done.
                 // The terminal line's `deferred` is what says this
@@ -171,26 +167,29 @@ async fn run(
                 // per-node chatter in a log meant to carry state changes.
                 Err(e) if is_rate_limited(&e) => {
                     let wait = retry_after(&e);
-                    defer(&metadata.services, id, time::now_secs() + wait).await?;
+                    let until = time::now_secs() + wait;
+                    mark(&metadata.services, id, DEFER, until).await?;
                     parked.insert(id);
                     deferred += 1;
                     tracing::debug!("the crawl deferred {id} for {wait}s after a rate limit");
+                    continue;
                 }
                 // Nothing answered at all. The node never had its turn,
                 // and stamping it here would mark it edgeless for good on
                 // the strength of a dead socket, so the crawl ends instead
                 // and the next one starts where this stopped.
                 Err(e) if provider_unreachable(&e) => return Err(e),
-                // Anything else had its turn. It is stamped with no edges,
-                // which is exactly what a node that genuinely has none
-                // looks like, so the walk moves on instead of circling.
-                Err(e) => {
-                    tracing::debug!("the crawl failed at {id}: {}", message_of(&e));
-                    failed += 1;
-                    first_failure.get_or_insert_with(|| message_of(&e));
-                    stamp_empty(&metadata.services, id, time::now_secs()).await?;
-                }
-            }
+                // Anything else had its turn.
+                Err(e) => message_of(&e),
+            };
+            // A node that had its turn and produced nothing is stamped with
+            // no edges, which is exactly what a node that genuinely has
+            // none looks like, so the walk moves on instead of circling;
+            // the next full refresh is the recovery.
+            tracing::debug!("the crawl stamped {id} with no edges: {failure}");
+            failed += 1;
+            first_failure.get_or_insert(failure);
+            mark(&metadata.services, id, STAMP, time::now_secs()).await?;
         }
     }
 
@@ -286,10 +285,7 @@ async fn write_node(
                     params![as_i64(id), as_i64(node.id), relation],
                 )?;
             }
-            tx.execute(
-                "UPDATE anilist_media SET relations_fetched_at = ?2, crawl_deferred_until = NULL WHERE id = ?1",
-                params![as_i64(id), now],
-            )?;
+            tx.execute(STAMP, params![as_i64(id), now])?;
             Ok(())
         })
         .await
@@ -347,29 +343,19 @@ async fn fetch_covers(metadata: &Metadata, enrichment: &Enrichment) {
     }
 }
 
-/// The node had its turn and produced nothing. Stamped rather than left
-/// owing, so the walk moves on; the next full refresh is the recovery.
-///
-/// The bare stub goes first because a seed can be an id with no media row
-/// at all, and an `UPDATE` that matches nothing would leave the node owing
-/// its edges for ever, which is a loop rather than a missing stamp.
-async fn stamp_empty(services: &Services, id: u64, now: i64) -> Result<(), CoreError> {
-    services.store
-        .tx_async(move |tx| {
-            record::write_stub(tx, &StubWrite { id, ..StubWrite::default() })?;
-            tx.execute(
-                "UPDATE anilist_media SET relations_fetched_at = ?2, crawl_deferred_until = NULL WHERE id = ?1",
-                params![as_i64(id), now],
-            )?;
-            Ok(())
-        })
-        .await
-}
+/// The node's edges are in: stamped at `?2`, and any deferral cleared.
+const STAMP: &str =
+    "UPDATE anilist_media SET relations_fetched_at = ?2, crawl_deferred_until = NULL WHERE id = ?1";
 
 /// The node is rate limited: it keeps owing its edges and is left out of
-/// the fetch list until this instant passes. The bare stub goes first for
-/// the same reason it does above.
-async fn defer(services: &Services, id: u64, until: i64) -> Result<(), CoreError> {
+/// the fetch list until `?2` passes.
+const DEFER: &str = "UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1";
+
+/// One of the two updates above on a node with nothing else to write. The
+/// bare stub goes first because a seed can be an id with no media row at
+/// all, and an `UPDATE` that matches nothing would leave the node owing its
+/// edges for ever, which is a loop rather than a missing stamp.
+async fn mark(services: &Services, id: u64, sql: &'static str, at: i64) -> Result<(), CoreError> {
     services
         .store
         .tx_async(move |tx| {
@@ -380,10 +366,7 @@ async fn defer(services: &Services, id: u64, until: i64) -> Result<(), CoreError
                     ..StubWrite::default()
                 },
             )?;
-            tx.execute(
-                "UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1",
-                params![as_i64(id), until],
-            )?;
+            tx.execute(sql, params![as_i64(id), at])?;
             Ok(())
         })
         .await
@@ -400,9 +383,8 @@ fn gap_seeds(conn: &mut Connection) -> Result<Vec<u64>, CoreError> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-/// The crawl bar's two numbers, Electron's `getFranchiseCrawlProgress`:
-/// how many owned AniList-matched series have their node's edges, out of
-/// how many there are.
+/// The crawl bar's two numbers: how many owned AniList-matched series have
+/// their node's edges, out of how many there are.
 fn progress(conn: &mut Connection) -> Result<(u64, u64), CoreError> {
     let (done, total): (i64, i64) = conn.query_row(
         "SELECT count(m.relations_fetched_at), count(*)

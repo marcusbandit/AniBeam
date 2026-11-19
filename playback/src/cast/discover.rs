@@ -207,8 +207,11 @@ mod tests {
 
     #[test]
     fn an_ssdp_answer_gives_its_location() {
-        let a = "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nLocation: http://192.168.1.40:9197/dmr\r\nST: urn:schemas-upnp-org:service:AVTransport:1\r\n\r\n";
-        assert_eq!(location(a).as_deref(), Some("http://192.168.1.40:9197/dmr"));
+        let a = "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nLocation: http://198.51.100.40:9197/dmr\r\nST: urn:schemas-upnp-org:service:AVTransport:1\r\n\r\n";
+        assert_eq!(
+            location(a).as_deref(),
+            Some("http://198.51.100.40:9197/dmr")
+        );
         assert_eq!(location("HTTP/1.1 200 OK\r\n\r\n"), None);
     }
 
