@@ -14,7 +14,7 @@ pub enum State {
     /// Aired, and not on the host's disk at the last sync.
     Missing,
     /// On the host's disk.
-    OnDisk { watched: bool },
+    OnDisk,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,18 +27,11 @@ pub struct Entry {
     pub episode: u32,
     pub at: i64,
     pub state: State,
-    pub subscribed: bool,
 }
 
 /// Every entry with `from <= at < to`, in air order.
 pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i64) -> Vec<Entry> {
     let snapshot = &cache.snapshot;
-    let subscribed = |id: u64| {
-        snapshot
-            .subscriptions
-            .iter()
-            .any(|s| s.series_id == Some(id))
-    };
     let mut out = Vec::new();
 
     for series in &snapshot.series {
@@ -50,18 +43,14 @@ pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i
             }
             let key = (season_of(&a), a.episode);
             seen.insert(key);
-            let state = match disk.get(&key) {
-                Some(&watched) => State::OnDisk { watched },
-                None if a.at <= now => State::Missing,
-                None => State::Upcoming,
+            let state = if disk.contains(&key) {
+                State::OnDisk
+            } else if a.at <= now {
+                State::Missing
+            } else {
+                State::Upcoming
             };
-            out.push(entry(
-                Some(series.id),
-                &series.title,
-                &a,
-                state,
-                subscribed(series.id),
-            ));
+            out.push(entry(Some(series.id), &series.title, &a, state));
         }
         // What is on disk carries its own air date; the schedule only lists what is to come.
         for e in &series.episodes {
@@ -80,14 +69,7 @@ pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i
                 season: e.season,
                 at,
             };
-            let watched = disk.get(&key).copied().unwrap_or(e.watched);
-            out.push(entry(
-                Some(series.id),
-                &series.title,
-                &a,
-                State::OnDisk { watched },
-                subscribed(series.id),
-            ));
+            out.push(entry(Some(series.id), &series.title, &a, State::OnDisk));
         }
     }
     for sub in snapshot
@@ -105,14 +87,14 @@ pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i
             } else {
                 State::Upcoming
             };
-            out.push(entry(None, &sub.title, a, state, true));
+            out.push(entry(None, &sub.title, a, state));
         }
     }
     out.sort_by(|a, b| (a.at, &a.title, a.episode).cmp(&(b.at, &b.title, b.episode)));
     out
 }
 
-fn entry(series_id: Option<u64>, title: &str, a: &Airing, state: State, subscribed: bool) -> Entry {
+fn entry(series_id: Option<u64>, title: &str, a: &Airing, state: State) -> Entry {
     Entry {
         series_id,
         title: title.to_string(),
@@ -120,7 +102,6 @@ fn entry(series_id: Option<u64>, title: &str, a: &Airing, state: State, subscrib
         episode: a.episode,
         at: a.at,
         state,
-        subscribed,
     }
 }
 
@@ -162,7 +143,6 @@ mod tests {
         Cache {
             address: "desktop:8790".into(),
             host: "desktop".into(),
-            host_version: "2.1.0".into(),
             synced_at: snapshot.generated_at + 5,
             snapshot,
             peers: Vec::new(),
@@ -193,10 +173,9 @@ mod tests {
         // Frieren: 7 on disk with air dates, then 8 to 12 scheduled. Mushishi and Perfect
         // Blue have no air dates on their files.
         assert_eq!(all.len(), 12);
-        assert_eq!(all[0].state, State::OnDisk { watched: true });
-        assert_eq!(all[6].state, State::OnDisk { watched: false });
+        assert!(all[..7].iter().all(|e| e.state == State::OnDisk));
         assert_eq!((all[7].episode, all[7].state), (8, State::Upcoming));
-        assert!(all.iter().all(|e| e.series_id == Some(12) && e.subscribed));
+        assert!(all.iter().all(|e| e.series_id == Some(12)));
     }
 
     #[test]
