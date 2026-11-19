@@ -317,7 +317,7 @@ fn library_files(
     series: u64,
     episode: u32,
 ) -> Result<Vec<String>, CoreError> {
-    let mut stmt = c.prepare(
+    let mut stmt = c.prepare_cached(
         "SELECT path FROM files WHERE series_id = ?1 AND kind = 'episode' AND number = ?2 ORDER BY path",
     )?;
     let rows = stmt.query_map(params![series as i64, episode as f64], |r| {
@@ -755,6 +755,21 @@ pub(crate) async fn tick(services: &Services, client: &QbtClient, torrents: &[To
     }
 }
 
+/// The old torrents that carried the trashed files: one whose content holds
+/// one of them. The new ones are never touched.
+fn old_carriers<'a>(
+    torrents: &'a [Torrent],
+    trashed: &'a [PathBuf],
+    new_hashes: &'a HashSet<String>,
+) -> impl Iterator<Item = &'a Torrent> {
+    torrents.iter().filter(|t| {
+        let content = Path::new(&t.content_path);
+        !new_hashes.contains(&t.hash.to_lowercase())
+            && !t.content_path.is_empty()
+            && trashed.iter().any(|p| p.starts_with(content))
+    })
+}
+
 /// Trashes the old files of one episode and tidies the old torrents.
 async fn replace_episode(
     services: &Services,
@@ -765,16 +780,14 @@ async fn replace_episode(
     torrents: &[Torrent],
     new_hashes: &HashSet<String>,
 ) -> Result<(), CoreError> {
-    let (listed, sources) = services.store.read(|c| {
-        Ok((
-            library_files(c, series, entry.episode)?,
-            library_sources(c)?,
-        ))
-    })?;
+    let listed = services
+        .store
+        .read(|c| library_files(c, series, entry.episode))?;
     let paths = trash_candidates(&listed, entry, written);
     if paths.is_empty() {
         return Ok(());
     }
+    let sources = services.store.read(library_sources)?;
     let cands: Vec<trash::Candidate> = paths
         .iter()
         .map(|p| trash::Candidate::Series { path: p.clone() })
@@ -802,17 +815,10 @@ async fn replace_episode(
         ),
         EventBody::Notice,
     );
-    // The old torrents that carried those files; the new ones are never touched
     let mut carriers = Vec::new();
-    for t in torrents {
-        if new_hashes.contains(&t.hash.to_lowercase()) {
-            continue;
-        }
-        let content = Path::new(&t.content_path);
-        if !t.content_path.is_empty() && targets.iter().any(|p| p.starts_with(content)) {
-            let files = client.files(&t.hash).await.unwrap_or_default();
-            carriers.push((t.clone(), files));
-        }
+    for t in old_carriers(torrents, &targets, new_hashes) {
+        let files = client.files(&t.hash).await.unwrap_or_default();
+        carriers.push((t.clone(), files));
     }
     for effect in plan_old(&targets, &carriers) {
         let outcome = match &effect {
@@ -1368,5 +1374,31 @@ mod tests {
         assert_eq!(got, vec![bound, c]);
         // A tick that changed nothing changes nothing
         assert!(diff(&[followup("x", 1)], &[followup("x", 1)]).is_empty());
+    }
+
+    #[test]
+    fn the_new_torrent_never_counts_as_an_old_carrier() {
+        let with = |hash: &str, content: &str| {
+            let mut t = torrent(hash, "x", 0);
+            t.content_path = content.into();
+            t
+        };
+        let torrents = [
+            with("OLD", "/dl/[G] Show - 02.mkv"),
+            with("new", "/dl/[H] Show - 02.mkv"),
+            with("batch", "/dl/Show Batch"),
+            with("blank", ""),
+            with("other", "/dl/Other - 01.mkv"),
+        ];
+        let trashed = [
+            PathBuf::from("/dl/[G] Show - 02.mkv"),
+            PathBuf::from("/dl/[H] Show - 02.mkv"),
+            PathBuf::from("/dl/Show Batch/Show - 02.mkv"),
+        ];
+        let new: HashSet<String> = ["new".to_string()].into();
+        let found: Vec<&str> = old_carriers(&torrents, &trashed, &new)
+            .map(|t| t.hash.as_str())
+            .collect();
+        assert_eq!(found, ["OLD", "batch"]);
     }
 }

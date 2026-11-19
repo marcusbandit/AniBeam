@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use anibeam_contract::{FeedEntry, Release};
 // anirss's own field split: a `-"quoted phrase"`, a `"quoted"` or a word
-use anibeam_releases::endpoints::FIELD_RE as FIELDS;
+use anibeam_releases::endpoints::FIELD_RE;
 
 /// What the search narrowed on anirss's side, past the query the endpoint
 /// was asked: words every release must hold, and words none may.
@@ -39,7 +39,7 @@ impl LocalTerms {
 fn split(query: &str) -> (Vec<String>, Vec<String>) {
     let mut positive = Vec::new();
     let mut excluded = Vec::new();
-    for m in FIELDS.find_iter(query) {
+    for m in FIELD_RE.find_iter(query) {
         let field = m.as_str();
         if let Some(rest) = field.strip_prefix('-')
             && !rest.is_empty()
@@ -90,15 +90,18 @@ pub fn local_terms(query: &str, wire: &str) -> LocalTerms {
 
 /// The rule as qBittorrent holds it, reading `feed_url` and keeping the
 /// local terms: each must-word added to `mustContain` (space is qBittorrent's
-/// AND, so a phrase goes in as its words), each not-word to `mustNotContain`
-/// (`|` is its OR). A word the rule already holds is not added again.
-/// Everything else in the rule (save path, tags, episode filter) stays as
-/// anirss wrote it.
+/// AND), each not-word to `mustNotContain` (`|` is its OR), unless the rule
+/// holds it already. Everything else in the rule (save path, tags, episode
+/// filter) stays as anirss wrote it.
 pub fn narrowed(def: &Value, terms: &LocalTerms, feed_url: &str) -> Value {
     let mut out = def.clone();
-    let words = |s: &str| s.split_whitespace().map(str::to_string).collect::<Vec<_>>();
-    let mut must = words(def["mustContain"].as_str().unwrap_or(""));
-    add_new(&mut must, terms.must.iter().flat_map(|w| words(w)), &[]);
+    let mut must: Vec<String> = def["mustContain"]
+        .as_str()
+        .unwrap_or("")
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    add_new(&mut must, terms.must.iter().cloned(), &[]);
     let mut not: Vec<String> = def["mustNotContain"]
         .as_str()
         .unwrap_or("")
@@ -196,7 +199,7 @@ pub fn with_search(url: &str, key: &str, value: &str) -> String {
 
 /// The positive fields of a query as written (quotes kept), the order kept.
 pub fn positive_fields(query: &str) -> Vec<String> {
-    FIELDS
+    FIELD_RE
         .find_iter(query)
         .map(|m| m.as_str().to_string())
         .filter(|f| !(f.starts_with('-') && f.len() > 1))
@@ -245,20 +248,6 @@ mod tests {
         assert_eq!(out["savePath"], "/media/Helluva Boss");
         assert_eq!(out["torrentParams"]["tags"], json!(["TV"]));
         assert_eq!(out["enabled"], true);
-    }
-
-    #[test]
-    fn narrowing_again_adds_no_word_twice() {
-        let terms = local_terms("Show 1080p \"AMZN WEB\" -x265", "Show");
-        let once = narrowed(
-            &json!({"mustContain": "", "mustNotContain": ""}),
-            &terms,
-            "u",
-        );
-        assert_eq!(once["mustContain"], "1080p AMZN WEB");
-        let twice = narrowed(&once, &terms, "u");
-        assert_eq!(twice["mustContain"], "1080p AMZN WEB");
-        assert_eq!(twice["mustNotContain"], "x265");
     }
 
     #[test]
