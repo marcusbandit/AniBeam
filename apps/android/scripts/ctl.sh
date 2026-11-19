@@ -25,19 +25,17 @@ fi
 source "$here/env.sh"
 (( $# )) || set -- help
 
-# shot <file.png>: the device's own pixels, from the display that is powered (shot.sh).
+# shot <file.png>: the device's own pixels, from the display that is powered (env.sh). It
+# runs here, not in the app, so it stands on its own rather than in a ; line.
 if [[ "$1" == "shot" ]]; then
   [[ $# == 2 ]] || { echo "ctl.sh: shot takes a file name" >&2; exit 2; }
-  disp="$("$ADB" shell dumpsys display \
-    | grep -oE 'DisplayViewport\{[^}]*isActive=true[^}]*\}' \
-    | sed -n "s/.*uniqueId='local:\([0-9]*\)'.*/\1/p" | head -1)"
-  "$ADB" exec-out screencap ${disp:+-d "$disp"} -p > "$2"
-  if ! file "$2" | grep -q "PNG image"; then
-    echo "ctl.sh: $2 is not a PNG; the screen is probably not up yet." >&2
-    exit 1
-  fi
+  shot_to "$2" || exit 1
   echo "$2"
   exit 0
+fi
+if (( $# == 1 )) && [[ "$1" =~ (^|\;)[[:space:]]*shot([[:space:]]|$|\;) ]]; then
+  echo "ctl.sh: shot runs on its own, not in a ; line: ctl.sh shot <file.png>" >&2
+  exit 2
 fi
 
 # A word as the app's reader takes it: in double quotes when it holds a blank, a quote, a
@@ -83,7 +81,7 @@ data="${rest#*, data=\"}"
 data="${data%"${data##*[![:space:]]}"}"
 data="${data%\"}"
 printf '%s\n' "$data"
-[[ "$line" == help ]] && echo "shot <file.png>                             the screen, from the device (ctl.sh)"
+[[ "$line" == help ]] && echo "shot <file.png>                             the screen, from the device; on its own, not in a ; line"
 
 # The labels a tree shows, for the shells' completion of click, tap and the rest.
 if [[ "$line" =~ (^|\;)[[:space:]]*(tree|dump)[[:space:]]*($|\;) ]]; then
