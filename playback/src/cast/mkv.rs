@@ -68,8 +68,6 @@ pub struct AudioTrack {
     pub rate: u32,
     /// AudioSpecificConfig for AAC, OpusHead, the fLaC header and blocks.
     pub config: Vec<u8>,
-    pub language: Option<String>,
-    pub name: Option<String>,
     pub strip: Option<Vec<u8>>,
 }
 
@@ -77,8 +75,6 @@ pub struct AudioTrack {
 pub struct SubTrack {
     pub number: u64,
     pub codec: SubCodec,
-    pub language: Option<String>,
-    pub name: Option<String>,
     pub strip: Option<Vec<u8>>,
     pub zlib: bool,
 }
@@ -242,8 +238,6 @@ pub fn probe(mkv: &Mkv) -> Probe {
                     channels,
                     rate,
                     config,
-                    language: t.language().map(str::to_string),
-                    name: t.name().map(str::to_string),
                     strip,
                 });
             }
@@ -256,8 +250,6 @@ pub fn probe(mkv: &Mkv) -> Probe {
                 probe.subs.push(SubTrack {
                     number,
                     codec,
-                    language: t.language().map(str::to_string),
-                    name: t.name().map(str::to_string),
                     strip,
                     zlib,
                 });

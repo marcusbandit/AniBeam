@@ -28,9 +28,6 @@ pub struct Cache {
     pub address: String,
     /// The host's own name, from its hello ("desktop").
     pub host: String,
-    /// The host's Anibeam version.
-    #[serde(default)]
-    pub host_version: String,
     /// The phone's clock when it arrived.
     pub synced_at: i64,
     pub snapshot: Snapshot,
@@ -190,7 +187,7 @@ impl Store {
 /// bytes reach the disk before the rename. The private variant also keeps the device key's
 /// seed readable by this app alone.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    anibeam_core::atomic_file::write_private(path, bytes)?;
+    anibeam_foundation::atomic_file::write_private(path, bytes)?;
     Ok(())
 }
 
@@ -246,7 +243,6 @@ mod tests {
         let cache = Cache {
             address: "desktop:8790".into(),
             host: "desktop".into(),
-            host_version: "2.4.0".into(),
             synced_at: 1_792_242_100,
             snapshot,
             peers: Vec::new(),
@@ -271,7 +267,6 @@ mod tests {
         let cache = Cache {
             address: "10.0.2.2:8790".into(),
             host: "desktop".into(),
-            host_version: "2.1.0".into(),
             synced_at: 1_792_242_100,
             snapshot,
             peers: vec![crate::api::PeerHost {

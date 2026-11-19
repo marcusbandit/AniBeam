@@ -79,7 +79,8 @@ fn library_tile(t: &LibraryTile, art: &Art, now: i64) -> Tile {
     out
 }
 
-/// The device's library as one grid, airing first, then by title, narrowed by `query`.
+/// The device's library as one grid, airing first, soonest first, then the most recently
+/// active, narrowed by `query`.
 pub fn library(
     cache: Option<&Cache>,
     anilist: &AniListCache,
@@ -91,13 +92,10 @@ pub fn library(
         return Vec::new();
     };
     let query = query.trim().to_lowercase();
-    let (airing, rest): (Vec<_>, Vec<_>) = library::tiles(cache, anilist, now)
-        .into_iter()
-        .filter(|t| query.is_empty() || t.title.to_lowercase().contains(&query))
-        .partition(|t| t.airing);
-    airing
+    // The tiles come airing first already.
+    library::tiles(cache, anilist, now)
         .iter()
-        .chain(rest.iter())
+        .filter(|t| query.is_empty() || t.title.to_lowercase().contains(&query))
         .map(|t| library_tile(t, art, now))
         .collect()
 }
@@ -363,7 +361,7 @@ pub fn calendar(
             let (poster, has_poster) = art.poster(e.series_id);
             let (state, when) = match e.state {
                 State::Upcoming => (0, format::countdown(e.at - now)),
-                State::OnDisk { .. } => (1, tr!("remote-on-computer")),
+                State::OnDisk => (1, tr!("remote-on-computer")),
                 State::Missing => (2, tr!("remote-out", ago = format::ago(now - e.at))),
             };
             let item = CalItem {
@@ -437,11 +435,6 @@ mod tests {
 
     fn rule(missing: Vec<u32>, missing_season: Option<u32>) -> library::SubscriptionInfo {
         library::SubscriptionInfo {
-            name: "Two Seasons".into(),
-            query: String::new(),
-            enabled: true,
-            complete: false,
-            files: 0,
             missing,
             missing_season,
         }
