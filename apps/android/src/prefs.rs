@@ -1,9 +1,12 @@
 //! The phone's own choices: whether onboarding is done, Wi-Fi only, the storage limit, and
-//! which version's notes were last read. One small JSON file beside the core's folder.
+//! which version's notes were last read. One small JSON file beside the core's folder; the
+//! other pages that keep a file of their own (the look, the language, the marks waiting for
+//! the computer) read and write theirs through the two helpers here.
 
 use std::path::{Path, PathBuf};
 
 use anibeam_core::changelog::Seen;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 /// 12 episodes at about 1.5 GB each.
@@ -85,10 +88,22 @@ pub fn exists(data_dir: &Path) -> bool {
 }
 
 pub fn load(data_dir: &Path) -> Prefs {
-    std::fs::read(file(data_dir))
+    read_json(&file(data_dir))
+}
+
+/// A JSON file the phone keeps, or the default when it is missing or does not read.
+pub fn read_json<T: DeserializeOwned + Default>(path: &Path) -> T {
+    std::fs::read(path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
+}
+
+/// Writes `value` whole through the core's atomic write, so a kill mid-write leaves the
+/// last good file.
+pub fn keep_json(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
+    anibeam_core::atomic_file::write(path, serde_json::to_vec_pretty(value)?)?;
+    Ok(())
 }
 
 /// Written whole through the core's atomic write, so a kill mid-write leaves the last good
@@ -148,6 +163,24 @@ mod tests {
             .collect();
         assert_eq!(names, ["phone.json"]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_kept_file_reads_back_and_a_missing_or_broken_one_reads_as_the_default() {
+        let dir = std::env::temp_dir().join(format!("anibeam-json-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("list.json");
+        assert_eq!(read_json::<Vec<u32>>(&path), Vec::<u32>::new());
+        keep_json(&path, &vec![3u32, 1]).unwrap();
+        assert_eq!(read_json::<Vec<u32>>(&path), [3, 1]);
+        std::fs::write(&path, "{ not json").unwrap();
+        assert_eq!(read_json::<Vec<u32>>(&path), Vec::<u32>::new());
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, ["list.json"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

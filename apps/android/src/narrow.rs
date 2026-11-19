@@ -4,7 +4,7 @@
 //! sideways and no button is cut off at the edge.
 
 use i_slint_backend_testing::ElementHandle;
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::tr::{Arg, Lang, tr_in};
 use crate::{AppData, AppWindow, AuthRow, EndpointRow, RepoData, RepoRow, Tr};
@@ -30,16 +30,8 @@ fn sites_step(lang: Lang) -> AppWindow {
     let page = AppWindow::new().unwrap();
     page.window()
         .set_size(slint::LogicalSize::new(WIDTH, 2400.0));
-    page.global::<Tr>().on_lookup(move |id, _rev, args| {
-        let flat: Vec<SharedString> = args.iter().collect();
-        let pairs: Vec<(&str, &str)> = flat
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|[k, v]| (k.as_str(), v.as_str()))
-            .collect();
-        say(lang, &id, &pairs).into()
-    });
+    page.global::<Tr>()
+        .on_lookup(move |id, _rev, args| crate::lang::lookup_in(lang, &id, &args).into());
     let app = page.global::<AppData>();
     app.set_onboarding(true);
     app.set_step(6);

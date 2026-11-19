@@ -157,6 +157,37 @@ mod tests {
     }
 
     #[test]
+    fn a_computer_series_keeps_its_names_and_its_whole_episodes_with_a_file() {
+        let episode = |number: f64, file: Option<u64>| api::Episode {
+            number,
+            file,
+            ..Default::default()
+        };
+        let s = series_of(api::Series {
+            id: 7,
+            anilist_id: Some(70),
+            title: "Frieren".into(),
+            titles: api::Titles {
+                english: Some("Frieren: Beyond Journey's End".into()),
+                ..Default::default()
+            },
+            episodes: vec![
+                episode(3.0, Some(1)),
+                episode(1.0, Some(2)),
+                episode(3.0, Some(3)),
+                // A recap between two episodes, a special numbered 0, one with no file.
+                episode(2.5, Some(4)),
+                episode(0.0, Some(5)),
+                episode(2.0, None),
+            ],
+            ..Default::default()
+        });
+        assert_eq!((s.id, s.anilist), (7, Some(70)));
+        assert_eq!(s.names, ["frieren", "frieren: beyond journey's end"]);
+        assert_eq!(s.had, [1, 3]);
+    }
+
+    #[test]
     fn the_line_says_whether_the_computer_finished() {
         assert_eq!(
             sent_line(&Reply::Ok, "3 episodes", "computer"),

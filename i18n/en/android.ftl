@@ -604,20 +604,6 @@ show-card-unreleased = Not yet released
 show-card-on-anilist = On AniList
 # The badge on a recommended show this phone has.
 show-rec-available = Available
-# What a related show is to this one.
-show-relation-prequel = Prequel
-show-relation-sequel = Sequel
-show-relation-side-story = Side story
-show-relation-parent = Parent
-show-relation-spin-off = Spin off
-show-relation-adaptation = Adaptation
-show-relation-alternative = Alternative
-show-relation-summary = Summary
-show-relation-character = Character
-show-relation-source = Source
-show-relation-compilation = Compilation
-show-relation-contains = Contains
-show-relation-other = Other
 # A character's role in the show.
 show-role-main = Main
 show-role-supporting = Supporting
@@ -650,7 +636,6 @@ match-paste-tvmaze = Paste a TVmaze or IMDb link
 phone-match-look-up = Look up
 match-apply = Apply
 match-look-up-all = Look up every folder Anibeam does not know yet
-match-format-music = Music
 # { $first } and { $second } are names of sites: "AniList and MyAnimeList".
 # { $sites } is one or more site names.
 phone-match-matched-on = Matched on { $sites }

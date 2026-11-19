@@ -100,18 +100,16 @@ fn parse_status(index: i32) -> Option<ListStatus> {
 }
 
 /// "8.5", the way the desktop writes a score: a whole one keeps its point.
-pub fn score_text(tenths: i32) -> String {
+fn score_text(tenths: i32) -> String {
     format!("{}.{}", tenths / 10, tenths % 10)
 }
 
-/// Where a status or score of this show goes, in a line, the desktop's `listHome`.
-fn list_home(detail: &SeriesDetail, anilist: bool, mal: bool) -> String {
-    let ids = detail.card.match_info.as_ref();
-    let al = ids.is_some_and(|m| m.anilist_id.is_some());
-    let my = ids.is_some_and(|m| m.mal_id.is_some());
-    if (anilist && al) || (mal && my) {
+/// Where a status or score of this show goes, in a line, the desktop's `listHome`: by whether
+/// the show is matched on AniList and on MyAnimeList, and which of the two are connected.
+fn list_home(on_al: bool, on_mal: bool, anilist: bool, mal: bool) -> String {
+    if (anilist && on_al) || (mal && on_mal) {
         tr!("show-home-each")
-    } else if !al && !my {
+    } else if !on_al && !on_mal {
         tr!("show-home-no-tracker")
     } else if anilist || mal {
         tr!("show-home-tracker-lacks")
@@ -121,11 +119,8 @@ fn list_home(detail: &SeriesDetail, anilist: bool, mal: bool) -> String {
 }
 
 /// The connected trackers this show's writes reach, as a person names them.
-fn tracker_sites(detail: &SeriesDetail, anilist: bool, mal: bool) -> String {
-    let ids = detail.card.match_info.as_ref();
-    let al = anilist && ids.is_some_and(|m| m.anilist_id.is_some());
-    let my = mal && ids.is_some_and(|m| m.mal_id.is_some());
-    match (al, my) {
+fn tracker_sites(anilist: bool, mal: bool) -> String {
+    match (anilist, mal) {
         (true, true) => tr!("show-sites-both"),
         (true, false) => tr!("tracker-anilist"),
         (false, true) => tr!("tracker-mal"),
@@ -181,9 +176,12 @@ pub fn sync(
         .into(),
     );
     let (anilist, mal) = trackers.map_or((false, false), |(a, m)| (a.connected, m.connected));
-    show.set_home(list_home(detail, anilist, mal).into());
+    let ids = card.match_info.as_ref();
+    let on_al = ids.is_some_and(|m| m.anilist_id.is_some());
+    let on_mal = ids.is_some_and(|m| m.mal_id.is_some());
+    show.set_home(list_home(on_al, on_mal, anilist, mal).into());
     show.set_notes(detail.notes.clone().unwrap_or_default().into());
-    show.set_sites(tracker_sites(detail, anilist, mal).into());
+    show.set_sites(tracker_sites(anilist && on_al, mal && on_mal).into());
     let note = NOTE.with(|n| {
         let mut n = n.borrow_mut();
         if n.as_ref().is_some_and(|(_, at)| at.elapsed() > NOTE_FOR) {
@@ -253,8 +251,9 @@ pub fn sync(
         .iter()
         .map(|n| {
             want(crate::app::AIRING_ART | n.anilist_id, &n.poster);
+            // The core words the relation already, in the app's language.
             let line = [
-                relation_label(n.relation.as_deref()),
+                n.relation.clone().unwrap_or_default(),
                 // A node with no format says nothing here, not "Series".
                 n.format
                     .as_deref()
@@ -263,22 +262,20 @@ pub fn sync(
                 n.year.map(|y| y.to_string()).unwrap_or_default(),
             ];
             let line: Vec<String> = line.into_iter().filter(|s| !s.is_empty()).collect();
-            entry(
-                art,
-                n.anilist_id,
-                n.owned,
-                &n.title,
-                line.join(", "),
-                &if n.owned.is_some() {
-                    tr!("show-card-owned")
-                } else if !n.released {
-                    tr!("show-card-unreleased")
-                } else {
-                    tr!("show-card-on-anilist")
-                },
-                n.list_status,
-                n.site_url.as_deref(),
-            )
+            let mut card = entry(art, n.anilist_id, n.owned, &n.title, n.list_status);
+            card.line = line.join(", ").into();
+            card.note = if n.owned.is_some() {
+                tr!("show-card-owned")
+            } else if !n.released {
+                tr!("show-card-unreleased")
+            } else {
+                tr!("show-card-on-anilist")
+            }
+            .into();
+            if let Some(url) = &n.site_url {
+                card.url = url.as_str().into();
+            }
+            card
         })
         .collect();
     let recs: Vec<ShowCard> = detail
@@ -286,20 +283,14 @@ pub fn sync(
         .iter()
         .map(|r| {
             want(crate::app::AIRING_ART | r.anilist_id, &r.poster);
-            entry(
-                art,
-                r.anilist_id,
-                r.owned,
-                &r.title,
-                String::new(),
-                &if r.owned.is_some() {
-                    tr!("show-card-owned")
-                } else {
-                    tr!("show-card-on-anilist")
-                },
-                r.list_status,
-                None,
-            )
+            let mut card = entry(art, r.anilist_id, r.owned, &r.title, r.list_status);
+            card.note = if r.owned.is_some() {
+                tr!("show-card-owned")
+            } else {
+                tr!("show-card-on-anilist")
+            }
+            .into();
+            card
         })
         .collect();
     let people: Vec<ShowPerson> = detail
@@ -335,17 +326,14 @@ pub fn sync(
     asks
 }
 
-/// One related or recommended show as the page and its sheet carry it.
-#[allow(clippy::too_many_arguments)]
+/// One related or recommended show as the page and its sheet carry it, with no line or note
+/// yet and its AniList page for a link.
 fn entry(
     art: &Art,
     anilist_id: u64,
     owned: Option<u64>,
     title: &str,
-    line: String,
-    note: &str,
     status: Option<ListStatus>,
-    site_url: Option<&str>,
 ) -> ShowCard {
     let (poster, has_poster) = art.poster(Some(crate::app::AIRING_ART | anilist_id));
     ShowCard {
@@ -355,34 +343,9 @@ fn entry(
         poster,
         has_poster,
         initials: format::initials(title).into(),
-        line: line.into(),
-        note: note.into(),
         status: status.map(status_word).unwrap_or_default().into(),
-        url: site_url
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("https://anilist.co/anime/{anilist_id}"))
-            .into(),
-    }
-}
-
-/// "SIDE_STORY" as "Side story".
-fn relation_label(relation: Option<&str>) -> String {
-    match relation.unwrap_or_default() {
-        "PREQUEL" => tr!("show-relation-prequel"),
-        "SEQUEL" => tr!("show-relation-sequel"),
-        "SIDE_STORY" => tr!("show-relation-side-story"),
-        "PARENT" => tr!("show-relation-parent"),
-        "SPIN_OFF" => tr!("show-relation-spin-off"),
-        "ADAPTATION" => tr!("show-relation-adaptation"),
-        "ALTERNATIVE" => tr!("show-relation-alternative"),
-        "SUMMARY" => tr!("show-relation-summary"),
-        "CHARACTER" => tr!("show-relation-character"),
-        "SOURCE" => tr!("show-relation-source"),
-        "COMPILATION" => tr!("show-relation-compilation"),
-        "CONTAINS" => tr!("show-relation-contains"),
-        "OTHER" => tr!("show-relation-other"),
-        // A relation the core adds later reads as its own name until the catalog has it.
-        other => sentence(&other.replace('_', " ")),
+        url: format!("https://anilist.co/anime/{anilist_id}").into(),
+        ..Default::default()
     }
 }
 
@@ -416,6 +379,7 @@ pub(crate) fn format_label(format: Option<&str>) -> String {
         Some("ONA") => tr!("show-format-ona"),
         Some("SPECIAL") => tr!("show-format-special"),
         Some("MOVIE") => tr!("show-format-film"),
+        Some("MUSIC") => tr!("anilist-format-music"),
         Some(other) => other.replace('_', " "),
     }
 }
@@ -465,19 +429,13 @@ fn graph(series: u64, matched: Option<u64>, has_graph: bool) {
         if !has_graph || g.reading {
             return false;
         }
-        let due = match (&g.layout, g.read_at) {
-            (None, None) => true,
-            (Some(l), Some(at)) => {
-                at.elapsed()
-                    > if l.complete {
-                        GRAPH_DONE_EVERY
-                    } else {
-                        GRAPH_EVERY
-                    }
-            }
-            (None, Some(at)) => at.elapsed() > GRAPH_EVERY,
-            _ => false,
+        let every = if g.layout.as_ref().is_some_and(|l| l.complete) {
+            GRAPH_DONE_EVERY
+        } else {
+            GRAPH_EVERY
         };
+        // Never read, or the language changed since the last read.
+        let due = g.read_at.is_none_or(|at| at.elapsed() > every);
         if due {
             g.reading = true;
             g.read_at = Some(Instant::now());
@@ -517,6 +475,8 @@ fn graph(series: u64, matched: Option<u64>, has_graph: bool) {
 /// list it is on) that are built once per change of the page, so build them again.
 pub fn relocalize() {
     SIG.with(|s| s.set(None));
+    // The franchise's relation words are the core's, worded when it was read: read it again.
+    GRAPH.with(|g| g.borrow_mut().read_at = None);
     crate::local::touch();
 }
 
@@ -676,14 +636,7 @@ mod tests {
 
     #[test]
     fn statuses_round_trip_and_on_hold_is_worded_like_the_desktop() {
-        for status in [
-            ListStatus::Watching,
-            ListStatus::Planning,
-            ListStatus::Completed,
-            ListStatus::Paused,
-            ListStatus::Dropped,
-            ListStatus::Repeating,
-        ] {
+        for status in STATUSES {
             assert_eq!(parse_status(status_index(status)), Some(status));
         }
         assert_eq!(status_word(ListStatus::Paused), "On hold");
@@ -692,13 +645,37 @@ mod tests {
     }
 
     #[test]
-    fn relations_and_formats_read_like_the_desktop() {
-        assert_eq!(relation_label(Some("SIDE_STORY")), "Side story");
-        assert_eq!(relation_label(Some("PREQUEL")), "Prequel");
-        assert_eq!(relation_label(None), "");
+    fn formats_and_roles_read_like_the_desktop() {
         assert_eq!(format_label(Some("TV_SHORT")), "TV short");
         assert_eq!(format_label(Some("MOVIE")), "Film");
+        assert_eq!(format_label(Some("MUSIC")), "Music");
+        assert_eq!(format_label(Some("NEW_KIND")), "NEW KIND");
         assert_eq!(format_label(None), "Series");
+        assert_eq!(role_label("SUPPORTING"), "Supporting");
         assert_eq!(sentence("SUPPORTING"), "Supporting");
+    }
+
+    #[test]
+    fn the_line_says_where_a_status_goes() {
+        let each = tr!("show-home-each");
+        // Matched on AniList and AniList connected; or MAL on both sides.
+        assert_eq!(list_home(true, false, true, false), each);
+        assert_eq!(list_home(false, true, true, true), each);
+        assert_eq!(
+            list_home(false, false, true, true),
+            tr!("show-home-no-tracker")
+        );
+        // Matched on MAL only, with only AniList connected.
+        assert_eq!(
+            list_home(false, true, true, false),
+            tr!("show-home-tracker-lacks")
+        );
+        assert_eq!(
+            list_home(true, true, false, false),
+            tr!("show-home-until-connected")
+        );
+        assert_eq!(tracker_sites(true, true), tr!("show-sites-both"));
+        assert_eq!(tracker_sites(false, true), tr!("tracker-mal"));
+        assert_eq!(tracker_sites(false, false), "");
     }
 }
