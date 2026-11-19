@@ -1,5 +1,7 @@
 //! The library: every series as a tile, and one series in full.
 
+use std::collections::HashMap;
+
 use crate::api::{Airing, EpisodeVersion, Kind, Series};
 use crate::schedule;
 use crate::store::{AniListCache, Cache};
@@ -25,20 +27,22 @@ pub struct DiskEpisode {
 /// one episode by season and number, a missing season read as the first, the way the host
 /// groups their versions.
 fn episodes(series: &Series) -> Vec<DiskEpisode> {
-    let mut out: Vec<((u32, u64), DiskEpisode)> = Vec::new();
+    let mut out: Vec<DiskEpisode> = Vec::new();
+    let mut at: HashMap<(u32, u64), usize> = HashMap::new();
     for e in &series.episodes {
         let key = (e.season.unwrap_or(1), e.number.to_bits());
-        match out.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, seen)) => {
+        match at.get(&key) {
+            Some(&i) => {
+                let seen = &mut out[i];
                 seen.watched |= e.watched;
                 seen.file = seen.file.or(e.file);
                 if seen.versions.is_empty() {
                     seen.versions = e.versions.clone();
                 }
             }
-            None => out.push((
-                key,
-                DiskEpisode {
+            None => {
+                at.insert(key, out.len());
+                out.push(DiskEpisode {
                     season: e.season,
                     number: e.number,
                     code: e.code.clone(),
@@ -47,11 +51,11 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
                     aired_at: e.aired_at,
                     file: e.file,
                     versions: e.versions.clone(),
-                },
-            )),
+                });
+            }
         }
     }
-    out.into_iter().map(|(_, e)| e).collect()
+    out
 }
 
 /// One poster in the library grid.
@@ -68,7 +72,6 @@ pub struct Tile {
     pub total: Option<u32>,
     /// Episodes on disk, not files.
     pub on_disk: u32,
-    pub subscribed: bool,
 }
 
 fn watched_count(series: &Series, episodes: &[DiskEpisode]) -> u32 {
@@ -80,8 +83,8 @@ fn watched_count(series: &Series, episodes: &[DiskEpisode]) -> u32 {
 /// Every series: the airing ones first, soonest first, then the rest, the most recently
 /// active first.
 pub fn tiles(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<Tile> {
-    let snapshot = &cache.snapshot;
-    let mut tiles: Vec<(Tile, i64)> = snapshot
+    let mut tiles: Vec<(Tile, i64)> = cache
+        .snapshot
         .series
         .iter()
         .map(|s| {
@@ -101,10 +104,6 @@ pub fn tiles(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<Tile> {
                 } else {
                     eps.len() as u32
                 },
-                subscribed: snapshot
-                    .subscriptions
-                    .iter()
-                    .any(|sub| sub.series_id == Some(s.id)),
             };
             (tile, s.latest_activity_at)
         })
@@ -122,11 +121,6 @@ pub fn tiles(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<Tile> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubscriptionInfo {
-    pub name: String,
-    pub query: String,
-    pub enabled: bool,
-    pub complete: bool,
-    pub files: u64,
     /// Aired episodes the rule has not found, as the host saw it.
     pub missing: Vec<u32>,
     /// The season the host counted `missing` in, when it says (#1091).
@@ -136,7 +130,6 @@ pub struct SubscriptionInfo {
 /// One series in full, for its page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Detail {
-    pub id: u64,
     pub title: String,
     /// The English title when it differs from the shown one.
     pub alt_title: Option<String>,
@@ -195,16 +188,10 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
         .iter()
         .find(|sub| sub.series_id == Some(id))
         .map(|sub| SubscriptionInfo {
-            name: sub.name.clone(),
-            query: sub.query.clone(),
-            enabled: sub.enabled,
-            complete: sub.complete,
-            files: sub.file_count,
             missing: sub.missing.clone(),
             missing_season: sub.missing_season,
         });
     Some(Detail {
-        id,
         title: s.title.clone(),
         alt_title,
         facts,
@@ -316,14 +303,16 @@ mod tests {
             (6, Some(12), 7)
         );
         assert_eq!(tiles[0].next.as_ref().map(|a| a.episode), Some(8));
-        assert!(tiles[0].subscribed);
         assert!(tiles[1].movie);
     }
 
     #[test]
     fn a_series_page_has_facts_episodes_and_its_rule() {
         crate::i18n::set_lang(crate::i18n::Lang::En);
-        let cache = cache();
+        let mut cache = cache();
+        let rule = &mut cache.snapshot.subscriptions[0];
+        rule.missing = vec![9, 10];
+        rule.missing_season = Some(2);
         let page = detail(&cache, &AniListCache::default(), 12, cache.synced_at + 60).unwrap();
         assert_eq!(page.facts, vec!["TV", "Fall 2026", "Airing", "12 episodes"]);
         assert_eq!(
@@ -332,7 +321,14 @@ mod tests {
         );
         assert_eq!(page.upcoming.len(), 5);
         assert_eq!(page.episodes.len(), 7);
-        assert_eq!(page.subscription.as_ref().map(|s| s.files), Some(7));
+        assert_eq!(
+            page.subscription,
+            Some(SubscriptionInfo {
+                missing: vec![9, 10],
+                missing_season: Some(2),
+            }),
+            "the rule's missing episodes come through as the host counted them"
+        );
         assert!(detail(&cache, &AniListCache::default(), 999, 0).is_none());
     }
 }
