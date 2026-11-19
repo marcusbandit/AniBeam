@@ -21,6 +21,7 @@ use rusqlite::params;
 use crate::{AnirssView, EndpointSync, Releases};
 use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
+use anibeam_foundation::secrets::Secrets;
 use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
 use anibeam_net::{BoxFuture, HttpRequest};
@@ -42,6 +43,72 @@ pub struct Pending {
 
 fn secret_key(install: &str, key: &str) -> String {
     format!("endpoint/{install}/{key}")
+}
+
+/// The value stored for `key` of the endpoint installed as `install`, if any.
+/// A store that cannot be read says so in the log, so an endpoint it leaves out of the search
+/// is not taken for one whose value was never given.
+fn stored_secret(secrets: &Secrets, install: &str, key: &str) -> Option<String> {
+    match secrets.get(&secret_key(install, key), None) {
+        Ok(found) => found.map(|(v, _)| v),
+        Err(e) => {
+            tracing::warn!("endpoint {install}: its {key} could not be read: {e}");
+            None
+        }
+    }
+}
+
+/// Takes the stored values of `fields` of the endpoint installed as `install` out of the
+/// secret store.
+fn forget_credentials<'a>(
+    services: &Services,
+    install: &str,
+    fields: impl IntoIterator<Item = &'a index::AuthField>,
+) -> Result<(), CoreError> {
+    for field in fields {
+        services
+            .secrets()
+            .delete(&secret_key(install, &field.key))?;
+    }
+    Ok(())
+}
+
+/// Runs one statement on the store's writer; how many rows it changed.
+fn execute<P>(services: &Services, sql: &'static str, params: P) -> Result<usize, CoreError>
+where
+    P: rusqlite::Params + Send + 'static,
+{
+    services
+        .store
+        .write(move |conn| Ok(conn.execute(sql, params)?))
+}
+
+/// A line in the activity log about the repos and what is installed from them.
+fn notice(services: &Services, plain: Words, message: String) {
+    services.bus.say(
+        Level::Info,
+        Stage::Downloads,
+        plain,
+        message,
+        EventBody::Notice,
+    );
+}
+
+/// What a repo offers of `def`, as the catalog and a preview list it.
+fn offered(repo_url: &str, def: &Definition, installed: Option<String>) -> OfferedEndpoint {
+    OfferedEndpoint {
+        repo_url: repo_url.to_string(),
+        id: def.id.clone(),
+        name: def.name.clone(),
+        version: def.version,
+        lang: def.lang.clone(),
+        kind: def.kind.clone(),
+        host: def.host(),
+        front: def.front.clone(),
+        auth: def.fields(),
+        nsfw: def.nsfw,
+        installed,
+    }
 }
 
 fn new_install_id() -> String {
@@ -225,72 +292,54 @@ fn find_install(services: &Services, install: &str) -> Result<InstallRow, CoreEr
 
 /// Saves a checked index for a repo, the trusted key held to.
 fn save_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreError> {
-    let (url, name, nsfw, key, serial, payload) = (
-        url.to_string(),
-        idx.name.clone(),
-        idx.nsfw,
-        idx.key.clone(),
-        idx.serial as i64,
-        idx.payload.clone(),
-    );
-    services.store.write(move |conn| {
-        conn.execute(
-            "INSERT INTO endpoint_repos (url, name, nsfw, key, serial, payload, fetched_at, error)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
-             ON CONFLICT(url) DO UPDATE SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
-                 fetched_at = ?7, error = NULL",
-            params![
-                url,
-                name,
-                nsfw,
-                key,
-                serial,
-                payload,
-                anibeam_foundation::time::now_secs()
-            ],
-        )?;
-        Ok(())
-    })
+    write_index(
+        services,
+        "INSERT INTO endpoint_repos (url, name, nsfw, key, serial, payload, fetched_at, error)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+         ON CONFLICT(url) DO UPDATE SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
+             fetched_at = ?7, error = NULL",
+        url,
+        idx,
+    )
 }
 
 /// The same for a repo already saved; nothing when it was removed in the meantime.
 fn update_index(services: &Services, url: &str, idx: &Index) -> Result<(), CoreError> {
-    let (url, name, nsfw, key, serial, payload) = (
+    write_index(
+        services,
+        "UPDATE endpoint_repos SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
+             fetched_at = ?7, error = NULL
+         WHERE url = ?1 AND key = ?4",
+        url,
+        idx,
+    )
+}
+
+fn write_index(
+    services: &Services,
+    sql: &'static str,
+    url: &str,
+    idx: &Index,
+) -> Result<(), CoreError> {
+    let values = (
         url.to_string(),
         idx.name.clone(),
         idx.nsfw,
         idx.key.clone(),
         idx.serial as i64,
         idx.payload.clone(),
+        anibeam_foundation::time::now_secs(),
     );
-    services.store.write(move |conn| {
-        conn.execute(
-            "UPDATE endpoint_repos SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
-                 fetched_at = ?7, error = NULL
-             WHERE url = ?1 AND key = ?4",
-            params![
-                url,
-                name,
-                nsfw,
-                key,
-                serial,
-                payload,
-                anibeam_foundation::time::now_secs()
-            ],
-        )?;
-        Ok(())
-    })
+    execute(services, sql, values).map(drop)
 }
 
 fn save_error(services: &Services, url: &str, error: &str) -> Result<(), CoreError> {
-    let (url, error) = (url.to_string(), error.to_string());
-    services.store.write(move |conn| {
-        conn.execute(
-            "UPDATE endpoint_repos SET error = ?2 WHERE url = ?1",
-            params![url, error],
-        )?;
-        Ok(())
-    })
+    execute(
+        services,
+        "UPDATE endpoint_repos SET error = ?2 WHERE url = ?1",
+        (url.to_string(), error.to_string()),
+    )
+    .map(drop)
 }
 
 /// Whether a fetched index may replace the one in hand: the pinned key, and a serial that
@@ -332,23 +381,14 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
                 .map(move |d| (r.url.clone(), d))
         })
         .collect();
-    let offered = offered_defs
+    let offers = offered_defs
         .iter()
-        .map(|(repo, d)| OfferedEndpoint {
-            repo_url: repo.clone(),
-            id: d.id.clone(),
-            name: d.name.clone(),
-            version: d.version,
-            lang: d.lang.clone(),
-            kind: d.kind.clone(),
-            host: d.host(),
-            front: d.front.clone(),
-            auth: d.fields(),
-            nsfw: d.nsfw,
-            installed: installed
+        .map(|(repo, d)| {
+            let id = installed
                 .iter()
                 .find(|i| &i.repo_url == repo && i.def.id == d.id)
-                .map(|i| i.install_id.clone()),
+                .map(|i| i.install_id.clone());
+            offered(repo, d, id)
         })
         .collect();
     let secrets = releases.services.secrets();
@@ -411,7 +451,7 @@ pub fn catalog(releases: &Releases) -> Result<EndpointCatalog, CoreError> {
         .collect();
     Ok(EndpointCatalog {
         repos,
-        offered,
+        offered: offers,
         installed,
     })
 }
@@ -454,19 +494,7 @@ pub fn add_repo(releases: &Releases, url: String) -> Result<Reply, CoreError> {
         endpoints: idx
             .endpoints
             .iter()
-            .map(|d| OfferedEndpoint {
-                repo_url: url.clone(),
-                id: d.id.clone(),
-                name: d.name.clone(),
-                version: d.version,
-                lang: d.lang.clone(),
-                kind: d.kind.clone(),
-                host: d.host(),
-                front: d.front.clone(),
-                auth: d.fields(),
-                nsfw: d.nsfw,
-                installed: None,
-            })
+            .map(|d| offered(&url, d, None))
             .collect(),
         trusted,
     };
@@ -505,12 +533,10 @@ fn pin_index(releases: &Releases, url: &str, idx: &Index) -> Result<Option<RepoR
     }
     save_index(&releases.services, url, idx)?;
     if stored.is_none() {
-        releases.services.bus.say(
-            Level::Info,
-            Stage::Downloads,
+        notice(
+            &releases.services,
             anibeam_contract::words!("core-repos-repo-added"),
             format!("Added the endpoint repo {}", idx.name),
-            EventBody::Notice,
         );
     }
     Ok(stored)
@@ -571,16 +597,15 @@ pub fn remove_repo(releases: &Releases, url: String) -> Result<Reply, CoreError>
     let Some(stored) = stored_repo(&releases.services, &url)? else {
         return reply(releases);
     };
-    releases.services.store.write(move |conn| {
-        conn.execute("DELETE FROM endpoint_repos WHERE url = ?1", params![url])?;
-        Ok(())
-    })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
+    execute(
+        &releases.services,
+        "DELETE FROM endpoint_repos WHERE url = ?1",
+        (url,),
+    )?;
+    notice(
+        &releases.services,
         anibeam_contract::words!("core-repos-repo-removed"),
         format!("Removed the endpoint repo {}", stored.name),
-        EventBody::Notice,
     );
     reply(releases)
 }
@@ -749,28 +774,25 @@ fn insert_install(
 ) -> Result<(), CoreError> {
     let install_id = new_install_id();
     store_credentials(&releases.services, &install_id, values)?;
-    let (row_id, row_repo, row_def, version, json) = (
-        install_id.clone(),
-        repo.to_string(),
-        def.id.clone(),
-        def.version as i64,
-        serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
-    );
-    releases.services.store.write(move |conn| {
-        conn.execute(
-            "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
-            params![row_id, row_repo, row_def, version, json],
-        )?;
-        Ok(())
-    })?;
+    execute(
+        &releases.services,
+        "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
+        (
+            install_id,
+            repo.to_string(),
+            def.id.clone(),
+            def.version,
+            serde_json::to_string(def)?,
+        ),
+    )?;
     if say {
-        releases.services.bus.say(
-            Level::Info,
-            Stage::Downloads,
+        // One added by hand is the person's own; one from a repo was installed from it.
+        let verb = if repo == CUSTOM { "Added" } else { "Installed" };
+        notice(
+            &releases.services,
             anibeam_contract::words!("core-repos-source-added"),
-            format!("Installed the endpoint {}", def.name),
-            EventBody::Notice,
+            format!("{verb} the endpoint {}", def.name),
         );
     }
     Ok(())
@@ -792,60 +814,37 @@ pub fn update(
         store_credentials(&releases.services, &install, &values)?;
     } else {
         let values = credentials_for(&next, &credentials, true)?;
-        for field in &row.def.auth {
-            releases
-                .services
-                .secrets()
-                .delete(&secret_key(&install, &field.key))?;
-        }
+        forget_credentials(&releases.services, &install, &row.def.auth)?;
         store_credentials(&releases.services, &install, &values)?;
     }
-    let (id, version, json) = (
-        install.clone(),
-        next.version as i64,
-        serde_json::to_string(&next).map_err(|e| CoreError::internal(e.to_string()))?,
-    );
-    releases.services.store.write(move |conn| {
-        conn.execute(
-            "UPDATE installed_endpoints SET version = ?2, definition = ?3 WHERE install_id = ?1",
-            params![id, version, json],
-        )?;
-        Ok(())
-    })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
+    execute(
+        &releases.services,
+        "UPDATE installed_endpoints SET version = ?2, definition = ?3 WHERE install_id = ?1",
+        (install, next.version, serde_json::to_string(&next)?),
+    )?;
+    notice(
+        &releases.services,
         anibeam_contract::words!("core-repos-source-updated"),
         format!(
             "Updated the endpoint {} to version {}",
             next.name, next.version
         ),
-        EventBody::Notice,
     );
     changed(releases)
 }
 
 pub fn remove(releases: &Releases, install: String) -> Result<Reply, CoreError> {
     let row = find_install(&releases.services, &install)?;
-    for field in &row.def.auth {
-        releases
-            .services
-            .secrets()
-            .delete(&secret_key(&install, &field.key))?;
-    }
-    releases.services.store.write(move |conn| {
-        conn.execute(
-            "DELETE FROM installed_endpoints WHERE install_id = ?1",
-            params![install],
-        )?;
-        Ok(())
-    })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
+    forget_credentials(&releases.services, &install, &row.def.auth)?;
+    execute(
+        &releases.services,
+        "DELETE FROM installed_endpoints WHERE install_id = ?1",
+        (install,),
+    )?;
+    notice(
+        &releases.services,
         anibeam_contract::words!("core-repos-source-removed"),
         format!("Removed the endpoint {}", row.def.name),
-        EventBody::Notice,
     );
     changed(releases)
 }
@@ -866,12 +865,11 @@ pub fn set_enabled(
     install: String,
     enabled: bool,
 ) -> Result<Reply, CoreError> {
-    let rows = releases.services.store.write(move |conn| {
-        Ok(conn.execute(
-            "UPDATE installed_endpoints SET enabled = ?2 WHERE install_id = ?1",
-            params![install, enabled],
-        )?)
-    })?;
+    let rows = execute(
+        &releases.services,
+        "UPDATE installed_endpoints SET enabled = ?2 WHERE install_id = ?1",
+        (install, enabled),
+    )?;
     if rows == 0 {
         return Err(CoreError::invalid(
             "endpoint",
@@ -910,19 +908,20 @@ fn id_of(name: &str) -> String {
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
     let mut fields: Vec<index::AuthField> = Vec::new();
     let mut lifted: Vec<(String, String)> = Vec::new();
+    let field = |key: &str, label: &str| index::AuthField {
+        key: key.to_string(),
+        label: label.to_string(),
+        secret: true,
+        help: String::new(),
+        help_url: None,
+    };
     // Whether `key` now holds `value`: a key lifted already with another value keeps the
     // second one written out, so it is not filled with the first.
     let mut lift = |key: &str, label: &str, value: &str| {
         if let Some((_, held)) = lifted.iter().find(|(k, _)| k == key) {
             return held == value;
         }
-        fields.push(index::AuthField {
-            key: key.to_string(),
-            label: label.to_string(),
-            secret: true,
-            help: String::new(),
-            help_url: None,
-        });
+        fields.push(field(key, label));
         lifted.push((key.to_string(), value.to_string()));
         true
     };
@@ -981,21 +980,10 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
         }
     }
     // Placeholders the person wrote themselves.
-    let mut rest = template.as_str();
-    while let Some(open) = rest.find('{') {
-        let after = &rest[open + 1..];
-        let Some(close) = after.find('}') else { break };
-        let key = &after[..close];
+    for key in index::placeholders(&template) {
         if key != "query" && !fields.iter().any(|f| f.key == key) {
-            fields.push(index::AuthField {
-                key: key.to_string(),
-                label: key.to_string(),
-                secret: true,
-                help: String::new(),
-                help_url: None,
-            });
+            fields.push(field(key, key));
         }
-        rest = &after[close + 1..];
     }
     (template, fields, lifted)
 }
@@ -1072,12 +1060,11 @@ pub fn add_custom(
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
     let (def, lifted) = custom_definition(&name, &url, None)?;
-    let (id, name) = (def.id.clone(), def.name.clone());
     let installed = releases.services.store.read(read_installed)?;
-    if installed.iter().any(|i| i.def.id == id) {
+    if installed.iter().any(|i| i.def.id == def.id) {
         return Err(CoreError::invalid(
             "endpoint name",
-            tr("core-repos-name-taken", &[("id", id.as_str().into())]),
+            tr("core-repos-name-taken", &[("id", def.id.as_str().into())]),
         ));
     }
     let mut given = credentials;
@@ -1089,28 +1076,7 @@ pub fn add_custom(
     // A placeholder the person typed may be filled in afterwards; until it is, the endpoint
     // says what it needs and is left out of searches.
     let values = credentials_for(&def, &given, false)?;
-    let install_id = new_install_id();
-    store_credentials(&releases.services, &install_id, &values)?;
-    let (row_id, row_def, json) = (
-        install_id.clone(),
-        def.id.clone(),
-        serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
-    );
-    releases.services.store.write(move |conn| {
-        conn.execute(
-            "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
-             VALUES (?1, ?2, ?3, 1, ?4, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
-            params![row_id, CUSTOM, row_def, json],
-        )?;
-        Ok(())
-    })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
-        anibeam_contract::words!("core-repos-source-added"),
-        format!("Added the endpoint {name}"),
-        EventBody::Notice,
-    );
+    insert_install(releases, CUSTOM, &def, &values, true)?;
     changed(releases)
 }
 
@@ -1171,32 +1137,21 @@ pub fn edit_custom(
     let values = credentials_for(&def, &given, false)?;
     store_credentials(&releases.services, &install, &values)?;
     // A secret the new address no longer has is not left behind in the store.
-    for old in &row.def.auth {
-        if !def.auth.iter().any(|a| a.key == old.key) {
-            releases
-                .services
-                .secrets()
-                .delete(&secret_key(&install, &old.key))?;
-        }
-    }
-    let (row_id, row_def, json) = (
-        install.clone(),
-        def.id.clone(),
-        serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
-    );
-    releases.services.store.write(move |conn| {
-        conn.execute(
-            "UPDATE installed_endpoints SET endpoint_id = ?2, definition = ?3 WHERE install_id = ?1",
-            params![row_id, row_def, json],
-        )?;
-        Ok(())
-    })?;
-    releases.services.bus.say(
-        Level::Info,
-        Stage::Downloads,
+    let dropped = row
+        .def
+        .auth
+        .iter()
+        .filter(|old| !def.auth.iter().any(|a| a.key == old.key));
+    forget_credentials(&releases.services, &install, dropped)?;
+    execute(
+        &releases.services,
+        "UPDATE installed_endpoints SET endpoint_id = ?2, definition = ?3 WHERE install_id = ?1",
+        (install, def.id.clone(), serde_json::to_string(&def)?),
+    )?;
+    notice(
+        &releases.services,
         anibeam_contract::words!("core-repos-source-changed"),
         format!("Changed the endpoint {}", def.name),
-        EventBody::Notice,
     );
     changed(releases)
 }
@@ -1297,15 +1252,12 @@ fn lift_one(
     lifted: &[(String, String)],
 ) -> Result<(), CoreError> {
     store_credentials(services, &row.install_id, lifted)?;
-    let row_id = row.install_id.clone();
-    let json = serde_json::to_string(def).map_err(|e| CoreError::internal(e.to_string()))?;
-    services.store.write(move |conn| {
-        conn.execute(
-            "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
-            params![row_id, json],
-        )?;
-        Ok(())
-    })
+    execute(
+        services,
+        "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
+        (row.install_id.clone(), serde_json::to_string(def)?),
+    )
+    .map(drop)
 }
 
 // The desktop's anirss ------------------------------------------------------------------
@@ -1691,20 +1643,13 @@ pub fn rekeep_old_rules(
 /// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
 fn endpoint_for(def: &Definition, url: &str) -> crate::Endpoint {
     let mut endpoint = crate::Endpoint::new(&def.id, &def.kind, url);
-    if let Some(c) = def
-        .category
-        .as_deref()
-        .map(str::trim)
-        .filter(|c| !c.is_empty())
-    {
+    fn given(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|v| !v.is_empty())
+    }
+    if let Some(c) = given(def.category.as_deref()) {
         endpoint.category = c.to_string();
     }
-    if let Some(f) = def
-        .filter
-        .as_deref()
-        .map(str::trim)
-        .filter(|f| !f.is_empty())
-    {
+    if let Some(f) = given(def.filter.as_deref()) {
         endpoint.filter = f.to_string();
     }
     endpoint.json = def.json.clone();
@@ -1775,13 +1720,7 @@ fn installed_runnable(services: &Services, with_off: bool) -> Vec<Runnable> {
         if out.iter().any(|r| r.endpoint.name == row.def.id) {
             continue;
         }
-        let raw = |key: &str| {
-            secrets
-                .get(&secret_key(&row.install_id, key), None)
-                .ok()
-                .flatten()
-                .map(|(v, _)| v)
-        };
+        let raw = |key: &str| stored_secret(secrets, &row.install_id, key);
         let Some(values) = row.def.filled_values(raw) else {
             continue;
         };
@@ -1872,13 +1811,9 @@ pub fn endpoint_http(services: &Services) -> Paced {
             let rate = r.def.rate?;
             // The host the requests go to, as the search fills it: a torznab `{host}` is
             // the person's own server, never the literal placeholder.
-            let filled = r.def.filled_url(|key| {
-                secrets
-                    .get(&secret_key(&r.install_id, key), None)
-                    .ok()
-                    .flatten()
-                    .map(|(v, _)| v)
-            });
+            let filled = r
+                .def
+                .filled_url(|key| stored_secret(secrets, &r.install_id, key));
             let host = filled.map_or_else(|| r.def.host(), |url| index::host_of(&url));
             Some((host, rate_gap(rate.per_minute)))
         })

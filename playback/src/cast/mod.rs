@@ -63,7 +63,7 @@ pub fn call(playback: &std::sync::Arc<Playback>, call: Call) -> Result<Reply, Co
 
 #[cfg(feature = "cast")]
 mod imp {
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::SocketAddr;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
@@ -71,9 +71,10 @@ mod imp {
 
     use super::discover::{self, Found};
     use super::media::{Prepared, Receiver, Subs};
-    use super::server::{self as served, Piece, Registry, Relay, Served};
+    use super::server::{self as served, Piece, Registry, Served};
     use super::{castv2, dlna};
     use crate::Playback;
+    use anibeam_contract::i18n::tr;
     use anibeam_contract::*;
     use anibeam_foundation::services::Services;
     use anibeam_foundation::sync::recover;
@@ -89,7 +90,12 @@ mod imp {
     }
 
     enum Control {
-        Starting,
+        /// The start task running, which a stop aborts, and the TV once the start has
+        /// handed it something, which a stop then tells to stop.
+        Starting {
+            task: Option<tokio::task::AbortHandle>,
+            tv: Option<Arc<dlna::Client>>,
+        },
         Cast(castv2::Controller),
         Dlna {
             client: Arc<dlna::Client>,
@@ -111,6 +117,8 @@ mod imp {
     struct Session {
         id: u64,
         token: String,
+        /// The device's id, so a session replaced on the same device leaves it alone.
+        device: String,
         state: CastState,
         control: Control,
         mode: Mode,
@@ -159,29 +167,34 @@ mod imp {
         if inner.looking.swap(true, Ordering::AcqRel) {
             return;
         }
-        let arc = playback.clone();
-        let cast_core = arc.clone();
+        let cast = playback.clone();
         let chromecasts = playback.services.handle.spawn_blocking(move || {
-            let c = cast_core.clone();
-            if let Err(e) = discover::chromecasts(Duration::from_secs(6), move |f| found(&c, f)) {
+            if let Err(e) = discover::chromecasts(Duration::from_secs(6), |f| found(&cast, f)) {
                 tracing::warn!("cast: {e}");
             }
         });
-        let dlna_core = arc.clone();
+        let dlna = playback.clone();
         playback.services.handle.spawn(async move {
-            let c = dlna_core.clone();
+            let report = |f| found(&dlna, f);
             let extra = discover::dev().renderers;
             if !extra.is_empty() {
-                let c = c.clone();
-                discover::describe(extra, &move |f| found(&c, f)).await;
+                discover::describe(extra, &report).await;
             }
-            if let Err(e) = discover::renderers(Duration::from_secs(4), move |f| found(&c, f)).await
-            {
+            if let Err(e) = discover::renderers(Duration::from_secs(4), report).await {
                 tracing::warn!("cast: {e}");
             }
             let _ = chromecasts.await;
             inner.looking.store(false, Ordering::Release);
         });
+    }
+
+    /// The device `id` among those found.
+    fn find_device(inner: &Inner, id: &str) -> Result<Found, CoreError> {
+        recover(&inner.devices)
+            .iter()
+            .find(|f| f.device.id == id)
+            .cloned()
+            .ok_or_else(|| CoreError::invalid("device", tr("core-cast-device-gone", &[])))
     }
 
     fn file_path(services: &Services, file: u64) -> Result<PathBuf, CoreError> {
@@ -199,13 +212,15 @@ mod imp {
             .map(PathBuf::from)
     }
 
-    fn mime(path: &Path) -> &'static str {
-        match path
-            .extension()
+    /// A file's extension, lowercased.
+    fn extension(path: &Path) -> Option<String> {
+        path.extension()
             .and_then(|e| e.to_str())
             .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
+    }
+
+    fn mime(path: &Path) -> &'static str {
+        match extension(path).as_deref() {
             Some("mkv") => "video/x-matroska",
             Some("webm") => "video/webm",
             Some("mp4") | Some("m4v") => "video/mp4",
@@ -217,13 +232,7 @@ mod imp {
     }
 
     fn is_matroska(path: &Path) -> bool {
-        matches!(
-            path.extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("mkv") | Some("webm")
-        )
+        matches!(extension(path).as_deref(), Some("mkv") | Some("webm"))
     }
 
     fn emit(services: &Services, state: &CastState, moved_only: bool) {
@@ -234,35 +243,37 @@ mod imp {
             services.bus.debug(Stage::Playback, "cast position", body);
         } else {
             let device = &state.device;
-            let said = match state.state {
-                CastPlayState::Connecting => Some(anibeam_contract::words!(
-                    "core-cast-connecting",
-                    device = device
-                )),
-                CastPlayState::Ended => {
-                    Some(anibeam_contract::words!("core-cast-ended", device = device))
-                }
-                CastPlayState::Stopped => Some(anibeam_contract::words!(
-                    "core-cast-stopped",
-                    device = device
-                )),
-                CastPlayState::Failed => Some(anibeam_contract::words!(
-                    "core-cast-failed",
-                    device = device
-                )),
-                CastPlayState::Playing | CastPlayState::Paused | CastPlayState::Buffering => None,
-            };
-            let what = match state.state {
-                CastPlayState::Connecting => format!("Casting to {}", state.device),
-                CastPlayState::Playing => format!("Playing on {}", state.device),
-                CastPlayState::Paused => format!("Paused on {}", state.device),
-                CastPlayState::Buffering => format!("Buffering on {}", state.device),
-                CastPlayState::Ended => format!("Finished on {}", state.device),
-                CastPlayState::Stopped => format!("Stopped casting to {}", state.device),
-                CastPlayState::Failed => format!(
-                    "Casting to {} failed: {}",
-                    state.device,
-                    state.error.clone().unwrap_or_default()
+            let (said, what) = match state.state {
+                CastPlayState::Connecting => (
+                    Some(anibeam_contract::words!(
+                        "core-cast-connecting",
+                        device = device
+                    )),
+                    format!("Casting to {device}"),
+                ),
+                CastPlayState::Playing => (None, format!("Playing on {device}")),
+                CastPlayState::Paused => (None, format!("Paused on {device}")),
+                CastPlayState::Buffering => (None, format!("Buffering on {device}")),
+                CastPlayState::Ended => (
+                    Some(anibeam_contract::words!("core-cast-ended", device = device)),
+                    format!("Finished on {device}"),
+                ),
+                CastPlayState::Stopped => (
+                    Some(anibeam_contract::words!(
+                        "core-cast-stopped",
+                        device = device
+                    )),
+                    format!("Stopped casting to {device}"),
+                ),
+                CastPlayState::Failed => (
+                    Some(anibeam_contract::words!(
+                        "core-cast-failed",
+                        device = device
+                    )),
+                    format!(
+                        "Casting to {device} failed: {}",
+                        state.error.as_deref().unwrap_or_default()
+                    ),
                 ),
             };
             // A failure is a problem the person can act on; the rest is news
@@ -301,15 +312,23 @@ mod imp {
     }
 
     fn no_route() -> String {
-        anibeam_contract::i18n::tr("core-cast-no-route", &[])
+        tr("core-cast-no-route", &[])
     }
 
     fn no_control() -> String {
-        anibeam_contract::i18n::tr("core-cast-no-control", &[])
+        tr("core-cast-no-control", &[])
     }
 
     fn not_handed(e: reqwest::Error) -> String {
-        anibeam_contract::i18n::tr("core-cast-not-handed", &[("error", e.to_string().into())])
+        tr("core-cast-not-handed", &[("error", e.to_string().into())])
+    }
+
+    fn still_starting() -> CoreError {
+        CoreError::invalid("cast", tr("core-cast-still-starting", &[]))
+    }
+
+    fn nothing() -> CoreError {
+        CoreError::invalid("cast", tr("core-cast-nothing", &[]))
     }
 
     fn fail(playback: &Playback, id: u64, error: String) {
@@ -328,12 +347,73 @@ mod imp {
             })
             .await
             .copied()
-            .map_err(|e| {
-                anibeam_contract::i18n::tr(
-                    "core-cast-serve-failed",
-                    &[("error", e.to_string().into())],
-                )
-            })
+            .map_err(|e| tr("core-cast-serve-failed", &[("error", e.to_string().into())]))
+    }
+
+    /// Where `found` fetches the cast `token` from: this machine's server, started first if
+    /// need be, at its address on the route to the device.
+    async fn base(inner: &Inner, found: &Found, token: &str) -> Result<String, String> {
+        let port = server(inner).await?.port();
+        let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
+        let host = discover::dev()
+            .advertise
+            .unwrap_or_else(|| format!("{ip}:{port}"));
+        Ok(format!("http://{host}/c/{token}"))
+    }
+
+    /// Serves `path` under `token`, as it is and, once prepared, cut into fragments.
+    fn serve_file(inner: &Inner, token: &str, path: &Path, prepared: Option<Arc<Prepared>>) {
+        let served = Served::file(path.to_path_buf(), mime(path), prepared);
+        inner.registry.add(token.to_string(), served);
+    }
+
+    /// Ends any cast and starts a session on `found`, connecting: its id, the token its
+    /// device fetches under, and its state as the call answers.
+    fn new_session(
+        playback: &Playback,
+        found: &Found,
+        file: u64,
+        title: String,
+        start: f64,
+        duration: f64,
+        mode: Mode,
+    ) -> (u64, String, CastState) {
+        let inner = inner(playback);
+        let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
+        let token = format!("{:032x}", rand::random::<u128>());
+        let state = CastState {
+            device: found.device.name.clone(),
+            kind: found.device.kind,
+            file,
+            state: CastPlayState::Connecting,
+            position: start,
+            duration,
+            error: None,
+        };
+        // Swapped in under one lock, so a start that races another still retires the
+        // session it replaces.
+        let old = recover(&inner.session).replace(Session {
+            id,
+            token: token.clone(),
+            device: found.device.id.clone(),
+            state: state.clone(),
+            control: Control::Starting {
+                task: None,
+                tv: None,
+            },
+            mode,
+            base: String::new(),
+            title,
+            prepared: None,
+            pieces: None,
+            hevc_doubt: false,
+        });
+        if let Some(old) = old {
+            let here = old.device == found.device.id;
+            retire(playback, old, here);
+        }
+        emit(&playback.services, &state, false);
+        (id, token, state)
     }
 
     pub fn call(playback: &Arc<Playback>, call: Call) -> Result<Reply, CoreError> {
@@ -358,58 +438,29 @@ mod imp {
                 audio_track,
                 subtitle,
             } => {
-                let found = recover(&inner.devices)
-                    .iter()
-                    .find(|f| f.device.id == device)
-                    .cloned()
-                    .ok_or_else(|| {
-                        CoreError::invalid(
-                            "device",
-                            anibeam_contract::i18n::tr("core-cast-device-gone", &[]),
-                        )
-                    })?;
+                let found = find_device(&inner, &device)?;
                 let path = file_path(&playback.services, file)?;
-                stop(playback);
-                let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
-                let token = format!(
-                    "{:016x}{:016x}",
-                    rand::random::<u64>(),
-                    rand::random::<u64>()
-                );
                 let title = path
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                let state = CastState {
-                    device: found.device.name.clone(),
-                    kind: found.device.kind,
+                let (id, token, state) = new_session(
+                    playback,
+                    &found,
                     file,
-                    state: CastPlayState::Connecting,
-                    position: start,
-                    duration: 0.0,
-                    error: None,
-                };
-                *recover(&inner.session) = Some(Session {
-                    id,
-                    token: token.clone(),
-                    state: state.clone(),
-                    control: Control::Starting,
-                    mode: Mode::Direct,
-                    base: String::new(),
-                    title: title.clone(),
-                    prepared: None,
-                    pieces: None,
-                    hevc_doubt: false,
-                });
-                emit(&playback.services, &state, false);
+                    title.clone(),
+                    start,
+                    0.0,
+                    Mode::Direct,
+                );
                 let subs = match subtitle {
                     CastSubtitle::None => None,
                     CastSubtitle::Track { number } => Some(Subs::Track(number)),
                     CastSubtitle::File { path } => Some(Subs::File(PathBuf::from(path))),
                 };
                 let arc = playback.clone();
-                playback.services.handle.spawn(async move {
-                    if let Err(e) = begin(
+                spawn_start(playback, id, async move {
+                    begin(
                         &arc,
                         id,
                         found,
@@ -421,9 +472,6 @@ mod imp {
                         subs,
                     )
                     .await
-                    {
-                        fail(&arc, id, e);
-                    }
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
@@ -434,65 +482,28 @@ mod imp {
                 start,
                 duration,
             } => {
-                let found = recover(&inner.devices)
-                    .iter()
-                    .find(|f| f.device.id == device)
-                    .cloned()
-                    .ok_or_else(|| {
-                        CoreError::invalid(
-                            "device",
-                            anibeam_contract::i18n::tr("core-cast-device-gone", &[]),
-                        )
-                    })?;
+                let found = find_device(&inner, &device)?;
                 let Some((dir, name)) = url.split('?').next().and_then(|u| u.rsplit_once('/'))
                 else {
                     return Err(CoreError::invalid(
                         "url",
-                        anibeam_contract::i18n::tr("core-cast-not-a-playlist", &[]),
+                        tr("core-cast-not-a-playlist", &[]),
                     ));
                 };
                 let dir = format!("{dir}/");
-                let query = url.split_once('?').map(|(_, q)| q).unwrap_or_default();
-                let playlist = if query.is_empty() {
-                    name.to_string()
-                } else {
-                    format!("{name}?{query}")
+                let playlist = match url.split_once('?') {
+                    Some((_, query)) if !query.is_empty() => format!("{name}?{query}"),
+                    _ => name.to_string(),
                 };
-                stop(playback);
-                let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
-                let token = format!(
-                    "{:016x}{:016x}",
-                    rand::random::<u64>(),
-                    rand::random::<u64>()
-                );
-                let state = CastState {
-                    device: found.device.name.clone(),
-                    kind: found.device.kind,
-                    file: 0,
-                    state: CastPlayState::Connecting,
-                    position: start,
-                    duration,
-                    error: None,
+                let mode = match found.device.kind {
+                    CastKind::Chromecast => Mode::Hls,
+                    CastKind::Dlna => Mode::Progressive { offset: start },
                 };
-                *recover(&inner.session) = Some(Session {
-                    id,
-                    token: token.clone(),
-                    state: state.clone(),
-                    control: Control::Starting,
-                    mode: match found.device.kind {
-                        CastKind::Chromecast => Mode::Hls,
-                        CastKind::Dlna => Mode::Progressive { offset: start },
-                    },
-                    base: String::new(),
-                    title: title.clone(),
-                    prepared: None,
-                    pieces: None,
-                    hevc_doubt: false,
-                });
-                emit(&playback.services, &state, false);
+                let (id, token, state) =
+                    new_session(playback, &found, 0, title.clone(), start, duration, mode);
                 let arc = playback.clone();
-                playback.services.handle.spawn(async move {
-                    let begun = match found.device.kind {
+                spawn_start(playback, id, async move {
+                    match found.device.kind {
                         CastKind::Chromecast => {
                             relay(
                                 &arc, id, found, dir, playlist, token, title, start, duration,
@@ -502,20 +513,21 @@ mod imp {
                         CastKind::Dlna => {
                             relay_dlna(&arc, id, found, dir, playlist, token, title, start).await
                         }
-                    };
-                    if let Err(e) = begun {
-                        fail(&arc, id, e);
                     }
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
             Call::CastPlay => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Play),
-                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.play().await }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.play().await });
+                }
             }),
             Call::CastPause => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Pause),
-                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.pause().await }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.pause().await });
+                }
             }),
             Call::CastSeek { to } => seek(playback, to),
             Call::CastStop => {
@@ -536,48 +548,74 @@ mod imp {
     fn control(playback: &Playback, f: impl FnOnce(Ctl<'_>, u64)) -> Result<Reply, CoreError> {
         let inner = inner(playback);
         let s = recover(&inner.session);
-        let Some(session) = s.as_ref() else {
-            return Err(CoreError::invalid(
-                "cast",
-                anibeam_contract::i18n::tr("core-cast-nothing", &[]),
-            ));
-        };
+        let session = s.as_ref().ok_or_else(nothing)?;
         match &session.control {
             Control::Cast(c) => f(Ctl::Cast(c), session.id),
             Control::Dlna { client, .. } => f(Ctl::Dlna(client.clone()), session.id),
-            Control::Starting => {
-                return Err(CoreError::invalid(
-                    "cast",
-                    anibeam_contract::i18n::tr("core-cast-still-starting", &[]),
-                ));
-            }
+            Control::Starting { .. } => return Err(still_starting()),
         }
         Ok(Reply::Ok)
     }
 
-    fn spawn_dlna(
+    /// Runs `f` on the core's runtime, and fails the session `id` with what it answers.
+    fn spawn_or_fail(
+        playback: &Arc<Playback>,
+        id: u64,
+        f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
+    ) -> tokio::task::AbortHandle {
+        let arc = playback.clone();
+        playback
+            .services
+            .handle
+            .spawn(async move {
+                if let Err(e) = f.await {
+                    fail(&arc, id, e);
+                }
+            })
+            .abort_handle()
+    }
+
+    /// Runs the start of session `id`, which a stop or a new start aborts.
+    fn spawn_start(
         playback: &Arc<Playback>,
         id: u64,
         f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
     ) {
-        let arc = playback.clone();
-        playback.services.handle.spawn(async move {
-            if let Err(e) = f.await {
-                fail(&arc, id, e);
+        let handle = spawn_or_fail(playback, id, f);
+        let inner = inner(playback);
+        let mut s = recover(&inner.session);
+        match s.as_mut().filter(|s| s.id == id).map(|s| &mut s.control) {
+            Some(Control::Starting { task, .. }) => *task = Some(handle),
+            // Started already, or stopped before the handle got here.
+            Some(_) => {}
+            None => handle.abort(),
+        }
+    }
+
+    /// The start of session `id` is about to hand `tv` something: from here a stop tells
+    /// it to stop. False when the session is gone, and the start goes no further.
+    fn reaching(inner: &Inner, id: u64, tv: &Arc<dlna::Client>) -> bool {
+        let mut s = recover(&inner.session);
+        match s.as_mut().filter(|s| s.id == id).map(|s| &mut s.control) {
+            Some(Control::Starting { tv: slot, .. }) => {
+                *slot = Some(tv.clone());
+                true
             }
-        });
+            Some(_) => true,
+            None => false,
+        }
     }
 
     fn seek(playback: &std::sync::Arc<Playback>, to: f64) -> Result<Reply, CoreError> {
         let inner = inner(playback);
         let (mode, base, title, id, prepared, pieces) = {
             let mut s = recover(&inner.session);
-            let Some(s) = s.as_mut() else {
-                return Err(CoreError::invalid(
-                    "cast",
-                    anibeam_contract::i18n::tr("core-cast-nothing", &[]),
-                ));
-            };
+            let s = s.as_mut().ok_or_else(nothing)?;
+            // Refused before anything changes: a seek the start never hears must not
+            // leave its offset on the session.
+            if matches!(s.control, Control::Starting { .. }) {
+                return Err(still_starting());
+            }
             s.state.position = to;
             (
                 s.mode,
@@ -588,61 +626,142 @@ mod imp {
                 s.pieces.clone(),
             )
         };
-        match mode {
-            Mode::Progressive { .. } => {
-                // A stream with no length seeks by starting again from the new point.
-                let (name, kind, offset) = match (&pieces, prepared) {
-                    (Some(pieces), _) => (
-                        "stream.ts",
-                        "video/mp2t",
-                        pieces
-                            .get(served::piece_at(pieces, to))
-                            .map_or(to, |p| p.start),
-                    ),
-                    (None, Some(p)) => ("stream.mp4", "video/mp4", p.stream_start(to)),
-                    (None, None) => ("stream.mp4", "video/mp4", to),
-                };
-                let url = format!("{base}/{name}?t={to:.3}");
-                update(playback, id, |s| s.mode = Mode::Progressive { offset });
-                control(playback, |c, id| {
-                    if let Ctl::Dlna(d) = c {
-                        let meta = dlna::didl(&url, kind, &title, None);
-                        spawn_dlna(playback, id, async move {
-                            d.set_uri(&url, &meta).await?;
-                            d.play().await
-                        });
-                    }
-                })
-            }
-            _ => control(playback, |c, id| match c {
+        if !matches!(mode, Mode::Progressive { .. }) {
+            return control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Seek(to)),
-                Ctl::Dlna(d) => spawn_dlna(playback, id, async move { d.seek(to).await }),
-            }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.seek(to).await });
+                }
+            });
         }
+        // A stream with no length seeks by starting again from the new point.
+        let (name, kind, offset) = match (&pieces, prepared) {
+            (Some(pieces), _) => (
+                "stream.ts",
+                "video/mp2t",
+                pieces
+                    .get(served::piece_at(pieces, to))
+                    .map_or(to, |p| p.start),
+            ),
+            (None, Some(p)) => ("stream.mp4", "video/mp4", p.stream_start(to)),
+            (None, None) => ("stream.mp4", "video/mp4", to),
+        };
+        let url = format!("{base}/{name}?t={to:.3}");
+        update(playback, id, |s| s.mode = Mode::Progressive { offset });
+        control(playback, |c, id| {
+            if let Ctl::Dlna(d) = c {
+                let meta = dlna::didl(&url, kind, &title, None);
+                spawn_or_fail(playback, id, async move {
+                    d.set_uri(&url, &meta).await?;
+                    d.play().await
+                });
+            }
+        })
     }
 
     fn stop(playback: &Playback) {
-        let inner = inner(playback);
-        let Some(session) = recover(&inner.session).take() else {
-            return;
-        };
-        inner.registry.remove(&session.token);
+        let taken = recover(&inner(playback).session).take();
+        if let Some(session) = taken {
+            retire(playback, session, false);
+        }
+    }
+
+    /// A session that is no longer the one casting: its files come off the server, the
+    /// shells hear it stopped, and its device is stopped, unless `replaced` on that same
+    /// device by a start that has not reached it yet.
+    fn retire(playback: &Playback, session: Session, replaced: bool) {
+        inner(playback).registry.remove(&session.token);
         let mut state = session.state.clone();
         if !matches!(state.state, CastPlayState::Ended | CastPlayState::Failed) {
             state.state = CastPlayState::Stopped;
             emit(&playback.services, &state, false);
         }
-        match session.control {
-            // Dropping the controller stops the media receiver on the TV.
-            Control::Cast(c) => drop(c),
+        end(playback, session.control, replaced);
+    }
+
+    /// Stops what a controller drives: dropping a Chromecast's stops the media receiver on
+    /// the TV, and a DLNA TV is told to stop. A start still running is aborted, and a TV
+    /// it handed something is told to stop as well. With `keep`, the device is playing
+    /// the cast that replaced this one, so the controller lets go of it untouched.
+    fn end(playback: &Playback, control: Control, keep: bool) {
+        let tv = match control {
+            Control::Cast(c) if keep => {
+                c.leave();
+                None
+            }
+            Control::Cast(c) => {
+                drop(c);
+                None
+            }
             Control::Dlna { client, poll } => {
                 poll.abort();
-                playback.services.handle.spawn(async move {
-                    let _ = client.stop().await;
-                });
+                Some(client)
             }
-            Control::Starting => {}
+            Control::Starting { task, tv } => {
+                if let Some(task) = task {
+                    task.abort();
+                }
+                tv
+            }
+        };
+        if let Some(tv) = tv.filter(|_| !keep) {
+            playback.services.handle.spawn(async move {
+                let _ = tv.stop().await;
+            });
         }
+    }
+
+    /// Hands session `id` the controller its cast started with, and the mode it plays in.
+    /// A session stopped or replaced in the moment since its start last awaited, which
+    /// the abort could not reach, is not there to take it: what it started is stopped
+    /// here, unless a cast on the same device replaced it, and its files come off.
+    fn take_control(
+        playback: &Playback,
+        id: u64,
+        token: &str,
+        device: &str,
+        mode: Option<Mode>,
+        control: Control,
+    ) {
+        let inner = inner(playback);
+        let mut s = recover(&inner.session);
+        match s.as_mut().filter(|s| s.id == id) {
+            Some(s) => {
+                if let Some(mode) = mode {
+                    s.mode = mode;
+                }
+                s.control = control;
+            }
+            None => {
+                let here = s.as_ref().is_some_and(|s| s.device == device);
+                drop(s);
+                inner.registry.remove(token);
+                end(playback, control, here);
+            }
+        }
+    }
+
+    /// A Chromecast's controller for `load`, its status read into session `id`.
+    fn cast_control(
+        playback: &Arc<Playback>,
+        id: u64,
+        found: &Found,
+        load: castv2::Load,
+    ) -> Control {
+        let status = playback.clone();
+        Control::Cast(castv2::start(found.addr, load, move |st| {
+            on_cast_status(&status, id, st)
+        }))
+    }
+
+    /// A DLNA TV's controller, its status read into session `id` once a second.
+    fn dlna_control(playback: &Arc<Playback>, id: u64, client: Arc<dlna::Client>) -> Control {
+        let poll = playback
+            .services
+            .handle
+            .spawn(poll_dlna(playback.clone(), id, client.clone()))
+            .abort_handle();
+        Control::Dlna { client, poll }
     }
 
     /// Starts a relayed stream on a Chromecast: the playlist under this machine's own
@@ -660,24 +779,9 @@ mod imp {
         duration: f64,
     ) -> Result<(), String> {
         let inner = inner(playback);
-        let port = server(&inner).await?.port();
-        let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
-        let host = discover::dev()
-            .advertise
-            .unwrap_or_else(|| format!("{ip}:{port}"));
-        let base = format!("http://{host}/c/{token}");
-        inner.registry.add(
-            token.clone(),
-            Served {
-                path: PathBuf::new(),
-                mime: "application/vnd.apple.mpegurl".to_string(),
-                prepared: None,
-                relay: Some(Relay {
-                    dir,
-                    pieces: Arc::new(Vec::new()),
-                }),
-            },
-        );
+        let base = base(&inner, &found, &token).await?;
+        let served = Served::relayed("application/vnd.apple.mpegurl", dir, Arc::default());
+        inner.registry.add(token.clone(), served);
         update(playback, id, |s| s.base = base.clone());
         let load = castv2::Load {
             url: format!("{base}/{playlist}"),
@@ -686,17 +790,9 @@ mod imp {
             start,
             duration,
             title,
-            subtitles: None,
         };
-        let status_core = playback.clone();
-        let controller = castv2::start(found.addr, load, move |st| {
-            on_cast_status(&status_core, id, st)
-        });
-        let mut s = recover(&inner.session);
-        match s.as_mut().filter(|s| s.id == id) {
-            Some(s) => s.control = Control::Cast(controller),
-            None => drop(controller),
-        }
+        let control = cast_control(playback, id, &found, load);
+        take_control(playback, id, &token, &found.device.id, None, control);
         Ok(())
     }
 
@@ -729,32 +825,14 @@ mod imp {
             .await
             .map_err(not_handed)?;
         // The fetch can take as long as the other computer needs to start converting; a
-        // cast stopped or replaced meanwhile is left alone, and so is the TV.
-        if !current(&inner, id) {
-            return Ok(());
-        }
+        // stop meanwhile aborts this, and the TV is left alone.
         let pieces = Arc::new(served::read_pieces(&list));
         if pieces.is_empty() {
-            return Err(anibeam_contract::i18n::tr("core-cast-empty-playlist", &[]));
+            return Err(tr("core-cast-empty-playlist", &[]));
         }
-        let port = server(&inner).await?.port();
-        let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
-        let host = discover::dev()
-            .advertise
-            .unwrap_or_else(|| format!("{ip}:{port}"));
-        let base = format!("http://{host}/c/{token}");
-        inner.registry.add(
-            token,
-            Served {
-                path: PathBuf::new(),
-                mime: "video/mp2t".to_string(),
-                prepared: None,
-                relay: Some(Relay {
-                    dir,
-                    pieces: pieces.clone(),
-                }),
-            },
-        );
+        let base = base(&inner, &found, &token).await?;
+        let served = Served::relayed("video/mp2t", dir, pieces.clone());
+        inner.registry.add(token.clone(), served);
         let offset = pieces
             .get(served::piece_at(&pieces, start))
             .map_or(0.0, |p| p.start);
@@ -765,32 +843,27 @@ mod imp {
         });
         let url = format!("{base}/stream.ts?t={start:.3}");
         let meta = dlna::didl(&url, "video/mp2t", &title, None);
+        if !reaching(&inner, id, &client) {
+            return Ok(());
+        }
         client.set_uri(&url, &meta).await?;
         client.play().await?;
-        let poll_core = playback.clone();
-        let poll_client = client.clone();
-        let poll = playback
-            .services
-            .handle
-            .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
-            .abort_handle();
-        let mut s = recover(&inner.session);
-        match s.as_mut().filter(|s| s.id == id) {
-            Some(s) => s.control = Control::Dlna { client, poll },
-            None => {
-                poll.abort();
-                drop(s);
-                playback.services.handle.spawn(async move {
-                    let _ = client.stop().await;
-                });
-            }
-        }
+        let control = dlna_control(playback, id, client);
+        take_control(playback, id, &token, &found.device.id, None, control);
         Ok(())
     }
 
-    /// Whether session `id` is still the one casting.
-    fn current(inner: &Inner, id: u64) -> bool {
-        recover(&inner.session).as_ref().is_some_and(|s| s.id == id)
+    /// Reads a Matroska file through once, off the runtime's threads.
+    async fn prepare(
+        path: &Path,
+        audio_track: Option<u64>,
+        subs: Option<Subs>,
+    ) -> Result<Arc<Prepared>, String> {
+        let path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || Prepared::new(&path, audio_track, subs))
+            .await
+            .map_err(|e| e.to_string())?
+            .map(Arc::new)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -806,13 +879,7 @@ mod imp {
         subs: Option<Subs>,
     ) -> Result<(), String> {
         let inner = inner(playback);
-        let port = server(&inner).await?.port();
-        let peer: IpAddr = found.addr.ip();
-        let ip = discover::local_ip_for(peer).ok_or_else(no_route)?;
-        let host = discover::dev()
-            .advertise
-            .unwrap_or_else(|| format!("{ip}:{port}"));
-        let base = format!("http://{host}/c/{token}");
+        let base = base(&inner, &found, &token).await?;
         let mkv = is_matroska(&path);
         let receiver = match found.device.kind {
             CastKind::Chromecast => Receiver::Cast,
@@ -820,12 +887,7 @@ mod imp {
         };
         // A Matroska file is read through once: keyframes for HLS, subtitles for both.
         let prepared = if mkv && (receiver == Receiver::Cast || subs.is_some()) {
-            let p = path.clone();
-            let s = subs.clone();
-            let prepared = tokio::task::spawn_blocking(move || Prepared::new(&p, audio_track, s))
-                .await
-                .map_err(|e| e.to_string())??;
-            Some(Arc::new(prepared))
+            Some(prepare(&path, audio_track, subs).await?)
         } else {
             None
         };
@@ -835,15 +897,7 @@ mod imp {
                 .and_then(|p| p.probe.video.as_ref())
                 .is_some_and(|v| matches!(v.codec, super::mkv::VideoCodec::Hevc { .. }))
             && !discover::decodes_hevc(found.device.model.as_deref());
-        inner.registry.add(
-            token.clone(),
-            Served {
-                path: path.clone(),
-                mime: mime(&path).to_string(),
-                prepared: prepared.clone(),
-                relay: None,
-            },
-        );
+        serve_file(&inner, &token, &path, prepared.clone());
         let duration = prepared
             .as_ref()
             .map(|p| p.duration_ms() as f64 / 1000.0)
@@ -871,21 +925,10 @@ mod imp {
                     start,
                     duration,
                     title,
-                    subtitles: None,
                 };
-                let status_core = playback.clone();
-                let controller = castv2::start(found.addr, load, move |st| {
-                    on_cast_status(&status_core, id, st)
-                });
-                update(playback, id, |s| {
-                    s.mode = if hls { Mode::Hls } else { Mode::Direct }
-                });
-                let mut s = recover(&inner.session);
-                match s.as_mut().filter(|s| s.id == id) {
-                    Some(s) => s.control = Control::Cast(controller),
-                    // Stopped while connecting: the controller drops here and stops the TV.
-                    None => drop(controller),
-                }
+                let mode = if hls { Mode::Hls } else { Mode::Direct };
+                let control = cast_control(playback, id, &found, load);
+                take_control(playback, id, &token, &found.device.id, Some(mode), control);
             }
             CastKind::Dlna => {
                 let client = Arc::new(dlna::Client::new(
@@ -897,6 +940,9 @@ mod imp {
                     .map(|_| format!("{base}/subs.srt"));
                 let direct = format!("{base}/file");
                 let meta = dlna::didl(&direct, mime(&path), &title, srt.as_deref());
+                if !reaching(&inner, id, &client) {
+                    return Ok(());
+                }
                 let mode = match client.set_uri(&direct, &meta).await {
                     Ok(()) => {
                         client.play().await?;
@@ -912,32 +958,20 @@ mod imp {
                         if !mkv {
                             return Err(first);
                         }
-                        let p = match prepared.clone() {
+                        let p = match prepared {
                             Some(p) => p,
                             None => {
-                                let pp = path.clone();
-                                let p = tokio::task::spawn_blocking(move || {
-                                    Prepared::new(&pp, audio_track, None)
-                                })
-                                .await
-                                .map_err(|e| e.to_string())??;
-                                let p = Arc::new(p);
-                                inner.registry.add(
-                                    token.clone(),
-                                    Served {
-                                        path: path.clone(),
-                                        mime: mime(&path).to_string(),
-                                        prepared: Some(p.clone()),
-                                        relay: None,
-                                    },
-                                );
+                                let p = prepare(&path, audio_track, None).await?;
+                                serve_file(&inner, &token, &path, Some(p.clone()));
+                                // A seek restarts the stream at a keyframe it reads from here
+                                update(playback, id, |s| s.prepared = Some(p.clone()));
                                 p
                             }
                         };
                         let url = format!("{base}/stream.mp4?t={start:.3}");
                         let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
                         client.set_uri(&url, &meta).await.map_err(|e| {
-                            anibeam_contract::i18n::tr(
+                            tr(
                                 "core-cast-refused-both",
                                 &[("error", e.into()), ("first", first.into())],
                             )
@@ -948,21 +982,8 @@ mod imp {
                         }
                     }
                 };
-                let poll_core = playback.clone();
-                let poll_client = client.clone();
-                let poll = playback
-                    .services
-                    .handle
-                    .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
-                    .abort_handle();
-                let mut s = recover(&inner.session);
-                match s.as_mut().filter(|s| s.id == id) {
-                    Some(s) => {
-                        s.mode = mode;
-                        s.control = Control::Dlna { client, poll };
-                    }
-                    None => poll.abort(),
-                }
+                let control = dlna_control(playback, id, client);
+                take_control(playback, id, &token, &found.device.id, Some(mode), control);
             }
         }
         Ok(())
@@ -980,11 +1001,12 @@ mod imp {
                 _ => s.state.state,
             };
             if next == CastPlayState::Failed {
-                let mut e = st.error.clone().unwrap_or_else(|| {
-                    anibeam_contract::i18n::tr("core-cast-chromecast-stopped", &[])
-                });
+                let mut e = st
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| tr("core-cast-chromecast-stopped", &[]));
                 if s.hevc_doubt {
-                    e = anibeam_contract::i18n::tr("core-cast-hevc", &[("error", e.into())]);
+                    e = tr("core-cast-hevc", &[("error", e.into())]);
                 }
                 s.state.error = Some(e);
             }
@@ -1128,6 +1150,10 @@ mod imp {
             read: Vec<Vec<u8>>,
             /// Every action but the two status reads, in order.
             actions: Vec<String>,
+            /// Answers Play only after a while, as a TV that is slow to start does.
+            slow_play: bool,
+            /// Answers Play with an error, as a TV that started anyway may.
+            refuse_play: bool,
         }
 
         fn piece(i: u8) -> Vec<u8> {
@@ -1147,7 +1173,12 @@ mod imp {
                 .unwrap_or_default()
         }
 
-        async fn tv(State(tv): State<Arc<Mutex<Tv>>>, headers: HeaderMap, body: Bytes) -> String {
+        async fn tv(
+            State(tv): State<Arc<Mutex<Tv>>>,
+            headers: HeaderMap,
+            body: Bytes,
+        ) -> (axum::http::StatusCode, String) {
+            let ok = |body: &str| (axum::http::StatusCode::OK, body.to_string());
             let action = headers
                 .get("SOAPAction")
                 .and_then(|v| v.to_str().ok())
@@ -1156,6 +1187,17 @@ mod imp {
             let xml = String::from_utf8_lossy(&body).into_owned();
             if !action.contains("#Get") {
                 tv.lock().unwrap().actions.push(action.clone());
+            }
+            let (slow, refuse) = {
+                let t = tv.lock().unwrap();
+                (t.slow_play, t.refuse_play)
+            };
+            if slow && action.contains("#Play") {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+            }
+            if refuse && action.contains("#Play") {
+                let fault = "<r><errorCode>701</errorCode></r>".to_string();
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, fault);
             }
             if action.contains("#SetAVTransportURI") {
                 let mut t = tv.lock().unwrap();
@@ -1175,13 +1217,14 @@ mod imp {
                     tv.lock().unwrap().read.push(got);
                 });
             } else if action.contains("#GetTransportInfo") {
-                return "<r><CurrentTransportState>PLAYING</CurrentTransportState></r>".into();
+                return ok("<r><CurrentTransportState>PLAYING</CurrentTransportState></r>");
             } else if action.contains("#GetPositionInfo") {
                 // Counted from the start of the stream it was handed, as many TVs do.
-                return "<r><RelTime>0:00:02</RelTime><TrackDuration>0:00:00</TrackDuration></r>"
-                    .into();
+                return ok(
+                    "<r><RelTime>0:00:02</RelTime><TrackDuration>0:00:00</TrackDuration></r>",
+                );
             }
-            "<ok/>".into()
+            ok("<ok/>")
         }
 
         async fn computer(
@@ -1216,15 +1259,12 @@ mod imp {
             rt: &tokio::runtime::Runtime,
         ) -> (Arc<Mutex<Tv>>, tempfile::TempDir, Teams) {
             let tv_state = Arc::new(Mutex::new(Tv::default()));
-            let tv_at = rt.block_on(async {
-                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let at = l.local_addr().unwrap();
-                let app = Router::new()
+            let tv_at = serve(
+                rt,
+                Router::new()
                     .route("/ctl", post(tv))
-                    .with_state(tv_state.clone());
-                tokio::spawn(async move { axum::serve(l, app).await });
-                at
-            });
+                    .with_state(tv_state.clone()),
+            );
             let dir = tempfile::tempdir().unwrap();
             let teams = Teams::open(dir.path());
             inner(&teams.playback).devices.lock().unwrap().push(Found {
@@ -1278,6 +1318,100 @@ mod imp {
             let t = tv_state.lock().unwrap();
             assert!(t.uris.is_empty(), "the TV was handed {:?}", t.uris);
             assert!(t.actions.is_empty(), "the TV was told {:?}", t.actions);
+        }
+
+        /// A file cast to a TV that is stopped before the TV has started it: the TV is told
+        /// to stop once it answers, rather than left playing with nothing to control it,
+        /// whether it answers Play with yes or with an error.
+        #[test]
+        fn a_stop_while_the_tv_starts_stops_the_tv() {
+            stop_while_starting(false);
+            stop_while_starting(true);
+        }
+
+        /// A library holding one episode, file 10, an MP4, for a cast to start from.
+        fn one_file(teams: &Teams) {
+            teams
+                .playback
+                .services
+                .store
+                .tx(|tx| {
+                    tx.execute_batch(
+                        "INSERT INTO sources (id, path, available, added_at) VALUES (1, '/lib', 1, 0);
+                         INSERT INTO series (id, source_id, kind, path, folder_name, added_at)
+                             VALUES (1, 1, 'show', '/lib/Show', 'Show', 0);
+                         INSERT INTO files (id, series_id, path, size, mtime, kind, number, label, episode_key, seen_at)
+                             VALUES (10, 1, '/lib/Show/01.mp4', 1, 0, 'episode', 1, '1', '1', 0);",
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+        }
+
+        fn cast_file(teams: &Teams) {
+            teams
+                .call(Call::CastStart {
+                    device: "dlna:fake".into(),
+                    file: 10,
+                    start: 0.0,
+                    audio_track: None,
+                    subtitle: CastSubtitle::None,
+                })
+                .unwrap();
+        }
+
+        fn plays(tv: &Mutex<Tv>) -> usize {
+            let t = tv.lock().unwrap();
+            t.actions.iter().filter(|a| a.contains("#Play")).count()
+        }
+
+        fn stops(tv: &Mutex<Tv>) -> usize {
+            let t = tv.lock().unwrap();
+            t.actions.iter().filter(|a| a.contains("#Stop")).count()
+        }
+
+        fn stop_while_starting(refuse_play: bool) {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
+            {
+                let mut t = tv_state.lock().unwrap();
+                t.slow_play = true;
+                t.refuse_play = refuse_play;
+            }
+            one_file(&teams);
+            cast_file(&teams);
+            until("the TV to be told to play", || plays(&tv_state) == 1);
+            teams.call(Call::CastStop).unwrap();
+            until("the TV to be told to stop", || stops(&tv_state) == 1);
+        }
+
+        /// A second cast to the same TV while the first is still starting: the first's
+        /// start is let go without a stop, which would land on the TV as it plays the
+        /// second.
+        #[test]
+        fn a_new_cast_to_the_same_tv_is_not_stopped_by_the_one_it_replaced() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
+            tv_state.lock().unwrap().slow_play = true;
+            one_file(&teams);
+            cast_file(&teams);
+            until("the first Play", || plays(&tv_state) == 1);
+            cast_file(&teams);
+            until("the second cast to play", || {
+                matches!(
+                    teams.call(Call::CastStatus),
+                    Ok(Reply::CastState { state: Some(s) }) if s.state == CastPlayState::Playing
+                )
+            });
+            // Long enough for the first Play to answer, and a stray stop to follow it.
+            std::thread::sleep(Duration::from_millis(2000));
+            assert_eq!(plays(&tv_state), 2);
+            assert_eq!(
+                stops(&tv_state),
+                0,
+                "{:?}",
+                tv_state.lock().unwrap().actions
+            );
         }
 
         #[test]
@@ -1338,37 +1472,14 @@ mod imp {
         #[test]
         fn a_dlna_tv_plays_another_computers_conversion_as_one_stream() {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let tv_state = Arc::new(Mutex::new(Tv::default()));
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
             let asked = Arc::new(Mutex::new(Vec::new()));
-            let (tv_at, computer_at) = rt.block_on(async {
-                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let tv_at = l.local_addr().unwrap();
-                let app = Router::new()
-                    .route("/ctl", post(tv))
-                    .with_state(tv_state.clone());
-                tokio::spawn(async move { axum::serve(l, app).await });
-                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let computer_at = l.local_addr().unwrap();
-                let app = Router::new()
+            let computer_at = serve(
+                &rt,
+                Router::new()
                     .route("/hls/{name}", get(computer))
-                    .with_state(asked.clone());
-                tokio::spawn(async move { axum::serve(l, app).await });
-                (tv_at, computer_at)
-            });
-
-            let dir = tempfile::tempdir().unwrap();
-            let teams = Teams::open(dir.path());
-            inner(&teams.playback).devices.lock().unwrap().push(Found {
-                device: CastDevice {
-                    id: "dlna:fake".into(),
-                    name: "Fake TV".into(),
-                    kind: CastKind::Dlna,
-                    model: None,
-                    address: tv_at.to_string(),
-                },
-                addr: tv_at,
-                control: Some(format!("http://{tv_at}/ctl")),
-            });
+                    .with_state(asked.clone()),
+            );
 
             teams
                 .call(Call::CastStartStream {

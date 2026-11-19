@@ -1,6 +1,6 @@
 //! The airing schedule for a series, merged from the host and AniList.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::api::{Airing, Series};
 use crate::store::{AniListCache, Cache};
@@ -42,19 +42,14 @@ pub fn schedule_for(series: &Series, synced_at: i64, anilist: &AniListCache) -> 
     merged
 }
 
-/// The whole-numbered episodes on disk by (season, episode), each watched when any of
-/// its files is.
-pub(crate) fn on_disk_episodes(series: &Series) -> HashMap<(u32, u32), bool> {
-    let mut out = HashMap::new();
-    for e in series
+/// The whole-numbered episodes on disk, by (season, episode).
+pub(crate) fn on_disk_episodes(series: &Series) -> HashSet<(u32, u32)> {
+    series
         .episodes
         .iter()
         .filter(|e| e.number.fract() == 0.0 && e.number >= 0.0)
-    {
-        *out.entry((e.season.unwrap_or(1), e.number as u32))
-            .or_insert(false) |= e.watched;
-    }
-    out
+        .map(|e| (e.season.unwrap_or(1), e.number as u32))
+        .collect()
 }
 
 /// The AniList ids worth asking about: shows that are airing or have a schedule.
@@ -89,7 +84,6 @@ mod tests {
         Cache {
             address: "desktop:8790".into(),
             host: "desktop".into(),
-            host_version: "2.1.0".into(),
             synced_at: snapshot.generated_at + 5,
             snapshot,
             peers: Vec::new(),
@@ -116,7 +110,6 @@ mod tests {
         anilist.shows.insert(
             182255,
             Schedule {
-                status: None,
                 upcoming: vec![airing(9, 1_793_019_600)],
             },
         );
