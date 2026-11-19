@@ -175,12 +175,6 @@ const WATCHING_SQL: &str = "SELECT t.media_id, t.progress, t.updated_at,
          ELSE (SELECT a.id FROM anilist_media a WHERE a.mal_id = t.media_id ORDER BY a.id LIMIT 1) END
      WHERE t.tracker = ?1 AND t.profile_id = 1 AND t.status = ?2";
 
-/// The other tracker's stamp for the same media, unless its entry is on
-/// hold: that stamp is the move, quite possibly this sweep's own, and
-/// counting it would keep the entry here from ever following.
-const OTHER_SQL: &str = "SELECT updated_at FROM tracker_entries
-     WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1 AND (status IS NULL OR status != 'paused')";
-
 /// The owner's latest play here on any series matched to the media, by either
 /// id. The lists are the owner's, so a guest's plays (#631) do not count.
 const PLAYED_SQL: &str = "SELECT MAX(at) FROM (
@@ -213,12 +207,13 @@ fn local(
         Tracker::Anilist => (Tracker::Mal, mal_id),
         Tracker::Mal => (Tracker::Anilist, anilist_id),
     };
+    // The other tracker's stamp for the same media, unless its entry is on
+    // hold: that stamp is the move, quite possibly this sweep's own, and
+    // counting it would keep the entry here from ever following.
     let other_touched = match other_id {
-        Some(id) => conn
-            .prepare_cached(OTHER_SQL)?
-            .query_row(params![other.as_str(), id], |r| r.get::<_, Option<i64>>(0))
-            .optional()?
-            .flatten(),
+        Some(id) => cache::cached(conn, other, id as u64)?
+            .filter(|e| e.status != Some(ListStatus::Paused))
+            .and_then(|e| e.updated_at),
         None => None,
     };
     let played = conn
@@ -285,8 +280,11 @@ pub(crate) fn due(
         };
         // A hidden series is absent from every tracker write, this one
         // included, by whichever id it carries.
-        let id = |id: Option<i64>| id.map(|id| id as u64);
-        if writes::any_hidden(conn, id(anilist_id), id(mal_id))? {
+        if writes::any_hidden(
+            conn,
+            anilist_id.map(|id| id as u64),
+            mal_id.map(|id| id as u64),
+        )? {
             continue;
         }
         let here = local(conn, t, anilist_id, mal_id, row.progress)?;

@@ -2,14 +2,7 @@
 //! crawl that fills that table in. `closure` is pure and reads one
 //! connection; `crawl` is the job that asks AniList for the edges the
 //! closure found were missing.
-//!
-//! The rules are Electron's, carried over one for one: the traversal set
-//! and the boundary rule of `src/shared/franchise.ts`'s `closeGraph`, the
-//! minute throttle and the deferral of
-//! `src/main/services/franchiseCrawler.ts`, and the crawl bar's two
-//! numbers from `franchiseGraph.ts`'s `getFranchiseCrawlProgress`.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -17,7 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::Metadata;
 use anibeam_contract::*;
 pub(crate) use anibeam_foundation::store::sql::{as_i64, as_u64};
-use anibeam_foundation::time;
+use anibeam_foundation::{time, titles};
 
 pub mod closure;
 pub mod crawl;
@@ -39,7 +32,7 @@ pub fn graph_call(metadata: &Arc<Metadata>, series: u64) -> Result<Reply, CoreEr
 /// Two shapes come back as no layout at all: a series with no AniList id
 /// to close a graph around, and a node standing on no edge, since a graph
 /// of one card is not a graph.
-pub fn graph(metadata: &Arc<Metadata>, series: u64) -> Result<Option<FranchiseLayout>, CoreError> {
+fn graph(metadata: &Arc<Metadata>, series: u64) -> Result<Option<FranchiseLayout>, CoreError> {
     let now = time::now_secs();
     let built = metadata.services.store.read(|conn| {
         let matched: Option<Option<i64>> = conn
@@ -86,12 +79,11 @@ fn draw(
     closure: &Closure,
     current: u64,
 ) -> Result<FranchiseLayout, CoreError> {
-    let plan = layout::plan(closure, current);
-    let positions: HashMap<u64, (f64, f64)> = plan
-        .positions
-        .iter()
-        .map(|(id, x, y)| (*id, (*x, *y)))
-        .collect();
+    let layout::Plan {
+        positions,
+        edges,
+        mut labels,
+    } = layout::plan(closure, current);
 
     let mut nodes: Vec<GraphNode> = Vec::with_capacity(closure.nodes.len());
     for n in &closure.nodes {
@@ -118,7 +110,7 @@ fn draw(
             released: n.status.as_deref() != Some("NOT_YET_RELEASED"),
             format: n.format.clone(),
             year: n.year,
-            relation: plan.labels.get(&n.anilist_id).cloned(),
+            relation: labels.remove(&n.anilist_id),
             list_status: list_status(conn, n.anilist_id)?,
             current: n.anilist_id == current,
             root: n.anilist_id == closure.root,
@@ -127,15 +119,6 @@ fn draw(
         });
     }
 
-    let edges = plan
-        .edges
-        .iter()
-        .map(|e| GraphEdge {
-            from: e.from,
-            to: e.to,
-            relation: e.relation.clone(),
-        })
-        .collect();
     Ok(FranchiseLayout {
         root: closure.root,
         nodes,
@@ -151,7 +134,7 @@ fn title_of(n: &Node) -> String {
     n.title_romaji
         .clone()
         .or_else(|| n.title_english.clone())
-        .unwrap_or_else(|| format!("AniList {}", n.anilist_id))
+        .unwrap_or_else(|| titles::fallback_title(n.anilist_id))
 }
 
 /// The series this node is, when the library holds it. Never a manga: the
