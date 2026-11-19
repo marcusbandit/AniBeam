@@ -216,7 +216,10 @@ pub fn compute(
         for g in media.iter().flat_map(|m| &m.genres) {
             tally(&mut genres, g.clone(), row.id, episodes);
         }
-        if let Some(studio) = media.and_then(|m| m.studio.as_ref()).filter(|s| !s.is_empty()) {
+        if let Some(studio) = media
+            .and_then(|m| m.studio.as_ref())
+            .filter(|s| !s.is_empty())
+        {
             tally(&mut studios, studio.clone(), row.id, episodes);
         }
         if let Some((season, y)) = media.and_then(|m| m.season.as_deref().zip(m.year)) {

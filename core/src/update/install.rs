@@ -407,7 +407,9 @@ async fn download(
                 progress(got, total);
             }
         }
-        file.flush().await.map_err(|e| failed_at("core-update-cannot-write", &part, e))?;
+        file.flush()
+            .await
+            .map_err(|e| failed_at("core-update-cannot-write", &part, e))?;
         if got != asset.size {
             return Err(tr(
                 "core-update-ended-early",
