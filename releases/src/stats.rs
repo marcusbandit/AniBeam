@@ -79,7 +79,7 @@ enum Value {
 
 /// Anything that does not parse (anirss's `ValueError`).
 #[derive(Debug, PartialEq)]
-struct BadBencode;
+pub struct BadBencode;
 
 /// Deeper than any real torrent; Python would hit its recursion limit here.
 const MAX_DEPTH: usize = 64;
@@ -156,6 +156,12 @@ fn info_span(data: &[u8]) -> Result<(usize, usize), BadBencode> {
     let start = find(data, b"4:info")? + b"4:info".len();
     let (_info, end) = decode(data, start, 0)?;
     Ok((start, end))
+}
+
+/// SHA-1 info-hash of .torrent bytes (trackerless torrents too).
+pub fn info_hash(data: &[u8]) -> Result<Hash, BadBencode> {
+    let (start, end) = info_span(data)?;
+    Ok(sha1(&data[start..end]))
 }
 
 /// (info-hash bytes, announce URLs in priority order) from .torrent bytes. An error means
@@ -614,7 +620,8 @@ async fn run_bounded<T>(
     wait: Duration,
 ) -> Vec<T> {
     let deadline = tokio::time::Instant::now() + wait;
-    let mut running = std::pin::pin!(futures_util::stream::iter(pending).buffer_unordered(limit));
+    let mut running =
+        std::pin::pin!(futures_util::stream::iter(pending).buffer_unordered(limit.max(1)));
     let mut done = Vec::new();
     while let Ok(Some(v)) = tokio::time::timeout_at(deadline, running.next()).await {
         done.push(v);
@@ -977,6 +984,8 @@ mod tests {
         let (infohash, _) = torrent_facts(&data).unwrap();
         // sha1 of the encoded info dict, computed with Python's hashlib.
         assert_eq!(hex(&infohash), "74cec52d333abf05038b8afd98668e51d6050c5c");
+        assert_eq!(info_hash(&data).unwrap(), infohash);
+        assert!(info_hash(b"").is_err());
     }
 
     #[test]

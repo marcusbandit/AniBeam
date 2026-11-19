@@ -206,31 +206,23 @@ fn seeds(item: &Release) -> i64 {
     item.seeders.unwrap_or(-1)
 }
 
-/// Episode numbers as runs of consecutive ones, each as its first and last.
-fn spans(list: &[u32]) -> Vec<(u32, u32)> {
-    let mut out: Vec<(u32, u32)> = Vec::new();
+/// Episode numbers as runs of consecutive ones, each a lone number or written by `range`.
+fn spans(list: &[u32], range: impl Fn(u32, u32) -> String) -> Vec<String> {
+    let mut runs: Vec<(u32, u32)> = Vec::new();
     for &n in list {
-        match out.last_mut() {
+        match runs.last_mut() {
             Some((_, last)) if n == *last + 1 => *last = n,
-            _ => out.push((n, n)),
+            _ => runs.push((n, n)),
         }
     }
-    out
+    runs.into_iter()
+        .map(|(a, b)| if a == b { a.to_string() } else { range(a, b) })
+        .collect()
 }
 
 /// Episode numbers as short runs: `1-12, 14, 20-24`.
 pub fn runs(list: &[u32]) -> String {
-    let parts: Vec<String> = spans(list)
-        .into_iter()
-        .map(|(a, b)| {
-            if a == b {
-                a.to_string()
-            } else {
-                format!("{a}-{b}")
-            }
-        })
-        .collect();
-    parts.join(", ")
+    spans(list, |a, b| format!("{a}-{b}")).join(", ")
 }
 
 /// A provider's releases as rows: group and quality with the best-seeded release per
@@ -506,10 +498,7 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
     if ns.is_empty() {
         return String::new();
     }
-    let parts: Vec<String> = spans(ns)
-        .into_iter()
-        .map(|(a, b)| if a == b { a.to_string() } else { range(a, b) })
-        .collect();
+    let parts = spans(ns, range);
     anibeam_contract::i18n::tr(
         "core-releases-episodes-phrase",
         &[

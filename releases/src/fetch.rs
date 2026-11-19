@@ -136,9 +136,9 @@ fn torznab(entry: Node) -> Torznab {
         .unwrap_or_else(|| get("size").unwrap_or("").to_string());
     if !raw.is_empty()
         && raw.bytes().all(|b| b.is_ascii_digit())
-        && let Ok(n) = raw.parse::<f64>()
+        && let Ok(n) = raw.parse::<u64>()
     {
-        size = size_text(n as u64);
+        size = size_text(n);
     }
     let cat = get("category").unwrap_or("");
     let category = match cat.chars().next() {

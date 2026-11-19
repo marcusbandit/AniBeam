@@ -143,7 +143,8 @@ impl RuleStore {
                 .into_iter()
                 .partition(|r| names.contains(&r.name));
             *rules = kept;
-            (gone, true)
+            let changed = !gone.is_empty();
+            (gone, changed)
         })
     }
 
