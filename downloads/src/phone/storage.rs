@@ -294,8 +294,11 @@ impl TorrentStorage for Storage {
     }
 
     fn pwrite_all(&self, file_id: usize, offset: u64, buf: &[u8]) -> anyhow::Result<()> {
+        self.files.file(file_id, true)?.write_all_at(buf, offset)?;
+        // Marked once the bytes are in, so a flush that runs before them cannot drain the
+        // mark and leave them unflushed.
         recover(&self.files.dirty).insert(file_id);
-        Ok(self.files.file(file_id, true)?.write_all_at(buf, offset)?)
+        Ok(())
     }
 
     fn remove_file(&self, file_id: usize, filename: &Path) -> anyhow::Result<()> {
