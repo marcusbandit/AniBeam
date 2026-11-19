@@ -603,7 +603,8 @@ pub async fn after_add(
                     Err(e) => tracing::debug!("followup read failed: {e}"),
                 }
                 match load(&downloads.services) {
-                    Ok(f) if f.iter().all(|f| !f.hash.is_empty()) => break,
+                    // A magnet's followup has its hash from the start: done once listed
+                    Ok(f) if f.iter().all(|f| f.seen) => break,
                     Ok(_) => {}
                     Err(_) => break,
                 }
