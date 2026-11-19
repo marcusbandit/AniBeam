@@ -30,7 +30,13 @@ pub struct Classified {
 /// for an episode, so `SP01v2`, `NCOP1v2` and `SPv2` read as their extra (#442).
 /// Each pattern says whether its marker is also a plain word a series title can hold, a
 /// preview or a special with no number (Trailer Park Boys, Special A); see `find_extra_token`.
-static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|| {
+/// An extras pattern: the kind it reads, its regex, and whether a bare one with no index
+/// may be a word of a title.
+type Pattern = (ExtraKind, Regex, bool);
+/// The pattern a text reads as, with what it captured.
+type Reading<'a> = (&'static Pattern, Captures<'a>);
+
+static EXTRA_PATTERNS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
     vec![
         (
             ExtraKind::Op,
@@ -75,9 +81,23 @@ static EXTRA_SET: LazyLock<RegexSet> =
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
 
 /// The extras pattern a text reads as, with what it captured.
-fn extra_reading(text: &str) -> Option<(&'static (ExtraKind, Regex, bool), Captures<'_>)> {
+fn extra_reading(text: &str) -> Option<Reading<'_>> {
     let pattern = &EXTRA_PATTERNS[EXTRA_SET.matches(text).into_iter().next()?];
     Some((pattern, pattern.1.captures(text)?))
+}
+
+/// The extras pattern a token reads as, and the stem it was read from when only the
+/// token with its release revision cut reads as one. The token as written first, so
+/// `PV01` is never `P` plus a `V01`. No token a pattern reads has a stem another pattern
+/// reads, so this agrees with trying each pattern on the token and then its stem in
+/// turn; a test holds every pattern to that.
+fn token_reading(token: &str) -> Option<(Reading<'_>, Option<&str>)> {
+    extra_reading(token)
+        .map(|reading| (reading, None))
+        .or_else(|| {
+            let stem = TOKEN_REVISION.captures(token)?.get(1)?.as_str();
+            Some((extra_reading(stem)?, Some(stem)))
+        })
 }
 
 /// A word that makes a file an extra of kind Other. The words are ASCII, so an ASCII
@@ -302,15 +322,7 @@ fn find_extra_token(tokens: &[&str], number: &Number) -> Option<ExtraHit> {
     // reading at all (#466).
     let mut title_word = None;
     for (at, token) in tokens.iter().enumerate() {
-        // The token as written first, so `PV01` is never `P` plus a `V01`. No token a
-        // pattern reads has a stem another pattern reads, so the revision is only cut
-        // from a token no pattern reads as written.
-        let read = extra_reading(token)
-            .map(|reading| (reading, None))
-            .or_else(|| {
-                let stem = TOKEN_REVISION.captures(token)?.get(1)?.as_str();
-                Some((extra_reading(stem)?, Some(stem)))
-            });
+        let read = token_reading(token);
         if let Some((((kind, _, word), m), unrevised)) = read {
             let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
             let apart = || match kind {
@@ -684,6 +696,39 @@ mod tests {
 
     fn text(s: &str) -> Option<String> {
         Some(s.to_string())
+    }
+
+    /// The one-pass reading picks the pattern the old loop did, which tried each pattern
+    /// on the token and then on its revision-cut stem before the next pattern, for every
+    /// marker with every index and revision shape.
+    #[test]
+    fn the_extras_set_reads_a_token_as_the_pattern_loop_did() {
+        let by_loop = |token: &str| {
+            let stem = TOKEN_REVISION.captures(token).map(|m| m[1].to_string());
+            EXTRA_PATTERNS.iter().position(|(_, re, _)| {
+                re.is_match(token) || stem.as_deref().is_some_and(|s| re.is_match(s))
+            })
+        };
+        let by_set = |token: &str| {
+            let ((pattern, _), _) = token_reading(token)?;
+            EXTRA_PATTERNS.iter().position(|p| std::ptr::eq(p, pattern))
+        };
+        let markers = [
+            "NCOP", "NCED", "OP", "ED", "PV", "CM", "SP", "OVA", "OAD", "OAV", "Trailer", "Teaser",
+            "Special", "Specials", "S05", "S05E", "S05EEX", "Preview", "Menu",
+        ];
+        for marker in markers {
+            for index in ["", "1", "01", "1a", "12b", "2v"] {
+                for revision in ["", "v2", "v10"] {
+                    for token in [
+                        format!("{marker}{index}{revision}"),
+                        format!("{}{index}{revision}", marker.to_lowercase()),
+                    ] {
+                        assert_eq!(by_set(&token), by_loop(&token), "{token}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
