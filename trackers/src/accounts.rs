@@ -133,6 +133,21 @@ pub fn load_row(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError>
     Ok(row)
 }
 
+/// The row of a connected account, or None. The row survives a disconnect
+/// with its credentials, so what says an account is connected is the
+/// instant it connected.
+pub(crate) fn connected(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError> {
+    Ok(load_row(conn, t)?.filter(|row| row.connected_at.is_some()))
+}
+
+/// [`connected`] from inside a job.
+pub(crate) async fn connected_async(
+    services: &Services,
+    t: Tracker,
+) -> Result<Option<Row>, CoreError> {
+    services.store.write_async(move |c| connected(c, t)).await
+}
+
 // What the shell is told -----------------------------------------------------
 
 /// Both accounts and which of them is the main one. Reads the keyring for
@@ -384,6 +399,14 @@ pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<Stri
     }
 }
 
+/// [`access_token`] for a call that cannot go on without one: no token is
+/// the tracker's failure, in the words a person reads.
+pub(crate) async fn token(trackers: &Trackers, t: Tracker) -> Result<String, CoreError> {
+    access_token(trackers, t)
+        .await?
+        .ok_or_else(|| tracker_error(t, crate::no_token()))
+}
+
 /// Whether a token is close enough to its expiry to be worth replacing.
 /// An unknown expiry is left alone: a token that still works is worth more
 /// than a refresh nothing asked for.
@@ -620,17 +643,17 @@ fn emit_series_changed(
     Ok(())
 }
 
-fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreError> {
+/// The series whose match carries this tracker's id, or with none named,
+/// every matched series.
+pub(crate) fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreError> {
     let sql = match t {
         Some(Tracker::Anilist) => "SELECT id FROM series WHERE anilist_id IS NOT NULL ORDER BY id",
         Some(Tracker::Mal) => "SELECT id FROM series WHERE mal_id IS NOT NULL ORDER BY id",
         None => "SELECT id FROM series WHERE provider IS NOT NULL ORDER BY id",
     };
-    let mut stmt = conn.prepare(sql)?;
-    let ids = stmt
-        .query_map([], |r| r.get::<_, i64>(0))?
-        .collect::<Result<Vec<i64>, _>>()?;
-    Ok(ids.into_iter().map(|id| id as u64).collect())
+    let mut stmt = conn.prepare_cached(sql)?;
+    let ids = stmt.query_map([], |r| Ok(r.get::<_, i64>(0)? as u64))?;
+    Ok(ids.collect::<Result<_, _>>()?)
 }
 
 #[cfg(test)]

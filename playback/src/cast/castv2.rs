@@ -171,8 +171,8 @@ fn connect(addr: SocketAddr) -> io::Result<Tls> {
     Ok(rustls::StreamOwned::new(conn, tcp))
 }
 
-/// What to play: the media URL, its type, where to start, and a WebVTT URL to load as a
-/// side track when the media is not HLS (HLS carries its subtitles in the playlist).
+/// What to play: the media URL, its type and where to start. HLS carries its subtitles in
+/// the playlist.
 #[derive(Clone, Debug)]
 pub struct Load {
     pub url: String,
@@ -181,7 +181,6 @@ pub struct Load {
     pub start: f64,
     pub duration: f64,
     pub title: String,
-    pub subtitles: Option<String>,
 }
 
 /// The receiver's state, as its media status said.
@@ -196,26 +195,51 @@ pub struct Status {
     pub error: Option<String>,
 }
 
+impl Status {
+    /// The receiver gone idle for `reason`, with nothing more known.
+    fn idle(reason: &str, error: Option<String>) -> Status {
+        Status {
+            player: "IDLE".into(),
+            position: 0.0,
+            duration: None,
+            idle_reason: Some(reason.into()),
+            error,
+        }
+    }
+}
+
 pub enum Command {
     Play,
     Pause,
     Seek(f64),
     Stop,
+    /// Let go of the device and leave its media receiver playing: another cast took it.
+    Leave,
 }
 
 pub struct Controller {
     tx: Sender<Command>,
+    /// Let go with `leave`, so dropping it sends no stop.
+    left: bool,
 }
 
 impl Controller {
     pub fn send(&self, c: Command) {
         let _ = self.tx.send(c);
     }
+
+    /// Lets go of the device without stopping what it plays.
+    pub fn leave(mut self) {
+        self.left = true;
+        let _ = self.tx.send(Command::Leave);
+    }
 }
 
 impl Drop for Controller {
     fn drop(&mut self) {
-        let _ = self.tx.send(Command::Stop);
+        if !self.left {
+            let _ = self.tx.send(Command::Stop);
+        }
     }
 }
 
@@ -231,17 +255,11 @@ pub fn start(
         .name("cast-chromecast".into())
         .spawn(move || {
             if let Err(e) = run(addr, &load, &rx, &on_status) {
-                on_status(Status {
-                    player: "IDLE".into(),
-                    position: 0.0,
-                    duration: None,
-                    idle_reason: Some("ERROR".into()),
-                    error: Some(e),
-                });
+                on_status(Status::idle("ERROR", Some(e)));
             }
         })
         .expect("a thread for the Chromecast");
-    Controller { tx }
+    Controller { tx, left: false }
 }
 
 struct Link {
@@ -321,12 +339,6 @@ fn media_info(load: &Load) -> Value {
         media["hlsSegmentFormat"] = json!("fmp4");
         media["hlsVideoSegmentFormat"] = json!("fmp4");
     }
-    if let Some(vtt) = &load.subtitles {
-        media["tracks"] = json!([{
-            "trackId": 1, "type": "TEXT", "subtype": "SUBTITLES",
-            "trackContentId": vtt, "trackContentType": "text/vtt", "name": "Subtitles", "language": "und",
-        }]);
-    }
     media
 }
 
@@ -370,7 +382,7 @@ fn run(
     let mut session_id: Option<String> = None;
     let mut media_session: Option<i64> = None;
     let mut loaded = false;
-    let mut text_tracks_set = load.subtitles.is_some();
+    let mut text_tracks_set = false;
     let mut last_poll = Instant::now();
     let mut last_ping = Instant::now();
     let launched_at = Instant::now();
@@ -381,9 +393,13 @@ fn run(
         loop {
             match rx.recv_timeout(Duration::ZERO) {
                 Ok(cmd) => {
+                    if matches!(cmd, Command::Leave) {
+                        let _ = link.send("receiver-0", NS_CONNECTION, json!({"type": "CLOSE"}));
+                        return Ok(());
+                    }
                     let (Some(t), Some(ms)) = (transport.clone(), media_session) else {
                         if matches!(cmd, Command::Stop) {
-                            stop(&mut link, session_id.as_deref());
+                            stop_launched(&mut link, session_id);
                             return Ok(());
                         }
                         continue;
@@ -403,12 +419,13 @@ fn run(
                             stop(&mut link, session_id.as_deref());
                             return Ok(());
                         }
+                        Command::Leave => unreachable!("handled above"),
                     };
                     link.send(&t, NS_MEDIA, msg).map_err(io)?;
                 }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
-                    stop(&mut link, session_id.as_deref());
+                    stop_launched(&mut link, session_id);
                     return Ok(());
                 }
             }
@@ -463,26 +480,17 @@ fn run(
                         link.send(&t, NS_CONNECTION, json!({"type": "CONNECT"}))
                             .map_err(io)?;
                         let id = link.next_id();
-                        let mut req = json!({
+                        let req = json!({
                             "type": "LOAD", "requestId": id, "sessionId": session_id,
                             "media": media_info(load), "autoplay": true, "currentTime": load.start,
                         });
-                        if load.subtitles.is_some() {
-                            req["activeTrackIds"] = json!([1]);
-                        }
                         link.send(&t, NS_MEDIA, req).map_err(io)?;
                         transport = Some(t);
                         loaded = true;
                     }
                     // Someone else took the TV over: the media receiver is gone.
                     None if loaded => {
-                        on_status(Status {
-                            player: "IDLE".into(),
-                            position: 0.0,
-                            duration: None,
-                            idle_reason: Some("CANCELLED".into()),
-                            error: None,
-                        });
+                        on_status(Status::idle("CANCELLED", None));
                         return Ok(());
                     }
                     _ => {}
@@ -536,13 +544,7 @@ fn run(
                 }
             }
             (NS_CONNECTION, "CLOSE") if Some(&m.source) == transport.as_ref() => {
-                on_status(Status {
-                    player: "IDLE".into(),
-                    position: 0.0,
-                    duration: None,
-                    idle_reason: Some("CANCELLED".into()),
-                    error: None,
-                });
+                on_status(Status::idle("CANCELLED", None));
                 return Ok(());
             }
             _ => {}
@@ -566,6 +568,33 @@ pub fn parse_status(s: &Value) -> Status {
         idle_reason,
         error,
     }
+}
+
+/// How long a stop waits for the device to say which session its LAUNCH opened.
+const LAUNCH_WAIT: Duration = Duration::from_secs(10);
+
+/// `stop`, once the session is known. LAUNCH goes out as soon as the device answers,
+/// so a stop that comes before the device says which session it opened waits for that
+/// word: closing at once would leave the media receiver up on the TV.
+fn stop_launched(link: &mut Link, session_id: Option<String>) {
+    let session_id = session_id.or_else(|| {
+        let until = Instant::now() + LAUNCH_WAIT;
+        while Instant::now() < until {
+            let m = link.read().ok()?;
+            let Some(p) = m.and_then(|m| serde_json::from_str::<Value>(&m.payload).ok()) else {
+                continue;
+            };
+            let opened = p["status"]["applications"]
+                .as_array()
+                .and_then(|a| a.iter().find(|x| x["appId"] == DEFAULT_MEDIA_RECEIVER))
+                .and_then(|app| app["sessionId"].as_str().map(str::to_string));
+            if opened.is_some() {
+                return opened;
+            }
+        }
+        None
+    });
+    stop(link, session_id.as_deref());
 }
 
 /// Stops the media receiver on the TV so it goes back to its own screen.
@@ -619,13 +648,12 @@ mod tests {
     #[test]
     fn a_load_for_hls_names_the_fmp4_segments_and_no_side_track() {
         let l = Load {
-            url: "http://192.168.1.2:8000/c/x/master.m3u8".into(),
+            url: "http://198.51.100.2:8000/c/x/master.m3u8".into(),
             content_type: "application/x-mpegurl".into(),
             hls_fmp4: true,
             start: 0.0,
             duration: 1420.0,
             title: "EP 1".into(),
-            subtitles: None,
         };
         let m = media_info(&l);
         assert_eq!(m["hlsSegmentFormat"], "fmp4");
