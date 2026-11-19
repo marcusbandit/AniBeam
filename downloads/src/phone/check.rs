@@ -132,8 +132,10 @@ async fn host(
     let system = tokio::time::timeout(STEP, tokio::net::lookup_host((name, 443))).await;
     let (ok, detail) = match system {
         Ok(Ok(addrs)) => {
-            ips.extend(addrs.map(|a| a.ip()));
-            (!ips.is_empty(), shown(&ips))
+            let found: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
+            let answer = (!found.is_empty(), shown(&found));
+            ips.extend(found);
+            answer
         }
         Ok(Err(e)) => (
             false,
@@ -155,14 +157,14 @@ async fn host(
         &[("label", label.as_str().into())],
     );
     let skipped = if name.parse::<IpAddr>().is_ok() {
-        Some("core-phone-check-skipped-address")
+        Some(tr("core-phone-check-skipped-address", &[]))
     } else if anibeam_net::doh::is_home_name(name) {
-        Some("core-phone-check-skipped-home")
+        Some(tr("core-phone-check-skipped-home", &[]))
     } else {
         None
     };
-    if let Some(key) = skipped {
-        out.push(line(doh_line, true, tr(key, &[]), 0));
+    if let Some(why) = skipped {
+        out.push(line(doh_line, true, why, 0));
     } else {
         let start = Instant::now();
         let (ok, detail) = match doh.find(name).await {

@@ -47,12 +47,8 @@ const WINDOW: i64 = 72 * 3600;
 /// three days gives up straight away. The give-up is always the last time.
 pub fn steps_ahead(aired_at: i64, now: i64) -> Vec<i64> {
     let all = STEPS.map(|d| aired_at + d);
-    let mut out: Vec<i64> = all
-        .iter()
-        .any(|at| *at <= now)
-        .then_some(now)
-        .into_iter()
-        .collect();
+    // The steps are in order: past the first, look now
+    let mut out = if all[0] <= now { vec![now] } else { Vec::new() };
     out.extend(all.into_iter().filter(|at| *at > now));
     out
 }

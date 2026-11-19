@@ -343,9 +343,13 @@ mod tests {
                 last_aired: Some(NOW - 16 * DAY + 1),
                 ended_on: None,
             };
-            assert_eq!(finished_days(&s, short, NOW), None, "a second short");
-            assert_eq!(finished_days(&s, aired(16), NOW), Some(16));
-            assert_eq!(finished_days(&s, aired(40), NOW), Some(40));
+            assert_eq!(
+                finished_days(&s, short, NOW),
+                None,
+                "{status:?} a second short"
+            );
+            assert_eq!(finished_days(&s, aired(16), NOW), Some(16), "{status:?}");
+            assert_eq!(finished_days(&s, aired(40), NOW), Some(40), "{status:?}");
         }
     }
 
