@@ -239,6 +239,15 @@ impl Engine {
         *recover(&self.held)
     }
 
+    /// The torrents the person paused, by hash, which a hold lifting leaves paused.
+    pub fn paused_by_person(&self) -> Vec<String> {
+        recover(&self.entries)
+            .iter()
+            .filter(|(_, e)| e.paused_by_user)
+            .map(|(hash, _)| hash.clone())
+            .collect()
+    }
+
     /// Adds `release` to download into `<root>/<folder>`, held at once when downloads are.
     /// `torrent` is the `.torrent` file when the core fetched it itself (an http link), so
     /// the engine never looks the host up on its own.
@@ -615,7 +624,13 @@ impl Engine {
             let Some(h) = self.handle(hash) else { continue };
             match action {
                 PhoneAction::Pause => {
-                    self.session.pause(&h).await.map_err(fail)?;
+                    // One the hold paused already is paused all the same: what changes is
+                    // that the person asked for it, so the hold lifting leaves it (#1198).
+                    if let Err(e) = self.session.pause(&h).await
+                        && !h.is_paused()
+                    {
+                        return Err(fail(e));
+                    }
                     recover(&self.entries)
                         .entry(hash.clone())
                         .or_default()
@@ -815,6 +830,43 @@ mod tests {
         let again = engine.add(&r, "Show", Some(bytes)).await.unwrap();
         assert!(first.new && !again.new);
         assert_eq!(first.hash, again.hash);
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pause_under_the_hold_is_the_persons_and_outlasts_it() {
+        // The phone keeps the download work up for torrents the hold paused, and must tell
+        // them from ones the person paused, which stay paused once it lifts. A pause on one
+        // the hold paused already used to fail and record nothing (#1198).
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let hash = engine
+            .add_peeked(&r, "Show", peeked, vec![NORMAL; 3])
+            .await
+            .unwrap();
+        settled(&engine, &hash).await;
+        engine.set_held(true).await.unwrap();
+        assert!(engine.handle(&hash).unwrap().is_paused());
+        assert!(
+            engine.paused_by_person().is_empty(),
+            "held is not the person's"
+        );
+        let one = std::slice::from_ref(&hash);
+        engine.control(one, PhoneAction::Pause).await.unwrap();
+        assert_eq!(engine.paused_by_person(), vec![hash.clone()]);
+        engine.set_held(false).await.unwrap();
+        assert!(
+            engine.handle(&hash).unwrap().is_paused(),
+            "the hold lifting leaves the person's pause"
+        );
+        engine.control(one, PhoneAction::Resume).await.unwrap();
+        assert!(engine.paused_by_person().is_empty());
+        assert!(!engine.handle(&hash).unwrap().is_paused());
         engine.session.stop().await;
     }
 }

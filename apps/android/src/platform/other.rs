@@ -48,9 +48,14 @@ pub fn emulator() -> bool {
 /// No notification channels to rename.
 pub fn relocalize() {}
 
+/// Whether the stand-in work is up: `start_service` and `stop_service` move it, so the app
+/// sees the same states it would on a phone that never stops it.
+static UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// No download service: it counts as started.
 pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     let _ = shown;
+    UP.store(true, std::sync::atomic::Ordering::Relaxed);
     true
 }
 
@@ -66,7 +71,40 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
 }
 
 /// No download service to stop.
-pub fn stop_service() {}
+pub fn stop_service() {
+    UP.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// No download service to rest: it ends.
+pub fn rest_service() {
+    stop_service();
+}
+
+/// Nothing stops the stand-in work, so nothing goes on.
+pub fn service_go_on() {}
+
+/// Off the phone the app is always in front.
+pub fn on_screen() -> bool {
+    true
+}
+
+/// Up from `start_service` to `stop_service`, never stopped by anything else.
+pub fn work_state() -> Option<super::Work> {
+    let up = UP.load(std::sync::atomic::Ordering::Relaxed);
+    Some(super::Work {
+        state: if up {
+            super::WorkState::Running
+        } else {
+            super::WorkState::Idle
+        },
+        ..super::Work::NONE
+    })
+}
+
+/// No notification to post.
+pub fn downloads_paused(title: &str, text: &str) {
+    let _ = (title, text);
+}
 
 /// The network counts as free.
 pub fn unmetered() -> Option<bool> {

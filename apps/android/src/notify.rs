@@ -58,6 +58,9 @@ pub struct Moving {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ongoing {
     pub title: String,
+    /// What is downloading without "Downloading": "Frieren episode 7", "2 downloads". The
+    /// title of the notification that says they were paused.
+    pub called: String,
     pub text: String,
     /// How far along in tenths of a percent, the bar under the text; -1 for unknown.
     pub progress: i32,
@@ -142,11 +145,13 @@ pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoi
         [] => None,
         [one] if one.size == 0 => Some(Ongoing {
             title: tr!("notify-downloading", called = &one.called),
+            called: one.called.clone(),
             text: tr!("notify-starting"),
             progress: -1,
         }),
         [one] => Some(Ongoing {
             title: tr!("notify-downloading", called = &one.called),
+            called: one.called.clone(),
             text: tr!(
                 "notify-progress",
                 percent = percent(one.progress).to_string(),
@@ -158,9 +163,11 @@ pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoi
             let size: u64 = many.iter().map(|m| m.size).sum();
             let done: f64 = many.iter().map(|m| m.progress * m.size as f64).sum();
             let progress = if size > 0 { done / size as f64 } else { 0.0 };
+            // Downloads, not episodes: one of them may be a whole batch.
+            let count = tr!("notify-many", count = many.len());
             Some(Ongoing {
-                // Downloads, not episodes: one of them may be a whole batch.
-                title: tr!("notify-many", count = many.len()),
+                title: count.clone(),
+                called: count,
                 text: if size > 0 {
                     tr!(
                         "notify-progress-of",
@@ -223,6 +230,7 @@ mod tests {
     fn one_download_reads_as_downloads_shows_it() {
         let o = ongoing(&[moving("Frieren episode 7", 0.3, 1_400_000_000)], bytes).unwrap();
         assert_eq!(o.title, "Downloading Frieren episode 7");
+        assert_eq!(o.called, "Frieren episode 7");
         assert_eq!(o.text, "30%, 420 MB of 1400 MB, 3 MB/s, 5m left");
         assert_eq!(o.progress, 300);
     }
@@ -238,6 +246,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(o.title, "2 downloads");
+        assert_eq!(o.called, "2 downloads");
         assert_eq!(o.text, "10%, 200 MB of 2000 MB");
         assert_eq!(o.progress, 100);
         assert!(ongoing(&[], bytes).is_none());

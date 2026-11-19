@@ -1,6 +1,7 @@
 package com.marcusrosado.anibeam;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -15,38 +16,123 @@ import android.os.IBinder;
 
 /**
  * Keeps the process alive while episodes download. It holds no logic: the downloads run in
- * Rust, in the core's torrent engine, and this service only gives the process a foreground
- * notification so Android does not cut its network when the screen goes off. The app sends
- * what to show as the "title", "text" and "progress" extras, and stops the service when
- * nothing is downloading. A finished episode gets a notification of its own, `ready`.
+ * Rust, in the core's torrent engine, and this only gives the process a notification Android
+ * counts as foreground work, so it does not cut the network when the screen goes off. The
+ * app calls `start` with what to show, `update` as it changes, and `stop` when nothing is
+ * downloading, and `state` tells it where the work stands. A finished episode gets a
+ * notification of its own, `ready`.
+ *
+ * On Android 14 and later the work is a user-initiated data transfer job (DownloadJob),
+ * which has no daily limit; before that, this class is a dataSync foreground service, which
+ * has none there either. When Android stops the work all the same, `state` says so: the
+ * app pauses the downloads and posts `paused`, and they go on when the work runs again or
+ * the app is opened.
+ *
  * The words Java shows itself, the two channel names and the title it falls back to, come
- * from Rust in the app's language: as extras on the start, and through `words` when the
+ * from Rust in the app's language: as arguments to `start`, and through `words` when the
  * language changes. The English below is only for a call that carries none.
  */
 public class TorrentService extends Service {
     private static final String CHANNEL = "downloads";
     /** Finished episodes: a channel of its own, so it can go quiet and the ongoing one stays. */
     private static final String READY = "ready";
+    /** The ongoing notification's id; a finished episode's is 2 or more (notify.rs). */
+    static final int NOTIFICATION = 1;
+    /** "Paused": above every id a finished episode can get. */
+    private static final int PAUSED = Integer.MAX_VALUE;
     private static String downloadsName = "Downloads";
     private static String readyName = "Episodes ready";
     private static String fallbackTitle = "Downloading";
+    /** What the ongoing notification says, kept so a job that starts later shows it. */
+    static volatile String shownTitle;
+    static volatile String shownText;
+    /** Tenths of a percent, or -1 while nothing says how far along it is. */
+    static volatile int shownProgress = -1;
+    /** The app's native side called `start` in this process, so downloads run in it. */
+    static volatile boolean live;
+
+    /**
+     * What the download work is doing, as `state` tells Rust. Java sees every start, stop
+     * and cancel, so Rust reads this instead of guessing from what the downloads look like.
+     */
+    static final int IDLE = 0;
+    /** The job runs, or the service is up. */
+    static final int RUNNING = 1;
+    /** The job is scheduled and Android has not run it yet. */
+    static final int WAITING = 2;
+    /** Android stopped the work, or the app rested it; it goes on when the app is opened. */
+    static final int STOPPED = 3;
+    static final Object LOCK = new Object();
+    private static int work = IDLE;
+    /** Goes up on every change of `work`, so Rust sees a stop and a rerun between two looks. */
+    private static int generation;
+
+    /** Android stopped the work, or the app rested it. Called with LOCK held. */
+    static boolean stoppedNow() {
+        return work == STOPPED;
+    }
+
+    /** The job runs or the service is up. Called with LOCK held. */
+    static boolean runningNow() {
+        return work == RUNNING;
+    }
+
+    /** The job is scheduled and has not run yet. Called with LOCK held. */
+    static boolean waitingNow() {
+        return work == WAITING;
+    }
+
+    /** Moves the work to `state`. Called with LOCK held. */
+    static void set(int state) {
+        if (state == work) return;
+        work = state;
+        generation++;
+    }
+
+    /** Android 14 and later run downloads as a user-initiated data transfer job. */
+    private static boolean jobs() {
+        return Build.VERSION.SDK_INT >= 34;
+    }
+
+    private static void keep(String title, String text, int progress) {
+        shownTitle = title;
+        shownText = text;
+        shownProgress = progress;
+    }
+
+    /**
+     * Starts the work that keeps downloads going, showing `title`, `text` and `progress`.
+     * False when Android refused, as it does for an app in the background; the app tries
+     * again on its next look, and logs the refusal.
+     */
+    public static boolean start(Context context, String title, String text, int progress,
+            String channelDownloads, String channelReady, String fallback) {
+        live = true;
+        takeWords(channelDownloads, channelReady, fallback);
+        keep(title, text, progress);
+        // Downloads run in this process now, so a Paused left by one that died goes.
+        cancelPaused(context);
+        synchronized (LOCK) {
+            if (jobs()) return DownloadJob.ensure(context, true);
+            Intent intent = new Intent().setClassName(context, TorrentService.class.getName());
+            try {
+                context.startForegroundService(intent);
+            } catch (RuntimeException e) {
+                return false;
+            }
+            set(RUNNING);
+            return true;
+        }
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
-            takeWords(intent.getStringExtra("channel_downloads"), intent.getStringExtra("channel_ready"),
-                    intent.getStringExtra("fallback_title"));
-        }
         channels(this);
-        String title = intent != null ? intent.getStringExtra("title") : null;
-        String text = intent != null ? intent.getStringExtra("text") : null;
-        // Tenths of a percent, or -1 while nothing says how far along it is.
-        int progress = intent != null ? intent.getIntExtra("progress", -1) : -1;
-        Notification n = ongoing(this, title, text, progress);
+        Notification n = ongoing(this, shownTitle, shownText, shownProgress);
         if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(NOTIFICATION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
-            startForeground(1, n);
+            startForeground(NOTIFICATION, n);
         }
         return START_NOT_STICKY;
     }
@@ -76,7 +162,7 @@ public class TorrentService extends Service {
      * Both channels, made as the service starts, so Episodes ready is in the app's
      * notification settings to turn off before the first episode finishes.
      */
-    private static void channels(Context context) {
+    static void channels(Context context) {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
         nm.createNotificationChannel(
@@ -85,7 +171,7 @@ public class TorrentService extends Service {
                 new NotificationChannel(READY, readyName, NotificationManager.IMPORTANCE_DEFAULT));
     }
 
-    private static Notification ongoing(Context context, String title, String text, int progress) {
+    static Notification ongoing(Context context, String title, String text, int progress) {
         Notification.Builder b = new Notification.Builder(context, CHANNEL)
                 .setContentTitle(title != null ? title : fallbackTitle)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -99,14 +185,110 @@ public class TorrentService extends Service {
     }
 
     /**
-     * Changes the running service's notification in place: what is downloading and how far
-     * along. Posting under the service's own id is allowed from the background, where a
-     * second startForegroundService is not.
+     * Changes the notification in place: what is downloading and how far along. Posting
+     * under the service's own id is allowed from the background, where a second
+     * startForegroundService is not. On Android 14 and later the job takes the words, and is
+     * scheduled again if Android ended it while the app was open; false when that was refused.
      */
-    public static void update(Context context, String title, String text, int progress) {
+    public static boolean update(Context context, String title, String text, int progress) {
+        keep(title, text, progress);
+        if (jobs()) {
+            synchronized (LOCK) {
+                return DownloadJob.ensure(context, false);
+            }
+        }
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null) return true;
+        nm.notify(NOTIFICATION, ongoing(context, title, text, progress));
+        return true;
+    }
+
+    /** Ends the work: nothing is downloading. */
+    public static void stop(Context context) {
+        keep(null, null, -1);
+        synchronized (LOCK) {
+            end(context);
+            set(IDLE);
+        }
+        cancelPaused(context);
+    }
+
+    /**
+     * Ends the work the way Android stopping it does: nothing moved for a long while with the
+     * app closed, so the downloads pause until it is opened instead of keeping the phone
+     * awake for a torrent nobody seeds.
+     */
+    public static void rest(Context context) {
+        synchronized (LOCK) {
+            end(context);
+            set(STOPPED);
+        }
+    }
+
+    /**
+     * The app is in front again: a stop ends here. The run Android holds back after a stop
+     * goes with it, since it backs off first and after a few timeouts a day waits for
+     * hours, and the app starts a fresh one.
+     */
+    public static void goOn(Context context) {
+        synchronized (LOCK) {
+            if (stoppedNow()) {
+                if (jobs()) DownloadJob.cancel(context);
+                set(IDLE);
+            }
+        }
+        cancelPaused(context);
+    }
+
+    /** Cancels the job or stops the service, whichever this Android runs. LOCK is held. */
+    private static void end(Context context) {
+        if (jobs()) {
+            DownloadJob.cancel(context);
+        } else {
+            context.stopService(new Intent().setClassName(context, TorrentService.class.getName()));
+        }
+    }
+
+    /**
+     * The work's state for Rust: the generation in the bits from 2 up, IDLE to STOPPED
+     * below. Only a read, so the app may call it every second: the job and the service set
+     * it as they start and stop.
+     */
+    public static int state(Context context) {
+        synchronized (LOCK) {
+            return (generation << 2) | work;
+        }
+    }
+
+    /**
+     * The app is in front: on the screen, not only kept up by the job or the service. A
+     * binder call, so only when the job starts or stops, never on the app's every look.
+     */
+    static boolean onScreen() {
+        ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
+        ActivityManager.getMyMemoryState(info);
+        return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+    }
+
+    /** "Paused" comes down: the downloads go on. */
+    static void cancelPaused(Context context) {
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm != null) nm.cancel(PAUSED);
+    }
+
+    /** Says the downloads are paused, `title` being what they are; a tap opens the app. */
+    public static void paused(Context context, String title, String text) {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
-        nm.notify(1, ongoing(context, title, text, progress));
+        channels(context);
+        Notification n = new Notification.Builder(context, CHANNEL)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_media_pause)
+                .setShowWhen(false)
+                .setContentIntent(openApp(context))
+                .build();
+        nm.notify(PAUSED, n);
     }
 
     /** Opens Anibeam where it was, the way its launcher icon does. */
@@ -193,10 +375,14 @@ public class TorrentService extends Service {
 
     /**
      * Android 15 gives a dataSync service six hours a day and stops the app if the service
-     * outlives them. It stops here instead; downloads go on the next time the app is open.
+     * outlives them. The service only runs before Android 14, so this should never come;
+     * if it does, it stops in time and the app pauses the downloads until it is opened.
      */
     @Override
     public void onTimeout(int startId, int fgsType) {
+        synchronized (LOCK) {
+            set(STOPPED);
+        }
         stopSelf();
     }
 

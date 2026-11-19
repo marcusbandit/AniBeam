@@ -1054,6 +1054,7 @@ pub fn torrents(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreErro
         Ok(Reply::PhoneTorrents {
             torrents,
             held: engine.held(),
+            paused_by_person: engine.paused_by_person(),
         })
     })
 }
