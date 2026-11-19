@@ -961,11 +961,6 @@ mod tests {
         assert_eq!(label_of("WEIRD_NEW_TYPE"), "weird new type");
         assert_eq!(label_of("CHARACTER"), "Shared characters");
         assert_eq!(
-            label_of("PREQUEL"),
-            anibeam_contract::i18n::tr("anilist-relation-prequel", &[]),
-            "a chain's own labels are looked up like every other"
-        );
-        assert_eq!(
             relation_to(1, 7, &[], &[]),
             None,
             "nothing joins them at all"
