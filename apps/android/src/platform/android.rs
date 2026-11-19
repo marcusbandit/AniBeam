@@ -62,6 +62,14 @@ pub fn open_url(url: &str) {
     }
 }
 
+/// A tracker's sign-in page opens in the browser, as any other link does.
+pub fn open_sign_in(url: &str) {
+    open_url(url);
+}
+
+/// The browser is the person's to close: nothing to do.
+pub fn close_sign_in() {}
+
 fn view(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use jni::JavaVM;
     use jni::objects::{JObject, JValue};

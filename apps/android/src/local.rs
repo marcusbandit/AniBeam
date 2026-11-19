@@ -48,7 +48,21 @@ struct Logcat;
 impl EventListener for Logcat {
     fn on_event(&self, event: Event) {
         if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
-            crate::platform::open_url(open_url);
+            crate::platform::open_sign_in(open_url);
+        }
+        // The sign-in has ended, connected or not: its sheet closes, on the iPhone.
+        let sign_in_job = event
+            .job
+            .as_ref()
+            .is_some_and(|j| j.kind == anibeam_core::JobKind::ConnectTracker);
+        if matches!(event.body, EventBody::TrackerConnected { .. })
+            || (sign_in_job
+                && matches!(
+                    event.body,
+                    EventBody::JobFailed { .. } | EventBody::JobCancelled
+                ))
+        {
+            crate::platform::close_sign_in();
         }
         if let (EventBody::JobFailed { error }, Some(job)) = (&event.body, &event.job)
             && job.kind == anibeam_core::JobKind::ConnectTracker

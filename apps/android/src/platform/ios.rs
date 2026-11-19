@@ -12,6 +12,10 @@
 //! so the player asks for them through winit's window. So are the orientations: an iPhone
 //! that does not fold stays upright outside the player, and the player turns to landscape
 //! (#937).
+//!
+//! Links open in the app, in a Safari sheet, and a tracker's sign-in page in the system's
+//! sign-in sheet, so the app stays active and the core's loopback listener hears the
+//! provider's redirect (#1175).
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -19,9 +23,11 @@ use std::ptr::NonNull;
 use std::sync::mpsc::Sender;
 
 use block2::RcBlock;
-use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
+use objc2::runtime::{
+    AnyClass, AnyObject, AnyProtocol, ClassBuilder, NSObject, NSObjectProtocol, ProtocolObject, Sel,
+};
+use objc2::{msg_send, sel};
 use objc2_core_foundation::CGRect;
 use objc2_foundation::{
     NSCurrentLocaleDidChangeNotification, NSError, NSLocale, NSNotification, NSNotificationCenter,
@@ -38,7 +44,7 @@ use crate::worker::Command;
 // `other.rs`'s stand-ins for the calls the iPhone does not answer yet.
 pub use super::other::{
     ask_notifications, bars, brightness, copy_text, episode_ready, line_colours, log, multicast,
-    notification_settings, notifications_allowed, open_url, pick_file, relocalize, set_brightness,
+    notification_settings, notifications_allowed, pick_file, relocalize, set_brightness,
     set_volume, start_service, stop_service, unmetered, update_service, volume,
 };
 
@@ -638,5 +644,234 @@ fn app_window() -> Option<Retained<AnyObject>> {
             }
         }
         None
+    }
+}
+
+/// What a link sheet holds while it is up: the sign-in session and the object that tells it
+/// which window to sit on, or the Safari sheet showing the page.
+enum Sheet {
+    /// `ASWebAuthenticationSession` and its presentation context provider, which the session
+    /// holds weakly.
+    Auth {
+        session: Retained<AnyObject>,
+        _anchor: Retained<AnyObject>,
+    },
+    /// An `SFSafariViewController` presented as a page sheet.
+    Safari(Retained<AnyObject>),
+}
+
+thread_local! {
+    /// The sign-in sheet that is up, closed when the sign-in ends.
+    static SIGN_IN: RefCell<Option<Sheet>> = const { RefCell::new(None) };
+}
+
+/// Opens `url` in a Safari sheet over the app: the page shows in the app, which stays
+/// active. A link Safari cannot show (not http or https) goes to the app that takes it.
+pub fn open_url(url: &str) {
+    let url = url.to_string();
+    let _ = slint::invoke_from_event_loop(move || {
+        let Some(link) = ns_url(&url) else {
+            log(&format!("not a link: {url}"));
+            return;
+        };
+        let web = url.starts_with("https://") || url.starts_with("http://");
+        if !(web && safari_sheet(&link).is_some()) {
+            hand_off(&link);
+        }
+    });
+}
+
+/// Shows a tracker's sign-in page in the system's sign-in sheet. Its redirect is the core's
+/// loopback listener, which answers while the app stays active under the sheet; the sheet
+/// closes when the sign-in ends (`close_sign_in`). Where the sheet cannot start, the page
+/// shows in a Safari sheet instead, which closes the same way.
+pub fn open_sign_in(url: &str) {
+    let url = url.to_string();
+    let _ = slint::invoke_from_event_loop(move || {
+        dismiss();
+        let Some(link) = ns_url(&url) else {
+            log(&format!("not a sign-in link: {url}"));
+            return;
+        };
+        let sheet = auth_session(&link).or_else(|| {
+            log("the sign-in sheet did not start: the page opens in Safari's sheet");
+            safari_sheet(&link).map(Sheet::Safari)
+        });
+        match sheet {
+            Some(sheet) => SIGN_IN.set(Some(sheet)),
+            None => hand_off(&link),
+        }
+    });
+}
+
+/// Closes the sign-in sheet, once the sign-in has ended, connected or not.
+pub fn close_sign_in() {
+    let _ = slint::invoke_from_event_loop(dismiss);
+}
+
+/// Takes the sign-in sheet down, if one is up.
+fn dismiss() {
+    let Some(sheet) = SIGN_IN.take() else {
+        return;
+    };
+    // SAFETY: plain UIKit and AuthenticationServices calls on the main thread. `cancel`
+    // takes an ASWebAuthenticationSession down; a presented controller dismisses itself.
+    unsafe {
+        match sheet {
+            Sheet::Auth { session, .. } => {
+                let _: () = msg_send![&*session, cancel];
+            }
+            Sheet::Safari(controller) => {
+                let _: () = msg_send![
+                    &*controller,
+                    dismissViewControllerAnimated: true,
+                    completion: None::<&block2::Block<dyn Fn()>>
+                ];
+            }
+        }
+    }
+}
+
+/// `url` as an NSURL, None if it does not parse.
+fn ns_url(url: &str) -> Option<Retained<NSURL>> {
+    NSURL::URLWithString(&NSString::from_str(url))
+}
+
+/// Starts an `ASWebAuthenticationSession` on `url`, sharing Safari's cookies so a person
+/// already signed in to the provider is asked only to allow. No callback scheme: the
+/// redirect is plain http to the loopback, which the session cannot catch, so it ends when
+/// `close_sign_in` cancels it, or when the person cancels it.
+fn auth_session(url: &NSURL) -> Option<Sheet> {
+    let class = AnyClass::get(c"ASWebAuthenticationSession")?;
+    let anchor = anchor()?;
+    let done = RcBlock::new(|_: *mut NSURL, error: *mut NSError| {
+        // SAFETY: the session passes nil or an NSError it keeps alive for the call.
+        if let Some(error) = unsafe { error.as_ref() } {
+            // ASWebAuthenticationSessionErrorCodeCanceledLogin: closed by the person or by
+            // close_sign_in; the core's job ends on its own.
+            if error.code() != 1 {
+                log(&format!("sign-in sheet: {}", error.localizedDescription()));
+            }
+        }
+        let _ = slint::invoke_from_event_loop(|| {
+            SIGN_IN.with_borrow_mut(|s| {
+                if matches!(s, Some(Sheet::Auth { .. })) {
+                    *s = None;
+                }
+            })
+        });
+    });
+    // SAFETY: the designated initialiser takes an NSURL, a nil scheme and a block the session
+    // copies; the provider is held weakly, so `anchor` is kept beside the session. `start`
+    // returns a BOOL and is called on the main thread.
+    unsafe {
+        let session: Option<Retained<AnyObject>> = msg_send![
+            msg_send![class, alloc],
+            initWithURL: url,
+            callbackURLScheme: None::<&NSString>,
+            completionHandler: &*done
+        ];
+        let session = session?;
+        let _: () = msg_send![&*session, setPresentationContextProvider: &*anchor];
+        let _: () = msg_send![&*session, setPrefersEphemeralWebBrowserSession: false];
+        let started: bool = msg_send![&*session, start];
+        started.then_some(Sheet::Auth {
+            session,
+            _anchor: anchor,
+        })
+    }
+}
+
+/// A new presentation context provider for the sign-in session: its one method answers the
+/// app's window. The class is made once, at run time, since the app has no Objective-C.
+fn anchor() -> Option<Retained<AnyObject>> {
+    static CLASS: std::sync::OnceLock<Option<&'static AnyClass>> = std::sync::OnceLock::new();
+    let class = (*CLASS.get_or_init(|| {
+        let mut builder = ClassBuilder::new(
+            c"AnibeamSignInAnchor",
+            <NSObject as objc2::ClassType>::class(),
+        )?;
+        if let Some(protocol) = AnyProtocol::get(c"ASWebAuthenticationPresentationContextProviding")
+        {
+            builder.add_protocol(protocol);
+        }
+        extern "C-unwind" fn window(_: &AnyObject, _: Sel, _: *mut AnyObject) -> *mut AnyObject {
+            app_window().map_or(std::ptr::null_mut(), Retained::autorelease_return)
+        }
+        // SAFETY: the method's types are the protocol's: it takes the session and returns
+        // a UIWindow (ASPresentationAnchor), autoreleased as a getter's return is.
+        unsafe {
+            builder.add_method(
+                sel!(presentationAnchorForWebAuthenticationSession:),
+                window as extern "C-unwind" fn(_, _, _) -> _,
+            );
+        }
+        Some(builder.register())
+    }))?;
+    // SAFETY: an NSObject subclass with no ivars: `new` makes one.
+    unsafe { msg_send![class, new] }
+}
+
+/// Presents `url` in an `SFSafariViewController` as a page sheet over whatever is showing.
+fn safari_sheet(url: &NSURL) -> Option<Retained<AnyObject>> {
+    let class = AnyClass::get(c"SFSafariViewController")?;
+    let host = top_controller()?;
+    const PAGE_SHEET: isize = 1; // UIModalPresentationPageSheet
+    // SAFETY: plain SafariServices and UIKit calls on the main thread; the controller takes
+    // an http or https NSURL, and presenting retains it.
+    unsafe {
+        let controller: Option<Retained<AnyObject>> =
+            msg_send![msg_send![class, alloc], initWithURL: url];
+        let controller = controller?;
+        let _: () = msg_send![&*controller, setModalPresentationStyle: PAGE_SHEET];
+        let _: () = msg_send![
+            &*host,
+            presentViewController: &*controller,
+            animated: true,
+            completion: None::<&block2::Block<dyn Fn()>>
+        ];
+        Some(controller)
+    }
+}
+
+/// The view controller showing on top: the window's root, or what it presents.
+fn top_controller() -> Option<Retained<AnyObject>> {
+    let window = app_window()?;
+    // SAFETY: plain UIKit getters on the main thread; each returns a controller or nil.
+    unsafe {
+        let root: Option<Retained<AnyObject>> = msg_send![&*window, rootViewController];
+        let mut top = root?;
+        loop {
+            let next: Option<Retained<AnyObject>> = msg_send![&*top, presentedViewController];
+            match next {
+                Some(next) => top = next,
+                None => return Some(top),
+            }
+        }
+    }
+}
+
+/// Hands `url` to the app that takes it, leaving Anibeam.
+fn hand_off(url: &NSURL) {
+    let (Some(app_class), Some(dictionary)) = (
+        AnyClass::get(c"UIApplication"),
+        AnyClass::get(c"NSDictionary"),
+    ) else {
+        return;
+    };
+    // SAFETY: `openURL:options:completionHandler:` on the main thread, with an empty options
+    // dictionary and no handler.
+    unsafe {
+        let app: *mut AnyObject = msg_send![app_class, sharedApplication];
+        if app.is_null() {
+            return;
+        }
+        let options: Retained<AnyObject> = msg_send![dictionary, dictionary];
+        let _: () = msg_send![
+            app,
+            openURL: url,
+            options: &*options,
+            completionHandler: None::<&block2::Block<dyn Fn(objc2::runtime::Bool)>>
+        ];
     }
 }

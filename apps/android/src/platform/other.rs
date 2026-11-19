@@ -9,9 +9,20 @@ pub fn log(line: &str) {
 }
 
 /// No browser to open: the link is logged.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn open_url(url: &str) {
     super::log(&format!("open {url}"));
 }
+
+/// A tracker's sign-in page opens as any other link does.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+pub fn open_sign_in(url: &str) {
+    open_url(url);
+}
+
+/// No sign-in sheet to close.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+pub fn close_sign_in() {}
 
 /// Nothing can be picked here.
 pub fn pick_file(
