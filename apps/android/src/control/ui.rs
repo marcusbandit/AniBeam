@@ -7,7 +7,7 @@
 //! release build's item tree is the one the person runs.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::sync::mpsc::Sender;
@@ -470,15 +470,18 @@ fn elements(w: &AppWindow) -> Vec<Element> {
 /// it already.
 fn listed(all: Vec<Element>) -> Vec<Element> {
     let shown: Vec<Element> = all.into_iter().filter(Element::reachable).collect();
+    // The controls by their folded label, so each text looks only at the few that share it.
+    let mut controls: HashMap<&str, Vec<&Element>> = HashMap::new();
+    for e in shown.iter().filter(|e| e.role != AccessibleRole::Text) {
+        controls.entry(e.key.as_str()).or_default().push(e);
+    }
     let keep: Vec<bool> = shown
         .iter()
         .map(|e| {
             e.role != AccessibleRole::Text
-                || !shown.iter().any(|o| {
-                    o.role != AccessibleRole::Text
-                        && o.holds(e.centre.0, e.centre.1)
-                        && o.key == e.key
-                })
+                || !controls
+                    .get(e.key.as_str())
+                    .is_some_and(|c| c.iter().any(|o| o.holds(e.centre.0, e.centre.1)))
         })
         .collect();
     shown

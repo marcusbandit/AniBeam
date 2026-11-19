@@ -27,7 +27,7 @@ public final class Control extends BroadcastReceiver {
 
     private static Control receiver;
 
-    /** Runs one command line and answers with what it printed. */
+    /** Runs one command line: the result code, 0 or 1, then what it printed. */
     static native String run(String line);
 
     public static synchronized void start(Context context) {
@@ -50,11 +50,10 @@ public final class Control extends BroadcastReceiver {
         try {
             out = run(line == null ? "" : line);
         } catch (Throwable t) {
-            out = "error: " + t;
+            out = "1error: " + t;
         }
-        if (out == null) out = "error: no answer";
-        boolean failed = out.startsWith("error: ") || out.contains("\nerror: ");
-        setResultCode(failed ? 1 : 0);
-        setResultData(out);
+        if (out == null || out.isEmpty()) out = "1error: no answer";
+        setResultCode(out.charAt(0) == '0' ? 0 : 1);
+        setResultData(out.substring(1));
     }
 }

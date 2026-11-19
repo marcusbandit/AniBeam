@@ -6,12 +6,15 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::jstring;
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
-/// `Control.run`, which Java calls on the receiver's own thread with the command line.
+/// `Control.run`, which Java calls on the receiver's own thread with the command line. The
+/// answer's first character is the broadcast's result code, 0 when every command ran and 1
+/// when one failed, so Java never reads it out of the text.
 extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString) -> jstring {
     let line: String = env.get_string(&line).map(Into::into).unwrap_or_default();
     // A panic must not cross into Java: it would take the whole app down.
-    let out = std::panic::catch_unwind(|| super::serve(&line))
-        .unwrap_or_else(|_| "error: the command panicked; logcat has it".into());
+    let (ok, said) = std::panic::catch_unwind(|| super::serve(&line))
+        .unwrap_or_else(|_| (false, "error: the command panicked; logcat has it".into()));
+    let out = format!("{}{said}", if ok { '0' } else { '1' });
     env.new_string(out)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())

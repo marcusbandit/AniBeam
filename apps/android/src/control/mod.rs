@@ -62,17 +62,18 @@ pub fn install(window: &crate::AppWindow) {
     android::start();
 }
 
-/// Runs a command line and answers with what each command printed, one after another. A
-/// command that fails stops the line, and its `error: ...` is the answer's last line. The
-/// line has `LINE` in all: a command that would run past it is not started.
-pub fn serve(line: &str) -> String {
+/// Runs a command line and answers whether every command ran, and what each printed, one
+/// after another. A command that fails stops the line, and its `error: ...` is the answer's
+/// last line. The line has `LINE` in all: a command that would run past it is not started.
+pub fn serve(line: &str) -> (bool, String) {
     let commands = match command::parse_line(line) {
         Ok(c) => c,
-        Err(e) => return format!("error: {e}"),
+        Err(e) => return (false, format!("error: {e}")),
     };
     let budget = Budget(Instant::now() + LINE);
     let total = commands.len();
     let mut out = Vec::new();
+    let mut ok = true;
     for (i, c) in commands.into_iter().enumerate() {
         let said = match worst(&c) {
             Some(need) if need > budget.left() => format!(
@@ -90,10 +91,11 @@ pub fn serve(line: &str) -> String {
         let failed = said.starts_with("error:");
         out.push(said);
         if failed {
+            ok = false;
             break;
         }
     }
-    cut(out.join("\n"))
+    (ok, cut(out.join("\n")))
 }
 
 /// How long a command can take at most, for the ones that take long on purpose.
