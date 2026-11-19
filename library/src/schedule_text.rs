@@ -281,7 +281,7 @@ const WAIT_LINES: u8 = 5;
 /// Notes for each episode, one week (or `weekly` seconds) apart when the
 /// line said so.
 fn push(rows: &mut Vec<NoteRow>, episodes: &[u32], when: When, weekly: Option<i64>) {
-    replace(rows, episodes, |i| match (when, weekly) {
+    set_notes(rows, episodes, |i| match (when, weekly) {
         (When::On(at), Some(step)) => When::On(at + step * i as i64),
         _ => when,
     });
@@ -294,14 +294,14 @@ fn spread(rows: &mut Vec<NoteRow>, episodes: &[u32], start: i64, end: i64) {
     let week = 7 * 86_400;
     let weeks = ((end - start) as f64 / week as f64).round() as usize;
     let extra = (episodes.len() - 1).saturating_sub(weeks);
-    replace(rows, episodes, |i| {
+    set_notes(rows, episodes, |i| {
         When::On(start + i.saturating_sub(extra) as i64 * week)
     });
 }
 
 /// A note for each episode, the `i`th landing on `when_of(i)`. A later line about an
 /// episode replaces an earlier one, so an edit or an update further down wins.
-fn replace(rows: &mut Vec<NoteRow>, episodes: &[u32], when_of: impl Fn(usize) -> When) {
+fn set_notes(rows: &mut Vec<NoteRow>, episodes: &[u32], when_of: impl Fn(usize) -> When) {
     rows.retain(|r| !episodes.contains(&r.first));
     for (i, &n) in episodes.iter().enumerate() {
         rows.push(NoteRow {
@@ -482,7 +482,7 @@ fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
         let w = c[1]
             .parse()
             .ok()
-            .zip(num(&c[2]).filter(|m: &u8| (1..=12).contains(m)));
+            .zip(num::<u8>(&c[2]).filter(|m| (1..=12).contains(m)));
         add(c.get(0).unwrap(), 1, w.map(|(y, m)| When::Month(y, m)));
     }
     for c in MONTH_ALONE.captures_iter(line) {
@@ -566,7 +566,7 @@ fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
         if marked.iter().any(|(a, b)| m.start() < *b && *a < m.end()) {
             continue;
         }
-        let Some(first) = num(&c[1]).filter(|n: &u32| *n > 0) else {
+        let Some(first) = num::<u32>(&c[1]).filter(|n| *n > 0) else {
             continue;
         };
         let last = c.get(2).and_then(|l| num(l.as_str())).unwrap_or(first);

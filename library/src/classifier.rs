@@ -67,9 +67,9 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|
         ),
     ]
 });
-/// The same patterns as one set. No two markers share a start (`NCOP` and `NCED` part at
-/// their third letter, `OP` and `OVA` at their second, `SP` and `S05EEX` too), so at most
-/// one of them reads any token and the set finds which in one pass.
+/// The same patterns as one set, to find in one pass which of them reads a token. Where
+/// more than one could, the set lists its matches in pattern order and the first is taken,
+/// the pattern the loop over `EXTRA_PATTERNS` would have reached first.
 static EXTRA_SET: LazyLock<RegexSet> =
     LazyLock::new(|| RegexSet::new(EXTRA_PATTERNS.iter().map(|(_, re, _)| re.as_str())).unwrap());
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
@@ -211,6 +211,26 @@ static SEASON_WORD: LazyLock<Regex> =
 /// `Show.07.Special.Delivery`), not right after a season word, and with no marker before
 /// it, so a marker in the series title keeps its own reading (`Show Trailer Collection
 /// 02`) (#497). Its number, for `extract_episode`.
+/// [`number_reading`] of one name's tokens, worked out the first time a reader asks: most
+/// names are read by a dash or a pattern long before it would matter.
+struct Number<'a> {
+    tokens: &'a [&'a str],
+    reading: std::cell::OnceCell<Option<(usize, u32)>>,
+}
+
+impl<'a> Number<'a> {
+    fn of(tokens: &'a [&'a str]) -> Self {
+        Number {
+            tokens,
+            reading: Default::default(),
+        }
+    }
+
+    fn get(&self) -> Option<(usize, u32)> {
+        *self.reading.get_or_init(|| number_reading(self.tokens))
+    }
+}
+
 fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
     let before_dash = tokens
         .iter()
@@ -232,8 +252,8 @@ fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
 /// the end. The reading is the first lone dash with an episode number or code right
 /// after it, which skips the dashes of a series title (`Sword Art Online - Alicization -
 /// 05`); else the first episode token or [`number_reading`], whichever comes first
-/// (#497). `number` is that reading, read once by the caller.
-fn title_end(tokens: &[&str], number: Option<(usize, u32)>) -> (usize, Option<usize>) {
+/// (#497).
+fn title_end(tokens: &[&str], number: &Number) -> (usize, Option<usize>) {
     let starts_episode = |at: usize| {
         let Some(token) = tokens.get(at) else {
             return false;
@@ -250,7 +270,10 @@ fn title_end(tokens: &[&str], number: Option<(usize, u32)>) -> (usize, Option<us
         })
         .or_else(|| {
             let token = (0..tokens.len()).find(|&at| starts_episode(at));
-            token.into_iter().chain(number.map(|(at, _)| at)).min()
+            token
+                .into_iter()
+                .chain(number.get().map(|(at, _)| at))
+                .min()
         });
     (first_dash.or(reading).unwrap_or(tokens.len()), reading)
 }
@@ -268,8 +291,8 @@ fn title_word_at(tokens: &[&str], at: usize) -> bool {
         && !is_marker(token)
 }
 
-/// The extra a name's tokens make it, if any. `number` is the tokens' [`number_reading`].
-fn find_extra_token(tokens: &[&str], number: Option<(usize, u32)>) -> Option<ExtraHit> {
+/// The extra a name's tokens make it, if any.
+fn find_extra_token(tokens: &[&str], number: &Number) -> Option<ExtraHit> {
     let (title_end, reading) = title_end(tokens, number);
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
@@ -332,8 +355,8 @@ fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
 }
 
 /// The season and episode a name with no extra in it reads as, from its stripped `base`
-/// and its tokens' [`number_reading`].
-fn extract_episode(base: &str, number: Option<(usize, u32)>) -> (Option<u32>, f64) {
+/// and its tokens' number reading.
+fn extract_episode(base: &str, number: &Number) -> (Option<u32>, f64) {
     if let Some(m) = SEASON_EPISODE.captures(base) {
         return finalize(m[1].parse().ok(), m[2].parse().unwrap_or(1.0));
     }
@@ -356,7 +379,7 @@ fn extract_episode(base: &str, number: Option<(usize, u32)>) -> (Option<u32>, f6
     // A dotted name has no spaces for the patterns above, so its padded number is read
     // from the tokens, the way `title_end` read it, before the last number in the name
     // (a codec's `264`) can stand in.
-    if let Some((_, n)) = number {
+    if let Some((_, n)) = number.get() {
         return finalize(None, n as f64);
     }
     let unrevised = REVISION.replace_all(base, "$1");
@@ -376,8 +399,8 @@ fn extract_episode(base: &str, number: Option<(usize, u32)>) -> (Option<u32>, f6
 pub fn classify(file_name: &str) -> Classified {
     let base = strip_brackets_and_ext(file_name);
     let tokens = tokens_of(&base);
-    let reading = number_reading(&tokens);
-    if let Some(hit) = find_extra_token(&tokens, reading) {
+    let reading = Number::of(&tokens);
+    if let Some(hit) = find_extra_token(&tokens, &reading) {
         let number = hit.index.unwrap_or(0) as f64;
         return Classified {
             extra: Some(hit.kind),
@@ -388,7 +411,7 @@ pub fn classify(file_name: &str) -> Classified {
             raw_label: Some(hit.raw_label),
         };
     }
-    let (season, number) = extract_episode(&base, reading);
+    let (season, number) = extract_episode(&base, &reading);
     Classified {
         extra: None,
         number,
@@ -429,7 +452,7 @@ fn extra_key(file_name: &str) -> String {
         raw_label,
         unrevised: Some(stem),
         ..
-    }) = find_extra_token(&tokens, number_reading(&tokens))
+    }) = find_extra_token(&tokens, &Number::of(&tokens))
         && let Some(at) = name.rfind(&raw_label)
     {
         name = format!("{}{stem}{}", &name[..at], &name[at + raw_label.len()..]);
