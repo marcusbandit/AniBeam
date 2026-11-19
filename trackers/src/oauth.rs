@@ -468,15 +468,15 @@ async fn serve(
             // MAL carries the state back; AniList is never sent one, so it
             // is only checked where it was sent.
             if get("state").as_deref() != Some(state) {
-                return refuse(stream, t, "core-trackers-oauth-state-mismatch").await;
+                return Err(refuse(stream, t, "core-trackers-oauth-state-mismatch").await);
             }
             let Some(code) = get("code") else {
-                return refuse(stream, t, "core-trackers-oauth-no-code").await;
+                return Err(refuse(stream, t, "core-trackers-oauth-no-code").await);
             };
             return Ok((Callback::Mal { code }, stream));
         }
         let Some(access_token) = get("access_token") else {
-            return refuse(stream, t, "core-trackers-oauth-no-token").await;
+            return Err(refuse(stream, t, "core-trackers-oauth-no-token").await);
         };
         let expires_at = get("expires_in")
             .and_then(|seconds| seconds.parse::<u64>().ok())
@@ -493,14 +493,10 @@ async fn serve(
 
 /// A callback that cannot sign anyone in: the tab and the error both say
 /// why, in the catalog's words under `id`.
-async fn refuse(
-    mut stream: TcpStream,
-    t: Tracker,
-    id: &str,
-) -> Result<(Callback, TcpStream), CoreError> {
+async fn refuse(mut stream: TcpStream, t: Tracker, id: &str) -> CoreError {
     let message = tr(id, &[]);
     reply(&mut stream, BAD_REQUEST, &page(Page::Failed(&message))).await;
-    Err(accounts::tracker_error(t, message))
+    accounts::tracker_error(t, message)
 }
 
 /// The request target off the first line, reading until the blank line
@@ -551,8 +547,8 @@ const OK: &str = "200 OK";
 const BAD_REQUEST: &str = "400 Bad Request";
 const NOT_FOUND: &str = "404 Not Found";
 
-/// The head of every page the listener sends.
-fn head(status: &str, body: &str) -> String {
+/// The HTTP head of every reply the listener sends.
+fn http_head(status: &str, body: &str) -> String {
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
@@ -567,7 +563,7 @@ fn head(status: &str, body: &str) -> String {
 /// the tab, so a client that has already gone away is worth a log line and
 /// nothing more. The flow itself turns on what the request carried.
 async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
-    if let Err(e) = write_all(stream, &head(status, body), body).await {
+    if let Err(e) = write_all(stream, &http_head(status, body), body).await {
         tracing::debug!("the callback page could not be written: {e}");
     }
     // A client reading to EOF needs the write half closed before it sees
@@ -603,7 +599,7 @@ impl Drop for HeldTab {
         let body = page(Page::Cancelled);
         use std::io::Write;
         let written = stream
-            .write_all(head(OK, &body).as_bytes())
+            .write_all(http_head(OK, &body).as_bytes())
             .and_then(|_| stream.write_all(body.as_bytes()));
         if let Err(e) = written {
             tracing::debug!("the cancelled page could not be written: {e}");
@@ -711,7 +707,6 @@ p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
 const BRAND: &str = "<span class=\"brand\">Anibeam</span>";
 
 /// The tabs the listener leaves behind.
-#[derive(Clone, Copy)]
 enum Page<'a> {
     /// A finished sign-in. The tab asks the browser to close it a beat
     /// later; a browser that refuses a script closing a tab it did not open
@@ -735,23 +730,23 @@ enum Page<'a> {
 /// the browser was redirected with, and nothing a provider or a crafted
 /// link says should be able to write markup here.
 fn page(kind: Page) -> String {
-    // The site, the mark and whether it is a bad one, the catalog's ids for
-    // the title, the heading and the closing line, and the failure's words.
-    let (site, mark, bad, ids, why) = match kind {
-        Page::Connected(site) => (site, "&#10003;", false, CONNECTED, None),
-        Page::Failed(why) => ("", "!", true, FAILED, Some(why)),
-        Page::Finishing(site) => (site, "&#8230;", false, FINISHING, None),
-        Page::Cancelled => ("", "&#215;", true, CANCELLED, None),
+    // The catalog's ids as [title, heading, closing line], the mark and
+    // whether it is the red one, the site, the failure's words, and whether
+    // the tab is asked to close.
+    let ([title, heading, line], mark, bad, site, why, close) = match kind {
+        Page::Connected(site) => (CONNECTED, "&#10003;", false, site, None, true),
+        Page::Failed(why) => (FAILED, "!", true, "", Some(why), false),
+        Page::Finishing(site) => (FINISHING, "&#8230;", false, site, None, false),
+        Page::Cancelled => (CANCELLED, "&#215;", true, "", None, false),
     };
-    let [title, heading, line] = ids;
     let site = escape(site);
     let words = |id, app: &str| tr(id, &[("site", site.as_str().into()), ("app", app.into())]);
     let why = why
         .map(|why| format!("<p>{}</p>", escape(why)))
         .unwrap_or_default();
-    let close = match kind {
-        Page::Connected(_) => "\n<script>setTimeout(function(){window.close()},1500)</script>",
-        _ => "",
+    let close = match close {
+        true => "\n<script>setTimeout(function(){window.close()},1500)</script>",
+        false => "",
     };
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
@@ -766,7 +761,7 @@ fn page(kind: Page) -> String {
     )
 }
 
-/// Each page's title, heading and closing line in the catalog.
+/// Each page's [title, heading, closing line] in the catalog.
 const CONNECTED: [&str; 3] = [
     "core-trackers-page-connected",
     "core-trackers-page-connected",
@@ -898,6 +893,52 @@ mod tests {
         assert!(shown.contains("class=\"mark bad\""), "{shown}");
         assert!(!shown.contains("window.close()"), "{shown}");
         assert!(FRAGMENT_FORWARDER.contains("window.location.hash"));
+    }
+
+    /// Only a finished sign-in closes its tab, and only a failure or a
+    /// cancel wears the red mark.
+    #[test]
+    fn each_page_has_its_own_mark_and_only_success_closes_the_tab() {
+        let finishing = page(Page::Finishing("<b>"));
+        assert!(finishing.contains("class=\"mark\">&#8230;"), "{finishing}");
+        assert!(finishing.contains("&lt;b&gt;"), "{finishing}");
+        assert!(!finishing.contains("<b>"), "{finishing}");
+        // Each page's own words in the right slot: a swapped title and
+        // heading would put the heading's words in the tab's title.
+        let titled = |shown: &str, title: &str, heading: &str| {
+            assert!(
+                shown.contains(&format!("<title>{title}</title>")),
+                "{shown}"
+            );
+            assert!(shown.contains(&format!("<h1>{heading}</h1>")), "{shown}");
+        };
+        titled(&finishing, "Anibeam, still finishing", "Still finishing");
+        titled(
+            &page(Page::Failed("why")),
+            "Anibeam, sign-in failed",
+            "The sign-in did not finish",
+        );
+        titled(
+            &page(Page::Cancelled),
+            "Anibeam, sign-in cancelled",
+            "This sign-in was cancelled",
+        );
+        let cancelled = page(Page::Cancelled);
+        assert!(
+            cancelled.contains("class=\"mark bad\">&#215;"),
+            "{cancelled}"
+        );
+        for shown in [finishing, cancelled] {
+            assert!(!shown.contains("window.close()"), "{shown}");
+            assert!(
+                shown.contains("<span class=\"brand\">Anibeam</span>"),
+                "{shown}"
+            );
+            assert!(
+                !shown.contains("<title><span"),
+                "the title is plain: {shown}"
+            );
+        }
     }
 
     #[test]
