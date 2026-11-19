@@ -369,14 +369,25 @@ fn update(rooms: &Rooms, serial: u64, id: u64, f: impl FnOnce(&mut Active) -> bo
 
 /// Stops the fetch `id` short, when `fits` its state, and says why.
 fn stop(rooms: &Rooms, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
+    stop_where(rooms, |a| a.is_fetch(serial, id) && fits(a), why);
+}
+
+/// Stops the fetch running in room `serial` now, when `fits` its state.
+fn stop_current(rooms: &Rooms, serial: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
+    stop_where(
+        rooms,
+        |a| a.serial == serial && a.fetching.is_some() && fits(a),
+        why,
+    );
+}
+
+/// Stops the room's fetch short, under one lock, when `stops` says so, and says why.
+fn stop_where(rooms: &Rooms, stops: impl FnOnce(&Active) -> bool, why: Why) {
     let say = {
         let mut slot = rooms.lock();
-        let Some(a) = slot.as_mut().filter(|a| a.is_fetch(serial, id)) else {
+        let Some(a) = slot.as_mut().filter(|a| stops(a)) else {
             return;
         };
-        if !fits(a) {
-            return;
-        }
         a.stop_fetch();
         a.fetch = RoomFetch::Failed;
         a.fetch_error = Some(why.words());
@@ -389,18 +400,6 @@ fn stop(rooms: &Rooms, serial: u64, id: u64, fits: impl FnOnce(&Active) -> bool,
         )
     };
     emit(&rooms.services, vec![say]);
-}
-
-/// Stops the fetch running in room `serial` now, as `stop` does.
-fn stop_current(rooms: &Rooms, serial: u64, fits: impl FnOnce(&Active) -> bool, why: Why) {
-    let id = rooms
-        .lock()
-        .as_ref()
-        .filter(|a| a.serial == serial)
-        .and_then(|a| a.fetching.as_ref().map(|(id, _)| *id));
-    if let Some(id) = id {
-        stop(rooms, serial, id, fits, why);
-    }
 }
 
 /// The episode is in the library: the fetch ends, and the room's episode is
@@ -1039,7 +1038,7 @@ pub fn queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
 /// Each query once, ignoring case, and none that is empty.
 fn distinct(mut queries: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
-    queries.retain(|q| !q.trim().is_empty() && seen.insert(q.to_lowercase()));
+    queries.retain(|q| !q.trim().is_empty() && seen.insert(q.trim().to_lowercase()));
     queries
 }
 
@@ -1344,19 +1343,18 @@ async fn answer(rooms: Arc<Rooms>, serial: u64, to: MemberId, episode_key: Strin
         Some(f) => offer_for(&rooms, f, &e).await,
         None => None,
     };
-    let torrent = offer.as_ref().is_some_and(|o| o.magnet.is_some());
+    // Whether the torrent went is read off what was sealed: a magnet too long for the
+    // relay is dropped there, and only the name goes.
     let sealed = match offer {
         Some(offer) => seal_offer(&keys, &code, &theirs, offer),
-        None => seal_one(
-            &keys,
-            &code,
-            &theirs,
-            &Secret::Nothing {
+        None => {
+            let nothing = Secret::Nothing {
                 episode_key: e.episode_key.clone(),
-            },
-        ),
+            };
+            seal_one(&keys, &code, &theirs, &nothing).map(|data| (data, false))
+        }
     };
-    let Some(data) = sealed else {
+    let Some((data, torrent)) = sealed else {
         tracing::warn!("Room {code}: the answer to {name} could not be sealed");
         return;
     };
@@ -1389,25 +1387,34 @@ fn seal_one(keys: &super::seal::Keys, code: &str, theirs: &str, s: &Secret) -> O
         .filter(|d| d.len() <= proto::MAX_SEALED)
 }
 
-/// Seals an offer under the relay's cap: a magnet too long sheds its trackers
-/// from the end, and one still too long goes, leaving the release's name. How
-/// long a payload seals to follows from its own length, so only the offer that
+/// Seals an offer under the relay's cap, and says whether its magnet went with
+/// it: a magnet too long sheds its trackers from the end, and one still too long
+/// goes, leaving the release's name. How long a payload seals to follows from its
+/// own length, so the trackers to shed are counted first and only the offer that
 /// fits is sealed.
 fn seal_offer(
     keys: &super::seal::Keys,
     code: &str,
     theirs: &str,
     mut offer: Offer,
-) -> Option<String> {
+) -> Option<(String, bool)> {
     loop {
         let plain = serde_json::to_vec(&Secret::Offer(offer.clone())).ok()?;
-        if super::seal::sealed_len(plain.len()) <= proto::MAX_SEALED {
-            return keys.seal(code, theirs, &plain);
+        let mut need = plain
+            .len()
+            .saturating_sub(super::seal::plain_max(proto::MAX_SEALED));
+        if need == 0 {
+            let data = keys.seal(code, theirs, &plain)?;
+            return Some((data, offer.magnet.is_some()));
         }
-        if let Some(m) = offer.magnet.take() {
-            if let Some(cut) = m.rfind("&tr=") {
-                offer.magnet = Some(m[..cut].to_string());
+        if let Some(mut m) = offer.magnet.take() {
+            while need > 0
+                && let Some(cut) = m.rfind("&tr=")
+            {
+                need = need.saturating_sub(m.len() - cut);
+                m.truncate(cut);
             }
+            offer.magnet = (need == 0).then_some(m);
             continue;
         }
         // The names alone are too long: cut them
@@ -2047,18 +2054,35 @@ mod tests {
             magnet: Some(format!("{}{trackers}", magnet(1))),
             ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
         };
-        let sealed = seal_offer(&host, "K7QM2X", &member.public(), long).unwrap();
+        let (sealed, torrent) =
+            seal_offer(&host, "K7QM2X", &member.public(), long.clone()).unwrap();
         assert!(sealed.len() <= proto::MAX_SEALED);
-        // The trackers that fit stay, from the front
+        assert!(torrent, "the magnet went, with fewer trackers");
+        // Every tracker that fits stays, from the front: one more would not seal
         let kept = opened(&sealed).magnet.unwrap();
         assert!(kept.starts_with(&format!("{}&tr=", magnet(1))), "{kept}");
-        assert!(kept.matches("&tr=").count() < 400);
+        let n = kept.matches("&tr=").count();
+        assert!(n > 0 && n < 400, "{n} trackers kept");
+        let one_more = Offer {
+            magnet: Some(format!("{kept}&tr=udp%3A%2F%2Ftracker{n}.example%3A1337")),
+            ..long
+        };
+        let plain = serde_json::to_vec(&Secret::Offer(one_more)).unwrap();
+        assert!(super::super::seal::sealed_len(plain.len()) > proto::MAX_SEALED);
+        // A magnet with no trackers to shed goes, and the name is sent alone
+        let bare = Offer {
+            magnet: Some(format!("{}{}", magnet(1), "x".repeat(10_000))),
+            ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
+        };
+        let (sealed, torrent) = seal_offer(&host, "K7QM2X", &member.public(), bare).unwrap();
+        assert!(!torrent, "a name alone is no torrent");
+        assert_eq!(opened(&sealed).magnet, None);
         // Names too long for the cap are cut
         let named = Offer {
             name: "x".repeat(20_000),
             ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
         };
-        let sealed = seal_offer(&host, "K7QM2X", &member.public(), named).unwrap();
+        let (sealed, _) = seal_offer(&host, "K7QM2X", &member.public(), named).unwrap();
         assert_eq!(opened(&sealed).name.len(), 300);
     }
 }

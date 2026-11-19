@@ -45,7 +45,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::sync::{Clock, Drift, LocalTick};
 use crate::presence::JoinRooms;
-use crate::presence::join::not_in_room;
+use crate::presence::join::{not_in_room, room_error as error};
 use crate::{Follower, Playback};
 use anibeam_contract::*;
 use anibeam_downloads::Downloads;
@@ -339,13 +339,10 @@ impl Active {
         self.fetch_error = None;
     }
 
-    /// Stops what the room runs here: Get media, and the connection's task, which says
-    /// goodbye first when `bye`.
-    fn end(&mut self, bye: bool) {
+    /// Stops what the room runs here: Get media, and the connection's task. A goodbye
+    /// queued before this still goes out.
+    fn end(&mut self) {
         self.stop_fetch();
-        if bye {
-            self.send(ClientMsg::Bye);
-        }
         self.cancel.cancel();
     }
 
@@ -512,16 +509,6 @@ pub(crate) fn local_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
-}
-
-/// A room error: `code` is a fixed word a shell branches on (`not_found`, `full`,
-/// `unreachable`, `refused`, `proto`, `not_in_room`), the words are for people.
-pub(crate) fn error(code: &str, words: Words) -> CoreError {
-    CoreError::service(
-        anibeam_contract::i18n::tr("core-room-service", &[]),
-        code.to_string(),
-        words.render(),
-    )
 }
 
 // A name as the relay takes it, and whether a relay address can be used: the
@@ -1090,12 +1077,23 @@ fn leave(rooms: &Rooms) {
     let Some(mut a) = taken else {
         return;
     };
-    a.end(true);
-    rooms.services.bus.emit_said(
+    a.send(ClientMsg::Bye);
+    a.end();
+    gone(
+        rooms,
         Level::Info,
-        Stage::Playback,
-        Some(anibeam_contract::words!("core-room-left")),
+        anibeam_contract::words!("core-room-left"),
         format!("Left room {}", a.code),
+    );
+}
+
+/// Says this member is in no room any more.
+fn gone(rooms: &Rooms, level: Level, words: Words, message: String) {
+    rooms.services.bus.emit_said(
+        level,
+        Stage::Playback,
+        Some(words),
+        message,
         None,
         EventBody::RoomChanged { room: None },
     );
@@ -1104,7 +1102,8 @@ fn leave(rooms: &Rooms) {
 /// The core is closing: say goodbye, quietly.
 pub fn shutdown(rooms: &Rooms) {
     if let Some(mut a) = rooms.lock().take() {
-        a.end(true);
+        a.send(ClientMsg::Bye);
+        a.end();
     }
 }
 
@@ -1566,14 +1565,12 @@ fn finish(rooms: &Rooms, serial: u64) {
     let Some(mut a) = taken else {
         return;
     };
-    a.end(false);
-    rooms.services.bus.emit_said(
+    a.end();
+    gone(
+        rooms,
         Level::Warn,
-        Stage::Playback,
-        Some(anibeam_contract::words!("core-room-closed")),
+        anibeam_contract::words!("core-room-closed"),
         format!("Room {} closed", a.code),
-        None,
-        EventBody::RoomChanged { room: None },
     );
 }
 
@@ -1593,13 +1590,7 @@ mod tests {
 
     /// A member, id 2, in a room with id 1, attached to session 7 and paused at 0.
     fn active() -> Active {
-        let paused = PlayState {
-            playing: false,
-            position: 0.0,
-            rate: 1.0,
-            at_ms: local_ms(),
-            rev: 0,
-        };
+        let paused = at_start(local_ms(), 0);
         let (tx, _rx) = mpsc::unbounded_channel();
         Active {
             serial: 1,

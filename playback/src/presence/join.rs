@@ -356,14 +356,20 @@ fn room_create(playback: &Playback, session: Option<u64>) -> Result<RoomInfo, Co
     }
 }
 
-/// The error a room call gives outside a room, here and in the room team's own
-/// calls, which sit above presence and use this one.
-pub(crate) fn not_in_room() -> CoreError {
+/// A room error: `code` is a fixed word a shell branches on (`not_found`, `full`,
+/// `unreachable`, `refused`, `proto`, `not_in_room`), the words are for people. It
+/// lives here, below the room team, so Discord's join answers with the same errors.
+pub(crate) fn room_error(code: &str, words: Words) -> CoreError {
     CoreError::service(
         anibeam_contract::i18n::tr("core-room-service", &[]),
-        "not_in_room".to_string(),
-        anibeam_contract::words!("core-room-not-in").render(),
+        code.to_string(),
+        words.render(),
     )
+}
+
+/// The error a room call gives outside a room, here and in the room team's own.
+pub(crate) fn not_in_room() -> CoreError {
+    room_error("not_in_room", anibeam_contract::words!("core-room-not-in"))
 }
 
 /// How long a join Discord handed over waits for a window to take it.

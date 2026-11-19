@@ -36,6 +36,11 @@ pub fn sealed_len(plain: usize) -> usize {
     (NONCE + plain + TAG).div_ceil(3) * 4
 }
 
+/// The longest payload that seals to `sealed` characters or fewer.
+pub fn plain_max(sealed: usize) -> usize {
+    (sealed / 4 * 3).saturating_sub(NONCE + TAG)
+}
+
 /// This member's key pair for one room.
 pub struct Keys {
     secret: StaticSecret,
@@ -221,6 +226,14 @@ mod tests {
         for n in [0, 1, 2, 3, 100, 8000] {
             let sealed = host.seal(CODE, &member.public(), &vec![7; n]).unwrap();
             assert_eq!(sealed.len(), sealed_len(n), "{n} bytes");
+        }
+        // The longest payload under a cap is the longest that seals under it
+        for cap in [100, 101, 102, 103, 8192] {
+            let max = plain_max(cap);
+            assert!(
+                sealed_len(max) <= cap && sealed_len(max + 1) > cap,
+                "cap {cap}"
+            );
         }
     }
 
