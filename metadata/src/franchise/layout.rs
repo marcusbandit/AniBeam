@@ -1,11 +1,7 @@
 //! Where every node of a closure is drawn: one row per prequel/sequel
 //! chain, the chains ordered around the root, and whatever is left over
-//! hung off the chain it belongs to.
-//!
-//! Carried from Electron's `franchiseLayout.ts`, `laneAssignment.ts` and
-//! `FranchiseGraphView.tsx`, with the ghost copies and the side-story
-//! frames dropped and the rows anchored on the schema's root rather than
-//! on the earliest release.
+//! hung off the chain it belongs to. The rows are anchored on the
+//! closure's root rather than on the earliest release.
 //!
 //! Nothing here is a matter of taste at runtime: the same closure always
 //! gives the same positions. Every map and set that could otherwise leak
@@ -15,23 +11,24 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use super::closure::{Closure, Edge, Node};
+use super::closure::{Closure, Node};
+use anibeam_contract::GraphEdge as Edge;
 
-/// One card, in layout units. Electron's `.franchise-node`: the poster at
-/// 180 by 270 and about 150 of body under it. The shell scales; the
-/// positions below are in the same units, so a card and its slot agree.
+/// One card, in layout units: the poster at 180 by 270 and about 150 of
+/// body under it. The shell scales; the positions below are in the same
+/// units, so a card and its slot agree.
 pub const NODE_W: f64 = 180.0;
 pub const NODE_H: f64 = 420.0;
 
 /// The step from one column to the next along a chain's row.
-pub const SPINE_X_GAP: f64 = 320.0;
+const SPINE_X_GAP: f64 = 320.0;
 
 /// The step from one row to the next.
-pub const V_GAP: f64 = 500.0;
+const V_GAP: f64 = 500.0;
 
 /// A node's place on the grid: the column, then the row. Both count from
 /// nought, and the positions a caller sees are these times the two gaps.
-pub type Cell = (i64, i64);
+type Cell = (i64, i64);
 
 /// The formats that count as the printed original rather than the screen
 /// adaptation of one. AniList's own set; a media type of MANGA covers
@@ -39,10 +36,15 @@ pub type Cell = (i64, i64);
 const PRINT_FORMATS: [&str; 5] = ["MANGA", "NOVEL", "LIGHT_NOVEL", "ONE_SHOT", "VISUAL_NOVEL"];
 
 /// A run of nodes joined by SEQUEL edges, in the order they are watched.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Chain {
-    pub members: HashSet<u64>,
-    pub ordered: Vec<u64>,
+type Chain = Vec<u64>;
+
+/// Which chain each chained node is in, by its index.
+fn chain_index(chains: &[Chain]) -> HashMap<u64, usize> {
+    chains
+        .iter()
+        .enumerate()
+        .flat_map(|(i, c)| c.iter().map(move |id| (*id, i)))
+        .collect()
 }
 
 fn is_print(n: Option<&&Node>) -> bool {
@@ -55,12 +57,13 @@ fn is_print(n: Option<&&Node>) -> bool {
 
 /// How structural a relation is. AniList tags one link two ways often
 /// enough that a pair of nodes can carry both a SPIN_OFF and a SIDE_STORY;
-/// the lower number is the one the graph draws.
+/// the lower number is the one the graph draws. PREQUEL, SOURCE and PARENT
+/// never get here: `canonical_edges` has turned each into its twin first.
 fn priority(relation: &str) -> u8 {
     match relation {
-        "SEQUEL" | "PREQUEL" => 0,
-        "ADAPTATION" | "SOURCE" => 1,
-        "SIDE_STORY" | "PARENT" => 2,
+        "SEQUEL" => 0,
+        "ADAPTATION" => 1,
+        "SIDE_STORY" => 2,
         "SPIN_OFF" => 3,
         "SUMMARY" | "COMPILATION" | "CONTAINS" => 4,
         "ALTERNATIVE" => 5,
@@ -73,75 +76,49 @@ fn priority(relation: &str) -> u8 {
 /// Every link drawn once, in the direction the reader expects: forwards in
 /// time, and from the printed original to what was made of it.
 ///
-/// Four passes, Electron's `dedupeReciprocalEdges`: the direction is fixed,
-/// exact duplicates go, a reciprocal drops when the twin it names is
-/// already there the other way round, and several relations on one ordered
-/// pair collapse to the most structural of them.
-pub fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
+/// Two passes: the direction is fixed, which turns every PARENT, PREQUEL
+/// and SOURCE into the twin it names, and then the relations on one ordered
+/// pair collapse to the most structural of them, the first of equals kept.
+/// So an exact duplicate is drawn once, and so is a reciprocal pair whose
+/// two sides normalise to the same edge.
+fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
     let e = |from, to, relation: &str| Edge {
         from,
         to,
         relation: relation.to_string(),
     };
-    let normalized: Vec<Edge> = edges
-        .iter()
-        .map(|x| match x.relation.as_str() {
-            "PARENT" => e(x.to, x.from, "SIDE_STORY"),
-            "PREQUEL" => e(x.to, x.from, "SEQUEL"),
-            "ALTERNATIVE" => {
-                if x.from <= x.to {
-                    x.clone()
-                } else {
-                    e(x.to, x.from, "ALTERNATIVE")
-                }
+    let normalized = edges.iter().map(|x| match x.relation.as_str() {
+        "PARENT" => e(x.to, x.from, "SIDE_STORY"),
+        "PREQUEL" => e(x.to, x.from, "SEQUEL"),
+        "ALTERNATIVE" => {
+            if x.from <= x.to {
+                x.clone()
+            } else {
+                e(x.to, x.from, "ALTERNATIVE")
             }
-            "ADAPTATION" => {
-                let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp {
-                    e(x.to, x.from, "ADAPTATION")
-                } else {
-                    x.clone()
-                }
+        }
+        "ADAPTATION" => {
+            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
+            if !fp && tp {
+                e(x.to, x.from, "ADAPTATION")
+            } else {
+                x.clone()
             }
-            "SOURCE" => {
-                let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp {
-                    e(x.to, x.from, "ADAPTATION")
-                } else {
-                    e(x.from, x.to, "ADAPTATION")
-                }
+        }
+        "SOURCE" => {
+            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
+            if !fp && tp {
+                e(x.to, x.from, "ADAPTATION")
+            } else {
+                e(x.from, x.to, "ADAPTATION")
             }
-            _ => x.clone(),
-        })
-        .collect();
-
-    let mut seen = HashSet::new();
-    let uniqued: Vec<Edge> = normalized
-        .into_iter()
-        .filter(|x| seen.insert((x.from, x.to, x.relation.clone())))
-        .collect();
-
-    let present: HashSet<(u64, u64, String)> = uniqued
-        .iter()
-        .map(|x| (x.from, x.to, x.relation.clone()))
-        .collect();
-    let drops = |r: &str| match r {
-        "SOURCE" => Some("ADAPTATION"),
-        "PARENT" => Some("SIDE_STORY"),
-        "PREQUEL" => Some("SEQUEL"),
-        _ => None,
-    };
-    let after: Vec<Edge> = uniqued
-        .into_iter()
-        .filter(|x| {
-            !drops(&x.relation)
-                .is_some_and(|keep| present.contains(&(x.to, x.from, keep.to_string())))
-        })
-        .collect();
+        }
+        _ => x.clone(),
+    });
 
     let mut best: Vec<Edge> = Vec::new();
     let mut index: HashMap<(u64, u64), usize> = HashMap::new();
-    for x in after {
+    for x in normalized {
         match index.get(&(x.from, x.to)) {
             Some(&i) => {
                 if priority(&x.relation) < priority(&best[i].relation) {
@@ -172,7 +149,7 @@ fn year_of(nodes: &HashMap<u64, &Node>, id: u64) -> u64 {
 ///
 /// `nodes` fixes the order the components are found in, so the same
 /// closure always gives the same rows.
-pub fn chains(nodes: &[Node], edges: &[Edge]) -> Vec<Chain> {
+fn chains(nodes: &[Node], edges: &[Edge]) -> Vec<Chain> {
     let by_id: HashMap<u64, &Node> = nodes.iter().map(|n| (n.anilist_id, n)).collect();
     let mut adjacent: HashMap<u64, Vec<u64>> = HashMap::new();
     for x in edges.iter().filter(|x| x.relation == "SEQUEL") {
@@ -197,8 +174,7 @@ pub fn chains(nodes: &[Node], edges: &[Edge]) -> Vec<Chain> {
             }
         }
         if members.len() >= 2 {
-            let ordered = watch_order(&members, edges, &by_id);
-            out.push(Chain { members, ordered });
+            out.push(watch_order(&members, edges, &by_id));
         }
     }
     out
@@ -286,19 +262,14 @@ struct Link {
 ///
 /// With no root chain, because the root is a lone node, the chain the
 /// reader is looking at anchors the rows instead.
-pub fn order_rows(
+fn order_rows(
     chains: Vec<Chain>,
     edges: &[Edge],
     nodes: &HashMap<u64, &Node>,
     root: u64,
     current: u64,
 ) -> Vec<Chain> {
-    let mut chain_of: HashMap<u64, usize> = HashMap::new();
-    for (i, c) in chains.iter().enumerate() {
-        for id in &c.ordered {
-            chain_of.insert(*id, i);
-        }
-    }
+    let chain_of = chain_index(&chains);
 
     let Some(root_chain) = chain_of.get(&root).copied() else {
         let mut chains = chains;
@@ -312,7 +283,7 @@ pub fn order_rows(
     let mut links: Vec<Vec<Link>> = (0..chains.len()).map(|_| Vec::new()).collect();
     let mut seen: HashSet<(usize, usize, String)> = HashSet::new();
     for x in edges {
-        if x.relation == "SEQUEL" || x.relation == "PREQUEL" {
+        if x.relation == "SEQUEL" {
             continue;
         }
         let (Some(&from), Some(&to)) = (chain_of.get(&x.from), chain_of.get(&x.to)) else {
@@ -337,17 +308,12 @@ pub fn order_rows(
         });
     }
 
-    // What the root was made from goes above it. The second pair of
-    // relations cannot survive canonicalisation, so in practice only the
-    // first ever matches; both are kept so the rule reads whole.
-    let is_parent_edge = |x: &Edge| {
-        (x.to == root && (x.relation == "ADAPTATION" || x.relation == "SIDE_STORY"))
-            || (x.from == root && (x.relation == "PARENT" || x.relation == "SOURCE"))
-    };
+    // What the root was made from goes above it.
+    let is_parent_edge =
+        |x: &Edge| x.to == root && (x.relation == "ADAPTATION" || x.relation == "SIDE_STORY");
     let mut placed: Vec<usize> = Vec::new();
     for x in edges.iter().filter(|x| is_parent_edge(x)) {
-        let other = if x.from == root { x.to } else { x.from };
-        let Some(&chain) = chain_of.get(&other) else {
+        let Some(&chain) = chain_of.get(&x.from) else {
             continue;
         };
         if chain != root_chain && !placed.contains(&chain) {
@@ -406,7 +372,7 @@ pub fn order_rows(
 /// A node joined to nothing placed takes a last row of its own, one node
 /// per column: it is in the graph because something reached it, and the
 /// reader should still see it.
-pub fn satellites(
+fn satellites(
     nodes: &[Node],
     edges: &[Edge],
     chains: &[Chain],
@@ -439,12 +405,7 @@ pub fn satellites(
         targets
     }
 
-    let mut chain_of: HashMap<u64, usize> = HashMap::new();
-    for (i, c) in chains.iter().enumerate() {
-        for id in &c.ordered {
-            chain_of.insert(*id, i);
-        }
-    }
+    let chain_of = chain_index(chains);
     let occupied =
         |positions: &HashMap<u64, Cell>, row: i64| positions.values().any(|(_, r)| *r == row);
 
@@ -578,7 +539,7 @@ fn free_column(taken: &HashSet<Cell>, column: i64, row: i64) -> Cell {
     (column, row)
 }
 
-/// The words a card reads under its title. Electron's `RELATION_LABEL`.
+/// The words a card reads under its title.
 fn label_of(relation: &str) -> String {
     let id = match relation {
         "SEQUEL" => "anilist-relation-sequel",
@@ -627,7 +588,7 @@ fn canonical_relation(relation: &str, target: Option<&&Node>) -> String {
 /// chain read by their place in it; otherwise the edge between them is
 /// turned to face the reader and named. Nothing joining them at all is
 /// None, and the walk's own discovery label is the caller's fallback.
-pub fn relation_label(
+fn relation_label(
     current: u64,
     node: u64,
     chains: &[Chain],
@@ -637,12 +598,9 @@ pub fn relation_label(
     if node == current {
         return None;
     }
-    if let Some(chain) = chains
-        .iter()
-        .find(|c| c.members.contains(&current) && c.members.contains(&node))
-    {
-        let mine = chain.ordered.iter().position(|id| *id == current);
-        let theirs = chain.ordered.iter().position(|id| *id == node);
+    for chain in chains {
+        let mine = chain.iter().position(|id| *id == current);
+        let theirs = chain.iter().position(|id| *id == node);
         if let (Some(mine), Some(theirs)) = (mine, theirs) {
             return Some(if theirs < mine {
                 "Prequel".to_string()
@@ -664,7 +622,7 @@ pub fn relation_label(
 /// Everything one read of the graph needs: where each node goes, the edges
 /// as they are drawn, and what each node is to the series being read.
 pub(crate) struct Plan {
-    pub positions: Vec<(u64, f64, f64)>,
+    pub positions: HashMap<u64, (f64, f64)>,
     pub edges: Vec<Edge>,
     pub labels: HashMap<u64, String>,
 }
@@ -682,7 +640,7 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
 
     let mut cells: HashMap<u64, Cell> = HashMap::new();
     for (row, chain) in rows.iter().enumerate() {
-        for (column, id) in chain.ordered.iter().enumerate() {
+        for (column, id) in chain.iter().enumerate() {
             cells.insert(
                 *id,
                 (
@@ -694,19 +652,10 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
     }
     satellites(&closure.nodes, &edges, &rows, &mut cells);
 
-    let mut positions: Vec<(u64, f64, f64)> = closure
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            let (column, row) = cells.get(&n.anilist_id)?;
-            Some((
-                n.anilist_id,
-                *column as f64 * SPINE_X_GAP,
-                *row as f64 * V_GAP,
-            ))
-        })
+    let positions = cells
+        .into_iter()
+        .map(|(id, (column, row))| (id, (column as f64 * SPINE_X_GAP, row as f64 * V_GAP)))
         .collect();
-    positions.sort_by_key(|(id, _, _)| *id);
 
     let labels = labels(closure, current, &rows, &edges, &by_id);
     Plan {
@@ -761,7 +710,6 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use super::*;
-    use crate::franchise::closure::{Closure, Edge, Node};
 
     fn node(id: u64, media_type: &str, format: &str, year: Option<u32>) -> Node {
         Node {
@@ -801,10 +749,6 @@ mod tests {
             .collect();
         v.sort();
         v
-    }
-
-    fn chain_ids(chains: &[Chain]) -> Vec<Vec<u64>> {
-        chains.iter().map(|c| c.ordered.clone()).collect()
     }
 
     // -- 1. Canonicalisation ------------------------------------------------
@@ -880,20 +824,19 @@ mod tests {
         let forwards = chains(&nodes, &[e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL")]);
         let backwards = chains(&nodes, &[e(2, 3, "SEQUEL"), e(1, 2, "SEQUEL")]);
 
-        assert_eq!(chain_ids(&forwards), vec![vec![1, 2, 3]]);
+        assert_eq!(forwards, vec![vec![1, 2, 3]]);
         assert_eq!(
-            chain_ids(&backwards),
+            backwards,
             vec![vec![1, 2, 3]],
             "the years disagree with the sequels; the sequels win"
         );
-        assert_eq!(forwards[0].members, HashSet::from([1, 2, 3]));
     }
 
     #[test]
     fn a_lone_node_is_no_chain_at_all() {
         let nodes = [anime(1, 2000), anime(2, 2001), anime(9, 2002)];
         let out = chains(&nodes, &[e(1, 2, "SEQUEL")]);
-        assert_eq!(chain_ids(&out), vec![vec![1, 2]]);
+        assert_eq!(out, vec![vec![1, 2]]);
     }
 
     #[test]
@@ -903,7 +846,7 @@ mod tests {
             &nodes,
             &[e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(3, 1, "SEQUEL")],
         );
-        assert_eq!(chain_ids(&out), vec![vec![2, 3, 1]]);
+        assert_eq!(out, vec![vec![2, 3, 1]]);
     }
 
     // -- 3. Rows ------------------------------------------------------------
@@ -930,10 +873,7 @@ mod tests {
             &map,
         );
         let rows = order_rows(chains(&nodes, &edges), &edges, &map, 1, 1);
-        assert_eq!(
-            chain_ids(&rows),
-            vec![vec![10, 11], vec![1, 2], vec![20, 21]]
-        );
+        assert_eq!(rows, vec![vec![10, 11], vec![1, 2], vec![20, 21]]);
     }
 
     #[test]
@@ -947,7 +887,7 @@ mod tests {
         let map = by_id(&nodes);
         let edges = [e(1, 2, "SEQUEL"), e(3, 4, "SEQUEL")];
         let rows = order_rows(chains(&nodes, &edges), &edges, &map, 99, 3);
-        assert_eq!(chain_ids(&rows), vec![vec![3, 4], vec![1, 2]]);
+        assert_eq!(rows, vec![vec![3, 4], vec![1, 2]]);
     }
 
     // -- 4. Labels ----------------------------------------------------------
@@ -1059,16 +999,14 @@ mod tests {
             vec![e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(1, 50, "CHARACTER")],
             &[50],
         );
-        let mut placed = plan(&closure, 1).positions;
-        placed.sort_by_key(|(id, _, _)| *id);
         assert_eq!(
-            placed,
-            vec![
-                (1, 0.0, 0.0),
-                (2, 320.0, 0.0),
-                (3, 640.0, 0.0),
-                (50, 0.0, 500.0)
-            ]
+            plan(&closure, 1).positions,
+            HashMap::from([
+                (1, (0.0, 0.0)),
+                (2, (320.0, 0.0)),
+                (3, (640.0, 0.0)),
+                (50, (0.0, 500.0))
+            ])
         );
     }
 
@@ -1096,7 +1034,7 @@ mod tests {
         );
         let placed = plan(&closure, 1).positions;
 
-        let mut ids: Vec<u64> = placed.iter().map(|(id, _, _)| *id).collect();
+        let mut ids: Vec<u64> = placed.keys().copied().collect();
         ids.sort_unstable();
         assert_eq!(
             ids,
@@ -1104,8 +1042,8 @@ mod tests {
             "every node once: 30 is a satellite, 40 hangs off nothing"
         );
         let cells: HashSet<(i64, i64)> = placed
-            .iter()
-            .map(|(_, x, y)| ((x / SPINE_X_GAP) as i64, (y / V_GAP) as i64))
+            .values()
+            .map(|(x, y)| ((x / SPINE_X_GAP) as i64, (y / V_GAP) as i64))
             .collect();
         assert_eq!(cells.len(), placed.len(), "no two nodes share a cell");
     }
