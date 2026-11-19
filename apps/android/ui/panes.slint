@@ -3,6 +3,7 @@
 
 import { Theme } from "theme.slint";
 import { Area, Fold } from "fold.slint";
+import { Tap } from "typing.slint";
 
 // One pane. A change of posture slides it to its new place. Open, the right one is parted
 // from the left by a hairline; half folded the crease parts them, so the line fades out.
@@ -39,6 +40,11 @@ export component Scroll inherits Flickable {
         if (!self.interactive) {
             self.content-y = 0;
         }
+    }
+    // The page's empty space and its plain text take a tap, to end the editing in a field.
+    Tap {
+        width: root.width;
+        height: max(root.height, root.content-height);
     }
     column := VerticalLayout {
         width: root.width;

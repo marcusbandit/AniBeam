@@ -4,12 +4,13 @@
 
 import { Theme } from "theme.slint";
 import { Fold } from "fold.slint";
+import { Tap } from "typing.slint";
 
 export component Sheet inherits Rectangle {
     in property <length> inset-bottom;
     callback dismissed();
     background: #000000b0;
-    TouchArea { clicked => { root.dismissed(); } }
+    Tap { clicked => { root.dismissed(); } }
     Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -19,7 +20,7 @@ export component Sheet inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;

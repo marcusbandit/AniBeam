@@ -1,0 +1,19 @@
+// A tap on a control or on a page's empty space ends the editing in whatever field has the
+// keys, so the phone's keyboard goes away (#1172). Slint keeps a TextInput focused until
+// something else takes focus, and a plain TouchArea takes none, so the pieces that take taps
+// count them here and the window takes the keys back on each one. A field's own edit keys
+// and the search field's clear button leave it alone: typing goes on after them.
+export global Typing {
+    in-out property <int> done;
+}
+
+// A TouchArea that counts the press it finishes, so the tap ends the editing in a field. Every
+// TouchArea in the phone's pages is one of these, except a field's own: its glass, its edit
+// keys and the search field's clear button. One that sets its own pointer-event counts there.
+export component Tap inherits TouchArea {
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.up) {
+            Typing.done += 1;
+        }
+    }
+}

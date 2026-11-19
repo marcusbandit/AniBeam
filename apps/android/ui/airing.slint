@@ -11,6 +11,7 @@ import { CalendarHead } from "calhead.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { Button, Chip, EmptyNote, SectionHead, Segmented, TileGrid, TileRow } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // The season picker: any season back to 1940, which the desktop's SeasonPicker lists.
 export global AiringPick {
@@ -50,7 +51,7 @@ component FilterRow inherits Rectangle {
         vertical-alignment: center;
         overflow: elide;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
 }
 
 // The season and the filter. Folded the filters are a row of chips; in a side pane, where
@@ -157,7 +158,7 @@ export component UndoBar inherits Rectangle {
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.line-strong;
-    TouchArea { }
+    Tap { }
     row := HorizontalLayout {
         padding: Theme.unit * 3;
         padding-left: Theme.unit * 4;
@@ -187,7 +188,7 @@ export component UndoBar inherits Rectangle {
 export component AiringSheet inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { AppData.airing-close(); } }
+    Tap { clicked => { AppData.airing-close(); } }
     Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -197,7 +198,7 @@ export component AiringSheet inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
@@ -252,7 +253,7 @@ export component AiringSheet inherits Rectangle {
 export component SeasonSheet inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { AiringPick.open = false; } }
+    Tap { clicked => { AiringPick.open = false; } }
     property <length> row-h: 12 * Theme.unit;
     property <[string]> names: [Tr.t("season-winter"), Tr.t("season-spring"), Tr.t("season-summer"), Tr.t("season-fall")];
     Rectangle {
@@ -265,7 +266,7 @@ export component SeasonSheet inherits Rectangle {
         border-width: 1px;
         border-color: Theme.line-strong;
         clip: true;
-        TouchArea { }
+        Tap { }
         VerticalLayout {
             padding: Theme.pad;
             spacing: Theme.unit * 2;
@@ -319,7 +320,7 @@ export component SeasonSheet inherits Rectangle {
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
-                            cell := TouchArea {
+                            cell := Tap {
                                 clicked => {
                                     AiringPick.open = false;
                                     AiringPick.picked(q, year);

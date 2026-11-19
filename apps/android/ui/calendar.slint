@@ -11,6 +11,7 @@ import { CalendarHead } from "calhead.slint";
 import { AiringPage } from "airing.slint";
 import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, Segmented } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // The colour of an episode's state: to come is the ink, here is the cube's cyan, out and
 // not here the cube's amber.
@@ -33,7 +34,7 @@ export component CalRow inherits Rectangle {
     background: touch.pressed ? Theme.pressed : root.item.soonest ? Theme.raised : Theme.surface;
     border-width: 1px;
     border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
-    touch := TouchArea {
+    touch := Tap {
         clicked => {
             if (root.item.remote) {
                 AppData.open-remote(root.item.id);
@@ -193,7 +194,7 @@ component DayPill inherits Rectangle {
             }
         }
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
 }
 
 // Every day side by side, scrolled so yesterday is the first in view.
@@ -275,7 +276,7 @@ component DayLine inherits Rectangle {
             }
         }
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
 }
 
 // Open, a column a day: the day on top, its episodes as cards with the poster cut wide.
@@ -288,7 +289,7 @@ component BoardCard inherits Rectangle {
     border-width: 1px;
     border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
     clip: true;
-    touch := TouchArea {
+    touch := Tap {
         clicked => {
             root.opened();
             if (root.item.remote) {

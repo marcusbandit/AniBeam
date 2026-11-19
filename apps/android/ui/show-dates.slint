@@ -8,6 +8,7 @@ import { Theme } from "theme.slint";
 import { Button, Chip, Field } from "widgets.slint";
 import { ShowData, ShowSheet } from "show.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // One episode's tile.
 export struct DateTile {
@@ -117,7 +118,7 @@ component DateCell inherits Rectangle {
         border-radius: self.height / 2;
         background: root.tile.picked ? Theme.on-accent : Theme.text;
     }
-    touch := TouchArea {
+    touch := Tap {
         clicked => { ScheduleData.tap(root.tile.ep); }
     }
 }
@@ -153,7 +154,7 @@ component DateGrid inherits Rectangle {
             source: @image-url("icons/plus.svg");
             colorize: Theme.dim;
         }
-        more := TouchArea {
+        more := Tap {
             clicked => { ScheduleData.more-tiles(); }
         }
     }
@@ -202,6 +203,8 @@ export component DatesSheet inherits ShowSheet {
             background: Theme.field;
             border-width: 1px;
             border-color: input.has-focus ? Theme.line-strong : Theme.line;
+            // A tap anywhere on the box types into it, never through to the page (#1172).
+            TouchArea { clicked => { input.focus(); } }
             if input.text == "": Text {
                 x: Theme.unit * 3;
                 y: Theme.unit * 3;

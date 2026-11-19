@@ -10,6 +10,7 @@ import { Nav, Tile } from "data.slint";
 import { Settings } from "more.slint";
 import { Tr } from "tr.slint";
 import { Button, CardStack, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, Segmented, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
+import { Tap } from "typing.slint";
 
 // One source in the show view: its name and what asking it gave.
 export struct SourceChip {
@@ -227,7 +228,7 @@ export component EpisodeCells inherits Rectangle {
             font-size: Math.min(Theme.small, root.size * 0.36);
             color: code == 2 ? Theme.on-accent : code == 0 ? Theme.faint : Theme.dim;
         }
-        if !root.library: TouchArea {
+        if !root.library: Tap {
             x: -root.spacing / 2;
             y: -root.spacing / 2;
             width: parent.width + root.spacing;
@@ -286,7 +287,7 @@ component SuggestionItem inherits Rectangle {
         source: @image-url("icons/chevron-right.svg");
         colorize: Theme.faint;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
     if !root.last: Rectangle {
         x: Theme.unit * 3;
         y: parent.height - 1px;
@@ -371,7 +372,7 @@ component SourceItem inherits Rectangle {
         source: @image-url("icons/chevron-right.svg");
         colorize: root.active ? Theme.text : Theme.faint;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
     if !root.last: Rectangle {
         x: Theme.pad;
         y: parent.height - 1px;
@@ -441,7 +442,7 @@ component GridItem inherits Rectangle {
                     }
                 }
             }
-            TouchArea { clicked => { root.picked(); } }
+            Tap { clicked => { root.picked(); } }
         }
         EpisodeCells {
             codes: root.data.cubes;
@@ -851,6 +852,8 @@ export component ReleaseList inherits VerticalLayout {
     if FindData.groups.length > 0: Rectangle {
         height: group-row.preferred-height;
         Flickable {
+            // Its empty space takes a tap, to end the editing in a field (#1172).
+            Tap { }
             content-width: Math.max(self.width, group-row.preferred-width);
             interactive: group-row.preferred-width > self.width;
             group-row := HorizontalLayout {
@@ -905,6 +908,8 @@ export component Lenses inherits VerticalLayout {
         height: lens-row.preferred-height;
         // Only a row wider than the page scrolls; one that fits stays put.
         Flickable {
+            // Its empty space takes a tap, to end the editing in a field (#1172).
+            Tap { }
             content-width: Math.max(self.width, lens-row.preferred-width);
             interactive: lens-row.preferred-width > self.width;
             lens-row := HorizontalLayout {

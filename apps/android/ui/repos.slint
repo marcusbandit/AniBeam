@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { Button, ButtonRow, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // A trusted repo.
 export struct RepoRow {
@@ -427,7 +428,7 @@ export component EndpointItem inherits Rectangle {
     height: column.preferred-height + 7 * Theme.unit;
     background: tap.pressed && root.endpoint.editable ? Theme.pressed : transparent;
     // Under the buttons and the switch, which take their own taps.
-    tap := TouchArea {
+    tap := Tap {
         enabled: root.endpoint.editable && !root.asking && !root.editing;
         clicked => { root.open(); }
     }

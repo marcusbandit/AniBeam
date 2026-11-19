@@ -19,6 +19,7 @@ import { MoveData, MoveWaiting } from "listmove.slint";
 import { LookBody, LookData } from "look.slint";
 import { LangData, LangList } from "lang.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -270,7 +271,7 @@ component IndexRow inherits Rectangle {
         source: @image-url("icons/chevron-right.svg");
         colorize: Theme.faint;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
     if !root.last: Rectangle {
         x: Theme.pad;
         y: parent.height - 1px;
@@ -331,7 +332,7 @@ component IconChoice inherits Rectangle {
             font-family: root.picked ? Theme.strong-face : "";
         }
     }
-    TouchArea { clicked => { root.clicked(); } }
+    Tap { clicked => { root.clicked(); } }
 }
 
 // One section as its own page: the pill back to the index, the section's name with how it
@@ -385,6 +386,8 @@ component SectionPage inherits Rectangle {
         flick.content-y = Math.max(Math.min(0px, flick.height - flick.content-height), Math.min(0px, -(y - root.absolute-position.y - flick.content-y - 6 * Theme.unit)));
     }
     flick := Flickable {
+        // Its empty space takes a tap, to end the editing in a field (#1172).
+        Tap { }
         // Only ever as wide as the pane, as a page's Scroll is: a section never scrolls
         // sideways, and its cards fit the width they are given.
         content-width: self.width;
@@ -410,6 +413,8 @@ component SectionPage inherits Rectangle {
 // The index: the search, then the sections, or what the search found while it has words.
 component IndexPage inherits Rectangle {
     Flickable {
+        // Its empty space takes a tap, to end the editing in a field (#1172).
+        Tap { }
         VerticalLayout {
             alignment: start;
             padding-left: Theme.grout + Theme.unit;

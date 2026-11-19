@@ -30,6 +30,7 @@ import { ShowCard, ShowData, ShowPerson } from "show.slint";
 import { MatchData, MatchRow } from "show-match.slint";
 import { DateTile, ScheduleData } from "show-dates.slint";
 import { ShowSheets } from "show-sheets.slint";
+import { Tap, Typing } from "typing.slint";
 
 export { Theme, Tr, LangChoice, LangData }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
@@ -71,7 +72,7 @@ component MobileDataQuestion inherits Sheet {
 component VersionsMenu inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { Ask.versions-open = false; } }
+    Tap { clicked => { Ask.versions-open = false; } }
     Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -81,7 +82,7 @@ component VersionsMenu inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
@@ -134,7 +135,7 @@ component VersionsMenu inherits Rectangle {
 component ShowMenu inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { Ask.menu-id = -1; } }
+    Tap { clicked => { Ask.menu-id = -1; } }
     Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -144,7 +145,7 @@ component ShowMenu inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
@@ -196,7 +197,7 @@ component ShowMenu inherits Rectangle {
 component MarkMenu inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { Ask.mark-open = false; } }
+    Tap { clicked => { Ask.mark-open = false; } }
     Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -206,7 +207,7 @@ component MarkMenu inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
@@ -347,6 +348,10 @@ export component AppWindow inherits Window {
         }
     }
     changed player-shown => { keys.focus(); }
+    // A tap on a control or a page's empty space ends the editing, so the keyboard goes
+    // away (#1172).
+    property <int> typing-done: Typing.done;
+    changed typing-done => { keys.focus(); }
 
     function go(to: int) {
         root.series-cut = true;
@@ -496,10 +501,10 @@ export component AppWindow inherits Window {
                     width: parent.width;
                     height: parent.height;
                     background: Theme.ground;
-                    TouchArea { }
+                    Tap { }
                     SeriesPage { }
                     // Sliding out, it is already closed: nothing on it takes a touch.
-                    if !AppData.series-open: TouchArea { }
+                    if !AppData.series-open: Tap { }
                     if Fold.split: Rectangle {
                         x: 0;
                         width: 1px;
@@ -552,7 +557,7 @@ export component AppWindow inherits Window {
         // readable column, and as a book to the right page.
         if AppData.onboarding: Rectangle {
             background: Theme.ground;
-            TouchArea { }
+            Tap { }
             Onboarding {
                 x: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
                 y: root.inset-top;

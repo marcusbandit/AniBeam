@@ -4,6 +4,7 @@
 import { Theme } from "theme.slint";
 import { Tr } from "tr.slint";
 import { ListGroup } from "widgets.slint";
+import { Tap } from "typing.slint";
 
 export struct LangChoice {
     // The language's name in itself: Dansk, 日本語.
@@ -30,7 +31,7 @@ component LangRow inherits Rectangle {
     callback clicked();
     height: Math.max(12 * Theme.unit, column.preferred-height + 5 * Theme.unit);
     background: touch.pressed ? Theme.raised : transparent;
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := Tap { clicked => { root.clicked(); } }
     column := VerticalLayout {
         x: Theme.pad;
         width: parent.width - 2 * Theme.pad - 6 * Theme.unit;

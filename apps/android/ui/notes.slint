@@ -7,6 +7,7 @@ import { Theme } from "theme.slint";
 import { AppData, NoteLine } from "data.slint";
 import { Button, PageTitle } from "widgets.slint";
 import { Tr } from "tr.slint";
+import { Tap } from "typing.slint";
 
 // A version: its number in the display cut, the day it was made beside it on the number's
 // baseline, the way a section head carries its note.
@@ -116,7 +117,7 @@ export component NotesPage inherits Rectangle {
     in property <length> inset-right;
     background: Theme.ground;
     // Nothing under the page takes a tap.
-    TouchArea { }
+    Tap { }
 
     // Got it, in a bar along the foot over the bottom inset.
     property <length> bar: Theme.control + 2 * Theme.grout;

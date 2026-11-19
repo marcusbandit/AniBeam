@@ -7,6 +7,7 @@ import { Tr } from "tr.slint";
 import { Button, Chip } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
+import { Tap } from "typing.slint";
 
 // A related show or one tapped in a sheet: the AniList id, the library series that holds it
 // (-1 when none does), and the lines the page and its sheet write.
@@ -115,7 +116,7 @@ export component ShowSheet inherits Rectangle {
     in property <float> reach: 0.62;
     callback dismissed();
     background: #000000b0;
-    TouchArea { clicked => { root.dismissed(); } }
+    Tap { clicked => { root.dismissed(); } }
     panel := Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
@@ -125,7 +126,7 @@ export component ShowSheet inherits Rectangle {
         border-radius: Theme.radius + 6px;
         border-width: 1px;
         border-color: Theme.line-strong;
-        TouchArea { }
+        Tap { }
         body := VerticalLayout {
             padding: Theme.pad;
             padding-top: Theme.pad + Theme.unit;
@@ -144,6 +145,8 @@ export component ShowSheet inherits Rectangle {
                 wrap: word-wrap;
             }
             Flickable {
+                // Its empty space takes a tap, to end the editing in a field (#1172).
+                Tap { }
                 height: Math.min(inner.preferred-height, root.height * root.reach);
                 content-height: inner.preferred-height;
                 interactive: inner.preferred-height > self.height;
