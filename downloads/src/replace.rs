@@ -449,7 +449,7 @@ pub(crate) fn prepare(
     for (i, item) in items.iter().enumerate() {
         let episodes = replace.remove(&i).unwrap_or_default();
         let mut entries = Vec::new();
-        if let Some(series) = options.series {
+        if let Some(series) = options.series.filter(|_| !episodes.is_empty()) {
             store.read(|c| {
                 for e in episodes {
                     let old = library_files(c, series, e)?;
