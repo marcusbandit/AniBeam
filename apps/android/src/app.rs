@@ -145,9 +145,12 @@ struct App {
     read_on: Option<chrono::NaiveDate>,
     /// The cards, the open detail and the trackers are read again, off the UI thread.
     reload_due: crate::reads::Due,
-    /// Moves on with every write of the open detail on the UI thread, so a reload asked for
-    /// before it never lands over what it wrote.
+    /// Moves on each time the open detail is read for a tap (an open, a mark, a delete), so
+    /// a detail read before that never lands over the newer one.
     reload_generation: u64,
+    /// The open series's detail is being read for a tap: the page waits for it rather than
+    /// closing.
+    detail_pending: bool,
     /// Each card's titles, lower case with single spaces, for naming a torrent's show.
     plain_titles: Vec<(u64, Vec<String>)>,
     /// Whose calendar shows: 0 this phone, 1 the computer.
@@ -462,15 +465,12 @@ impl App {
         }
     }
 
-    fn reloaded(&mut self, reloaded: Reloaded) {
+    fn reloaded(&mut self, reloaded: Option<Reloaded>) {
         self.reload_due.landed();
-        // Read before the UI thread last wrote the open detail: what it holds may be older
-        // than that write, so it is read again instead.
-        if reloaded.generation != self.reload_generation {
-            self.reload_due.mark();
-            self.reload();
+        // A read that never finished changes nothing; the next change reads again.
+        let Some(reloaded) = reloaded else {
             return;
-        }
+        };
         if let Some(series) = reloaded.cards {
             self.cards = series;
             self.read_on = Some(anibeam_companion::calendar::today(anibeam_companion::now()));
@@ -503,8 +503,10 @@ impl App {
                 load_poster(card.id, path.clone());
             }
         }
-        // Only for the series still open: another may have opened while the read was out.
+        // Only for the series still open, and only if no tap has read its detail since: the
+        // cards and trackers still stand.
         if let Some((id, answer)) = reloaded.detail
+            && reloaded.generation == self.reload_generation
             && matches!(self.open, Some(Open::Phone(open)) if open == id)
         {
             // A failed read keeps the page as it was; only a series that is gone closes it.
@@ -540,13 +542,9 @@ impl App {
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
     /// run every second; the models only repaint what changed.
     fn tick(&mut self) {
-        self.draw(crate::local::take_changed());
-    }
-
-    /// `tick`, with whether the core reported a change since the last one.
-    fn draw(&mut self, changed: bool) {
-        crate::find::tick(changed);
+        let changed = crate::local::take_changed();
         // A new day moves the calendar's window, so the airings around it are read again.
+        // Only here, so a read that keeps failing is tried once a tick, not back to back.
         if changed
             || self
                 .read_on
@@ -554,6 +552,12 @@ impl App {
         {
             self.reload_due.mark();
         }
+        self.draw(changed);
+    }
+
+    /// `tick`, with whether the core reported a change since the last one.
+    fn draw(&mut self, changed: bool) {
+        crate::find::tick(changed);
         self.reload();
         self.show_notify();
         let now = anibeam_companion::now();
@@ -718,6 +722,8 @@ impl App {
                 update(&self.episodes, lines);
                 data.set_series_open(true);
             }
+            // A series being opened waits for its detail.
+            None if self.detail_pending && matches!(self.open, Some(Open::Phone(_))) => {}
             None => {
                 self.open = None;
                 data.set_series_open(false);
@@ -1224,7 +1230,7 @@ impl App {
                     if app.sources_generation != generation {
                         return;
                     }
-                    if let Some(sources) = sources {
+                    if let Some(sources) = sources.flatten() {
                         app.show_sources(sources);
                     }
                 })
@@ -1256,7 +1262,7 @@ impl App {
                 _ => None,
             },
             |sources| {
-                if let Some(sources) = sources {
+                if let Some(sources) = sources.flatten() {
                     with_app(|app| app.set_search_sources(&sources));
                 }
             },
@@ -1393,10 +1399,12 @@ impl App {
         let _ = tx.send(rolling);
     }
 
+    /// Takes a source out at once and saves the list off the UI thread, in order with the
+    /// sources' reads.
     fn remove_source(&mut self, index: i32) {
-        let Some(core) = crate::local::core() else {
+        if crate::local::core().is_none() {
             return;
-        };
+        }
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -1406,8 +1414,33 @@ impl App {
         let mut sources = self.sources.clone();
         sources.remove(index);
         self.sources_generation = self.sources_generation.wrapping_add(1);
-        if let Ok(Reply::PhoneSources { sources }) = core.call(Call::SetPhoneSources { sources }) {
-            self.show_sources(sources);
+        let generation = self.sources_generation;
+        let saving = sources.clone();
+        crate::reads::read(
+            move |core| match core.call(Call::SetPhoneSources { sources: saving }) {
+                Ok(Reply::PhoneSources { sources }) => Some(sources),
+                _ => None,
+            },
+            move |saved| with_app(|app| app.sources_saved(generation, saved.flatten())),
+        );
+        // Shown now, so a second removal works on this list; after the save is queued, so
+        // the chips read what it saved.
+        self.show_sources(sources);
+    }
+
+    /// The core saved the sources, or did not, in which case what it holds shows again.
+    fn sources_saved(&mut self, generation: u64, saved: Option<Vec<PhoneSource>>) {
+        // A later removal is on its way and shows what it saves.
+        if generation != self.sources_generation {
+            return;
+        }
+        match saved {
+            Some(sources) => self.show_sources(sources),
+            None => {
+                self.sources_generation = self.sources_generation.wrapping_add(1);
+                self.sources_reading = false;
+                self.load_sources();
+            }
         }
     }
 
@@ -1979,14 +2012,38 @@ impl App {
         self.data().set_mark_undo(undo);
     }
 
+    /// Reads the open series's detail again off the UI thread, after a tap that changed it.
+    /// The page keeps what it shows until the answer lands.
     fn reload_open(&mut self) {
-        if let (Some(Open::Phone(id)), Some(core)) = (self.open, crate::local::core()) {
-            self.reload_generation = self.reload_generation.wrapping_add(1);
-            self.detail = match core.call(Call::GetSeries { series: id }) {
-                Ok(Reply::SeriesDetail { detail }) => Some(*detail),
-                _ => None,
-            };
+        let Some(Open::Phone(id)) = self.open else {
+            return;
+        };
+        self.reload_generation = self.reload_generation.wrapping_add(1);
+        let generation = self.reload_generation;
+        self.detail_pending = crate::reads::read_now(
+            move |core| core.call(Call::GetSeries { series: id }),
+            move |answer| with_app(|app| app.detail_read(id, generation, answer)),
+        );
+    }
+
+    fn detail_read(
+        &mut self,
+        id: u64,
+        generation: u64,
+        answer: Option<Result<Reply, anibeam_core::CoreError>>,
+    ) {
+        // A newer tap's read is on its way, or the page moved on.
+        if generation != self.reload_generation
+            || !matches!(self.open, Some(Open::Phone(open)) if open == id)
+        {
+            return;
         }
+        self.detail_pending = false;
+        self.detail = match answer {
+            Some(Ok(Reply::SeriesDetail { detail })) => Some(*detail),
+            _ => None,
+        };
+        self.draw(false);
     }
 
     fn close_series(&mut self) {
@@ -1996,6 +2053,7 @@ impl App {
         self.picked.clear();
         self.open = None;
         self.detail = None;
+        self.detail_pending = false;
         self.data().set_deleting(false);
         self.data().set_series_open(false);
     }
@@ -2304,15 +2362,13 @@ fn finished(t: &Torrent) -> bool {
 /// Decodes the poster file for `id` off the UI thread; the pages show it from their next
 /// draw.
 fn load_poster(id: u64, path: String) {
-    crate::posters::load(path, move |decoded| {
-        let Some(decoded) = decoded else {
+    crate::posters::load(path, move |poster| {
+        let Some(poster) = poster else {
             return;
         };
         with_app(|app| {
-            app.art
-                .posters
-                .insert(id, Image::from_rgba8(decoded.buffer));
-            app.art.tones.insert(id, decoded.tone);
+            app.art.posters.insert(id, poster.image);
+            app.art.tones.insert(id, poster.tone);
         });
     });
 }
@@ -2645,6 +2701,7 @@ pub fn run(
         read_on: None,
         reload_due: crate::reads::Due::now(),
         reload_generation: 0,
+        detail_pending: false,
         plain_titles: Vec::new(),
         cal_device: 0,
         airing: None,

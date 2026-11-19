@@ -1,6 +1,9 @@
 //! Poster bytes from the store, decoded and cut to a thumbnail off the UI thread, with the
 //! poster's own hue for the bands that sit behind it.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use image::RgbaImage;
 use image::imageops::FilterType;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
@@ -86,49 +89,65 @@ fn clamp_lightness([r, g, b]: [f32; 3], low: f32, high: f32) -> [f32; 3] {
     }
 }
 
-type Landing = Box<dyn FnOnce(Option<Decoded>) + Send>;
-type Job = (String, Landing);
-
-/// Reads and decodes the poster file at `path` off the UI thread and hands it to `land` on
-/// the UI thread, `None` when it could not be read or decoded. One thread serves every page,
-/// in the order asked (#1206).
-pub fn load(path: String, land: impl FnOnce(Option<Decoded>) + Send + 'static) {
-    let job: Job = (path, Box::new(land));
-    let job = match loader() {
-        Some(jobs) => match jobs.send(job) {
-            Ok(()) => return,
-            Err(std::sync::mpsc::SendError(job)) => job,
-        },
-        None => job,
-    };
-    // With no loader thread, this poster gets a thread of its own, so its landing still comes.
-    let _ = std::thread::Builder::new()
-        .name("poster".into())
-        .spawn(move || run(job));
+/// A poster file decoded for the screens: the picture and its hue.
+#[derive(Clone)]
+pub struct Poster {
+    pub image: slint::Image,
+    pub tone: Option<[u8; 3]>,
 }
 
-fn run((path, land): Job) {
-    let decoded = std::fs::read(&path).ok().and_then(|b| decode(&b));
-    let _ = slint::invoke_from_event_loop(move || land(decoded));
+type Waiting = Vec<Box<dyn FnOnce(Option<Poster>)>>;
+
+thread_local! {
+    /// Every poster file the screens decoded, by path, shared by all of them (#1206): one
+    /// decode and one copy in memory, however many pages show it.
+    static SHOWN: RefCell<HashMap<String, Poster>> = RefCell::new(HashMap::new());
+    /// The pages waiting on a file being decoded now.
+    static WAITING: RefCell<HashMap<String, Waiting>> = RefCell::new(HashMap::new());
 }
 
-fn loader() -> Option<&'static std::sync::mpsc::Sender<Job>> {
-    static LOADER: std::sync::OnceLock<Option<std::sync::mpsc::Sender<Job>>> =
-        std::sync::OnceLock::new();
-    LOADER
-        .get_or_init(|| {
-            let (tx, rx) = std::sync::mpsc::channel::<Job>();
-            std::thread::Builder::new()
-                .name("posters".into())
-                .spawn(move || {
-                    for job in rx {
-                        run(job);
-                    }
-                })
-                .ok()
-                .map(|_| tx)
-        })
-        .as_ref()
+/// The one thread that reads and decodes poster files, in the order asked.
+static LOADER: crate::reads::Worker = crate::reads::Worker::new("posters");
+
+/// Decodes the poster file at `path` off the UI thread, once however many pages ask, and
+/// hands it to `land` on the UI thread: `None` when it could not be read or decoded. Called on
+/// the UI thread; `land` always runs later, never inside this call.
+pub fn load(path: String, land: impl FnOnce(Option<Poster>) + 'static) {
+    if let Some(poster) = SHOWN.with(|s| s.borrow().get(&path).cloned()) {
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || land(Some(poster)));
+        return;
+    }
+    let first = WAITING.with(|w| {
+        let mut w = w.borrow_mut();
+        let waiting = w.entry(path.clone()).or_default();
+        waiting.push(Box::new(land));
+        waiting.len() == 1
+    });
+    if !first {
+        return;
+    }
+    let landing = crate::reads::Landing::new({
+        let path = path.clone();
+        move |decoded: Option<Option<Decoded>>| landed(path, decoded.flatten())
+    });
+    LOADER.run(Box::new(move || {
+        let decoded = std::fs::read(&path).ok().and_then(|b| decode(&b));
+        landing.land(decoded);
+    }));
+}
+
+fn landed(path: String, decoded: Option<Decoded>) {
+    let poster = decoded.map(|d| Poster {
+        image: slint::Image::from_rgba8(d.buffer),
+        tone: d.tone,
+    });
+    if let Some(poster) = &poster {
+        SHOWN.with(|s| s.borrow_mut().insert(path.clone(), poster.clone()));
+    }
+    let waiting = WAITING.with(|w| w.borrow_mut().remove(&path).unwrap_or_default());
+    for land in waiting {
+        land(poster.clone());
+    }
 }
 
 /// The band behind a poster: its hue darkened most of the way into the ground.

@@ -209,7 +209,12 @@ fn read(sort: Option<FeedSort>) -> bool {
     )
 }
 
-fn landed(read: Read) {
+fn landed(read: Option<Read>) {
+    let read = read.unwrap_or(Read {
+        sort_read: None,
+        used: FeedSort::Recent,
+        cards: Err("the read did not finish".into()),
+    });
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         let Some(s) = s.as_mut() else { return };
@@ -249,7 +254,7 @@ fn keep_sort(sort: FeedSort) {
                 }
             }
         },
-        |()| {},
+        |_| {},
     );
 }
 

@@ -15,6 +15,7 @@ use crate::{AppWindow, DiskData, HiddenRow};
 /// Nav.page of Downloads.
 const DOWNLOADS_PAGE: i32 = 2;
 
+#[derive(Default)]
 struct State {
     /// Every show with a file on the phone, the watched and hidden ones too.
     disk: Vec<SeriesCard>,
@@ -28,14 +29,7 @@ struct State {
 }
 
 thread_local! {
-    static STATE: RefCell<State> = RefCell::new(State {
-        disk: Vec::new(),
-        hidden: Vec::new(),
-        due: crate::reads::Due::now(),
-        deleting: false,
-        finished: false,
-        window: Weak::default(),
-    });
+    static STATE: RefCell<State> = RefCell::new(State::default());
 }
 
 /// The figures behind the usage line and the sheet.
@@ -110,12 +104,15 @@ fn read(core: &anibeam_core::Core) -> (Vec<SeriesCard>, Vec<SeriesCard>) {
     (disk, hidden)
 }
 
-/// The read landed: the figures show at once.
-fn landed((disk, hidden): (Vec<SeriesCard>, Vec<SeriesCard>)) {
+/// The read landed: the figures show at once. One that never finished leaves them as they
+/// were, for the next change to read again.
+fn landed(read: Option<(Vec<SeriesCard>, Vec<SeriesCard>)>) {
     let window = STATE.with(|s| {
         let mut s = s.borrow_mut();
-        s.disk = disk;
-        s.hidden = hidden;
+        if let Some((disk, hidden)) = read {
+            s.disk = disk;
+            s.hidden = hidden;
+        }
         s.due.landed();
         s.window.upgrade()
     });
