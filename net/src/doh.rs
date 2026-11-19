@@ -177,6 +177,20 @@ impl Doh {
         Found::NoAnswer
     }
 
+    /// The addresses for `host` as a resolver hands them to the client: what the resolvers
+    /// say, else, for a home name, a name they have no address for, or when none answered,
+    /// the system's DNS for this name.
+    pub(crate) async fn addresses(&self, host: &str) -> std::io::Result<Addrs> {
+        let ips = match self.lookup(host).await {
+            Some(ips) => ips,
+            None => tokio::net::lookup_host((host, 0))
+                .await?
+                .map(|a| a.ip())
+                .collect(),
+        };
+        Ok(Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0))))
+    }
+
     /// Keeps what was found for `name` for `ttl` seconds, within bounds. Stale entries go
     /// on each write, so names asked once do not pile up.
     fn keep(&self, name: &str, ips: Vec<IpAddr>, ttl: u64) {
@@ -265,22 +279,6 @@ fn parse(body: &serde_json::Value) -> Option<(Vec<IpAddr>, u64)> {
             .unwrap_or(NONE_FOR);
     }
     Some((ips, ttl))
-}
-
-impl Doh {
-    /// The addresses for `host` as a resolver hands them to the client: what the resolvers
-    /// say, else, for a home name, a name they have no address for, or when none answered,
-    /// the system's DNS for this name.
-    pub(crate) async fn addresses(&self, host: &str) -> std::io::Result<Addrs> {
-        let ips = match self.lookup(host).await {
-            Some(ips) => ips,
-            None => tokio::net::lookup_host((host, 0))
-                .await?
-                .map(|a| a.ip())
-                .collect(),
-        };
-        Ok(Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0))))
-    }
 }
 
 impl Resolve for Doh {

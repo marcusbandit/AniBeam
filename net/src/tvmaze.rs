@@ -387,9 +387,12 @@ mod tests {
         let http = FakeHttp::new();
         http.push_for("lookup/shows?imdb=tt35854736", 200, SHOW);
         http.push_for("lookup/shows?imdb=tt0000001", 404, "");
+        http.push_for("lookup/shows?imdb=tt0000002", 200, "null");
         let c = client(http.clone());
         assert_eq!(c.lookup_imdb("tt35854736").await.unwrap(), Some(83073));
         assert_eq!(c.lookup_imdb("tt0000001").await.unwrap(), None);
+        // A 200 with no show in it is a miss too, never a parse error.
+        assert_eq!(c.lookup_imdb("tt0000002").await.unwrap(), None);
     }
 
     #[tokio::test]

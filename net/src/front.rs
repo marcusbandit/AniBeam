@@ -26,7 +26,7 @@ impl Fronts {
         *recover_write(&self.0) = table;
     }
 
-    pub fn fronted(&self, url: &str) -> Option<(String, String)> {
+    pub fn fronted(&self, url: &str) -> Option<Fronted> {
         fronted(url, &recover_read(&self.0))
     }
 
@@ -40,10 +40,18 @@ impl Fronts {
     }
 }
 
-/// The URL to ask, with the front's name for the host, and the real host for the Host
-/// header; None for a host `table` does not front. Only an endpoint's request is asked
-/// (`Http::send_endpoint`), never one the core makes for itself.
-pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)> {
+/// A request rewritten to go under its front's name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fronted {
+    /// The URL to ask, with the front's name for the host.
+    pub url: String,
+    /// The real host, for the Host header.
+    pub host: String,
+}
+
+/// `url` under its front, or None for a host `table` does not front. Only an endpoint's
+/// request is asked (`Http::send_endpoint`), never one the core makes for itself.
+pub fn fronted(url: &str, table: &[(String, String)]) -> Option<Fronted> {
     let (scheme, rest) = url.split_once("://")?;
     if scheme != "https" {
         return None;
@@ -51,7 +59,10 @@ pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let host = &rest[..end];
     let (_, front) = table.iter().find(|(h, _)| h.eq_ignore_ascii_case(host))?;
-    Some((format!("https://{front}{}", &rest[end..]), host.to_string()))
+    Some(Fronted {
+        url: format!("https://{front}{}", &rest[end..]),
+        host: host.to_string(),
+    })
 }
 
 /// The gap between the end of one fronted request and the start of the next. A front's edge
@@ -145,17 +156,17 @@ mod tests {
         let t = table();
         assert_eq!(
             fronted("https://tracker.example/?page=rss&q=frieren", &t),
-            Some((
-                "https://edge.example/?page=rss&q=frieren".to_string(),
-                "tracker.example".to_string()
-            ))
+            Some(Fronted {
+                url: "https://edge.example/?page=rss&q=frieren".to_string(),
+                host: "tracker.example".to_string()
+            })
         );
         assert_eq!(
             fronted("https://tracker.example", &t),
-            Some((
-                "https://edge.example".to_string(),
-                "tracker.example".to_string()
-            ))
+            Some(Fronted {
+                url: "https://edge.example".to_string(),
+                host: "tracker.example".to_string()
+            })
         );
         assert_eq!(fronted("http://tracker.example/", &t), None);
         assert_eq!(fronted("https://feed.example/json?q=x", &t), None);

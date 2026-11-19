@@ -269,7 +269,10 @@ impl ProviderClient {
 
     /// A GET that asks for JSON, read into `T`. A 404 is `None`: the
     /// provider holds nothing at that url.
-    pub async fn get_json<T: DeserializeOwned>(&self, url: String) -> Result<Option<T>, CoreError> {
+    pub(crate) async fn get_json<T: DeserializeOwned>(
+        &self,
+        url: String,
+    ) -> Result<Option<T>, CoreError> {
         let response = self.get(url).await?;
         if response.status == 404 {
             return Ok(None);
@@ -278,7 +281,7 @@ impl ProviderClient {
     }
 
     /// A GET that asks for JSON.
-    pub async fn get(&self, url: String) -> Result<HttpResponse, CoreError> {
+    pub(crate) async fn get(&self, url: String) -> Result<HttpResponse, CoreError> {
         self.send(HttpRequest::get(url).header("Accept", "application/json"))
             .await
     }
@@ -286,7 +289,10 @@ impl ProviderClient {
     /// The reply's JSON. A failing status is the provider's own answer,
     /// `<label> <status>: <body>`, carried with its status so a job can
     /// tell it from a transport failure.
-    pub fn json<T: DeserializeOwned>(&self, response: &HttpResponse) -> Result<T, CoreError> {
+    pub(crate) fn json<T: DeserializeOwned>(
+        &self,
+        response: &HttpResponse,
+    ) -> Result<T, CoreError> {
         if !response.is_success() {
             return Err(CoreError::provider(
                 self.upstream.provider(),

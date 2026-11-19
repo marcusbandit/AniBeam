@@ -223,9 +223,9 @@ impl Front {
     async fn send(
         &self,
         #[cfg_attr(not(phone_os), allow(unused_mut))] mut req: HttpRequest,
-        front: (String, String),
+        front: front::Fronted,
     ) -> Result<HttpResponse, HttpError> {
-        let host = &front.1;
+        let host = &front.host;
         let mut gate = self.gate.lock().await;
         let wait = gate
             .admit(std::time::Instant::now())
@@ -439,7 +439,7 @@ impl Http for ReqwestHttp {
 async fn request(
     client: &reqwest::Client,
     req: HttpRequest,
-    front: Option<&(String, String)>,
+    front: Option<&front::Fronted>,
 ) -> Result<HttpResponse, HttpError> {
     let method = match req.method {
         Method::Get => reqwest::Method::GET,
@@ -448,7 +448,9 @@ async fn request(
         Method::Delete => reqwest::Method::DELETE,
     };
     let mut builder = match front {
-        Some((url, host)) => client.request(method, url).header("Host", host),
+        Some(front) => client
+            .request(method, &front.url)
+            .header("Host", &front.host),
         None => client.request(method, &req.url),
     };
     if let Some(timeout) = req.timeout {
