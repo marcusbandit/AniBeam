@@ -652,7 +652,7 @@ async fn move_one(
         trackers,
         t,
         media_id,
-        token,
+        token: token.to_string(),
     };
     let Some(live) = remote.read_live(user_id).await? else {
         return Ok(Some("it is no longer on the list"));
@@ -887,13 +887,7 @@ async fn back_to_watching(
     for (t, media_id, user_id) in paused {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::token(&trackers, t).await?;
-            let remote = writes::Remote {
-                trackers: &trackers,
-                t,
-                media_id,
-                token: &token,
-            };
+            let remote = writes::Remote::connect(&trackers, t, media_id).await?;
             let live = remote.read_live(user_id).await?;
             if live.is_none_or(|l| l.status != Some(ListStatus::Paused)) {
                 return Ok(false);
