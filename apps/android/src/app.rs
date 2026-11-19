@@ -213,6 +213,15 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
+/// The phone's own series, id and title, for control over adb's `go series`: Library's
+/// list can hold a computer's shows or be narrowed by its search.
+#[cfg(control)]
+pub(crate) fn phone_series() -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    with_app(|app| out = app.cards.iter().map(|c| (c.id, c.title.clone())).collect());
+    out
+}
+
 /// More's sections' names, by the index Settings.section uses.
 const SECTIONS: [&str; 14] = [
     "more-accounts",

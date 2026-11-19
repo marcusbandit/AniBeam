@@ -17,23 +17,21 @@ use i_slint_core::accessibility::{
     AccessibilityAction, AccessibleStringProperty, SupportedAccessibilityAction,
 };
 use i_slint_core::item_tree::{ItemRc, ParentItemTraversalMode};
-use i_slint_core::items::{AccessibleRole, Opacity, TextInput};
+use i_slint_core::items::{
+    AccessibleRole, Clip, Flickable, InputType, Opacity, TextInput, TouchArea,
+};
+use i_slint_core::platform::WindowEventDispatchResult;
 use i_slint_core::window::WindowInner;
 use slint::platform::{Key as SlintKey, PointerEventButton, WindowEvent};
-use slint::{ComponentHandle, LogicalPosition, Model, SharedString, Timer, TimerMode};
+use slint::{ComponentHandle, LogicalPosition, SharedString, Timer, TimerMode};
 
 use super::command::{Command, Dir, Field, HELP, Key, Onboarding, Series, Tab, Target};
-use crate::{
-    AiringPick, AppData, AppWindow, Ask, DiskData, FindData, Fold, MoveData, Nav, PlayerData,
-    Settings, ShowData,
-};
+use crate::{AppData, AppWindow, FindData, Fold, Nav, PlayerData, Settings};
 
-/// Onboarding's pages, `steps` in onboarding.slint.
-const ONBOARDING_STEPS: i32 = 8;
 /// How long a finger stays down for a long press: past Slint's and the app's hold.
 const HOLD: Duration = Duration::from_millis(800);
-/// How many frames the stats keep: a few seconds of animation.
-const FRAMES_KEPT: usize = 600;
+/// How many frames the stats keep: `perf`'s longest sample at 144 Hz, so it counts them all.
+const FRAMES_KEPT: usize = 4800;
 
 thread_local! {
     static WINDOW: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
@@ -172,21 +170,98 @@ fn nonempty(s: SharedString) -> String {
 
 // Reading the window.
 
+/// A rect in the window's logical pixels: left, top, right, bottom.
+#[derive(Clone, Copy)]
+struct Area(f32, f32, f32, f32);
+
+impl Area {
+    fn of(item: &ItemRc) -> Area {
+        let g = item.geometry();
+        let o = item.map_to_window(g.origin);
+        Area(o.x, o.y, o.x + g.size.width, o.y + g.size.height)
+    }
+
+    fn and(self, o: Area) -> Area {
+        Area(
+            self.0.max(o.0),
+            self.1.max(o.1),
+            self.2.min(o.2),
+            self.3.min(o.3),
+        )
+    }
+
+    fn holds(self, (x, y): (f32, f32)) -> bool {
+        x >= self.0 && x <= self.2 && y >= self.1 && y <= self.3
+    }
+}
+
+/// What a walk up from an item finds: its ancestors nearest first, the opacity it draws at,
+/// and the part of the window its clipping parents (a `clip: true` or a Flickable) let show.
+struct Up {
+    ancestors: Vec<ItemRc>,
+    opacity: f32,
+    clip: Area,
+}
+
+fn walk_up(item: &ItemRc, window: Area) -> Up {
+    let mut up = Up {
+        ancestors: Vec::new(),
+        opacity: 1.0,
+        clip: window,
+    };
+    let mut current = item.parent_item(ParentItemTraversalMode::StopAtPopups);
+    if let Some(o) = item.downcast::<Opacity>() {
+        up.opacity *= o.as_pin_ref().opacity();
+    }
+    while let Some(a) = current {
+        if let Some(o) = a.downcast::<Opacity>() {
+            up.opacity *= o.as_pin_ref().opacity();
+        }
+        let clips = a.downcast::<Clip>().is_some_and(|c| c.as_pin_ref().clip())
+            || a.downcast::<Flickable>().is_some();
+        if clips {
+            up.clip = up.clip.and(Area::of(&a));
+        }
+        current = a.parent_item(ParentItemTraversalMode::StopAtPopups);
+        up.ancestors.push(a);
+    }
+    up
+}
+
 /// One element a screen reader would see.
 struct Element {
     item: ItemRc,
+    /// Its place in the tree's order, which is the order Slint draws in.
+    order: usize,
+    ancestors: Vec<ItemRc>,
     role: AccessibleRole,
     label: String,
+    /// The label folded for matching: blanks collapsed, lower case.
+    key: String,
     value: Option<String>,
     enabled: bool,
+    read_only: bool,
     checked: Option<bool>,
+    /// A tab of the bar that is the page shown.
+    selected: bool,
     focused: bool,
     /// Top left and size in the window's logical pixels.
     rect: (f32, f32, f32, f32),
     /// Where a tap on it lands.
     centre: (f32, f32),
-    /// On screen: not hidden, not clipped or scrolled away, not faded out.
+    /// Not hidden, faded out, or clipped or scrolled away at the point a tap lands.
     shown: bool,
+    /// Shown, but under something drawn later that takes the touch there: a sheet, a menu,
+    /// a question, the bar over a page scrolled under it.
+    covered: bool,
+}
+
+/// A touch area that takes a tap, for working out what covers what.
+struct Touch {
+    order: usize,
+    item: ItemRc,
+    ancestors: Vec<ItemRc>,
+    area: Area,
 }
 
 impl Element {
@@ -206,19 +281,19 @@ impl Element {
         if let Some(v) = &self.value {
             s.push_str(&format!(" value {:?}", clip(v)));
         }
-        if self.focused {
-            s.push_str(" focused");
-        }
-        if !self.enabled {
-            s.push_str(" disabled");
-        }
-        match self.checked {
-            Some(true) => s.push_str(" on"),
-            Some(false) => s.push_str(" off"),
-            None => {}
-        }
-        if !self.shown {
-            s.push_str(" offscreen");
+        for (on, word) in [
+            (self.focused, " focused"),
+            (!self.enabled, " disabled"),
+            (self.read_only, " read-only"),
+            (self.checked == Some(true), " on"),
+            (self.checked == Some(false), " off"),
+            (self.selected, " selected"),
+            (!self.shown, " offscreen"),
+            (self.covered, " covered"),
+        ] {
+            if on {
+                s.push_str(word);
+            }
         }
         let (_, _, w, h) = self.rect;
         s.push_str(&format!(
@@ -232,13 +307,22 @@ impl Element {
         let (ex, ey, w, h) = self.rect;
         x >= ex && x <= ex + w && y >= ey && y <= ey + h
     }
+
+    /// On screen and in reach of a finger.
+    fn reachable(&self) -> bool {
+        self.shown && !self.covered
+    }
 }
 
-/// A long label, cut to what a line of the dump can hold.
+/// Labels longer than this are cut in a line, and a cut label still matches what it starts
+/// with (`matches`), so a line copied from `tree` works as a target.
+const CUT: usize = 90;
+
+/// A long label, cut to what a line of the tree can hold.
 fn clip(s: &str) -> String {
     let flat: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.chars().count() > 90 {
-        format!("{}...", flat.chars().take(87).collect::<String>())
+    if flat.chars().count() > CUT {
+        format!("{}...", flat.chars().take(CUT - 3).collect::<String>())
     } else {
         flat
     }
@@ -251,30 +335,42 @@ fn norm(s: &str) -> String {
         .to_lowercase()
 }
 
+/// Whether a folded label is the one asked for: the same, or, for a label `tree` cut short,
+/// one that starts with what it kept.
+fn names(key: &str, want: &str) -> bool {
+    match want.strip_suffix("...") {
+        Some(start) if want.chars().count() == CUT => key.starts_with(start),
+        _ => key == want,
+    }
+}
+
 fn window_size(w: &AppWindow) -> (f32, f32) {
     let size = w.window().size().to_logical(w.window().scale_factor());
     (size.width, size.height)
 }
 
-/// The opacity the item draws at, its parents' included.
-fn opacity(item: &ItemRc) -> f32 {
-    let mut opacity = 1.0;
-    let mut current = Some(item.clone());
-    while let Some(i) = current {
-        if let Some(o) = i.downcast::<Opacity>() {
-            opacity *= o.as_pin_ref().opacity();
-        }
-        current = i.parent_item(ParentItemTraversalMode::StopAtPopups);
-    }
-    opacity
-}
-
 /// Every accessible element in the window, in the tree's order.
 fn elements(w: &AppWindow) -> Vec<Element> {
     let (width, height) = window_size(w);
+    let window = Area(0.0, 0.0, width, height);
     let root = ItemRc::new_root(WindowInner::from_pub(w.window()).component());
     let mut out = Vec::new();
+    let mut touches = Vec::new();
+    let mut order = 0;
     root.visit_descendants(|item| {
+        order += 1;
+        if let Some(t) = item.downcast::<TouchArea>()
+            && t.as_pin_ref().enabled()
+            && item.is_visible()
+        {
+            let up = walk_up(item, window);
+            touches.push(Touch {
+                order,
+                item: item.clone(),
+                area: Area::of(item).and(up.clip),
+                ancestors: up.ancestors,
+            });
+        }
         if !item.is_accessible() {
             return ControlFlow::<()>::Continue(());
         }
@@ -292,45 +388,73 @@ fn elements(w: &AppWindow) -> Vec<Element> {
         let g = item.geometry();
         let origin = item.map_to_window(g.origin);
         let centre = item.map_to_native_window(g.center());
-        let rect = (origin.x, origin.y, g.size.width, g.size.height);
-        let on_window =
-            centre.x >= 0.0 && centre.y >= 0.0 && centre.x <= width && centre.y <= height;
-        let shown = on_window && item.is_visible() && opacity(item) > 0.05;
-        let focused = item
-            .downcast::<TextInput>()
-            .is_some_and(|t| t.as_pin_ref().has_focus());
+        let centre = (centre.x, centre.y);
+        let up = walk_up(item, window);
+        let shown = up.clip.holds(centre) && item.is_visible() && up.opacity > 0.05;
+        let input = item.downcast::<TextInput>();
+        let focused = input.as_ref().is_some_and(|t| t.as_pin_ref().has_focus());
+        // A password field's text stays out of the answer: answers end up in logs.
+        let secret = input
+            .as_ref()
+            .is_some_and(|t| matches!(t.as_pin_ref().input_type(), InputType::Password));
+        let value = prop(AccessibleStringProperty::Value)
+            .filter(|v| !v.is_empty() || role == AccessibleRole::TextInput)
+            .map(|v| {
+                if secret && !v.is_empty() {
+                    "(hidden)".into()
+                } else {
+                    v
+                }
+            });
         out.push(Element {
             item: item.clone(),
+            order,
+            ancestors: up.ancestors,
             role,
+            key: norm(&label),
             label,
-            value: prop(AccessibleStringProperty::Value)
-                .filter(|v| !v.is_empty() || role == AccessibleRole::TextInput),
+            value,
             enabled: prop(AccessibleStringProperty::Enabled).as_deref() != Some("false"),
+            read_only: prop(AccessibleStringProperty::ReadOnly).as_deref() == Some("true"),
             checked: prop(AccessibleStringProperty::Checkable)
                 .filter(|c| c == "true")
                 .map(|_| prop(AccessibleStringProperty::Checked).as_deref() == Some("true")),
+            selected: prop(AccessibleStringProperty::ItemSelected).as_deref() == Some("true"),
             focused,
-            rect,
-            centre: (centre.x, centre.y),
+            rect: (origin.x, origin.y, g.size.width, g.size.height),
+            centre,
             shown,
+            covered: false,
         });
         ControlFlow::Continue(())
     });
+    // Slint hands a touch to the last-drawn touch area under it. One drawn after the
+    // element covers it, unless it belongs to the element: inside it, or a child of one of
+    // its parents, the way a button's own touch area sits over its label.
+    for e in out.iter_mut().filter(|e| e.shown) {
+        e.covered = touches.iter().any(|t| {
+            t.order > e.order
+                && t.area.holds(e.centre)
+                && !t.ancestors.contains(&e.item)
+                && !t.ancestors.first().is_some_and(|p| e.ancestors.contains(p))
+                && t.item != e.item
+        });
+    }
     out
 }
 
-/// The elements worth listing: on screen, and without the text inside a button that names
+/// The elements worth listing: in reach, and without the text inside a control that names
 /// it already.
 fn listed(all: Vec<Element>) -> Vec<Element> {
-    let shown: Vec<Element> = all.into_iter().filter(|e| e.shown).collect();
+    let shown: Vec<Element> = all.into_iter().filter(Element::reachable).collect();
     let keep: Vec<bool> = shown
         .iter()
         .map(|e| {
             e.role != AccessibleRole::Text
                 || !shown.iter().any(|o| {
                     o.role != AccessibleRole::Text
-                        && norm(&o.label) == norm(&e.label)
                         && o.holds(e.centre.0, e.centre.1)
+                        && o.key == e.key
                 })
         })
         .collect();
@@ -341,21 +465,16 @@ fn listed(all: Vec<Element>) -> Vec<Element> {
         .collect()
 }
 
-/// The shown elements a label names: whole-label matches if any, else the ones holding it,
-/// the controls before plain text.
-fn matching(w: &AppWindow, label: &str) -> Vec<Element> {
+/// The elements in reach a label names, in the order `tree` lists them: whole-label matches
+/// if any, else, unless `whole` says not to, the ones holding it.
+fn matching(w: &AppWindow, label: &str, whole: bool) -> Vec<Element> {
     let want = norm(label);
     let list = listed(elements(w));
-    let names = |e: &Element| norm(&e.label) == want;
-    let mut hits: Vec<Element> = if list.iter().any(names) {
-        list.into_iter().filter(names).collect()
+    if list.iter().any(|e| names(&e.key, &want)) || whole {
+        list.into_iter().filter(|e| names(&e.key, &want)).collect()
     } else {
-        list.into_iter()
-            .filter(|e| norm(&e.label).contains(&want))
-            .collect()
-    };
-    hits.sort_by_key(|e| e.role == AccessibleRole::Text);
-    hits
+        list.into_iter().filter(|e| e.key.contains(&want)).collect()
+    }
 }
 
 /// Where a touch lands: the element, if a label named one, the point, and how to say it.
@@ -363,28 +482,35 @@ type Landing = (Option<Element>, (f32, f32), String);
 
 /// What a target lands on.
 fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
-    match target {
-        Target::Point(x, y) => Ok((None, (*x, *y), format!("{x:.0},{y:.0}"))),
-        Target::Label { label, nth } => {
-            let mut hits = matching(w, label);
-            if hits.is_empty() {
-                return Err(format!(
-                    "nothing on screen is labelled {label:?}; dump lists what is"
-                ));
+    let (label, nth) = match target {
+        Target::Point(x, y) => return Ok((None, (*x, *y), format!("{x:.0},{y:.0}"))),
+        // `4,5` names a shown label first, Stats' hours in a language that writes a decimal
+        // comma, and a point only when nothing shows by that name.
+        Target::Spot { word, x, y } => {
+            if matching(w, word, true).is_empty() {
+                return Ok((None, (*x, *y), format!("{x:.0},{y:.0}")));
             }
-            let count = hits.len();
-            if *nth > count {
-                return Err(format!("{label:?} matches {count}, not {nth}"));
-            }
-            let e = hits.remove(nth - 1);
-            let mut said = e.line();
-            if count > 1 {
-                said.push_str(&format!(" (match {nth} of {count}; #n picks another)"));
-            }
-            let centre = e.centre;
-            Ok((Some(e), centre, said))
+            (word, 1)
         }
+        Target::Label { label, nth } => (label, *nth),
+    };
+    let mut hits = matching(w, label, false);
+    if hits.is_empty() {
+        return Err(format!(
+            "nothing in reach is labelled {label:?}; tree lists what is, find what is not"
+        ));
     }
+    let count = hits.len();
+    if nth > count {
+        return Err(format!("{label:?} matches {count}, not {nth}"));
+    }
+    let e = hits.remove(nth - 1);
+    let mut said = e.line();
+    if count > 1 {
+        said.push_str(&format!(" (match {nth} of {count}; --nth picks another)"));
+    }
+    let centre = e.centre;
+    Ok((Some(e), centre, said))
 }
 
 // Acting on it.
@@ -418,7 +544,8 @@ fn tap(w: &AppWindow, point: (f32, f32)) {
     lift(w, point);
 }
 
-fn key(w: &AppWindow, k: Key) {
+/// Sends a key and says whether anything took it: the press, or failing that the release.
+fn key(w: &AppWindow, k: Key) -> bool {
     let text: SharedString = match k {
         Key::Back => SlintKey::Back.into(),
         Key::Enter => SlintKey::Return.into(),
@@ -430,12 +557,24 @@ fn key(w: &AppWindow, k: Key) {
         Key::Left => SlintKey::LeftArrow.into(),
         Key::Right => SlintKey::RightArrow.into(),
     };
-    w.window()
-        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-    w.window().dispatch_event(WindowEvent::KeyReleased { text });
+    send_text(w, text)
 }
 
-/// The page and everything open over it, in one line.
+/// Text or a key as key events, the way Android's backend sends them, and whether anything
+/// took them.
+fn send_text(w: &AppWindow, text: SharedString) -> bool {
+    let taken = |r| matches!(r, Ok(WindowEventDispatchResult::Accepted));
+    let pressed = w
+        .window()
+        .dispatch_event_with_result(WindowEvent::KeyPressed { text: text.clone() });
+    let released = w
+        .window()
+        .dispatch_event_with_result(WindowEvent::KeyReleased { text });
+    taken(pressed) || taken(released)
+}
+
+/// The page and what is open over it, in one line. app.slint names what is open, next to
+/// the Back handler whose order it follows.
 fn where_line(w: &AppWindow) -> String {
     let page = w.global::<Nav>().get_page();
     let mut parts = vec![format!(
@@ -476,59 +615,23 @@ fn where_line(w: &AppWindow) -> String {
             }
         ));
     }
-    parts.extend(overlays(w));
+    let over = w.invoke_over();
+    if !over.is_empty() {
+        parts.push(format!("over it {over}"));
+    }
+    if data.get_onboarding() {
+        parts.push(onboarding_line(w));
+    }
     parts.join(", ")
 }
 
-/// What is open over the page, from the top down.
-fn overlays(w: &AppWindow) -> Vec<String> {
-    let mut out = Vec::new();
+fn onboarding_line(w: &AppWindow) -> String {
     let data = w.global::<AppData>();
-    let ask = w.global::<Ask>();
-    if w.global::<PlayerData>().get_open() {
-        out.push("player".into());
-    }
-    if data.get_notes_open() {
-        out.push("what's new".into());
-    }
-    if data.get_onboarding() {
-        out.push(format!(
-            "onboarding step {} of {ONBOARDING_STEPS}",
-            data.get_step()
-        ));
-    }
-    for (open, name) in [
-        (ask.get_mobile(), "mobile data question"),
-        (data.get_notify_ask(), "notification question"),
-        (ask.get_menu_id() >= 0, "show menu"),
-        (ask.get_mark_open(), "mark menu"),
-        (ask.get_versions_open(), "versions menu"),
-        (data.get_airing_menu().show, "airing menu"),
-        (w.global::<AiringPick>().get_open(), "season picker"),
-        (w.global::<MoveData>().get_open(), "list move sheet"),
-    ] {
-        if open {
-            out.push(name.into());
-        }
-    }
-    let sheet = w.global::<ShowData>().get_sheet();
-    if sheet != 0 {
-        let name = match sheet {
-            1 => "list status",
-            2 => "score",
-            3 => "related show",
-            4 => "notes",
-            5 => "fixes",
-            6 => "match",
-            7 => "episodes and dates",
-            _ => "sheet",
-        };
-        out.push(format!("show sheet {name}"));
-    }
-    if w.global::<DiskData>().get_sheet() != 0 {
-        out.push(format!("disk sheet {}", w.global::<DiskData>().get_sheet()));
-    }
-    out
+    format!(
+        "onboarding step {} of {}",
+        data.get_step(),
+        data.get_onboarding_steps()
+    )
 }
 
 /// What shows; with a filter, only the controls whose line holds it.
@@ -540,7 +643,9 @@ fn dump(w: &AppWindow, filter: &str) -> String {
         _ => "half folded",
     };
     let want = norm(filter);
-    let list: Vec<Element> = listed(elements(w))
+    let all = elements(w);
+    let covered = all.iter().filter(|e| e.shown && e.covered).count();
+    let list: Vec<Element> = listed(all)
         .into_iter()
         .filter(|e| want.is_empty() || norm(&e.line()).contains(&want))
         .collect();
@@ -554,40 +659,100 @@ fn dump(w: &AppWindow, filter: &str) -> String {
     if let Some(f) = list.iter().find(|e| e.focused) {
         out.push(format!("focus: {}", f.line()));
     }
-    out.push(format!("shown: {}", list.len()));
+    let under = if covered > 0 {
+        format!(", {covered} more under what is open (find lists them)")
+    } else {
+        String::new()
+    };
+    out.push(format!("shown: {}{under}", list.len()));
     out.extend(list.iter().map(|e| format!("  {}", e.line())));
     out.join("\n")
 }
 
-/// For `wait`: the first shown element the label names, if one shows yet.
+/// For `wait`: the first control in reach the whole label names, if one shows yet. A wait
+/// is for something to appear, so a label that only holds the words does not count.
 pub fn probe(label: &str) -> Option<String> {
     let w = window()?;
-    matching(&w, label).first().map(Element::line)
+    matching(&w, label, true).first().map(Element::line)
 }
 
-/// The series on the phone a title names: a whole-title match first, then one holding it.
-fn series_by_title(w: &AppWindow, title: &str) -> Option<(i32, String)> {
-    let data = w.global::<AppData>();
-    let mut tiles: Vec<(i32, String)> = Vec::new();
-    let library = data.get_library();
-    tiles.extend(library.iter().map(|t| (t.id, t.title.to_string())));
-    for shelf in data.get_home_shelves().iter() {
-        tiles.extend(shelf.tiles.iter().map(|t| (t.id, t.title.to_string())));
-    }
-    tiles.retain(|(id, _)| *id >= 0);
-    let want = norm(title);
-    tiles
-        .iter()
+/// The phone series a `go series` names, from the phone's own library rather than a page's
+/// list, which can hold a computer's shows or be narrowed by a search. A number is an id
+/// when the phone has one, else a title.
+fn series_id(series: &Series) -> Result<u64, String> {
+    let all = crate::app::phone_series();
+    let title = match series {
+        Series::Id(id) => {
+            if let Some((id, _)) = all.iter().find(|(i, _)| *i == u64::from(id.unsigned_abs())) {
+                return Ok(*id);
+            }
+            id.to_string()
+        }
+        Series::Title(title) => title.clone(),
+    };
+    let want = norm(&title);
+    all.iter()
         .find(|(_, t)| norm(t) == want)
-        .or_else(|| tiles.iter().find(|(_, t)| norm(t).contains(&want)))
-        .cloned()
+        .or_else(|| all.iter().find(|(_, t)| norm(t).contains(&want)))
+        .map(|(id, _)| *id)
+        .ok_or_else(|| format!("the phone has no series {title:?}"))
 }
 
 fn fields(w: &AppWindow) -> Vec<Element> {
     elements(w)
         .into_iter()
-        .filter(|e| e.shown && e.role == AccessibleRole::TextInput)
+        .filter(|e| e.reachable() && e.role == AccessibleRole::TextInput)
         .collect()
+}
+
+/// The visible scroll areas, largest first.
+fn scrollers(w: &AppWindow) -> Vec<(ItemRc, Area)> {
+    let (width, height) = window_size(w);
+    let window = Area(0.0, 0.0, width, height);
+    let root = ItemRc::new_root(WindowInner::from_pub(w.window()).component());
+    let mut out = Vec::new();
+    root.visit_descendants(|item| {
+        if item.downcast::<Flickable>().is_some() && item.is_visible() {
+            let area = Area::of(item).and(walk_up(item, window).clip);
+            if area.2 > area.0 && area.3 > area.1 {
+                out.push((item.clone(), area));
+            }
+        }
+        ControlFlow::<()>::Continue(())
+    });
+    let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
+    out.sort_by(|a, b| size(&b.1).total_cmp(&size(&a.1)));
+    out
+}
+
+fn offset(item: &ItemRc) -> (f32, f32) {
+    item.downcast::<Flickable>()
+        .map(|f| {
+            let f = f.as_pin_ref();
+            (f.content_x().get(), f.content_y().get())
+        })
+        .unwrap_or_default()
+}
+
+/// Presses the control a translated label names, through its own action: onboarding's
+/// buttons, so `onboarding next` runs what the person's tap runs.
+fn press_named(w: &AppWindow, ids: &[&str]) -> Result<String, String> {
+    for id in ids {
+        let label = crate::tr::tr(id, &[]);
+        let hit = matching(w, &label, true).into_iter().find(|e| {
+            e.item
+                .supported_accessibility_actions()
+                .contains(SupportedAccessibilityAction::Default)
+        });
+        if let Some(e) = hit {
+            if !e.enabled {
+                return Err(format!("{} is disabled", e.line()));
+            }
+            e.item.accessible_action(&AccessibilityAction::Default);
+            return Ok(e.line());
+        }
+    }
+    Err(format!("no button {:?} is in reach", ids.join(" or ")))
 }
 
 /// Runs one command and sends what it did, or `error: ...`, to `reply` once it is done:
@@ -650,8 +815,16 @@ fn swipe(w: &AppWindow, from: (f32, f32), to: (f32, f32), ms: u64, reply: Sender
                 if let Some(t) = keep.upgrade() {
                     t.stop();
                 }
-                Timer::single_shot(Duration::ZERO, || {
-                    SWIPE.with(|s| drop(s.borrow_mut().take()))
+                // Let go of this swipe's timer only: a swipe sent right after may hold the
+                // slot by now.
+                let mine = keep.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    SWIPE.with(|s| {
+                        let mut s = s.borrow_mut();
+                        if s.as_ref().is_some_and(|t| Rc::as_ptr(t) == mine.as_ptr()) {
+                            *s = None;
+                        }
+                    })
                 });
                 if let Some(r) = reply.take() {
                     let _ = r.send(format!(
@@ -674,35 +847,47 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             w.invoke_go(tab.page());
             where_line(w)
         }
-        Command::Back => {
-            key(w, Key::Back);
-            where_line(w)
-        }
-        Command::Key(keys) => {
+        // Android's backend finishes the activity when nothing takes Back, so a Back that
+        // goes untaken here is one that would close the app on the phone.
+        Command::Back | Command::Key(_) => {
+            let keys = match command {
+                Command::Key(keys) => keys,
+                _ => vec![Key::Back],
+            };
+            let mut untaken = Vec::new();
             for k in keys {
-                key(w, k);
+                if !key(w, k) {
+                    if k == Key::Back {
+                        return Err(format!(
+                            "nothing took Back; Android would close the app here ({})",
+                            where_line(w)
+                        ));
+                    }
+                    untaken.push(format!("{k:?}").to_lowercase());
+                }
             }
-            where_line(w)
+            if untaken.is_empty() {
+                where_line(w)
+            } else {
+                format!("{}; nothing took {}", where_line(w), untaken.join(", "))
+            }
         }
         Command::Open(series) => {
-            let id = match series {
-                Series::Id(id) => id,
-                Series::Title(title) => {
-                    series_by_title(w, &title)
-                        .ok_or_else(|| format!("no series on the phone is titled {title:?}"))?
-                        .0
-                }
-            };
-            data.invoke_open_series(id);
-            if !data.get_series_open() || data.get_series().id != id {
-                return Err(format!(
-                    "series {id} did not open; open takes the phone's ids"
-                ));
+            let id = series_id(&series)?;
+            let slint_id = i32::try_from(id).map_err(|_| format!("series {id} is out of range"))?;
+            data.invoke_open_series(slint_id);
+            if !data.get_series_open() || data.get_series().id != slint_id {
+                return Err(format!("series {id} did not open"));
             }
             where_line(w)
         }
         Command::Press(target) => {
             let (e, point, said) = resolve(w, &target)?;
+            if let Some(e) = &e
+                && !e.enabled
+            {
+                return Err(format!("{said} is disabled; a tap would do nothing"));
+            }
             let action = e.as_ref().filter(|e| {
                 e.item
                     .supported_accessibility_actions()
@@ -730,12 +915,9 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             if !fields(w).iter().any(|f| f.focused) {
                 return Err("no field has the focus; tap one first, or use fill".into());
             }
-            w.window().dispatch_event(WindowEvent::KeyPressed {
-                text: text.as_str().into(),
-            });
-            w.window().dispatch_event(WindowEvent::KeyReleased {
-                text: text.as_str().into(),
-            });
+            if !send_text(w, text.as_str().into()) {
+                return Err("the field did not take the text".into());
+            }
             let now = fields(w).into_iter().find(|f| f.focused);
             format!(
                 "typed into {}",
@@ -748,20 +930,18 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                 Field::Index(n) => all
                     .into_iter()
                     .nth(n - 1)
-                    .ok_or_else(|| format!("there is no field {n} on screen; dump lists them"))?,
+                    .ok_or_else(|| format!("there is no field {n} in reach; tree lists them"))?,
                 Field::Named(name) => {
                     let want = norm(name);
                     // A field shows its placeholder as a text over it while it is empty.
                     let marks: Vec<(f32, f32)> = listed(elements(w))
                         .into_iter()
-                        .filter(|e| {
-                            e.role == AccessibleRole::Text && norm(&e.label).contains(&want)
-                        })
+                        .filter(|e| e.role == AccessibleRole::Text && e.key.contains(&want))
                         .map(|e| e.centre)
                         .collect();
                     all.into_iter()
                         .find(|f| {
-                            norm(&f.label).contains(&want)
+                            f.key.contains(&want)
                                 || f.value.as_deref().is_some_and(|v| norm(v) == want)
                                 || marks.iter().any(|(x, y)| {
                                     let (fx, fy, fw, fh) = f.rect;
@@ -770,9 +950,13 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                                     *y >= fy && *y <= fy + fh && *x >= fx - 80.0 && *x <= fx + fw
                                 })
                         })
-                        .ok_or_else(|| format!("no field on screen shows {name:?}"))?
+                        .ok_or_else(|| format!("no field in reach shows {name:?}"))?
                 }
             };
+            // Slint's set-value checks neither, and no finger can type into such a field.
+            if !picked.enabled || picked.read_only {
+                return Err(format!("{} takes no typing", picked.line()));
+            }
             picked
                 .item
                 .accessible_action(&AccessibilityAction::SetValue(text.as_str().into()));
@@ -801,16 +985,32 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             amount,
             at: place,
         } => {
+            let areas = scrollers(w);
+            // Without a place, the largest scroll area on screen: the window's centre is
+            // the crease when the phone is half folded, where nothing scrolls.
             let (point, said) = match place {
                 Some(t) => {
                     let (_, p, said) = resolve(w, &t)?;
                     (p, format!(" at {said}"))
                 }
                 None => {
-                    let (width, height) = window_size(w);
-                    ((width / 2.0, height / 2.0), String::new())
+                    let a = areas
+                        .first()
+                        .map(|(_, a)| *a)
+                        .ok_or("nothing on screen scrolls")?;
+                    (((a.0 + a.2) / 2.0, (a.1 + a.3) / 2.0), String::new())
                 }
             };
+            // The innermost scroll area under the point, to see whether it moved.
+            let under = areas
+                .iter()
+                .filter(|(_, a)| a.holds(point))
+                .min_by(|a, b| {
+                    let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
+                    size(&a.1).total_cmp(&size(&b.1))
+                })
+                .map(|(i, _)| i.clone());
+            let before = under.as_ref().map(offset);
             let (dx, dy) = match dir {
                 Dir::Down => (0.0, -amount),
                 Dir::Up => (0.0, amount),
@@ -822,10 +1022,21 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                 delta_x: dx,
                 delta_y: dy,
             });
+            let moved = match (before, under.as_ref().map(offset)) {
+                (Some(b), Some(a)) if (a.0 - b.0).abs() + (a.1 - b.1).abs() > 0.5 => {
+                    format!("; it moved {:.0} px", (a.0 - b.0).abs() + (a.1 - b.1).abs())
+                }
+                (Some(_), Some(_)) => "; it did not move (at its end?)".into(),
+                _ => "; nothing under the point scrolls".into(),
+            };
             let dir = format!("{dir:?}").to_lowercase();
-            format!("scrolled {dir} {amount:.0} px{said}")
+            format!(
+                "scrolled {dir} {amount:.0} px at {:.0},{:.0}{said}{moved}",
+                point.0, point.1
+            )
         }
         Command::Onboarding(step) => {
+            let steps = data.get_onboarding_steps();
             match step {
                 Onboarding::Status => {}
                 Onboarding::Start => data.invoke_restart_onboarding(),
@@ -833,23 +1044,26 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                 _ if !data.get_onboarding() => {
                     return Err("onboarding is not open; onboarding start opens it".into());
                 }
-                Onboarding::Next if data.get_step() >= ONBOARDING_STEPS - 1 => {
-                    data.invoke_finish_onboarding()
+                // The page's own buttons, so a typed computer is saved and a host that does
+                // not answer keeps the last step open, as a tap would.
+                Onboarding::Next => {
+                    press_named(w, &["onb-continue", "onb-start"])?;
                 }
-                Onboarding::Next => data.set_step(data.get_step() + 1),
-                Onboarding::Back => data.set_step((data.get_step() - 1).max(0)),
+                Onboarding::Back => {
+                    if data.get_step() == 0 {
+                        return Err("onboarding is on its first step".into());
+                    }
+                    press_named(w, &["onb-back"])?;
+                }
                 Onboarding::Step(n) => {
-                    if n >= ONBOARDING_STEPS {
-                        return Err(format!(
-                            "onboarding has steps 0 to {}",
-                            ONBOARDING_STEPS - 1
-                        ));
+                    if n >= steps {
+                        return Err(format!("onboarding has steps 0 to {}", steps - 1));
                     }
                     data.set_step(n)
                 }
             }
             if data.get_onboarding() {
-                format!("onboarding step {} of {ONBOARDING_STEPS}", data.get_step())
+                onboarding_line(w)
             } else {
                 format!("onboarding off; {}", where_line(w))
             }
@@ -861,7 +1075,7 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             let hits: Vec<String> = elements(w)
                 .into_iter()
                 .filter(|e| {
-                    norm(&e.label).contains(&want)
+                    e.key.contains(&want)
                         || e.value.as_deref().is_some_and(|v| norm(v).contains(&want))
                 })
                 .map(|e| format!("  {}", e.line()))
@@ -881,6 +1095,8 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc::channel;
+
+    use slint::Model;
 
     use super::*;
     use crate::Tr;
@@ -930,20 +1146,31 @@ mod tests {
         assert!(say("back").starts_with("page home"));
         assert_eq!(w.global::<Nav>().get_page(), 0);
 
-        // The dump names the page and what shows, the bar's tabs among it.
+        // Back on Home with nothing open is the one Back Android turns into leaving the app.
+        assert!(
+            say("back").starts_with("error: nothing took Back"),
+            "{}",
+            say("where")
+        );
+
+        // The tree names the page and what shows: the bar's tabs, the home one selected, and
+        // not the text inside each tab that names it again.
         let dump = say("tree");
         assert!(dump.starts_with("page home"), "{dump}");
         assert_eq!(say("where").lines().count(), 1);
         assert!(dump.contains("window 400x900, folded"), "{dump}");
+        let home = tr_in(Lang::En, "phone-nav-home", &[]);
         let downloads = tr_in(Lang::En, "phone-nav-downloads", &[]);
-        assert!(dump.contains(&format!("text {downloads:?}")), "{dump}");
+        assert!(dump.contains(&format!("tab {home:?} selected")), "{dump}");
+        assert!(dump.contains(&format!("tab {downloads:?} at")), "{dump}");
+        assert!(!dump.contains(&format!("text {downloads:?}")), "{dump}");
         let only = say(&format!("tree {downloads:?}"));
         assert!(only.contains(&downloads), "{only}");
         assert!(only.lines().count() < dump.lines().count(), "{only}");
 
-        // A click on the bar's label taps it, and the tab opens.
+        // A click on a tab runs its own action, and the tab opens.
         let pressed = say(&format!("click {downloads:?}"));
-        assert!(pressed.starts_with("tapped text"), "{pressed}");
+        assert!(pressed.starts_with("pressed tab"), "{pressed}");
         assert_eq!(w.global::<Nav>().get_page(), 2, "{pressed}");
 
         // A search lands in Downloads with its words in the field.
@@ -951,28 +1178,39 @@ mod tests {
         assert!(say("go downloads frieren").contains("page downloads"));
         assert_eq!(w.global::<FindData>().get_text(), "frieren");
 
-        // Onboarding steps forward and back, and its Continue presses like a button.
+        // Onboarding covers the page and the bar: what is under it is out of reach.
         data.set_onboarding(true);
         data.set_step(0);
+        let steps = data.get_onboarding_steps();
+        let dump = say("tree");
+        assert!(dump.contains("more under what is open"), "{dump}");
+        assert!(
+            say(&format!("click {downloads:?}")).starts_with("error: nothing in reach"),
+            "{dump}"
+        );
+
+        // Its own buttons step it on and back, as a finger would.
         assert_eq!(
             say("onboarding next"),
-            format!("onboarding step 1 of {ONBOARDING_STEPS}")
+            format!("onboarding step 1 of {steps}")
         );
         assert_eq!(
             say("onboarding step 4"),
-            format!("onboarding step 4 of {ONBOARDING_STEPS}")
+            format!("onboarding step 4 of {steps}")
         );
         let next = tr_in(Lang::En, "onb-continue", &[]);
         let pressed = say(&format!("click {next:?}"));
-        // The app's Button declares no accessible action, so the click taps its label, and the
-        // touch reaches the button under it as a finger would.
-        assert!(pressed.starts_with("tapped text"), "{pressed}");
+        assert!(pressed.starts_with("pressed button"), "{pressed}");
         assert_eq!(data.get_step(), 5, "{pressed}");
-        assert!(say("onboarding back").ends_with("step 4 of 8"));
-        assert!(say("tree").contains("onboarding step 4 of 8"));
+        assert_eq!(
+            say("onboarding back"),
+            format!("onboarding step 4 of {steps}")
+        );
+        assert!(say("tree").contains(&format!("onboarding step 4 of {steps}")));
+        data.set_onboarding(false);
 
         // What is not there says so.
-        assert!(say("click \"No such control\"").starts_with("error: nothing on screen"));
+        assert!(say("click \"No such control\"").starts_with("error: nothing in reach"));
         assert!(say("go series 99999").starts_with("error"));
         assert!(say("type hello").starts_with("error: no field has the focus"));
         assert!(say("find zzzz-nothing").starts_with("error"));

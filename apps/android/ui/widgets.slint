@@ -185,6 +185,10 @@ export component Button inherits Rectangle {
     // The widest it grows; a longer label is cut short with an ellipsis.
     in property <length> widest: 10000px;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
     height: root.small ? Theme.control-small : Theme.control;
     min-width: Math.min(row.preferred-width + (root.small ? 7 : 10) * Theme.unit, root.widest);
     border-radius: self.height / 2;
@@ -244,6 +248,9 @@ export component TextButton inherits Rectangle {
     // The widest it grows; a longer label is cut short with an ellipsis.
     in property <length> widest: 10000px;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
     height: 10 * Theme.unit;
     min-width: Math.min(label.preferred-width + 6 * Theme.unit, root.widest);
     border-radius: self.height / 2;
@@ -303,7 +310,12 @@ export component IconButton inherits Rectangle {
     in property <bool> spinning;
     in property <bool> danger;
     in property <bool> primary;
+    // What the glyph does, for a screen reader and control over adb.
+    in property <string> label;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
     width: Theme.touch;
     height: self.width;
     border-radius: self.width / 2;
@@ -353,6 +365,10 @@ export component CardStack inherits Rectangle {
 export component Switch inherits Rectangle {
     in property <bool> on;
     callback toggled();
+    accessible-role: switch;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-action-default => { root.toggled(); }
     width: 12 * Theme.unit;
     height: 7 * Theme.unit;
     border-radius: self.height / 2;
@@ -954,6 +970,11 @@ export component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> active;
     callback clicked();
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.active;
+    accessible-action-default => { root.clicked(); }
     Rectangle {
         width: 11 * Theme.unit;
         height: self.width;

@@ -323,6 +323,8 @@ export global AppData {
     // The phone's library has been read once: until then an empty list means nothing yet.
     in property <bool> ready;
     in-out property <int> step;
+    // How many steps onboarding has; onboarding.slint and control over adb read it.
+    out property <int> onboarding-steps: 8;
     in property <string> anilist-state;
     in property <string> mal-state;
     // The last sign-in to AniList or MAL failed.

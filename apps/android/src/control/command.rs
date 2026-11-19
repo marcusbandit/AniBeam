@@ -65,8 +65,18 @@ impl Tab {
 /// point in the window's logical pixels, as `dump` prints them.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
-    Label { label: String, nth: usize },
+    Label {
+        label: String,
+        nth: usize,
+    },
     Point(f32, f32),
+    /// One word shaped like a point, `4,5`: a label that shows by that name, else the point.
+    /// Stats writes hours with a decimal comma in most of the app's languages.
+    Spot {
+        word: String,
+        x: f32,
+        y: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -304,13 +314,17 @@ fn rest(words: &[String]) -> String {
 }
 
 /// `x,y`, or `x y`, for a point.
-fn point(words: &[String]) -> Option<(f32, f32)> {
+fn point(words: &[String]) -> Option<Target> {
     match words {
         [one] => {
             let (x, y) = one.split_once(',')?;
-            Some((number(x.trim())?, number(y.trim())?))
+            Some(Target::Spot {
+                word: one.clone(),
+                x: number(x.trim())?,
+                y: number(y.trim())?,
+            })
         }
-        [x, y] => Some((number(x)?, number(y)?)),
+        [x, y] => Some(Target::Point(number(x)?, number(y)?)),
         _ => None,
     }
 }
@@ -324,8 +338,8 @@ fn nth(word: &str) -> Result<usize, String> {
 
 /// A point, or a label with an optional `--nth n` (or `#n`) at its end.
 fn target(words: &[String]) -> Result<Target, String> {
-    if let Some((x, y)) = point(words) {
-        return Ok(Target::Point(x, y));
+    if let Some(point) = point(words) {
+        return Ok(point);
     }
     let (words, nth) = match words {
         [head @ .., flag, n] if !head.is_empty() && flag == "--nth" => (head, nth(n)?),
@@ -618,7 +632,11 @@ mod tests {
         );
         assert_eq!(
             one("click 10,20"),
-            Command::Press(Target::Point(10.0, 20.0))
+            Command::Press(Target::Spot {
+                word: "10,20".into(),
+                x: 10.0,
+                y: 20.0
+            })
         );
         assert_eq!(
             one("click 10 20"),
@@ -642,7 +660,14 @@ mod tests {
         assert_eq!(one("hold Frieren #3"), Command::Hold(label("Frieren", 3)));
         assert_eq!(one("hold 5 6"), Command::Hold(Target::Point(5.0, 6.0)));
         assert_eq!(one("tap 5, 6"), Command::Tap(label("5, 6", 1)));
-        assert_eq!(one("tap \"5, 6\""), Command::Tap(Target::Point(5.0, 6.0)));
+        assert_eq!(
+            one("tap \"4,5\""),
+            Command::Tap(Target::Spot {
+                word: "4,5".into(),
+                x: 4.0,
+                y: 5.0
+            })
+        );
     }
 
     #[test]

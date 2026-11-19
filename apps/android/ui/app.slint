@@ -32,8 +32,6 @@ import { DateTile, ScheduleData } from "show-dates.slint";
 import { ShowSheets } from "show-sheets.slint";
 
 export { Theme, Tr, LangChoice, LangData }
-// What is open over a page, for control over adb's dump (src/control/).
-export { Ask }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
 export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, DateTile, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, ScheduleData, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
@@ -364,6 +362,31 @@ export component AppWindow inherits Window {
         }
         Nav.page = to;
         keys.focus();
+    }
+
+    // What Back closes first, named for control over adb's `where` (src/control/). It
+    // follows the handler below: a question or sheet added there gets its name here.
+    public pure function over() -> string {
+        if (PlayerData.open) { return "the player"; }
+        if (AppData.notes-open) { return "what's new"; }
+        if (Ask.mobile) { return "the mobile data question"; }
+        if (AppData.notify-ask) { return "the notification question"; }
+        if (Ask.menu-id >= 0) { return "the show menu"; }
+        if (Ask.mark-open) { return "the mark menu"; }
+        if (Ask.versions-open) { return "the versions menu"; }
+        if (ShowData.sheet == 1) { return "the list status sheet"; }
+        if (ShowData.sheet == 2) { return "the score sheet"; }
+        if (ShowData.sheet == 3) { return "a related show"; }
+        if (ShowData.sheet == 4) { return "the notes sheet"; }
+        if (ShowData.sheet == 5) { return "the fixes sheet"; }
+        if (ShowData.sheet == 6) { return "the match sheet"; }
+        if (ShowData.sheet == 7) { return "the episodes and dates sheet"; }
+        if (ShowData.sheet != 0) { return "a show sheet"; }
+        if (AppData.airing-menu.show) { return "the airing menu"; }
+        if (AiringPick.open) { return "the season picker"; }
+        if (DiskData.sheet != 0) { return "the disk sheet"; }
+        if (MoveData.open) { return "the list move sheet"; }
+        return "";
     }
 
     keys := FocusScope {

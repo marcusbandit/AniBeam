@@ -15,7 +15,7 @@ import { LangList } from "lang.slint";
 // one pane it asks about, and the buttons at the foot where a thumb is.
 export component Onboarding inherits Rectangle {
     background: Theme.ground;
-    property <int> steps: 8;
+    property <int> steps: AppData.onboarding-steps;
     property <[{title: string, note: string}]> pages: [
         { title: Tr.t("onb-welcome-title"), note: Tr.t("onb-welcome-note") },
         { title: Tr.t("onb-language-title"), note: Tr.t("onb-language-note") },
