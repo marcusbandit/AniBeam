@@ -55,7 +55,14 @@ def change_files(changes_dir, ref):
     """The change files' texts, as main has them, or as the commit `ref` had them."""
     if ref:
         rel = changes_dir.relative_to(root).as_posix()
-        names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
+        try:
+            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
+        except subprocess.CalledProcessError:
+            # A tag from before the phone app moved to apps/phone (#1309) has it in apps/android.
+            if not rel.startswith("apps/phone/"):
+                raise
+            rel = "apps/android/" + rel.removeprefix("apps/phone/")
+            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
         return [(n, git("show", f"{ref}:{rel}/{n}")) for n in sorted(names) if n.endswith(".md")]
     return [(f.name, f.read_text()) for f in sorted(changes_dir.glob("*.md"))]
 
