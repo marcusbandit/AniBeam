@@ -183,7 +183,10 @@ async fn run(
         Ok(signed_in) => {
             match &signed_in {
                 Ok(_) => tab.answer(OK, &page(Page::Connected(site_name(t)))).await,
-                Err(e) => tab.answer(BAD_REQUEST, &page(Page::Failed(&page_message(e)))).await,
+                Err(e) => {
+                    tab.answer(BAD_REQUEST, &page(Page::Failed(&page_message(e))))
+                        .await
+                }
             }
             signed_in
         }
@@ -885,7 +888,9 @@ mod tests {
         assert!(shown.contains("MyAnimeList is connected to"), "{shown}");
         assert!(shown.contains("You can close this tab."), "{shown}");
         assert!(shown.contains("window.close()"), "{shown}");
-        assert!(page(Page::Connected(site_name(Tracker::Anilist))).contains("AniList is connected to"));
+        assert!(
+            page(Page::Connected(site_name(Tracker::Anilist))).contains("AniList is connected to")
+        );
         let shown = page(Page::Failed("<script>alert(1)</script>"));
         assert!(!shown.contains("<script>alert"));
         assert!(shown.contains("&lt;script&gt;"));
