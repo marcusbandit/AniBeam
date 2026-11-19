@@ -92,6 +92,23 @@ pub fn is_hidden(conn: &Connection, t: Tracker, media_id: u64) -> Result<bool, C
     Ok(conn.query_row(sql, params![media_id as i64], |r| r.get::<_, i64>(0))? == 1)
 }
 
+/// Whether either id is hidden: [`is_hidden`] for a show that may carry
+/// both.
+pub(crate) fn any_hidden(
+    conn: &Connection,
+    anilist: Option<u64>,
+    mal: Option<u64>,
+) -> Result<bool, CoreError> {
+    for (t, id) in [(Tracker::Anilist, anilist), (Tracker::Mal, mal)] {
+        if let Some(id) = id
+            && is_hidden(conn, t, id)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Where one series' writes go: the ids the match carries, the published
 /// total that decides whether a write completes the list, and the name the
 /// activity log calls the series by.
@@ -269,19 +286,14 @@ fn finished_again(
     let Some((t, id)) = cached_id(target, main) else {
         return Ok(false);
     };
-    let entry = conn
-        .query_row(
-            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
-            params![t.as_str(), id as i64],
-            |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
-        )
-        .optional()?;
-    let Some((status, Some(updated_at))) = entry else {
+    let Some(cache::Cached {
+        status: Some(ListStatus::Completed),
+        updated_at: Some(updated_at),
+        ..
+    }) = cache::cached(conn, t, id)?
+    else {
         return Ok(false);
     };
-    if status.as_deref().and_then(ListStatus::from_column) != Some(ListStatus::Completed) {
-        return Ok(false);
-    }
     if target.total == Some(1) {
         return Ok(updated_at < time::now_secs() - FILM_REWATCH_GAP);
     }
@@ -1038,14 +1050,10 @@ fn guard_reach(
                 reason: Refusal::NoMatch,
             });
         }
-        for t in [Tracker::Anilist, Tracker::Mal] {
-            if let Some(id) = target.id_for(t)
-                && is_hidden(c, t, id)?
-            {
-                return Err(CoreError::Refused {
-                    reason: Refusal::Hidden,
-                });
-            }
+        if any_hidden(c, target.anilist, target.mal)? {
+            return Err(CoreError::Refused {
+                reason: Refusal::Hidden,
+            });
         }
         let main = prefs::load_main_tracker(c)?;
         let reach = reach(c, target, lookup)?;
@@ -1062,7 +1070,7 @@ fn guard_reach(
 fn reach(conn: &Connection, target: &Targets, lookup: bool) -> Result<Vec<Tracker>, CoreError> {
     let mut reach = Vec::new();
     for t in [Tracker::Anilist, Tracker::Mal] {
-        if !accounts::load_row(conn, t)?.is_some_and(|row| row.connected_at.is_some()) {
+        if accounts::connected(conn, t)?.is_none() {
             continue;
         }
         let found = match (t, target.id_for(t), target.anilist) {
@@ -1092,14 +1100,7 @@ pub(crate) fn covered(
         let Some(id) = target.id_for(t) else {
             return Ok(false);
         };
-        let progress = conn
-            .query_row(
-                "SELECT progress FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
-                params![t.as_str(), id as i64],
-                |r| r.get::<_, i64>(0),
-            )
-            .optional()?;
-        if !progress.is_some_and(|p| u32::try_from(p).unwrap_or(0) >= episode) {
+        if !cache::cached(conn, t, id)?.is_some_and(|e| e.progress >= episode) {
             return Ok(false);
         }
     }
@@ -1203,15 +1204,9 @@ async fn write_all(
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
         // A tracker with no account behind it is not this write's business.
-        let row = trackers
-            .services
-            .store
-            .write_async(move |c| accounts::load_row(c, t))
-            .await?
-            .unwrap_or_default();
-        if row.connected_at.is_none() {
+        let Some(row) = accounts::connected_async(&trackers.services, t).await? else {
             continue;
-        }
+        };
         // A tracker the match carries no id for has nothing to write to,
         // unless it is MAL and its search finds the show (#782). A write
         // over several series never searches, so a pick is never a sweep.

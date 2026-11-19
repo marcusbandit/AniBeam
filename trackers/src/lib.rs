@@ -38,6 +38,16 @@ pub(crate) use anibeam_net::{TRACKER_TIMEOUT, as_count, as_u32};
 /// failed and already said so.
 pub(crate) const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
 
+/// A job's end that only the developer log keeps.
+pub(crate) fn quiet(message: impl Into<String>) -> anibeam_foundation::jobs::Finished {
+    anibeam_foundation::jobs::Finished {
+        plain: None,
+        level: anibeam_contract::Level::Debug,
+        message: message.into(),
+        body: anibeam_contract::EventBody::Notice,
+    }
+}
+
 /// [`NO_TOKEN`] in the current language, for an error a person reads.
 pub(crate) fn no_token() -> String {
     anibeam_contract::i18n::tr("core-trackers-no-token", &[])

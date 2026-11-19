@@ -109,12 +109,12 @@ pub fn start(trackers: &Arc<Trackers>, t: Tracker, series: Vec<u64>) -> Result<u
             anibeam_contract::i18n::tr("core-trackers-move-none-picked", &[]),
         ));
     }
-    let connected = trackers
+    if trackers
         .services
         .store
-        .read(|c| accounts::load_row(c, t))?
-        .is_some_and(|row| row.connected_at.is_some());
-    if !connected {
+        .read(|c| accounts::connected(c, t))?
+        .is_none()
+    {
         return Err(CoreError::NotConnected { tracker: t });
     }
     // Each pick's place in its entry's write line is taken now, in the
