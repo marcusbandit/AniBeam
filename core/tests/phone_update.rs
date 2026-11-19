@@ -74,11 +74,8 @@ fn the_check_answers_from_a_runtime_worker() {
         .unwrap();
     // A clone goes to the worker, so the core is never dropped inside the runtime
     let on_worker = core.clone();
-    let answer = shell
-        .block_on(tokio::spawn(async move {
-            check(&on_worker, "2.4.3-nightly.20261116.96")
-        }))
-        .unwrap();
+    let task = shell.spawn(async move { check(&on_worker, "2.4.3-nightly.20261116.96") });
+    let answer = shell.block_on(task).unwrap();
     assert_eq!(
         answer.unwrap().map(|u| u.version).as_deref(),
         Some("2.4.3-nightly.20261117.97")
