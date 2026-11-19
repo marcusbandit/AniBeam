@@ -81,7 +81,9 @@ impl EventBus {
         scrub_stored(&store)?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
-            stored: AtomicU64::new(0),
+            // From 1: `new` has just trimmed, so the first batch's trim is the
+            // 64th stored event, not the first.
+            stored: AtomicU64::new(1),
             generation: AtomicU64::new(0),
             next_listener: AtomicU64::new(1),
             listeners: RwLock::new(Vec::new()),

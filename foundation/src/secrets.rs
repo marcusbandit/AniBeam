@@ -224,9 +224,6 @@ impl Secrets {
         }
     }
 
-    /// The keyring store, probing for it on the first call. Every caller
-    /// after the first finds the answer already there, and callers racing
-    /// the first wait on it rather than opening a second session bus.
     /// Test-only: `None` until the store choice has been made, then whether
     /// the machine turned out to have no keyring. Never starts the probe.
     #[cfg(test)]
@@ -234,6 +231,9 @@ impl Secrets {
         self.primary.get().map(Option::is_none)
     }
 
+    /// The keyring store, probing for it on the first call. Every caller
+    /// after the first finds the answer already there, and callers racing
+    /// the first wait on it rather than opening a second session bus.
     fn primary(&self) -> Option<&Arc<CredentialStore>> {
         self.primary.get_or_init(open_keyring).as_ref()
     }

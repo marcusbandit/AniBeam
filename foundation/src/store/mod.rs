@@ -641,21 +641,23 @@ mod tests {
     /// posted to it, and a second close is a no-op.
     #[test]
     fn a_closed_store_refuses_writes_and_closes_twice() {
-        let (_dir, store) = open_temp();
+        let (dir, store) = open_temp();
         store.close();
         assert!(store.write(|_| Ok(())).is_err());
         assert!(store.tx(|_| Ok(())).is_err());
         let rt = tokio::runtime::Runtime::new().unwrap();
         assert!(rt.block_on(store.write_async(|_| Ok(()))).is_err());
         assert!(rt.block_on(store.tx_async(|_| Ok(()))).is_err());
-        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flag = ran.clone();
-        store.post(move |_| flag.store(true, std::sync::atomic::Ordering::SeqCst));
-        assert!(
-            !ran.load(std::sync::atomic::Ordering::SeqCst),
+        store.post(|c| {
+            let _ = c.execute(ADD_SOURCE, []);
+        });
+        store.close();
+        let reopened = Store::open(&dir.path().join("data").join("anibeam.db")).unwrap();
+        assert_eq!(
+            one::<i64>(&reopened, SOURCES),
+            0,
             "a closed store runs nothing posted to it"
         );
-        store.close();
     }
 
     /// The watch log (#593) starts from the history already there: every

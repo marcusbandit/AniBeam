@@ -229,9 +229,10 @@ impl JobCtx {
     /// last emit is a window old, or arms one flush for when it will be. A
     /// due emit takes what was already buffered along with the new value, so
     /// no older value is left behind for a flush to deliver stale after it.
-    /// A push once the job has finished is dropped: anything still holding
-    /// the context (a task the body spawned, say) would otherwise land an
-    /// event after the terminal one.
+    /// The emit runs after the lock is let go, so no listener runs under it.
+    /// Once the job has finished nothing flushes any more, so a push from
+    /// something that outlived the body (a task it spawned) goes out at once
+    /// rather than waiting on a flush that would drop it.
     fn push<P: Pending>(
         self: &Arc<Self>,
         slot: fn(&JobCtx) -> &Mutex<Throttle<P>>,
@@ -239,12 +240,15 @@ impl JobCtx {
         emit: fn(&JobCtx, P::Out),
     ) {
         let mut t = recover(slot(self));
-        if self.finished.load(Ordering::SeqCst) {
-            return;
-        }
         add(&mut t.pending);
-        if t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL) {
-            self.drain(&mut t, emit);
+        if self.finished.load(Ordering::SeqCst)
+            || t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL)
+        {
+            let due = t.take();
+            drop(t);
+            if let Some(due) = due {
+                emit(self, due);
+            }
             return;
         }
         if t.flush_scheduled {
@@ -263,10 +267,10 @@ impl JobCtx {
         });
     }
 
-    /// Emits whatever a throttle holds, called with its lock held: whichever
-    /// of a push, a scheduled flush and the runner's `finish` takes the lock
-    /// first completes entirely, emit included, before the next can start,
-    /// so nothing a throttle held can land after the terminal event.
+    /// Emits whatever a throttle holds, called with its lock held by the
+    /// scheduled flush and by `finish`: whichever takes the lock first
+    /// completes entirely, emit included, before the other can start, so a
+    /// scheduled flush can never land after the terminal event.
     fn drain<P: Pending>(&self, t: &mut Throttle<P>, emit: fn(&JobCtx, P::Out)) {
         if let Some(due) = t.take() {
             emit(self, due);
@@ -342,9 +346,9 @@ impl Drop for JobGuard {
         if self.done {
             return;
         }
-        // No further scheduled flush should emit for a job ending this way
-        // either.
-        self.ctx.finished.store(true, Ordering::SeqCst);
+        // What the throttles still hold goes out before the terminal event,
+        // as on the normal path, and no scheduled flush emits after it.
+        self.ctx.finish();
         recover(&self.jobs.running).remove(&self.id);
         if std::thread::panicking() {
             emit_failed(
@@ -919,12 +923,14 @@ mod tests {
     }
 
     /// Something that still holds the context after the body returned, a task
-    /// the body spawned say, cannot land an event after the terminal one.
+    /// the body spawned say, is not throttled any more: nothing flushes for a
+    /// finished job, so what it pushes goes out at once instead of being lost.
     #[test]
-    fn a_push_after_the_job_finished_emits_nothing() {
+    fn a_push_after_the_job_finished_still_goes_out() {
         let (_d, _rt, jobs, c) = setup();
         let (tx, rx) = std::sync::mpsc::channel();
         let id = jobs.start(JobKind::Scan, move |ctx| async move {
+            ctx.progress(0, Some(2), "early");
             tx.send(ctx.clone()).unwrap();
             scan_done()
         });
@@ -932,8 +938,42 @@ mod tests {
         let ctx = rx.recv().unwrap();
         ctx.progress(1, Some(2), "late");
         ctx.changed(card(7));
-        std::thread::sleep(PROGRESS_INTERVAL + Duration::from_millis(100));
-        assert_nothing_follows_the_terminal_event(&of_job(&c, id));
+        let late = of_job(&c, id);
+        assert!(
+            late.iter().any(
+                |e| matches!(&e.body, EventBody::JobProgress { label, .. } if label == "late")
+            ),
+            "{late:?}"
+        );
+        assert!(
+            late.iter().any(
+                |e| matches!(&e.body, EventBody::SeriesChanged { series } if series.iter().any(|s| s.id == 7))
+            ),
+            "{late:?}"
+        );
+    }
+
+    /// A body that panics still delivers the cards it had buffered, before
+    /// its terminal event, as one that returns does.
+    #[test]
+    fn a_panicking_job_delivers_its_buffered_cards_first() {
+        let (_d, _rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::Scan, |ctx| async move {
+            ctx.changed(card(1));
+            ctx.changed(card(2));
+            panic!("boom after buffering a card");
+        });
+        wait_for_finished(&c, id);
+        let mine = of_job(&c, id);
+        let ids: Vec<u64> = mine
+            .iter()
+            .flat_map(|e| match &e.body {
+                EventBody::SeriesChanged { series } => series.iter().map(|s| s.id).collect(),
+                _ => vec![],
+            })
+            .collect();
+        assert!(ids.contains(&1) && ids.contains(&2), "{mine:?}");
+        assert_nothing_follows_the_terminal_event(&mine);
     }
 
     #[test]
