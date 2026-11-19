@@ -1309,61 +1309,54 @@ impl App {
 
     /// Runs the connection check on a thread and lists what it found, failures first.
     fn run_check(&mut self) {
-        let Some(core) = crate::local::core() else {
-            return;
-        };
-        self.data().set_checking(true);
-        self.data().set_check_summary("".into());
-        let _ = std::thread::Builder::new()
-            .name("check".into())
-            .spawn(move || {
-                let answer = core.call(Call::PhoneNetCheck);
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        let window = app.window.clone_strong();
-                        let data = window.global::<AppData>();
-                        data.set_checking(false);
-                        let Ok(Reply::PhoneNetCheck { checks }) = answer else {
-                            return;
-                        };
-                        app.check_text = std::iter::once(format!(
-                            "Anibeam {} connection check",
-                            env!("ANIBEAM_PHONE_VERSION")
-                        ))
-                        .chain(checks.iter().map(|c| {
-                            format!(
-                                "{} {}: {} ({} ms)",
-                                if c.ok { "OK  " } else { "FAIL" },
-                                c.name,
-                                c.detail,
-                                c.ms
-                            )
-                        }))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                        let failed = checks.iter().filter(|c| !c.ok).count();
-                        data.set_check_failed(failed as i32);
-                        data.set_check_summary(
-                            if failed == 0 {
-                                tr!("more-check-all-ok")
-                            } else {
-                                tr!("more-check-failed", failed = failed, total = checks.len())
-                            }
-                            .into(),
-                        );
-                        let rows: Vec<CheckRow> = checks
-                            .iter()
-                            .map(|c| CheckRow {
-                                name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms)
-                                    .into(),
-                                detail: c.detail.clone().into(),
-                                ok: c.ok,
-                            })
-                            .collect();
-                        data.set_checks(ModelRc::new(VecModel::from(rows)));
+        let started = crate::local::call_off_thread("check", Call::PhoneNetCheck, |answer| {
+            with_app(|app| {
+                let window = app.window.clone_strong();
+                let data = window.global::<AppData>();
+                data.set_checking(false);
+                let Ok(Reply::PhoneNetCheck { checks }) = answer else {
+                    return;
+                };
+                app.check_text = std::iter::once(format!(
+                    "Anibeam {} connection check",
+                    env!("ANIBEAM_PHONE_VERSION")
+                ))
+                .chain(checks.iter().map(|c| {
+                    format!(
+                        "{} {}: {} ({} ms)",
+                        if c.ok { "OK  " } else { "FAIL" },
+                        c.name,
+                        c.detail,
+                        c.ms
+                    )
+                }))
+                .collect::<Vec<_>>()
+                .join("\n");
+                let failed = checks.iter().filter(|c| !c.ok).count();
+                data.set_check_failed(failed as i32);
+                data.set_check_summary(
+                    if failed == 0 {
+                        tr!("more-check-all-ok")
+                    } else {
+                        tr!("more-check-failed", failed = failed, total = checks.len())
+                    }
+                    .into(),
+                );
+                let rows: Vec<CheckRow> = checks
+                    .iter()
+                    .map(|c| CheckRow {
+                        name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms).into(),
+                        detail: c.detail.clone().into(),
+                        ok: c.ok,
                     })
-                });
-            });
+                    .collect();
+                data.set_checks(ModelRc::new(VecModel::from(rows)));
+            })
+        });
+        if started {
+            self.data().set_checking(true);
+            self.data().set_check_summary("".into());
+        }
     }
 
     /// Asks the engine for its torrents on a thread, one ask at a time.

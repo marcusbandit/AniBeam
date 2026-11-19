@@ -1056,7 +1056,10 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 6: about := SectionPage {
+        // A newer version seen here, on opening or while open, is seen
+        property <string> offered: AppData.update-version;
         init => { AppData.mark-update-seen(); }
+        changed offered => { AppData.mark-update-seen(); }
         title: Tr.t("more-about");
         note: AppData.version;
         ListGroup {

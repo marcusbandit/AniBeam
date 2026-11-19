@@ -138,15 +138,7 @@ fn with(f: impl FnOnce(&mut Repos)) {
 
 /// Runs `call` on a thread and hands the answer to `done` on the UI thread.
 fn spawn(call: Call, done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static) {
-    let Some(core) = crate::local::core() else {
-        return;
-    };
-    let _ = std::thread::Builder::new()
-        .name("repos".into())
-        .spawn(move || {
-            let answer = core.call(call);
-            let _ = slint::invoke_from_event_loop(move || with(|r| done(r, answer)));
-        });
+    crate::local::call_off_thread("repos", call, move |answer| with(|r| done(r, answer)));
 }
 
 pub fn install(window: &AppWindow) {

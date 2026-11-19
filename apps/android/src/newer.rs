@@ -9,7 +9,6 @@
 //! process-wide; a recreated window is handed the last answer instead of asking again.
 
 use std::cell::RefCell;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -27,8 +26,9 @@ const RETRY_AFTER: Duration = Duration::from_secs(30 * 60);
 const FLAVOR: &str = env!("ANIBEAM_FLAVOR");
 
 struct State {
-    /// When the next check may go out, on the wall clock; `None` until the first.
-    due: Option<SystemTime>,
+    /// When the next check may go out, on the wall clock, and the wait that set it; `None`
+    /// until the first.
+    due: Option<(SystemTime, Duration)>,
     busy: bool,
     /// What the last answer offered.
     offer: Option<PhoneUpdate>,
@@ -59,16 +59,22 @@ fn offered() -> bool {
     cfg!(target_os = "android") && FLAVOR != "play" && train_build(env!("ANIBEAM_VERSION_CODE"))
 }
 
-/// Whether a check is due at `now`. A clock set back more than the wait is due at once,
-/// so a wrong date cannot hold the check off for its whole distance.
-fn due(at: Option<SystemTime>, now: SystemTime) -> bool {
+/// Whether a check is due at `now`. Time left past the wait that set the due time means
+/// the clock was set back, and the check is due at once, so a wrong date cannot hold it
+/// off for the whole distance.
+fn due(at: Option<(SystemTime, Duration)>, now: SystemTime) -> bool {
     match at {
         None => true,
-        Some(at) => at
+        Some((at, wait)) => at
             .duration_since(now)
             .ok()
-            .is_none_or(|left| left.is_zero() || left > AGAIN_AFTER),
+            .is_none_or(|left| left.is_zero() || left > wait),
     }
+}
+
+/// The due time `wait` from now, with the wait beside it.
+fn after(wait: Duration) -> Option<(SystemTime, Duration)> {
+    Some((SystemTime::now() + wait, wait))
 }
 
 pub fn install(window: &AppWindow) {
@@ -88,57 +94,41 @@ pub fn tick() {
     if !offered() {
         return;
     }
-    {
-        let mut st = state();
-        if st.busy || !due(st.due, SystemTime::now()) {
-            return;
-        }
-        let Some(core) = crate::local::core() else {
-            return;
-        };
-        st.busy = true;
-        let spawned = std::thread::Builder::new()
-            .name("newer".into())
-            .spawn(move || {
-                let call = Call::CheckPhoneUpdate {
-                    current: env!("ANIBEAM_PHONE_VERSION").to_string(),
-                };
-                // A panic still answers, so the check is never left busy for good
-                let answer = catch_unwind(AssertUnwindSafe(|| core.call(call)))
-                    .unwrap_or_else(|_| Err(CoreError::internal("the update check panicked")));
-                heard(answer);
-            });
-        if spawned.is_err() {
-            st.busy = false;
-            st.due = Some(SystemTime::now() + RETRY_AFTER);
-        }
+    let mut st = state();
+    if st.busy || !due(st.due, SystemTime::now()) {
+        return;
     }
+    let call = Call::CheckPhoneUpdate {
+        current: env!("ANIBEAM_PHONE_VERSION").to_string(),
+    };
+    // A panic in the call still answers, so the check is never left busy for good
+    st.busy = crate::local::call_off_thread("newer", call, heard);
 }
 
-/// Off the UI thread: keeps the answer, then hands it to the window.
+/// On the UI thread: keeps the answer, then shows it.
 fn heard(answer: Result<Reply, CoreError>) {
     let offer = {
         let mut st = state();
         st.busy = false;
         match answer {
             Ok(Reply::PhoneUpdate { update }) => {
-                st.due = Some(SystemTime::now() + AGAIN_AFTER);
+                st.due = after(AGAIN_AFTER);
                 st.offer = update;
             }
             Ok(other) => {
                 crate::local::log(&format!("update check: unexpected reply {other:?}"));
-                st.due = Some(SystemTime::now() + RETRY_AFTER);
+                st.due = after(RETRY_AFTER);
                 return;
             }
             Err(e) => {
                 crate::local::log(&format!("update check: {e}"));
-                st.due = Some(SystemTime::now() + RETRY_AFTER);
+                st.due = after(RETRY_AFTER);
                 return;
             }
         }
         st.offer.clone()
     };
-    let _ = slint::invoke_from_event_loop(move || show(offer));
+    show(offer);
 }
 
 /// On the UI thread: the window says what is offered, or nothing.
@@ -168,10 +158,17 @@ mod tests {
     #[test]
     fn a_check_is_due_on_the_wall_clock() {
         let now = SystemTime::now();
+        let set = |left: Duration, wait: Duration| Some((now + left, wait));
         assert!(due(None, now));
-        assert!(due(Some(now - Duration::from_secs(1)), now));
-        assert!(!due(Some(now + Duration::from_secs(60)), now));
+        assert!(due(Some((now - Duration::from_secs(1), AGAIN_AFTER)), now));
+        assert!(!due(set(Duration::from_secs(60), AGAIN_AFTER), now));
         // A clock set back by days
-        assert!(due(Some(now + AGAIN_AFTER * 4), now));
+        assert!(due(set(AGAIN_AFTER * 4, AGAIN_AFTER), now));
+        // A retry's half hour, with the clock set back five hours, goes at once
+        assert!(due(
+            set(Duration::from_secs(5 * 60 * 60 + 30 * 60), RETRY_AFTER),
+            now
+        ));
+        assert!(!due(set(Duration::from_secs(60), RETRY_AFTER), now));
     }
 }
