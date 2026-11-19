@@ -799,6 +799,24 @@ mod tests {
         assert_eq!(pick_secret("bid", None, Some("bid"), None), None);
     }
 
+    /// A row that outlived a disconnect keeps its credentials but is not a
+    /// connected account, and no row at all is not one either.
+    #[test]
+    fn only_a_row_with_a_connection_is_connected() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, connected_at)
+                 VALUES ('anilist', 1, 'owner', 'cid', 5), ('mal', NULL, NULL, 'mid', NULL);",
+        )
+        .unwrap();
+        let row = connected(&c, Tracker::Anilist).unwrap().expect("connected");
+        assert_eq!(row.username.as_deref(), Some("owner"));
+        assert_eq!(connected(&c, Tracker::Mal).unwrap(), None);
+        c.execute("DELETE FROM tracker_accounts WHERE tracker = 'anilist'", [])
+            .unwrap();
+        assert_eq!(connected(&c, Tracker::Anilist).unwrap(), None);
+    }
+
     #[test]
     fn an_empty_stored_client_id_is_no_client_id() {
         let row = Row {
