@@ -323,6 +323,10 @@ mod imp {
         tr("core-cast-not-handed", &[("error", e.to_string().into())])
     }
 
+    fn still_starting() -> CoreError {
+        CoreError::invalid("cast", tr("core-cast-still-starting", &[]))
+    }
+
     fn nothing() -> CoreError {
         CoreError::invalid("cast", tr("core-cast-nothing", &[]))
     }
@@ -548,12 +552,7 @@ mod imp {
         match &session.control {
             Control::Cast(c) => f(Ctl::Cast(c), session.id),
             Control::Dlna { client, .. } => f(Ctl::Dlna(client.clone()), session.id),
-            Control::Starting { .. } => {
-                return Err(CoreError::invalid(
-                    "cast",
-                    tr("core-cast-still-starting", &[]),
-                ));
-            }
+            Control::Starting { .. } => return Err(still_starting()),
         }
         Ok(Reply::Ok)
     }
@@ -612,6 +611,11 @@ mod imp {
         let (mode, base, title, id, prepared, pieces) = {
             let mut s = recover(&inner.session);
             let s = s.as_mut().ok_or_else(nothing)?;
+            // Refused before anything changes: a seek the start never hears must not
+            // leave its offset on the session.
+            if matches!(s.control, Control::Starting { .. }) {
+                return Err(still_starting());
+            }
             s.state.position = to;
             (
                 s.mode,
@@ -959,6 +963,8 @@ mod imp {
                             None => {
                                 let p = prepare(&path, audio_track, None).await?;
                                 serve_file(&inner, &token, &path, Some(p.clone()));
+                                // A seek restarts the stream at a keyframe it reads from here
+                                update(playback, id, |s| s.prepared = Some(p.clone()));
                                 p
                             }
                         };
