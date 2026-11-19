@@ -65,8 +65,8 @@ pub struct JobCtx {
     bus: Arc<EventBus>,
     runtime: Handle,
     progress: Arc<Mutex<Option<Progress>>>,
-    throttle: Arc<Mutex<Throttle<Option<Progress>>>>,
-    changed: Arc<Mutex<Throttle<HashMap<u64, SeriesCard>>>>,
+    throttle: Mutex<Throttle<Option<Progress>>>,
+    changed: Mutex<Throttle<HashMap<u64, SeriesCard>>>,
     /// Set by the runner, under the same locks the scheduled flushes drain
     /// with, before the terminal event. A scheduled flush that observes
     /// this checks it while holding that lock, so it can never emit after
@@ -75,20 +75,24 @@ pub struct JobCtx {
 }
 
 /// What a throttle holds between emits: the latest progress, or every card
-/// pushed since the last emit, the latest for each series.
+/// pushed since the last emit, the latest for each series. `drain` empties
+/// it into what one emit carries, or `None` when nothing waits.
 trait Pending: Default + Send + 'static {
-    fn is_empty(&self) -> bool;
+    type Out;
+    fn drain(&mut self) -> Option<Self::Out>;
 }
 
 impl Pending for Option<Progress> {
-    fn is_empty(&self) -> bool {
-        self.is_none()
+    type Out = Progress;
+    fn drain(&mut self) -> Option<Progress> {
+        self.take()
     }
 }
 
 impl Pending for HashMap<u64, SeriesCard> {
-    fn is_empty(&self) -> bool {
-        HashMap::is_empty(self)
+    type Out = Vec<SeriesCard>;
+    fn drain(&mut self) -> Option<Vec<SeriesCard>> {
+        (!self.is_empty()).then(|| std::mem::take(self).into_values().collect())
     }
 }
 
@@ -101,12 +105,10 @@ struct Throttle<P> {
 
 impl<P: Pending> Throttle<P> {
     /// Everything buffered, taken for an emit now; `None` when nothing waits.
-    fn take(&mut self) -> Option<P> {
-        if self.pending.is_empty() {
-            return None;
-        }
+    fn take(&mut self) -> Option<P::Out> {
+        let out = self.pending.drain()?;
         self.last_emit = Some(Instant::now());
-        Some(std::mem::take(&mut self.pending))
+        Some(out)
     }
 }
 
@@ -174,15 +176,13 @@ impl JobCtx {
         };
         *recover(&self.progress) = Some(p.clone());
         self.push(
-            &self.throttle,
+            |ctx| &ctx.throttle,
             |pending| *pending = Some(p),
             JobCtx::emit_progress,
         );
     }
 
-    /// The throttle only ever hands this `Some`.
-    fn emit_progress(&self, p: Option<Progress>) {
-        let Some(p) = p else { return };
+    fn emit_progress(&self, p: Progress) {
         self.emit(
             Level::Debug,
             format!("{} {}", self.kind.as_str(), p.label),
@@ -210,20 +210,18 @@ impl JobCtx {
             return;
         }
         self.push(
-            &self.changed,
+            |ctx| &ctx.changed,
             |pending| pending.extend(cards.into_iter().map(|card| (card.id, card))),
             JobCtx::emit_changed,
         );
     }
 
-    fn emit_changed(&self, cards: HashMap<u64, SeriesCard>) {
-        let n = cards.len();
+    fn emit_changed(&self, series: Vec<SeriesCard>) {
+        let n = series.len();
         self.emit(
             Level::Debug,
             format!("{} updated {n} series", self.kind.as_str()),
-            EventBody::SeriesChanged {
-                series: cards.into_values().collect(),
-            },
+            EventBody::SeriesChanged { series },
         );
     }
 
@@ -233,11 +231,11 @@ impl JobCtx {
     /// no older value is left behind for a flush to deliver stale after it.
     fn push<P: Pending>(
         self: &Arc<Self>,
-        slot: &Arc<Mutex<Throttle<P>>>,
+        slot: fn(&JobCtx) -> &Mutex<Throttle<P>>,
         add: impl FnOnce(&mut P),
-        emit: fn(&JobCtx, P),
+        emit: fn(&JobCtx, P::Out),
     ) {
-        let mut t = recover(slot);
+        let mut t = recover(slot(self));
         add(&mut t.pending);
         if t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL) {
             let due = t.take();
@@ -252,14 +250,14 @@ impl JobCtx {
         }
         t.flush_scheduled = true;
         let wait = PROGRESS_INTERVAL.saturating_sub(t.last_emit.unwrap().elapsed());
-        let (me, slot) = (self.clone(), slot.clone());
+        let me = self.clone();
         self.runtime.spawn(async move {
             tokio::time::sleep(wait).await;
             // Held for the whole check-drain-emit: whichever of this task
             // and the runner's `finish` reaches the lock first completes
             // entirely, emit included, before the other can start, so a
             // flush from here can never land after the terminal event.
-            let mut t = recover(&slot);
+            let mut t = recover(slot(&me));
             t.flush_scheduled = false;
             if !me.finished.load(Ordering::SeqCst)
                 && let Some(due) = t.take()
@@ -271,7 +269,7 @@ impl JobCtx {
 
     /// Emits whatever a throttle holds right now, holding its lock through
     /// the emit for the same reason the scheduled flush does.
-    fn flush<P: Pending>(&self, slot: &Mutex<Throttle<P>>, emit: fn(&JobCtx, P)) {
+    fn flush<P: Pending>(&self, slot: &Mutex<Throttle<P>>, emit: fn(&JobCtx, P::Out)) {
         let mut t = recover(slot);
         if let Some(due) = t.take() {
             emit(self, due);
@@ -437,8 +435,8 @@ impl Jobs {
             bus: self.bus.clone(),
             runtime: self.runtime.clone(),
             progress,
-            throttle: Arc::default(),
-            changed: Arc::default(),
+            throttle: Mutex::default(),
+            changed: Mutex::default(),
             finished: AtomicBool::new(false),
         });
         self.bus.emit(

@@ -9,14 +9,16 @@ use crate::sync::{recover, recover_read, recover_write};
 use crate::time;
 use anibeam_contract::*;
 
-/// The size of the events ring: the store keeps this many of the newest
-/// Info-and-above rows, oldest dropped first.
+/// The size of the events ring: the newest this many Info-and-above rows,
+/// oldest dropped first, are what `recent` reads. The table may hold a few
+/// more between trims ([`TRIM_EVERY`]).
 pub const RING_SIZE: u64 = 2000;
 
 /// The ring is trimmed back to [`RING_SIZE`] once every this many stored
 /// events rather than after each one: the trim walks the whole ring, which
 /// cost several times the insert it followed. Between trims the table holds
-/// up to this many rows more than the ring, and `recent` never reads them.
+/// fewer than this many rows more than the ring, and `recent` never reads
+/// them.
 const TRIM_EVERY: u64 = 64;
 
 /// Every call and every job emits through this. Persistence is
@@ -250,24 +252,24 @@ impl EventBus {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
                 None => (None, None, None),
             };
-            let body = match serde_json::to_value(&e.body).map(scrub_value) {
-                Ok(body) => body.to_string(),
+            match serde_json::to_value(&e.body).map(scrub_value) {
+                Ok(body) => {
+                    let inserted = c
+                        .prepare_cached(
+                            "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                        )
+                        .and_then(|mut stmt| {
+                            stmt.execute(params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body.to_string(), e.plain, plain_words])
+                        });
+                    if let Err(err) = inserted {
+                        tracing::warn!("failed to insert event seq {}: {err}", e.seq);
+                    }
+                }
                 Err(err) => {
                     tracing::warn!("failed to serialise event body for seq {}: {err}", e.seq);
-                    return;
                 }
-            };
-            let inserted = c
-                .prepare_cached(
-                    "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                )
-                .and_then(|mut stmt| {
-                    stmt.execute(params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain, plain_words])
-                });
-            if let Err(err) = inserted {
-                tracing::warn!("failed to insert event seq {}: {err}", e.seq);
-                return;
             }
+            // Whatever the insert did, so a failed one never skips a batch's trim.
             if trim && let Err(err) = c.execute(
                 "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)",
                 params![RING_SIZE as i64],
@@ -299,9 +301,8 @@ impl EventBus {
     /// than repaired into a default; a genuine rusqlite error still
     /// propagates.
     pub fn recent(&self, limit: u64) -> Result<Vec<Event>, CoreError> {
-        // The ring never holds more than this, so a shell asking for a
-        // billion asks for the ring; the cast below is only safe because
-        // of it.
+        // A shell asking for a billion asks for the ring, and the clamp is
+        // what keeps the cast below safe.
         let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(

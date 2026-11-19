@@ -266,27 +266,34 @@ mod tests {
         (dir, store)
     }
 
-    /// Every row `sql` returns, read on the writer so it sees every write
-    /// queued before it.
+    /// Every row `sql` returns, through `read`'s shared connection, so every
+    /// test that reads this way also checks that connection sees what the
+    /// writer committed, migrations included.
     fn rows<T>(store: &Store, sql: &str) -> Vec<T>
     where
-        T: for<'a> TryFrom<&'a rusqlite::Row<'a>, Error = rusqlite::Error> + Send + 'static,
+        T: for<'a> TryFrom<&'a rusqlite::Row<'a>, Error = rusqlite::Error>,
     {
-        let sql = sql.to_string();
         store
-            .write(move |c| {
-                let mut stmt = c.prepare(&sql)?;
+            .read(|c| {
+                let mut stmt = c.prepare(sql)?;
                 let rows = stmt.query_map([], |r| T::try_from(r))?;
                 Ok(rows.collect::<Result<Vec<T>, _>>()?)
             })
             .unwrap()
     }
 
-    /// The first column of the one row `sql` returns.
-    fn one<T: FromSql + Send + 'static>(store: &Store, sql: &str) -> T {
-        let sql = sql.to_string();
+    /// The first column of the one row `sql` returns, read the same way.
+    fn one<T: FromSql>(store: &Store, sql: &str) -> T {
         store
-            .write(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
+            .read(|c| Ok(c.query_row(sql, [], |r| r.get(0))?))
+            .unwrap()
+    }
+
+    /// The same, asked of the writer, for what only its own connection
+    /// answers or what it has queued but not yet run.
+    fn on_writer<T: FromSql + Send + 'static>(store: &Store, sql: &'static str) -> T {
+        store
+            .write(move |c| Ok(c.query_row(sql, [], |r| r.get(0))?))
             .unwrap()
     }
 
@@ -294,8 +301,8 @@ mod tests {
     fn open_creates_the_directory_and_sets_wal() {
         let (dir, store) = open_temp();
         assert!(dir.path().join("data").join("anibeam.db").exists());
-        assert_eq!(one::<String>(&store, "PRAGMA journal_mode"), "wal");
-        assert_eq!(one::<i64>(&store, "PRAGMA foreign_keys"), 1);
+        assert_eq!(on_writer::<String>(&store, "PRAGMA journal_mode"), "wal");
+        assert_eq!(on_writer::<i64>(&store, "PRAGMA foreign_keys"), 1);
     }
 
     #[test]
@@ -552,7 +559,7 @@ mod tests {
         });
         // The writer thread runs tasks in the order they were queued, so
         // this write only sees the posted row if post really ran first.
-        assert_eq!(one::<i64>(&store, SOURCES), 1);
+        assert_eq!(on_writer::<i64>(&store, SOURCES), 1);
     }
 
     #[test]
