@@ -336,10 +336,9 @@ async fn join_page(
     let Some(room_code) = code::normalize(&raw) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
     };
-    let now = relay.now();
     let view = {
         let mut inner = relay.lock();
-        if !inner.allow(addr.ip(), Kind::Page, now) {
+        if !inner.allow(addr.ip(), Kind::Page, relay.now()) {
             return (StatusCode::TOO_MANY_REQUESTS, "too many pages").into_response();
         }
         inner.rooms.get(&room_code).map(|e| e.room.view())
@@ -464,8 +463,9 @@ async fn tick_loop(relay: Weak<Mutex<Inner>>, clock: fn() -> u64) {
         let Some(relay) = relay.upgrade() else {
             return;
         };
-        let now = clock();
+        // Read under the lock, so no message applied before it has a later time.
         let mut inner = lock(&relay);
+        let now = clock();
         for entry in inner.rooms.values_mut() {
             let outs = entry.room.tick(now);
             entry.send(outs);
