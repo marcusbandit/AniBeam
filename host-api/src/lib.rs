@@ -706,9 +706,12 @@ mod tests {
         assert_eq!(skip_path(9), "/api/v1/sessions/9/skip");
         assert_eq!(subtitle_path(7, 0), "/api/v1/files/7/subtitles/0");
         assert_eq!(probe_path(7), "/api/v1/files/7/probe");
-        for path in [HELLO, SNAPSHOT, CALL, PEERS, HISTORY] {
-            assert!(path.starts_with("/api/v1/"), "{path}");
-        }
+        // A phone already installed asks for these as they are spelled here
+        assert_eq!(HELLO, "/api/v1/hello");
+        assert_eq!(SNAPSHOT, "/api/v1/snapshot");
+        assert_eq!(CALL, "/api/v1/call");
+        assert_eq!(PEERS, "/api/v1/peers");
+        assert_eq!(HISTORY, "/api/v1/history");
     }
 
     #[test]
