@@ -346,35 +346,37 @@ pub struct SortEntry {
 /// The version check reads the raw value first, so a document from a later
 /// core is refused by version rather than by whichever field it added.
 pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
-    /// The two fields read first, skipping the rest without building it.
-    #[derive(Deserialize)]
-    struct Head {
-        #[serde(default)]
-        format: Value,
-        #[serde(default)]
-        version: Value,
-    }
-    let head = serde_json::from_slice::<Head>(bytes).map_err(|e| {
-        // Valid JSON that is no object is simply not this format.
-        let message = match serde_json::from_slice::<serde::de::IgnoredAny>(bytes) {
-            Ok(_) => anibeam_contract::i18n::tr(
-                "core-transfer-wrong-format",
-                &[("format", FORMAT.into())],
-            ),
-            Err(_) => anibeam_contract::i18n::tr(
+    // A well-formed document reads straight into its records. Anything that
+    // does not (not JSON, another format, a later version, a key written
+    // twice) is read through a JSON tree first, which says why or reads it
+    // after all.
+    let doc = match serde_json::from_slice::<Document>(bytes) {
+        Ok(doc) if doc.format == FORMAT && doc.version <= VERSION => doc,
+        _ => parse_tree(bytes)?,
+    };
+    let ignored = doc.unknown_fields();
+    Ok((doc, ignored))
+}
+
+/// [`parse`] through a JSON tree: slower, and the reading that names what is
+/// wrong with a document.
+fn parse_tree(bytes: &[u8]) -> Result<Document, CoreError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|e| {
+        CoreError::invalid(
+            "format",
+            anibeam_contract::i18n::tr(
                 "core-transfer-not-json",
                 &[("error", e.to_string().into())],
             ),
-        };
-        CoreError::invalid("format", message)
+        )
     })?;
-    if head.format.as_str() != Some(FORMAT) {
+    if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
         return Err(CoreError::invalid(
             "format",
             anibeam_contract::i18n::tr("core-transfer-wrong-format", &[("format", FORMAT.into())]),
         ));
     }
-    let found = head.version.as_u64().unwrap_or(0);
+    let found = value.get("version").and_then(Value::as_u64).unwrap_or(0);
     let found = u32::try_from(found).unwrap_or(u32::MAX);
     if found > VERSION {
         return Err(CoreError::Version {
@@ -384,10 +386,7 @@ pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
     }
     // Version 1 migrates here by doing nothing: the fields version 2 added
     // are absent, so they read as None and the merge leaves them alone.
-    let doc: Document =
-        serde_json::from_slice(bytes).map_err(|e| CoreError::invalid("format", e.to_string()))?;
-    let ignored = doc.unknown_fields();
-    Ok((doc, ignored))
+    serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))
 }
 
 /// An instant in either of the two shapes the format carries: an RFC 3339
@@ -634,13 +633,25 @@ mod tests {
 
     #[test]
     fn json_that_is_no_object_is_another_format() {
-        for text in ["[]", "\"anibeam-export\"", "3"] {
+        for text in ["[]", "\"anibeam-export\"", "3", "[\"anibeam-export\", 2]"] {
             let Err(CoreError::Invalid { field, message }) = parse(text.as_bytes()) else {
                 panic!("{text} parsed");
             };
             assert_eq!(field, "format");
             assert!(message.contains(FORMAT), "{text}: {message}");
         }
+    }
+
+    /// A key written twice reads as its last copy, as a JSON tree reads it.
+    #[test]
+    fn a_key_written_twice_reads_as_its_last() {
+        let text = FIXTURE.replacen(
+            "\"format\": \"anibeam-export\",",
+            "\"format\": \"something-else\",\n  \"format\": \"anibeam-export\",",
+            1,
+        );
+        let (doc, _) = parse(text.as_bytes()).unwrap();
+        assert_eq!(doc.series.len(), 3);
     }
 
     #[test]

@@ -181,12 +181,18 @@ fn last_segment(path: &str) -> &str {
 /// match here is confirmed and differs from its match there is another show,
 /// and maps to nothing.
 fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
-    let name_of = |e: &SeriesEntry| last_segment(&normalise(&e.path)).to_string();
-    let mut names_there: HashMap<(&str, String), usize> = HashMap::new();
-    for entry in remote {
-        *names_there
-            .entry((kind_column(&entry.kind), name_of(entry)))
-            .or_default() += 1;
+    // Each series there by its path, and by its kind and folder name.
+    let there: Vec<(String, (&str, String))> = remote
+        .iter()
+        .map(|e| {
+            let path = normalise(&e.path);
+            let name = last_segment(&path).to_string();
+            (path, (kind_column(&e.kind), name))
+        })
+        .collect();
+    let mut names_there: HashMap<&(&str, String), usize> = HashMap::new();
+    for (_, name) in &there {
+        *names_there.entry(name).or_default() += 1;
     }
     // The series here by kind and folder name, and by kind and each id.
     let mut named: HashMap<(&str, String), Vec<usize>> = HashMap::new();
@@ -202,14 +208,14 @@ fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
         }
     }
     let mut out = HashMap::new();
-    for entry in remote {
-        let kind = kind_column(&entry.kind);
-        let name = (kind, name_of(entry));
+    for (entry, (path, name)) in remote.iter().zip(there.iter()) {
+        let kind = name.0;
+        let named_here = named.get(name).map_or(&[][..], Vec::as_slice);
         let ids = entry.match_.as_ref().map(Ids::of).unwrap_or_default();
         // The one series here among `hits` with the folder name, when no
         // other series there has that name too.
         let by_name = |hits: &mut dyn Iterator<Item = usize>| -> Option<usize> {
-            if names_there.get(&name) != Some(&1) {
+            if names_there.get(name) != Some(&1) {
                 return None;
             }
             let (Some(i), None) = (hits.next(), hits.next()) else {
@@ -227,20 +233,15 @@ fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
         by_id.dedup();
         let found = match by_id[..] {
             [i] => Some(i),
-            [] => by_name(&mut named.get(&name).into_iter().flatten().copied()).filter(|&i| {
+            [] => by_name(&mut named_here.iter().copied()).filter(|&i| {
                 // Both sides chose a match and they differ: not the same show.
                 let local = &here[i];
                 !(local.confirmed && !ids.none() && !local.ids.none() && !local.ids.shared(&ids))
             }),
-            _ => by_name(
-                &mut by_id
-                    .iter()
-                    .copied()
-                    .filter(|&i| file_name(&here[i].path) == name.1),
-            ),
+            _ => by_name(&mut by_id.iter().copied().filter(|i| named_here.contains(i))),
         };
         if let Some(i) = found {
-            out.insert(normalise(&entry.path), i);
+            out.insert(path.clone(), i);
         }
     }
     out
@@ -280,8 +281,8 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
     let series = |there: &str| paths.get(&normalise(there)).cloned();
     // A view or a completed episode, onto its series here and the same file
     // under it. False when it belongs to no series here.
-    let rehome = |series: &mut String, file: &mut Option<String>| -> bool {
-        let there = normalise(series);
+    let rehome = |path: &mut String, file: &mut Option<String>| -> bool {
+        let there = normalise(path);
         let Some(here) = paths.get(&there) else {
             return false;
         };
@@ -291,7 +292,7 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
             };
             *f = moved;
         }
-        series.clone_from(here);
+        path.clone_from(here);
         true
     };
     let mut views = history.views;

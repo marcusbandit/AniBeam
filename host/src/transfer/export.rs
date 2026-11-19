@@ -341,16 +341,16 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
 /// Only the provider the row names, never the columns another provider
 /// left behind.
 fn match_entry(row: &Row) -> Option<MatchEntry> {
-    match row.provider? {
-        tracker @ (Provider::Anilist | Provider::Mal) => Some(MatchEntry::Tracker {
-            provider: if tracker == Provider::Anilist {
-                TrackerName::Anilist
-            } else {
-                TrackerName::Mal
-            },
+    let tracker = |provider| {
+        Some(MatchEntry::Tracker {
+            provider,
             anilist_id: row.anilist_id,
             mal_id: row.mal_id,
-        }),
+        })
+    };
+    match row.provider? {
+        Provider::Anilist => tracker(TrackerName::Anilist),
+        Provider::Mal => tracker(TrackerName::Mal),
         Provider::Tmdb => Some(MatchEntry::Tmdb {
             provider: TmdbName::Tmdb,
             tmdb_id: row.tmdb_id?,
@@ -407,38 +407,34 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
         conn,
         &by_id,
         "SELECT series_id, episode_key, at FROM views WHERE profile_id = 1 ORDER BY series_id",
-    )?
-    .into_iter()
-    .map(|(series, key, at)| {
-        let (last_episode, season, file) = entry_of(series, &key);
-        View {
-            series: series.path.clone(),
-            last_episode,
-            season,
-            file,
-            at,
-            extra: HashMap::new(),
-        }
-    })
-    .collect();
+        |series, key, at| {
+            let (last_episode, season, file) = entry_of(series, key);
+            View {
+                series: series.path.clone(),
+                last_episode,
+                season,
+                file,
+                at,
+                extra: HashMap::new(),
+            }
+        },
+    )?;
     let completed = entries(
         conn,
         &by_id,
         "SELECT series_id, episode_key, at FROM completed WHERE profile_id = 1 ORDER BY series_id, episode_key",
-    )?
-    .into_iter()
-    .map(|(series, key, at)| {
-        let (episode, season, file) = entry_of(series, &key);
-        Completed {
-            series: series.path.clone(),
-            episode,
-            season,
-            file,
-            at,
-            extra: HashMap::new(),
-        }
-    })
-    .collect();
+        |series, key, at| {
+            let (episode, season, file) = entry_of(series, key);
+            Completed {
+                series: series.path.clone(),
+                episode,
+                season,
+                file,
+                at,
+                extra: HashMap::new(),
+            }
+        },
+    )?;
 
     let mut resume_points = Vec::new();
     {
@@ -488,13 +484,14 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     })
 }
 
-/// The rows of a views or completed table, as each one's series, episode key
-/// and instant, for the series the document carries.
-fn entries<'a>(
+/// The rows of a views or completed table for the series the document
+/// carries, each made from its series, episode key and instant.
+fn entries<T>(
     conn: &Connection,
-    by_id: &HashMap<u64, &'a Row>,
+    by_id: &HashMap<u64, &Row>,
     sql: &str,
-) -> Result<Vec<(&'a Row, String, Value)>, CoreError> {
+    make: impl Fn(&Row, &str, Value) -> T,
+) -> Result<Vec<T>, CoreError> {
     let mut stmt = conn.prepare(sql)?;
     let read = stmt.query_map([], |r| {
         Ok((
@@ -507,7 +504,11 @@ fn entries<'a>(
     for row in read {
         let (id, key, at) = row?;
         if let Some(series) = by_id.get(&id) {
-            out.push((*series, key, Value::String(format::format_instant(at))));
+            out.push(make(
+                series,
+                &key,
+                Value::String(format::format_instant(at)),
+            ));
         }
     }
     Ok(out)
