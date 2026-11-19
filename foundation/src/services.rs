@@ -43,6 +43,22 @@ pub struct Services {
 }
 
 impl Services {
+    /// Waits for `work` on the core's runtime from whatever thread a call came in on. A
+    /// shell's own thread blocks on it. A listener runs on a runtime worker, where a plain
+    /// `block_on` panics, so there the wait goes through `block_in_place`, as the store's
+    /// does, which hands the worker's other tasks to a sibling first.
+    pub fn wait<F: std::future::Future>(&self, work: F) -> F::Output {
+        let on_a_worker = matches!(
+            tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()),
+            Ok(tokio::runtime::RuntimeFlavor::MultiThread)
+        );
+        if on_a_worker {
+            tokio::task::block_in_place(|| self.handle.block_on(work))
+        } else {
+            self.handle.block_on(work)
+        }
+    }
+
     /// Opens what every team shares over `paths`, in this order: the store,
     /// the bus, the image cache's directory, the runtime and the jobs over
     /// it (#997). The runtime comes back beside the services: its owner keeps

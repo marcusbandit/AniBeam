@@ -1,7 +1,7 @@
 //! The phone's update check end to end (#809): `CheckPhoneUpdate` asks GitHub's release
 //! list over the core's transport, answers `PhoneUpdate` with the newer phone release on
-//! the running build's track, asks again with the list's `ETag` so an unchanged list costs
-//! an empty 304, and turns a refusal into an error the phone retries on.
+//! the running build's track, turns a refusal into an error the phone retries on, and
+//! answers from a runtime worker as well as from a shell's own thread.
 
 mod common;
 
@@ -36,47 +36,53 @@ fn check(core: &Core, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
 }
 
 #[test]
-fn a_phone_hears_of_a_newer_nightly_and_the_unchanged_list_comes_back_empty() {
+fn a_phone_hears_of_a_newer_nightly_and_its_apk() {
     let http = FakeHttp::new();
     let (_dir, core, _c) = common::open_core_with_http(http.clone());
-    http.push_for_with_headers(
-        "/releases",
-        200,
-        list(),
-        vec![("ETag".into(), "\"one\"".into())],
-    );
+    http.push_for("/releases", 200, list());
     let update = check(&core, "2.4.3-nightly.20261116.96").unwrap().unwrap();
     assert_eq!(update.version, "2.4.3-nightly.20261117.97");
     assert_eq!(
         update.url,
         "https://example.com/Anibeam-2.4.3-nightly.20261117.97.apk"
     );
-
-    // Unchanged since: GitHub answers 304 with nothing, and the list held answers instead
-    http.push_for("/releases", 304, Vec::new());
-    let again = check(&core, "2.4.3-nightly.20261116.96").unwrap().unwrap();
-    assert_eq!(again.version, "2.4.3-nightly.20261117.97");
-
     let sent = http.requests();
-    assert_eq!(sent.len(), 2);
+    assert_eq!(sent.len(), 1);
     assert!(
         sent[0].url.contains("api.github.com/repos/"),
         "{}",
         sent[0].url
     );
-    let header = |i: usize, name: &str| {
-        sent[i]
-            .headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.clone())
-    };
+    let accept = sent[0]
+        .headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("Accept"))
+        .map(|(_, v)| v.as_str());
+    assert_eq!(accept, Some("application/vnd.github+json"));
+}
+
+/// A listener runs on a runtime worker, where a plain `block_on` panics; the check has
+/// to answer there too.
+#[test]
+fn the_check_answers_from_a_runtime_worker() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    http.push_for("/releases", 200, list());
+    let shell = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    // A clone goes to the worker, so the core is never dropped inside the runtime
+    let on_worker = core.clone();
+    let answer = shell
+        .block_on(tokio::spawn(async move {
+            check(&on_worker, "2.4.3-nightly.20261116.96")
+        }))
+        .unwrap();
     assert_eq!(
-        header(0, "Accept").as_deref(),
-        Some("application/vnd.github+json")
+        answer.unwrap().map(|u| u.version).as_deref(),
+        Some("2.4.3-nightly.20261117.97")
     );
-    assert_eq!(header(0, "If-None-Match"), None);
-    assert_eq!(header(1, "If-None-Match").as_deref(), Some("\"one\""));
 }
 
 #[test]

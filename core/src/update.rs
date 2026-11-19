@@ -4,8 +4,10 @@
 //! installed asks the AUR instead (`check_aur`), since pacman is what updates it.
 //!
 //! A desktop build is tagged `v2.4.0` when stable and `v2.4.0-nightly.20261030.12` when
-//! nightly; the phone's `android-v*` tags never count here, and neither does a draft or a
-//! pull request's test build. The Stable track is offered stable versions only, the Nightly
+//! nightly; the phone's `android-v*` tags never count here, and neither does a draft, a
+//! pull request's test build, or a pre-release that is not a nightly: the Release workflow
+//! publishes a stable version as a full release, so a pre-release with a plain version is a
+//! test build made by hand, and no track is offered it. The Stable track is offered stable versions only, the Nightly
 //! track both, so a nightly user moves on to the stable release its nightlies led up to.
 //!
 //! The phone reads the same list for its own `android-v*` tags (`check_phone`, #809), on the
@@ -157,14 +159,15 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
 pub fn newest_phone(releases: &[u8], current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
     Ok(
         newest_tagged(releases, PHONE_TAG, current, Track::of(current))?.map(|u| {
-            // The workflow names the APK after the version; any other APK on the release (a
-            // split or a debug build) may not run on this phone
+            // The workflow names the APK after the version, `AniBeam-` before 2.4.3's later
+            // nightlies; any other APK on the release (a split or a debug build) may not run
+            // on this phone
             let apk = format!("Anibeam-{}.apk", u.version);
             PhoneUpdate {
                 url: u
                     .assets
                     .into_iter()
-                    .find(|a| a.name == apk)
+                    .find(|a| a.name.eq_ignore_ascii_case(&apk))
                     .map_or(u.url, |a| a.url),
                 version: u.version,
             }
@@ -193,6 +196,7 @@ fn newest_tagged(
         let Some(v) = Version::parse(name) else {
             continue;
         };
+        // A test build made by hand, on the desktop as on the phone (see the module's head)
         if r.prerelease && v.nightly.is_none() {
             continue;
         }
@@ -224,55 +228,15 @@ pub async fn check(
     newest(&releases(http).await?, current, track)
 }
 
-/// The release list as GitHub last sent it, with its `ETag`. The phone asks with
-/// `If-None-Match`, so a list that has not changed comes back as an empty 304 rather than
-/// the whole list again over mobile data.
-#[derive(Default)]
-pub struct ReleaseCache(std::sync::Mutex<Option<(String, Vec<u8>)>>);
-
-/// Asks GitHub for the phone, as `check` does for the desktop, through `cache`.
-pub async fn check_phone(
-    http: &dyn Http,
-    cache: &ReleaseCache,
-    current: &str,
-) -> Result<Option<PhoneUpdate>, CoreError> {
-    let held = cache.0.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let mut req = HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json");
-    if let Some((etag, _)) = &held {
-        req = req.header("If-None-Match", etag);
-    }
-    let res = http
-        .send(req)
-        .await
-        .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
-    let body = match (res.status, held) {
-        (304, Some((_, body))) => body,
-        _ if res.is_success() => {
-            if let Some(etag) = res.header("etag") {
-                *cache.0.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some((etag.to_string(), res.body.clone()));
-            }
-            res.body
-        }
-        _ => {
-            return Err(CoreError::internal(format!(
-                "releases: HTTP {}",
-                res.status
-            )));
-        }
-    };
-    newest_phone(&body, current)
+/// Asks GitHub for the phone, as `check` does for the desktop.
+pub async fn check_phone(http: &dyn Http, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
+    newest_phone(&releases(http).await?, current)
 }
 
-/// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime.
-pub fn phone_call(
-    services: &Services,
-    cache: &ReleaseCache,
-    current: &str,
-) -> Result<Reply, CoreError> {
-    let update = services
-        .handle
-        .block_on(check_phone(services.http.as_ref(), cache, current))?;
+/// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime
+/// from any thread, a listener's included.
+pub fn phone_call(services: &Services, current: &str) -> Result<Reply, CoreError> {
+    let update = services.wait(check_phone(services.http.as_ref(), current))?;
     Ok(Reply::PhoneUpdate { update })
 }
 
@@ -652,6 +616,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(u.url, "a243");
+        let old_spelling = serde_json::json!([{
+            "tag_name": "android-v2.4.3", "html_url": "a243",
+            "assets": [{ "name": "AniBeam-2.4.3.apk", "size": 9,
+                         "browser_download_url": "https://dl/old.apk" }]
+        }])
+        .to_string();
+        let u = newest_phone(old_spelling.as_bytes(), "2.4.2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(u.url, "https://dl/old.apk");
     }
 
     #[test]
