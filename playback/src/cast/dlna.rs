@@ -14,7 +14,7 @@ pub struct Renderer {
     pub control: String,
 }
 
-fn child_text<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<&'a str> {
+fn descendant_text<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<&'a str> {
     node.descendants()
         .find(|n| n.has_tag_name(name))
         .and_then(|n| n.text())
@@ -26,17 +26,17 @@ pub fn parse_description(xml: &str, location: &str) -> Option<Renderer> {
     let doc = roxmltree::Document::parse(xml).ok()?;
     let root = doc.root_element();
     let device = root.descendants().find(|n| n.has_tag_name("device"))?;
-    let name = child_text(device, "friendlyName")?.to_string();
-    let model = child_text(device, "modelName").map(str::to_string);
+    let name = descendant_text(device, "friendlyName")?.to_string();
+    let model = descendant_text(device, "modelName").map(str::to_string);
     let service = root
         .descendants()
         .filter(|n| n.has_tag_name("service"))
         .find(|s| {
-            child_text(*s, "serviceType")
+            descendant_text(*s, "serviceType")
                 .is_some_and(|t| t.starts_with("urn:schemas-upnp-org:service:AVTransport:"))
         })?;
-    let control = child_text(service, "controlURL")?;
-    let base = child_text(root, "URLBase").unwrap_or(location);
+    let control = descendant_text(service, "controlURL")?;
+    let base = descendant_text(root, "URLBase").unwrap_or(location);
     Some(Renderer {
         name,
         model,
@@ -213,7 +213,7 @@ impl Client {
 
 fn field(xml: &str, name: &str) -> Option<String> {
     let doc = roxmltree::Document::parse(xml).ok()?;
-    child_text(doc.root(), name).map(str::to_string)
+    descendant_text(doc.root(), name).map(str::to_string)
 }
 
 #[cfg(test)]

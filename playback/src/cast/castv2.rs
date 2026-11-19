@@ -213,21 +213,33 @@ pub enum Command {
     Pause,
     Seek(f64),
     Stop,
+    /// Let go of the device and leave its media receiver playing: another cast took it.
+    Leave,
 }
 
 pub struct Controller {
     tx: Sender<Command>,
+    /// Let go with `leave`, so dropping it sends no stop.
+    left: bool,
 }
 
 impl Controller {
     pub fn send(&self, c: Command) {
         let _ = self.tx.send(c);
     }
+
+    /// Lets go of the device without stopping what it plays.
+    pub fn leave(mut self) {
+        self.left = true;
+        let _ = self.tx.send(Command::Leave);
+    }
 }
 
 impl Drop for Controller {
     fn drop(&mut self) {
-        let _ = self.tx.send(Command::Stop);
+        if !self.left {
+            let _ = self.tx.send(Command::Stop);
+        }
     }
 }
 
@@ -247,7 +259,7 @@ pub fn start(
             }
         })
         .expect("a thread for the Chromecast");
-    Controller { tx }
+    Controller { tx, left: false }
 }
 
 struct Link {
@@ -381,9 +393,13 @@ fn run(
         loop {
             match rx.recv_timeout(Duration::ZERO) {
                 Ok(cmd) => {
+                    if matches!(cmd, Command::Leave) {
+                        let _ = link.send("receiver-0", NS_CONNECTION, json!({"type": "CLOSE"}));
+                        return Ok(());
+                    }
                     let (Some(t), Some(ms)) = (transport.clone(), media_session) else {
                         if matches!(cmd, Command::Stop) {
-                            stop(&mut link, session_id.as_deref());
+                            stop_launched(&mut link, session_id);
                             return Ok(());
                         }
                         continue;
@@ -403,12 +419,13 @@ fn run(
                             stop(&mut link, session_id.as_deref());
                             return Ok(());
                         }
+                        Command::Leave => unreachable!("handled above"),
                     };
                     link.send(&t, NS_MEDIA, msg).map_err(io)?;
                 }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
-                    stop(&mut link, session_id.as_deref());
+                    stop_launched(&mut link, session_id);
                     return Ok(());
                 }
             }
@@ -551,6 +568,33 @@ pub fn parse_status(s: &Value) -> Status {
         idle_reason,
         error,
     }
+}
+
+/// How long a stop waits for the device to say which session its LAUNCH opened.
+const LAUNCH_WAIT: Duration = Duration::from_secs(10);
+
+/// `stop`, once the session is known. LAUNCH goes out as soon as the device answers,
+/// so a stop that comes before the device says which session it opened waits for that
+/// word: closing at once would leave the media receiver up on the TV.
+fn stop_launched(link: &mut Link, session_id: Option<String>) {
+    let session_id = session_id.or_else(|| {
+        let until = Instant::now() + LAUNCH_WAIT;
+        while Instant::now() < until {
+            let m = link.read().ok()?;
+            let Some(p) = m.and_then(|m| serde_json::from_str::<Value>(&m.payload).ok()) else {
+                continue;
+            };
+            let opened = p["status"]["applications"]
+                .as_array()
+                .and_then(|a| a.iter().find(|x| x["appId"] == DEFAULT_MEDIA_RECEIVER))
+                .and_then(|app| app["sessionId"].as_str().map(str::to_string));
+            if opened.is_some() {
+                return opened;
+            }
+        }
+        None
+    });
+    stop(link, session_id.as_deref());
 }
 
 /// Stops the media receiver on the TV so it goes back to its own screen.

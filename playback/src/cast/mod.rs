@@ -90,7 +90,12 @@ mod imp {
     }
 
     enum Control {
-        Starting,
+        /// The start task running, which a stop aborts, and the TV once the start has
+        /// handed it something, which a stop then tells to stop.
+        Starting {
+            task: Option<tokio::task::AbortHandle>,
+            tv: Option<Arc<dlna::Client>>,
+        },
         Cast(castv2::Controller),
         Dlna {
             client: Arc<dlna::Client>,
@@ -112,6 +117,8 @@ mod imp {
     struct Session {
         id: u64,
         token: String,
+        /// The device's id, so a session replaced on the same device leaves it alone.
+        device: String,
         state: CastState,
         control: Control,
         mode: Mode,
@@ -384,8 +391,12 @@ mod imp {
         let old = recover(&inner.session).replace(Session {
             id,
             token: token.clone(),
+            device: found.device.id.clone(),
             state: state.clone(),
-            control: Control::Starting,
+            control: Control::Starting {
+                task: None,
+                tv: None,
+            },
             mode,
             base: String::new(),
             title,
@@ -394,7 +405,8 @@ mod imp {
             hevc_doubt: false,
         });
         if let Some(old) = old {
-            retire(playback, old);
+            let here = old.device == found.device.id;
+            retire(playback, old, here);
         }
         emit(&playback.services, &state, false);
         (id, token, state)
@@ -443,7 +455,7 @@ mod imp {
                     CastSubtitle::File { path } => Some(Subs::File(PathBuf::from(path))),
                 };
                 let arc = playback.clone();
-                spawn_or_fail(playback, id, async move {
+                spawn_start(playback, id, async move {
                     begin(
                         &arc,
                         id,
@@ -486,7 +498,7 @@ mod imp {
                 let (id, token, state) =
                     new_session(playback, &found, 0, title.clone(), start, duration, mode);
                 let arc = playback.clone();
-                spawn_or_fail(playback, id, async move {
+                spawn_start(playback, id, async move {
                     match found.device.kind {
                         CastKind::Chromecast => {
                             relay(
@@ -503,11 +515,15 @@ mod imp {
             }
             Call::CastPlay => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Play),
-                Ctl::Dlna(d) => spawn_or_fail(playback, id, async move { d.play().await }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.play().await });
+                }
             }),
             Call::CastPause => control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Pause),
-                Ctl::Dlna(d) => spawn_or_fail(playback, id, async move { d.pause().await }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.pause().await });
+                }
             }),
             Call::CastSeek { to } => seek(playback, to),
             Call::CastStop => {
@@ -532,7 +548,7 @@ mod imp {
         match &session.control {
             Control::Cast(c) => f(Ctl::Cast(c), session.id),
             Control::Dlna { client, .. } => f(Ctl::Dlna(client.clone()), session.id),
-            Control::Starting => {
+            Control::Starting { .. } => {
                 return Err(CoreError::invalid(
                     "cast",
                     tr("core-cast-still-starting", &[]),
@@ -547,13 +563,48 @@ mod imp {
         playback: &Arc<Playback>,
         id: u64,
         f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
-    ) {
+    ) -> tokio::task::AbortHandle {
         let arc = playback.clone();
-        playback.services.handle.spawn(async move {
-            if let Err(e) = f.await {
-                fail(&arc, id, e);
+        playback
+            .services
+            .handle
+            .spawn(async move {
+                if let Err(e) = f.await {
+                    fail(&arc, id, e);
+                }
+            })
+            .abort_handle()
+    }
+
+    /// Runs the start of session `id`, which a stop or a new start aborts.
+    fn spawn_start(
+        playback: &Arc<Playback>,
+        id: u64,
+        f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
+    ) {
+        let handle = spawn_or_fail(playback, id, f);
+        let inner = inner(playback);
+        let mut s = recover(&inner.session);
+        match s.as_mut().filter(|s| s.id == id).map(|s| &mut s.control) {
+            Some(Control::Starting { task, .. }) => *task = Some(handle),
+            // Started already, or stopped before the handle got here.
+            Some(_) => {}
+            None => handle.abort(),
+        }
+    }
+
+    /// The start of session `id` is about to hand `tv` something: from here a stop tells
+    /// it to stop. False when the session is gone, and the start goes no further.
+    fn reaching(inner: &Inner, id: u64, tv: &Arc<dlna::Client>) -> bool {
+        let mut s = recover(&inner.session);
+        match s.as_mut().filter(|s| s.id == id).map(|s| &mut s.control) {
+            Some(Control::Starting { tv: slot, .. }) => {
+                *slot = Some(tv.clone());
+                true
             }
-        });
+            Some(_) => true,
+            None => false,
+        }
     }
 
     fn seek(playback: &std::sync::Arc<Playback>, to: f64) -> Result<Reply, CoreError> {
@@ -574,7 +625,9 @@ mod imp {
         if !matches!(mode, Mode::Progressive { .. }) {
             return control(playback, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Seek(to)),
-                Ctl::Dlna(d) => spawn_or_fail(playback, id, async move { d.seek(to).await }),
+                Ctl::Dlna(d) => {
+                    spawn_or_fail(playback, id, async move { d.seek(to).await });
+                }
             });
         }
         // A stream with no length seeks by starting again from the new point.
@@ -605,44 +658,64 @@ mod imp {
     fn stop(playback: &Playback) {
         let taken = recover(&inner(playback).session).take();
         if let Some(session) = taken {
-            retire(playback, session);
+            retire(playback, session, false);
         }
     }
 
     /// A session that is no longer the one casting: its files come off the server, the
-    /// shells hear it stopped, and its device is stopped.
-    fn retire(playback: &Playback, session: Session) {
+    /// shells hear it stopped, and its device is stopped, unless `replaced` on that same
+    /// device by a start that has not reached it yet.
+    fn retire(playback: &Playback, session: Session, replaced: bool) {
         inner(playback).registry.remove(&session.token);
         let mut state = session.state.clone();
         if !matches!(state.state, CastPlayState::Ended | CastPlayState::Failed) {
             state.state = CastPlayState::Stopped;
             emit(&playback.services, &state, false);
         }
-        end(playback, session.control);
+        end(playback, session.control, replaced);
     }
 
     /// Stops what a controller drives: dropping a Chromecast's stops the media receiver on
-    /// the TV, and a DLNA TV is told to stop.
-    fn end(playback: &Playback, control: Control) {
-        match control {
-            Control::Cast(c) => drop(c),
+    /// the TV, and a DLNA TV is told to stop. A start still running is aborted, and a TV
+    /// it handed something is told to stop as well. With `keep`, the device is playing
+    /// the cast that replaced this one, so the controller lets go of it untouched.
+    fn end(playback: &Playback, control: Control, keep: bool) {
+        let tv = match control {
+            Control::Cast(c) if keep => {
+                c.leave();
+                None
+            }
+            Control::Cast(c) => {
+                drop(c);
+                None
+            }
             Control::Dlna { client, poll } => {
                 poll.abort();
-                playback.services.handle.spawn(async move {
-                    let _ = client.stop().await;
-                });
+                Some(client)
             }
-            Control::Starting => {}
+            Control::Starting { task, tv } => {
+                if let Some(task) = task {
+                    task.abort();
+                }
+                tv
+            }
+        };
+        if let Some(tv) = tv.filter(|_| !keep) {
+            playback.services.handle.spawn(async move {
+                let _ = tv.stop().await;
+            });
         }
     }
 
     /// Hands session `id` the controller its cast started with, and the mode it plays in.
-    /// A session stopped or replaced while it started is not there to take it, so what it
-    /// started is stopped here and its files come off the server.
+    /// A session stopped or replaced in the moment since its start last awaited, which
+    /// the abort could not reach, is not there to take it: what it started is stopped
+    /// here, unless a cast on the same device replaced it, and its files come off.
     fn take_control(
         playback: &Playback,
         id: u64,
         token: &str,
+        device: &str,
         mode: Option<Mode>,
         control: Control,
     ) {
@@ -656,38 +729,12 @@ mod imp {
                 s.control = control;
             }
             None => {
+                let here = s.as_ref().is_some_and(|s| s.device == device);
                 drop(s);
                 inner.registry.remove(token);
-                end(playback, control);
+                end(playback, control, here);
             }
         }
-    }
-
-    /// Whether session `id` is still the one casting, checked before each step that
-    /// reaches the device or the server. A session stopped or replaced meanwhile has its
-    /// files taken off the server, in case one went up after the stop took them down.
-    fn still(inner: &Inner, id: u64, token: &str) -> bool {
-        let on = current(inner, id);
-        if !on {
-            inner.registry.remove(token);
-        }
-        on
-    }
-
-    /// A TV's start that failed: its error, unless the session was stopped while it
-    /// started. Then the TV, which may have started all the same, is told to stop.
-    async fn failed_start(
-        inner: &Inner,
-        id: u64,
-        token: &str,
-        client: &dlna::Client,
-        error: String,
-    ) -> Result<(), String> {
-        if still(inner, id, token) {
-            return Err(error);
-        }
-        let _ = client.stop().await;
-        Ok(())
     }
 
     /// A Chromecast's controller for `load`, its status read into session `id`.
@@ -729,9 +776,6 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
-        if !still(&inner, id, &token) {
-            return Ok(());
-        }
         let served = Served::relayed("application/vnd.apple.mpegurl", dir, Arc::default());
         inner.registry.add(token.clone(), served);
         update(playback, id, |s| s.base = base.clone());
@@ -744,7 +788,7 @@ mod imp {
             title,
         };
         let control = cast_control(playback, id, &found, load);
-        take_control(playback, id, &token, None, control);
+        take_control(playback, id, &token, &found.device.id, None, control);
         Ok(())
     }
 
@@ -777,18 +821,12 @@ mod imp {
             .await
             .map_err(not_handed)?;
         // The fetch can take as long as the other computer needs to start converting; a
-        // cast stopped or replaced meanwhile is left alone, and so is the TV.
-        if !still(&inner, id, &token) {
-            return Ok(());
-        }
+        // stop meanwhile aborts this, and the TV is left alone.
         let pieces = Arc::new(served::read_pieces(&list));
         if pieces.is_empty() {
             return Err(tr("core-cast-empty-playlist", &[]));
         }
         let base = base(&inner, &found, &token).await?;
-        if !still(&inner, id, &token) {
-            return Ok(());
-        }
         let served = Served::relayed("video/mp2t", dir, pieces.clone());
         inner.registry.add(token.clone(), served);
         let offset = pieces
@@ -801,26 +839,14 @@ mod imp {
         });
         let url = format!("{base}/stream.ts?t={start:.3}");
         let meta = dlna::didl(&url, "video/mp2t", &title, None);
-        let started = async {
-            client.set_uri(&url, &meta).await?;
-            client.play().await
-        };
-        if let Err(e) = started.await {
-            return failed_start(&inner, id, &token, &client, e).await;
+        if !reaching(&inner, id, &client) {
+            return Ok(());
         }
-        take_control(
-            playback,
-            id,
-            &token,
-            None,
-            dlna_control(playback, id, client),
-        );
+        client.set_uri(&url, &meta).await?;
+        client.play().await?;
+        let control = dlna_control(playback, id, client);
+        take_control(playback, id, &token, &found.device.id, None, control);
         Ok(())
-    }
-
-    /// Whether session `id` is still the one casting.
-    fn current(inner: &Inner, id: u64) -> bool {
-        recover(&inner.session).as_ref().is_some_and(|s| s.id == id)
     }
 
     /// Reads a Matroska file through once, off the runtime's threads.
@@ -850,9 +876,6 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(playback);
         let base = base(&inner, &found, &token).await?;
-        if !still(&inner, id, &token) {
-            return Ok(());
-        }
         let mkv = is_matroska(&path);
         let receiver = match found.device.kind {
             CastKind::Chromecast => Receiver::Cast,
@@ -870,10 +893,6 @@ mod imp {
                 .and_then(|p| p.probe.video.as_ref())
                 .is_some_and(|v| matches!(v.codec, super::mkv::VideoCodec::Hevc { .. }))
             && !discover::decodes_hevc(found.device.model.as_deref());
-        // Reading the file can take a while, and the session may be gone by the end of it.
-        if !still(&inner, id, &token) {
-            return Ok(());
-        }
         serve_file(&inner, &token, &path, prepared.clone());
         let duration = prepared
             .as_ref()
@@ -905,7 +924,7 @@ mod imp {
                 };
                 let mode = if hls { Mode::Hls } else { Mode::Direct };
                 let control = cast_control(playback, id, &found, load);
-                take_control(playback, id, &token, Some(mode), control);
+                take_control(playback, id, &token, &found.device.id, Some(mode), control);
             }
             CastKind::Dlna => {
                 let client = Arc::new(dlna::Client::new(
@@ -917,51 +936,48 @@ mod imp {
                     .map(|_| format!("{base}/subs.srt"));
                 let direct = format!("{base}/file");
                 let meta = dlna::didl(&direct, mime(&path), &title, srt.as_deref());
-                let started = async {
-                    Ok::<_, String>(match client.set_uri(&direct, &meta).await {
-                        Ok(()) => {
-                            client.play().await?;
-                            if start > 2.0 {
-                                // Some TVs take a seek only once playing; a refusal still plays from the start.
-                                tokio::time::sleep(Duration::from_millis(1500)).await;
-                                let _ = client.seek(start).await;
-                            }
-                            Mode::Direct
+                if !reaching(&inner, id, &client) {
+                    return Ok(());
+                }
+                let mode = match client.set_uri(&direct, &meta).await {
+                    Ok(()) => {
+                        client.play().await?;
+                        if start > 2.0 {
+                            // Some TVs take a seek only once playing; a refusal still plays from the start.
+                            tokio::time::sleep(Duration::from_millis(1500)).await;
+                            let _ = client.seek(start).await;
                         }
-                        Err(first) => {
-                            // The TV would not take the file as it is; the fragments as one MP4 it may.
-                            if !mkv {
-                                return Err(first);
-                            }
-                            let p = match prepared {
-                                Some(p) => p,
-                                None => {
-                                    let p = prepare(&path, audio_track, None).await?;
-                                    serve_file(&inner, &token, &path, Some(p.clone()));
-                                    p
-                                }
-                            };
-                            let url = format!("{base}/stream.mp4?t={start:.3}");
-                            let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
-                            client.set_uri(&url, &meta).await.map_err(|e| {
-                                tr(
-                                    "core-cast-refused-both",
-                                    &[("error", e.into()), ("first", first.into())],
-                                )
-                            })?;
-                            client.play().await?;
-                            Mode::Progressive {
-                                offset: p.stream_start(start),
-                            }
+                        Mode::Direct
+                    }
+                    Err(first) => {
+                        // The TV would not take the file as it is; the fragments as one MP4 it may.
+                        if !mkv {
+                            return Err(first);
                         }
-                    })
-                };
-                let mode = match started.await {
-                    Ok(mode) => mode,
-                    Err(e) => return failed_start(&inner, id, &token, &client, e).await,
+                        let p = match prepared {
+                            Some(p) => p,
+                            None => {
+                                let p = prepare(&path, audio_track, None).await?;
+                                serve_file(&inner, &token, &path, Some(p.clone()));
+                                p
+                            }
+                        };
+                        let url = format!("{base}/stream.mp4?t={start:.3}");
+                        let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
+                        client.set_uri(&url, &meta).await.map_err(|e| {
+                            tr(
+                                "core-cast-refused-both",
+                                &[("error", e.into()), ("first", first.into())],
+                            )
+                        })?;
+                        client.play().await?;
+                        Mode::Progressive {
+                            offset: p.stream_start(start),
+                        }
+                    }
                 };
                 let control = dlna_control(playback, id, client);
-                take_control(playback, id, &token, Some(mode), control);
+                take_control(playback, id, &token, &found.device.id, Some(mode), control);
             }
         }
         Ok(())
@@ -1307,14 +1323,8 @@ mod imp {
             stop_while_starting(true);
         }
 
-        fn stop_while_starting(refuse_play: bool) {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            let (tv_state, _dir, teams) = tv_and_teams(&rt);
-            {
-                let mut t = tv_state.lock().unwrap();
-                t.slow_play = true;
-                t.refuse_play = refuse_play;
-            }
+        /// A library holding one episode, file 10, an MP4, for a cast to start from.
+        fn one_file(teams: &Teams) {
             teams
                 .playback
                 .services
@@ -1330,6 +1340,9 @@ mod imp {
                     Ok(())
                 })
                 .unwrap();
+        }
+
+        fn cast_file(teams: &Teams) {
             teams
                 .call(Call::CastStart {
                     device: "dlna:fake".into(),
@@ -1339,23 +1352,60 @@ mod imp {
                     subtitle: CastSubtitle::None,
                 })
                 .unwrap();
-            until("the TV to be told to play", || {
-                tv_state
-                    .lock()
-                    .unwrap()
-                    .actions
-                    .iter()
-                    .any(|a| a.contains("#Play"))
-            });
+        }
+
+        fn plays(tv: &Mutex<Tv>) -> usize {
+            let t = tv.lock().unwrap();
+            t.actions.iter().filter(|a| a.contains("#Play")).count()
+        }
+
+        fn stops(tv: &Mutex<Tv>) -> usize {
+            let t = tv.lock().unwrap();
+            t.actions.iter().filter(|a| a.contains("#Stop")).count()
+        }
+
+        fn stop_while_starting(refuse_play: bool) {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
+            {
+                let mut t = tv_state.lock().unwrap();
+                t.slow_play = true;
+                t.refuse_play = refuse_play;
+            }
+            one_file(&teams);
+            cast_file(&teams);
+            until("the TV to be told to play", || plays(&tv_state) == 1);
             teams.call(Call::CastStop).unwrap();
-            until("the TV to be told to stop", || {
-                tv_state
-                    .lock()
-                    .unwrap()
-                    .actions
-                    .iter()
-                    .any(|a| a.contains("#Stop"))
+            until("the TV to be told to stop", || stops(&tv_state) == 1);
+        }
+
+        /// A second cast to the same TV while the first is still starting: the first's
+        /// start is let go without a stop, which would land on the TV as it plays the
+        /// second.
+        #[test]
+        fn a_new_cast_to_the_same_tv_is_not_stopped_by_the_one_it_replaced() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, teams) = tv_and_teams(&rt);
+            tv_state.lock().unwrap().slow_play = true;
+            one_file(&teams);
+            cast_file(&teams);
+            until("the first Play", || plays(&tv_state) == 1);
+            cast_file(&teams);
+            until("the second cast to play", || {
+                matches!(
+                    teams.call(Call::CastStatus),
+                    Ok(Reply::CastState { state: Some(s) }) if s.state == CastPlayState::Playing
+                )
             });
+            // Long enough for the first Play to answer, and a stray stop to follow it.
+            std::thread::sleep(Duration::from_millis(2000));
+            assert_eq!(plays(&tv_state), 2);
+            assert_eq!(
+                stops(&tv_state),
+                0,
+                "{:?}",
+                tv_state.lock().unwrap().actions
+            );
         }
 
         #[test]
