@@ -41,7 +41,7 @@ const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_POLL: Duration = Duration::from_millis(200);
 /// How many lines of the sidecar's stderr a failure message quotes.
-const STDERR_TAIL: usize = 3;
+const STDERR_QUOTED: usize = 3;
 /// Lines of the sidecar's stderr kept for the failure message.
 const STDERR_TAIL: usize = 40;
 /// How long `anirss --version` gets when a sidecar failed to come up.
@@ -690,7 +690,7 @@ impl Sidecar {
     fn stderr_tail(&self) -> Option<String> {
         super::managed::last_lines(
             recover(&self.stderr).iter().map(String::as_str),
-            STDERR_TAIL,
+            STDERR_QUOTED,
         )
     }
 }
