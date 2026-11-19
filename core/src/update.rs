@@ -128,6 +128,9 @@ struct Release {
     tag_name: String,
     #[serde(default)]
     name: Option<String>,
+    /// A nightly is a pre-release; any other pre-release is a test build made by hand.
+    #[serde(default)]
+    prerelease: bool,
     html_url: String,
     #[serde(default)]
     draft: bool,
@@ -153,13 +156,18 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
 /// on, with where to get it: the release's APK, or its page when it has none.
 pub fn newest_phone(releases: &[u8], current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
     Ok(
-        newest_tagged(releases, PHONE_TAG, current, Track::of(current))?.map(|u| PhoneUpdate {
-            url: u
-                .assets
-                .iter()
-                .find(|a| a.name.ends_with(".apk"))
-                .map_or(u.url.clone(), |a| a.url.clone()),
-            version: u.version,
+        newest_tagged(releases, PHONE_TAG, current, Track::of(current))?.map(|u| {
+            // The workflow names the APK after the version; any other APK on the release (a
+            // split or a debug build) may not run on this phone
+            let apk = format!("Anibeam-{}.apk", u.version);
+            PhoneUpdate {
+                url: u
+                    .assets
+                    .into_iter()
+                    .find(|a| a.name == apk)
+                    .map_or(u.url, |a| a.url),
+                version: u.version,
+            }
         }),
     )
 }
@@ -185,6 +193,9 @@ fn newest_tagged(
         let Some(v) = Version::parse(name) else {
             continue;
         };
+        if r.prerelease && v.nightly.is_none() {
+            continue;
+        }
         let on_track = v.stable || (track == Track::Nightly && v.nightly.is_some());
         if !on_track || running.is_some_and(|run| v <= run) {
             continue;
@@ -213,16 +224,55 @@ pub async fn check(
     newest(&releases(http).await?, current, track)
 }
 
-/// Asks GitHub for the phone, as `check` does for the desktop.
-pub async fn check_phone(http: &dyn Http, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
-    newest_phone(&releases(http).await?, current)
+/// The release list as GitHub last sent it, with its `ETag`. The phone asks with
+/// `If-None-Match`, so a list that has not changed comes back as an empty 304 rather than
+/// the whole list again over mobile data.
+#[derive(Default)]
+pub struct ReleaseCache(std::sync::Mutex<Option<(String, Vec<u8>)>>);
+
+/// Asks GitHub for the phone, as `check` does for the desktop, through `cache`.
+pub async fn check_phone(
+    http: &dyn Http,
+    cache: &ReleaseCache,
+    current: &str,
+) -> Result<Option<PhoneUpdate>, CoreError> {
+    let held = cache.0.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let mut req = HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json");
+    if let Some((etag, _)) = &held {
+        req = req.header("If-None-Match", etag);
+    }
+    let res = http
+        .send(req)
+        .await
+        .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
+    let body = match (res.status, held) {
+        (304, Some((_, body))) => body,
+        _ if res.is_success() => {
+            if let Some(etag) = res.header("etag") {
+                *cache.0.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some((etag.to_string(), res.body.clone()));
+            }
+            res.body
+        }
+        _ => {
+            return Err(CoreError::internal(format!(
+                "releases: HTTP {}",
+                res.status
+            )));
+        }
+    };
+    newest_phone(&body, current)
 }
 
 /// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime.
-pub fn phone_call(services: &Services, current: &str) -> Result<Reply, CoreError> {
+pub fn phone_call(
+    services: &Services,
+    cache: &ReleaseCache,
+    current: &str,
+) -> Result<Reply, CoreError> {
     let update = services
         .handle
-        .block_on(check_phone(services.http.as_ref(), current))?;
+        .block_on(check_phone(services.http.as_ref(), cache, current))?;
     Ok(Reply::PhoneUpdate { update })
 }
 
@@ -556,6 +606,52 @@ mod tests {
         assert_eq!(newest_phone(list.as_bytes(), "2.4.2").unwrap(), None);
         let nightly = newest_phone(list.as_bytes(), "2.4.3-nightly.20261117.97").unwrap();
         assert_eq!(nightly, None);
+    }
+
+    #[test]
+    fn a_test_pre_release_is_never_offered() {
+        let list = serde_json::json!([
+            { "tag_name": "android-v2.4.4", "html_url": "a244", "prerelease": true },
+            { "tag_name": "android-v2.4.3-nightly.20261117.97", "html_url": "a97", "prerelease": true },
+            { "tag_name": "v2.5.0", "html_url": "u250", "prerelease": true },
+            { "tag_name": "v2.5.0-nightly.20261117.97", "html_url": "n97", "prerelease": true }
+        ])
+        .to_string();
+        assert_eq!(newest_phone(list.as_bytes(), "2.4.2").unwrap(), None);
+        let nightly = newest_phone(list.as_bytes(), "2.4.3-nightly.20261116.96").unwrap();
+        assert_eq!(nightly.unwrap().url, "a97");
+        assert_eq!(
+            newest(list.as_bytes(), "2.4.0", Track::Stable).unwrap(),
+            None
+        );
+        let desktop = newest(list.as_bytes(), "2.4.0", Track::Nightly).unwrap();
+        assert_eq!(desktop.unwrap().url, "n97");
+    }
+
+    #[test]
+    fn only_the_apk_named_for_the_version_is_offered() {
+        let list = serde_json::json!([{
+            "tag_name": "android-v2.4.3", "html_url": "a243",
+            "assets": [
+                { "name": "Anibeam-2.4.3-x86_64.apk", "size": 9,
+                  "browser_download_url": "https://dl/x86.apk" },
+                { "name": "Anibeam-2.4.3.apk", "size": 9,
+                  "browser_download_url": "https://dl/a243.apk" }
+            ]
+        }])
+        .to_string();
+        let u = newest_phone(list.as_bytes(), "2.4.2").unwrap().unwrap();
+        assert_eq!(u.url, "https://dl/a243.apk");
+        let split_only = serde_json::json!([{
+            "tag_name": "android-v2.4.3", "html_url": "a243",
+            "assets": [{ "name": "Anibeam-2.4.3-x86_64.apk", "size": 9,
+                         "browser_download_url": "https://dl/x86.apk" }]
+        }])
+        .to_string();
+        let u = newest_phone(split_only.as_bytes(), "2.4.2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(u.url, "a243");
     }
 
     #[test]

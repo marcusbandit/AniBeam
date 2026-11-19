@@ -75,6 +75,8 @@ pub struct Core {
     /// `shutdown_background` if `shutdown` was never called.
     pub(crate) runtime: Mutex<Option<tokio::runtime::Runtime>>,
     started: AtomicBool,
+    /// GitHub's release list as the phone's update check last read it (#809).
+    phone_releases: update::ReleaseCache,
     /// Shared with the library, whose watcher stops taking triggers the
     /// moment the core starts shutting down.
     closed: Arc<AtomicBool>,
@@ -203,6 +205,7 @@ impl Core {
             launch: Arc::new(launch::Slot::default()),
             runtime: Mutex::new(Some(runtime)),
             started: AtomicBool::new(false),
+            phone_releases: update::ReleaseCache::default(),
             closed,
         });
         core.host
@@ -639,7 +642,9 @@ impl Core {
             } => stats::get_call(&self.services, year, utc_offset, &month_starts),
             Call::ScheduleAgent => agent::available_call(),
             Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
-            Call::CheckPhoneUpdate { current } => update::phone_call(&self.services, &current),
+            Call::CheckPhoneUpdate { current } => {
+                update::phone_call(&self.services, &self.phone_releases, &current)
+            }
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),
