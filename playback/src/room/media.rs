@@ -1036,10 +1036,13 @@ pub fn queries(offer: &Offer, e: &proto::EpisodeRef) -> Vec<String> {
 }
 
 /// Each query once, ignoring case, and none that is empty.
-fn distinct(mut queries: Vec<String>) -> Vec<String> {
+fn distinct(queries: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
-    queries.retain(|q| !q.trim().is_empty() && seen.insert(q.trim().to_lowercase()));
     queries
+        .into_iter()
+        .map(|q| q.trim().to_string())
+        .filter(|q| !q.is_empty() && seen.insert(q.to_lowercase()))
+        .collect()
 }
 
 /// A name without its bracketed tags: "Film (BD 1080p) [ABCD1234]" reads "Film".
@@ -1407,22 +1410,23 @@ fn seal_offer(
             let data = keys.seal(code, theirs, &plain)?;
             return Some((data, offer.magnet.is_some()));
         }
-        if let Some(mut m) = offer.magnet.take() {
-            while need > 0
-                && let Some(cut) = m.rfind("&tr=")
-            {
-                need = need.saturating_sub(m.len() - cut);
-                m.truncate(cut);
-            }
-            offer.magnet = (need == 0).then_some(m);
+        // Names past 300 bytes go first: a name that long says no more than its start,
+        // and the torrent is worth more than its tail
+        if offer.name.len() > 300 || offer.file.len() > 300 {
+            offer.name.truncate(offer.name.floor_char_boundary(300));
+            offer.file.truncate(offer.file.floor_char_boundary(300));
             continue;
         }
-        // The names alone are too long: cut them
-        if offer.name.len() <= 300 && offer.file.len() <= 300 {
-            return None;
+        let mut m = offer.magnet.take()?;
+        while need > 0
+            && let Some(cut) = m.rfind("&tr=")
+        {
+            // Counted as the payload writes it, escapes and all
+            let shed = serde_json::to_string(&m[cut..]).map_or(0, |j| j.len() - 2);
+            need = need.saturating_sub(shed);
+            m.truncate(cut);
         }
-        offer.name.truncate(offer.name.floor_char_boundary(300));
-        offer.file.truncate(offer.file.floor_char_boundary(300));
+        offer.magnet = (need == 0).then_some(m);
     }
 }
 
@@ -2084,5 +2088,19 @@ mod tests {
         };
         let (sealed, _) = seal_offer(&host, "K7QM2X", &member.public(), named).unwrap();
         assert_eq!(opened(&sealed).name.len(), 300);
+        // A name too long beside a short magnet costs the name its tail, not the torrent
+        let both = Offer {
+            name: "x".repeat(7_000),
+            magnet: Some(format!(
+                "{}&tr=udp%3A%2F%2Ftracker.example%3A1337",
+                magnet(1)
+            )),
+            ..offer("[Lantern] Cowboy Bebop - 05 (1080p)")
+        };
+        let (sealed, torrent) = seal_offer(&host, "K7QM2X", &member.public(), both).unwrap();
+        assert!(torrent, "the torrent went");
+        let got = opened(&sealed);
+        assert_eq!(got.name.len(), 300);
+        assert!(got.magnet.unwrap().contains("&tr="), "its tracker kept");
     }
 }

@@ -625,15 +625,16 @@ fn create(rooms: &Arc<Rooms>, session: Option<u64>) -> Result<RoomInfo, CoreErro
         Some(e) => format!("for {} {}", e.series_title, e.episode_key),
         None => "with nothing picked yet".into(),
     };
-    announce(
+    say_room(
         rooms,
+        Level::Info,
         anibeam_contract::words!("core-room-created", code = &info.code),
         format!(
             "Room {} created on {} {what}",
             info.code,
             anibeam_net::url_shown(&relay),
         ),
-        &info,
+        Some(info.clone()),
     );
     Ok(info)
 }
@@ -660,30 +661,29 @@ fn join(rooms: &Arc<Rooms>, code: &str) -> Result<RoomInfo, CoreError> {
             session: None,
         },
     )?;
-    announce(
+    say_room(
         rooms,
+        Level::Info,
         anibeam_contract::words!("core-room-joined", code = &info.code),
         format!(
             "Joined room {} on {}",
             info.code,
             anibeam_net::url_shown(&relay)
         ),
-        &info,
+        Some(info.clone()),
     );
     Ok(info)
 }
 
-/// Says this member is in a room now, made or joined, and what it is.
-fn announce(rooms: &Rooms, words: Words, message: String, info: &RoomInfo) {
+/// Says which room this member is in now, made or joined, or that it is in none.
+fn say_room(rooms: &Rooms, level: Level, words: Words, message: String, room: Option<RoomInfo>) {
     rooms.services.bus.emit_said(
-        Level::Info,
+        level,
         Stage::Playback,
         Some(words),
         message,
         None,
-        EventBody::RoomChanged {
-            room: Some(info.clone()),
-        },
+        EventBody::RoomChanged { room },
     );
 }
 
@@ -1079,23 +1079,12 @@ fn leave(rooms: &Rooms) {
     };
     a.send(ClientMsg::Bye);
     a.end();
-    gone(
+    say_room(
         rooms,
         Level::Info,
         anibeam_contract::words!("core-room-left"),
         format!("Left room {}", a.code),
-    );
-}
-
-/// Says this member is in no room any more.
-fn gone(rooms: &Rooms, level: Level, words: Words, message: String) {
-    rooms.services.bus.emit_said(
-        level,
-        Stage::Playback,
-        Some(words),
-        message,
         None,
-        EventBody::RoomChanged { room: None },
     );
 }
 
@@ -1566,11 +1555,12 @@ fn finish(rooms: &Rooms, serial: u64) {
         return;
     };
     a.end();
-    gone(
+    say_room(
         rooms,
         Level::Warn,
         anibeam_contract::words!("core-room-closed"),
         format!("Room {} closed", a.code),
+        None,
     );
 }
 
