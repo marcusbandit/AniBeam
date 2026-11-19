@@ -24,9 +24,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tokio::sync::watch;
 
 use crate::Trackers;
-use crate::{
-    TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, mal_lookup, on_hold,
-};
+use crate::{TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, mal_lookup, on_hold};
 use anibeam_contract::i18n::{Arg, tr};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
@@ -1294,7 +1292,14 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
     use anibeam_contract::words;
     let (plain, message, body) = match action {
         Action::Mark { episode, .. } => (
-            sites.map(|s| words!("core-trackers-marked", episode = episode, show = show, sites = s)),
+            sites.map(|s| {
+                words!(
+                    "core-trackers-marked",
+                    episode = episode,
+                    show = show,
+                    sites = s
+                )
+            }),
             format!("Marked episode {episode} of {show}"),
             EventBody::Marked {
                 series,
@@ -1304,7 +1309,12 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         ),
         Action::Progress { progress } => (
             sites.map(|s| {
-                words!("core-trackers-progress-set", progress = progress, show = show, sites = s)
+                words!(
+                    "core-trackers-progress-set",
+                    progress = progress,
+                    show = show,
+                    sites = s
+                )
             }),
             format!("Progress of {show} set to {progress}"),
             EventBody::ProgressSet {
@@ -1318,7 +1328,12 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         Action::Score { score } => match (score > 0.0).then_some(score) {
             Some(score) => (
                 sites.map(|s| {
-                    words!("core-trackers-scored", score = score.to_string(), show = show, sites = s)
+                    words!(
+                        "core-trackers-scored",
+                        score = score.to_string(),
+                        show = show,
+                        sites = s
+                    )
                 }),
                 format!("score of {show} set to {score}"),
                 EventBody::Scored {
@@ -1339,7 +1354,12 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         },
         Action::Status { status } => (
             sites.map(|s| {
-                words!("core-trackers-status-set", status = status.as_str(), show = show, sites = s)
+                words!(
+                    "core-trackers-status-set",
+                    status = status.as_str(),
+                    show = show,
+                    sites = s
+                )
             }),
             format!("status of {show} set to {}", status.as_str()),
             EventBody::ListStatusSet {
@@ -1455,12 +1475,7 @@ pub(crate) async fn attempt(
             // finished again is the one exception, and it counts a rewatch.
             let rewatch = again && entry.status == Some(ListStatus::Completed);
             if current >= episode && !rewatch {
-                return Ok(outcome(
-                    false,
-                    Some(current),
-                    Some(Refusal::NotNewer),
-                    None,
-                ));
+                return Ok(outcome(false, Some(current), Some(Refusal::NotNewer), None));
             }
             let progress = current.max(episode);
             let status = watched_status(&entry, target.completes(progress));
@@ -1620,9 +1635,7 @@ impl Extras {
     /// The extras as AniList's variables: a `FuzzyDateInput` per date and
     /// the count. A key left out leaves the field alone.
     fn anilist(&self, variables: &mut serde_json::Value) {
-        let date = |(year, month, day): Day| {
-            serde_json::json!({ "year": year, "month": month, "day": day })
-        };
+        let date = |(year, month, day): Day| serde_json::json!({ "year": year, "month": month, "day": day });
         if let Some(day) = self.start {
             variables["startedAt"] = date(day);
         }
@@ -1726,9 +1739,8 @@ impl Remote<'_> {
         query: &str,
         user_id: Option<u64>,
     ) -> Result<serde_json::Value, CoreError> {
-        let user_id = user_id.ok_or_else(|| {
-            accounts::tracker_error(self.t, tr("core-trackers-no-user-id", &[]))
-        })?;
+        let user_id = user_id
+            .ok_or_else(|| accounts::tracker_error(self.t, tr("core-trackers-no-user-id", &[])))?;
         let variables = serde_json::json!({ "userId": user_id, "mediaId": self.media_id });
         match self
             .trackers
@@ -1812,10 +1824,7 @@ impl Remote<'_> {
                 }))
             }
             Tracker::Mal => {
-                let Some(body) = self
-                    .mal_anime("my_list_status,status,num_episodes")
-                    .await?
-                else {
+                let Some(body) = self.mal_anime("my_list_status,status,num_episodes").await? else {
                     return Ok(None);
                 };
                 let list = &body["my_list_status"];
@@ -1925,7 +1934,8 @@ impl Remote<'_> {
     ) -> Result<(f64, Option<i64>), CoreError> {
         match self.t {
             Tracker::Anilist => {
-                let mut variables = serde_json::json!({ "scoreRaw": (score * 10.0).round() as i64 });
+                let mut variables =
+                    serde_json::json!({ "scoreRaw": (score * 10.0).round() as i64 });
                 // A mutation sent without the status variable leaves the
                 // entry's own status alone, which is what a rating that
                 // completes nothing should do.
@@ -2215,10 +2225,7 @@ mod tests {
     fn a_status_with_no_rule_falls_through_to_the_message() {
         assert_eq!(said(Tracker::Mal, Some(400), "Bad Request"), "Bad Request");
         assert_eq!(said(Tracker::Anilist, None, "gql"), "gql");
-        assert_eq!(
-            said(Tracker::Mal, None, ""),
-            "MAL error, see activity log."
-        );
+        assert_eq!(said(Tracker::Mal, None, ""), "MAL error, see activity log.");
     }
 
     /// A blob of GraphQL, an HTML error page or a stack trace is worse in

@@ -211,7 +211,11 @@ pub(crate) struct Cached {
 }
 
 /// One entry off the cache, None when the list does not hold it.
-pub(crate) fn cached(conn: &Connection, t: Tracker, media_id: u64) -> Result<Option<Cached>, CoreError> {
+pub(crate) fn cached(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+) -> Result<Option<Cached>, CoreError> {
     Ok(conn
         .prepare_cached(
             "SELECT status, progress, updated_at FROM tracker_entries
@@ -219,7 +223,10 @@ pub(crate) fn cached(conn: &Connection, t: Tracker, media_id: u64) -> Result<Opt
         )?
         .query_row(params![t.as_str(), media_id as i64], |r| {
             Ok(Cached {
-                status: r.get::<_, Option<String>>(0)?.as_deref().and_then(ListStatus::from_column),
+                status: r
+                    .get::<_, Option<String>>(0)?
+                    .as_deref()
+                    .and_then(ListStatus::from_column),
                 progress: u32::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
                 updated_at: r.get(2)?,
             })

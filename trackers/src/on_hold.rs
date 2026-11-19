@@ -614,9 +614,9 @@ async fn move_one(
         .store
         .write_async(move |c| cache::cached(c, t, media_id))
         .await?;
-    if !cached.is_some_and(|c| {
-        c.status == Some(ListStatus::Watching) && c.updated_at == entry.updated_at
-    }) {
+    if !cached
+        .is_some_and(|c| c.status == Some(ListStatus::Watching) && c.updated_at == entry.updated_at)
+    {
         return Ok(Some("it changed here during the pass"));
     }
     let remote = writes::Remote {
