@@ -28,6 +28,29 @@ use slint::{ComponentHandle, LogicalPosition, SharedString, Timer, TimerMode};
 use super::command::{Command, Dir, Field, HELP, Key, Onboarding, Series, Tab, Target};
 use crate::{AppData, AppWindow, FindData, Fold, Nav, PlayerData, Settings};
 
+/// What is open over the page, by the number app.slint's `over()` gives, from 1: the
+/// questions and sheets Back closes first, in its order. ShowData.sheet's sheets run 8 to 15.
+const OVER: [&str; 19] = [
+    "player",
+    "what's new",
+    "mobile data question",
+    "notification question",
+    "show menu",
+    "mark menu",
+    "versions menu",
+    "list status sheet",
+    "score sheet",
+    "related show",
+    "notes sheet",
+    "fixes sheet",
+    "match sheet",
+    "episodes and dates sheet",
+    "show sheet",
+    "airing menu",
+    "season picker",
+    "disk sheet",
+    "list move sheet",
+];
 /// How long a finger stays down for a long press: past Slint's and the app's hold.
 const HOLD: Duration = Duration::from_millis(800);
 /// How many frames the stats keep: `perf`'s longest sample at 144 Hz, so it counts them all.
@@ -616,8 +639,12 @@ fn where_line(w: &AppWindow) -> String {
         ));
     }
     let over = w.invoke_over();
-    if !over.is_empty() {
-        parts.push(format!("over it {over}"));
+    if over > 0 {
+        let name = usize::try_from(over)
+            .ok()
+            .and_then(|i| OVER.get(i - 1))
+            .unwrap_or(&"something new");
+        parts.push(format!("over it the {name}"));
     }
     if data.get_onboarding() {
         parts.push(onboarding_line(w));
