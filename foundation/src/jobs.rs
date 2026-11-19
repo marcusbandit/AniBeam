@@ -229,6 +229,9 @@ impl JobCtx {
     /// last emit is a window old, or arms one flush for when it will be. A
     /// due emit takes what was already buffered along with the new value, so
     /// no older value is left behind for a flush to deliver stale after it.
+    /// A push once the job has finished is dropped: anything still holding
+    /// the context (a task the body spawned, say) would otherwise land an
+    /// event after the terminal one.
     fn push<P: Pending>(
         self: &Arc<Self>,
         slot: fn(&JobCtx) -> &Mutex<Throttle<P>>,
@@ -236,13 +239,12 @@ impl JobCtx {
         emit: fn(&JobCtx, P::Out),
     ) {
         let mut t = recover(slot(self));
+        if self.finished.load(Ordering::SeqCst) {
+            return;
+        }
         add(&mut t.pending);
         if t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL) {
-            let due = t.take();
-            drop(t);
-            if let Some(due) = due {
-                emit(self, due);
-            }
+            self.drain(&mut t, emit);
             return;
         }
         if t.flush_scheduled {
@@ -253,24 +255,19 @@ impl JobCtx {
         let me = self.clone();
         self.runtime.spawn(async move {
             tokio::time::sleep(wait).await;
-            // Held for the whole check-drain-emit: whichever of this task
-            // and the runner's `finish` reaches the lock first completes
-            // entirely, emit included, before the other can start, so a
-            // flush from here can never land after the terminal event.
             let mut t = recover(slot(&me));
             t.flush_scheduled = false;
-            if !me.finished.load(Ordering::SeqCst)
-                && let Some(due) = t.take()
-            {
-                emit(&me, due);
+            if !me.finished.load(Ordering::SeqCst) {
+                me.drain(&mut t, emit);
             }
         });
     }
 
-    /// Emits whatever a throttle holds right now, holding its lock through
-    /// the emit for the same reason the scheduled flush does.
-    fn flush<P: Pending>(&self, slot: &Mutex<Throttle<P>>, emit: fn(&JobCtx, P::Out)) {
-        let mut t = recover(slot);
+    /// Emits whatever a throttle holds, called with its lock held: whichever
+    /// of a push, a scheduled flush and the runner's `finish` takes the lock
+    /// first completes entirely, emit included, before the next can start,
+    /// so nothing a throttle held can land after the terminal event.
+    fn drain<P: Pending>(&self, t: &mut Throttle<P>, emit: fn(&JobCtx, P::Out)) {
         if let Some(due) = t.take() {
             emit(self, due);
         }
@@ -283,8 +280,8 @@ impl JobCtx {
     /// waiting on a flush.
     fn finish(&self) {
         self.finished.store(true, Ordering::SeqCst);
-        self.flush(&self.throttle, JobCtx::emit_progress);
-        self.flush(&self.changed, JobCtx::emit_changed);
+        self.drain(&mut recover(&self.throttle), JobCtx::emit_progress);
+        self.drain(&mut recover(&self.changed), JobCtx::emit_changed);
     }
 }
 
@@ -919,6 +916,24 @@ mod tests {
         std::thread::sleep(PROGRESS_INTERVAL + Duration::from_millis(100));
         let mine = of_job(&c, id);
         assert_nothing_follows_the_terminal_event(&mine);
+    }
+
+    /// Something that still holds the context after the body returned, a task
+    /// the body spawned say, cannot land an event after the terminal one.
+    #[test]
+    fn a_push_after_the_job_finished_emits_nothing() {
+        let (_d, _rt, jobs, c) = setup();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let id = jobs.start(JobKind::Scan, move |ctx| async move {
+            tx.send(ctx.clone()).unwrap();
+            scan_done()
+        });
+        wait_for_finished(&c, id);
+        let ctx = rx.recv().unwrap();
+        ctx.progress(1, Some(2), "late");
+        ctx.changed(card(7));
+        std::thread::sleep(PROGRESS_INTERVAL + Duration::from_millis(100));
+        assert_nothing_follows_the_terminal_event(&of_job(&c, id));
     }
 
     #[test]

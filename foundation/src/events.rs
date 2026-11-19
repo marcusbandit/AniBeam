@@ -21,6 +21,10 @@ pub const RING_SIZE: u64 = 2000;
 /// them.
 const TRIM_EVERY: u64 = 64;
 
+/// Drops every row older than the newest [`RING_SIZE`].
+const TRIM: &str =
+    "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)";
+
 /// Every call and every job emits through this. Persistence is
 /// fire-and-forget (`Store::post`), so `emit` never blocks on a database
 /// round trip; listeners are called inline, by value, on the emitting
@@ -66,9 +70,12 @@ pub type SignalHook = Arc<dyn Fn(Signal) + Send + Sync>;
 
 impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
-    /// launches instead of restarting at zero.
+    /// launches instead of restarting at zero. The rows a batch left past
+    /// the ring are trimmed first, so whatever reads the whole table at
+    /// launch (`Core::earlier_starts`) sees the ring and no more.
     pub fn new(store: Arc<Store>) -> Result<Arc<EventBus>, CoreError> {
         let last: i64 = store.write(|c| {
+            c.execute(TRIM, params![RING_SIZE as i64])?;
             Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?)
         })?;
         scrub_stored(&store)?;
@@ -270,10 +277,7 @@ impl EventBus {
                 }
             }
             // Whatever the insert did, so a failed one never skips a batch's trim.
-            if trim && let Err(err) = c.execute(
-                "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)",
-                params![RING_SIZE as i64],
-            ) {
+            if trim && let Err(err) = c.execute(TRIM, params![RING_SIZE as i64]) {
                 tracing::warn!("failed to trim the events ring: {err}");
             }
         });
@@ -471,8 +475,8 @@ fn scrub_value(value: serde_json::Value) -> serde_json::Value {
 }
 
 /// The rows stored before every event was scrubbed, scrubbed as the bus starts (#509),
-/// as 0005 dropped the rows of an earlier leak. Cheap, since the ring holds 2000 rows
-/// at most, and a row with nothing to scrub is left as it is.
+/// as 0005 dropped the rows of an earlier leak. Cheap, since `new` has just trimmed the
+/// table to the ring, and a row with nothing to scrub is left as it is.
 fn scrub_stored(store: &Store) -> Result<(), CoreError> {
     store.write(|c| {
         let rows: Vec<(i64, String, Option<String>, String)> = {
@@ -882,6 +886,31 @@ mod tests {
         );
         bus.clear().unwrap();
         assert!(bus.recent(10).unwrap().is_empty());
+    }
+
+    /// What a batch left past the ring is gone by the next launch, so a read of
+    /// the whole table then (`Core::earlier_starts`) sees the ring and no more.
+    #[test]
+    fn the_rows_past_the_ring_are_trimmed_when_the_bus_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        let count = |store: &Store| -> i64 {
+            store
+                .write(|c| Ok(c.query_row("SELECT count(*) FROM events", [], |r| r.get(0))?))
+                .unwrap()
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            let bus = EventBus::new(store.clone()).unwrap();
+            for i in 0..2030 {
+                bus.info(Stage::System, format!("m{i}"), EventBody::Notice);
+            }
+            assert!(count(&store) > RING_SIZE as i64, "a batch is still open");
+            store.close();
+        }
+        let store = Store::open(&path).unwrap();
+        let _bus = EventBus::new(store.clone()).unwrap();
+        assert_eq!(count(&store), RING_SIZE as i64);
     }
 
     #[test]

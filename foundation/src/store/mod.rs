@@ -260,6 +260,13 @@ mod tests {
         let path = dir.path().join("anibeam.db");
         let mut c = Connection::open(&path).unwrap();
         migrations::MIGRATIONS.to_version(&mut c, version).unwrap();
+        let seeded: i64 = c
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            seeded as usize, version,
+            "the seed sits at the version it names"
+        );
         c.execute_batch(seed).unwrap();
         drop(c);
         let store = Store::open(&path).unwrap();
@@ -630,14 +637,24 @@ mod tests {
         assert_eq!(n, 1);
     }
 
-    /// Once closed, the store refuses work rather than hanging, and a
-    /// second close is a no-op.
+    /// Once closed, the store refuses work rather than hanging, drops what is
+    /// posted to it, and a second close is a no-op.
     #[test]
     fn a_closed_store_refuses_writes_and_closes_twice() {
         let (_dir, store) = open_temp();
         store.close();
         assert!(store.write(|_| Ok(())).is_err());
-        store.post(|_| panic!("a closed store runs nothing"));
+        assert!(store.tx(|_| Ok(())).is_err());
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(rt.block_on(store.write_async(|_| Ok(()))).is_err());
+        assert!(rt.block_on(store.tx_async(|_| Ok(()))).is_err());
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = ran.clone();
+        store.post(move |_| flag.store(true, std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            !ran.load(std::sync::atomic::Ordering::SeqCst),
+            "a closed store runs nothing posted to it"
+        );
         store.close();
     }
 

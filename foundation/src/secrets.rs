@@ -227,6 +227,13 @@ impl Secrets {
     /// The keyring store, probing for it on the first call. Every caller
     /// after the first finds the answer already there, and callers racing
     /// the first wait on it rather than opening a second session bus.
+    /// Test-only: `None` until the store choice has been made, then whether
+    /// the machine turned out to have no keyring. Never starts the probe.
+    #[cfg(test)]
+    fn keyring_unavailable(&self) -> Option<bool> {
+        self.primary.get().map(Option::is_none)
+    }
+
     fn primary(&self) -> Option<&Arc<CredentialStore>> {
         self.primary.get_or_init(open_keyring).as_ref()
     }
@@ -683,11 +690,11 @@ mod tests {
     fn the_store_choice_is_lazy_and_file_only_makes_it_up_front() {
         let dir = tempfile::tempdir().unwrap();
         let lazy = Secrets::init(dir.path().join("secrets.json"));
-        assert!(lazy.primary.get().is_none());
+        assert_eq!(lazy.keyring_unavailable(), None);
         let file_only = Secrets::file_only(dir.path().join("other.json"));
-        assert!(matches!(file_only.primary.get(), Some(None)));
+        assert_eq!(file_only.keyring_unavailable(), Some(true));
         assert!(!file_only.warm());
-        assert!(matches!(file_only.primary.get(), Some(None)));
+        assert_eq!(file_only.keyring_unavailable(), Some(true));
     }
 
     /// The machine gained a keyring, so the write lands there and the old
