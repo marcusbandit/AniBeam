@@ -31,6 +31,8 @@ pub struct Files {
     wanted: RwLock<Option<HashSet<usize>>>,
     /// Open files, each with whether it is the real one rather than a part file.
     open: Mutex<HashMap<usize, (bool, Arc<File>)>>,
+    /// Files written to since the last `sync`.
+    dirty: Mutex<HashSet<usize>>,
 }
 
 impl Files {
@@ -41,6 +43,7 @@ impl Files {
             names: RwLock::new(Vec::new()),
             wanted: RwLock::new(wanted),
             open: Mutex::new(HashMap::new()),
+            dirty: Mutex::new(HashSet::new()),
         }
     }
 
@@ -54,6 +57,31 @@ impl Files {
         recover_read(&self.wanted)
             .as_ref()
             .is_none_or(|w| w.contains(&id))
+    }
+
+    /// Flushes to the disk every file written to since the last time, wherever it sits now,
+    /// open or not, so nothing written so far is lost to a power cut.
+    pub fn sync(&self) -> std::io::Result<()> {
+        let ids: Vec<usize> = recover(&self.dirty).drain().collect();
+        for (n, &id) in ids.iter().enumerate() {
+            let open = recover(&self.open).get(&id).map(|(_, f)| f.clone());
+            let flushed = match open {
+                Some(f) => f.sync_data(),
+                None => match self.real(id).ok().filter(|p| p.exists()) {
+                    Some(real) => File::open(real).and_then(|f| f.sync_data()),
+                    None if self.part(id).exists() => {
+                        File::open(self.part(id)).and_then(|f| f.sync_data())
+                    }
+                    None => Ok(()),
+                },
+            };
+            if let Err(e) = flushed {
+                // The rest are flushed next time.
+                recover(&self.dirty).extend(&ids[n..]);
+                return Err(e);
+            }
+        }
+        Ok(())
     }
 
     /// Lets go of every open file, so space a deleted file held comes back.
@@ -266,6 +294,7 @@ impl TorrentStorage for Storage {
     }
 
     fn pwrite_all(&self, file_id: usize, offset: u64, buf: &[u8]) -> anyhow::Result<()> {
+        recover(&self.files.dirty).insert(file_id);
         Ok(self.files.file(file_id, true)?.write_all_at(buf, offset)?)
     }
 
