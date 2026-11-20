@@ -34,6 +34,9 @@ pub struct Files {
     open: Mutex<HashMap<usize, (bool, Arc<File>)>>,
     /// Files written to since the last `sync`.
     dirty: Mutex<HashSet<usize>>,
+    /// Taken off the shelf for a remove: its part files may belong to a copy of the
+    /// torrent added again meanwhile, so removing its files leaves them.
+    retired: std::sync::atomic::AtomicBool,
 }
 
 impl Files {
@@ -45,6 +48,7 @@ impl Files {
             wanted: RwLock::new(wanted),
             open: Mutex::new(HashMap::new()),
             dirty: Mutex::new(HashSet::new()),
+            retired: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -222,8 +226,10 @@ impl Shelf {
         let files = self.files(hash, folder);
         *recover_write(&files.folder) = folder.to_path_buf();
         files.set_wanted(wanted);
-        if let Ok(mut open) = files.open.try_lock() {
-            open.clear();
+        match files.open.try_lock() {
+            Ok(mut open) => open.clear(),
+            Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner().clear(),
+            Err(std::sync::TryLockError::WouldBlock) => {}
         }
         files
     }
@@ -236,6 +242,26 @@ impl Shelf {
         if let Some(files) = recover(&self.torrents).remove(hash) {
             files.remove_parts();
         }
+    }
+
+    /// Takes a torrent's files off the shelf before librqbit deletes it, so an add of the
+    /// same torrent meanwhile gets files of its own, and the delete leaves its part files.
+    pub fn retire(&self, hash: &str) -> Option<Arc<Files>> {
+        let files = recover(&self.torrents).remove(hash)?;
+        files
+            .retired
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Some(files)
+    }
+
+    /// Puts back a torrent's files a delete that failed had taken off the shelf.
+    pub fn put_back(&self, hash: &str, files: Arc<Files>) {
+        files
+            .retired
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        recover(&self.torrents)
+            .entry(hash.to_string())
+            .or_insert(files);
     }
 
     /// The storage for the ones the session brings back, which the shelf was given at open.
@@ -355,7 +381,9 @@ impl TorrentStorage for Storage {
     fn remove_file(&self, file_id: usize, filename: &Path) -> anyhow::Result<()> {
         recover(&self.files.open).remove(&file_id);
         let real = recover_read(&self.files.folder).join(filename);
-        for path in [real, self.files.part(file_id)] {
+        let retired = self.files.retired.load(std::sync::atomic::Ordering::SeqCst);
+        let part = (!retired).then(|| self.files.part(file_id));
+        for path in std::iter::once(real).chain(part) {
             match std::fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -450,6 +478,32 @@ mod tests {
             b"abcz"
         );
         assert!(!dir.path().join("parts/0").exists());
+    }
+
+    #[test]
+    fn a_retired_torrents_remove_leaves_the_part_files() {
+        // A copy added again while librqbit deletes the old one shares the part folder.
+        let dir = tempfile::tempdir().unwrap();
+        let shelf = Shelf::new(dir.path().join("parts"));
+        let old = shelf.files("abc", &dir.path().join("old"));
+        *old.names.write().unwrap() = vec![PathBuf::from("a.mkv"), PathBuf::from("b.mkv")];
+        old.set_wanted(Some([0].into()));
+        old.file(0, true).unwrap().write_all_at(b"a", 0).unwrap();
+        old.file(1, true).unwrap().write_all_at(b"b", 0).unwrap();
+        let retired = shelf.retire("abc").unwrap();
+        let fresh = shelf.files("abc", &dir.path().join("new"));
+        assert!(
+            !Arc::ptr_eq(&retired, &fresh),
+            "the re-add gets files of its own"
+        );
+        let storage = Storage { files: retired };
+        storage.remove_file(1, Path::new("b.mkv")).unwrap();
+        storage.remove_file(0, Path::new("a.mkv")).unwrap();
+        assert!(
+            dir.path().join("parts/abc/1").exists(),
+            "the part file stays"
+        );
+        assert!(!dir.path().join("old/a.mkv").exists());
     }
 
     #[test]

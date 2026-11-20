@@ -133,6 +133,8 @@ struct Wants {
     held: Arc<Mutex<bool>>,
     entries: Arc<Mutex<HashMap<String, Entry>>>,
     steering: Arc<tokio::sync::Mutex<()>>,
+    /// The engine's piece records, dropped before a start that begins a check.
+    keeper: Keeper,
 }
 
 impl Wants {
@@ -177,7 +179,14 @@ impl Wants {
         };
         let asked = match ask(&stats.state, stop, h.is_paused(), restart) {
             Ask::Pause => self.session.pause(h).await,
-            Ask::Start => self.session.unpause(h).await,
+            Ask::Start => {
+                // A start of a torrent in error or still checking begins a check, which can
+                // take pieces out of librqbit's record: the engine's record goes first.
+                if matches!(stats.state, S::Error | S::Initializing { .. }) {
+                    self.keeper.drop_record(&h.info_hash().as_string());
+                }
+                self.session.unpause(h).await
+            }
             // librqbit's start sets its paused flag back before it refuses a torrent
             // already live, and the refusal is the expected answer here.
             Ask::Unflag => {
@@ -326,8 +335,19 @@ struct Watch {
 const STILL_LOOKS: u32 = 20;
 
 impl Watch {
-    /// Follows `h` when it is checking its files.
+    /// Follows `h` when it is checking its files, after an ask that may have begun a new
+    /// check: a task already following the hash follows it once more before it ends.
     fn watch(&self, h: &Arc<librqbit::ManagedTorrent>) {
+        self.follow(h, true);
+    }
+
+    /// Follows `h` when it is checking and nothing follows it yet, as the tick does for
+    /// every check it sees: seeing one is no sign a new check began.
+    fn see(&self, h: &Arc<librqbit::ManagedTorrent>) {
+        self.follow(h, false);
+    }
+
+    fn follow(&self, h: &Arc<librqbit::ManagedTorrent>, asked: bool) {
         if !checking(h) {
             return;
         }
@@ -335,7 +355,7 @@ impl Watch {
         {
             let mut watching = recover(&self.watching);
             if let Some(again) = watching.get_mut(&key) {
-                *again = true;
+                *again |= asked;
                 return;
             }
             watching.insert(key.clone(), false);
@@ -345,11 +365,6 @@ impl Watch {
         tokio::spawn(async move {
             use librqbit::TorrentStatsState as S;
             let id = librqbit::api::TorrentIdOrHash::Hash(h.info_hash());
-            // A check can take pieces out of librqbit's record, and it writes its new one
-            // before the check ends: the engine's record goes while the check runs, so a
-            // kill before the end never folds the old pieces back. Nothing is lost, since
-            // the open already put them into librqbit's record.
-            watch.keeper.forget(key.clone()).await;
             let (mut last, mut still) = (None, 0u32);
             loop {
                 let now = watch.session.get(id);
@@ -405,9 +420,6 @@ impl Watch {
                     return;
                 }
                 (last, still) = (None, 0);
-                if checking(&h) {
-                    watch.keeper.forget(key.clone()).await;
-                }
             }
             recover(&watch.watching).remove(&key);
         });
@@ -438,6 +450,9 @@ struct Keeper {
     /// Set while a tick's pass is queued or running, so passes never pile up behind a slow
     /// flash.
     queued: Arc<std::sync::atomic::AtomicBool>,
+    /// How many times each torrent's record was dropped, so a pass that read the pieces
+    /// before a drop does not write them back after it.
+    drops: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 /// Whether `haves` claims no piece `seen` did not.
@@ -466,6 +481,8 @@ impl Keeper {
             if only.is_some_and(|o| !o.contains(&key)) {
                 continue;
             }
+            // Read before the pieces, so a drop after this read is seen at the write.
+            let drops = recover(&self.drops).get(&key).copied();
             // A torrent still checking its files has nothing to write yet, and a finished
             // one, like any other, has nothing new once its record holds what it has.
             let Ok((bits, _)) = api.api_dump_haves(librqbit::api::TorrentIdOrHash::Hash(hash))
@@ -481,16 +498,25 @@ impl Keeper {
             // claims them, so a power cut never leaves a record ahead of its files. A
             // record that claims no piece the last one did not is safe to write as it is,
             // and must not wait for a flush: it may be taking out pieces a check found bad.
-            if !within(haves, seen.as_deref())
-                && let Some(files) = self.shelf.get(&key)
-                && let Err(e) = files.sync()
-            {
-                tracing::warn!("the files of {key} were not flushed: {e}");
+            if !within(haves, seen.as_deref()) {
+                let flushed = match self.shelf.get(&key) {
+                    Some(files) => files.sync(),
+                    None => Err(std::io::Error::other("its files are not on the shelf")),
+                };
+                if let Err(e) = flushed {
+                    tracing::warn!("the files of {key} were not flushed: {e}");
+                    continue;
+                }
+            }
+            // `seen` is held across this one small write, so a drop meanwhile either comes
+            // first and is seen here, or comes after and removes what is written.
+            let mut seen = recover(&self.seen);
+            if recover(&self.drops).get(&key).copied() != drops {
                 continue;
             }
             match anibeam_foundation::atomic_file::write(&self.path(&key), haves) {
                 Ok(()) => {
-                    recover(&self.seen).insert(key, haves.to_vec());
+                    seen.insert(key, haves.to_vec());
                 }
                 Err(e) => tracing::warn!("the pieces of {key} were not written down: {e}"),
             }
@@ -517,6 +543,22 @@ impl Keeper {
                     .queued
                     .store(false, std::sync::atomic::Ordering::SeqCst);
             });
+        }
+    }
+
+    /// Drops a torrent's record at once, before librqbit is asked for a check that may take
+    /// pieces out of its own record: no check can then write a smaller record while the
+    /// engine's older one is still on disk. It waits for no pass; one that read the pieces
+    /// before the drop does not write them.
+    fn drop_record(&self, key: &str) {
+        let mut seen = recover(&self.seen);
+        *recover(&self.drops).entry(key.to_string()).or_default() += 1;
+        seen.remove(key);
+        match std::fs::remove_file(self.path(key)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                tracing::warn!("the pieces of {key} were not removed: {e}");
+            }
+            _ => {}
         }
     }
 
@@ -581,10 +623,18 @@ fn fold_progress(pieces: &Path, session_dir: &Path) {
             continue;
         }
         let merged = merge_pieces(&on_disk, &ours);
-        if merged != on_disk
-            && let Err(e) = anibeam_foundation::atomic_file::write(&theirs, &merged)
-        {
-            tracing::warn!("the pieces of {key} were not added to librqbit's record: {e}");
+        // Folded, or with nothing to add, the record has done its job and goes; one that
+        // could not be folded stays for the next open.
+        let folded = merged == on_disk
+            || match anibeam_foundation::atomic_file::write(&theirs, &merged) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!("the pieces of {key} were not added to librqbit's record: {e}");
+                    false
+                }
+            };
+        if folded {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
@@ -738,6 +788,7 @@ impl Engine {
             last: Arc::default(),
             every: every * 3,
             queued: Arc::default(),
+            drops: Arc::default(),
         };
         let engine = Engine {
             session: session.clone(),
@@ -750,6 +801,7 @@ impl Engine {
                 held: Arc::new(Mutex::new(true)),
                 entries: Arc::new(Mutex::new(entries)),
                 steering: Arc::default(),
+                keeper: keeper.clone(),
             },
             nudge: nudge.clone(),
             watch: Watch {
@@ -794,7 +846,7 @@ impl Engine {
                 }
                 let ticked = wants.tick(every, &mut checks).await;
                 next = ticked.next;
-                ticked.checking.iter().for_each(|h| watch.watch(h));
+                ticked.checking.iter().for_each(|h| watch.see(h));
                 // The disk is written off the tick, so settling never waits on a flush.
                 if !ticked.ended.is_empty() {
                     let (keeper, ended) = (keeper.clone(), ticked.ended);
@@ -862,6 +914,7 @@ impl Engine {
                 source,
                 AddTorrentOptions::default(),
                 Vec::new(),
+                None,
             )
             .await?;
         Ok(Added { hash, new })
@@ -960,6 +1013,7 @@ impl Engine {
                 AddTorrent::from_bytes(peeked.bytes),
                 options,
                 entry.priorities,
+                Some(&peeked.hash),
             )
             .await?;
         Ok(hash)
@@ -972,8 +1026,21 @@ impl Engine {
         source: AddTorrent<'_>,
         options: AddTorrentOptions,
         priorities: Vec<i64>,
+        known: Option<&str>,
     ) -> Result<(String, bool), CoreError> {
         let output = self.root.join(folder);
+        // When the hash is known before the add and librqbit does not have the torrent,
+        // what an earlier copy left goes before librqbit can check or settle the new one:
+        // its pause, its finish time and its piece record.
+        if let Some(hash) = known
+            && self.handle(hash).is_none()
+        {
+            if let Some(entry) = recover(&self.wants.entries).get_mut(hash) {
+                entry.paused_by_user = false;
+                entry.completion_on = 0;
+            }
+            self.keeper.drop_record(hash);
+        }
         // The add starts the torrent's files anew, whatever an earlier copy of it left on
         // the shelf: its folder and its selection are this add's.
         let wanted: Option<HashSet<usize>> = options
@@ -1021,6 +1088,11 @@ impl Engine {
                 if left_over {
                     entry.paused_by_user = false;
                     entry.completion_on = 0;
+                    // Known before the add, the record already went; otherwise it goes
+                    // now, before the new copy's check can have written its own.
+                    if known.is_none() {
+                        self.keeper.drop_record(&hash);
+                    }
                 }
                 entry.title = release.title.clone();
                 entry.folder = folder.to_string();
@@ -1034,10 +1106,7 @@ impl Engine {
             }
             left_over
         };
-        // Off the turn: forgetting waits for a keep pass, and a hold must not wait for it.
-        if left_over {
-            self.keeper.forget(hash.clone()).await;
-        }
+        let _ = left_over;
         self.watch.watch(&handle);
         self.nudge();
         self.save_entries();
@@ -1323,14 +1392,22 @@ impl Engine {
             }
             PhoneAction::Remove | PhoneAction::Forget => {
                 let files = action == PhoneAction::Remove;
-                self.session
-                    .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), files)
-                    .await?;
-                // An add of the same torrent can land while librqbit finishes the delete:
-                // what the new copy has is left alone.
+                // Off the shelf first, so an add of the same torrent while librqbit deletes
+                // this one gets files of its own, and the delete never reaches them.
+                let retired = self.shelf.retire(&key);
+                let id = librqbit::api::TorrentIdOrHash::Hash(h.info_hash());
+                if let Err(e) = self.session.delete(id, files).await {
+                    if let Some(retired) = retired {
+                        self.shelf.put_back(&key, retired);
+                    }
+                    return Err(e);
+                }
+                // What a copy added meanwhile has is left alone.
                 if self.handle(&key).is_none() {
                     recover(&self.wants.entries).remove(&key);
-                    self.shelf.forget(&key);
+                    if let Some(retired) = retired {
+                        retired.remove_parts();
+                    }
                     self.keeper.forget(key).await;
                 }
                 Ok(())
@@ -1603,6 +1680,31 @@ mod tests {
     }
 
     #[test]
+    fn a_record_that_could_not_be_folded_stays_for_the_next_open() {
+        // A full disk at open must not cost the pieces: the record waits for an open that
+        // can write librqbit's record, and nothing at open removes it meanwhile.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (ours, theirs) = (dir.path().join("pieces"), dir.path().join("session"));
+        std::fs::create_dir_all(&ours).unwrap();
+        std::fs::create_dir_all(&theirs).unwrap();
+        std::fs::write(ours.join("aa"), [0b1100_0000u8]).unwrap();
+        std::fs::write(theirs.join("aa.bitv"), [0b1000_0000u8]).unwrap();
+        // librqbit's folder takes no new file, as on a full disk.
+        let shut = std::fs::Permissions::from_mode(0o555);
+        std::fs::set_permissions(&theirs, shut).unwrap();
+        fold_progress(&ours, &theirs);
+        std::fs::set_permissions(&theirs, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(ours.join("aa")).unwrap(), [0b1100_0000]);
+        fold_progress(&ours, &theirs);
+        assert_eq!(
+            std::fs::read(theirs.join("aa.bitv")).unwrap(),
+            [0b1100_0000]
+        );
+        assert!(!ours.join("aa").exists());
+    }
+
+    #[test]
     fn a_record_that_claims_nothing_new_needs_no_flush() {
         // One that takes pieces out, as after a check found some bad, is written at once.
         assert!(within(&[0b1000_0000], Some(&[0b1100_0000])));
@@ -1634,19 +1736,14 @@ mod tests {
                 .add_peeked(&r, "Show", peeked, Vec::new())
                 .await
                 .unwrap();
-            for _ in 0..100 {
-                if !record.exists() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            assert!(
-                checking(&engine.handle(&hash).unwrap()),
-                "the check ran free"
-            );
+            // Gone by the time the add answers, with no wait: before librqbit could check.
             assert!(
                 !record.exists(),
                 "the old record is still there while it checks"
+            );
+            assert!(
+                checking(&engine.handle(&hash).unwrap()),
+                "the check ran free"
             );
         }
         engine.session.stop().await;
@@ -1717,7 +1814,10 @@ mod tests {
             std::fs::read(theirs.join("aa.bitv")).unwrap(),
             [0b1110_0000, 1]
         );
-        assert!(ours.join("aa").exists());
+        assert!(
+            !ours.join("aa").exists(),
+            "a folded record has done its job"
+        );
         assert_eq!(std::fs::read(theirs.join("bb.bitv")).unwrap(), [0, 0]);
         assert!(!ours.join("bb").exists(), "another length is dropped");
         assert!(
