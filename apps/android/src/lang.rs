@@ -34,28 +34,10 @@ fn file(data_dir: &Path) -> PathBuf {
     data_dir.join("language.json")
 }
 
-fn load(data_dir: &Path) -> Choice {
-    std::fs::read(file(data_dir))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
-}
-
-fn save(data_dir: &Path, choice: &Choice) {
-    let path = file(data_dir);
-    let tmp = path.with_extension("json.tmp");
-    let written = serde_json::to_vec_pretty(choice)
-        .map_err(std::io::Error::other)
-        .and_then(|b| std::fs::write(&tmp, b))
-        .and_then(|()| std::fs::rename(&tmp, &path));
-    if let Err(e) = written {
-        crate::local::log(&format!("language: could not keep the choice: {e}"));
-    }
-}
-
 struct Page {
     window: Weak<AppWindow>,
-    data_dir: PathBuf,
+    /// `language.json`.
+    file: PathBuf,
     choice: Choice,
 }
 
@@ -77,10 +59,11 @@ fn phone_lang() -> Lang {
 
 /// Reads the saved pick and sets the catalog's language, before the first frame.
 pub fn install(window: &AppWindow, data_dir: &Path) {
-    let choice = load(data_dir);
+    let file = file(data_dir);
+    let choice = crate::prefs::read_json(&file);
     window
         .global::<Tr>()
-        .on_lookup(|id, _rev, args| lookup(&id, &args).into());
+        .on_lookup(|id, _rev, args| lookup_in(tr::lang(), &id, &args).into());
     let d = window.global::<LangData>();
     d.on_pick_lang(|i| {
         with(|p| {
@@ -89,14 +72,16 @@ pub fn install(window: &AppWindow, data_dir: &Path) {
                 .and_then(|i| Lang::ALL.get(i))
                 .map(|l| l.code().to_owned())
                 .unwrap_or_default();
-            save(&p.data_dir, &p.choice);
+            if let Err(e) = crate::prefs::keep_json(&p.file, &p.choice) {
+                crate::local::log(&format!("language: could not keep the choice: {e}"));
+            }
             p.apply();
         })
     });
     PAGE.with(|cell| {
         *cell.borrow_mut() = Some(Page {
             window: window.as_weak(),
-            data_dir: data_dir.to_path_buf(),
+            file,
             choice,
         })
     });
@@ -110,8 +95,9 @@ pub fn system_changed() {
     with(Page::apply);
 }
 
-/// `Tr.lookup`'s arguments, name and value in turn; a `#` before a name marks a number.
-fn lookup(id: &str, args: &slint::ModelRc<SharedString>) -> String {
+/// `Tr.lookup` in `lang`. Its arguments are name and value in turn; a `#` before a name
+/// marks a number.
+pub(crate) fn lookup_in(lang: Lang, id: &str, args: &slint::ModelRc<SharedString>) -> String {
     use slint::Model;
     let flat: Vec<SharedString> = args.iter().collect();
     let pairs: Vec<(&str, tr::Arg)> = flat
@@ -123,7 +109,7 @@ fn lookup(id: &str, args: &slint::ModelRc<SharedString>) -> String {
             None => (k.as_str(), tr::Arg::from(v.to_string())),
         })
         .collect();
-    tr::tr(id, &pairs)
+    tr::tr_in(lang, id, &pairs)
 }
 
 impl Page {
@@ -176,10 +162,29 @@ mod tests {
     fn a_saved_pick_survives_a_reload_and_an_empty_one_follows_the_phone() {
         let dir = std::env::temp_dir().join(format!("anibeam-lang-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(load(&dir).pick, "");
+        assert_eq!(crate::prefs::read_json::<Choice>(&file(&dir)).pick, "");
         let c = Choice { pick: "da".into() };
-        save(&dir, &c);
-        assert_eq!(load(&dir), c);
+        crate::prefs::keep_json(&file(&dir), &c).unwrap();
+        assert_eq!(crate::prefs::read_json::<Choice>(&file(&dir)), c);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_marked_argument_is_a_number_and_picks_the_plural() {
+        let args = |name: &str| {
+            ModelRc::new(VecModel::from(vec![
+                SharedString::from(name),
+                SharedString::from("1"),
+            ]))
+        };
+        assert_eq!(
+            lookup_in(Lang::En, "common-episodes", &args("#count")),
+            "1 episode"
+        );
+        // Unmarked, the same value is words, which no plural form names.
+        assert_eq!(
+            lookup_in(Lang::En, "common-episodes", &args("count")),
+            "1 episodes"
+        );
     }
 }

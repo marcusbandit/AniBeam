@@ -6,22 +6,15 @@ use anibeam_core::{SeasonName, SeasonPick};
 use chrono::{Datelike, Utc};
 
 /// The oldest year the picker lists.
-pub const OLDEST: i32 = 1940;
+const OLDEST: i32 = 1940;
 
-/// The four quarters' message IDs, Winter first.
-const NAMES: [&str; 4] = [
-    "season-winter",
-    "season-spring",
-    "season-summer",
-    "season-fall",
-];
-/// What the core and AniList call them, in the order of `NAMES`.
-const CORE_NAMES: [&str; 4] = ["Winter", "Spring", "Summer", "Fall"];
-const ORDER: [SeasonName; 4] = [
-    SeasonName::Winter,
-    SeasonName::Spring,
-    SeasonName::Summer,
-    SeasonName::Fall,
+/// The four quarters, Winter first: the core's name, the word the core and AniList write in
+/// a label, and the message ID.
+const QUARTERS: [(SeasonName, &str, &str); 4] = [
+    (SeasonName::Winter, "Winter", "season-winter"),
+    (SeasonName::Spring, "Spring", "season-spring"),
+    (SeasonName::Summer, "Summer", "season-summer"),
+    (SeasonName::Fall, "Fall", "season-fall"),
 ];
 
 /// A year and a quarter, 0 for Winter to 3 for Fall.
@@ -37,7 +30,7 @@ pub fn now() -> Moment {
 pub fn named(quarter: usize, year: i32) -> String {
     tr!(
         "season-named",
-        season = tr!(NAMES[quarter.min(3)]),
+        season = tr!(QUARTERS[quarter.min(3)].2),
         year = year.to_string()
     )
 }
@@ -46,7 +39,7 @@ pub fn named(quarter: usize, year: i32) -> String {
 /// a season and a year stays as it came.
 pub fn localized(label: &str) -> String {
     let parsed = label.split_once(' ').and_then(|(word, year)| {
-        let quarter = CORE_NAMES.iter().position(|n| *n == word)?;
+        let quarter = QUARTERS.iter().position(|(_, core, _)| *core == word)?;
         Some(named(quarter, year.parse().ok()?))
     });
     parsed.unwrap_or_else(|| label.to_string())
@@ -72,23 +65,8 @@ pub fn pick(quarter: usize, year: i32, at: Moment) -> SeasonPick {
         SeasonPick::Next
     } else {
         SeasonPick::Season {
-            name: ORDER[quarter.min(3)],
+            name: QUARTERS[quarter.min(3)].0,
             year,
-        }
-    }
-}
-
-/// The season the page shows beside "This season": the next one, or the one picked, as the
-/// desktop's seasonLabel. Empty for the current season.
-pub fn label(showing: SeasonPick, at: Moment) -> String {
-    match showing {
-        SeasonPick::Now => String::new(),
-        SeasonPick::Next => {
-            let n = next(at);
-            named(n.1, n.0)
-        }
-        SeasonPick::Season { name, year } => {
-            named(ORDER.iter().position(|n| *n == name).unwrap_or(0), year)
         }
     }
 }
@@ -99,18 +77,20 @@ pub fn moment_of(showing: SeasonPick, at: Moment) -> Option<Moment> {
         SeasonPick::Now => None,
         SeasonPick::Next => Some(next(at)),
         SeasonPick::Season { name, year } => {
-            Some((year, ORDER.iter().position(|n| *n == name).unwrap_or(0)))
+            Some((year, QUARTERS.iter().position(|q| q.0 == name).unwrap_or(0)))
         }
     }
 }
 
+/// The season the page shows beside "This season": the next one, or the one picked, as the
+/// desktop's seasonLabel. Empty for the current season.
+pub fn label(showing: SeasonPick, at: Moment) -> String {
+    moment_of(showing, at).map_or_else(String::new, |(year, quarter)| named(quarter, year))
+}
+
 /// The year the picker opens on: the showing season's, else this one's.
 pub fn year_of(showing: SeasonPick, at: Moment) -> i32 {
-    match showing {
-        SeasonPick::Now => at.0,
-        SeasonPick::Next => next(at).0,
-        SeasonPick::Season { year, .. } => year,
-    }
+    moment_of(showing, at).map_or(at.0, |(year, _)| year)
 }
 
 #[cfg(test)]
@@ -147,6 +127,21 @@ mod tests {
     fn a_core_label_is_a_season_and_a_year() {
         assert_eq!(localized("Fall 2012"), "Fall 2012");
         assert_eq!(localized("Autumn"), "Autumn");
+    }
+
+    #[test]
+    fn the_picker_marks_and_opens_on_the_season_showing() {
+        let at = (2026, 3);
+        assert_eq!(moment_of(SeasonPick::Now, at), None);
+        assert_eq!(moment_of(SeasonPick::Next, at), Some((2027, 0)));
+        let spring = SeasonPick::Season {
+            name: SeasonName::Spring,
+            year: 2019,
+        };
+        assert_eq!(moment_of(spring, at), Some((2019, 1)));
+        assert_eq!(year_of(SeasonPick::Now, at), 2026);
+        assert_eq!(year_of(SeasonPick::Next, at), 2027);
+        assert_eq!(year_of(spring, at), 2019);
     }
 
     #[test]

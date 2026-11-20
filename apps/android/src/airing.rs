@@ -37,8 +37,7 @@ fn saved_address() -> Option<HostAddress> {
 
 fn waiting() -> Vec<Waiting> {
     FILE.get()
-        .and_then(|f| std::fs::read(f).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .map(|f| crate::prefs::read_json(f))
         .unwrap_or_default()
 }
 
@@ -53,9 +52,7 @@ fn keep(list: &[Waiting]) {
             }
         })
     } else {
-        serde_json::to_vec(list)
-            .map_err(std::io::Error::other)
-            .and_then(|b| std::fs::write(file, b))
+        crate::prefs::keep_json(file, &list)
     };
     if let Err(e) = written {
         crate::local::log(&format!(
@@ -144,11 +141,7 @@ pub fn sync(address: &HostAddress) {
         _ => return,
     };
     let mut changed = false;
-    for (&id, on) in theirs
-        .difference(&ours)
-        .map(|id| (id, true))
-        .chain(ours.difference(&theirs).map(|id| (id, false)))
-    {
+    for (id, on) in changes(&theirs, &ours) {
         changed |= core
             .call(Call::SetNotInterested {
                 anilist_id: id,
@@ -158,5 +151,30 @@ pub fn sync(address: &HostAddress) {
     }
     if changed {
         crate::local::touch();
+    }
+}
+
+/// What makes this phone's list the computer's: each show marked there and not here goes on,
+/// each marked here and not there comes off.
+fn changes(theirs: &HashSet<u64>, ours: &HashSet<u64>) -> Vec<(u64, bool)> {
+    theirs
+        .difference(ours)
+        .map(|&id| (id, true))
+        .chain(ours.difference(theirs).map(|&id| (id, false)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_phone_follows_the_computers_list() {
+        let theirs = HashSet::from([1, 2, 3]);
+        let ours = HashSet::from([2, 3, 4]);
+        let mut c = changes(&theirs, &ours);
+        c.sort_unstable();
+        assert_eq!(c, [(1, true), (4, false)]);
+        assert!(changes(&theirs, &theirs).is_empty());
     }
 }

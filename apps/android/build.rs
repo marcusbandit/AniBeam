@@ -1,5 +1,6 @@
 fn main() {
-    changes();
+    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    changes(&manifest);
     // scripts/build.sh works out the version the APK ships as (2.4.3-nightly.20261113.41 on a
     // nightly) and its versionCode; the app shows both in More. A plain cargo run, the tests
     // say, has neither and shows the crate's version.
@@ -22,7 +23,6 @@ fn main() {
     // libmpv and the platform's GL are there; without it they stand in for a player that
     // never opens.
     println!("cargo::rustc-check-cfg=cfg(libmpv)");
-    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
         Ok("android") => android_mpv(&manifest),
         Ok("ios") => ios_mpv(&manifest),
@@ -119,10 +119,9 @@ include!("../../core/src/changelog_files.rs");
 /// The patch notes waiting in changes/ for the next version, built in beside CHANGELOG.md:
 /// What's new shows them under the newest heading until the release folds them into the
 /// file (#504). A slice of `include_str!`s in name order, in OUT_DIR/changes.rs.
-fn changes() {
+fn changes(manifest: &std::path::Path) {
     println!("cargo:rerun-if-changed=changes");
-    let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("changes");
-    let list: String = change_files(&dir)
+    let list: String = change_files(&manifest.join("changes"))
         .iter()
         .map(|p| format!("include_str!({:?}),", p.display().to_string()))
         .collect();

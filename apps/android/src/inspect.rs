@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use anibeam_core::releases::grid::runs;
 use anibeam_core::{Call, EventBody};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -15,6 +16,10 @@ use crate::{AppWindow, FindData};
 /// a burst of that many torrent fetches is what an indexer drops; the rest are asked as the
 /// list is drawn again.
 const MOST_AT_ONCE: usize = 6;
+
+/// How many answers are kept before those of lists no longer drawn are let go. Enough that
+/// going back to a search a few steps behind finds its answers still there.
+const KEPT: usize = 200;
 
 enum Answer {
     Asking,
@@ -33,23 +38,15 @@ thread_local! {
     static NOTES: RefCell<Notes> = RefCell::new(Notes::default());
 }
 
-/// Episode numbers as short runs: 1-12, 14, 20-24.
-fn runs(list: &[u32]) -> String {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < list.len() {
-        let mut j = i;
-        while j + 1 < list.len() && list[j + 1] == list[j] + 1 {
-            j += 1;
+impl Notes {
+    /// Lets go of the answers for links the drawn list no longer holds, once there are more
+    /// than `KEPT`. The page only shows the drawn list's, so it shows the same.
+    fn forget_old(&mut self) {
+        if self.answers.len() > KEPT {
+            let links = &self.links;
+            self.answers.retain(|link, _| links.contains(link));
         }
-        out.push(if j > i {
-            format!("{}-{}", list[i], list[j])
-        } else {
-            list[i].to_string()
-        });
-        i = j + 1;
     }
-    out.join(", ")
 }
 
 fn note(answer: Option<&Answer>) -> String {
@@ -97,6 +94,7 @@ pub fn track(rows: Vec<(String, bool)>) {
         let mut n = n.borrow_mut();
         // The core trims a link and echoes it trimmed, so a link is kept that way here.
         n.links = rows.iter().map(|(l, _)| l.trim().to_string()).collect();
+        n.forget_old();
         let mut ask = Vec::new();
         // Without a core nothing is marked asked, so the next draw asks.
         for (link, batch) in rows.iter().map(|(l, b)| (l.trim(), *b)) {
@@ -151,11 +149,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn episodes_read_as_short_runs() {
-        assert_eq!(runs(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), "1-12");
-        assert_eq!(runs(&[1, 2, 3, 5, 7, 8]), "1-3, 5, 7-8");
-        assert_eq!(runs(&[4]), "4");
-        assert_eq!(runs(&[]), "");
+    fn old_answers_go_once_there_are_too_many_but_the_drawn_lists_stay() {
+        let mut n = Notes {
+            links: vec!["drawn".into()],
+            ..Notes::default()
+        };
+        n.answers.insert("drawn".into(), Answer::Done(vec![1]));
+        for i in 0..KEPT - 1 {
+            n.answers.insert(format!("old {i}"), Answer::Asking);
+        }
+        n.forget_old();
+        assert_eq!(n.answers.len(), KEPT, "at the bound nothing goes");
+        n.answers.insert("one more".into(), Answer::Asking);
+        n.forget_old();
+        assert_eq!(n.answers.len(), 1);
+        assert!(matches!(n.answers.get("drawn"), Some(Answer::Done(e)) if e == &[1]));
     }
 
     #[test]

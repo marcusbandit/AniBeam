@@ -159,28 +159,10 @@ fn file(data_dir: &Path) -> PathBuf {
     data_dir.join("look.json")
 }
 
-fn load(data_dir: &Path) -> Choice {
-    std::fs::read(file(data_dir))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
-}
-
-fn save(data_dir: &Path, choice: &Choice) {
-    let path = file(data_dir);
-    let tmp = path.with_extension("json.tmp");
-    let written = serde_json::to_vec_pretty(choice)
-        .map_err(std::io::Error::other)
-        .and_then(|b| std::fs::write(&tmp, b))
-        .and_then(|()| std::fs::rename(&tmp, &path));
-    if let Err(e) = written {
-        crate::local::log(&format!("look: could not keep the choice: {e}"));
-    }
-}
-
 struct Page {
     window: Weak<AppWindow>,
-    data_dir: PathBuf,
+    /// `look.json`.
+    file: PathBuf,
     choice: Choice,
 }
 
@@ -198,11 +180,12 @@ fn with(f: impl FnOnce(&mut Page)) {
 
 /// Reads the saved choice and dresses the window in it, before the first frame.
 pub fn install(window: &AppWindow, data_dir: &Path) {
-    let choice = load(data_dir);
+    let file = file(data_dir);
+    let choice = crate::prefs::read_json(&file);
     PAGE.with(|cell| {
         *cell.borrow_mut() = Some(Page {
             window: window.as_weak(),
-            data_dir: data_dir.to_path_buf(),
+            file,
             choice,
         })
     });
@@ -289,7 +272,9 @@ fn luma(rgb: u32) -> f32 {
 
 impl Page {
     fn keep(&mut self) {
-        save(&self.data_dir, &self.choice);
+        if let Err(e) = crate::prefs::keep_json(&self.file, &self.choice) {
+            crate::local::log(&format!("look: could not keep the choice: {e}"));
+        }
         self.apply();
     }
 
@@ -336,7 +321,6 @@ impl Page {
         }));
         t.set_ok(color(pal.hues[3]));
         t.set_warn(color(pal.hues[2]));
-        t.set_yellow(color(pal.hues[2]));
         t.set_bad(color(pal.hues[0]));
         t.set_cyan(color(pal.hues[4]));
         t.set_purple(color(pal.purple));
@@ -397,10 +381,10 @@ mod tests {
             accent: 3,
             size: 4,
         };
-        save(&dir, &c);
-        assert_eq!(load(&dir), c);
+        crate::prefs::keep_json(&file(&dir), &c).unwrap();
+        assert_eq!(crate::prefs::read_json::<Choice>(&file(&dir)), c);
         std::fs::write(file(&dir), r#"{"mode":1}"#).unwrap();
-        let old = load(&dir);
+        let old: Choice = crate::prefs::read_json(&file(&dir));
         assert_eq!((old.mode, old.size, old.accent), (1, 1, -1));
         let _ = std::fs::remove_dir_all(dir);
     }

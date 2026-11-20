@@ -35,7 +35,8 @@ export global Theme {
     in property <color> bad: #ff7a4d;
     in property <color> cyan: #6cc4c0;
     in property <color> purple: #b49be0;
-    in property <color> yellow: #e0b25a;
+    // Yellow is always the warning hue.
+    out property <color> yellow: self.warn;
 
     // A pane is the ink at a low alpha over the ground, so panes nest.
     out property <color> surface: self.ink.with-alpha(self.dark ? 0.035 : 0.045);
@@ -68,7 +69,6 @@ export global Theme {
     // Text size multiplies every step: 0.875 to 1.5, as the desktop's.
     in property <float> text-scale: 1;
     out property <length> page: 46px * self.text-scale;
-    out property <length> display: 46px * self.text-scale;
     out property <length> section: 31px * self.text-scale;
     out property <length> large: 22px * self.text-scale;
     out property <length> heading: 17px * self.text-scale;
@@ -84,7 +84,6 @@ export global Theme {
     out property <length> radius-small: 6px;
     out property <length> radius-row: 6px;
     out property <length> radius: 18px;
-    out property <length> radius-large: 18px;
     out property <length> control: 11 * unit;
     out property <length> control-small: 8 * unit;
     // The least a finger is given: a control drawn smaller still takes touches this tall.
@@ -105,22 +104,19 @@ export global Theme {
     // A poster tile is never narrower than this; the grid adds columns as the width allows.
     out property <length> tile-min: 104px;
 
-    // The episode cube colours, by the core's codes (library::cards::cubes): watched and
-    // tracked, watched here, on disk, missing, not downloaded, not aired, downloading.
-    out property <color> cube-watched: self.ok;
+    // Two of the episode cube colours the calendar reads too: watched here, and missing.
     out property <color> cube-here: self.cyan;
-    out property <color> cube-disk: self.dark ? #ffffff : self.text;
     out property <color> cube-missing: self.warn;
-    out property <color> cube-none: self.ink.with-alpha(0.16);
-    out property <color> cube-downloading: self.purple;
 
-    // The cube colour for a code: 0 w, 1 l, 2 d, 3 m, 4 g, 5 f, 6 t.
+    // The cube colour for one of the core's codes (library::cards::cubes): 0 watched and
+    // tracked, 1 watched here, 2 on disk, 3 missing, 4 not downloaded, 5 not aired, 6
+    // downloading.
     public pure function cube(code: int) -> color {
-        if (code == 0) { return self.cube-watched; }
+        if (code == 0) { return self.ok; }
         if (code == 1) { return self.cube-here; }
-        if (code == 2) { return self.cube-disk; }
+        if (code == 2) { return self.dark ? #ffffff : self.text; }
         if (code == 3) { return self.cube-missing; }
-        if (code == 6) { return self.cube-downloading; }
-        return self.cube-none;
+        if (code == 6) { return self.purple; }
+        return self.ink.with-alpha(0.16);
     }
 }

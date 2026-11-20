@@ -4,7 +4,7 @@
 //! picks them up by job id.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use anibeam_core::{
@@ -27,7 +27,7 @@ enum Outcome {
 
 /// An event can land before the call that started its job has returned, so the answer waits
 /// here by job id.
-static STASH: Mutex<Option<HashMap<u64, Outcome>>> = Mutex::new(None);
+static STASH: Mutex<BTreeMap<u64, Outcome>> = Mutex::new(BTreeMap::new());
 
 /// The open show, as the match needs it.
 struct Open {
@@ -67,14 +67,10 @@ pub fn core_event(event: &Event) {
     };
     {
         let mut stash = STASH.lock().unwrap_or_else(|e| e.into_inner());
-        let map = stash.get_or_insert_with(HashMap::new);
-        map.insert(job.id, outcome);
+        stash.insert(job.id, outcome);
         // Job ids only grow, so the oldest answers are the ones nobody is waiting for.
-        while map.len() > 32 {
-            let Some(oldest) = map.keys().min().copied() else {
-                break;
-            };
-            map.remove(&oldest);
+        while stash.len() > 32 {
+            stash.pop_first();
         }
     }
     let _ = slint::invoke_from_event_loop(deliver);
@@ -87,13 +83,7 @@ fn deliver() {
         (s.search_job, s.resolve_job)
     });
     let take = |job: Option<u64>| {
-        job.and_then(|j| {
-            STASH
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .as_mut()
-                .and_then(|m| m.remove(&j))
-        })
+        job.and_then(|j| STASH.lock().unwrap_or_else(|e| e.into_inner()).remove(&j))
     };
     let search = take(search);
     let resolve = take(resolve);
@@ -144,10 +134,11 @@ thread_local! {
     static WINDOW: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
 }
 
-fn with_window(f: impl FnOnce(&AppWindow)) {
-    if let Some(window) = WINDOW.with(|w| w.borrow().as_ref().and_then(|w| w.upgrade())) {
-        f(&window);
-    }
+/// Runs `f` on the window while it is up, with what `f` answered.
+fn with_window<T>(f: impl FnOnce(&AppWindow) -> T) -> Option<T> {
+    WINDOW
+        .with(|w| w.borrow().as_ref().and_then(|w| w.upgrade()))
+        .map(|w| f(&w))
 }
 
 fn provider_name(provider: i32) -> String {
@@ -198,24 +189,11 @@ fn match_text(info: &MatchInfo) -> String {
     tr!("phone-match-matched-on", sites = sites)
 }
 
-/// An AniList format as the match panel words it.
-fn format_label(format: &str) -> String {
-    match format {
-        "TV" => tr!("show-format-tv"),
-        "TV_SHORT" => tr!("show-format-tv-short"),
-        "OVA" => tr!("show-format-ova"),
-        "ONA" => tr!("show-format-ona"),
-        "SPECIAL" => tr!("show-format-special"),
-        "MOVIE" => tr!("show-format-film"),
-        "MUSIC" => tr!("match-format-music"),
-        other => other.replace('_', " "),
-    }
-}
-
 fn row(r: &SearchResult) -> MatchRow {
     let format = match (&r.format, r.provider) {
+        // TVmaze's types ("Scripted", "Animation") are words already.
         (Some(f), Provider::Tvmaze) => f.clone(),
-        (Some(f), _) => format_label(f),
+        (Some(f), _) => crate::show::format_label(Some(f)),
         (None, _) => String::new(),
     };
     let meta: Vec<String> = [
@@ -423,7 +401,7 @@ pub fn install(window: &AppWindow) {
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        with_window(|w| w.global::<MatchData>().set_note(e.to_string().into()))
+                        with_window(|w| w.global::<MatchData>().set_note(e.to_string().into()));
                     }
                 });
             });
@@ -479,42 +457,39 @@ fn apply(series: u64, target: MatchTarget, said: String) {
 /// Starts a search of the picked provider for `query`.
 fn search(query: String) {
     let query = query.trim().to_string();
-    let (provider, asked) = with_window_value(|w| {
-        let data = w.global::<MatchData>();
-        (data.get_provider(), query.clone())
-    })
-    .unwrap_or((0, query.clone()));
-    STATE.with(|s| {
+    let provider = with_window(|w| w.global::<MatchData>().get_provider()).unwrap_or(0);
+    let ticket = STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.asked += 1;
         s.results.clear();
         s.search_job = None;
+        s.asked
     });
-    if asked.chars().count() < 2 {
-        with_window(|w| {
-            let data = w.global::<MatchData>();
-            data.set_searching(false);
-            show_results(&data);
-        });
-        return;
-    }
-    let Some(core) = crate::local::core() else {
-        return;
+    let long_enough = query.chars().count() >= 2;
+    let core = if long_enough {
+        crate::local::core()
+    } else {
+        None
     };
-    let ticket = STATE.with(|s| s.borrow().asked);
     with_window(|w| {
         let data = w.global::<MatchData>();
-        data.set_searching(true);
-        data.set_note("".into());
-        data.set_empty(tr!("phone-match-searching", name = provider_name(provider)).into());
+        data.set_searching(core.is_some());
+        if core.is_some() {
+            data.set_note("".into());
+        } else if long_enough {
+            data.set_note(tr!("show-still-starting").into());
+        }
         show_results(&data);
     });
+    let Some(core) = core else {
+        return;
+    };
     let _ = std::thread::Builder::new()
         .name("match-search".into())
         .spawn(move || {
             let answer = core.call(Call::SearchProvider {
                 provider: provider_of(provider),
-                query: asked,
+                query,
                 limit: LIMIT,
             });
             let _ = slint::invoke_from_event_loop(move || {
@@ -527,20 +502,16 @@ fn search(query: String) {
                         deliver();
                     }
                     Ok(_) => {}
-                    Err(e) => with_window(|w| {
-                        let data = w.global::<MatchData>();
-                        data.set_searching(false);
-                        data.set_note(e.to_string().into());
-                    }),
+                    Err(e) => {
+                        with_window(|w| {
+                            let data = w.global::<MatchData>();
+                            data.set_searching(false);
+                            data.set_note(e.to_string().into());
+                        });
+                    }
                 }
             });
         });
-}
-
-fn with_window_value<T>(f: impl FnOnce(&AppWindow) -> T) -> Option<T> {
-    WINDOW
-        .with(|w| w.borrow().as_ref().and_then(|w| w.upgrade()))
-        .map(|w| f(&w))
 }
 
 #[cfg(test)]
@@ -569,6 +540,46 @@ mod tests {
             confirmed: true,
         };
         assert_eq!(match_text(&info), "Matched on AniList and MyAnimeList");
+    }
+
+    fn hit(provider: Provider, format: Option<&str>) -> SearchResult {
+        SearchResult {
+            provider,
+            id: 1,
+            title: "Show".into(),
+            alt_title: Some("Alt".into()),
+            format: format.map(str::to_string),
+            year: Some(2024),
+            episodes: Some(12),
+            cover_url: None,
+            romaji: None,
+            english: None,
+            native: None,
+            synonyms: Vec::new(),
+            airing: false,
+        }
+    }
+
+    #[test]
+    fn a_hit_reads_its_year_format_and_episodes() {
+        let r = row(&hit(Provider::Anilist, Some("TV_SHORT")));
+        assert_eq!((r.title.as_str(), r.alt.as_str()), ("Show", "Alt"));
+        assert_eq!(r.meta, "2024, TV short, 12 episodes");
+        assert_eq!(
+            row(&hit(Provider::Anilist, Some("MUSIC"))).meta,
+            "2024, Music, 12 episodes"
+        );
+        // TVmaze's own word stays as it came, and no format says nothing.
+        assert_eq!(
+            row(&hit(Provider::Tvmaze, Some("Scripted"))).meta,
+            "2024, Scripted, 12 episodes"
+        );
+        let bare = SearchResult {
+            year: None,
+            episodes: None,
+            ..hit(Provider::Anilist, None)
+        };
+        assert_eq!(row(&bare).meta, "");
     }
 
     #[test]
