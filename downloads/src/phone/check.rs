@@ -43,19 +43,25 @@ fn searched_hosts(services: &Services) -> Vec<(String, String, u16)> {
             "https"
         };
         // The port stays (a Prowlarr listens on 9696); a login in the address never goes out.
-        let authority = anibeam_releases::repos::index::authority_of(&e.url);
-        let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
-        out.push((host.clone(), format!("{scheme}://{authority}/"), port));
+        out.push((
+            host.clone(),
+            format!("{scheme}://{}/", server_of(&e.url)),
+            port,
+        ));
     }
     out
 }
 
+/// The host and port of `url`, without any login in front of them.
+fn server_of(url: &str) -> &str {
+    let authority = anibeam_releases::repos::index::authority_of(url);
+    authority.rsplit_once('@').map_or(authority, |(_, a)| a)
+}
+
 /// The port a connection to `url` goes to: the one in the address, else the scheme's own.
 fn port_of(url: &str) -> u16 {
-    let authority = anibeam_releases::repos::index::authority_of(url);
-    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
     // A ':' inside an IPv6 literal's brackets is not a port.
-    authority
+    server_of(url)
         .rsplit_once(':')
         .filter(|(_, port)| !port.contains(']'))
         .and_then(|(_, port)| port.parse().ok())
@@ -73,6 +79,13 @@ fn line(name: String, ok: bool, detail: String, ms: u64) -> NetCheck {
         detail,
         ms,
     }
+}
+
+fn shown(ips: &[IpAddr]) -> String {
+    ips.iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
@@ -117,97 +130,59 @@ async fn host(
 
     let start = Instant::now();
     let system = tokio::time::timeout(STEP, tokio::net::lookup_host((name, 443))).await;
-    match system {
+    let (ok, detail) = match system {
         Ok(Ok(addrs)) => {
             let found: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
-            let shown = found
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push(line(
-                tr(
-                    "core-phone-check-finding",
-                    &[("label", label.as_str().into())],
-                ),
-                !found.is_empty(),
-                shown,
-                ms(start),
-            ));
+            let answer = (!found.is_empty(), shown(&found));
             ips.extend(found);
+            answer
         }
-        Ok(Err(e)) => out.push(line(
-            tr(
-                "core-phone-check-finding",
-                &[("label", label.as_str().into())],
-            ),
+        Ok(Err(e)) => (
             false,
             tr(
                 "core-phone-check-failed",
                 &[("error", e.to_string().into())],
             ),
-            ms(start),
-        )),
-        Err(_) => out.push(line(
-            tr(
-                "core-phone-check-finding",
-                &[("label", label.as_str().into())],
-            ),
-            false,
-            tr("core-phone-check-no-answer", &[]),
-            ms(start),
-        )),
-    }
+        ),
+        Err(_) => (false, tr("core-phone-check-no-answer", &[])),
+    };
+    let finding = tr(
+        "core-phone-check-finding",
+        &[("label", label.as_str().into())],
+    );
+    out.push(line(finding, ok, detail, ms(start)));
 
     let doh_line = tr(
         "core-phone-check-private",
         &[("label", label.as_str().into())],
     );
-    if name.parse::<IpAddr>().is_ok() {
-        out.push(line(
-            doh_line,
-            true,
-            tr("core-phone-check-skipped-address", &[]),
-            0,
-        ));
+    let skipped = if name.parse::<IpAddr>().is_ok() {
+        Some(tr("core-phone-check-skipped-address", &[]))
     } else if anibeam_net::doh::is_home_name(name) {
-        out.push(line(
-            doh_line,
-            true,
-            tr("core-phone-check-skipped-home", &[]),
-            0,
-        ));
+        Some(tr("core-phone-check-skipped-home", &[]))
+    } else {
+        None
+    };
+    if let Some(why) = skipped {
+        out.push(line(doh_line, true, why, 0));
     } else {
         let start = Instant::now();
-        match doh.find(name).await {
+        let (ok, detail) = match doh.find(name).await {
             anibeam_net::doh::Found::Addresses(found) => {
-                let shown = found
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                out.push(line(doh_line, true, shown, ms(start)));
+                let detail = shown(&found);
                 for ip in found {
                     if !ips.contains(&ip) {
                         ips.push(ip);
                     }
                 }
+                (true, detail)
             }
             // The resolvers answered: the name has no public address, and this network's
             // DNS is the one to ask.
-            anibeam_net::doh::Found::NoRecord => out.push(line(
-                doh_line,
-                true,
-                tr("core-phone-check-no-record", &[]),
-                ms(start),
-            )),
-            anibeam_net::doh::Found::NoAnswer => out.push(line(
-                doh_line,
-                false,
-                tr("core-phone-check-no-resolver", &[]),
-                ms(start),
-            )),
-        }
+            anibeam_net::doh::Found::NoRecord => (true, tr("core-phone-check-no-record", &[])),
+            anibeam_net::doh::Found::NoAnswer => (false, tr("core-phone-check-no-resolver", &[])),
+        };
+        out.push(line(doh_line, ok, detail, ms(start)));
     }
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
@@ -240,9 +215,8 @@ async fn host(
                 .timeout(STEP * 2),
         )
         .await;
-    match answer {
-        Ok(r) => out.push(line(
-            format!("{label}: {fetch}"),
+    let (ok, detail) = match answer {
+        Ok(r) => (
             r.is_success(),
             tr(
                 "core-phone-check-http",
@@ -251,15 +225,10 @@ async fn host(
                     ("bytes", r.body.len().into()),
                 ],
             ),
-            ms(start),
-        )),
-        Err(e) => out.push(line(
-            format!("{label}: {fetch}"),
-            false,
-            e.message,
-            ms(start),
-        )),
-    }
+        ),
+        Err(e) => (false, e.message),
+    };
+    out.push(line(format!("{label}: {fetch}"), ok, detail, ms(start)));
     out
 }
 

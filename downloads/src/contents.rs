@@ -20,24 +20,18 @@ pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
         return Vec::new();
     };
     let name = info.get(b"name").and_then(Value::text).unwrap_or_default();
+    let size = |v: &Value| v.get(b"length").and_then(Value::int).unwrap_or(0).max(0) as u64;
     match info.get(b"files").and_then(Value::list) {
         Some(files) => files
             .iter()
             .filter_map(|f| {
                 let parts = f.get(b"path").and_then(Value::list)?;
                 let path: Vec<String> = parts.iter().filter_map(Value::text).collect();
-                let size = f.get(b"length").and_then(Value::int).unwrap_or(0).max(0) as u64;
-                Some((format!("{name}/{}", path.join("/")), size))
+                Some((format!("{name}/{}", path.join("/")), size(f)))
             })
             .collect(),
-        None => {
-            let size = info.get(b"length").and_then(Value::int).unwrap_or(0).max(0) as u64;
-            if name.is_empty() {
-                Vec::new()
-            } else {
-                vec![(name, size)]
-            }
-        }
+        None if name.is_empty() => Vec::new(),
+        None => vec![(name, size(info))],
     }
 }
 

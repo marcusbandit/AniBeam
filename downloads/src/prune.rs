@@ -49,13 +49,6 @@ pub struct RunEnd {
     pub ended_on: Option<i64>,
 }
 
-impl RunEnd {
-    /// When the run ended: the last air date, else the end date.
-    pub fn at(self) -> Option<i64> {
-        self.last_aired.or(self.ended_on)
-    }
-}
-
 /// A rule to unsubscribe, and the figures for its log line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Due {
@@ -73,7 +66,8 @@ pub fn finished_days(show: &ShowLink, end: RunEnd, now: i64) -> Option<i64> {
     if !is_over(show) {
         return None;
     }
-    let age = now - end.at()?;
+    // The run ended on its last air date, else its end date
+    let age = now - end.last_aired.or(end.ended_on)?;
     (age >= FINISHED_GRACE_DAYS * DAY).then_some(age / DAY)
 }
 
@@ -84,12 +78,9 @@ fn is_over(show: &ShowLink) -> bool {
     )
 }
 
-/// The rule when it is due: the setting is on, the rule is linked to a
-/// library series and `finished_days` holds.
-pub fn due(enabled: bool, rule: &SubscriptionRule, end: RunEnd, now: i64) -> Option<Due> {
-    if !enabled {
-        return None;
-    }
+/// The rule when it is due: it is linked to a library series and
+/// `finished_days` holds.
+pub fn due(rule: &SubscriptionRule, end: RunEnd, now: i64) -> Option<Due> {
     let show = rule.show.as_ref()?;
     // A rule is linked by its save folder, which a new season often shares with the one
     // before it: only a rule that has taken something, and that names no other season or
@@ -128,48 +119,21 @@ fn season_of(name: &str) -> u32 {
 /// When the series' run ended, off the stored schedule and end date of
 /// whichever provider it is matched to. Nothing known is the default.
 pub fn run_end(conn: &Connection, series: u64) -> Result<RunEnd, CoreError> {
-    let ids: Option<(Option<String>, Option<i64>, Option<i64>)> = conn
+    let read: Option<(Option<i64>, Option<String>)> = conn
         .query_row(
-            "SELECT provider, anilist_id, tvmaze_id FROM series WHERE id = ?1",
+            "SELECT
+                 CASE WHEN s.provider = 'tvmaze'
+                      THEN (SELECT MAX(airstamp) FROM tvmaze_episodes WHERE show_id = s.tvmaze_id)
+                      ELSE (SELECT MAX(aired_at) FROM anilist_episodes WHERE anilist_id = s.anilist_id) END,
+                 CASE WHEN s.provider = 'tvmaze'
+                      THEN (SELECT ended FROM tvmaze_shows WHERE id = s.tvmaze_id)
+                      ELSE (SELECT end_date FROM anilist_media WHERE id = s.anilist_id) END
+             FROM series s WHERE s.id = ?1",
             params![series as i64],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
-    let Some((provider, anilist, tvmaze)) = ids else {
-        return Ok(RunEnd::default());
-    };
-    let (last_aired, ended_on): (Option<i64>, Option<String>) =
-        match (provider.as_deref(), anilist, tvmaze) {
-            (Some("tvmaze"), _, Some(show)) => (
-                conn.query_row(
-                    "SELECT MAX(airstamp) FROM tvmaze_episodes WHERE show_id = ?1",
-                    params![show],
-                    |r| r.get(0),
-                )?,
-                conn.query_row(
-                    "SELECT ended FROM tvmaze_shows WHERE id = ?1",
-                    params![show],
-                    |r| r.get(0),
-                )
-                .optional()?
-                .flatten(),
-            ),
-            (p, Some(media), _) if p != Some("tvmaze") => (
-                conn.query_row(
-                    "SELECT MAX(aired_at) FROM anilist_episodes WHERE anilist_id = ?1",
-                    params![media],
-                    |r| r.get(0),
-                )?,
-                conn.query_row(
-                    "SELECT end_date FROM anilist_media WHERE id = ?1",
-                    params![media],
-                    |r| r.get(0),
-                )
-                .optional()?
-                .flatten(),
-            ),
-            _ => (None, None),
-        };
+    let (last_aired, ended_on) = read.unwrap_or_default();
     Ok(RunEnd {
         last_aired,
         ended_on: ended_on.as_deref().and_then(end_of_day),
@@ -184,29 +148,23 @@ fn end_of_day(date: &str) -> Option<i64> {
     Some(date.midnight().assume_utc().unix_timestamp() + DAY)
 }
 
-/// The rules to unsubscribe from, and how many were linked to a series at
-/// all (a check that saw none had nothing to judge).
+/// The rules to unsubscribe from.
 pub fn plan(
     conn: &Connection,
-    enabled: bool,
     rules: &[SubscriptionRule],
     now: i64,
-) -> Result<(Vec<Due>, usize), CoreError> {
+) -> Result<Vec<Due>, CoreError> {
     let mut out = Vec::new();
-    let mut judged = 0;
     for rule in rules {
         let Some(show) = &rule.show else { continue };
-        judged += 1;
         // The cheap tests first: only a finished show reads the schedule
         if show.kind != SeriesKind::Show || !is_over(show) {
             continue;
         }
         let end = run_end(conn, show.series_id)?;
-        if let Some(d) = due(enabled, rule, end, now) {
-            out.push(d);
-        }
+        out.extend(due(rule, end, now));
     }
-    Ok((out, judged))
+    Ok(out)
 }
 
 /// The hook `list_rules` calls after a successful read. Failures stay
@@ -251,10 +209,7 @@ async fn check(
     if !enabled || last.is_some_and(|t| t <= now && now - t < CHECK_EVERY) {
         return Ok(());
     }
-    let (due, _) = downloads
-        .services
-        .store
-        .read(|c| plan(c, true, rules, now))?;
+    let due = downloads.services.store.read(|c| plan(c, rules, now))?;
     if !due.is_empty() {
         // Nothing is removed while the torrent client is down: the shell
         // would show a library it cannot act on
@@ -267,7 +222,8 @@ async fn check(
     downloads
         .services
         .store
-        .write(move |c| kv::set(c, LAST_CHECK, &now))?;
+        .write_async(move |c| kv::set(c, LAST_CHECK, &now))
+        .await?;
     for d in due {
         match backend
             .remove(std::slice::from_ref(&d.rule), false, false, false)
@@ -353,16 +309,16 @@ mod tests {
         let mut next = rule(Some(s.clone()));
         next.query = "Sousou no Frieren Season 2".to_string();
         assert_eq!(
-            due(true, &next, aired(400), NOW),
+            due(&next, aired(400), NOW),
             None,
             "season 2 shares season 1's folder"
         );
         next.query = "Frieren 2nd Season".to_string();
-        assert_eq!(due(true, &next, aired(400), NOW), None);
+        assert_eq!(due(&next, aired(400), NOW), None);
         let mut unused = rule(Some(s));
         unused.torrent_count = 0;
         assert_eq!(
-            due(true, &unused, aired(400), NOW),
+            due(&unused, aired(400), NOW),
             None,
             "a rule that never took anything"
         );
@@ -377,24 +333,24 @@ mod tests {
         }
     }
 
+    /// A cancelled show counts as finished.
     #[test]
     fn a_finished_show_waits_out_the_sixteen_days() {
-        let s = show(Some(AiringStatus::Finished));
-        assert_eq!(finished_days(&s, aired(15), NOW), None);
-        assert_eq!(
-            finished_days(
-                &s,
-                RunEnd {
-                    last_aired: Some(NOW - 16 * DAY + 1),
-                    ended_on: None
-                },
-                NOW
-            ),
-            None,
-            "a second short of 16 days"
-        );
-        assert_eq!(finished_days(&s, aired(16), NOW), Some(16));
-        assert_eq!(finished_days(&s, aired(40), NOW), Some(40));
+        for status in [AiringStatus::Finished, AiringStatus::Cancelled] {
+            let s = show(Some(status));
+            assert_eq!(finished_days(&s, aired(15), NOW), None, "{status:?}");
+            let short = RunEnd {
+                last_aired: Some(NOW - 16 * DAY + 1),
+                ended_on: None,
+            };
+            assert_eq!(
+                finished_days(&s, short, NOW),
+                None,
+                "{status:?} a second short"
+            );
+            assert_eq!(finished_days(&s, aired(16), NOW), Some(16), "{status:?}");
+            assert_eq!(finished_days(&s, aired(40), NOW), Some(40), "{status:?}");
+        }
     }
 
     #[test]
@@ -411,13 +367,6 @@ mod tests {
                 "{status:?}"
             );
         }
-    }
-
-    #[test]
-    fn a_cancelled_show_counts_as_finished() {
-        let s = show(Some(AiringStatus::Cancelled));
-        assert_eq!(finished_days(&s, aired(15), NOW), None);
-        assert_eq!(finished_days(&s, aired(16), NOW), Some(16));
     }
 
     #[test]
@@ -442,18 +391,14 @@ mod tests {
             ended_on: Some(NOW - 90 * DAY),
         };
         assert_eq!(finished_days(&s, both, NOW), None);
-    }
-
-    #[test]
-    fn a_show_with_no_date_at_all_is_never_pruned() {
-        let s = show(Some(AiringStatus::Finished));
+        // With no date at all the show is never pruned
         assert_eq!(finished_days(&s, RunEnd::default(), NOW), None);
     }
 
     #[test]
-    fn a_rule_needs_the_setting_and_a_linked_series() {
+    fn a_rule_needs_a_linked_series() {
         let linked = rule(Some(show(Some(AiringStatus::Finished))));
-        let d = due(true, &linked, aired(20), NOW).expect("due");
+        let d = due(&linked, aired(20), NOW).expect("due");
         assert_eq!(
             d,
             Due {
@@ -462,8 +407,53 @@ mod tests {
                 days: 20
             }
         );
-        assert_eq!(due(false, &linked, aired(20), NOW), None, "setting off");
-        assert_eq!(due(true, &rule(None), aired(20), NOW), None, "unlinked");
+        assert_eq!(due(&rule(None), aired(20), NOW), None, "unlinked");
+    }
+
+    /// The run's end comes off whichever provider the series is matched to,
+    /// and nothing is known for a series with no match to read.
+    #[test]
+    fn the_run_end_reads_the_matched_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = anibeam_foundation::store::Store::open(&dir.path().join("a.db")).unwrap();
+        store
+            .write(|c| {
+                c.execute_batch(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0);
+                     INSERT INTO anilist_media (id, media_type, title_romaji, end_date, fetched_at)
+                       VALUES (9, 'ANIME', 'Show', '2026-01-01', 0);
+                     INSERT INTO anilist_episodes (anilist_id, number, aired_at)
+                       VALUES (9, 1, 100), (9, 2, 200);
+                     INSERT INTO tvmaze_shows (id, ended, fetched_at) VALUES (5, '2025-06-30', 0);
+                     INSERT INTO tvmaze_episodes (show_id, season, number, airstamp)
+                       VALUES (5, 1, 1, 300), (5, 1, 2, 400);
+                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at, provider, anilist_id, tvmaze_id)
+                       VALUES (1, 1, 'show', '/lib/A', 'A', 0, 'anilist', 9, NULL),
+                              (2, 1, 'show', '/lib/B', 'B', 0, 'tvmaze', 9, 5),
+                              (3, 1, 'show', '/lib/C', 'C', 0, 'mal', 9, 5),
+                              (4, 1, 'show', '/lib/D', 'D', 0, 'tvmaze', 9, NULL),
+                              (5, 1, 'show', '/lib/E', 'E', 0, NULL, NULL, NULL);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let end = |series| store.read(|c| run_end(c, series)).unwrap();
+        let anilist = RunEnd {
+            last_aired: Some(200),
+            ended_on: end_of_day("2026-01-01"),
+        };
+        assert_eq!(end(1), anilist);
+        assert_eq!(
+            end(2),
+            RunEnd {
+                last_aired: Some(400),
+                ended_on: end_of_day("2025-06-30"),
+            }
+        );
+        assert_eq!(end(3), anilist, "any other provider reads AniList");
+        assert_eq!(end(4), RunEnd::default(), "TVmaze with no show id");
+        assert_eq!(end(5), RunEnd::default(), "unmatched");
+        assert_eq!(end(99), RunEnd::default(), "no such series");
     }
 
     #[test]
