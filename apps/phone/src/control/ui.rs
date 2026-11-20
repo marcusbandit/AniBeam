@@ -1404,6 +1404,9 @@ mod tests {
         assert!(say("find zzzz-nothing").starts_with("error"));
     }
 
+    /// A sheet or question by the name `where` gives it, and how to open or close it.
+    type Check = (&'static str, Box<dyn Fn(&AppWindow, bool)>);
+
     /// app.slint's `over()` numbers and OVER's names stay paired: each sheet and question
     /// Rust can open gets its own name in `where`, and closing it takes the name away.
     #[test]
@@ -1428,7 +1431,7 @@ mod tests {
             seen.push(name);
         }
         show.set_sheet(0);
-        let checks: [(&str, Box<dyn Fn(&AppWindow, bool)>); 5] = [
+        let checks: [Check; 5] = [
             (
                 "player",
                 Box::new(|w, on| w.global::<PlayerData>().set_open(on)),
