@@ -977,7 +977,6 @@ impl App {
         self.art.poster(Some(AIRING_ART | anilist_id))
     }
 
-    /// Asks once for each Airing now poster the core has on disk.
     /// Asks once for each library card's poster, and again for one whose retry came due.
     fn ask_card_posters(&mut self) {
         for card in &self.cards {
@@ -990,6 +989,7 @@ impl App {
         }
     }
 
+    /// Asks once for each Airing now poster the core has on disk.
     fn ask_airing_posters(&mut self) {
         let Some(airing) = &self.airing else { return };
         for show in &airing.shows {
@@ -2203,9 +2203,8 @@ fn finished(t: &Torrent) -> bool {
 
 /// Decodes the poster file for `id` on the posters threads, which Downloads shares, so a file
 /// both show is decoded once; the pages show it from their next draw. One that did not decode
-/// is asked for again by a later draw, once `posters::may_ask` lets it.
+/// is asked for again when `posters::on_retry` says so, or by a later draw.
 fn load_poster(id: u64, path: String) {
-    let retry = path.clone();
     crate::posters::load(path, move |poster| {
         with_app(|app| match poster {
             Some(poster) => {
@@ -2214,16 +2213,6 @@ fn load_poster(id: u64, path: String) {
             }
             None => {
                 app.asked.remove(&id);
-                // Asked again when its retry comes due, not at the next unrelated draw. The
-                // show page asks on every draw already.
-                if let Some(wait) = crate::posters::retry_in(&retry) {
-                    slint::Timer::single_shot(wait, || {
-                        with_app(|app| {
-                            app.ask_card_posters();
-                            app.ask_airing_posters();
-                        })
-                    });
-                }
             }
         });
     });
@@ -2518,6 +2507,14 @@ pub fn run(
         }
     });
 
+    // A failed poster's retry came due: the cards and Airing now ask again. The show page
+    // asks on every draw already.
+    crate::posters::on_retry(|| {
+        with_app(|app| {
+            app.ask_card_posters();
+            app.ask_airing_posters();
+        })
+    });
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
     crate::stats::install(&window);

@@ -1,9 +1,10 @@
 //! Poster bytes from the store, decoded and cut to a thumbnail off the UI thread, with the
 //! poster's own hue for the bands that sit behind it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::rc::Rc;
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -103,8 +104,9 @@ pub struct Poster {
 /// some 40 MB. The pages hold what they show themselves.
 const KEPT: usize = 48;
 /// How long a file that did not decode waits before it is asked for again, each time it
-/// fails; after the last it keeps that wait, so a cover the image cache fetches late still
-/// shows, and a broken file is read at most every two minutes.
+/// fails. The pages are told when each of these comes due. After the last, the file keeps that
+/// wait with nobody told: a page that draws asks again, so a cover the image cache fetches
+/// late still shows, and opening Downloads asks at once.
 const RETRIES: [Duration; 3] = [
     Duration::from_secs(5),
     Duration::from_secs(30),
@@ -112,8 +114,12 @@ const RETRIES: [Duration; 3] = [
 ];
 /// How many threads decode posters.
 const THREADS: usize = 2;
+/// Slint counts its timers in whole milliseconds, so one may fire a moment before the instant
+/// it was set for; the retry timer is set this much later.
+const MARGIN: Duration = Duration::from_millis(50);
 
 type Land = Box<dyn FnOnce(Option<Poster>)>;
+type Listener = Rc<dyn Fn()>;
 
 thread_local! {
     /// The posters decoded last, by path, so one shown on two pages is decoded once.
@@ -123,8 +129,13 @@ thread_local! {
     /// The files that did not decode, and when each may be tried again.
     static FAILED: RefCell<Tries> = RefCell::new(Tries::default());
     /// The batch the asks made in this turn of the event loop go in.
-    static BATCH: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
-    static NEXT_BATCH: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static BATCH: Cell<Option<u64>> = const { Cell::new(None) };
+    static NEXT_BATCH: Cell<u64> = const { Cell::new(0) };
+    /// What each page does when a retry comes due: ask for what it shows again.
+    static RETRY_LISTENERS: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
+    /// One timer for every retry, set for the soonest due, and when that is.
+    static RETRY_TIMER: slint::Timer = slint::Timer::default();
+    static RETRY_AT: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
 /// What the posters threads have still to decode, shared with them.
@@ -139,7 +150,41 @@ pub fn reset() {
     WAITING.with(|w| *w.borrow_mut() = Joins::default());
     FAILED.with(|f| *f.borrow_mut() = Tries::default());
     BATCH.with(|b| b.set(None));
+    RETRY_LISTENERS.with(|l| l.borrow_mut().clear());
+    RETRY_TIMER.with(slint::Timer::stop);
+    RETRY_AT.with(|a| a.set(None));
     lock(&QUEUE).clear();
+}
+
+/// Calls `listener` on the UI thread each time a poster that did not decode may be asked for
+/// again, while its retries last: the page asks for what it shows again. One timer serves
+/// every file and every page.
+pub fn on_retry(listener: impl Fn() + 'static) {
+    RETRY_LISTENERS.with(|l| l.borrow_mut().push(Rc::new(listener)));
+}
+
+/// Sets the retry timer for the soonest retry nobody was told of yet, unless it is set for
+/// one sooner already.
+fn arm_retry() {
+    let Some(due) = FAILED.with(|f| f.borrow().next_due()) else {
+        return;
+    };
+    if RETRY_AT.with(Cell::get).is_some_and(|at| at <= due) {
+        return;
+    }
+    RETRY_AT.with(|a| a.set(Some(due)));
+    let wait = due.saturating_duration_since(Instant::now()) + MARGIN;
+    RETRY_TIMER.with(|t| t.start(slint::TimerMode::SingleShot, wait, retry_due));
+}
+
+fn retry_due() {
+    RETRY_AT.with(|a| a.set(None));
+    FAILED.with(|f| f.borrow_mut().told(Instant::now()));
+    let listeners = RETRY_LISTENERS.with(|l| l.borrow().clone());
+    for listener in listeners {
+        listener();
+    }
+    arm_retry();
 }
 
 /// The poster at `path` if it was decoded lately, for a page to show at once.
@@ -155,12 +200,6 @@ pub fn forget_failures() {
 /// Whether the file at `path` may be asked for now: it did not just fail.
 pub fn may_ask(path: &str) -> bool {
     FAILED.with(|f| f.borrow().may_ask(path, Instant::now()))
-}
-
-/// How long until the file at `path`, which did not decode, may be asked for again; `None`
-/// when it is not waiting on a retry.
-pub fn retry_in(path: &str) -> Option<Duration> {
-    FAILED.with(|f| f.borrow().retry_in(path, Instant::now()))
 }
 
 /// Decodes the poster file at `path` off the UI thread, once however many pages ask, and
@@ -261,7 +300,10 @@ fn landed(path: String, decoded: Option<Decoded>) {
             KEPT_POSTERS.with(|k| k.borrow_mut().put(path.clone(), poster.clone()));
             FAILED.with(|f| f.borrow_mut().landed(&path));
         }
-        None => FAILED.with(|f| f.borrow_mut().failed(&path, Instant::now())),
+        None => {
+            FAILED.with(|f| f.borrow_mut().failed(&path, Instant::now()));
+            arm_retry();
+        }
     }
     let waiting = WAITING.with(|w| w.borrow_mut().take(&path));
     for land in waiting {
@@ -393,18 +435,32 @@ impl<V: Clone> Lru<V> {
     }
 }
 
-/// The files that did not decode: how often each failed, and when it may be tried again.
+/// One file that did not decode.
+struct Try {
+    /// How often it failed.
+    tries: usize,
+    /// When it may be asked for again.
+    at: Instant,
+    /// The pages were told it may be asked for again, or will not be: past the last retry.
+    told: bool,
+}
+
+/// The files that did not decode, and when each may be tried again.
 #[derive(Default)]
 struct Tries {
-    failed: HashMap<String, (usize, Instant)>,
+    failed: HashMap<String, Try>,
 }
 
 impl Tries {
     fn failed(&mut self, path: &str, now: Instant) {
-        let tries = self.failed.get(path).map_or(0, |(n, _)| *n);
+        let tries = self.failed.get(path).map_or(0, |t| t.tries);
         let wait = RETRIES.get(tries).unwrap_or(&RETRIES[RETRIES.len() - 1]);
-        self.failed
-            .insert(path.to_string(), (tries + 1, now + *wait));
+        let next = Try {
+            tries: tries + 1,
+            at: now + *wait,
+            told: tries >= RETRIES.len(),
+        };
+        self.failed.insert(path.to_string(), next);
     }
 
     fn landed(&mut self, path: &str) {
@@ -412,12 +468,19 @@ impl Tries {
     }
 
     fn may_ask(&self, path: &str, now: Instant) -> bool {
-        self.failed.get(path).is_none_or(|(_, at)| now >= *at)
+        self.failed.get(path).is_none_or(|t| now >= t.at)
     }
 
-    fn retry_in(&self, path: &str, now: Instant) -> Option<Duration> {
-        let (_, at) = self.failed.get(path)?;
-        Some(at.saturating_duration_since(now))
+    /// The soonest retry the pages are still to be told of.
+    fn next_due(&self) -> Option<Instant> {
+        self.failed.values().filter(|t| !t.told).map(|t| t.at).min()
+    }
+
+    /// The pages were told of every retry due by `now`.
+    fn told(&mut self, now: Instant) {
+        for t in self.failed.values_mut().filter(|t| t.at <= now) {
+            t.told = true;
+        }
     }
 }
 
@@ -503,29 +566,36 @@ mod tests {
         assert_eq!(k.get("c"), Some(3));
     }
 
-    /// A cover the image cache fetches late still shows, and a broken file is not read on
-    /// every draw.
+    /// The pages are told of each retry once, and only while the retries last: a broken
+    /// file never wakes the app every two minutes for good, and a cover the image cache
+    /// fetches late is still asked for by the next draw.
     #[test]
-    fn a_file_that_does_not_decode_is_tried_again_later_and_then_every_two_minutes() {
+    fn a_file_that_does_not_decode_is_retried_a_few_times_then_waits_for_a_draw() {
         let t0 = Instant::now();
         let mut t = Tries::default();
         assert!(t.may_ask("a", t0));
         t.failed("a", t0);
         assert!(!t.may_ask("a", t0 + Duration::from_secs(1)));
-        assert_eq!(t.retry_in("a", t0), Some(RETRIES[0]));
+        assert_eq!(t.next_due(), Some(t0 + RETRIES[0]));
+        // A timer that fires a moment early tells nobody yet.
+        t.told(t0 + RETRIES[0] - Duration::from_millis(2));
+        assert_eq!(t.next_due(), Some(t0 + RETRIES[0]));
+        t.told(t0 + RETRIES[0]);
+        assert_eq!(t.next_due(), None);
         assert!(t.may_ask("a", t0 + RETRIES[0]));
         let mut now = t0;
-        for _ in 0..10 {
-            now += Duration::from_secs(600);
+        for wait in RETRIES {
+            now += wait;
             t.failed("a", now);
+            t.told(now + RETRIES[RETRIES.len() - 1]);
         }
-        // Past the last retry it keeps the last wait, and is never left for good.
+        // Past the last retry there is nothing to tell, but a draw may still ask.
+        assert_eq!(t.next_due(), None);
         let last = RETRIES[RETRIES.len() - 1];
         assert!(!t.may_ask("a", now + last - Duration::from_secs(1)));
         assert!(t.may_ask("a", now + last));
         // One that decodes is clear again.
         t.landed("a");
         assert!(t.may_ask("a", now));
-        assert_eq!(t.retry_in("a", now), None);
     }
 }

@@ -31,6 +31,8 @@ const LENSES: [&str; 5] = [
 
 /// How long the page waits for more posters before it draws the ones that came in.
 const POSTER_REDRAW: Duration = Duration::from_millis(150);
+/// Nav.page of Downloads.
+const DOWNLOADS_PAGE: i32 = 2;
 
 /// A show a lens offers, enough to open the show view.
 #[derive(Clone, Debug, Default)]
@@ -176,9 +178,13 @@ struct Find {
     posters_asked: HashSet<String>,
     /// One draw for the posters that come in together.
     poster_redraw: Coalesce,
-    /// The posters the view drawn last shows, kept through the next view, so going back to
-    /// it draws them at once.
-    posters_shown: HashSet<String>,
+    /// The posters of the lens on screen and of the lens before it, kept apart from the
+    /// suggestions and the open show, so going back to the last lens draws at once.
+    lens_posters: HashSet<String>,
+    lens_before: HashSet<String>,
+    /// A failed poster's retry came due while Downloads was not on screen: it draws when
+    /// it shows again.
+    retry_waiting: bool,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -282,7 +288,13 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
 
 /// The app's tick, with whether the core reported a change since the last one.
 pub fn tick(changed: bool) {
-    with(|f| f.list_tick(changed));
+    with(|f| {
+        if f.retry_waiting && f.on_screen() {
+            f.retry_waiting = false;
+            f.redraw_soon();
+        }
+        f.list_tick(changed);
+    });
 }
 
 /// The language changed: every line this page pushed as a string is pushed again.
@@ -319,7 +331,9 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             posters: BTreeMap::new(),
             posters_asked: HashSet::new(),
             poster_redraw: Coalesce::default(),
-            posters_shown: HashSet::new(),
+            lens_posters: HashSet::new(),
+            lens_before: HashSet::new(),
+            retry_waiting: false,
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -341,6 +355,16 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.set_lenses(model(
         LENSES.iter().map(|l| SharedString::from(tr!(*l))).collect(),
     ));
+    // A failed poster's retry came due: the page asks again if it shows, or when it does.
+    crate::posters::on_retry(|| {
+        with(|f| {
+            if f.on_screen() {
+                f.redraw_soon();
+            } else {
+                f.retry_waiting = true;
+            }
+        })
+    });
     d.on_open(|text| with(|f| f.open(text.to_string())));
     d.on_close(|| with(Find::close));
     d.on_back(|| with(Find::back));
@@ -779,24 +803,40 @@ impl Find {
         self.keep_posters();
     }
 
-    /// Lets go of the posters neither this view nor the one before it shows: a lens, the
-    /// suggestions and their last answer, and the open show. Going back to the last lens
+    /// Lets go of the posters the page does not keep (`keeps`). Going back to the last lens
     /// draws at once, and searching never piles covers up in memory.
     fn keep_posters(&mut self) {
-        let shown: HashSet<String> = self
+        let lens: HashSet<String> = self
             .offers
             .iter()
-            .chain(&self.suggestions)
-            .chain(&self.answered)
-            .chain(self.show.as_ref().map(|s| &s.offer))
             .filter_map(|o| o.poster.clone())
             .collect();
-        if shown == self.posters_shown {
-            return;
+        if lens != self.lens_posters {
+            self.lens_before = std::mem::replace(&mut self.lens_posters, lens);
         }
-        let before = std::mem::replace(&mut self.posters_shown, shown);
-        self.posters
-            .retain(|p, _| self.posters_shown.contains(p) || before.contains(p));
+        let posters = std::mem::take(&mut self.posters);
+        self.posters = posters.into_iter().filter(|(p, _)| self.keeps(p)).collect();
+    }
+
+    /// Whether the page keeps the poster at `path`: the lens on screen or the one before it,
+    /// the suggestions and their last answer, or the open show.
+    fn keeps(&self, path: &str) -> bool {
+        self.lens_posters.contains(path)
+            || self.lens_before.contains(path)
+            || self
+                .suggestions
+                .iter()
+                .chain(&self.answered)
+                .chain(self.show.as_ref().map(|s| &s.offer))
+                .any(|o| o.poster.as_deref() == Some(path))
+    }
+
+    /// Downloads is the page on screen.
+    fn on_screen(&self) -> bool {
+        self.data().is_some_and(|w| {
+            w.global::<crate::Nav>().get_page() == DOWNLOADS_PAGE
+                && w.global::<FindData>().get_shown()
+        })
     }
 
     /// The list as tiles: a show the library has opens as the library's, with its
@@ -986,14 +1026,12 @@ impl Find {
         }
     }
 
-    /// A poster came back. One that did not decode is asked for again after a wait, a few
-    /// times, by a draw at the time: the image cache may not have had it on disk yet.
+    /// A poster came back.
     fn poster_landed(&mut self, path: String, poster: Option<crate::posters::Poster>) {
         self.posters_asked.remove(&path);
-        let Some(poster) = poster else {
-            if let Some(wait) = crate::posters::retry_in(&path) {
-                slint::Timer::single_shot(wait, || with(Find::redraw_soon));
-            }
+        // One that did not decode is asked again when `posters::on_retry` says so. One for a
+        // view already left is not kept; the posters module holds it a while.
+        let Some(poster) = poster.filter(|_| self.keeps(&path)) else {
             return;
         };
         self.posters.insert(path, poster.image);
