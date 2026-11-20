@@ -214,6 +214,17 @@ pub fn tick() {
     }
 }
 
+/// What a pick did to the state.
+#[derive(Debug, PartialEq)]
+enum Pick {
+    /// The track already picked: nothing to save.
+    Same,
+    /// The track already on, picked for the first time: saved, the answer kept.
+    Kept,
+    /// The other track: saved, the answer for the old one gone, asked again at once.
+    Changed,
+}
+
 /// What an answer did to the state.
 #[derive(Debug, PartialEq)]
 enum Heard {
@@ -237,10 +248,15 @@ impl State {
         self.out_since = Some(now);
     }
 
-    /// The person picked a track. False when it is the one already picked.
-    fn pick(&mut self, nightly: bool) -> bool {
-        if self.kept.picked && self.kept.nightly == nightly {
-            return false;
+    /// The person picked a track.
+    fn pick(&mut self, nightly: bool) -> Pick {
+        if self.kept.nightly == nightly {
+            // The track already on: the pick is kept, the answer for it stands
+            if self.kept.picked {
+                return Pick::Same;
+            }
+            self.kept.picked = true;
+            return Pick::Kept;
         }
         self.kept.nightly = nightly;
         self.kept.picked = true;
@@ -250,7 +266,7 @@ impl State {
         // An answer still out is for the other track
         self.asked += 1;
         self.out_since = None;
-        true
+        Pick::Changed
     }
 
     /// The answer to check `number`, at `now`.
@@ -283,11 +299,15 @@ impl State {
 fn pick_nightly(nightly: bool) {
     {
         let mut st = state();
-        if !st.pick(nightly) {
+        let picked = st.pick(nightly);
+        if picked == Pick::Same {
             return;
         }
         if let Some(file) = &st.file {
             save(file, &st.kept);
+        }
+        if picked == Pick::Kept {
+            return;
         }
     }
     show(None);
@@ -425,8 +445,12 @@ mod tests {
         let mut st = fresh();
         let number = st.next(now).unwrap();
         st.sent(number, now);
-        assert!(st.pick(true));
-        assert!(!st.pick(true), "the same pick again changes nothing");
+        assert_eq!(st.pick(true), Pick::Changed);
+        assert_eq!(
+            st.pick(true),
+            Pick::Same,
+            "the same pick again changes nothing"
+        );
         assert_eq!(st.hear(number, Ok(offer("2.4.4")), now), Heard::Stale);
         assert_eq!(st.kept.offer, None);
         // And the track is asked about at once
@@ -434,6 +458,24 @@ mod tests {
         st.sent(again, now);
         assert_eq!(st.hear(again, Err("offline".into()), now), Heard::Failed);
         assert_eq!(st.due.map(|(_, wait)| wait), Some(RETRY_AFTER));
+    }
+
+    #[test]
+    fn picking_the_track_already_on_keeps_its_answer() {
+        let now = SystemTime::now();
+        let mut st = fresh();
+        st.kept.nightly = true;
+        st.kept.answered_at = 1_800_000_000;
+        st.kept.offer = offer("2.4.4-nightly.20261201.120");
+        st.due = Some((now + AGAIN_AFTER, AGAIN_AFTER));
+        let asked = st.asked;
+        assert_eq!(st.pick(true), Pick::Kept);
+        assert!(st.kept.picked);
+        assert_eq!(st.kept.offer, offer("2.4.4-nightly.20261201.120"));
+        assert_eq!(st.kept.answered_at, 1_800_000_000);
+        assert_eq!(st.due, Some((now + AGAIN_AFTER, AGAIN_AFTER)));
+        assert_eq!(st.asked, asked);
+        assert_eq!(st.next(now), None, "nothing is asked again");
     }
 
     #[test]
