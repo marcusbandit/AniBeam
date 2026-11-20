@@ -4,6 +4,6 @@
 //! foundation modules that sat at the core's root are handed on in `lib.rs`.
 
 pub use anibeam_foundation::{
-    above, http, machine, magnet, names, range, relations, secrets, services, size, titles, trust,
-    watch,
+    above, blocking, http, machine, magnet, names, range, relations, secrets, services, size,
+    titles, trust, watch,
 };
