@@ -29,6 +29,7 @@ fn list() -> Vec<u8> {
 fn check(core: &Core, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
     match core.call(Call::CheckPhoneUpdate {
         current: current.into(),
+        nightly: None,
     })? {
         Reply::PhoneUpdate { update } => Ok(update),
         other => panic!("{other:?}"),
@@ -49,7 +50,7 @@ fn a_phone_hears_of_a_newer_nightly_and_its_apk() {
     let sent = http.requests();
     assert_eq!(sent.len(), 1);
     assert!(
-        sent[0].url.contains("api.github.com/repos/"),
+        sent[0].url.contains("api.github.com/repos/") && sent[0].url.contains("per_page=30"),
         "{}",
         sent[0].url
     );
@@ -96,4 +97,23 @@ fn a_refused_list_is_an_error_not_up_to_date() {
     let (_dir, core, _c) = common::open_core_with_http(http.clone());
     http.push_for("/releases", 403, b"{\"message\":\"rate limited\"}".to_vec());
     assert!(check(&core, "2.4.3-nightly.20261116.96").is_err());
+}
+
+/// A caller on a current-thread runtime, a `#[tokio::test]` say, gets an answer too. The
+/// core is made and dropped outside that runtime; only the call is made inside it.
+#[test]
+fn the_check_answers_on_a_current_thread_runtime() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    http.push_for("/releases", 200, list());
+    let caller = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let answer = caller
+        .block_on(async { check(&core, "2.4.3-nightly.20261116.96") })
+        .unwrap();
+    assert_eq!(
+        answer.map(|u| u.version).as_deref(),
+        Some("2.4.3-nightly.20261117.97")
+    );
 }

@@ -14,6 +14,7 @@
 
 pub mod above;
 pub mod atomic_file;
+pub mod blocking;
 pub mod events;
 pub mod html;
 pub mod http;

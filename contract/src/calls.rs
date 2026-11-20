@@ -734,11 +734,15 @@ pub enum Call {
     /// tries them, with secrets left out of each address.
     PhoneSearchSources,
     /// Whether GitHub has a phone release newer than `current`, the version the phone runs,
-    /// on that build's own track: a nightly hears of nightlies and the stable release they
-    /// lead up to, a stable build of stable releases only. Blocks the calling thread on one
-    /// request; answers `PhoneUpdate` (#809).
+    /// on its track: nightly hears of nightlies and the stable release they lead up to,
+    /// stable of stable releases only. `nightly` is the track the phone keeps, so a nightly
+    /// user who took a stable release stays on nightlies; without it the track is the
+    /// running build's. Blocks the calling thread on one request; answers `PhoneUpdate`
+    /// (#809).
     CheckPhoneUpdate {
         current: String,
+        #[serde(default)]
+        nightly: Option<bool>,
     },
     // Endpoint repos (#143). Not jobs: the ones that fetch block the calling thread, so a
     // shell calls them off its UI thread.

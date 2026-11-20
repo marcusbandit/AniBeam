@@ -607,12 +607,24 @@ impl Core {
     ///
     /// A router and nothing more: every arm is one call into the module that
     /// owns it, grouped by the team the call belongs to (#773, #854).
+    ///
+    /// A call may block on the core's runtime or the store's writer, so it
+    /// runs through `blocking`: a listener calling from a runtime worker,
+    /// or a caller on a current-thread runtime, gets an answer rather than
+    /// a panic (#809).
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {
                 message: "core is shut down".to_string(),
             });
         }
+        crate::foundation::blocking::blocking(move || self.route(call))
+    }
+}
+
+impl Core {
+    /// `call`'s router: every arm is one call into the module that owns it.
+    fn route(&self, call: Call) -> Result<Reply, CoreError> {
         match call {
             // The front door: the core itself, its log, jobs and settings
             Call::About => app::about(&self.services),
@@ -639,7 +651,9 @@ impl Core {
             } => stats::get_call(&self.services, year, utc_offset, &month_starts),
             Call::ScheduleAgent => agent::available_call(),
             Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
-            Call::CheckPhoneUpdate { current } => update::phone_call(&self.services, &current),
+            Call::CheckPhoneUpdate { current, nightly } => {
+                update::phone_call(&self.services, &current, nightly)
+            }
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),
@@ -1044,7 +1058,10 @@ impl Core {
             | Call::RoomStart { .. }) => room::call(&self.rooms, c),
         }
     }
+}
 
+#[uniffi::export]
+impl Core {
     /// Keeps the whole-library load for the rest of its state generation
     /// (at most 30 seconds), so reads in one beat share one snapshot. For a
     /// shell whose every write goes through calls; off by default.
