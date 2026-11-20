@@ -80,6 +80,7 @@ def page(title, prefix, body, canonical, description):
 <link rel="canonical" href="https://anibeam.app/{canonical}">
 <meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="{prefix}img/logo.svg" type="image/svg+xml">
 <meta property="og:site_name" content="Anibeam">
 <meta property="og:type" content="article">

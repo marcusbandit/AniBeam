@@ -23,6 +23,7 @@ rm -f "$out/build.sh"
 cp "$root/assets/logo/logo.svg" "$root/assets/logo/logo-nightly.svg" \
   "$root/assets/logo/logo-dev.svg" "$out/img/"
 cp "$root/assets/logo/logo.png" "$out/img/icon.png"
+cp "$root/assets/logo/favicon.ico" "$out/favicon.ico"
 cp "$root/assets/logo/logo-nightly.png" "$out/img/icon-nightly.png"
 cp "$root/assets/logo/logo-dev.png" "$out/img/icon-dev.png"
 # Every language in site/i18n/ gets the home page and the download page, and every page a menu.
