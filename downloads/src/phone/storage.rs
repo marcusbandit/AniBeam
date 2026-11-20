@@ -24,7 +24,8 @@ use librqbit::{ManagedTorrentShared, TorrentMetadata};
 
 /// One torrent's files.
 pub struct Files {
-    folder: PathBuf,
+    /// Where the files go; a fresh add of the torrent can move it (`Shelf::fresh`).
+    folder: RwLock<PathBuf>,
     parts: PathBuf,
     names: RwLock<Vec<PathBuf>>,
     /// The files the torrent fetches; None while it fetches them all.
@@ -38,7 +39,7 @@ pub struct Files {
 impl Files {
     fn new(folder: PathBuf, parts: PathBuf, wanted: Option<HashSet<usize>>) -> Files {
         Files {
-            folder,
+            folder: RwLock::new(folder),
             parts,
             names: RwLock::new(Vec::new()),
             wanted: RwLock::new(wanted),
@@ -92,7 +93,7 @@ impl Files {
     fn real(&self, id: usize) -> anyhow::Result<PathBuf> {
         let names = recover_read(&self.names);
         let name = names.get(id).context("no such file")?;
-        Ok(self.folder.join(name))
+        Ok(recover_read(&self.folder).join(name))
     }
 
     fn part(&self, id: usize) -> PathBuf {
@@ -122,6 +123,8 @@ impl Files {
                 std::fs::create_dir_all(dir)?;
             }
             move_file(&part, &real)?;
+            // A move across file systems is a copy, which a flush has to reach.
+            recover(&self.dirty).insert(id);
             (true, real)
         } else if wanted && write {
             (true, real)
@@ -211,13 +214,17 @@ impl Shelf {
     /// Sets a torrent up anew: what an earlier copy of it left on the shelf, its folder and
     /// its selection, goes. Its part files stay, so a file wanted now takes over the bytes
     /// the earlier copy fetched for it.
+    ///
+    /// The `Files` already on the shelf is set anew in place rather than replaced, so every
+    /// holder of it sees this add's folder and selection. The files it holds open are let
+    /// go when nothing is using them now.
     fn fresh(&self, hash: &str, folder: &Path, wanted: Option<HashSet<usize>>) -> Arc<Files> {
-        let files = Arc::new(Files::new(
-            folder.to_path_buf(),
-            self.parts.join(hash),
-            wanted,
-        ));
-        recover(&self.torrents).insert(hash.to_string(), files.clone());
+        let files = self.files(hash, folder);
+        *recover_write(&files.folder) = folder.to_path_buf();
+        files.set_wanted(wanted);
+        if let Ok(mut open) = files.open.try_lock() {
+            open.clear();
+        }
         files
     }
 
@@ -326,7 +333,7 @@ impl TorrentStorage for Storage {
             .iter()
             .map(|f| f.relative_filename.clone())
             .collect();
-        std::fs::create_dir_all(&self.files.folder)?;
+        std::fs::create_dir_all(&*recover_read(&self.files.folder))?;
         Ok(())
     }
 
@@ -347,7 +354,8 @@ impl TorrentStorage for Storage {
 
     fn remove_file(&self, file_id: usize, filename: &Path) -> anyhow::Result<()> {
         recover(&self.files.open).remove(&file_id);
-        for path in [self.files.folder.join(filename), self.files.part(file_id)] {
+        let real = recover_read(&self.files.folder).join(filename);
+        for path in [real, self.files.part(file_id)] {
             match std::fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -358,7 +366,7 @@ impl TorrentStorage for Storage {
     }
 
     fn remove_directory_if_empty(&self, path: &Path) -> anyhow::Result<()> {
-        let path = self.files.folder.join(path);
+        let path = recover_read(&self.files.folder).join(path);
         if path.is_dir() && std::fs::read_dir(&path)?.next().is_none() {
             std::fs::remove_dir(&path)?;
         }

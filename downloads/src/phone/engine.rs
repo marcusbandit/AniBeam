@@ -175,11 +175,16 @@ impl Wants {
             Retry::Held => h.is_paused() || broken_check(stats.error.as_deref()),
             Retry::Broken => broken_check(stats.error.as_deref()),
         };
-        let asked = match stats.state {
-            S::Live | S::Initializing { paused: false } if stop => self.session.pause(h).await,
-            S::Paused | S::Initializing { paused: true } if !stop => self.session.unpause(h).await,
-            S::Error if !stop && restart => self.session.unpause(h).await,
-            _ => return (stats, Ok(false)),
+        let asked = match ask(&stats.state, stop, h.is_paused(), restart) {
+            Ask::Pause => self.session.pause(h).await,
+            Ask::Start => self.session.unpause(h).await,
+            // librqbit's start sets its paused flag back before it refuses a torrent
+            // already live, and the refusal is the expected answer here.
+            Ask::Unflag => {
+                let _ = self.session.unpause(h).await;
+                Ok(())
+            }
+            Ask::Nothing => return (stats, Ok(false)),
         };
         (stats, asked.map(|()| true))
     }
@@ -240,6 +245,31 @@ impl Wants {
             ended,
             checking,
         }
+    }
+}
+
+/// What `settle` asks librqbit for.
+#[derive(Debug, PartialEq)]
+enum Ask {
+    Pause,
+    Start,
+    /// Running, and wanted running, but librqbit's paused flag says otherwise: a
+    /// fast-resume check asked to pause goes live keeping the flag, and the list would
+    /// read the download as paused while it downloads.
+    Unflag,
+    Nothing,
+}
+
+/// What to ask librqbit for a torrent in `state` with its paused flag `flagged`, when the
+/// hold or the person wants it stopped (`stop`), and whether one in error may start again.
+fn ask(state: &librqbit::TorrentStatsState, stop: bool, flagged: bool, restart: bool) -> Ask {
+    use librqbit::TorrentStatsState as S;
+    match state {
+        S::Live | S::Initializing { paused: false } if stop => Ask::Pause,
+        S::Paused | S::Initializing { paused: true } if !stop => Ask::Start,
+        S::Error if !stop && restart => Ask::Start,
+        S::Live if !stop && flagged => Ask::Unflag,
+        _ => Ask::Nothing,
     }
 }
 
@@ -315,15 +345,32 @@ impl Watch {
         tokio::spawn(async move {
             use librqbit::TorrentStatsState as S;
             let id = librqbit::api::TorrentIdOrHash::Hash(h.info_hash());
+            // A check can take pieces out of librqbit's record, and it writes its new one
+            // before the check ends: the engine's record goes while the check runs, so a
+            // kill before the end never folds the old pieces back. Nothing is lost, since
+            // the open already put them into librqbit's record.
+            watch.keeper.forget(key.clone()).await;
             let (mut last, mut still) = (None, 0u32);
             loop {
-                let ours = watch.session.get(id).is_some_and(|g| Arc::ptr_eq(&g, &h));
-                if watch.session.cancellation_token().is_cancelled() || !ours {
+                let now = watch.session.get(id);
+                let ours = now.as_ref().is_some_and(|g| Arc::ptr_eq(g, &h));
+                if watch.session.cancellation_token().is_cancelled() {
                     break;
                 }
+                if !ours {
+                    // Removed, and maybe added again: a check of the new copy that began
+                    // while this one was followed is followed in its own task.
+                    let again = recover(&watch.watching).remove(&key) == Some(true);
+                    if let Some(new) = now.filter(|_| again) {
+                        watch.watch(&new);
+                    }
+                    return;
+                }
                 if !checking(&h) {
-                    watch.keeper.keep_now(Some([key.clone()].into())).await;
+                    // Set right first, then the disk: a check that ended running against
+                    // what was asked during it must not run on while the pieces are flushed.
                     watch.nudge.notify_one();
+                    watch.keeper.keep_now(Some([key.clone()].into())).await;
                 } else {
                     let stats = h.stats();
                     let paused = matches!(stats.state, S::Initializing { paused: true });
@@ -341,16 +388,25 @@ impl Watch {
                     }
                 }
                 // Ends here, unless a check began while it decided to.
-                let mut watching = recover(&watch.watching);
-                match watching.get_mut(&key) {
-                    Some(again) if *again => {
-                        *again = false;
-                        (last, still) = (None, 0);
+                let began = {
+                    let mut watching = recover(&watch.watching);
+                    match watching.get_mut(&key) {
+                        Some(again) if *again => {
+                            *again = false;
+                            true
+                        }
+                        _ => {
+                            watching.remove(&key);
+                            false
+                        }
                     }
-                    _ => {
-                        watching.remove(&key);
-                        return;
-                    }
+                };
+                if !began {
+                    return;
+                }
+                (last, still) = (None, 0);
+                if checking(&h) {
+                    watch.keeper.forget(key.clone()).await;
                 }
             }
             recover(&watch.watching).remove(&key);
@@ -379,6 +435,14 @@ struct Keeper {
     /// How often, at most, the tick writes the pieces down while a torrent runs; a hold
     /// and a pause write them at once.
     every: std::time::Duration,
+    /// Set while a tick's pass is queued or running, so passes never pile up behind a slow
+    /// flash.
+    queued: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Whether `haves` claims no piece `seen` did not.
+fn within(haves: &[u8], seen: Option<&[u8]>) -> bool {
+    seen.is_some_and(|s| s.len() == haves.len() && haves.iter().zip(s).all(|(h, s)| h & !s == 0))
 }
 
 impl Keeper {
@@ -409,12 +473,16 @@ impl Keeper {
                 continue;
             };
             let haves = bits.as_raw_slice();
-            if recover(&self.seen).get(&key).is_some_and(|s| s == haves) {
+            let seen = recover(&self.seen).get(&key).cloned();
+            if seen.as_deref() == Some(haves) {
                 continue;
             }
             // The bytes of every piece read above reach the disk before the record that
-            // claims them, so a power cut never leaves a record ahead of its files.
-            if let Some(files) = self.shelf.get(&key)
+            // claims them, so a power cut never leaves a record ahead of its files. A
+            // record that claims no piece the last one did not is safe to write as it is,
+            // and must not wait for a flush: it may be taking out pieces a check found bad.
+            if !within(haves, seen.as_deref())
+                && let Some(files) = self.shelf.get(&key)
                 && let Err(e) = files.sync()
             {
                 tracing::warn!("the files of {key} were not flushed: {e}");
@@ -437,11 +505,18 @@ impl Keeper {
         }
     }
 
-    /// A pass when the last one is `every` old.
-    async fn keep_when_due(&self) {
+    /// A pass in a task of its own when the last one is `every` old and none is running,
+    /// so the tick never waits on the disk.
+    fn keep_when_due(&self) {
         let due = recover(&self.last).is_none_or(|t| t.elapsed() >= self.every);
-        if due {
-            self.keep_now(None).await;
+        if due && !self.queued.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let keeper = self.clone();
+            tokio::spawn(async move {
+                keeper.keep_now(None).await;
+                keeper
+                    .queued
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+            });
         }
     }
 
@@ -662,6 +737,7 @@ impl Engine {
             seen: Arc::default(),
             last: Arc::default(),
             every: every * 3,
+            queued: Arc::default(),
         };
         let engine = Engine {
             session: session.clone(),
@@ -719,10 +795,12 @@ impl Engine {
                 let ticked = wants.tick(every, &mut checks).await;
                 next = ticked.next;
                 ticked.checking.iter().for_each(|h| watch.watch(h));
+                // The disk is written off the tick, so settling never waits on a flush.
                 if !ticked.ended.is_empty() {
-                    keeper.keep_now(Some(ticked.ended)).await;
+                    let (keeper, ended) = (keeper.clone(), ticked.ended);
+                    tokio::spawn(async move { keeper.keep_now(Some(ended)).await });
                 }
-                keeper.keep_when_due().await;
+                keeper.keep_when_due();
             }
         });
         Ok(engine)
@@ -863,8 +941,6 @@ impl Engine {
             ..Default::default()
         };
         let wanted = entry.wanted();
-        self.shelf
-            .put(&peeked.hash, &self.root.join(folder), wanted.clone());
         let options = AddTorrentOptions {
             only_files: wanted.map(|w| {
                 let mut v: Vec<usize> = w.into_iter().collect();
@@ -1009,8 +1085,11 @@ impl Engine {
                     let _ = self.session.pause(&h).await;
                 }
             }
-            let paused =
-                h.is_paused() || matches!(stats.state, librqbit::TorrentStatsState::Paused);
+            let paused = matches!(
+                stats.state,
+                librqbit::TorrentStatsState::Paused
+                    | librqbit::TorrentStatsState::Initializing { paused: true }
+            );
             let live = stats.live.as_ref();
             let speed = live
                 .map(|l| (l.download_speed.mbps * 1_048_576.0) as u64)
@@ -1247,9 +1326,13 @@ impl Engine {
                 self.session
                     .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), files)
                     .await?;
-                recover(&self.wants.entries).remove(&key);
-                self.shelf.forget(&key);
-                self.keeper.forget(key).await;
+                // An add of the same torrent can land while librqbit finishes the delete:
+                // what the new copy has is left alone.
+                if self.handle(&key).is_none() {
+                    recover(&self.wants.entries).remove(&key);
+                    self.shelf.forget(&key);
+                    self.keeper.forget(key).await;
+                }
                 Ok(())
             }
         }
@@ -1506,6 +1589,69 @@ mod tests {
         assert_eq!(check_pace(false, 100, Some(100), every), CHECKING_TICK);
     }
 
+    #[test]
+    fn a_running_download_librqbit_still_flags_as_paused_is_unflagged() {
+        // A fast-resume check asked to pause goes live keeping the flag; lifting the hold
+        // then has to clear it, or the list reads the download as paused.
+        use librqbit::TorrentStatsState as S;
+        assert_eq!(ask(&S::Live, false, true, false), Ask::Unflag);
+        assert_eq!(ask(&S::Live, false, false, false), Ask::Nothing);
+        assert_eq!(ask(&S::Live, true, true, false), Ask::Pause);
+        assert_eq!(ask(&S::Paused, false, false, false), Ask::Start);
+        assert_eq!(ask(&S::Error, false, false, true), Ask::Start);
+        assert_eq!(ask(&S::Error, false, true, false), Ask::Nothing);
+    }
+
+    #[test]
+    fn a_record_that_claims_nothing_new_needs_no_flush() {
+        // One that takes pieces out, as after a check found some bad, is written at once.
+        assert!(within(&[0b1000_0000], Some(&[0b1100_0000])));
+        assert!(within(&[0b1100_0000], Some(&[0b1100_0000])));
+        assert!(!within(&[0b1110_0000], Some(&[0b1100_0000])));
+        assert!(!within(&[0b1000_0000], None));
+        assert!(!within(&[0, 0], Some(&[0xff])));
+    }
+
+    // The files are held so the check is still running while the record is looked at.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_record_goes_while_a_check_runs() {
+        // librqbit writes the record a full check leaves before the check ends; the
+        // engine's older record must not be on disk then, or a kill folds it back.
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let (root, state) = (dir.path().join("Anime"), dir.path().join("state"));
+        let engine = Engine::open(&root, &state).await.unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let record = state.join("pieces").join(&peeked.hash);
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(&record, [0xffu8, 0xff]).unwrap();
+        let files = engine.shelf.files(&peeked.hash, &root.join("Show"));
+        {
+            let _checking = files.busy();
+            let hash = engine
+                .add_peeked(&r, "Show", peeked, Vec::new())
+                .await
+                .unwrap();
+            for _ in 0..100 {
+                if !record.exists() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            assert!(
+                checking(&engine.handle(&hash).unwrap()),
+                "the check ran free"
+            );
+            assert!(
+                !record.exists(),
+                "the old record is still there while it checks"
+            );
+        }
+        engine.session.stop().await;
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn a_check_that_ends_writes_its_pieces_down_again() {
         // A check can take pieces out of librqbit's record; the engine's record of them
@@ -1688,6 +1834,9 @@ mod tests {
                 .add_peeked(&r, "Show", peeked, Vec::new())
                 .await
                 .unwrap();
+            // The add's storage is the `Files` held here, so the check really waits.
+            assert!(Arc::ptr_eq(&engine.shelf.get(&hash).unwrap(), &files));
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             assert!(matches!(
                 engine.handle(&hash).unwrap().stats().state,
                 librqbit::TorrentStatsState::Initializing { .. }
