@@ -1,18 +1,23 @@
 //! Whether a newer version of the app is out (#809). The core asks GitHub for the phone's
-//! releases on this build's own track, once soon after launch and again when six hours
+//! releases on the phone's track, soon after the first launch and again when six hours
 //! have passed on the wall clock, which a phone that slept through them sees on its first
 //! second awake; More's About says so and opens the APK's download in the browser. A
 //! build from the Play Store, one on the iPhone, or one built locally without a train
 //! version never asks.
 //!
-//! The process outlives the activity, so when the check is due and what it found are kept
-//! process-wide; a recreated window is handed the last answer instead of asking again.
+//! The last answer, when it came and the track are kept in `update.json` beside the core's
+//! folder, so a launch inside the six hours shows the answer it already has rather than
+//! fetching the list again. The track is nightly from the first nightly build the phone
+//! runs, and stays nightly when that phone takes a stable release. In memory the state is
+//! process-wide, since the process outlives the activity.
 
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anibeam_core::{Call, CoreError, PhoneUpdate, Reply};
+use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Weak};
 
 use crate::{AppData, AppWindow};
@@ -21,23 +26,48 @@ use crate::{AppData, AppWindow};
 const AGAIN_AFTER: Duration = Duration::from_secs(6 * 60 * 60);
 /// How long a check that failed, offline say, holds until the next.
 const RETRY_AFTER: Duration = Duration::from_secs(30 * 60);
+/// How long a check may be out before another may go. An answer that never reached the UI
+/// thread (the loop ended while it was out) would otherwise hold the check for good.
+const OUT_AT_MOST: Duration = Duration::from_secs(2 * 60);
 
 /// The flavor build.rs passed through: `play` for the Play Store's bundle, empty for the APK.
 const FLAVOR: &str = env!("ANIBEAM_FLAVOR");
+/// The version this build runs.
+const RUNNING: &str = env!("ANIBEAM_PHONE_VERSION");
 
-struct State {
-    /// When the next check may go out, on the wall clock, and the wait that set it; `None`
-    /// until the first.
-    due: Option<(SystemTime, Duration)>,
-    busy: bool,
-    /// What the last answer offered.
+/// What `update.json` holds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+struct Kept {
+    /// The phone follows nightlies.
+    nightly: bool,
+    /// The build that last asked, and when its answer came, in seconds since 1970.
+    asked_by: String,
+    answered_at: u64,
+    /// What that answer offered.
     offer: Option<PhoneUpdate>,
 }
 
+struct State {
+    file: Option<PathBuf>,
+    kept: Kept,
+    /// When the next check may go out, on the wall clock, and the wait that set it; `None`
+    /// until the first.
+    due: Option<(SystemTime, Duration)>,
+    /// When the check out now went.
+    out_since: Option<SystemTime>,
+}
+
 static STATE: Mutex<State> = Mutex::new(State {
+    file: None,
+    kept: Kept {
+        nightly: false,
+        asked_by: String::new(),
+        answered_at: 0,
+        offer: None,
+    },
     due: None,
-    busy: false,
-    offer: None,
+    out_since: None,
 });
 
 thread_local! {
@@ -77,15 +107,77 @@ fn after(wait: Duration) -> Option<(SystemTime, Duration)> {
     Some((SystemTime::now() + wait, wait))
 }
 
-pub fn install(window: &AppWindow) {
+/// Whether a check that went at `since` still counts as out at `now`.
+fn out(since: Option<SystemTime>, now: SystemTime) -> bool {
+    since.is_some_and(|at| now.duration_since(at).is_ok_and(|gone| gone < OUT_AT_MOST))
+}
+
+/// What the phone keeps after this build starts: nightly once any nightly build ran, and
+/// the last answer only when this build asked for it.
+fn on_start(mut kept: Kept, running: &str) -> Kept {
+    kept.nightly |= running.contains("-nightly.");
+    if kept.asked_by != running {
+        kept.asked_by = running.to_string();
+        kept.answered_at = 0;
+        kept.offer = None;
+    }
+    kept
+}
+
+/// When the next check is due for what was kept: six hours after its answer.
+fn due_for(kept: &Kept) -> Option<(SystemTime, Duration)> {
+    (kept.answered_at > 0).then(|| {
+        (
+            UNIX_EPOCH + Duration::from_secs(kept.answered_at) + AGAIN_AFTER,
+            AGAIN_AFTER,
+        )
+    })
+}
+
+fn file_in(data_dir: &Path) -> PathBuf {
+    data_dir.join("update.json")
+}
+
+fn load(file: &Path) -> Kept {
+    std::fs::read(file)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn save(file: &Path, kept: &Kept) {
+    let bytes = match serde_json::to_vec_pretty(kept) {
+        Ok(bytes) => bytes,
+        Err(e) => return crate::local::log(&format!("update check: could not save: {e}")),
+    };
+    if let Err(e) = anibeam_core::atomic_file::write_private(file, bytes) {
+        crate::local::log(&format!("update check: could not save: {e}"));
+    }
+}
+
+pub fn install(window: &AppWindow, data_dir: &Path) {
     WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
     window.global::<AppData>().on_open_update(|| {
-        let url = state().offer.as_ref().map(|o| o.url.clone());
+        let url = state().kept.offer.as_ref().map(|o| o.url.clone());
         if let Some(url) = url {
             crate::platform::open_url(&url);
         }
     });
-    let offer = state().offer.clone();
+    let offer = {
+        let mut st = state();
+        if st.file.is_none() && offered() {
+            let file = file_in(data_dir);
+            let before = load(&file);
+            let kept = on_start(before.clone(), RUNNING);
+            if kept != before {
+                save(&file, &kept);
+            }
+            st.due = due_for(&kept);
+            st.kept = kept;
+            st.file = Some(file);
+        }
+        st.kept.offer.clone()
+    };
     show(offer);
 }
 
@@ -95,25 +187,35 @@ pub fn tick() {
         return;
     }
     let mut st = state();
-    if st.busy || !due(st.due, SystemTime::now()) {
+    let now = SystemTime::now();
+    if out(st.out_since, now) || !due(st.due, now) {
         return;
     }
     let call = Call::CheckPhoneUpdate {
-        current: env!("ANIBEAM_PHONE_VERSION").to_string(),
+        current: RUNNING.to_string(),
+        nightly: Some(st.kept.nightly),
     };
-    // A panic in the call still answers, so the check is never left busy for good
-    st.busy = crate::local::call_off_thread("newer", call, heard);
+    // A panic in the call still answers, so the check is not left out for good
+    if crate::local::call_off_thread("newer", call, heard) {
+        st.out_since = Some(now);
+    }
 }
 
 /// On the UI thread: keeps the answer, then shows it.
 fn heard(answer: Result<Reply, CoreError>) {
     let offer = {
         let mut st = state();
-        st.busy = false;
+        st.out_since = None;
         match answer {
             Ok(Reply::PhoneUpdate { update }) => {
                 st.due = after(AGAIN_AFTER);
-                st.offer = update;
+                st.kept.answered_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                st.kept.offer = update;
+                if let Some(file) = &st.file {
+                    save(file, &st.kept);
+                }
             }
             Ok(other) => {
                 crate::local::log(&format!("update check: unexpected reply {other:?}"));
@@ -126,7 +228,7 @@ fn heard(answer: Result<Reply, CoreError>) {
                 return;
             }
         }
-        st.offer.clone()
+        st.kept.offer.clone()
     };
     show(offer);
 }
@@ -170,5 +272,48 @@ mod tests {
             now
         ));
         assert!(!due(set(Duration::from_secs(60), RETRY_AFTER), now));
+    }
+
+    #[test]
+    fn a_check_out_too_long_no_longer_holds_the_next() {
+        let now = SystemTime::now();
+        assert!(!out(None, now));
+        assert!(out(Some(now - Duration::from_secs(10)), now));
+        assert!(!out(Some(now - OUT_AT_MOST * 2), now));
+    }
+
+    #[test]
+    fn a_nightly_phone_stays_on_nightlies_after_a_stable_release() {
+        let first = on_start(Kept::default(), "2.4.3-nightly.20261117.97");
+        assert!(first.nightly);
+        let after_stable = on_start(first, "2.4.3");
+        assert!(after_stable.nightly);
+        assert!(!on_start(Kept::default(), "2.4.3").nightly);
+    }
+
+    #[test]
+    fn a_launch_inside_six_hours_keeps_its_answer() {
+        let offer = PhoneUpdate {
+            version: "2.4.3-nightly.20261118.98".into(),
+            url: "https://example.com/a.apk".into(),
+        };
+        let answered = Kept {
+            nightly: true,
+            asked_by: "2.4.3-nightly.20261117.97".into(),
+            answered_at: 1_800_000_000,
+            offer: Some(offer.clone()),
+        };
+        let same = on_start(answered.clone(), "2.4.3-nightly.20261117.97");
+        assert_eq!(same.offer, Some(offer));
+        let (at, wait) = due_for(&same).unwrap();
+        assert_eq!(wait, AGAIN_AFTER);
+        assert_eq!(
+            at,
+            UNIX_EPOCH + Duration::from_secs(1_800_000_000) + AGAIN_AFTER
+        );
+        // The update was installed: what was kept is for another build, so it asks again
+        let updated = on_start(answered, "2.4.3-nightly.20261118.98");
+        assert_eq!(updated.offer, None);
+        assert_eq!(due_for(&updated), None);
     }
 }

@@ -5,7 +5,7 @@
 // over one pane of rows closed by hairlines.
 
 import { Theme } from "theme.slint";
-import { AppData, EpisodeVersionLine } from "data.slint";
+import { AppData, EpisodeVersionLine, Nav } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
@@ -1056,10 +1056,21 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 6: about := SectionPage {
-        // A newer version seen here, on opening or while open, is seen
+        // A newer version counts as seen only while About is on screen: More stays alive
+        // behind the other tabs, with this page open in it
         property <string> offered: AppData.update-version;
+        property <bool> on-screen: Nav.page == 3;
         init => { AppData.mark-update-seen(); }
-        changed offered => { AppData.mark-update-seen(); }
+        changed offered => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
+        changed on-screen => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
         title: Tr.t("more-about");
         note: AppData.version;
         ListGroup {

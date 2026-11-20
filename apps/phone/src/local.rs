@@ -79,9 +79,9 @@ pub fn log(line: &str) {
 }
 
 /// Sends `call` to the core on a thread named `name` and hands the answer to `done` on the
-/// UI thread. A panic in the call answers as an error, so a caller waiting on `done` is
-/// never left waiting. False when the core is not open yet or no thread could start, and
-/// `done` then never runs.
+/// UI thread. A panic in the call answers as an error. False when the core is not open yet
+/// or no thread could start, and `done` then never runs; nor does it when the UI loop has
+/// ended before the answer came, so a caller that waits on it keeps a deadline of its own.
 pub fn call_off_thread(
     name: &str,
     call: Call,
