@@ -696,8 +696,39 @@ mod tests {
         assert_eq!((guest.login.as_str(), guest.owner), ("", false));
     }
 
+    /// The host routes these and the phone asks for them, each from its own copy of
+    /// this crate, so a path that changed shape would break streaming between them.
     #[test]
-    fn posters_live_under_the_api() {
+    fn every_path_lives_under_the_api() {
         assert_eq!(poster_path(42), "/api/v1/posters/42");
+        assert_eq!(file_path(7), "/api/v1/files/7");
+        assert_eq!(sidecar_path(7, 2), "/api/v1/files/7/sidecars/2");
+        assert_eq!(skip_path(9), "/api/v1/sessions/9/skip");
+        assert_eq!(subtitle_path(7, 0), "/api/v1/files/7/subtitles/0");
+        assert_eq!(probe_path(7), "/api/v1/files/7/probe");
+        // A phone already installed asks for these as they are spelled here
+        assert_eq!(HELLO, "/api/v1/hello");
+        assert_eq!(SNAPSHOT, "/api/v1/snapshot");
+        assert_eq!(CALL, "/api/v1/call");
+        assert_eq!(PEERS, "/api/v1/peers");
+        assert_eq!(HISTORY, "/api/v1/history");
+    }
+
+    #[test]
+    fn a_conversion_path_asks_only_for_what_it_names() {
+        let hls = |audio, burn| hls_path(7, 720, audio, burn);
+        assert_eq!(hls(None, None), "/api/v1/files/7/hls/720/index.m3u8");
+        assert_eq!(
+            hls(Some(1), None),
+            "/api/v1/files/7/hls/720/index.m3u8?audio=1"
+        );
+        assert_eq!(
+            hls(None, Some(0)),
+            "/api/v1/files/7/hls/720/index.m3u8?burn=0"
+        );
+        assert_eq!(
+            hls(Some(2), Some(3)),
+            "/api/v1/files/7/hls/720/index.m3u8?audio=2&burn=3"
+        );
     }
 }

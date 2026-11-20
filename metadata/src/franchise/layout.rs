@@ -105,12 +105,14 @@ fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
                 x.clone()
             }
         }
+        // The far end of a SOURCE is the original, so it turns round,
+        // unless that would put a screen entry ahead of print.
         "SOURCE" => {
             let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-            if !fp && tp {
-                e(x.to, x.from, "ADAPTATION")
-            } else {
+            if fp && !tp {
                 e(x.from, x.to, "ADAPTATION")
+            } else {
+                e(x.to, x.from, "ADAPTATION")
             }
         }
         _ => x.clone(),
@@ -524,19 +526,14 @@ fn satellites(
 }
 
 /// The wanted column on that row, or the nearest free one either side of
-/// it. Nothing on a row is ever placed on top of anything else.
+/// it. Nothing on a row is ever placed on top of anything else, and the
+/// search always ends: `taken` is finite.
 fn free_column(taken: &HashSet<Cell>, column: i64, row: i64) -> Cell {
-    if !taken.contains(&(column, row)) {
-        return (column, row);
-    }
-    for step in 1..=24 {
-        for candidate in [column + step, column - step] {
-            if !taken.contains(&(candidate, row)) {
-                return (candidate, row);
-            }
-        }
-    }
-    (column, row)
+    std::iter::once(column)
+        .chain((1..).flat_map(|step| [column + step, column - step]))
+        .map(|candidate| (candidate, row))
+        .find(|cell| !taken.contains(cell))
+        .expect("taken is finite, so a free column always turns up")
 }
 
 /// The words a card reads under its title.
@@ -573,28 +570,14 @@ fn reversed(relation: &str) -> &str {
     }
 }
 
-/// AniList tags an adaptation both ways round often enough that the name
-/// has to be checked against what it points at: anything pointing at print
-/// is a source, anything pointing at a screen is an adaptation.
-fn canonical_relation(relation: &str, target: Option<&&Node>) -> String {
-    match (relation, is_print(target)) {
-        ("ADAPTATION", true) => "SOURCE".to_string(),
-        ("SOURCE", false) => "ADAPTATION".to_string(),
-        _ => relation.to_string(),
-    }
-}
-
-/// What one node is to another, in the reader's words. Two nodes in one
-/// chain read by their place in it; otherwise the edge between them is
-/// turned to face the reader and named. Nothing joining them at all is
-/// None, and the walk's own discovery label is the caller's fallback.
-fn relation_label(
-    current: u64,
-    node: u64,
-    chains: &[Chain],
-    edges: &[Edge],
-    nodes: &HashMap<u64, &Node>,
-) -> Option<String> {
+/// What one node is to another, as the AniList relation the reader's words
+/// are looked up by. Two nodes in one chain read by their place in it;
+/// otherwise the edge between them is turned to face the reader, which is
+/// all it takes: `canonical_edges` has already pointed every edge from the
+/// original to what was made of it. Nothing
+/// joining them at all is None, and the walk's own discovery label is the
+/// caller's fallback.
+fn relation_to(current: u64, node: u64, chains: &[Chain], edges: &[Edge]) -> Option<String> {
     if node == current {
         return None;
     }
@@ -602,19 +585,15 @@ fn relation_label(
         let mine = chain.iter().position(|id| *id == current);
         let theirs = chain.iter().position(|id| *id == node);
         if let (Some(mine), Some(theirs)) = (mine, theirs) {
-            return Some(if theirs < mine {
-                "Prequel".to_string()
-            } else {
-                "Sequel".to_string()
-            });
+            let relation = if theirs < mine { "PREQUEL" } else { "SEQUEL" };
+            return Some(relation.to_string());
         }
     }
-    let target = nodes.get(&node);
     if let Some(x) = edges.iter().find(|x| x.from == current && x.to == node) {
-        return Some(label_of(&canonical_relation(&x.relation, target)));
+        return Some(x.relation.clone());
     }
     if let Some(x) = edges.iter().find(|x| x.from == node && x.to == current) {
-        return Some(label_of(&canonical_relation(reversed(&x.relation), target)));
+        return Some(reversed(&x.relation).to_string());
     }
     None
 }
@@ -657,7 +636,7 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
         .map(|(id, (column, row))| (id, (column as f64 * SPINE_X_GAP, row as f64 * V_GAP)))
         .collect();
 
-    let labels = labels(closure, current, &rows, &edges, &by_id);
+    let labels = labels(closure, current, &rows, &edges);
     Plan {
         positions,
         edges,
@@ -669,17 +648,11 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
 /// say comes first; a node with no edge to the current series takes the
 /// label of the edge that discovered it in a walk outwards from there, so
 /// a card three hops away still says what it is doing in the graph.
-fn labels(
-    closure: &Closure,
-    current: u64,
-    rows: &[Chain],
-    edges: &[Edge],
-    nodes: &HashMap<u64, &Node>,
-) -> HashMap<u64, String> {
+fn labels(closure: &Closure, current: u64, rows: &[Chain], edges: &[Edge]) -> HashMap<u64, String> {
     let mut out: HashMap<u64, String> = HashMap::new();
     for n in &closure.nodes {
-        if let Some(label) = relation_label(current, n.anilist_id, rows, edges, nodes) {
-            out.insert(n.anilist_id, label);
+        if let Some(relation) = relation_to(current, n.anilist_id, rows, edges) {
+            out.insert(n.anilist_id, label_of(&relation));
         }
     }
 
@@ -697,8 +670,7 @@ fn labels(
             if !seen.insert(far) {
                 continue;
             }
-            out.entry(far)
-                .or_insert_with(|| label_of(&canonical_relation(relation, nodes.get(&far))));
+            out.entry(far).or_insert_with(|| label_of(relation));
             queue.push_back(far);
         }
     }
@@ -799,6 +771,31 @@ mod tests {
         );
     }
 
+    /// Two print entries, or two screen entries, have no print side to run
+    /// from, so the relation alone says which is the original: the far end
+    /// of a SOURCE. A reciprocal pair then lands on one edge.
+    #[test]
+    fn a_source_between_two_of_a_kind_runs_from_the_original() {
+        let nodes = [
+            manga(1, 2000),
+            manga(2, 2005),
+            anime(3, 2010),
+            anime(4, 2012),
+        ];
+        let map = by_id(&nodes);
+        assert_eq!(
+            shown(&canonical_edges(
+                &[e(1, 2, "ADAPTATION"), e(2, 1, "SOURCE")],
+                &map
+            )),
+            vec!["1->2:ADAPTATION".to_string()]
+        );
+        assert_eq!(
+            shown(&canonical_edges(&[e(4, 3, "SOURCE")], &map)),
+            vec!["3->4:ADAPTATION".to_string()]
+        );
+    }
+
     #[test]
     fn a_reciprocal_pair_collapses_to_one_edge() {
         let nodes = [anime(1, 2000), anime(2, 2001)];
@@ -895,71 +892,76 @@ mod tests {
     #[test]
     fn two_nodes_in_one_chain_read_prequel_or_sequel_by_their_order() {
         let nodes = [anime(1, 2000), anime(2, 2001), anime(3, 2002)];
-        let map = by_id(&nodes);
         let edges = [e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL")];
         let cs = chains(&nodes, &edges);
 
+        assert_eq!(relation_to(2, 1, &cs, &edges).as_deref(), Some("PREQUEL"));
+        assert_eq!(relation_to(2, 3, &cs, &edges).as_deref(), Some("SEQUEL"));
         assert_eq!(
-            relation_label(2, 1, &cs, &edges, &map).as_deref(),
-            Some("Prequel")
-        );
-        assert_eq!(
-            relation_label(2, 3, &cs, &edges, &map).as_deref(),
-            Some("Sequel")
-        );
-        assert_eq!(
-            relation_label(2, 2, &cs, &edges, &map),
+            relation_to(2, 2, &cs, &edges),
             None,
             "a node has no relation to itself"
         );
     }
 
+    /// A card's label comes from the edge as the layout draws it, so it
+    /// agrees with the arrow: the original reads as the source and what was
+    /// made of it as the adaptation, whatever medium either end is.
     #[test]
-    fn a_direct_edge_is_labelled_after_canonicalising_against_the_target() {
-        let nodes = [anime(1, 2005), manga(5, 2000), anime(7, 2007)];
-        let map = by_id(&nodes);
+    fn an_adaptation_reads_the_same_way_its_arrow_points() {
+        let pair = |a: Node, b: Node, raw: Vec<Edge>| {
+            let (first, second) = (a.anilist_id, b.anilist_id);
+            let closure = closure_of(first, vec![a, b], raw, &[]);
+            (
+                plan(&closure, first).labels[&second].clone(),
+                plan(&closure, second).labels[&first].clone(),
+            )
+        };
+        let (source, adaptation) = (label_of("SOURCE"), label_of("ADAPTATION"));
 
-        let to_print = [e(1, 5, "ADAPTATION")];
+        // A light novel and the manga made of it, both print.
+        let novel = node(1, "MANGA", "LIGHT_NOVEL", Some(2000));
+        let raw = vec![e(1, 2, "ADAPTATION"), e(2, 1, "SOURCE")];
         assert_eq!(
-            relation_label(1, 5, &[], &to_print, &map).as_deref(),
-            Some("Source")
+            pair(novel, manga(2, 2005), raw),
+            (adaptation.clone(), source.clone()),
+            "on the novel's page the manga is its adaptation"
         );
 
-        let to_screen = [e(1, 7, "SOURCE")];
+        // A TV series and the film made of it, both screen.
+        let raw = vec![e(4, 3, "SOURCE")];
         assert_eq!(
-            relation_label(1, 7, &[], &to_screen, &map).as_deref(),
-            Some("Adaptation")
+            pair(anime(3, 2010), node(4, "ANIME", "MOVIE", Some(2012)), raw),
+            (adaptation.clone(), source.clone()),
+            "on the series' page the film is its adaptation"
+        );
+
+        // Print and screen: print leads.
+        let raw = vec![e(1, 5, "SOURCE")];
+        assert_eq!(
+            pair(manga(5, 2000), anime(1, 2005), raw),
+            (adaptation, source)
         );
     }
 
     #[test]
     fn a_reverse_edge_is_turned_round_first() {
-        let nodes = [anime(1, 2005), anime(7, 2007)];
-        let map = by_id(&nodes);
         assert_eq!(
-            relation_label(1, 7, &[], &[e(7, 1, "PARENT")], &map).as_deref(),
-            Some("Side story")
+            relation_to(1, 7, &[], &[e(7, 1, "PARENT")]).as_deref(),
+            Some("SIDE_STORY")
         );
         assert_eq!(
-            relation_label(1, 7, &[], &[e(7, 1, "SIDE_STORY")], &map).as_deref(),
-            Some("Parent story")
+            relation_to(1, 7, &[], &[e(7, 1, "SIDE_STORY")]).as_deref(),
+            Some("PARENT")
         );
     }
 
     #[test]
     fn an_unknown_relation_reads_as_its_own_words() {
-        let nodes = [anime(1, 2005), anime(7, 2007)];
-        let map = by_id(&nodes);
+        assert_eq!(label_of("WEIRD_NEW_TYPE"), "weird new type");
+        assert_eq!(label_of("CHARACTER"), "Shared characters");
         assert_eq!(
-            relation_label(1, 7, &[], &[e(1, 7, "WEIRD_NEW_TYPE")], &map).as_deref(),
-            Some("weird new type")
-        );
-        assert_eq!(
-            relation_label(1, 7, &[], &[e(1, 7, "CHARACTER")], &map).as_deref(),
-            Some("Shared characters")
-        );
-        assert_eq!(
-            relation_label(1, 7, &[], &[], &map),
+            relation_to(1, 7, &[], &[]),
             None,
             "nothing joins them at all"
         );
@@ -1077,6 +1079,25 @@ mod tests {
             positions[&10].0, positions[&3].0,
             "and on its target's column"
         );
+        let cells: HashSet<Cell> = positions.values().copied().collect();
+        assert_eq!(cells.len(), positions.len(), "no two nodes share a cell");
+    }
+
+    /// However many side stories hang off one chain, each gets a cell of
+    /// its own: the search for a free column has no reach to run out of.
+    #[test]
+    fn sixty_side_stories_on_one_chain_never_share_a_cell() {
+        let mut nodes = vec![anime(1, 2000), anime(2, 2001)];
+        let mut edges = Vec::new();
+        for id in 100..160 {
+            nodes.push(anime(id, 2002));
+            edges.push(e(1, id, "SIDE_STORY"));
+        }
+        let mut positions: HashMap<u64, Cell> = HashMap::from([(1, (0, 0)), (2, (1, 0))]);
+        let cs = chains(&nodes, &[e(1, 2, "SEQUEL")]);
+        satellites(&nodes, &edges, &cs, &mut positions);
+
+        assert_eq!(positions.len(), nodes.len());
         let cells: HashSet<Cell> = positions.values().copied().collect();
         assert_eq!(cells.len(), positions.len(), "no two nodes share a cell");
     }

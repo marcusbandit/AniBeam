@@ -253,10 +253,7 @@ pub(crate) async fn resolve(
         encode(query)
     );
     let response = trackers.net.mal.get(&url, token).await?;
-    if !response.is_success() {
-        return Err(super::writes::mal_failure(&response));
-    }
-    let found = pick(&wanted, &response.json()?);
+    let found = pick(&wanted, &crate::mal_json(&response)?);
     let now = time::now_secs();
     trackers
         .services

@@ -71,18 +71,6 @@ impl HostAddress {
     pub fn display(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-
-    /// The machine part for the status line before the host has said its own name.
-    pub fn short_name(&self) -> String {
-        if self.host.starts_with('[') || self.host.parse::<std::net::Ipv4Addr>().is_ok() {
-            return self.host.clone();
-        }
-        self.host
-            .split('.')
-            .next()
-            .unwrap_or(&self.host)
-            .to_string()
-    }
 }
 
 /// What follows `scheme` at the start of `text`, the scheme matched in any case, as a
@@ -103,10 +91,8 @@ mod tests {
         assert_eq!((a.host.as_str(), a.port), ("desktop", 8790));
         let a = HostAddress::parse(" http://desktop.example.ts.net:8791/ ").unwrap();
         assert_eq!(a.display(), "desktop.example.ts.net:8791");
-        assert_eq!(a.short_name(), "desktop");
         let a = HostAddress::parse("10.0.2.2:8790").unwrap();
         assert_eq!(a.base_url(), "http://10.0.2.2:8790");
-        assert_eq!(a.short_name(), "10.0.2.2");
         let a = HostAddress::parse("[fd7a:115c::1]:8790").unwrap();
         assert_eq!(a.base_url(), "http://[fd7a:115c::1]:8790");
         let a = HostAddress::parse("[fd7a:115c::1]").unwrap();
