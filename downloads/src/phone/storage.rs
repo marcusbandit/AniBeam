@@ -208,6 +208,19 @@ impl Shelf {
         files.set_wanted(wanted);
     }
 
+    /// Sets a torrent up anew: what an earlier copy of it left on the shelf, its folder and
+    /// its selection, goes. Its part files stay, so a file wanted now takes over the bytes
+    /// the earlier copy fetched for it.
+    fn fresh(&self, hash: &str, folder: &Path, wanted: Option<HashSet<usize>>) -> Arc<Files> {
+        let files = Arc::new(Files::new(
+            folder.to_path_buf(),
+            self.parts.join(hash),
+            wanted,
+        ));
+        recover(&self.torrents).insert(hash.to_string(), files.clone());
+        files
+    }
+
     pub fn get(&self, hash: &str) -> Option<Arc<Files>> {
         recover(&self.torrents).get(hash).cloned()
     }
@@ -218,12 +231,30 @@ impl Shelf {
         }
     }
 
-    /// The storage for torrents added now into `folder`, or, with None, for the ones the
-    /// session brings back, which the shelf was given at open.
-    pub fn factory(&self, folder: Option<PathBuf>, fallback: PathBuf) -> BoxStorageFactory {
+    /// The storage for the ones the session brings back, which the shelf was given at open.
+    pub fn factory(&self, fallback: PathBuf) -> BoxStorageFactory {
         Box::new(Factory {
             shelf: self.clone(),
-            folder,
+            add: None,
+            fallback,
+        })
+    }
+
+    /// The storage for one torrent added now into `folder`, fetching `wanted` (None for
+    /// every file).
+    pub fn adding(
+        &self,
+        folder: PathBuf,
+        wanted: Option<HashSet<usize>>,
+        fallback: PathBuf,
+    ) -> BoxStorageFactory {
+        Box::new(Factory {
+            shelf: self.clone(),
+            add: Some(Arc::new(Adding {
+                folder,
+                wanted,
+                made: std::sync::atomic::AtomicBool::new(false),
+            })),
             fallback,
         })
     }
@@ -232,9 +263,19 @@ impl Shelf {
 #[derive(Clone)]
 struct Factory {
     shelf: Shelf,
-    folder: Option<PathBuf>,
+    /// For a torrent added now; None for the ones the session brings back.
+    add: Option<Arc<Adding>>,
     /// Where a torrent the shelf does not know writes: the library root.
     fallback: PathBuf,
+}
+
+/// An add's folder and selection. The first storage made for it starts the torrent's files
+/// anew; a later one, when librqbit checks the torrent again after an error, keeps the
+/// files and any selection set since.
+struct Adding {
+    folder: PathBuf,
+    wanted: Option<HashSet<usize>>,
+    made: std::sync::atomic::AtomicBool,
 }
 
 impl StorageFactory for Factory {
@@ -246,8 +287,11 @@ impl StorageFactory for Factory {
         _metadata: &TorrentMetadata,
     ) -> anyhow::Result<Box<dyn TorrentStorage>> {
         let hash = shared.info_hash.as_string();
-        let files = match (&self.folder, self.shelf.get(&hash)) {
-            (Some(folder), _) => self.shelf.files(&hash, folder),
+        let files = match (&self.add, self.shelf.get(&hash)) {
+            (Some(add), _) if !add.made.swap(true, std::sync::atomic::Ordering::SeqCst) => {
+                self.shelf.fresh(&hash, &add.folder, add.wanted.clone())
+            }
+            (Some(add), _) => self.shelf.files(&hash, &add.folder),
             (None, Some(files)) => files,
             (None, None) => self.shelf.files(&hash, &self.fallback),
         };

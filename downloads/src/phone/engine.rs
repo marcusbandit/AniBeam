@@ -89,6 +89,8 @@ pub struct Engine {
     wants: Wants,
     /// Wakes the tick early after anything that may start a torrent or change what is wanted.
     nudge: Arc<tokio::sync::Notify>,
+    /// Follows each check to its end.
+    watch: Watch,
     keeper: Keeper,
 }
 
@@ -134,7 +136,8 @@ struct Wants {
 }
 
 impl Wants {
-    /// Starts or stops one unfinished torrent so it matches the hold and the person's pause.
+    /// Starts or stops one torrent so it matches the hold and the person's pause, and pauses
+    /// a finished one that still runs.
     /// It goes by librqbit's state, never its paused flag alone: librqbit keeps the flag it
     /// was last asked for, and an ask that lands while it still checks the torrent's files
     /// changes the flag but not what the torrent does once the check is done (#1186). That
@@ -186,27 +189,17 @@ impl Wants {
     /// paused, finished or failed torrent changes only when the engine is asked to. The turn
     /// is taken for one torrent at a time, so a tap or a list waits for one, not all.
     ///
-    /// A check asked to pause may still be running, and a fast-resume check that is ends
-    /// running whatever it was asked, so it is watched while it moves. One that stopped,
-    /// as a full check does on a pause, sits checking until it is started again: `checks`
-    /// holds how far each check had got, and a paused one that got somewhere and has not
-    /// moved since the last tick sets no pace. One that has not begun may be waiting for
-    /// librqbit's turn to check (three at a time), so it keeps the slower pace.
-    ///
-    /// Also answers the torrents whose check ended since the last tick: a check can find
-    /// pieces bad and take them out of librqbit's record, and the engine's own record of
-    /// them is written again at once, so it never puts them back at the next open.
-    async fn tick(
-        &self,
-        every: std::time::Duration,
-        checks: &mut HashMap<String, u64>,
-    ) -> (Option<std::time::Duration>, HashSet<String>) {
+    /// Every torrent still checking keeps a pace (`check_pace`), and each one is handed to
+    /// `Watch`, which writes its pieces down and wakes the tick the moment its check ends.
+    /// `checks` holds how far each check had got at the last tick.
+    async fn tick(&self, every: std::time::Duration, checks: &mut HashMap<String, u64>) -> Ticked {
         use librqbit::TorrentStatsState as S;
         let handles: Vec<_> = self
             .session
             .with_torrents(|it| it.map(|(_, h)| h.clone()).collect());
         let mut next = None;
-        let mut checking = HashMap::new();
+        let mut seen = HashMap::new();
+        let mut checking = Vec::new();
         for h in &handles {
             let stats = {
                 let _turn = self.steering.lock().await;
@@ -223,15 +216,10 @@ impl Wants {
             let pace = match stats.state {
                 S::Initializing { paused } => {
                     let got = stats.progress_bytes;
-                    let moved = checks.get(&key) != Some(&got);
-                    checking.insert(key, got);
-                    if !paused || moved {
-                        Some(CHECKING_TICK.min(every))
-                    } else if got == 0 {
-                        Some(every)
-                    } else {
-                        None
-                    }
+                    let pace = check_pace(paused, got, checks.get(&key).copied(), every);
+                    seen.insert(key, got);
+                    checking.push(h.clone());
+                    Some(pace)
                 }
                 S::Live => Some(every),
                 _ => None,
@@ -243,11 +231,130 @@ impl Wants {
         }
         let ended = checks
             .keys()
-            .filter(|k| !checking.contains_key(*k))
+            .filter(|k| !seen.contains_key(*k))
             .cloned()
             .collect();
-        *checks = checking;
-        (next, ended)
+        *checks = seen;
+        Ticked {
+            next,
+            ended,
+            checking,
+        }
+    }
+}
+
+/// What a tick answers: how soon to look again, the torrents whose check ended since the
+/// last one, and the ones still checking.
+struct Ticked {
+    next: Option<std::time::Duration>,
+    ended: HashSet<String>,
+    checking: Vec<Arc<librqbit::ManagedTorrent>>,
+}
+
+/// How soon to look again at a torrent checking its files. A running check, or one that
+/// moved since the last look, is watched closely. One asked to pause that has not moved is
+/// still looked at every `every`: it may be a full check the pause stopped, but it may be a
+/// fast-resume check that ignores the pause, or one waiting for librqbit's turn to check
+/// (three at a time), and either of those goes live when it ends whatever it was asked.
+fn check_pace(
+    paused: bool,
+    got: u64,
+    last: Option<u64>,
+    every: std::time::Duration,
+) -> std::time::Duration {
+    if !paused || last != Some(got) {
+        CHECKING_TICK.min(every)
+    } else {
+        every
+    }
+}
+
+fn checking(h: &librqbit::ManagedTorrent) -> bool {
+    h.with_state(|s| matches!(s, librqbit::ManagedTorrentState::Initializing(_)))
+}
+
+/// Follows each torrent's check to its end, then writes its pieces down and wakes the
+/// tick. A check can find pieces bad and take them out of librqbit's record; the engine's
+/// own record of them is written again as soon as it ends, so the next open never puts them
+/// back. And a check that ends running against what was asked during it is set right at
+/// once, not at the next tick.
+#[derive(Clone)]
+struct Watch {
+    session: Arc<Session>,
+    keeper: Keeper,
+    nudge: Arc<tokio::sync::Notify>,
+    /// The torrents followed now, each with whether another check began while its task
+    /// was deciding to end.
+    watching: Arc<Mutex<HashMap<String, bool>>>,
+    every: std::time::Duration,
+}
+
+/// How many looks a paused check may sit still, having got somewhere, before its task ends.
+/// That is a full check the pause stopped, which librqbit takes up again only on a start,
+/// and that start follows it anew. It has no record to fix: librqbit cleared its record
+/// before a full check, and the open drops the engine's record for one with none.
+const STILL_LOOKS: u32 = 20;
+
+impl Watch {
+    /// Follows `h` when it is checking its files.
+    fn watch(&self, h: &Arc<librqbit::ManagedTorrent>) {
+        if !checking(h) {
+            return;
+        }
+        let key = h.info_hash().as_string();
+        {
+            let mut watching = recover(&self.watching);
+            if let Some(again) = watching.get_mut(&key) {
+                *again = true;
+                return;
+            }
+            watching.insert(key.clone(), false);
+        }
+        let watch = self.clone();
+        let h = h.clone();
+        tokio::spawn(async move {
+            use librqbit::TorrentStatsState as S;
+            let id = librqbit::api::TorrentIdOrHash::Hash(h.info_hash());
+            let (mut last, mut still) = (None, 0u32);
+            loop {
+                let ours = watch.session.get(id).is_some_and(|g| Arc::ptr_eq(&g, &h));
+                if watch.session.cancellation_token().is_cancelled() || !ours {
+                    break;
+                }
+                if !checking(&h) {
+                    watch.keeper.keep_now(Some([key.clone()].into())).await;
+                    watch.nudge.notify_one();
+                } else {
+                    let stats = h.stats();
+                    let paused = matches!(stats.state, S::Initializing { paused: true });
+                    let got = stats.progress_bytes;
+                    let before = last.replace(got);
+                    still = if paused && got > 0 && before == Some(got) {
+                        still + 1
+                    } else {
+                        0
+                    };
+                    if still < STILL_LOOKS {
+                        let wait = check_pace(paused, got, before, watch.every);
+                        tokio::time::sleep(wait).await;
+                        continue;
+                    }
+                }
+                // Ends here, unless a check began while it decided to.
+                let mut watching = recover(&watch.watching);
+                match watching.get_mut(&key) {
+                    Some(again) if *again => {
+                        *again = false;
+                        (last, still) = (None, 0);
+                    }
+                    _ => {
+                        watching.remove(&key);
+                        return;
+                    }
+                }
+            }
+            recover(&watch.watching).remove(&key);
+        });
     }
 }
 
@@ -533,7 +640,7 @@ impl Engine {
                 persistence: Some(SessionPersistenceConfig::Json {
                     folder: Some(session_dir.clone()),
                 }),
-                default_storage_factory: Some(shelf.factory(None, root.to_path_buf())),
+                default_storage_factory: Some(shelf.factory(root.to_path_buf())),
                 dht: Some(librqbit::DhtSessionConfig {
                     persistence: Some(librqbit::dht::DhtPersistenceConfig {
                         config_filename: Some(state_dir.join("dht.json")),
@@ -546,9 +653,19 @@ impl Engine {
         )
         .await
         .map_err(fail)?;
-        let engine = Engine {
+        let nudge: Arc<tokio::sync::Notify> = Arc::default();
+        let keeper = Keeper {
             session: session.clone(),
             shelf: shelf.clone(),
+            dir: pieces,
+            pass: Arc::default(),
+            seen: Arc::default(),
+            last: Arc::default(),
+            every: every * 3,
+        };
+        let engine = Engine {
+            session: session.clone(),
+            shelf,
             root: root.to_path_buf(),
             entries_path,
             saving: Mutex::new(()),
@@ -558,25 +675,30 @@ impl Engine {
                 entries: Arc::new(Mutex::new(entries)),
                 steering: Arc::default(),
             },
-            nudge: Arc::default(),
-            keeper: Keeper {
+            nudge: nudge.clone(),
+            watch: Watch {
                 session: session.clone(),
-                shelf,
-                dir: pieces,
-                pass: Arc::default(),
-                seen: Arc::default(),
-                last: Arc::default(),
-                every: every * 3,
+                keeper: keeper.clone(),
+                nudge,
+                watching: Arc::default(),
+                every,
             },
+            keeper,
         };
+        // The torrents the session brought back are checking their files now.
+        session
+            .with_torrents(|it| it.map(|(_, h)| h.clone()).collect::<Vec<_>>())
+            .iter()
+            .for_each(|h| engine.watch.watch(h));
         // From here until the session stops, each tick sets every torrent to what is wanted
         // and writes the pieces down. It comes soon while a torrent checks its files, every
         // `every` while one runs, and waits for a nudge when none does.
-        let (wants, keeper, nudge) = (
+        let (wants, keeper, watch) = (
             engine.wants.clone(),
             engine.keeper.clone(),
-            engine.nudge.clone(),
+            engine.watch.clone(),
         );
+        let nudge = engine.nudge.clone();
         let stopped = session.cancellation_token().clone();
         tokio::spawn(async move {
             let mut next = Some(CHECKING_TICK.min(every));
@@ -594,10 +716,11 @@ impl Engine {
                     _ = stopped.cancelled() => return,
                     _ = wake => {}
                 }
-                let ended;
-                (next, ended) = wants.tick(every, &mut checks).await;
-                if !ended.is_empty() {
-                    keeper.keep_now(Some(ended)).await;
+                let ticked = wants.tick(every, &mut checks).await;
+                next = ticked.next;
+                ticked.checking.iter().for_each(|h| watch.watch(h));
+                if !ticked.ended.is_empty() {
+                    keeper.keep_now(Some(ticked.ended)).await;
                 }
                 keeper.keep_when_due().await;
             }
@@ -611,7 +734,8 @@ impl Engine {
     }
 
     /// Writes down the pieces every torrent has now, so they are there after the process
-    /// ends without a clean stop. The engine also does it on every tick by itself.
+    /// ends without a clean stop. The engine also does it every 15 s while a torrent runs,
+    /// and when a check ends.
     pub async fn keep_progress(&self) {
         self.keeper.keep_now(None).await;
     }
@@ -774,6 +898,12 @@ impl Engine {
         priorities: Vec<i64>,
     ) -> Result<(String, bool), CoreError> {
         let output = self.root.join(folder);
+        // The add starts the torrent's files anew, whatever an earlier copy of it left on
+        // the shelf: its folder and its selection are this add's.
+        let wanted: Option<HashSet<usize>> = options
+            .only_files
+            .as_ref()
+            .map(|o| o.iter().copied().collect());
         // The person's asks on each entry before the add, so an entry left from an earlier
         // copy of the torrent can be told from a pause given while this add ran.
         let asks_before: HashMap<String, u64> = recover(&self.wants.entries)
@@ -785,7 +915,7 @@ impl Engine {
             Some(AddTorrentOptions {
                 output_folder: Some(output.to_string_lossy().into_owned()),
                 overwrite: true,
-                storage_factory: Some(self.shelf.factory(Some(output.clone()), self.root.clone())),
+                storage_factory: Some(self.shelf.adding(output.clone(), wanted, self.root.clone())),
                 ..options
             }),
         ))
@@ -801,7 +931,7 @@ impl Engine {
             }
         };
         let hash = handle.info_hash().as_string();
-        {
+        let left_over = {
             // The entry goes in on the same turn as the hold's say over the torrent, and
             // keeps a pause the person gave it while this add ran. One left from an earlier
             // copy of the torrent, which librqbit no longer had, starts over: its pause and
@@ -822,14 +952,17 @@ impl Engine {
                 entry.priorities = priorities;
                 left_over
             };
-            if left_over {
-                self.keeper.forget(hash.clone()).await;
-            }
             // Refused, the torrent is still added: it is said in the log, as for a hold.
             if let Err(e) = self.wants.settle(&handle, Retry::Broken).await {
                 tracing::warn!("hold for {hash} as it was added: {e}");
             }
+            left_over
+        };
+        // Off the turn: forgetting waits for a keep pass, and a hold must not wait for it.
+        if left_over {
+            self.keeper.forget(hash.clone()).await;
         }
+        self.watch.watch(&handle);
         self.nudge();
         self.save_entries();
         Ok((hash, true))
@@ -886,9 +1019,18 @@ impl Engine {
             let progress = if stats.total_bytes == 0 {
                 0.0
             } else {
-                stats.progress_bytes as f64 / stats.total_bytes as f64
+                // librqbit counts a check on from where a paused one stopped, so a check
+                // started again can count past the whole torrent.
+                (stats.progress_bytes as f64 / stats.total_bytes as f64).min(1.0)
             };
-            let state = match (&stats.error, stats.finished, paused, &stats.state) {
+            // A first check a quick hold and lift broke is no failure: it starts again once
+            // the hold lifts, and until then it reads as paused.
+            let error = stats
+                .error
+                .as_ref()
+                .filter(|e| !broken_check(Some(e.as_str())));
+            let paused = paused || error.is_none() && stats.error.is_some();
+            let state = match (&error, stats.finished, paused, &stats.state) {
                 (Some(_), _, _, _) => "error",
                 (None, true, _, _) => "pausedUP",
                 (None, false, true, _) => "pausedDL",
@@ -941,7 +1083,7 @@ impl Engine {
                 files,
                 seq_dl: false,
                 f_l_piece_prio: false,
-                tracker: stats.error.clone().unwrap_or_default(),
+                tracker: error.cloned().unwrap_or_default(),
                 group: facts.group,
                 resolution: facts.resolution,
                 provider: String::new(),
@@ -1021,9 +1163,14 @@ impl Engine {
         self.save_entries();
         // Asked for more, it may want to run again: settled on the turn, like any start.
         let _turn = self.wants.steering.lock().await;
-        let settled = self.wants.settle(&h, Retry::Broken).await;
+        // The new priorities are in either way: a refused start or stop is only logged, as
+        // for a hold, so a rolling download does not take the change for a failure.
+        if let Err(e) = self.wants.settle(&h, Retry::Broken).await {
+            tracing::warn!("settling {key} after its priorities changed: {e}");
+        }
+        self.watch.watch(&h);
         self.nudge();
-        settled.map_err(fail)
+        Ok(())
     }
 
     /// Files of the torrent were deleted underneath it: it lets go of the ones it held
@@ -1091,7 +1238,9 @@ impl Engine {
                     entry.asks += 1;
                 }
                 let retry = if resume { Retry::Any } else { Retry::Broken };
-                self.wants.settle(h, retry).await
+                let settled = self.wants.settle(h, retry).await;
+                self.watch.watch(h);
+                settled
             }
             PhoneAction::Remove | PhoneAction::Forget => {
                 let files = action == PhoneAction::Remove;
@@ -1123,6 +1272,7 @@ impl Engine {
                 if let Err(e) = self.wants.settle(&h, retry).await {
                     tracing::warn!("hold {held} for {}: {e}", h.info_hash().as_string());
                 }
+                self.watch.watch(&h);
             }
         }
         self.nudge();
@@ -1346,7 +1496,55 @@ mod tests {
     }
 
     #[test]
-    fn a_first_check_a_stop_and_a_start_broke_is_started_again() {
+    fn a_paused_check_that_stands_still_is_still_looked_at() {
+        // A fast-resume check ignores a pause and goes live when it ends, and one waiting
+        // for librqbit's turn to check has not moved: neither may lose its pace (#1186).
+        let every = std::time::Duration::from_secs(5);
+        assert_eq!(check_pace(true, 100, Some(100), every), every);
+        assert_eq!(check_pace(true, 0, Some(0), every), every);
+        assert_eq!(check_pace(true, 200, Some(100), every), CHECKING_TICK);
+        assert_eq!(check_pace(false, 100, Some(100), every), CHECKING_TICK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_check_that_ends_writes_its_pieces_down_again() {
+        // A check can take pieces out of librqbit's record; the engine's record of them
+        // is written again when the check ends, so the next open never puts them back.
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let (root, state) = (dir.path().join("Anime"), dir.path().join("state"));
+        let every = std::time::Duration::from_secs(60);
+        let engine = Engine::open_ticking(&root, &state, every).await.unwrap();
+        // The first tick's pass has run: from here only the end of a check writes.
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let record = state.join("pieces").join(&peeked.hash);
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(&record, [0xffu8, 0xff]).unwrap();
+        engine
+            .add_peeked(&r, "Show", peeked, Vec::new())
+            .await
+            .unwrap();
+        let mut claimed = u32::MAX;
+        for _ in 0..100 {
+            claimed = std::fs::read(&record)
+                .map(|b| b.iter().map(|x| x.count_ones()).sum())
+                .unwrap_or(u32::MAX);
+            if claimed == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            claimed, 0,
+            "the record still claims pieces the check did not find"
+        );
+        engine.session.stop().await;
+    }
+
+    #[test]
+    fn librqbits_stopped_check_reads_as_a_broken_check() {
         // librqbit's first check gives up with this when it sees a pause, and keeps it as
         // the torrent's error when a start cleared the pause before it looked again.
         let stopped = anyhow::anyhow!("initial check paused");
