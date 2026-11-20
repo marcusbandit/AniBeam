@@ -1,6 +1,6 @@
-# bash completion for apps/android/scripts/ctl.sh, control over adb (#1207). bash finds a
+# bash completion for apps/phone/scripts/ctl.sh, control over adb (#1207). bash finds a
 # completion by the command's last part too, so any path to the script works. Install it once:
-#   ln -s "$PWD/apps/android/scripts/completions/ctl.sh.bash" \
+#   ln -s "$PWD/apps/phone/scripts/completions/ctl.sh.bash" \
 #     ~/.local/share/bash-completion/completions/ctl.sh
 # click, tap, hold, wait, find, tree and fill complete the labels the last `ctl.sh tree` showed.
 

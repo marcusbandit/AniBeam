@@ -54,7 +54,7 @@ and `bundle.sh` do the same for the installer and the zip. `.github/workflows/ma
 ## Working on it
 
 The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac and
-Windows too), the phone app in `apps/android/`, and a terminal shell over the same core in
+Windows too), the phone app in `apps/phone/`, and a terminal shell over the same core in
 `apps/cli/`.
 
 ```bash
@@ -111,5 +111,5 @@ picks the address by hand, and `0.0.0.0:8790` lets an Android emulator reach it 
 - `CONTRIBUTING.md`: issues, branch and commit names, the PR flow, patch notes and releases.
 - `apps/linux/README.md`: sandboxed runs, offscreen captures with `scripts/shoot.sh` and
   scripted drives with `scripts/drive.sh`.
-- `apps/android/README.md`: building and sideloading the phone app.
+- `apps/phone/README.md`: building and sideloading the phone app.
 - `CONTEXT.md`: the vocabulary the code and the docs share.

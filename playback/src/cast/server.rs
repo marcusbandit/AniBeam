@@ -29,6 +29,28 @@ pub struct Served {
     pub relay: Option<Relay>,
 }
 
+impl Served {
+    /// A file on this machine, and once prepared, its fragments.
+    pub fn file(path: PathBuf, mime: &str, prepared: Option<Arc<Prepared>>) -> Served {
+        Served {
+            path,
+            mime: mime.to_string(),
+            prepared,
+            relay: None,
+        }
+    }
+
+    /// What another machine serves from `dir`, passed on.
+    pub fn relayed(mime: &str, dir: String, pieces: Arc<Vec<Piece>>) -> Served {
+        Served {
+            path: PathBuf::new(),
+            mime: mime.to_string(),
+            prepared: None,
+            relay: Some(Relay { dir, pieces }),
+        }
+    }
+}
+
 /// A stream another machine serves.
 pub struct Relay {
     /// The address of its playlist's directory: every name under the token is fetched
@@ -164,12 +186,24 @@ fn body(status: StatusCode, mime: &str, bytes: Vec<u8>) -> Response {
     cors((status, [(header::CONTENT_TYPE, mime.to_string())], bytes).into_response())
 }
 
+fn playlist(text: String) -> Response {
+    body(
+        StatusCode::OK,
+        "application/vnd.apple.mpegurl",
+        text.into_bytes(),
+    )
+}
+
 fn missing() -> Response {
     cors(StatusCode::NOT_FOUND.into_response())
 }
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    tokio::task::spawn_blocking(f).await.ok()
+/// A body with no length, read from `rx` as its chunks come.
+fn streamed(
+    headers: impl axum::response::IntoResponseParts,
+    rx: tokio::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>>,
+) -> Response {
+    cors((headers, Body::from_stream(Chunks(rx))).into_response())
 }
 
 async fn segment(
@@ -186,13 +220,13 @@ async fn segment(
     let Some(p) = served.prepared.clone() else {
         return missing();
     };
-    match blocking(move || p.segment(i)).await {
-        Some(Ok(bytes)) => body(StatusCode::OK, "video/mp4", bytes),
-        Some(Err(e)) => {
+    match tokio::task::spawn_blocking(move || p.segment(i)).await {
+        Ok(Ok(bytes)) => body(StatusCode::OK, "video/mp4", bytes),
+        Ok(Err(e)) => {
             tracing::warn!("cast segment {i}: {e}");
             cors(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
-        None => missing(),
+        Err(_) => missing(),
     }
 }
 
@@ -215,21 +249,9 @@ async fn file(
     }
     let p = served.prepared.clone();
     match (name.as_str(), p) {
-        ("master.m3u8", Some(p)) => body(
-            StatusCode::OK,
-            "application/vnd.apple.mpegurl",
-            p.master().into_bytes(),
-        ),
-        ("media.m3u8", Some(p)) => body(
-            StatusCode::OK,
-            "application/vnd.apple.mpegurl",
-            p.media_playlist().into_bytes(),
-        ),
-        ("subs.m3u8", Some(p)) => body(
-            StatusCode::OK,
-            "application/vnd.apple.mpegurl",
-            p.subs_playlist().into_bytes(),
-        ),
+        ("master.m3u8", Some(p)) => playlist(p.master()),
+        ("media.m3u8", Some(p)) => playlist(p.media_playlist()),
+        ("subs.m3u8", Some(p)) => playlist(p.subs_playlist()),
         ("init.mp4", Some(p)) => body(StatusCode::OK, "video/mp4", p.init.clone()),
         ("subs.vtt", Some(p)) => body(
             StatusCode::OK,
@@ -344,18 +366,15 @@ fn relayed_stream(r: &Relay, from: f64) -> Response {
             }
         }
     });
-    cors(
-        (
-            [
-                (header::CONTENT_TYPE, "video/mp2t"),
-                (
-                    header::HeaderName::from_static("transfermode.dlna.org"),
-                    "Streaming",
-                ),
-            ],
-            Body::from_stream(Chunks(rx)),
-        )
-            .into_response(),
+    streamed(
+        [
+            (header::CONTENT_TYPE, "video/mp2t"),
+            (
+                header::HeaderName::from_static("transfermode.dlna.org"),
+                "Streaming",
+            ),
+        ],
+        rx,
     )
 }
 
@@ -377,13 +396,7 @@ fn progressive(p: Arc<Prepared>, from: f64) -> Response {
             }
         }
     });
-    cors(
-        (
-            [(header::CONTENT_TYPE, "video/mp4")],
-            Body::from_stream(Chunks(rx)),
-        )
-            .into_response(),
-    )
+    streamed([(header::CONTENT_TYPE, "video/mp4")], rx)
 }
 
 /// The segments' channel as the stream a body reads.

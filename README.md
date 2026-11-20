@@ -170,7 +170,7 @@ The Android app keeps a library of its own and tracks to the same AniList or MyA
 account. It can also show and play your computer's library from anywhere: turn on Settings >
 Library > Phone app > Share over Tailscale on the computer, with
 [Tailscale](https://tailscale.com) signed in on both. Only devices on your tailnet can reach
-it. [apps/android](apps/android/README.md) has the details.
+it. [apps/phone](apps/phone/README.md) has the details.
 
 ## When something is off
 

@@ -24,9 +24,9 @@ on:
       - assets/logo/**
       - .github/workflows/site.yml
       - apps/linux/CHANGELOG.md
-      - apps/android/CHANGELOG.md
+      - apps/phone/CHANGELOG.md
       - apps/linux/changes/**
-      - apps/android/changes/**
+      - apps/phone/changes/**
   workflow_dispatch:
 
 permissions:

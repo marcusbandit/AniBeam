@@ -1,7 +1,7 @@
 #compdef ctl.sh
-# zsh completion for apps/android/scripts/ctl.sh, control over adb (#1207). zsh completes
+# zsh completion for apps/phone/scripts/ctl.sh, control over adb (#1207). zsh completes
 # scripts/ctl.sh by its last part, so any path to the script works. Install it once:
-#   ln -s "$PWD/apps/android/scripts/completions/_ctl.sh" ~/.local/share/zsh/site-functions/
+#   ln -s "$PWD/apps/phone/scripts/completions/_ctl.sh" ~/.local/share/zsh/site-functions/
 # click, tap, hold, wait, find, tree and fill complete the labels the last `ctl.sh tree` showed.
 
 _ctl.sh_labels() {

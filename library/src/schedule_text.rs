@@ -79,9 +79,11 @@ static MONTH_ALONE: LazyLock<Regex> = LazyLock::new(|| {
 });
 /// An episode named by its place: "the sixth episode", "episode six".
 static ORDINAL: LazyLock<Regex> = LazyLock::new(|| {
-    re(
-        r"(?i)\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|\d{1,3}(?:st|nd|rd|th))\s+episode\b|\bepisode\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen)\b",
-    )
+    re(&format!(
+        r"(?i)\b({}|\d{{1,3}}(?:st|nd|rd|th))\s+episode\b|\bepisode\s+({})\b",
+        ORDINALS.join("|"),
+        CARDINALS.join("|")
+    ))
 });
 const ORDINALS: [&str; 13] = [
     "first",
@@ -141,7 +143,7 @@ static TAIL: LazyLock<Regex> = LazyLock::new(|| {
 /// with a range in the same style (13화부터 15화까지, 13〜15話).
 static SUFFIXED: LazyLock<Regex> = LazyLock::new(|| {
     re(
-        r"(?:第\s*)?(\d{1,4})\s*[話话集화회](?:\s*(?:-|~|〜|부터|から)\s*(?:第\s*)?(\d{1,4})\s*[話话集화회]?)?",
+        r"(?:第\s*)?(\d{1,4})\s*[話话集화회](?:\s*(?:-|~|부터|から)\s*(?:第\s*)?(\d{1,4})\s*[話话集화회]?)?",
     )
 });
 /// A clause correcting a date: the date after these words is the one meant.
@@ -277,21 +279,12 @@ pub fn parse(text: &str, now: i64) -> (Option<u32>, Vec<NoteRow>) {
 const WAIT_LINES: u8 = 5;
 
 /// Notes for each episode, one week (or `weekly` seconds) apart when the
-/// line said so. A later line about an episode replaces an earlier one, so
-/// an edit or an update further down wins.
+/// line said so.
 fn push(rows: &mut Vec<NoteRow>, episodes: &[u32], when: When, weekly: Option<i64>) {
-    rows.retain(|r| !episodes.contains(&r.first));
-    for (i, &n) in episodes.iter().enumerate() {
-        let when = match (when, weekly) {
-            (When::On(at), Some(step)) => When::On(at + step * i as i64),
-            _ => when,
-        };
-        rows.push(NoteRow {
-            first: n,
-            last: n,
-            when,
-        });
-    }
+    set_notes(rows, episodes, |i| match (when, weekly) {
+        (When::On(at), Some(step)) => When::On(at + step * i as i64),
+        _ => when,
+    });
 }
 
 /// A run of episodes a week apart from `start`, the last on `end`; when
@@ -301,13 +294,20 @@ fn spread(rows: &mut Vec<NoteRow>, episodes: &[u32], start: i64, end: i64) {
     let week = 7 * 86_400;
     let weeks = ((end - start) as f64 / week as f64).round() as usize;
     let extra = (episodes.len() - 1).saturating_sub(weeks);
+    set_notes(rows, episodes, |i| {
+        When::On(start + i.saturating_sub(extra) as i64 * week)
+    });
+}
+
+/// A note for each episode, the `i`th landing on `when_of(i)`. A later line about an
+/// episode replaces an earlier one, so an edit or an update further down wins.
+fn set_notes(rows: &mut Vec<NoteRow>, episodes: &[u32], when_of: impl Fn(usize) -> When) {
     rows.retain(|r| !episodes.contains(&r.first));
     for (i, &n) in episodes.iter().enumerate() {
-        let step = i.saturating_sub(extra) as i64;
         rows.push(NoteRow {
             first: n,
             last: n,
-            when: When::On(start + step * week),
+            when: when_of(i),
         });
     }
 }
@@ -363,10 +363,7 @@ fn read_line(raw: &str, ctx: Ctx) -> (Vec<Clause>, Option<When>, bool) {
     if mentions.is_empty()
         && line_when.is_some()
         && let Some(c) = LEADING.captures(&rest)
-        && let Some(n) = c
-            .get(2)
-            .or_else(|| c.get(1))
-            .and_then(|m| num32(m.as_str()))
+        && let Some(n) = c.get(2).or_else(|| c.get(1)).and_then(|m| num(m.as_str()))
     {
         mentions.push((0, vec![n]));
     }
@@ -485,7 +482,7 @@ fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
         let w = c[1]
             .parse()
             .ok()
-            .zip(num(&c[2]).filter(|m| (1..=12).contains(m)));
+            .zip(num::<u8>(&c[2]).filter(|m| (1..=12).contains(m)));
         add(c.get(0).unwrap(), 1, w.map(|(y, m)| When::Month(y, m)));
     }
     for c in MONTH_ALONE.captures_iter(line) {
@@ -522,11 +519,11 @@ fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
     let mut out: Vec<Found> = kept
         .into_iter()
         .filter_map(|(start, end, rank, when)| {
-            when.map(|when| Found {
+            Some(Found {
                 start,
                 end,
                 rank,
-                when,
+                when: when?,
             })
         })
         .collect();
@@ -538,15 +535,19 @@ fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
 /// numbers it names, ranges and lists spelled out.
 fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
     let mut out: Vec<(usize, Vec<u32>)> = Vec::new();
+    // Where each marked mention sits, so a counter inside one is not read again
+    let mut marked: Vec<(usize, usize)> = Vec::new();
     for c in MARKED.captures_iter(rest) {
-        let Some(first) = num32(&c[1]) else { continue };
+        let whole = c.get(0).unwrap();
+        marked.push((whole.start(), whole.end()));
+        let Some(first) = num(&c[1]) else { continue };
         let mut eps = vec![first];
         let mut prev = first;
         for t in TAIL.captures_iter(c.get(2).map_or("", |m| m.as_str())) {
-            let Some(n) = num32(&t[2]) else { continue };
+            let Some(n) = num(&t[2]) else { continue };
             let range = matches!(
                 t[1].to_lowercase().as_str(),
-                "-" | "~" | "〜" | "to" | "through" | "thru" | "until" | "bis" | "al" | "à" | "a"
+                "-" | "~" | "to" | "through" | "thru" | "until" | "bis" | "al" | "à" | "a"
             );
             if range && n > prev && n - prev < SPAN_MAX {
                 eps.extend(prev + 1..=n);
@@ -557,22 +558,18 @@ fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
         }
         eps.retain(|n| *n > 0);
         if !eps.is_empty() {
-            out.push((c.get(0).unwrap().start(), eps));
+            out.push((whole.start(), eps));
         }
     }
-    let marked: Vec<(usize, usize)> = MARKED
-        .find_iter(rest)
-        .map(|m| (m.start(), m.end()))
-        .collect();
     for c in SUFFIXED.captures_iter(rest) {
         let m = c.get(0).unwrap();
         if marked.iter().any(|(a, b)| m.start() < *b && *a < m.end()) {
             continue;
         }
-        let Some(first) = num32(&c[1]).filter(|n| *n > 0) else {
+        let Some(first) = num::<u32>(&c[1]).filter(|n| *n > 0) else {
             continue;
         };
-        let last = c.get(2).and_then(|l| num32(l.as_str())).unwrap_or(first);
+        let last = c.get(2).and_then(|l| num(l.as_str())).unwrap_or(first);
         let last = if last > first && last - first < SPAN_MAX {
             last
         } else {
@@ -592,7 +589,7 @@ fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
                     .iter()
                     .position(|o| *o == w)
                     .map(|i| i as u32 + 1)
-                    .or_else(|| num32(w.trim_end_matches(char::is_alphabetic)))
+                    .or_else(|| num(w.trim_end_matches(char::is_alphabetic)))
             }
             (None, Some(w)) => {
                 let w = w.as_str().to_lowercase();
@@ -608,11 +605,7 @@ fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
     out
 }
 
-fn num(s: &str) -> Option<u8> {
-    s.trim().parse().ok()
-}
-
-fn num32(s: &str) -> Option<u32> {
+fn num<T: std::str::FromStr>(s: &str) -> Option<T> {
     s.trim().parse().ok()
 }
 
@@ -766,15 +759,15 @@ pub(crate) fn fold(rows: Vec<NoteRow>) -> Vec<NoteRow> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     /// 2026-11-04, the day this was written.
-    pub const NOW: i64 = 1_793_793_600;
+    const NOW: i64 = 1_793_793_600;
 
     /// A note as the catalogue reads it: "8-15 2027", "4 Wed 21 Oct 2026",
     /// "8 Jan 2027", "9 TBC".
-    pub fn show(rows: &[NoteRow]) -> String {
+    fn show(rows: &[NoteRow]) -> String {
         rows.iter()
             .map(|r| {
                 let eps = if r.first == r.last {
@@ -805,8 +798,8 @@ pub(crate) mod tests {
     }
 
     /// The catalogue: every shape the paste box reads, what it reads, and
-    /// the season it names. `docs/schedule-formats.md` is made from it.
-    pub const CASES: &[(&str, &str, &str, Option<u32>)] = &[
+    /// the season it names.
+    const CASES: &[(&str, &str, &str, Option<u32>)] = &[
         (
             "A release list, dates written out",
             "Helluva Boss season 3 Part 1:\nEpisode 1 \u{2013} Wednesday 14 October 2026 (out now)\nEpisode 2 \u{2013} Wednesday 14 October 2026 (out now)\nEpisode 3 \u{2013} Wednesday 21 October 2026\nEpisode 8 - TBC in 2027\nEpisode 9 - TBC in 2027",

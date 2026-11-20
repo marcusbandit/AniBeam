@@ -9,22 +9,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Airing;
 
-pub const ENDPOINT: &str = "https://graphql.anilist.co";
+const ENDPOINT: &str = "https://graphql.anilist.co";
 /// AniList pages hold at most 50.
 const PAGE: usize = 50;
 /// How many scheduled episodes to ask for per show. Enough for weeks of countdown.
 const AHEAD: usize = 10;
 
 const QUERY: &str = "query ($ids: [Int], $perPage: Int, $ahead: Int) { \
-    Page(perPage: $perPage) { media(id_in: $ids, type: ANIME) { id status \
+    Page(perPage: $perPage) { media(id_in: $ids, type: ANIME) { id \
     nextAiringEpisode { episode airingAt } \
     airingSchedule(notYetAired: true, perPage: $ahead) { nodes { episode airingAt } } } } }";
 
 /// What AniList said about one show.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Schedule {
-    /// AniList's word: `RELEASING`, `FINISHED`, `NOT_YET_RELEASED`, ...
-    pub status: Option<String>,
     /// The episodes still to air, soonest first.
     pub upcoming: Vec<Airing>,
 }
@@ -52,7 +50,6 @@ struct Page {
 #[serde(rename_all = "camelCase")]
 struct Media {
     id: u64,
-    status: Option<String>,
     next_airing_episode: Option<Node>,
     airing_schedule: Option<Nodes>,
 }
@@ -94,13 +91,7 @@ fn read(body: &str) -> Result<BTreeMap<u64, Schedule>, String> {
             .collect();
         upcoming.sort_by_key(|a| (a.at, a.episode));
         upcoming.dedup_by_key(|a| a.episode);
-        out.insert(
-            media.id,
-            Schedule {
-                status: media.status,
-                upcoming,
-            },
-        );
+        out.insert(media.id, Schedule { upcoming });
     }
     Ok(out)
 }
@@ -148,7 +139,6 @@ mod tests {
         ]}}}"#;
         let got = read(body).unwrap();
         let frieren = &got[&182255];
-        assert_eq!(frieren.status.as_deref(), Some("RELEASING"));
         assert_eq!(
             frieren
                 .upcoming
