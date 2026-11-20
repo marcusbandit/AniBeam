@@ -15,7 +15,7 @@ name: Nightly
 # has the whole line.
 #
 # The phone rides the same train under its own number: when the phone or what it builds on
-# changed since its last nightly, a build of its APK from apps/android/Cargo.toml's version,
+# changed since its last nightly, a build of its APK from apps/phone/Cargo.toml's version,
 # 2.4.3-nightly.20261030.12, is published as android-v2.4.3-nightly.20261030.12, with the
 # iPhone's unsigned IPA (Anibeam-Nightly-2.4.3-nightly.20261030.12.ipa) when that built too.
 #
@@ -84,12 +84,12 @@ jobs:
           # from these (#974).
           desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
           desktop_build=(.github/workflows/nightly.yml .github/workflows/macos.yml .github/workflows/linux.yml .github/workflows/windows.yml .github/workflows/arch.yml)
-          phone_paths=(apps/android contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)
+          phone_paths=(apps/phone contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)
           phone_build=(.github/workflows/nightly.yml .github/workflows/android-apk.yml .github/workflows/ios-ipa.yml)
           sha="$(git rev-parse HEAD)"
           day="$(date -u +%Y%m%d)"
           here_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
-          here_phone_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
+          here_phone_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/phone/Cargo.toml | head -n1)-nightly.$day.$GITHUB_RUN_NUMBER"
           {
             echo "here_sha=$sha"
             echo "here_version=$here_version"

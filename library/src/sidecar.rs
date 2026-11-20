@@ -36,32 +36,27 @@ pub fn parse_suffix(suffix: &str) -> (Option<String>, Option<String>) {
 /// belongs to the video when its stem equals the video's stem, or starts with
 /// the video's stem followed by a dot.
 pub fn match_sidecars(video_path: &Path, candidates: &[String]) -> Vec<Sidecar> {
-    let stem = video_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let mut out = Vec::new();
-    for c in candidates {
-        let cp = Path::new(c);
-        let cstem = cp
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if cstem == stem {
-            out.push(Sidecar {
-                path: c.clone(),
-                language: None,
-                title: None,
-            });
-        } else if let Some(rest) = cstem.strip_prefix(&format!("{stem}.")) {
-            let (language, title) = parse_suffix(rest);
-            out.push(Sidecar {
+    let stem = video_path.file_stem().unwrap_or_default().to_string_lossy();
+    let prefix = format!("{stem}.");
+    let mut out: Vec<Sidecar> = candidates
+        .iter()
+        .filter_map(|c| {
+            let cstem = Path::new(c)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
+            let (language, title) = if cstem == stem {
+                (None, None)
+            } else {
+                parse_suffix(cstem.strip_prefix(&prefix)?)
+            };
+            Some(Sidecar {
                 path: c.clone(),
                 language,
                 title,
-            });
-        }
-    }
+            })
+        })
+        .collect();
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
 }

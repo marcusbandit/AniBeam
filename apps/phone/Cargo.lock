@@ -165,7 +165,8 @@ dependencies = [
 name = "anibeam-companion"
 version = "0.1.0"
 dependencies = [
- "anibeam-core",
+ "anibeam-contract",
+ "anibeam-foundation",
  "anibeam-host-api",
  "chrono",
  "getrandom 0.3.4",

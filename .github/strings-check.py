@@ -26,13 +26,14 @@ BASELINE = ROOT / ".github" / "strings-baseline.txt"
 # The UI files checked for raw strings. One glob a line; a shell adds its own.
 UI = [
     "apps/linux/qml/**/*.qml",
-    "apps/android/ui/**/*.slint",
+    "apps/phone/ui/**/*.slint",
 ]
 
 # Developer tools nobody but a developer sees: the drive and recording harness, the
 # frame-time HUD and the token sheet. Their words stay English.
 DEV_ONLY = {
     "apps/linux/qml/Driver.qml",
+    "apps/linux/qml/Control.qml",
     "apps/linux/qml/DevHud.qml",
     "apps/linux/qml/DevRecorder.qml",
     "apps/linux/qml/TokensPage.qml",
@@ -53,7 +54,7 @@ CODE = UI + [
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",
-    "apps/android/src/**/*.rs",
+    "apps/phone/src/**/*.rs",
 ]
 
 # Properties that never hold words for a person, so a literal on their line is a code.

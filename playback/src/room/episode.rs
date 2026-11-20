@@ -201,14 +201,7 @@ pub fn at_path(
             .iter()
             .filter(|f| f.episode && f.number.is_some_and(|n| (n - number).abs() < 0.001))
             .collect();
-        let want = season_of(&e.episode_key);
-        if let Some(f) = fits.iter().find(|f| want.is_some() && f.season == want) {
-            return Some(*f);
-        }
-        match fits.as_slice() {
-            [one] => Some(*one),
-            _ => None,
-        }
+        one_of(&fits, season_of(&e.episode_key), |f| f.season).copied()
     };
     let file = files
         .iter()
@@ -244,10 +237,23 @@ pub(super) fn season_of(key: &str) -> Option<i64> {
     season.parse().ok()
 }
 
-/// The file of one series with the episode's number. A file of the room's
-/// season when the key names one; else, or when none is of that season, only a
-/// file that is the one with that number, since several seasons in one folder
-/// each have an episode 6 and the lowest id is no answer.
+/// Of the files with an episode's number, the one of the room's season when
+/// the key names one; else, or when none is of that season, only a file that is
+/// the one with that number, since several seasons in one folder each have an
+/// episode 6 and the lowest id is no answer.
+fn one_of<T>(fits: &[T], want: Option<i64>, season: impl Fn(&T) -> Option<i64>) -> Option<&T> {
+    if let Some(want) = want
+        && let Some(f) = fits.iter().find(|f| season(f) == Some(want))
+    {
+        return Some(f);
+    }
+    match fits {
+        [one] => Some(one),
+        _ => None,
+    }
+}
+
+/// The file of one series with the episode's number, as `one_of` picks it.
 fn by_number(
     conn: &Connection,
     series: u64,
@@ -267,15 +273,7 @@ fn by_number(
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    if let Some(want) = season
-        && let Some((id, key, _)) = files.iter().find(|(_, _, s)| *s == Some(want))
-    {
-        return Ok(Some((*id, key.clone())));
-    }
-    Ok(match files.as_slice() {
-        [(id, key, _)] => Some((*id, key.clone())),
-        _ => None,
-    })
+    Ok(one_of(&files, season, |(_, _, s)| *s).map(|(id, key, _)| (*id, key.clone())))
 }
 
 #[cfg(test)]

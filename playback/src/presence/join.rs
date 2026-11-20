@@ -131,8 +131,7 @@ pub(super) fn adopt_room(inner: &mut Inner, show: Option<RoomShow>) -> bool {
 
 /// The room open now, as Discord shows it.
 pub(super) fn room_now(playback: &Playback) -> Option<RoomShow> {
-    let rooms = playback.presence.rooms.get()?;
-    rooms.status().as_ref().map(show_of)
+    room_status(playback).as_ref().map(show_of)
 }
 
 /// The room as Discord shows it, from the room team's word on it.
@@ -356,14 +355,20 @@ fn room_create(playback: &Playback, session: Option<u64>) -> Result<RoomInfo, Co
     }
 }
 
-/// The error a room call gives outside a room, with the same code and words
-/// as the room team's own; a room test holds the two the same.
-pub(crate) fn not_in_room() -> CoreError {
+/// A room error: `code` is a fixed word a shell branches on (`not_found`, `full`,
+/// `unreachable`, `refused`, `proto`, `not_in_room`), the words are for people. It
+/// lives here, below the room team, so Discord's join answers with the same errors.
+pub(crate) fn room_error(code: &str, words: Words) -> CoreError {
     CoreError::service(
         anibeam_contract::i18n::tr("core-room-service", &[]),
-        "not_in_room".to_string(),
-        anibeam_contract::words!("core-room-not-in").render(),
+        code.to_string(),
+        words.render(),
     )
+}
+
+/// The error a room call gives outside a room, here and in the room team's own.
+pub(crate) fn not_in_room() -> CoreError {
+    room_error("not_in_room", anibeam_contract::words!("core-room-not-in"))
 }
 
 /// How long a join Discord handed over waits for a window to take it.
