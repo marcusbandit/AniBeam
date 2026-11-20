@@ -1,6 +1,9 @@
 //! Poster bytes from the store, decoded and cut to a thumbnail off the UI thread, with the
 //! poster's own hue for the bands that sit behind it.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use image::RgbaImage;
 use image::imageops::FilterType;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
@@ -83,6 +86,67 @@ fn clamp_lightness([r, g, b]: [f32; 3], low: f32, high: f32) -> [f32; 3] {
     } else {
         let t = target / l;
         [r, g, b].map(|c| c * t)
+    }
+}
+
+/// A poster file decoded for the screens: the picture and its hue.
+#[derive(Clone)]
+pub struct Poster {
+    pub image: slint::Image,
+    pub tone: Option<[u8; 3]>,
+}
+
+type Waiting = Vec<Box<dyn FnOnce(Option<Poster>)>>;
+
+thread_local! {
+    /// Every poster file the screens decoded, by path, shared by all of them (#1206): one
+    /// decode and one copy in memory, however many pages show it.
+    static SHOWN: RefCell<HashMap<String, Poster>> = RefCell::new(HashMap::new());
+    /// The pages waiting on a file being decoded now.
+    static WAITING: RefCell<HashMap<String, Waiting>> = RefCell::new(HashMap::new());
+}
+
+/// The one thread that reads and decodes poster files, in the order asked.
+static LOADER: crate::reads::Worker = crate::reads::Worker::new("posters");
+
+/// Decodes the poster file at `path` off the UI thread, once however many pages ask, and
+/// hands it to `land` on the UI thread: `None` when it could not be read or decoded. Called on
+/// the UI thread; `land` always runs later, never inside this call.
+pub fn load(path: String, land: impl FnOnce(Option<Poster>) + 'static) {
+    if let Some(poster) = SHOWN.with(|s| s.borrow().get(&path).cloned()) {
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || land(Some(poster)));
+        return;
+    }
+    let first = WAITING.with(|w| {
+        let mut w = w.borrow_mut();
+        let waiting = w.entry(path.clone()).or_default();
+        waiting.push(Box::new(land));
+        waiting.len() == 1
+    });
+    if !first {
+        return;
+    }
+    let landing = crate::reads::Landing::new({
+        let path = path.clone();
+        move |decoded: Option<Option<Decoded>>| landed(path, decoded.flatten())
+    });
+    LOADER.run(Box::new(move || {
+        let decoded = std::fs::read(&path).ok().and_then(|b| decode(&b));
+        landing.land(decoded);
+    }));
+}
+
+fn landed(path: String, decoded: Option<Decoded>) {
+    let poster = decoded.map(|d| Poster {
+        image: slint::Image::from_rgba8(d.buffer),
+        tone: d.tone,
+    });
+    if let Some(poster) = &poster {
+        SHOWN.with(|s| s.borrow_mut().insert(path.clone(), poster.clone()));
+    }
+    let waiting = WAITING.with(|w| w.borrow_mut().remove(&path).unwrap_or_default());
+    for land in waiting {
+        land(poster.clone());
     }
 }
 
