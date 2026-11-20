@@ -1,6 +1,6 @@
 name: Android
 
-# The phone app's own checks. apps/android is its own Cargo workspace, so ci.yml never builds
+# The phone app's own checks. apps/phone is its own Cargo workspace, so ci.yml never builds
 # it, and its tests and clippy drifted on main unnoticed (#449). A pull request that touches the
 # phone or what it builds on (the core, host-api, the root manifest it inherits from) runs the
 # whole phone workspace's tests and clippy on the host, which needs no NDK, then clippy for the
@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/android/**'
+      - 'apps/phone/**'
       - 'contract/**'
       - 'foundation/**'
       - 'net/**'
@@ -35,6 +35,8 @@ on:
       - '.github/workflows/android.yml'
   pull_request:
     paths:
+      - 'apps/phone/**'
+      # PRs opened before the move (#1309) still list apps/android; drop once they merge main.
       - 'apps/android/**'
       - 'contract/**'
       - 'foundation/**'
@@ -58,16 +60,16 @@ on:
       # An iPhone-only change cannot affect this (#950): the paths ios-automerge.sh counts as
       # iPhone only, the same list as its ONLY regex, so a path added there is added here too.
       # Later patterns win, so these stay after the positive ones.
-      - '!apps/android/ios/**'
-      - '!apps/android/src/**/ios.rs'
-      - '!apps/android/src/**/ios/**'
-      - '!apps/android/src/**/metal.rs'
-      - '!apps/android/src/**/metal/**'
-      - '!apps/android/scripts/*ios*'
+      - '!apps/phone/ios/**'
+      - '!apps/phone/src/**/ios.rs'
+      - '!apps/phone/src/**/ios/**'
+      - '!apps/phone/src/**/metal.rs'
+      - '!apps/phone/src/**/metal/**'
+      - '!apps/phone/scripts/*ios*'
       # Every iPhone PR carries one. The build embeds them as text (build.rs) and the app
       # parses them at run time, so no change file can fail this; ci.yml checks their format
       # (core/tests/changelog.rs).
-      - '!apps/android/changes/**'
+      - '!apps/phone/changes/**'
   workflow_dispatch:
 
 permissions:
@@ -91,7 +93,7 @@ jobs:
     timeout-minutes: 5
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +110,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
 
@@ -128,7 +130,7 @@ jobs:
           # Only main saves (#986): a PR restores main's cache and saves none, so PR caches no
           # longer push the repo past its 10 GB and evict the ones every PR needs.
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          workspaces: apps/android
+          workspaces: apps/phone
 
       - name: Test
         run: scripts/build.sh cargo test --locked --workspace
@@ -141,8 +143,8 @@ jobs:
       # when its pinned tag changes.
       - uses: actions/cache@v4
         with:
-          path: apps/android/vendor/mpv
-          key: mpv-${{ hashFiles('apps/android/scripts/fetch-mpv.sh') }}
+          path: apps/phone/vendor/mpv
+          key: mpv-${{ hashFiles('apps/phone/scripts/fetch-mpv.sh') }}
 
       - name: libmpv
         run: scripts/fetch-mpv.sh

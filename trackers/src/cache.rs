@@ -17,17 +17,17 @@
 //! `src/main/handlers/trackerHandler.ts`, and `setProgressEntry` and
 //! `setProgressScoreAndStatus` in `src/main/services/trackerStore.ts`.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::Trackers;
 use crate::accounts;
 use crate::on_hold;
 use crate::writes;
-use crate::{TRACKER_TIMEOUT, as_count, no_token};
+use crate::{TRACKER_TIMEOUT, as_count, quiet};
 use anibeam_contract::*;
 use anibeam_foundation::events::Signal;
 use anibeam_foundation::jobs::{Finished, JobCtx};
@@ -98,6 +98,15 @@ pub fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> O
     }
 }
 
+/// A MAL list status in the core's words, its rewatch flag read beside it.
+pub(crate) fn mal_list_status(list: &serde_json::Value) -> Option<ListStatus> {
+    normalize_status(
+        Tracker::Mal,
+        list["status"].as_str(),
+        list["is_rewatching"].as_bool().unwrap_or(false),
+    )
+}
+
 // The fetches ----------------------------------------------------------------
 
 /// AniList's whole anime list in one query, keyed by the AniList media id
@@ -165,8 +174,8 @@ pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, C
             ));
         }
         let body: serde_json::Value = response.json()?;
-        let page_entries = body["data"].as_array().cloned().unwrap_or_default();
-        for item in &page_entries {
+        let page_entries = body["data"].as_array().map_or(&[][..], Vec::as_slice);
+        for item in page_entries {
             let Some(media_id) = item["node"]["id"].as_u64() else {
                 continue;
             };
@@ -174,11 +183,7 @@ pub async fn fetch_mal(trackers: &Trackers, token: &str) -> Result<Vec<Entry>, C
             entries.push(Entry {
                 media_id,
                 progress: as_count(status["num_episodes_watched"].as_u64()),
-                status: normalize_status(
-                    Tracker::Mal,
-                    status["status"].as_str(),
-                    status["is_rewatching"].as_bool().unwrap_or(false),
-                ),
+                status: mal_list_status(status),
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
                 updated_at: status["updated_at"].as_str().and_then(mal_instant),
@@ -203,6 +208,38 @@ pub(crate) fn mal_instant(raw: &str) -> Option<i64> {
 }
 
 // The table ------------------------------------------------------------------
+
+/// What the cache holds for one entry, as a write's guards read it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Cached {
+    pub status: Option<ListStatus>,
+    pub progress: u32,
+    pub updated_at: Option<i64>,
+}
+
+/// One entry off the cache, None when the list does not hold it.
+pub(crate) fn cached(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+) -> Result<Option<Cached>, CoreError> {
+    Ok(conn
+        .prepare_cached(
+            "SELECT status, progress, updated_at FROM tracker_entries
+              WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
+        )?
+        .query_row(params![t.as_str(), media_id as i64], |r| {
+            Ok(Cached {
+                status: r
+                    .get::<_, Option<String>>(0)?
+                    .as_deref()
+                    .and_then(ListStatus::from_column),
+                progress: u32::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+                updated_at: r.get(2)?,
+            })
+        })
+        .optional()?)
+}
 
 /// A tracker's whole list, replacing whatever was cached for it. The list
 /// is the truth about itself, so a row the tracker no longer carries goes;
@@ -429,17 +466,11 @@ async fn run(
 
     for t in wanted {
         ctx.checkpoint()?;
-        let row = trackers
-            .services
-            .store
-            .write_async(move |c| accounts::load_row(c, t))
-            .await?
-            .unwrap_or_default();
         // Not connected is nothing to fetch, whether the tracker was asked
         // for by name or swept up by a refresh of everything.
-        if row.connected_at.is_none() {
+        let Some(row) = accounts::connected_async(&trackers.services, t).await? else {
             continue;
-        }
+        };
         if !force && is_fresh(row.progress_fetched_at, time::now()) {
             ctx.emit(
                 Level::Debug,
@@ -507,18 +538,8 @@ async fn run(
         // not a red job on the shell's status strip.
         None => match failure {
             Some(e) if tracker.is_some() => Err(e),
-            Some(_) => Ok(Finished {
-                plain: None,
-                level: Level::Debug,
-                message: "No progress refreshed".to_string(),
-                body: EventBody::Notice,
-            }),
-            None => Ok(Finished {
-                plain: None,
-                level: Level::Debug,
-                message: "Nothing to refresh".to_string(),
-                body: EventBody::Notice,
-            }),
+            Some(_) => Ok(quiet("No progress refreshed")),
+            None => Ok(quiet("Nothing to refresh")),
         },
     }
 }
@@ -529,9 +550,7 @@ async fn fetch_and_replace(
     t: Tracker,
     user_id: Option<u64>,
 ) -> Result<usize, CoreError> {
-    let token = accounts::access_token(trackers, t)
-        .await?
-        .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
+    let token = accounts::token(trackers, t).await?;
     let entries = match t {
         Tracker::Anilist => {
             // AniList's collection is asked for by user id, so an account
@@ -568,19 +587,12 @@ async fn matched_cards(
     services
         .store
         .write_async(move |c| {
-            let mut ids: BTreeSet<u64> = BTreeSet::new();
+            let mut ids = Vec::new();
             for t in refreshed {
-                let sql = match t {
-                    Tracker::Anilist => "SELECT id FROM series WHERE anilist_id IS NOT NULL",
-                    Tracker::Mal => "SELECT id FROM series WHERE mal_id IS NOT NULL",
-                };
-                let mut stmt = c.prepare(sql)?;
-                let rows = stmt.query_map([], |r| r.get::<_, i64>(0))?;
-                for row in rows {
-                    ids.insert(row? as u64);
-                }
+                ids.extend(accounts::matched_ids(c, Some(t))?);
             }
-            let ids: Vec<u64> = ids.into_iter().collect();
+            ids.sort_unstable();
+            ids.dedup();
             cards::cards_for(c, &images_dir, &ids)
         })
         .await

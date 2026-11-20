@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-use regex::Regex;
+use regex::{Captures, Regex, RegexSet};
 
 use anibeam_contract::ExtraKind;
 
@@ -23,9 +23,6 @@ pub struct Classified {
     pub raw_label: Option<String>,
 }
 
-static SEPARATORS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[_.]+").unwrap());
-static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*$").unwrap());
-
 /// The extras token patterns, tried in this order, each anchored at both ends
 /// so "Operations" and "Edge" never fire. A variant letter only follows a
 /// number, so "Spy" is no `SP` plus a "y" (#426); a plural is spelled out.
@@ -33,7 +30,13 @@ static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*
 /// for an episode, so `SP01v2`, `NCOP1v2` and `SPv2` read as their extra (#442).
 /// Each pattern says whether its marker is also a plain word a series title can hold, a
 /// preview or a special with no number (Trailer Park Boys, Special A); see `find_extra_token`.
-static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|| {
+/// An extras pattern: the kind it reads, its regex, and whether a bare one with no index
+/// may be a word of a title.
+type Pattern = (ExtraKind, Regex, bool);
+/// The pattern a text reads as, with what it captured.
+type Reading<'a> = (&'static Pattern, Captures<'a>);
+
+static EXTRA_PATTERNS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
     vec![
         (
             ExtraKind::Op,
@@ -70,7 +73,43 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|
         ),
     ]
 });
+/// The same patterns as one set, to find in one pass which of them reads a token. Where
+/// more than one could, the set lists its matches in pattern order and the first is taken,
+/// the pattern the loop over `EXTRA_PATTERNS` would have reached first.
+static EXTRA_SET: LazyLock<RegexSet> =
+    LazyLock::new(|| RegexSet::new(EXTRA_PATTERNS.iter().map(|(_, re, _)| re.as_str())).unwrap());
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
+
+/// The extras pattern a text reads as, with what it captured.
+fn extra_reading(text: &str) -> Option<Reading<'_>> {
+    let pattern = &EXTRA_PATTERNS[EXTRA_SET.matches(text).into_iter().next()?];
+    Some((pattern, pattern.1.captures(text)?))
+}
+
+/// The extras pattern a token reads as, and the stem it was read from when only the
+/// token with its release revision cut reads as one. The token as written first, so
+/// `PV01` is never `P` plus a `V01`. No token a pattern reads has a stem another pattern
+/// reads, so this agrees with trying each pattern on the token and then its stem in
+/// turn; a test holds every pattern to that.
+fn token_reading(token: &str) -> Option<(Reading<'_>, Option<&str>)> {
+    extra_reading(token)
+        .map(|reading| (reading, None))
+        .or_else(|| {
+            let stem = TOKEN_REVISION.captures(token)?.get(1)?.as_str();
+            Some((extra_reading(stem)?, Some(stem)))
+        })
+}
+
+/// A word that makes a file an extra of kind Other. The words are ASCII, so an ASCII
+/// case fold reads them as a full lowercase would.
+fn is_other(token: &str) -> bool {
+    OTHER_TOKENS.iter().any(|w| w.eq_ignore_ascii_case(token))
+}
+
+/// A token that marks an extra of any kind.
+fn is_marker(token: &str) -> bool {
+    EXTRA_SET.is_match(token) || is_other(token)
+}
 
 static SEASON_EPISODE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bS([0-9]+)E([0-9]+)\b").unwrap());
@@ -112,18 +151,18 @@ static REVISION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([0-9])v[0-
 pub fn strip_brackets_and_ext(file_name: &str) -> String {
     let stem = Path::new(file_name)
         .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .to_string_lossy();
     let no_brackets = BRACKETS.replace_all(&stem, " ");
     SPACES.replace_all(&no_brackets, " ").trim().to_string()
 }
 
-/// The same, then `_` and `.` become spaces so the token scan splits
-/// `Bakemonogatari_ED1_...` and `Show.Name.OP1.mkv`.
-fn normalise_for_tokens(file_name: &str) -> String {
-    let stripped = strip_brackets_and_ext(file_name);
-    let flat = SEPARATORS.replace_all(&stripped, " ");
-    SPACES.replace_all(&flat, " ").trim().to_string()
+/// The words of a stripped name, split at whitespace and at `_` and `.` too, so the
+/// token scan splits `Bakemonogatari_ED1_...` and `Show.Name.OP1.mkv`.
+fn tokens_of(base: &str) -> Vec<&str> {
+    base.split(|c: char| c.is_whitespace() || c == '_' || c == '.')
+        .filter(|t| !t.is_empty())
+        .collect()
 }
 
 struct ExtraHit {
@@ -192,19 +231,39 @@ static SEASON_WORD: LazyLock<Regex> =
 /// `Show.07.Special.Delivery`), not right after a season word, and with no marker before
 /// it, so a marker in the series title keeps its own reading (`Show Trailer Collection
 /// 02`) (#497). Its number, for `extract_episode`.
+/// [`number_reading`] of one name's tokens, worked out the first time a reader asks: most
+/// names are read by a dash or a pattern long before it would matter.
+struct Number<'a> {
+    tokens: &'a [&'a str],
+    reading: std::cell::OnceCell<Option<(usize, u32)>>,
+}
+
+impl<'a> Number<'a> {
+    fn of(tokens: &'a [&'a str]) -> Self {
+        Number {
+            tokens,
+            reading: Default::default(),
+        }
+    }
+
+    fn get(&self) -> Option<(usize, u32)> {
+        *self.reading.get_or_init(|| number_reading(self.tokens))
+    }
+}
+
 fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
     let before_dash = tokens
         .iter()
         .position(|t| *t == "-")
         .unwrap_or(tokens.len());
-    let marker = |t: &str| {
-        EXTRA_PATTERNS.iter().any(|(_, re, _)| re.is_match(t))
-            || OTHER_TOKENS.contains(&t.to_lowercase().as_str())
-    };
-    (1..before_dash).find_map(|at| {
+    // A number at or before the first marker has none before it.
+    let end = tokens[..before_dash]
+        .iter()
+        .position(|t| is_marker(t))
+        .map_or(before_dash, |marker| marker + 1);
+    (1..end).find_map(|at| {
         let n: u32 = PADDED_NUMBER.captures(tokens[at])?[1].parse().ok()?;
-        (n > 0 && !SEASON_WORD.is_match(tokens[at - 1]) && !tokens[..at].iter().any(|t| marker(t)))
-            .then_some((at, n))
+        (n > 0 && !SEASON_WORD.is_match(tokens[at - 1])).then_some((at, n))
     })
 }
 
@@ -214,7 +273,7 @@ fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
 /// after it, which skips the dashes of a series title (`Sword Art Online - Alicization -
 /// 05`); else the first episode token or [`number_reading`], whichever comes first
 /// (#497).
-fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
+fn title_end(tokens: &[&str], number: &Number) -> (usize, Option<usize>) {
     let starts_episode = |at: usize| {
         let Some(token) = tokens.get(at) else {
             return false;
@@ -231,8 +290,10 @@ fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
         })
         .or_else(|| {
             let token = (0..tokens.len()).find(|&at| starts_episode(at));
-            let number = number_reading(tokens).map(|(at, _)| at);
-            token.into_iter().chain(number).min()
+            token
+                .into_iter()
+                .chain(number.get().map(|(at, _)| at))
+                .min()
         });
     (first_dash.or(reading).unwrap_or(tokens.len()), reading)
 }
@@ -247,14 +308,12 @@ fn title_word_at(tokens: &[&str], at: usize) -> bool {
     token.chars().any(char::is_alphabetic)
         && !RELEASE_TOKEN.is_match(token)
         && !NOT_A_TITLE.is_match(token)
-        && !EXTRA_PATTERNS.iter().any(|(_, re, _)| re.is_match(token))
-        && !OTHER_TOKENS.contains(&token.to_lowercase().as_str())
+        && !is_marker(token)
 }
 
-fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
-    let normalised = normalise_for_tokens(file_name);
-    let tokens: Vec<&str> = normalised.split_whitespace().collect();
-    let (title_end, reading) = title_end(&tokens);
+/// The extra a name's tokens make it, if any.
+fn find_extra_token(tokens: &[&str], number: &Number) -> Option<ExtraHit> {
+    let (title_end, reading) = title_end(tokens, number);
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
     // episode reading anywhere in the name and to any later marker, and is the reading
@@ -263,42 +322,30 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     // reading at all (#466).
     let mut title_word = None;
     for (at, token) in tokens.iter().enumerate() {
-        // The token as written first, so `PV01` is never `P` plus a `V01`.
-        let stem = TOKEN_REVISION
-            .captures(token)
-            .and_then(|m| m.get(1))
-            .map(|m| m.as_str());
-        for (kind, re, word) in EXTRA_PATTERNS.iter() {
-            let (found, unrevised) = match re.captures(token) {
-                Some(m) => (Some(m), None),
-                None => (stem.and_then(|s| re.captures(s)), stem),
+        let read = token_reading(token);
+        if let Some((((kind, _, word), m), unrevised)) = read {
+            let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
+            let apart = || match kind {
+                ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
+                _ => None,
             };
-            if let Some(m) = found {
-                let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
-                let apart = || match kind {
-                    ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
-                    _ => None,
-                };
-                let hit = ExtraHit {
-                    kind: *kind,
-                    index: glued.or_else(apart),
-                    variant: m.get(2).map(|g| g.as_str().to_lowercase()),
-                    raw_label: token.to_string(),
-                    unrevised: unrevised.map(str::to_string),
-                };
-                let bare = *word && hit.index.is_none();
-                if bare && reading.is_some_and(|r| at > r) && title_word_at(&tokens, at + 1) {
-                    break;
-                }
-                let in_title = bare && at + 1 < title_end;
-                if !in_title {
-                    return Some(hit);
-                }
-                title_word.get_or_insert(hit);
-                break;
+            let hit = ExtraHit {
+                kind: *kind,
+                index: glued.or_else(apart),
+                variant: m.get(2).map(|g| g.as_str().to_lowercase()),
+                raw_label: token.to_string(),
+                unrevised: unrevised.map(str::to_string),
+            };
+            let bare = *word && hit.index.is_none();
+            if bare && reading.is_some_and(|r| at > r) && title_word_at(tokens, at + 1) {
+                continue;
             }
-        }
-        if OTHER_TOKENS.contains(&token.to_lowercase().as_str()) {
+            let in_title = bare && at + 1 < title_end;
+            if !in_title {
+                return Some(hit);
+            }
+            title_word.get_or_insert(hit);
+        } else if is_other(token) {
             return Some(ExtraHit {
                 kind: ExtraKind::Other,
                 index: None,
@@ -319,64 +366,64 @@ fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
     }
 }
 
-fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
-    let base = strip_brackets_and_ext(file_name);
-    if let Some(m) = SEASON_EPISODE.captures(&base) {
+/// The season and episode a name with no extra in it reads as, from its stripped `base`
+/// and its tokens' number reading.
+fn extract_episode(base: &str, number: &Number) -> (Option<u32>, f64) {
+    if let Some(m) = SEASON_EPISODE.captures(base) {
         return finalize(m[1].parse().ok(), m[2].parse().unwrap_or(1.0));
     }
-    if let Some(m) = DECIMAL_EPISODE.captures(&base) {
+    if let Some(m) = DECIMAL_EPISODE.captures(base) {
         let whole: f64 = m[1].parse().unwrap_or(0.0);
         let decimal: f64 = m[2].parse().unwrap_or(0.0);
         return finalize(None, whole + decimal / 10.0);
     }
     for re in EPISODE_PATTERNS.iter() {
-        if let Some(m) = re.captures(&base) {
+        if let Some(m) = re.captures(base) {
             return finalize(None, m[1].parse().unwrap_or(1.0));
         }
     }
-    if let Some(m) = SEASON_X_EPISODE.captures(&base) {
+    if let Some(m) = SEASON_X_EPISODE.captures(base) {
         return finalize(m[1].parse().ok(), m[2].parse().unwrap_or(1.0));
     }
-    if let Some(m) = DASH_DECIMAL.captures(&base) {
+    if let Some(m) = DASH_DECIMAL.captures(base) {
         return finalize(None, m[1].parse().unwrap_or(1.0));
     }
     // A dotted name has no spaces for the patterns above, so its padded number is read
     // from the tokens, the way `title_end` read it, before the last number in the name
     // (a codec's `264`) can stand in.
-    let normalised = normalise_for_tokens(file_name);
-    let tokens: Vec<&str> = normalised.split_whitespace().collect();
-    if let Some((_, n)) = number_reading(&tokens) {
+    if let Some((_, n)) = number.get() {
         return finalize(None, n as f64);
     }
-    let unrevised = REVISION.replace_all(&base, "$1");
-    let survivors: Vec<u64> = ANY_NUMBER
+    let unrevised = REVISION.replace_all(base, "$1");
+    let last = ANY_NUMBER
         .find_iter(&unrevised)
         .filter_map(|m| m.as_str().parse::<u64>().ok())
         .filter(|n| !(1900..=2099).contains(n) && *n < 1000)
-        .collect();
-    if let Some(last) = survivors.last() {
-        return finalize(None, *last as f64);
+        .last();
+    if let Some(last) = last {
+        return finalize(None, last as f64);
     }
     (None, 1.0)
 }
 
+/// What kind of file a name is, and its numbers. The name is stripped and split once,
+/// for the extras scan and the episode reading both.
 pub fn classify(file_name: &str) -> Classified {
-    if let Some(hit) = find_extra_token(file_name) {
+    let base = strip_brackets_and_ext(file_name);
+    let tokens = tokens_of(&base);
+    let reading = Number::of(&tokens);
+    if let Some(hit) = find_extra_token(&tokens, &reading) {
         let number = hit.index.unwrap_or(0) as f64;
         return Classified {
             extra: Some(hit.kind),
             number,
-            season: if hit.kind == ExtraKind::Sp {
-                Some(0)
-            } else {
-                None
-            },
+            season: (hit.kind == ExtraKind::Sp).then_some(0),
             extra_index: hit.index,
             extra_variant: hit.variant,
             raw_label: Some(hit.raw_label),
         };
     }
-    let (season, number) = extract_episode(file_name);
+    let (season, number) = extract_episode(&base, &reading);
     Classified {
         extra: None,
         number,
@@ -411,11 +458,13 @@ pub fn episode_key(c: &Classified, file_name: &str) -> String {
 /// of those is its own key, as every extra's was.
 fn extra_key(file_name: &str) -> String {
     let mut name = file_name.to_string();
+    let base = strip_brackets_and_ext(file_name);
+    let tokens = tokens_of(&base);
     if let Some(ExtraHit {
         raw_label,
         unrevised: Some(stem),
         ..
-    }) = find_extra_token(file_name)
+    }) = find_extra_token(&tokens, &Number::of(&tokens))
         && let Some(at) = name.rfind(&raw_label)
     {
         name = format!("{}{stem}{}", &name[..at], &name[at + raw_label.len()..]);
@@ -503,7 +552,11 @@ pub fn parse_episode_key(key: &str) -> Option<(u32, f64)> {
 /// The title of last resort: bracket-stripped, a trailing `-` or `_` removed.
 pub fn clean_episode_title(file_name: &str) -> String {
     let stripped = strip_brackets_and_ext(file_name);
-    TRAILING_DASH.replace(&stripped, "").trim().to_string()
+    stripped
+        .strip_suffix(['-', '_'])
+        .unwrap_or(&stripped)
+        .trim()
+        .to_string()
 }
 
 /// Where a release name says which episode it is. The title, when the
@@ -611,11 +664,9 @@ pub fn file_episode_title(file_name: &str) -> Option<String> {
     let base = strip_brackets_and_ext(file_name);
     let anchor = TITLE_ANCHOR.find(&base)?;
     let rest = &base[anchor.end()..];
-    let rest = if dotted {
-        SEPARATORS.replace_all(rest, " ").into_owned()
-    } else {
-        rest.replace('_', " ")
-    };
+    // A run of separators turns into a run of spaces, which the split below reads as one.
+    let separators: &[char] = if dotted { &['_', '.'] } else { &['_'] };
+    let rest = rest.replace(separators, " ");
     let rest = PARENS.replace_all(&rest, " ");
     // A scene group glued to the last release token (`HDTV-LOL`) is still
     // that token.
@@ -634,498 +685,584 @@ pub fn file_episode_title(file_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anibeam_contract::ExtraKind;
+    use anibeam_contract::ExtraKind::{Ed, Op, Other, Pv, Sp};
 
-    fn ep(name: &str) -> Classified {
-        classify(name)
+    /// Each name classified and read by `read`, against what it should read as.
+    fn check<T: PartialEq + std::fmt::Debug>(read: impl Fn(Classified) -> T, cases: &[(&str, T)]) {
+        for (name, want) in cases {
+            assert_eq!(read(classify(name)), *want, "{name}");
+        }
+    }
+
+    fn text(s: &str) -> Option<String> {
+        Some(s.to_string())
+    }
+
+    /// The one-pass reading picks the pattern the old loop did, which tried each pattern
+    /// on the token and then on its revision-cut stem before the next pattern, for every
+    /// marker with every index and revision shape.
+    #[test]
+    fn the_extras_set_reads_a_token_as_the_pattern_loop_did() {
+        let by_loop = |token: &str| {
+            let stem = TOKEN_REVISION.captures(token).map(|m| m[1].to_string());
+            EXTRA_PATTERNS.iter().position(|(_, re, _)| {
+                re.is_match(token) || stem.as_deref().is_some_and(|s| re.is_match(s))
+            })
+        };
+        let by_set = |token: &str| {
+            let ((pattern, _), _) = token_reading(token)?;
+            EXTRA_PATTERNS.iter().position(|p| std::ptr::eq(p, pattern))
+        };
+        let markers = [
+            "NCOP", "NCED", "OP", "ED", "PV", "CM", "SP", "OVA", "OAD", "OAV", "Trailer", "Teaser",
+            "Special", "Specials", "S05", "S05E", "S05EEX", "Preview", "Menu",
+        ];
+        for marker in markers {
+            for index in ["", "1", "01", "1a", "12b", "2v"] {
+                for revision in ["", "v2", "v10"] {
+                    for token in [
+                        format!("{marker}{index}{revision}"),
+                        format!("{}{index}{revision}", marker.to_lowercase()),
+                    ] {
+                        assert_eq!(by_set(&token), by_loop(&token), "{token}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
     fn bakemonogatari_episodes_and_extras() {
-        let c = ep("[Coalgirls]_Bakemonogatari_01_(1920x1080_Blu-ray_FLAC)_[9787055F].mkv");
-        assert_eq!((c.extra, c.number), (None, 1.0));
-        let c = ep("[Coalgirls]_Bakemonogatari_15_(1920x1080_Blu-ray_FLAC)_[256D3923].mkv");
-        assert_eq!((c.extra, c.number), (None, 15.0));
-        let c = ep("[Coalgirls]_Bakemonogatari_ED1_(1920x1080_Blu-ray_FLAC)_[7EE4E478].mkv");
-        assert_eq!(
-            (
-                c.extra,
-                c.extra_index,
-                c.extra_variant.as_deref(),
-                c.raw_label.as_deref()
-            ),
-            (Some(ExtraKind::Ed), Some(1), None, Some("ED1"))
+        check(
+            |c| (c.extra, c.number),
+            &[
+                (
+                    "[Coalgirls]_Bakemonogatari_01_(1920x1080_Blu-ray_FLAC)_[9787055F].mkv",
+                    (None, 1.0),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_15_(1920x1080_Blu-ray_FLAC)_[256D3923].mkv",
+                    (None, 15.0),
+                ),
+            ],
         );
-        let c = ep("[Coalgirls]_Bakemonogatari_ED3_(1920x1080_Blu-ray_FLAC)_[8F8AC7AF].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Ed), Some(3)));
-        let c = ep("[Coalgirls]_Bakemonogatari_OP2_(1920x1080_Blu-ray_FLAC)_[57D95944].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(2)));
-        let c = ep("[Coalgirls]_Bakemonogatari_OP4a_(1920x1080_Blu-ray_FLAC)_[AF4FF3CC].mkv");
-        assert_eq!(
-            (
-                c.extra,
-                c.extra_index,
-                c.extra_variant.as_deref(),
-                c.raw_label.as_deref()
-            ),
-            (Some(ExtraKind::Op), Some(4), Some("a"), Some("OP4a"))
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                (
+                    "[Coalgirls]_Bakemonogatari_ED3_(1920x1080_Blu-ray_FLAC)_[8F8AC7AF].mkv",
+                    (Some(Ed), Some(3)),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_OP2_(1920x1080_Blu-ray_FLAC)_[57D95944].mkv",
+                    (Some(Op), Some(2)),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_PV01_(1920x1080_Blu-ray_FLAC)_[8924213A].mkv",
+                    (Some(Pv), Some(1)),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_PV12_(1920x1080_Blu-ray_FLAC)_[17C508BF].mkv",
+                    (Some(Pv), Some(12)),
+                ),
+            ],
         );
-        let c = ep("[Coalgirls]_Bakemonogatari_OP4b_(1920x1080_Blu-ray_FLAC)_[63162685].mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.extra_variant.as_deref()),
-            (Some(ExtraKind::Op), Some(4), Some("b"))
+        check(
+            |c| (c.extra, c.extra_index, c.extra_variant),
+            &[
+                (
+                    "[Coalgirls]_Bakemonogatari_OP4b_(1920x1080_Blu-ray_FLAC)_[63162685].mkv",
+                    (Some(Op), Some(4), text("b")),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_OP5b_(1920x1080_Blu-ray_FLAC)_[7B7B859A].mkv",
+                    (Some(Op), Some(5), text("b")),
+                ),
+            ],
         );
-        let c = ep("[Coalgirls]_Bakemonogatari_OP5b_(1920x1080_Blu-ray_FLAC)_[7B7B859A].mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.extra_variant.as_deref()),
-            (Some(ExtraKind::Op), Some(5), Some("b"))
+        check(
+            |c| (c.extra, c.extra_index, c.extra_variant, c.raw_label),
+            &[
+                (
+                    "[Coalgirls]_Bakemonogatari_ED1_(1920x1080_Blu-ray_FLAC)_[7EE4E478].mkv",
+                    (Some(Ed), Some(1), None, text("ED1")),
+                ),
+                (
+                    "[Coalgirls]_Bakemonogatari_OP4a_(1920x1080_Blu-ray_FLAC)_[AF4FF3CC].mkv",
+                    (Some(Op), Some(4), text("a"), text("OP4a")),
+                ),
+            ],
         );
-        let c = ep("[Coalgirls]_Bakemonogatari_PV01_(1920x1080_Blu-ray_FLAC)_[8924213A].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Pv), Some(1)));
-        let c = ep("[Coalgirls]_Bakemonogatari_PV12_(1920x1080_Blu-ray_FLAC)_[17C508BF].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Pv), Some(12)));
     }
 
     #[test]
     fn standard_release_patterns() {
-        assert_eq!(ep("[Kumo-Subs] Show Name - 01 [1080p].mkv").number, 1.0);
-        let c = ep("Show.Name.S02E07.1080p.WEB.mkv");
-        assert_eq!((c.number, c.season), (7.0, Some(2)));
-        assert_eq!(ep("Show Name - Episode 12.mkv").number, 12.0);
-        assert_eq!(ep("Show Name Episode 6.5.mkv").number, 6.5);
-        assert_eq!(
-            (
-                ep("Show Name NCOP1 [1080p].mkv").extra,
-                ep("Show Name NCOP1 [1080p].mkv").extra_index
-            ),
-            (Some(ExtraKind::Op), Some(1))
+        check(
+            |c| c.number,
+            &[
+                ("[Kumo-Subs] Show Name - 01 [1080p].mkv", 1.0),
+                ("Show Name - Episode 12.mkv", 12.0),
+                ("Show Name Episode 6.5.mkv", 6.5),
+            ],
         );
-        assert_eq!(
-            (
-                ep("Show Name NCED2 [1080p].mkv").extra,
-                ep("Show Name NCED2 [1080p].mkv").extra_index
-            ),
-            (Some(ExtraKind::Ed), Some(2))
+        check(
+            |c| (c.number, c.season),
+            &[("Show.Name.S02E07.1080p.WEB.mkv", (7.0, Some(2)))],
         );
-        let c = ep("Show Name SP1 [1080p].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
-        let c = ep("Show Name Special [1080p].mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.number, c.season),
-            (Some(ExtraKind::Sp), None, 0.0, Some(0))
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                ("Show Name NCOP1 [1080p].mkv", (Some(Op), Some(1))),
+                ("Show Name NCED2 [1080p].mkv", (Some(Ed), Some(2))),
+                ("Show Name SP1 [1080p].mkv", (Some(Sp), Some(1))),
+                ("Show Name Trailer1.mkv", (Some(Pv), Some(1))),
+                ("Show Name Trailer.mkv", (Some(Pv), None)),
+            ],
         );
-        assert_eq!(
-            (
-                ep("Show Name Trailer1.mkv").extra,
-                ep("Show Name Trailer1.mkv").extra_index
-            ),
-            (Some(ExtraKind::Pv), Some(1))
+        check(
+            |c| (c.extra, c.extra_index, c.number, c.season),
+            &[(
+                "Show Name Special [1080p].mkv",
+                (Some(Sp), None, 0.0, Some(0)),
+            )],
         );
-        assert_eq!(
-            (
-                ep("Show Name Trailer.mkv").extra,
-                ep("Show Name Trailer.mkv").extra_index
-            ),
-            (Some(ExtraKind::Pv), None)
-        );
-        assert_eq!(
-            (
-                ep("Show Name - 03 - Operations of Hope.mkv").extra,
-                ep("Show Name - 03 - Operations of Hope.mkv").number
-            ),
-            (None, 3.0)
-        );
-        assert_eq!(
-            (
-                ep("Show Name - 04 - Edge of Tomorrow.mkv").extra,
-                ep("Show Name - 04 - Edge of Tomorrow.mkv").number
-            ),
-            (None, 4.0)
+        check(
+            |c| (c.extra, c.number),
+            &[
+                ("Show Name - 03 - Operations of Hope.mkv", (None, 3.0)),
+                ("Show Name - 04 - Edge of Tomorrow.mkv", (None, 4.0)),
+            ],
         );
     }
 
     #[test]
     fn season_x_episode_beats_a_number_in_the_title() {
-        let c = ep("Death Note - 01x36 - 1.28.mkv");
-        assert_eq!((c.extra, c.number, c.season), (None, 36.0, Some(1)));
-        let c = ep("Death Note - 01x30 - Justice.mkv");
-        assert_eq!((c.number, c.season), (30.0, Some(1)));
-        let c = ep("Show.2x05.The.Title.720p.mkv");
-        assert_eq!((c.number, c.season), (5.0, Some(2)));
-        // A series name that opens the file is not a season and episode.
-        assert_eq!(ep("3x3 Eyes - 01.mkv").number, 1.0);
-        assert_eq!(ep("3x3.Eyes.01.mkv").number, 1.0);
-        // Nor is a resolution.
-        assert_eq!(ep("Show 1920x1080 - 07.mkv").number, 7.0);
+        check(
+            |c| (c.extra, c.number, c.season),
+            &[("Death Note - 01x36 - 1.28.mkv", (None, 36.0, Some(1)))],
+        );
+        check(
+            |c| (c.number, c.season),
+            &[
+                ("Death Note - 01x30 - Justice.mkv", (30.0, Some(1))),
+                ("Show.2x05.The.Title.720p.mkv", (5.0, Some(2))),
+            ],
+        );
+        check(
+            |c| c.number,
+            &[
+                // A series name that opens the file is not a season and episode.
+                ("3x3 Eyes - 01.mkv", 1.0),
+                ("3x3.Eyes.01.mkv", 1.0),
+                // Nor is a resolution.
+                ("Show 1920x1080 - 07.mkv", 7.0),
+            ],
+        );
         // Season 1 keys by the bare number, as a name with no season does.
         let name = "Death Note - 01x36 - 1.28.mkv";
-        assert_eq!(episode_key(&ep(name), name), "36");
+        assert_eq!(episode_key(&classify(name), name), "36");
     }
 
     #[test]
     fn an_ova_and_a_season_extra_are_specials() {
-        let c = ep("Dorohedoro - OVA .mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.season),
-            (Some(ExtraKind::Sp), None, Some(0))
+        check(
+            |c| (c.extra, c.extra_index, c.season),
+            &[("Dorohedoro - OVA .mkv", (Some(Sp), None, Some(0)))],
         );
-        let c = ep("Show OVA2 [1080p].mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
-        assert_eq!(ep("Show - OAD.mkv").extra, Some(ExtraKind::Sp));
-        let c = ep("Monogatari Series S05EEX.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), None));
-        let c = ep("Show S01ESP2.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                ("Show OVA2 [1080p].mkv", (Some(Sp), Some(2))),
+                ("Monogatari Series S05EEX.mkv", (Some(Sp), None)),
+                ("Show S01ESP2.mkv", (Some(Sp), Some(2))),
+            ],
+        );
+        check(|c| c.extra, &[("Show - OAD.mkv", Some(Sp))]);
         // A word that only starts like one is not.
-        let c = ep("Show - 03 - Ovation.mkv");
-        assert_eq!((c.extra, c.number), (None, 3.0));
-        let c = ep("Monogatari Series - S05E05.mkv");
-        assert_eq!((c.extra, c.number, c.season), (None, 5.0, Some(5)));
+        check(
+            |c| (c.extra, c.number),
+            &[("Show - 03 - Ovation.mkv", (None, 3.0))],
+        );
+        check(
+            |c| (c.extra, c.number, c.season),
+            &[("Monogatari Series - S05E05.mkv", (None, 5.0, Some(5)))],
+        );
     }
 
     #[test]
     fn a_title_word_that_starts_like_a_marker_is_not_one() {
         // A variant letter only follows a number, so "Spy" is no `SP` plus
         // a "y" (#426).
-        let c = ep("Spy x Family - 01.mkv");
-        assert_eq!((c.extra, c.number, c.season), (None, 1.0, None));
-        let c = ep("[Lumen] Spy x Family Season 2 - 05 (1080p).mkv");
-        assert_eq!((c.extra, c.number), (None, 5.0));
-        let c = ep("Spa Show - 02.mkv");
-        assert_eq!((c.extra, c.number), (None, 2.0));
-        // A plural is still the marker, with no variant.
-        for (name, kind) in [
-            ("Show Specials.mkv", ExtraKind::Sp),
-            ("Show SPs.mkv", ExtraKind::Sp),
-            ("Show PVs.mkv", ExtraKind::Pv),
-            ("Show Trailers.mkv", ExtraKind::Pv),
-            ("Show - Teasers 01.mkv", ExtraKind::Pv),
-        ] {
-            let c = ep(name);
-            assert_eq!((c.extra, c.extra_variant), (Some(kind), None), "{name}");
-        }
-        assert_eq!(ep("Show - Teasers 01.mkv").extra_index, Some(1));
-        // A variant glued on after a number still reads.
-        let c = ep("Show SP2b.mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.extra_variant.as_deref()),
-            (Some(ExtraKind::Sp), Some(2), Some("b"))
+        check(
+            |c| (c.extra, c.number, c.season),
+            &[("Spy x Family - 01.mkv", (None, 1.0, None))],
         );
-        let c = ep("Show PV1a.mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.extra_variant.as_deref()),
-            (Some(ExtraKind::Pv), Some(1), Some("a"))
+        check(
+            |c| (c.extra, c.number),
+            &[
+                (
+                    "[Lumen] Spy x Family Season 2 - 05 (1080p).mkv",
+                    (None, 5.0),
+                ),
+                ("Spa Show - 02.mkv", (None, 2.0)),
+            ],
+        );
+        // A plural is still the marker, with no variant.
+        check(
+            |c| (c.extra, c.extra_variant),
+            &[
+                ("Show Specials.mkv", (Some(Sp), None)),
+                ("Show SPs.mkv", (Some(Sp), None)),
+                ("Show PVs.mkv", (Some(Pv), None)),
+                ("Show Trailers.mkv", (Some(Pv), None)),
+                ("Show - Teasers 01.mkv", (Some(Pv), None)),
+            ],
+        );
+        check(|c| c.extra_index, &[("Show - Teasers 01.mkv", Some(1))]);
+        // A variant glued on after a number still reads.
+        check(
+            |c| (c.extra, c.extra_index, c.extra_variant),
+            &[
+                ("Show SP2b.mkv", (Some(Sp), Some(2), text("b"))),
+                ("Show PV1a.mkv", (Some(Pv), Some(1), text("a"))),
+            ],
         );
     }
 
     #[test]
     fn a_revision_after_an_extras_index_is_that_extra() {
-        // `v2` after the number is the release's revision, as it is for an
-        // episode, so the file is still the extra and not episode 1 (#442).
-        for (name, kind, index) in [
-            ("[Group] Show - SP01v2.mkv", ExtraKind::Sp, 1),
-            ("[Group] Show - NCOP1v2.mkv", ExtraKind::Op, 1),
-            ("[Group] Show - NCED2v3 [1080p].mkv", ExtraKind::Ed, 2),
-            ("[Group] Show - PV1v2.mkv", ExtraKind::Pv, 1),
-            ("[Group] Show - OVA3v2.mkv", ExtraKind::Sp, 3),
-            ("[Group] Show - S01ESP2v2.mkv", ExtraKind::Sp, 2),
-        ] {
-            let c = ep(name);
-            assert_eq!(
-                (c.extra, c.extra_index, c.extra_variant),
-                (Some(kind), Some(index), None),
-                "{name}"
-            );
-        }
+        check(
+            |c| (c.extra, c.extra_index, c.extra_variant),
+            &[
+                // `v2` after the number is the release's revision, as it is for an
+                // episode, so the file is still the extra and not episode 1 (#442).
+                ("[Group] Show - SP01v2.mkv", (Some(Sp), Some(1), None)),
+                ("[Group] Show - NCOP1v2.mkv", (Some(Op), Some(1), None)),
+                (
+                    "[Group] Show - NCED2v3 [1080p].mkv",
+                    (Some(Ed), Some(2), None),
+                ),
+                ("[Group] Show - PV1v2.mkv", (Some(Pv), Some(1), None)),
+                ("[Group] Show - OVA3v2.mkv", (Some(Sp), Some(3), None)),
+                ("[Group] Show - S01ESP2v2.mkv", (Some(Sp), Some(2), None)),
+                // A variant letter and a revision together keep both readings, in
+                // either case, and a bare `v` is still a variant.
+                ("Show OP1av2.mkv", (Some(Op), Some(1), text("a"))),
+                ("Show OP1V2.mkv", (Some(Op), Some(1), None)),
+                ("Show OP1v.mkv", (Some(Op), Some(1), text("v"))),
+            ],
+        );
         // An extra with no number of its own takes a revision too.
-        for (name, kind) in [
-            ("[Group] Show - SPv2.mkv", ExtraKind::Sp),
-            ("[Group] Show - PVv2.mkv", ExtraKind::Pv),
-            ("[Group] Show - OVAv2.mkv", ExtraKind::Sp),
-            ("[Group] Show - S05EEXv2.mkv", ExtraKind::Sp),
-        ] {
-            let c = ep(name);
-            assert_eq!((c.extra, c.extra_index), (Some(kind), None), "{name}");
-        }
-        // A variant letter and a revision together keep both readings, in
-        // either case, and a bare `v` is still a variant.
-        for (name, variant) in [
-            ("Show OP1av2.mkv", Some("a")),
-            ("Show OP1V2.mkv", None),
-            ("Show OP1v.mkv", Some("v")),
-        ] {
-            let c = ep(name);
-            assert_eq!(
-                (c.extra, c.extra_index, c.extra_variant.as_deref()),
-                (Some(ExtraKind::Op), Some(1), variant),
-                "{name}"
-            );
-        }
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                ("[Group] Show - SPv2.mkv", (Some(Sp), None)),
+                ("[Group] Show - PVv2.mkv", (Some(Pv), None)),
+                ("[Group] Show - OVAv2.mkv", (Some(Sp), None)),
+                ("[Group] Show - S05EEXv2.mkv", (Some(Sp), None)),
+            ],
+        );
         // The label is still the token as written.
-        assert_eq!(ep("Show - SP01v2.mkv").raw_label.as_deref(), Some("SP01v2"));
+        check(|c| c.raw_label, &[("Show - SP01v2.mkv", text("SP01v2"))]);
     }
 
     #[test]
     fn a_title_word_that_is_a_bare_marker_does_not_beat_the_episode() {
-        // The title's own word is the marker, with no number of its own,
-        // and an episode number follows it (#443).
-        for (name, number) in [
-            ("Trailer Park Boys - 01.mkv", 1.0),
-            ("[Group] Special A - 07 [1080p].mkv", 7.0),
-            ("Trailer.Park.Boys.S02E03.mkv", 3.0),
-            ("Special A Episode 12.mkv", 12.0),
-        ] {
-            let c = ep(name);
-            assert_eq!((c.extra, c.number), (None, number), "{name}");
-        }
-        // A marker later in the name still makes the file that extra.
-        let c = ep("Special A - SP01.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
-        let c = ep("Trailer Park Boys - NCOP2.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(2)));
-        // With no episode after it, the bare marker is the file's reading.
-        let c = ep("Trailer Park Boys - Trailer.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Pv), None));
-        let c = ep("Show - Special.mkv");
-        assert_eq!((c.extra, c.number), (Some(ExtraKind::Sp), 0.0));
+        check(
+            |c| (c.extra, c.number),
+            &[
+                // The title's own word is the marker, with no number of its own,
+                // and an episode number follows it (#443).
+                ("Trailer Park Boys - 01.mkv", (None, 1.0)),
+                ("[Group] Special A - 07 [1080p].mkv", (None, 7.0)),
+                ("Trailer.Park.Boys.S02E03.mkv", (None, 3.0)),
+                ("Special A Episode 12.mkv", (None, 12.0)),
+                // With no episode after it, the bare marker is the file's reading.
+                ("Show - Special.mkv", (Some(Sp), 0.0)),
+            ],
+        );
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                // A marker later in the name still makes the file that extra.
+                ("Special A - SP01.mkv", (Some(Sp), Some(1))),
+                ("Trailer Park Boys - NCOP2.mkv", (Some(Op), Some(2))),
+                ("Trailer Park Boys - Trailer.mkv", (Some(Pv), None)),
+            ],
+        );
         // A marker with its own index keeps it, as before.
-        assert_eq!(ep("Show Special - 04.mkv").extra_index, Some(4));
-        assert_eq!(ep("Show - Trailer 2.mkv").extra_index, Some(2));
-        // A later bare marker beats the title's own.
-        let c = ep("Trailer Park Boys - Special.mkv");
-        assert_eq!(c.extra, Some(ExtraKind::Sp));
-        let c = ep("Special A - Trailer.mkv");
-        assert_eq!(c.extra, Some(ExtraKind::Pv));
-        // A marker after the title's dash is the file's, whatever follows it:
-        // a year, another word and a number, or an episode word.
-        for (name, kind) in [
-            ("Show - Special - 2019.mkv", ExtraKind::Sp),
-            ("Show - Trailer - 2024.mkv", ExtraKind::Pv),
-            ("Show - Trailer Collection - 02.mkv", ExtraKind::Pv),
-            ("Show - Special Ending - 01.mkv", ExtraKind::Sp),
-            ("[Group] Show - SP Ep 01.mkv", ExtraKind::Sp),
-            ("Show - Special - Step 1.mkv", ExtraKind::Sp),
-        ] {
-            assert_eq!(ep(name).extra, Some(kind), "{name}");
-        }
-        // A marker with no title word after it is no title word.
-        assert_eq!(ep("Show Special Episode 3.mkv").extra, Some(ExtraKind::Sp));
+        check(
+            |c| c.extra_index,
+            &[
+                ("Show Special - 04.mkv", Some(4)),
+                ("Show - Trailer 2.mkv", Some(2)),
+            ],
+        );
+        check(
+            |c| c.extra,
+            &[
+                // A later bare marker beats the title's own.
+                ("Trailer Park Boys - Special.mkv", Some(Sp)),
+                ("Special A - Trailer.mkv", Some(Pv)),
+                // A marker after the title's dash is the file's, whatever follows it:
+                // a year, another word and a number, or an episode word.
+                ("Show - Special - 2019.mkv", Some(Sp)),
+                ("Show - Trailer - 2024.mkv", Some(Pv)),
+                ("Show - Trailer Collection - 02.mkv", Some(Pv)),
+                ("Show - Special Ending - 01.mkv", Some(Sp)),
+                ("[Group] Show - SP Ep 01.mkv", Some(Sp)),
+                ("Show - Special - Step 1.mkv", Some(Sp)),
+                // A marker with no title word after it is no title word.
+                ("Show Special Episode 3.mkv", Some(Sp)),
+            ],
+        );
     }
 
     #[test]
     fn a_bare_marker_in_the_episode_title_after_the_number_is_a_title_word() {
         // After the episode reading, a bare marker with a title word after it is a word
         // of the episode's title (#466).
-        for (name, season, number) in [
-            ("Show - S01E05 - Special Delivery.mkv", Some(1), 5.0),
-            ("Show - 07 - Trailer Trouble.mkv", None, 7.0),
-            ("[Group] Show - 12 - Special Ending [1080p].mkv", None, 12.0),
-            ("Show.S02E03.Special.Delivery.mkv", Some(2), 3.0),
-            ("Show Episode 4 Teaser Night.mkv", None, 4.0),
-        ] {
-            let c = ep(name);
-            assert_eq!(
-                (c.extra, c.season, c.number),
-                (None, season, number),
-                "{name}"
-            );
-        }
-        // One with nothing after it stays the file's reading: the name says the episode
-        // is a special, not what it is called.
-        let c = ep("Show - 01 - Special.mkv");
-        assert_eq!(c.extra, Some(ExtraKind::Sp));
+        check(
+            |c| (c.extra, c.season, c.number),
+            &[
+                ("Show - S01E05 - Special Delivery.mkv", (None, Some(1), 5.0)),
+                ("Show - 07 - Trailer Trouble.mkv", (None, None, 7.0)),
+                (
+                    "[Group] Show - 12 - Special Ending [1080p].mkv",
+                    (None, None, 12.0),
+                ),
+                ("Show.S02E03.Special.Delivery.mkv", (None, Some(2), 3.0)),
+                ("Show Episode 4 Teaser Night.mkv", (None, None, 4.0)),
+            ],
+        );
+        check(
+            |c| c.extra,
+            &[
+                // One with nothing after it stays the file's reading: the name says the
+                // episode is a special, not what it is called.
+                ("Show - 01 - Special.mkv", Some(Sp)),
+                // What follows has to be a title word: a release tag, a dash, an end word
+                // or another marker is not one, and the file stays the extra it names.
+                ("Show - 01 - Special 1080p.mkv", Some(Sp)),
+                ("Show.S01E00.Special.1080p.WEB-DL.mkv", Some(Sp)),
+                ("Show - 13 - Special - Recap.mkv", Some(Sp)),
+                ("Show - 07 - Special Trailer.mkv", Some(Sp)),
+                ("Show - 07 - Special Bonus.mkv", Some(Sp)),
+                ("Show - 07 - Trailer END.mkv", Some(Pv)),
+            ],
+        );
         // A marker with its own number or glued to one is still the extra.
-        let c = ep("Show - 07 - Special 2 Night.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
-        let c = ep("Show - 07 - SP01 Delivery.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
-        let c = ep("Show - 07 - NCOP1 Clean.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(1)));
-        // What follows has to be a title word: a release tag, a dash, an end word or
-        // another marker is not one, and the file stays the extra it names.
-        for (name, kind) in [
-            ("Show - 01 - Special 1080p.mkv", ExtraKind::Sp),
-            ("Show.S01E00.Special.1080p.WEB-DL.mkv", ExtraKind::Sp),
-            ("Show - 13 - Special - Recap.mkv", ExtraKind::Sp),
-            ("Show - 07 - Special Trailer.mkv", ExtraKind::Sp),
-            ("Show - 07 - Special Bonus.mkv", ExtraKind::Sp),
-            ("Show - 07 - Trailer END.mkv", ExtraKind::Pv),
-        ] {
-            assert_eq!(ep(name).extra, Some(kind), "{name}");
-        }
+        check(
+            |c| (c.extra, c.extra_index),
+            &[
+                ("Show - 07 - Special 2 Night.mkv", (Some(Sp), Some(2))),
+                ("Show - 07 - SP01 Delivery.mkv", (Some(Sp), Some(1))),
+                ("Show - 07 - NCOP1 Clean.mkv", (Some(Op), Some(1))),
+            ],
+        );
     }
 
     #[test]
     fn a_bare_marker_in_the_episode_title_reads_with_no_dash_or_a_dashed_series_title() {
-        // A bare number with no dash before it starts the episode reading too, and so
-        // does a dash after a series title that has dashes of its own (#497).
-        for (name, number) in [
-            ("Show 07 Trailer Trouble.mkv", 7.0),
-            ("Show.07.Special.Delivery.mkv", 7.0),
-            ("[Group] Show 07 Special Delivery [1080p].mkv", 7.0),
-            (
-                "Sword Art Online - Alicization - 05 - Special Delivery.mkv",
-                5.0,
-            ),
-            ("Show - Season 2 - 05 - Special Delivery.mkv", 5.0),
-            ("Show S01E05 - Special Delivery.mkv", 5.0),
-        ] {
-            let c = ep(name);
-            assert_eq!((c.extra, c.number), (None, number), "{name}");
-        }
-        // A number in the series title before the marker still lets the marker read, and
-        // a marker with its own number is still the extra.
-        assert_eq!(ep("Mob Psycho 100 Special.mkv").extra, Some(ExtraKind::Sp));
-        let c = ep("Show 07 Special 2 Night.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
-        let c = ep("Show - Alicization - 05 - Special.mkv");
-        assert_eq!(c.extra, Some(ExtraKind::Sp));
-        // A number that is the series title's, a season's or a codec's is no reading,
-        // and a marker before the number keeps the file its extra, as before.
-        for (name, kind) in [
-            ("Mobile Suit Gundam 00 Special Edition I.mkv", ExtraKind::Sp),
-            (
-                "Mobile Suit Gundam 00 - Special Edition I.mkv",
-                ExtraKind::Sp,
-            ),
-            ("Mob Psycho 100 - Special Reigen.mkv", ExtraKind::Sp),
-            (
-                "Attack on Titan Season 3 Special Lost Girls.mkv",
-                ExtraKind::Sp,
-            ),
-            (
-                "Attack on Titan Season 03 Special Lost Girls.mkv",
-                ExtraKind::Sp,
-            ),
-            (
-                "Show.Special.Holiday.1080p.WEB.DDP5.1.H.264-GRP.mkv",
-                ExtraKind::Sp,
-            ),
-            ("Show Trailer Collection 02.mkv", ExtraKind::Pv),
-            ("Show.Trailer.Collection.02.mkv", ExtraKind::Pv),
-            ("Show Special Edition 01.mkv", ExtraKind::Sp),
-        ] {
-            assert_eq!(ep(name).extra, Some(kind), "{name}");
-        }
-        // A dotted name reads its padded number, not a codec's at the end.
-        let c = ep("Show.07.Special.Delivery.1080p.WEB.DDP5.1.H.264-GRP.mkv");
-        assert_eq!((c.extra, c.number), (None, 7.0));
+        check(
+            |c| (c.extra, c.number),
+            &[
+                // A bare number with no dash before it starts the episode reading too, and
+                // so does a dash after a series title that has dashes of its own (#497).
+                ("Show 07 Trailer Trouble.mkv", (None, 7.0)),
+                ("Show.07.Special.Delivery.mkv", (None, 7.0)),
+                ("[Group] Show 07 Special Delivery [1080p].mkv", (None, 7.0)),
+                (
+                    "Sword Art Online - Alicization - 05 - Special Delivery.mkv",
+                    (None, 5.0),
+                ),
+                ("Show - Season 2 - 05 - Special Delivery.mkv", (None, 5.0)),
+                ("Show S01E05 - Special Delivery.mkv", (None, 5.0)),
+                // A dotted name reads its padded number, not a codec's at the end.
+                (
+                    "Show.07.Special.Delivery.1080p.WEB.DDP5.1.H.264-GRP.mkv",
+                    (None, 7.0),
+                ),
+            ],
+        );
+        check(
+            |c| c.extra,
+            &[
+                // A number in the series title before the marker still lets the marker
+                // read, and a marker with its own number is still the extra.
+                ("Mob Psycho 100 Special.mkv", Some(Sp)),
+                ("Show - Alicization - 05 - Special.mkv", Some(Sp)),
+                // A number that is the series title's, a season's or a codec's is no
+                // reading, and a marker before the number keeps the file its extra, as
+                // before.
+                ("Mobile Suit Gundam 00 Special Edition I.mkv", Some(Sp)),
+                ("Mobile Suit Gundam 00 - Special Edition I.mkv", Some(Sp)),
+                ("Mob Psycho 100 - Special Reigen.mkv", Some(Sp)),
+                ("Attack on Titan Season 3 Special Lost Girls.mkv", Some(Sp)),
+                ("Attack on Titan Season 03 Special Lost Girls.mkv", Some(Sp)),
+                (
+                    "Show.Special.Holiday.1080p.WEB.DDP5.1.H.264-GRP.mkv",
+                    Some(Sp),
+                ),
+                ("Show Trailer Collection 02.mkv", Some(Pv)),
+                ("Show.Trailer.Collection.02.mkv", Some(Pv)),
+                ("Show Special Edition 01.mkv", Some(Sp)),
+            ],
+        );
+        check(
+            |c| (c.extra, c.extra_index),
+            &[("Show 07 Special 2 Night.mkv", (Some(Sp), Some(2)))],
+        );
     }
 
     #[test]
     fn a_number_apart_from_the_token_is_its_index() {
         // The Girls und Panzer OVA Series files (#167).
-        let c = ep("[ak-Submarines] Girls und Panzer - OVA 1 [BD 1080p][F37D267C].mkv");
-        assert_eq!(
-            (c.extra, c.extra_index, c.number, c.season),
-            (Some(ExtraKind::Sp), Some(1), 1.0, Some(0))
+        check(
+            |c| (c.extra, c.extra_index, c.number, c.season),
+            &[(
+                "[ak-Submarines] Girls und Panzer - OVA 1 [BD 1080p][F37D267C].mkv",
+                (Some(Sp), Some(1), 1.0, Some(0)),
+            )],
         );
-        assert_eq!(ep("Show - OVA 6 [1080p].mkv").extra_index, Some(6));
-        assert_eq!(ep("Show SP 2.mkv").extra_index, Some(2));
-        assert_eq!(ep("Show - Special 03 - The Title.mkv").extra_index, Some(3));
-        assert_eq!(ep("Show Special - 04.mkv").extra_index, Some(4));
-        assert_eq!(ep("Show OAD 2v2.mkv").extra_index, Some(2));
-        assert_eq!(ep("Show PV 2.mkv").extra_index, Some(2));
-        // A glued number still wins, and a year or a word is no index.
-        assert_eq!(ep("Show OVA2 3.mkv").extra_index, Some(2));
-        assert_eq!(ep("Show Special 2019.mkv").extra_index, None);
-        assert_eq!(ep("Show OVA Recap.mkv").extra_index, None);
+        check(
+            |c| c.extra_index,
+            &[
+                ("Show - OVA 6 [1080p].mkv", Some(6)),
+                ("Show SP 2.mkv", Some(2)),
+                ("Show - Special 03 - The Title.mkv", Some(3)),
+                ("Show OAD 2v2.mkv", Some(2)),
+                ("Show PV 2.mkv", Some(2)),
+                // A glued number still wins, and a year or a word is no index.
+                ("Show OVA2 3.mkv", Some(2)),
+                ("Show Special 2019.mkv", None),
+                ("Show OVA Recap.mkv", None),
+                // A season and episode code after the token: a folder of OVAs that
+                // numbers them as a season's episodes (LiamPalmqvist's layout, #177).
+                ("Seitokai Yakuindomo OVA - S02E10.mkv", Some(10)),
+                ("Show OVA S01E02v2.mkv", Some(2)),
+            ],
+        );
         // An opening needs its number glued on, as before.
-        assert_eq!(ep("Show - OP 2.mkv").extra, None);
-        // A season and episode code after the token: a folder of OVAs that
-        // numbers them as a season's episodes (LiamPalmqvist's layout, #177).
-        let c = ep("Seitokai Yakuindomo OVA - S01E03.mkv");
-        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(3)));
-        assert_eq!(
-            ep("Seitokai Yakuindomo OVA - S02E10.mkv").extra_index,
-            Some(10)
+        check(|c| c.extra, &[("Show - OP 2.mkv", None)]);
+        check(
+            |c| (c.extra, c.extra_index),
+            &[("Seitokai Yakuindomo OVA - S01E03.mkv", (Some(Sp), Some(3)))],
         );
-        assert_eq!(ep("Show OVA S01E02v2.mkv").extra_index, Some(2));
         // The series' own episodes beside them are untouched.
-        let c = ep("Seitokai Yakuindomo S1 - S01E01.mkv");
-        assert_eq!((c.extra, c.number, c.season), (None, 1.0, Some(1)));
+        check(
+            |c| (c.extra, c.number, c.season),
+            &[("Seitokai Yakuindomo S1 - S01E01.mkv", (None, 1.0, Some(1)))],
+        );
     }
 
     #[test]
     fn a_decimal_after_the_dash_is_the_episode() {
-        let c = ep("Kara no Kyoukai - 6.5 - Remix - Gate of Seventh Heaven (recap).mkv");
-        assert_eq!((c.extra, c.number, c.season), (None, 6.5, None));
-        assert_eq!(
-            ep("[Group] Show - 12.5 - Recap Title [1080p].mkv").number,
-            12.5
+        check(
+            |c| (c.extra, c.number, c.season),
+            &[(
+                "Kara no Kyoukai - 6.5 - Remix - Gate of Seventh Heaven (recap).mkv",
+                (None, 6.5, None),
+            )],
         );
-        assert_eq!(ep("Show - 07.5v2 [1080p].mkv").number, 7.5);
-        // `01x36` comes first, so the title after it stays a title.
-        assert_eq!(ep("Death Note - 01x36 - 1.28.mkv").number, 36.0);
+        check(
+            |c| c.number,
+            &[
+                ("[Group] Show - 12.5 - Recap Title [1080p].mkv", 12.5),
+                ("Show - 07.5v2 [1080p].mkv", 7.5),
+            ],
+        );
     }
 
     #[test]
     fn the_fallback_drops_years_and_big_numbers_and_defaults_to_one() {
-        assert_eq!(ep("Show.Name.2019.1080p.Part7.mkv").number, 7.0);
-        assert_eq!(ep("Show Name.mkv").number, 1.0);
-        let c = ep("Show Name - 00.mkv");
-        assert_eq!((c.number, c.season), (0.0, Some(0)));
-        assert_eq!(ep("Show - E07.mkv").number, 7.0);
-        assert_eq!(ep("Show Ep. 9.mkv").number, 9.0);
+        check(
+            |c| c.number,
+            &[
+                ("Show.Name.2019.1080p.Part7.mkv", 7.0),
+                ("Show Name.mkv", 1.0),
+                ("Show - E07.mkv", 7.0),
+                ("Show Ep. 9.mkv", 9.0),
+            ],
+        );
+        check(
+            |c| (c.number, c.season),
+            &[("Show Name - 00.mkv", (0.0, Some(0)))],
+        );
     }
 
     #[test]
     fn a_revision_suffix_is_not_the_episode_number() {
-        let c = ep(
-            "[Kumo-Subs] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv",
+        check(
+            |c| (c.extra, c.number),
+            &[(
+                "[Kumo-Subs] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv",
+                (None, 17.0),
+            )],
         );
-        assert_eq!((c.extra, c.number), (None, 17.0));
-        assert_eq!(
-            ep("[Kumo-Subs] Neko to Ryuu - 07v2 [1080p].mkv").number,
-            7.0
+        check(
+            |c| c.number,
+            &[
+                ("[Kumo-Subs] Neko to Ryuu - 07v2 [1080p].mkv", 7.0),
+                ("Show 05v3.mkv", 5.0),
+                ("Show.Name.12v2.mkv", 12.0),
+                ("[Kumo-Subs] Show Name - 02 [1080p].mkv", 2.0),
+            ],
         );
-        assert_eq!(ep("Show 05v3.mkv").number, 5.0);
-        assert_eq!(ep("Show.Name.12v2.mkv").number, 12.0);
-        assert_eq!(ep("[Kumo-Subs] Show Name - 02 [1080p].mkv").number, 2.0);
     }
 
     #[test]
     fn other_tokens_are_extras_of_kind_other() {
-        let c = ep("Show Name Menu.mkv");
-        assert_eq!(
-            (c.extra, c.raw_label.as_deref(), c.number),
-            (Some(ExtraKind::Other), Some("Menu"), 0.0)
+        check(
+            |c| (c.extra, c.raw_label, c.number),
+            &[("Show Name Menu.mkv", (Some(Other), text("Menu"), 0.0))],
         );
-        let c = ep("Show_Name_CM_01.mkv");
-        assert_eq!(
-            (c.extra, c.raw_label.as_deref()),
-            (Some(ExtraKind::Other), Some("CM"))
+        check(
+            |c| (c.extra, c.raw_label),
+            &[("Show_Name_CM_01.mkv", (Some(Other), text("CM")))],
         );
     }
 
     #[test]
     fn keys_titles_and_numbers() {
-        let c = ep("Show Name Episode 6.5.mkv");
-        assert_eq!(episode_key(&c, "Show Name Episode 6.5.mkv"), "6.5");
-        let c = ep("Show - 12.mkv");
-        assert_eq!(episode_key(&c, "Show - 12.mkv"), "12");
-        let c = ep("Show OP1.mkv");
-        assert_eq!(episode_key(&c, "Show OP1.mkv"), "Show OP1.mkv");
-        // Two revisions of one extra share a key, the name without the
-        // revision, so they are one extra's releases with one history (#468).
-        for name in [
-            "[G] Show - SP01v2 [1080p].mkv",
-            "[G] Show - SP01v3 [1080p].mkv",
+        for (name, key) in [
+            ("Show Name Episode 6.5.mkv", "6.5"),
+            ("Show - 12.mkv", "12"),
+            ("Show OP1.mkv", "Show OP1.mkv"),
+            // Two revisions of one extra share a key, the name without the
+            // revision, so they are one extra's releases with one history (#468).
+            (
+                "[G] Show - SP01v2 [1080p].mkv",
+                "[G] Show - SP01 [1080p].mkv",
+            ),
+            (
+                "[G] Show - SP01v3 [1080p].mkv",
+                "[G] Show - SP01 [1080p].mkv",
+            ),
+            ("[G] Show - SP01 [1080p].mkv", "[G] Show - SP01 [1080p].mkv"),
+            // An index written apart takes its revision too, and a checksum differs
+            // between any two encodes, so neither keeps two releases apart.
+            ("Show - OVA 01v2.mkv", "Show - OVA 01.mkv"),
+            ("Show - OVA 01.mkv", "Show - OVA 01.mkv"),
+            (
+                "[G] Show - SP01 [1080p][A1B2C3D4].mkv",
+                "[G] Show - SP01 [1080p].mkv",
+            ),
+            (
+                "[G] Show - SP01v2 [1080p][E5F60718].mkv",
+                "[G] Show - SP01 [1080p].mkv",
+            ),
+            ("Show_NCOP1v2.mkv", "Show_NCOP1.mkv"),
+            // A number that only looks like a revision stays: PV2 is preview 2.
+            ("Show PV2.mkv", "Show PV2.mkv"),
+            ("Show OP1v.mkv", "Show OP1v.mkv"),
+            // Season 1 keys by the bare number, as every key did before
+            // seasons; a later season is prefixed so S01E01 and S02E01 never
+            // share a history row.
+            ("Show.Name.S01E01.mkv", "1"),
+            ("Show.Name.S02E01.mkv", "S02E01"),
         ] {
-            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
-        }
-        let name = "[G] Show - SP01 [1080p].mkv";
-        assert_eq!(episode_key(&ep(name), name), name);
-        // An index written apart takes its revision too, and a checksum differs between
-        // any two encodes, so neither keeps two releases apart.
-        for name in ["Show - OVA 01v2.mkv", "Show - OVA 01.mkv"] {
-            assert_eq!(episode_key(&ep(name), name), "Show - OVA 01.mkv");
-        }
-        for name in [
-            "[G] Show - SP01 [1080p][A1B2C3D4].mkv",
-            "[G] Show - SP01v2 [1080p][E5F60718].mkv",
-        ] {
-            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
+            assert_eq!(episode_key(&classify(name), name), key, "{name}");
         }
         // A document that names the file finds the same key; an episode's name stays.
         assert_eq!(
@@ -1133,26 +1270,6 @@ mod tests {
             "[G] Show - SP01 [1080p].mkv"
         );
         assert_eq!(key_of_file_name("Show - 07v2.mkv"), "Show - 07v2.mkv");
-        assert_eq!(
-            episode_key(&ep("Show_NCOP1v2.mkv"), "Show_NCOP1v2.mkv"),
-            "Show_NCOP1.mkv"
-        );
-        // A number that only looks like a revision stays: PV2 is preview 2.
-        assert_eq!(
-            episode_key(&ep("Show PV2.mkv"), "Show PV2.mkv"),
-            "Show PV2.mkv"
-        );
-        assert_eq!(
-            episode_key(&ep("Show OP1v.mkv"), "Show OP1v.mkv"),
-            "Show OP1v.mkv"
-        );
-        // Season 1 keys by the bare number, as every key did before
-        // seasons; a later season is prefixed so S01E01 and S02E01 never
-        // share a history row.
-        let c = ep("Show.Name.S01E01.mkv");
-        assert_eq!(episode_key(&c, "Show.Name.S01E01.mkv"), "1");
-        let c = ep("Show.Name.S02E01.mkv");
-        assert_eq!(episode_key(&c, "Show.Name.S02E01.mkv"), "S02E01");
         assert_eq!(number_key(Some(2), 12.5), "S02E12.5");
         assert_eq!(number_key(Some(0), 3.0), "S00E03");
         assert_eq!(number_key(None, 7.0), "7");
@@ -1174,107 +1291,95 @@ mod tests {
 
     #[test]
     fn titles_come_from_the_release_name_after_the_episode_token() {
-        let t = |n: &str| file_episode_title(n);
-        assert_eq!(
-            t("Helluva.Boss.S03E04.A.Trial.of.Errors.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv")
-                .as_deref(),
-            Some("A Trial of Errors")
-        );
-        assert_eq!(
-            t("Helluva.Boss.S03E01.Turtle.Emoji.1080p.AMZN.WEB-DL.mkv").as_deref(),
-            Some("Turtle Emoji")
-        );
-        assert_eq!(
-            t("[Group] Show - 03 - The Heroine Arrives [1080p].mkv").as_deref(),
-            Some("The Heroine Arrives")
-        );
-        assert_eq!(
-            t("Show S01E02 Mr. Smith Goes (1080p).mkv").as_deref(),
-            Some("Mr. Smith Goes")
-        );
-        assert_eq!(t("[Lumen] Show - 01 (1080p) [ABCD1234].mkv"), None);
-        assert_eq!(t("Show.S01E01.720p.HDTV.x264.mkv"), None);
-        assert_eq!(t("Show Episode 3.mkv"), None);
-        assert_eq!(t("Show - 05v2.mkv"), None);
-        assert_eq!(t("Show OP1.mkv"), None);
-        // From the #108 review.
-        assert_eq!(
-            t("Show.S01E02.Some.Title.(2019).1080p.mkv").as_deref(),
-            Some("Some Title")
-        );
-        assert_eq!(
-            t("[Group] Show - 12.5 - Recap Title [1080p].mkv").as_deref(),
-            Some("Recap Title")
-        );
-        assert_eq!(
-            t("Show.S01E05.Magnum.Opus.1080p.mkv").as_deref(),
-            Some("Magnum Opus")
-        );
-        assert_eq!(
-            t("Show.S02E03.The.Sub.Plot.720p.mkv").as_deref(),
-            Some("The Sub Plot")
-        );
-        assert_eq!(
-            t("Show.S01E02.Pilot.HDTV-LOL.mkv").as_deref(),
-            Some("Pilot")
-        );
-        assert_eq!(
-            t("Show.S01E02.Title.HDRip.XviD.mkv").as_deref(),
-            Some("Title")
-        );
-        assert_eq!(
-            t("Show.S01E02.Title.BD1080p.Hi10P.mkv").as_deref(),
-            Some("Title")
-        );
-        assert_eq!(
-            t("Show Ep 03 - The Title.mkv").as_deref(),
-            Some("The Title")
-        );
-        assert_eq!(t("Show S01E03 Ep 3.mkv"), None);
-        assert_eq!(t("Show S01E03 Episode 03v2.mkv"), None);
-        assert_eq!(t("[G] Show - 12 END [1080p].mkv"), None);
-        assert_eq!(
-            t("Death Note - 01x30 - Justice.mkv").as_deref(),
-            Some("Justice")
-        );
-        assert_eq!(t("Death Note - 01x36 - 1.28.mkv").as_deref(), Some("1.28"));
+        for (name, title) in [
+            (
+                "Helluva.Boss.S03E04.A.Trial.of.Errors.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv",
+                Some("A Trial of Errors"),
+            ),
+            (
+                "Helluva.Boss.S03E01.Turtle.Emoji.1080p.AMZN.WEB-DL.mkv",
+                Some("Turtle Emoji"),
+            ),
+            (
+                "[Group] Show - 03 - The Heroine Arrives [1080p].mkv",
+                Some("The Heroine Arrives"),
+            ),
+            (
+                "Show S01E02 Mr. Smith Goes (1080p).mkv",
+                Some("Mr. Smith Goes"),
+            ),
+            ("[Lumen] Show - 01 (1080p) [ABCD1234].mkv", None),
+            ("Show.S01E01.720p.HDTV.x264.mkv", None),
+            ("Show Episode 3.mkv", None),
+            ("Show - 05v2.mkv", None),
+            ("Show OP1.mkv", None),
+            // From the #108 review.
+            (
+                "Show.S01E02.Some.Title.(2019).1080p.mkv",
+                Some("Some Title"),
+            ),
+            (
+                "[Group] Show - 12.5 - Recap Title [1080p].mkv",
+                Some("Recap Title"),
+            ),
+            ("Show.S01E05.Magnum.Opus.1080p.mkv", Some("Magnum Opus")),
+            ("Show.S02E03.The.Sub.Plot.720p.mkv", Some("The Sub Plot")),
+            ("Show.S01E02.Pilot.HDTV-LOL.mkv", Some("Pilot")),
+            ("Show.S01E02.Title.HDRip.XviD.mkv", Some("Title")),
+            ("Show.S01E02.Title.BD1080p.Hi10P.mkv", Some("Title")),
+            ("Show Ep 03 - The Title.mkv", Some("The Title")),
+            ("Show S01E03 Ep 3.mkv", None),
+            ("Show S01E03 Episode 03v2.mkv", None),
+            ("[G] Show - 12 END [1080p].mkv", None),
+            ("Death Note - 01x30 - Justice.mkv", Some("Justice")),
+            ("Death Note - 01x36 - 1.28.mkv", Some("1.28")),
+        ] {
+            assert_eq!(file_episode_title(name).as_deref(), title, "{name}");
+        }
     }
 
     #[test]
     fn release_labels() {
-        assert_eq!(
-            release_label("/x/Helluva.Boss.S03E04.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv"),
-            "TBK, 1080p WEB-DL H264"
-        );
-        assert_eq!(
-            release_label("Avatar.Seven.Havens.S01E01.1080p.x265-ELiTE.mkv"),
-            "ELiTE, 1080p x265"
-        );
-        assert_eq!(
-            release_label("[Kumo-Subs] Show - 17v2 [1080p CR WEB-DL AVC AAC].mkv"),
-            "Kumo-Subs, v2 1080p WEB-DL AVC"
-        );
-        assert_eq!(release_label("Show.S01E01.1080p-x265.mkv"), "1080p x265");
-        assert_eq!(release_label("plain name.mkv"), "plain name");
-        // ASCII word boundaries, as in the old QML rule: CJK letters are not word characters
-        assert_eq!(release_label("番組第01話1080p.mkv"), "1080p");
+        for (path, label) in [
+            (
+                "/x/Helluva.Boss.S03E04.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv",
+                "TBK, 1080p WEB-DL H264",
+            ),
+            (
+                "Avatar.Seven.Havens.S01E01.1080p.x265-ELiTE.mkv",
+                "ELiTE, 1080p x265",
+            ),
+            (
+                "[Kumo-Subs] Show - 17v2 [1080p CR WEB-DL AVC AAC].mkv",
+                "Kumo-Subs, v2 1080p WEB-DL AVC",
+            ),
+            ("Show.S01E01.1080p-x265.mkv", "1080p x265"),
+            ("plain name.mkv", "plain name"),
+            // ASCII word boundaries, as in the old QML rule: CJK letters are not word
+            // characters
+            ("番組第01話1080p.mkv", "1080p"),
+        ] {
+            assert_eq!(release_label(path), label, "{path}");
+        }
     }
 
     /// The folder a file sits in below its show, for a key that has to tell
     /// two of one name apart (#1085).
     #[test]
     fn the_folder_below_a_show_and_a_key_in_it() {
-        assert_eq!(
-            folder_below("/lib/Show", "/lib/Show/Season 2/NCOP1.mkv"),
-            "Season 2"
-        );
-        assert_eq!(
-            folder_below("/lib/Show/", "/lib/Show/Season 2/Extras/NCOP1.mkv"),
-            "Season 2/Extras"
-        );
-        assert_eq!(folder_below("/lib/Show", "/lib/Show/NCOP1.mkv"), "");
-        assert_eq!(folder_below("/lib/Show", "/lib/Show2/NCOP1.mkv"), "");
-        assert_eq!(folder_below("/lib/Show", "/elsewhere/NCOP1.mkv"), "");
+        for (series, file, folder) in [
+            ("/lib/Show", "/lib/Show/Season 2/NCOP1.mkv", "Season 2"),
+            (
+                "/lib/Show/",
+                "/lib/Show/Season 2/Extras/NCOP1.mkv",
+                "Season 2/Extras",
+            ),
+            ("/lib/Show", "/lib/Show/NCOP1.mkv", ""),
+            ("/lib/Show", "/lib/Show2/NCOP1.mkv", ""),
+            ("/lib/Show", "/elsewhere/NCOP1.mkv", ""),
+        ] {
+            assert_eq!(folder_below(series, file), folder, "{file}");
+        }
         assert_eq!(key_in_folder("Season 2", "NCOP1.mkv"), "Season 2/NCOP1.mkv");
         assert_eq!(key_in_folder("", "NCOP1.mkv"), "NCOP1.mkv");
     }

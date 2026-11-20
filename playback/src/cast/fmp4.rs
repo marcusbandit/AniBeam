@@ -463,8 +463,6 @@ mod tests {
             channels: 2,
             rate: 48000,
             config: vec![0x11, 0x90],
-            language: None,
-            name: None,
             strip: None,
         };
         assert_eq!(audio_codec_string(&a), "mp4a.40.2");

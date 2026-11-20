@@ -62,7 +62,7 @@ jobs:
           echo "remove=$remove" >> "$GITHUB_OUTPUT"
           echo "version=$base-pr.$PR.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           # The phone keeps its own version, as nightly.yml's phone_version does.
-          phone_base="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)"
+          phone_base="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/phone/Cargo.toml | head -n1)"
           echo "phone_version=$phone_base-pr.$PR.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           echo "build=$build remove=$remove"
 

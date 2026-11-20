@@ -30,7 +30,7 @@ use std::sync::Arc;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Trackers;
-use crate::{NO_TOKEN, accounts, cache, no_token, writes};
+use crate::{NO_TOKEN, accounts, cache, quiet, writes};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::prefs;
@@ -171,12 +171,6 @@ const WATCHING_SQL: &str = "SELECT t.media_id, t.progress, t.updated_at,
          ELSE (SELECT a.id FROM anilist_media a WHERE a.mal_id = t.media_id ORDER BY a.id LIMIT 1) END
      WHERE t.tracker = ?1 AND t.profile_id = 1 AND t.status = ?2";
 
-/// The other tracker's stamp for the same media, unless its entry is on
-/// hold: that stamp is the move, quite possibly this sweep's own, and
-/// counting it would keep the entry here from ever following.
-const OTHER_SQL: &str = "SELECT updated_at FROM tracker_entries
-     WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1 AND (status IS NULL OR status != 'paused')";
-
 /// The owner's latest play here on any series matched to the media, by either
 /// id. The lists are the owner's, so a guest's plays (#631) do not count.
 const PLAYED_SQL: &str = "SELECT MAX(at) FROM (
@@ -209,12 +203,13 @@ fn local(
         Tracker::Anilist => (Tracker::Mal, mal_id),
         Tracker::Mal => (Tracker::Anilist, anilist_id),
     };
+    // The other tracker's stamp for the same media, unless its entry is on
+    // hold: that stamp is the move, quite possibly this sweep's own, and
+    // counting it would keep the entry here from ever following.
     let other_touched = match other_id {
-        Some(id) => conn
-            .prepare_cached(OTHER_SQL)?
-            .query_row(params![other.as_str(), id], |r| r.get::<_, Option<i64>>(0))
-            .optional()?
-            .flatten(),
+        Some(id) => cache::cached(conn, other, id as u64)?
+            .filter(|e| e.status != Some(ListStatus::Paused))
+            .and_then(|e| e.updated_at),
         None => None,
     };
     let played = conn
@@ -235,23 +230,6 @@ fn local(
         played,
         scheduled,
     })
-}
-
-/// A hidden series is absent from every tracker write, this one included,
-/// by whichever id it carries.
-fn hidden(
-    conn: &Connection,
-    anilist_id: Option<i64>,
-    mal_id: Option<i64>,
-) -> Result<bool, CoreError> {
-    for (t, id) in [(Tracker::Anilist, anilist_id), (Tracker::Mal, mal_id)] {
-        if let Some(id) = id
-            && writes::is_hidden(conn, t, id as u64)?
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 /// The entries on one tracker's cached list that look due, longest idle
@@ -291,7 +269,13 @@ pub fn due(conn: &Connection, t: Tracker, now: i64, days: u32) -> Result<Vec<Due
             Tracker::Anilist => (Some(row.media_id as i64), row.mal_id),
             Tracker::Mal => (row.anilist_id, Some(row.media_id as i64)),
         };
-        if hidden(conn, anilist_id, mal_id)? {
+        // A hidden series is absent from every tracker write, this one
+        // included, by whichever id it carries.
+        if writes::any_hidden(
+            conn,
+            anilist_id.map(|id| id as u64),
+            mal_id.map(|id| id as u64),
+        )? {
             continue;
         }
         let here = local(conn, t, anilist_id, mal_id, row.progress)?;
@@ -386,9 +370,7 @@ pub fn kick(trackers: &Arc<Trackers>) {
     let read = trackers.services.store.read(|c| {
         let (mut connected, mut stale) = (false, false);
         for t in [Tracker::Anilist, Tracker::Mal] {
-            if let Some(row) = accounts::load_row(c, t)?
-                && row.connected_at.is_some()
-            {
+            if let Some(row) = accounts::connected(c, t)? {
                 connected = true;
                 stale |= !cache::is_fresh(row.progress_fetched_at, now);
             }
@@ -454,15 +436,9 @@ async fn run(trackers: Arc<Trackers>, ctx: Arc<JobCtx>) -> Result<Finished, Core
     let mut passes: Vec<Pass> = Vec::new();
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
-        let row = trackers
-            .services
-            .store
-            .write_async(move |c| accounts::load_row(c, t))
-            .await?
-            .unwrap_or_default();
-        if row.connected_at.is_none() {
+        let Some(row) = accounts::connected_async(&trackers.services, t).await? else {
             continue;
-        }
+        };
         // A list past the window is not decided on: the sweep runs behind
         // a refresh, and one that failed leaves an old list standing.
         if !cache::is_fresh(row.progress_fetched_at, time::now()) {
@@ -632,23 +608,22 @@ async fn move_one(
     let mut turn = trackers.write_line.join_entries(vec![(t, media_id)]);
     turn.come().await;
     let cached = trackers
-        .services.store
-        .write_async(move |c| {
-            c.query_row(
-                "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
-                params![t.as_str(), media_id as i64],
-                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
-            )
-            .optional()
-            .map_err(CoreError::from)
-        })
+        .services
+        .store
+        .write_async(move |c| cache::cached(c, t, media_id))
         .await?;
-    match cached {
-        Some((Some(status), stamp))
-            if status == ListStatus::Watching.as_str() && stamp == entry.updated_at => {}
-        _ => return Ok(Some("it changed here during the pass")),
+    if !cached
+        .is_some_and(|c| c.status == Some(ListStatus::Watching) && c.updated_at == entry.updated_at)
+    {
+        return Ok(Some("it changed here during the pass"));
     }
-    let Some(live) = writes::read_live(trackers, t, media_id, user_id, token).await? else {
+    let remote = writes::Remote {
+        trackers,
+        t,
+        media_id,
+        token: token.to_string(),
+    };
+    let Some(live) = remote.read_live(user_id).await? else {
         return Ok(Some("it is no longer on the list"));
     };
     let (anilist_id, mal_id, progress) = (entry.anilist_id, entry.mal_id, live.progress);
@@ -660,8 +635,8 @@ async fn move_one(
     if let Err(why) = decide(&live, &here, time::now_secs(), days) {
         return Ok(Some(why));
     }
-    let stamp = writes::send_status(trackers, t, media_id, token, ListStatus::Paused).await?;
-    writes::record_status(&trackers.services, t, media_id, ListStatus::Paused, stamp).await?;
+    let stamp = remote.send_status(ListStatus::Paused).await?;
+    remote.record_status(ListStatus::Paused, stamp).await?;
     let images_dir = trackers.services.paths.images_dir();
     let cards = trackers
         .services
@@ -695,21 +670,8 @@ fn series_for(conn: &Connection, t: Tracker, media_id: u64) -> Result<Vec<u64>, 
         Tracker::Mal => "SELECT id FROM series WHERE mal_id = ?1",
     };
     let mut stmt = conn.prepare_cached(sql)?;
-    let rows = stmt.query_map(params![media_id as i64], |r| r.get::<_, i64>(0))?;
-    let mut ids = Vec::new();
-    for row in rows {
-        ids.push(row? as u64);
-    }
-    Ok(ids)
-}
-
-fn quiet(message: &str) -> Finished {
-    Finished {
-        plain: None,
-        level: Level::Debug,
-        message: message.to_string(),
-        body: EventBody::Notice,
-    }
+    let rows = stmt.query_map(params![media_id as i64], |r| Ok(r.get::<_, i64>(0)? as u64))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 /// The pass's one line: what moved where and after how long, then what
@@ -838,30 +800,19 @@ fn paused_entries(
         Err(CoreError::NotFound { .. }) => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
+    if writes::any_hidden(conn, target.anilist, target.mal)? {
+        return Ok(Vec::new());
+    }
     let mut out = Vec::new();
     for (t, id) in [
         (Tracker::Anilist, target.anilist),
         (Tracker::Mal, target.mal),
     ] {
         let Some(id) = id else { continue };
-        if writes::is_hidden(conn, t, id)? {
-            return Ok(Vec::new());
-        }
-        let Some(row) = accounts::load_row(conn, t)? else {
+        let Some(row) = accounts::connected(conn, t)? else {
             continue;
         };
-        if row.connected_at.is_none() {
-            continue;
-        }
-        let status: Option<String> = conn
-            .query_row(
-                "SELECT status FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1",
-                params![t.as_str(), id as i64],
-                |r| r.get(0),
-            )
-            .optional()?
-            .flatten();
-        if status.as_deref() == Some(ListStatus::Paused.as_str()) {
+        if cache::cached(conn, t, id)?.is_some_and(|e| e.status == Some(ListStatus::Paused)) {
             out.push((t, id, row.user_id));
         }
     }
@@ -881,17 +832,13 @@ async fn back_to_watching(
     for (t, media_id, user_id) in paused {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&trackers, t)
-                .await?
-                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
+            let remote = writes::Remote::connect(&trackers, t, media_id).await?;
+            let live = remote.read_live(user_id).await?;
             if live.is_none_or(|l| l.status != Some(ListStatus::Paused)) {
                 return Ok(false);
             }
-            let stamp =
-                writes::send_status(&trackers, t, media_id, &token, ListStatus::Watching).await?;
-            writes::record_status(&trackers.services, t, media_id, ListStatus::Watching, stamp)
-                .await?;
+            let stamp = remote.send_status(ListStatus::Watching).await?;
+            remote.record_status(ListStatus::Watching, stamp).await?;
             Ok::<bool, CoreError>(true)
         };
         match attempt.await {

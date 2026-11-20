@@ -773,15 +773,7 @@ pub fn set_enabled(playback: &Arc<Playback>, on: bool) {
                 join::incoming(&playback, event);
             }
         });
-        inner.worker = spawn(
-            transport,
-            client_id,
-            p.connected.clone(),
-            p.problem.clone(),
-            p.check_ms.clone(),
-            p.bus.clone(),
-            handler,
-        );
+        inner.worker = spawn(p, transport, client_id, handler);
     }
     let actions = decide(
         &mut inner.state,
@@ -882,9 +874,7 @@ fn post_all(inner: &Inner, posts: Vec<Post>) {
 
 /// The one-shot pause timer.
 fn arm(playback: &Arc<Playback>, session: u64, generation: u64) {
-    let owner = playback.clone();
-    let weak = Arc::downgrade(&owner);
-    drop(owner);
+    let weak = Arc::downgrade(playback);
     let wait = Duration::from_millis(playback.presence.pause_clear_ms.load(Ordering::Relaxed));
     playback.services.handle.spawn(async move {
         tokio::time::sleep(wait).await;
@@ -923,23 +913,21 @@ fn refused(message: &str) -> PresenceProblem {
     }
 }
 
+/// Starts the worker over `transport`, sharing what `p` shows Settings.
 fn spawn(
+    p: &Presence,
     transport: Box<dyn Transport>,
     client_id: String,
-    connected: Arc<AtomicBool>,
-    problem: Arc<Mutex<Option<PresenceProblem>>>,
-    check_ms: Arc<AtomicU64>,
-    bus: Arc<EventBus>,
     on_event: Handler,
 ) -> Option<Arc<Mailbox>> {
     let mailbox = Arc::new(Mailbox::default());
     let mut worker = Worker {
         transport,
         client_id,
-        connected,
-        problem,
-        check_ms,
-        bus,
+        connected: p.connected.clone(),
+        problem: p.problem.clone(),
+        check_ms: p.check_ms.clone(),
+        bus: p.bus.clone(),
         on_event,
         want: None,
         party: None,
@@ -999,7 +987,9 @@ struct Worker {
     parties: bool,
 }
 
-/// A new desired state, as the worker takes it.
+/// A new desired state, as the worker takes it. Every field here is named where `next`
+/// builds it and where `run` takes it apart, so one of these left unread does not
+/// compile; a field added to `Desired` still needs adding here by hand.
 struct Change {
     want: Option<Activity>,
     party: Option<Party>,
