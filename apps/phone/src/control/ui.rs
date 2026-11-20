@@ -54,6 +54,9 @@ const OVER: [&str; 21] = [
     "player's picker",
     "locked player",
 ];
+/// How long a finger stays down for a tap. A press and a lift in the same instant reach
+/// nothing inside a scroll area, which holds the press back to see whether it is a drag.
+const TAP: Duration = Duration::from_millis(60);
 /// How long a finger stays down for a long press: past Slint's and the app's hold.
 pub(super) const HOLD: Duration = Duration::from_millis(800);
 /// How many frames the stats keep: `perf`'s longest sample at 144 Hz, so it counts them all.
@@ -724,11 +727,6 @@ fn lift(w: &AppWindow, (x, y): (f32, f32)) {
     w.window().dispatch_event(WindowEvent::PointerExited);
 }
 
-fn tap(w: &AppWindow, point: (f32, f32)) {
-    press_down(w, point);
-    lift(w, point);
-}
-
 /// Sends a key and says whether anything took it: the press, or failing that the release.
 fn key(w: &AppWindow, k: Key) -> bool {
     let text: SharedString = match k {
@@ -996,22 +994,53 @@ pub fn exec(command: Command, reply: Sender<String>) {
         });
     };
     match command {
-        Command::Hold(target) => match resolve(&w, &target) {
-            Ok((_, point, said)) => {
-                press_down(&w, point);
-                let weak = w.as_weak();
-                Timer::single_shot(HOLD, move || {
-                    if let Some(w) = weak.upgrade() {
-                        lift(&w, point);
-                    }
-                    let _ = reply.send(format!("held {said}"));
-                });
-            }
-            Err(e) => done(reply, Err(e)),
-        },
+        Command::Hold(target) => finger(&w, &target, HOLD, "held", false, reply),
+        Command::Tap(target) => finger(&w, &target, TAP, "tapped", false, reply),
+        Command::Press(target) => finger(&w, &target, TAP, "tapped", true, reply),
         Command::Swipe { from, to, ms } => swipe(&w, from, to, ms, reply),
         other => done(reply, run(&w, other)),
     }
+}
+
+/// A finger on a target for `down`, answered once it lifts. `press` runs a control's own
+/// action instead when it has one, and refuses a disabled one.
+fn finger(
+    w: &AppWindow,
+    target: &Target,
+    down: Duration,
+    verb: &'static str,
+    press: bool,
+    reply: Sender<String>,
+) {
+    let (e, point, said) = match resolve(w, target) {
+        Ok(found) => found,
+        Err(e) => {
+            let _ = reply.send(format!("error: {e}"));
+            return;
+        }
+    };
+    if press && let Some(e) = &e {
+        if !e.enabled {
+            let _ = reply.send(format!("error: {said} is disabled; a tap would do nothing"));
+            return;
+        }
+        if e.item
+            .supported_accessibility_actions()
+            .contains(SupportedAccessibilityAction::Default)
+        {
+            e.item.accessible_action(&AccessibilityAction::Default);
+            let _ = reply.send(format!("pressed {said}"));
+            return;
+        }
+    }
+    press_down(w, point);
+    let weak = w.as_weak();
+    Timer::single_shot(down, move || {
+        if let Some(w) = weak.upgrade() {
+            lift(&w, point);
+        }
+        let _ = reply.send(format!("{verb} {said}"));
+    });
 }
 
 fn swipe(w: &AppWindow, from: (f32, f32), to: (f32, f32), ms: u64, reply: Sender<String>) {
@@ -1141,36 +1170,10 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             }
             where_line(w)
         }
-        Command::Press(target) => {
-            let (e, point, said) = resolve(w, &target)?;
-            if let Some(e) = &e
-                && !e.enabled
-            {
-                return Err(format!("{said} is disabled; a tap would do nothing"));
-            }
-            let action = e.as_ref().filter(|e| {
-                e.item
-                    .supported_accessibility_actions()
-                    .contains(SupportedAccessibilityAction::Default)
-            });
-            match action {
-                Some(e) => {
-                    e.item.accessible_action(&AccessibilityAction::Default);
-                    format!("pressed {said}")
-                }
-                None => {
-                    tap(w, point);
-                    format!("tapped {said}")
-                }
-            }
+        // exec runs these, for they answer once the finger lifts.
+        Command::Press(_) | Command::Tap(_) | Command::Hold(_) | Command::Swipe { .. } => {
+            unreachable!("exec runs these")
         }
-        Command::Tap(target) => {
-            let (_, point, said) = resolve(w, &target)?;
-            tap(w, point);
-            format!("tapped {said}")
-        }
-        // exec handles both, for they answer later.
-        Command::Hold(_) | Command::Swipe { .. } => unreachable!("exec runs these"),
         Command::Type(text) => {
             if !fields(w).iter().any(|f| f.focused) {
                 return Err("no field has the focus; tap one first, or use fill".into());
@@ -1384,12 +1387,36 @@ mod tests {
         w
     }
 
+    /// Moves Slint's mock clock on, as the testing backend's own clicks do: animations,
+    /// timers and change handlers run as if that much time passed.
+    fn elapse(ms: u64) {
+        let tick = i_slint_core::animations::CURRENT_ANIMATION_DRIVER.with(|driver| {
+            let mut tick = driver.current_tick();
+            tick += Duration::from_millis(ms);
+            driver.update_animations(tick);
+            tick
+        });
+        i_slint_core::timers::TimerList::maybe_activate_timers(tick);
+        i_slint_core::properties::ChangeTracker::run_change_handlers();
+    }
+
+    /// Runs a line and gives back what it answered; a tap or a hold answers once its finger
+    /// lifts, so the clock moves on until it does.
     fn say(command: &str) -> String {
         let mut out = Vec::new();
         for c in super::super::command::parse_line(command).unwrap() {
             let (tx, rx) = channel();
             exec(c, tx);
-            out.push(rx.try_recv().expect("answered at once"));
+            let mut waited = 0;
+            let answer = loop {
+                if let Ok(a) = rx.try_recv() {
+                    break a;
+                }
+                assert!(waited < 5000, "no answer to {command:?}");
+                elapse(20);
+                waited += 20;
+            };
+            out.push(answer);
         }
         out.join("\n")
     }
@@ -1565,21 +1592,6 @@ mod tests {
         let tree = say("tree Example Show");
         assert!(tree.contains("text \"Example Show\""), "{tree}");
         assert!(!tree.contains("covered"), "{tree}");
-        // DIAG: what Slint's own test click does on the same title.
-        eprintln!("DIAG tree:\n{}", say("tree"));
-        eprintln!("DIAG device {}", data.get_device());
-        for e in
-            i_slint_backend_testing::ElementHandle::find_by_accessible_label(&w, "Example Show")
-        {
-            eprintln!(
-                "DIAG element {:?} {:?} {:?}",
-                e.accessible_role(),
-                e.absolute_position(),
-                e.size()
-            );
-            e.mock_single_click(slint::platform::PointerEventButton::Left);
-            eprintln!("DIAG after mock click: {}", opened.get());
-        }
         let clicked = say("click Example Show");
         assert!(clicked.starts_with("tapped text"), "{clicked}");
         assert_eq!(opened.get(), 3, "{clicked}");
