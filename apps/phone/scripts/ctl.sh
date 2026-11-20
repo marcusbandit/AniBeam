@@ -15,7 +15,8 @@
 # Talks to $ANDROID_SERIAL, or this project's emulator (env.sh). Exits 1 when a command
 # failed, 2 when the app did not answer.
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
+# The script's own folder, through a symlink too (one in ~/.local/bin, say).
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 if [[ "${1:-}" == "-s" ]]; then
   [[ -n "${2:-}" ]] || { echo "ctl.sh: -s needs a serial" >&2; exit 2; }
@@ -26,16 +27,12 @@ source "$here/env.sh"
 (( $# )) || set -- help
 
 # shot <file.png>: the device's own pixels, from the display that is powered (env.sh). It
-# runs here, not in the app, so it stands on its own rather than in a ; line.
+# runs here, not in the app, so it stands on its own; inside a ; line the app says so.
 if [[ "$1" == "shot" ]]; then
   [[ $# == 2 ]] || { echo "ctl.sh: shot takes a file name" >&2; exit 2; }
   shot_to "$2" || exit 1
   echo "$2"
   exit 0
-fi
-if (( $# == 1 )) && [[ "$1" =~ (^|\;)[[:space:]]*shot([[:space:]]|$|\;) ]]; then
-  echo "ctl.sh: shot runs on its own, not in a ; line: ctl.sh shot <file.png>" >&2
-  exit 2
 fi
 
 # A word as the app's reader takes it: in double quotes when it holds a blank, a quote, a
@@ -81,13 +78,19 @@ data="${rest#*, data=\"}"
 data="${data%"${data##*[![:space:]]}"}"
 data="${data%\"}"
 printf '%s\n' "$data"
-[[ "$line" == help ]] && echo "shot <file.png>                             the screen, from the device; on its own, not in a ; line"
 
-# The labels a tree shows, for the shells' completion of click, tap and the rest.
-if [[ "$line" =~ (^|\;)[[:space:]]*(tree|dump)[[:space:]]*($|\;) ]]; then
+# The labels a whole tree shows, for the shells' completion of click, tap and the rest. Only
+# an answer that holds a tree (its `shown: N` line) replaces the last one, so a line that
+# failed first keeps the old labels. Rust writes a label with \" and \\ for a quote and a
+# backslash.
+if [[ "$line" =~ (^|\;)[[:space:]]*(tree|dump)[[:space:]]*($|\;) ]] \
+  && grep -q '^shown: ' <<<"$data"; then
   cache="${XDG_CACHE_HOME:-$HOME/.cache}/anibeam-ctl"
   mkdir -p "$cache"
-  sed -n 's/^  [a-z]* "\(\([^"\\]\|\\.\)*\)".*/\1/p' <<<"$data" | sed 's/\\"/"/g' | sort -u > "$cache/labels" || true
+  sed -n 's/^  [a-z]* "\(\([^"\\]\|\\.\)*\)".*/\1/p' <<<"$data" | sed 's/\\\(["\\]\)/\1/g' \
+    | sort -u > "$cache/labels.new" || true
+  [[ -s "$cache/labels.new" ]] && mv -f "$cache/labels.new" "$cache/labels"
+  rm -f "$cache/labels.new"
 fi
 
 [[ "$code" == 0 ]] || exit 1

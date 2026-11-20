@@ -61,7 +61,17 @@ _ctl.sh() {
   case $words[2] in
     go) (( CURRENT == 3 )) && compadd home calendar library downloads more series ;;
     key) compadd back enter tab escape backspace up down left right ;;
-    click|press|tap|hold|wait|find|fill|tree) _ctl.sh_labels ;;
+    # After a label, --nth for the controls and a time for wait, beside more labels.
+    click|press|tap|hold)
+      if [[ $words[CURRENT-1] == --nth ]]; then compadd 1 2 3 4 5
+      else
+        _ctl.sh_labels
+        (( CURRENT > 3 )) && compadd -- --nth
+      fi ;;
+    wait)
+      _ctl.sh_labels
+      (( CURRENT > 3 )) && compadd 5s 10s 30s ;;
+    find|fill|tree) _ctl.sh_labels ;;
     shot) (( CURRENT == 3 )) && _files -g '*.png' ;;
     scroll)
       if (( CURRENT == 3 )); then compadd up down left right

@@ -6,7 +6,7 @@
 
 _anibeam_ctl() {
   local cur cword
-  local -a w
+  local -a w words
   # bash splits words at ':' too, so a label such as Re:Zero would complete from "Zero". The
   # bash-completion package puts the words back together; without it, the split stands.
   if declare -F _get_comp_words_by_ref > /dev/null; then
@@ -53,17 +53,30 @@ _anibeam_ctl() {
       else command=click
       fi ;;
   esac
+  # After a label: --nth for the controls, a time for wait.
+  if (( pos >= 2 )) && [[ "${w[cword-1]}" != --nth ]]; then
+    case "$command" in
+      click|press|tap|hold)
+        [[ "$cur" == -* ]] && { mapfile -t COMPREPLY < <(compgen -W "--nth" -- "$cur"); return; } ;;
+      wait)
+        [[ "$cur" == [0-9]* ]] && { mapfile -t COMPREPLY < <(compgen -W "5s 10s 30s" -- "$cur"); return; } ;;
+    esac
+  fi
+  [[ "${w[cword-1]}" == --nth ]] && { mapfile -t COMPREPLY < <(compgen -W "1 2 3 4 5" -- "$cur"); return; }
   case "$command" in
     click|press|tap|hold|wait|find|fill|tree)
       local cache="${XDG_CACHE_HOME:-$HOME/.cache}/anibeam-ctl/labels"
       [[ -r "$cache" ]] || return
+      # The word as typed holds the shell's escapes (Get\ ep, 'Get ep); the cache does not.
+      local want="${cur//\\ / }"
+      want="${want#[\"\']}"
       local IFS=$'\n' label
       COMPREPLY=()
       while read -r label; do
-        [[ "$label" == "$cur"* ]] && COMPREPLY+=("$(printf '%q' "$label")")
+        [[ "$label" == "$want"* ]] && COMPREPLY+=("$(printf '%q' "$label")")
       done < "$cache"
       # What bash will put after the last ':' is all the reply may hold.
-      declare -F __ltrim_colon_completions > /dev/null && __ltrim_colon_completions "$cur"
+      declare -F __ltrim_colon_completions > /dev/null && __ltrim_colon_completions "$want"
       return ;;
   esac
   mapfile -t COMPREPLY < <(compgen -W "$choices" -- "$cur")

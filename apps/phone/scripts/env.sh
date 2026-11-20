@@ -26,7 +26,11 @@ shot_to() {
   local disp
   disp="$(active_display)"
   mkdir -p "$(dirname "$1")"
-  "$ADB" exec-out screencap ${disp:+-d "$disp"} -p > "$1"
+  # Callers run this as `shot_to ... || ...`, which turns errexit off in here.
+  if ! "$ADB" exec-out screencap ${disp:+-d "$disp"} -p > "$1"; then
+    echo "adb could not take the screenshot (is $ANDROID_SERIAL attached?)" >&2
+    return 1
+  fi
   # screencap exits 0 with an empty file while the surface is not up.
   if ! file "$1" | grep -q "PNG image"; then
     echo "$1 is not a PNG; the screen is probably not up yet." >&2
