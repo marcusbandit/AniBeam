@@ -23,11 +23,11 @@ SELF_JOB="ios-automerge"
 # Paths that only the iPhone or the Mac build reads. Everything else can change another
 # platform: Cargo.toml and Cargo.lock, and every workflow, this one included. android.yml's
 # pull_request paths exclude the same iPhone paths as globs (#950): change both together.
-ONLY='^(apps/android/ios/'
-ONLY+='|apps/android/src/(.+/)?(ios|metal)(\.rs$|/)'
-ONLY+='|apps/android/scripts/[^/]*ios[^/]*$'
+ONLY='^(apps/phone/ios/'
+ONLY+='|apps/phone/src/(.+/)?(ios|metal)(\.rs$|/)'
+ONLY+='|apps/phone/scripts/[^/]*ios[^/]*$'
 # A phone change file is one line of patch notes, which a PR has to carry.
-ONLY+='|apps/android/changes/[^/]+\.md$'
+ONLY+='|apps/phone/changes/[^/]+\.md$'
 ONLY+='|apps/linux/packaging/macos/'
 ONLY+=')'
 

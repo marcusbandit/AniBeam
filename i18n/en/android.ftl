@@ -1348,6 +1348,7 @@ address-https = Your computer's Anibeam answers on plain http over Tailscale; dr
 address-empty = Type the host's name or address, for example my-computer:8790.
 address-ipv6-close = An IPv6 address needs its closing ].
 address-ipv6-port = Put the port after the ], as [fd7a::1]:8790.
+address-ipv6-brackets = Put an IPv6 address in brackets, as [fd7a::1]:8790.
 address-bad-host = "{ $text }" is not a host name.
 address-bad-port = "{ $port }" is not a port.
 

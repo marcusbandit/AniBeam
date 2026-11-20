@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 90
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,21 +67,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/android
+          workspaces: apps/phone
           key: apk
 
       # vendor/ is about 60 MB of pinned mpv-android libraries; build.sh refetches only when
       # the pinned tag changes.
       - uses: actions/cache@v4
         with:
-          path: apps/android/vendor/mpv
-          key: mpv-${{ hashFiles('apps/android/scripts/fetch-mpv.sh') }}
+          path: apps/phone/vendor/mpv
+          key: mpv-${{ hashFiles('apps/phone/scripts/fetch-mpv.sh') }}
 
       # The bundletool jar the bundle needs, pinned and hash-checked by fetch-bundletool.sh.
       - uses: actions/cache@v4
         with:
-          path: apps/android/vendor/bundletool
-          key: bundletool-${{ hashFiles('apps/android/scripts/fetch-bundletool.sh') }}
+          path: apps/phone/vendor/bundletool
+          key: bundletool-${{ hashFiles('apps/phone/scripts/fetch-bundletool.sh') }}
 
       # build.sh links against platforms;android-36, which the runner image may not carry yet.
       - name: Android platform
@@ -103,6 +103,6 @@ jobs:
         with:
           name: phone-apk
           path: |
-            apps/android/dist/*.apk
-            apps/android/dist/*.aab
+            apps/phone/dist/*.apk
+            apps/phone/dist/*.aab
           if-no-files-found: error

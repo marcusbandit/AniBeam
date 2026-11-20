@@ -403,38 +403,33 @@ pub fn parse(bytes: &[u8], core_version: &str) -> Result<Index, RepoFault> {
     let key = verifying_key(&raw.key)?;
     key.verify_strict(&payload, &signature)
         .map_err(|_| RepoFault::new("signature", tr("core-repos-signature-mismatch", &[])))?;
-    let mut endpoints: Vec<Definition> = Vec::new();
-    for value in raw.endpoints {
-        let Ok(def) = serde_json::from_value::<Definition>(value) else {
-            continue;
-        };
-        if check(&def).is_err() || !runs_on(&def, core_version) {
-            continue;
-        }
-        if endpoints.iter().any(|d| d.id == def.id) {
-            continue;
-        }
-        endpoints.push(def);
-    }
     Ok(Index {
+        endpoints: definitions(raw.endpoints, core_version),
         name: raw.name,
         nsfw: raw.nsfw,
         key: raw.key,
         serial: raw.serial,
-        endpoints,
         payload,
     })
 }
 
 /// Reads a payload the store kept, which passed its checks when it was fetched.
 pub fn reread(payload: &[u8], core_version: &str) -> Vec<Definition> {
-    let Ok(raw) = serde_json::from_slice::<RawIndex>(payload) else {
-        return Vec::new();
-    };
-    raw.endpoints
+    serde_json::from_slice::<RawIndex>(payload)
+        .map(|raw| definitions(raw.endpoints, core_version))
+        .unwrap_or_default()
+}
+
+/// The definitions of an index this core can run, each id once: of those that pass `check`
+/// and `runs_on`, the first listed counts, so a core that cannot run an id's first entry
+/// takes the next one this core can.
+fn definitions(values: Vec<serde_json::Value>, core_version: &str) -> Vec<Definition> {
+    let mut seen = std::collections::HashSet::new();
+    values
         .into_iter()
-        .filter_map(|v| serde_json::from_value::<Definition>(v).ok())
-        .filter(|d| check(d).is_ok() && runs_on(d, core_version))
+        .filter_map(|value| serde_json::from_value::<Definition>(value).ok())
+        .filter(|def| check(def).is_ok() && runs_on(def, core_version))
+        .filter(|def| seen.insert(def.id.clone()))
         .collect()
 }
 
@@ -445,7 +440,7 @@ fn plain_id(s: &str) -> bool {
 }
 
 /// The placeholders in a URL template, in order.
-fn placeholders(url: &str) -> Vec<&str> {
+pub(crate) fn placeholders(url: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut rest = url;
     while let Some(open) = rest.find('{') {
@@ -918,6 +913,43 @@ pub(crate) mod tests {
             .map(|d| d.id)
             .collect();
         assert_eq!(ids, vec!["ok"]);
+    }
+
+    #[test]
+    fn an_id_offered_twice_reads_once_fresh_and_from_the_store() {
+        let k = signing_key(1);
+        let mut second = def("twice", "rss", "https://b.example/?q={query}");
+        second["name"] = "Second".into();
+        let file = sign(
+            &index(
+                &k,
+                vec![def("twice", "rss", "https://a.example/?q={query}"), second],
+            ),
+            &k,
+        );
+        let idx = parse(&file, "2.1.0").unwrap();
+        let names = |defs: Vec<Definition>| defs.into_iter().map(|d| d.name).collect::<Vec<_>>();
+        assert_eq!(names(idx.endpoints.clone()), vec!["twice"]);
+        assert_eq!(names(reread(&idx.payload, "2.1.0")), vec!["twice"]);
+    }
+
+    #[test]
+    fn an_id_this_core_cannot_run_first_falls_back_to_its_next_entry() {
+        let k = signing_key(1);
+        let mut newer = def("twice", "rss", "https://a.example/?q={query}");
+        newer["name"] = "Newer".into();
+        newer["min_core"] = "9.0.0".into();
+        let file = sign(
+            &index(
+                &k,
+                vec![newer, def("twice", "rss", "https://b.example/?q={query}")],
+            ),
+            &k,
+        );
+        let idx = parse(&file, "2.1.0").unwrap();
+        let names = |defs: Vec<Definition>| defs.into_iter().map(|d| d.name).collect::<Vec<_>>();
+        assert_eq!(names(idx.endpoints.clone()), vec!["twice"]);
+        assert_eq!(names(reread(&idx.payload, "9.0.0")), vec!["Newer"]);
     }
 
     #[test]

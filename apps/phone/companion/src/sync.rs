@@ -56,7 +56,6 @@ impl Syncer {
             address: address.display(),
             peers: carried(self.store.cache(), &address.display(), offers_peers),
             host: hello.host,
-            host_version: hello.version,
             profile: hello.profile,
             synced_at: now,
             snapshot,
@@ -98,7 +97,7 @@ impl Syncer {
                 continue;
             }
             match client.poster(series.id) {
-                Ok((bytes, _)) => {
+                Ok(bytes) => {
                     if self.store.save_poster(series.id, tag, &bytes).is_ok() {
                         fetched(series.id);
                     }

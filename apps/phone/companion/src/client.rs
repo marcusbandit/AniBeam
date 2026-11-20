@@ -43,26 +43,20 @@ pub enum HostError {
 impl std::fmt::Display for HostError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HostError::Unreachable(why) => write!(f, "{why}"),
-            HostError::NotAnibeam(what) => write!(f, "{what}"),
-            HostError::TooNew(api) => {
-                write!(
-                    f,
-                    "{}",
-                    tr!(
-                        "client-too-new",
-                        host_api = *api,
-                        app_api = api::API_VERSION
-                    )
-                )
+            HostError::Unreachable(why) | HostError::NotAnibeam(why) | HostError::Bad(why) => {
+                f.write_str(why)
             }
-            HostError::Bad(why) => write!(f, "{why}"),
+            HostError::TooNew(api) => f.write_str(&tr!(
+                "client-too-new",
+                host_api = *api,
+                app_api = api::API_VERSION
+            )),
         }
     }
 }
 
 /// Plain words for a failed request.
-pub fn describe(error: &ureq::Error, host: &str) -> String {
+pub(crate) fn describe(error: &ureq::Error, host: &str) -> String {
     match error {
         ureq::Error::HostNotFound => tr!("client-not-found", host = host),
         ureq::Error::Timeout(_) => tr!("client-timeout", host = host),
@@ -116,7 +110,8 @@ impl HostClient {
     }
 
     /// Signs with `key` instead of the phone's.
-    pub fn with_key(mut self, key: DeviceKey) -> Self {
+    #[cfg(test)]
+    fn with_key(mut self, key: DeviceKey) -> Self {
         self.key = Some(Arc::new(key));
         self
     }
@@ -142,12 +137,8 @@ impl HostClient {
         ))
     }
 
-    pub fn address(&self) -> &HostAddress {
-        &self.address
-    }
-
-    /// One `GET`, whatever status came back: the status, the body and the content type.
-    fn fetch(&self, path: &str, limit: u64) -> Result<(u16, Vec<u8>, Option<String>), HostError> {
+    /// One `GET`, whatever status came back: the status and the body.
+    fn fetch(&self, path: &str, limit: u64) -> Result<(u16, Vec<u8>), HostError> {
         let url = format!("{}{}", self.address.base_url(), path);
         // A connection that drops before the answer gets one more try: every route is a
         // GET that changes nothing.
@@ -164,17 +155,21 @@ impl HostClient {
             }
             request.call()
         };
-        let mut response = match call() {
+        let response = match call() {
             Err(e) if dropped(&e) => call(),
             other => other,
-        }
-        .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
-        let status = response.status().as_u16();
-        let kind = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
+        };
+        self.answer(response, limit)
+    }
+
+    /// The status and the body of an answer, up to `limit` bytes of it.
+    fn answer(
+        &self,
+        response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+        limit: u64,
+    ) -> Result<(u16, Vec<u8>), HostError> {
+        let mut response =
+            response.map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
         let body = response
             .body_mut()
             .with_config()
@@ -187,12 +182,12 @@ impl HostClient {
                     why = e.to_string()
                 ))
             })?;
-        Ok((status, body, kind))
+        Ok((response.status().as_u16(), body))
     }
 
     /// The answer to a `GET` that came back 200.
-    fn get(&self, path: &str, limit: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
-        let (status, body, kind) = self.fetch(path, limit)?;
+    fn get(&self, path: &str, limit: u64) -> Result<Vec<u8>, HostError> {
+        let (status, body) = self.fetch(path, limit)?;
         if status != 200 {
             if let Some(why) = refusal(status, &body) {
                 return Err(HostError::Bad(why));
@@ -204,34 +199,31 @@ impl HostClient {
                 path = path
             )));
         }
-        Ok((body, kind))
+        Ok(body)
     }
 
-    /// Looks the name up first, because a failed lookup reaches ureq as a bare
-    /// "Invalid argument" on Android.
-    fn resolve(&self) -> Result<(), HostError> {
+    /// The host's first address, with the name looked up. A hello looks it up first,
+    /// because a failed lookup reaches ureq as a bare "Invalid argument" on Android.
+    fn lookup(&self) -> Result<std::net::SocketAddr, HostError> {
         use std::net::ToSocketAddrs;
         let host = self
             .address
             .host
             .trim_start_matches('[')
             .trim_end_matches(']');
-        let found = (host, self.address.port)
+        (host, self.address.port)
             .to_socket_addrs()
-            .map(|mut all| all.next().is_some());
-        match found {
-            Ok(true) => Ok(()),
-            _ => Err(HostError::Unreachable(tr!(
-                "client-cannot-find",
-                host = self.address.host.as_str()
-            ))),
-        }
+            .ok()
+            .and_then(|mut all| all.next())
+            .ok_or_else(|| {
+                HostError::Unreachable(tr!("client-cannot-find", host = self.address.host.as_str()))
+            })
     }
 
     /// Asks who is there. Cheap, and the first thing every sync does.
     pub fn hello(&self) -> Result<Hello, HostError> {
-        self.resolve()?;
-        let (status, body, _) = self.fetch(api::HELLO, 64 * 1024)?;
+        self.lookup()?;
+        let (status, body) = self.fetch(api::HELLO, 64 * 1024)?;
         if status != 200 {
             // A refusal is the computer's own word; any other status on the hello route is
             // a web server that is not Anibeam.
@@ -266,19 +258,19 @@ impl HostClient {
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, HostError> {
-        let (body, _) = self.get(api::SNAPSHOT, SNAPSHOT_LIMIT)?;
+        let body = self.get(api::SNAPSHOT, SNAPSHOT_LIMIT)?;
         serde_json::from_slice(&body)
             .map_err(|e| HostError::Bad(tr!("client-snapshot-unreadable", why = e.to_string())))
     }
 
     /// The body of any `GET` on the host, up to 1 MB.
     pub fn get_bytes(&self, path: &str) -> Result<Vec<u8>, HostError> {
-        self.get(path, 1024 * 1024).map(|(body, _)| body)
+        self.get(path, 1024 * 1024)
     }
 
     /// What is in one of the host's episode files.
     pub fn probe(&self, file: u64) -> Result<api::Probe, HostError> {
-        let (body, _) = self.get(&api::probe_path(file), 1024 * 1024)?;
+        let body = self.get(&api::probe_path(file), 1024 * 1024)?;
         serde_json::from_slice(&body)
             .map_err(|e| HostError::Bad(tr!("client-probe-unreadable", why = e.to_string())))
     }
@@ -286,24 +278,10 @@ impl HostClient {
     /// The host's address with the name looked up, for a player that resolves names on
     /// its own and may not ask the tailnet's DNS: `http://100.64.0.1:8790`.
     pub fn stream_base(&self) -> Result<String, HostError> {
-        use std::net::ToSocketAddrs;
-        let host = self
-            .address
-            .host
-            .trim_start_matches('[')
-            .trim_end_matches(']');
-        let found = (host, self.address.port)
-            .to_socket_addrs()
-            .ok()
-            .and_then(|mut all| all.next());
-        match found {
-            Some(std::net::SocketAddr::V4(a)) => Ok(format!("http://{}:{}", a.ip(), a.port())),
-            Some(std::net::SocketAddr::V6(a)) => Ok(format!("http://[{}]:{}", a.ip(), a.port())),
-            None => Err(HostError::Unreachable(tr!(
-                "client-cannot-find",
-                host = self.address.host.as_str()
-            ))),
-        }
+        // A SocketAddr writes an IPv6 address in brackets, as a URL wants it, and one made
+        // afresh drops a link's scope, which a URL cannot carry as it is.
+        self.lookup()
+            .map(|a| format!("http://{}", std::net::SocketAddr::new(a.ip(), a.port())))
     }
 
     /// `POST`s JSON and hands back the status and the answer, whatever the status.
@@ -316,42 +294,26 @@ impl HostClient {
         if let Some(p) = self.proof("POST", path) {
             request = request.header(proof::HEADER, p);
         }
-        let mut response = request
-            .send(body)
-            .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
-        let status = response.status().as_u16();
-        let body = response
-            .body_mut()
-            .with_config()
-            .limit(4 * 1024 * 1024)
-            .read_to_vec()
-            .map_err(|e| {
-                HostError::Bad(tr!(
-                    "client-broke-off",
-                    host = self.address.display(),
-                    why = e.to_string()
-                ))
-            })?;
-        Ok((status, body))
+        self.answer(request.send(body), 4 * 1024 * 1024)
     }
 
     /// The other Anibeams the host sees on the tailnet.
     pub fn peers(&self) -> Result<Vec<api::PeerHost>, HostError> {
-        let (body, _) = self.get(api::PEERS, 256 * 1024)?;
+        let body = self.get(api::PEERS, 256 * 1024)?;
         serde_json::from_slice::<api::Peers>(&body)
             .map(|p| p.hosts)
             .map_err(|e| HostError::Bad(tr!("client-peers-unreadable", why = e.to_string())))
     }
 
-    /// The image bytes and their content type.
-    pub fn poster(&self, series_id: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
+    /// The image's bytes.
+    pub fn poster(&self, series_id: u64) -> Result<Vec<u8>, HostError> {
         self.get(&api::poster_path(series_id), POSTER_LIMIT)
     }
 }
 
 /// What a computer that refuses this device says: its `{"error": ...}` on a 403, the
 /// answer every route gives a device switched off there.
-pub fn refusal(status: u16, body: &[u8]) -> Option<String> {
+fn refusal(status: u16, body: &[u8]) -> Option<String> {
     if status != 403 {
         return None;
     }
@@ -489,6 +451,17 @@ mod proof_tests {
         // Another hello goes unsigned, so a host whose key changed is heard again.
         client.hello().unwrap();
         assert_eq!(seen.recv().unwrap().1, None);
+    }
+
+    #[test]
+    fn the_stream_base_is_an_address_the_player_can_open() {
+        let base = |text: &str| {
+            HostClient::new(agent(), HostAddress::parse(text).unwrap())
+                .stream_base()
+                .unwrap()
+        };
+        assert_eq!(base("127.0.0.1:8790"), "http://127.0.0.1:8790");
+        assert_eq!(base("[::1]:8791"), "http://[::1]:8791");
     }
 
     #[test]

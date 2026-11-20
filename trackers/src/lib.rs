@@ -22,6 +22,9 @@ pub mod writes;
 
 pub use team::Trackers;
 
+use anibeam_contract::{CoreError, Provider};
+use anibeam_net::HttpResponse;
+
 /// Where the tokens live moved down to the foundation with `Services`, which
 /// holds it (#854); the shells and tests still name it here.
 pub use anibeam_foundation::secrets::{Secrets, StoreKind};
@@ -35,7 +38,39 @@ pub(crate) use anibeam_net::{TRACKER_TIMEOUT, as_count, as_u32};
 /// failed and already said so.
 pub(crate) const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
 
+/// A job's end that only the developer log keeps.
+pub(crate) fn quiet(message: impl Into<String>) -> anibeam_foundation::jobs::Finished {
+    anibeam_foundation::jobs::Finished {
+        plain: None,
+        level: anibeam_contract::Level::Debug,
+        message: message.into(),
+        body: anibeam_contract::EventBody::Notice,
+    }
+}
+
 /// [`NO_TOKEN`] in the current language, for an error a person reads.
 pub(crate) fn no_token() -> String {
     anibeam_contract::i18n::tr("core-trackers-no-token", &[])
+}
+
+/// A MAL reply's body, or the failure [`mal_failure`] makes of it. MAL's
+/// replies are read here for every module that asks MAL something.
+pub(crate) fn mal_json(response: &HttpResponse) -> Result<serde_json::Value, CoreError> {
+    if !response.is_success() {
+        return Err(mal_failure(response));
+    }
+    response.json()
+}
+
+/// MAL's failure with the `message` field it usually carries lifted out of
+/// the body: the body is JSON, and a truncated blob of it reads as nothing
+/// at all in a toast.
+pub(crate) fn mal_failure(response: &HttpResponse) -> CoreError {
+    let message = response
+        .json::<serde_json::Value>()
+        .ok()
+        .and_then(|body| body["message"].as_str().map(str::to_string))
+        .filter(|message| !message.is_empty())
+        .unwrap_or_else(|| response.text());
+    CoreError::provider(Provider::Mal, Some(u32::from(response.status)), message)
 }

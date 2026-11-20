@@ -12,20 +12,31 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/android/ios/**'
-      - 'apps/android/src/**'
-      - 'apps/android/ui/**'
-      - 'apps/android/scripts/*ios*'
-      - 'apps/android/companion/**'
-      - 'apps/android/Cargo.toml'
-      - 'apps/android/Cargo.lock'
-      - 'apps/android/build.rs'
+      - 'apps/phone/ios/**'
+      - 'apps/phone/src/**'
+      - 'apps/phone/ui/**'
+      - 'apps/phone/scripts/*ios*'
+      - 'apps/phone/companion/**'
+      - 'apps/phone/Cargo.toml'
+      - 'apps/phone/Cargo.lock'
+      - 'apps/phone/build.rs'
       - 'rust-toolchain.toml'
       - '.github/workflows/ios.yml'
       # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
-      - '!apps/android/src/platform/android.rs'
+      - '!apps/phone/src/platform/android.rs'
   pull_request:
     paths:
+      - 'apps/phone/ios/**'
+      - 'apps/phone/src/**'
+      - 'apps/phone/ui/**'
+      - 'apps/phone/scripts/*ios*'
+      - 'apps/phone/companion/**'
+      - 'apps/phone/Cargo.toml'
+      - 'apps/phone/Cargo.lock'
+      - 'apps/phone/build.rs'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/ios.yml'
+      # PRs opened before the move (#1309) still list apps/android; drop once they merge main.
       - 'apps/android/ios/**'
       - 'apps/android/src/**'
       - 'apps/android/ui/**'
@@ -34,9 +45,8 @@ on:
       - 'apps/android/Cargo.toml'
       - 'apps/android/Cargo.lock'
       - 'apps/android/build.rs'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/ios.yml'
       # Android's own file, cfg'd out of the iPhone build (#950). Later patterns win.
+      - '!apps/phone/src/platform/android.rs'
       - '!apps/android/src/platform/android.rs'
   workflow_dispatch:
 
@@ -59,7 +69,7 @@ jobs:
     timeout-minutes: 5
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +86,7 @@ jobs:
     timeout-minutes: 90
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
 
@@ -89,7 +99,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/android
+          workspaces: apps/phone
           key: ios
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -106,18 +116,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            apps/android/vendor/mpv-ios
-            !apps/android/vendor/mpv-ios/zips
-          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+            apps/phone/vendor/mpv-ios
+            !apps/phone/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/phone/scripts/fetch-mpv-ios.sh') }}
 
       - name: Restore libmpv for iOS
         if: github.ref != 'refs/heads/main'
         uses: actions/cache/restore@v4
         with:
           path: |
-            apps/android/vendor/mpv-ios
-            !apps/android/vendor/mpv-ios/zips
-          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+            apps/phone/vendor/mpv-ios
+            !apps/phone/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/phone/scripts/fetch-mpv-ios.sh') }}
 
       # Before clippy: the build script links libmpv.
       - name: Fetch libmpv for iOS

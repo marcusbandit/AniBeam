@@ -1,30 +1,21 @@
 //! The closure: one connection, one seed, and the connected franchise
 //! around it. Nothing here fetches anything, so a page can draw whatever
-//! the tables hold while the crawl is still filling them in.
-//!
-//! Electron's `closeGraph` closed over relations it carried in memory and
-//! fetched what it lacked. Here the `relations` table is the memory and
-//! the crawl is the fetch, so this half is pure: a member whose edges are
-//! not in the table yet is reported as owed, and the crawl is what turns
-//! that into a request.
+//! the tables hold while the crawl is still filling them in. A member
+//! whose edges are not in the table yet is reported as owed, and the crawl
+//! is what turns that into a request.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{as_i64, as_u64};
-use anibeam_contract::CoreError;
-
+use anibeam_contract::{CoreError, GraphEdge};
 /// The relations the walk follows, which the library's franchise boxes walk
 /// too, so the list sits below both (#854).
-pub use anibeam_foundation::relations::TRAVERSABLE;
+use anibeam_foundation::relations::TRAVERSABLE;
 
-/// How many nodes one closure will discover. Electron's number.
+/// How many nodes one closure will discover.
 pub const CAP: usize = 150;
-
-pub fn is_traversable(relation: &str) -> bool {
-    TRAVERSABLE.contains(&relation)
-}
 
 /// One node as the tables hold it. A node with no `anilist_media` row at
 /// all is this with nothing but its id filled in.
@@ -49,13 +40,6 @@ pub struct Node {
     pub deferred_until: Option<i64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Edge {
-    pub from: u64,
-    pub to: u64,
-    pub relation: String,
-}
-
 /// The franchise around one seed.
 pub struct Closure {
     /// The smallest member id: the franchise's identity, and the node the
@@ -64,8 +48,9 @@ pub struct Closure {
     pub root: u64,
     /// Every node drawn, in the order the walk found them.
     pub nodes: Vec<Node>,
-    /// Every edge drawn, once per `(from, to, relation)`.
-    pub edges: Vec<Edge>,
+    /// Every edge drawn, once per `(from, to, relation)`: the table's
+    /// primary key, and each member is expanded once.
+    pub edges: Vec<GraphEdge>,
     /// The seed and everything reached across a traversable edge from an
     /// expanded member.
     pub members: HashSet<u64>,
@@ -83,8 +68,7 @@ pub struct Closure {
 pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closure, CoreError> {
     let mut nodes: HashMap<u64, Node> = HashMap::new();
     let mut order: Vec<u64> = Vec::new();
-    let mut edges: Vec<Edge> = Vec::new();
-    let mut seen_edges: HashSet<(u64, u64, String)> = HashSet::new();
+    let mut edges: Vec<GraphEdge> = Vec::new();
     let mut members: HashSet<u64> = HashSet::new();
     let mut expanded: HashSet<u64> = HashSet::new();
     let mut owed: Vec<u64> = Vec::new();
@@ -121,28 +105,26 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
                 nodes.insert(to, load(conn, to, now)?);
                 order.push(to);
             }
-            if seen_edges.insert((id, to, relation.clone())) {
-                edges.push(Edge {
-                    from: id,
-                    to,
-                    relation: relation.clone(),
-                });
-            }
             // A traversable edge makes the target a member even if it was
             // already drawn as a boundary node; only a member not yet
             // expanded is worth queueing.
-            if is_traversable(&relation) {
+            if TRAVERSABLE.contains(&relation.as_str()) {
                 members.insert(to);
                 if !expanded.contains(&to) {
                     queue.push_back(to);
                 }
             }
+            edges.push(GraphEdge {
+                from: id,
+                to,
+                relation,
+            });
         }
     }
 
     let root = members.iter().copied().min().unwrap_or(seed);
     let complete = !hit_cap && owed.is_empty();
-    let nodes: Vec<Node> = order.iter().map(|id| nodes[id].clone()).collect();
+    let nodes: Vec<Node> = order.iter().filter_map(|id| nodes.remove(id)).collect();
     Ok(Closure {
         root,
         nodes,
@@ -157,12 +139,12 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
 /// the library knows only as an id, which is still worth drawing.
 fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
     let row = conn
-        .query_row(
+        .prepare_cached(
             "SELECT media_type, format, status, year, site_url, title_romaji, title_english, cover_url,
                     relations_fetched_at, crawl_deferred_until
              FROM anilist_media WHERE id = ?1",
-            params![as_i64(id)],
-            |r| {
+        )?
+        .query_row(params![as_i64(id)], |r| {
                 Ok(Node {
                     anilist_id: id,
                     media_type: r.get(0)?,

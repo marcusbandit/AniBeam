@@ -111,18 +111,19 @@ impl<S: Stream> Connection<S> {
         // Sent without waiting on the replies: a server that ignores SUBSCRIBE still shows
         // activities, and the replies are skipped by nonce on the way to the next one.
         for evt in SUBSCRIBED {
-            conn.nonce += 1;
-            let nonce = format!("anibeam-{}-{}", std::process::id(), conn.nonce);
-            let command = json!({"cmd": "SUBSCRIBE", "evt": evt, "args": {}, "nonce": nonce});
-            conn.stream.write_all(&encode(FRAME, &command))?;
+            conn.write_command("SUBSCRIBE", Some(evt), json!({}))?;
         }
         Ok(conn)
     }
 
-    /// Sends one command and reads its reply, so the socket never fills. An
-    /// ERROR reply is a rejection; anything else that goes wrong means the
-    /// connection is gone.
-    fn command(&mut self, cmd: &str, evt: Option<&str>, args: Value) -> Result<Value, SendError> {
+    /// Writes one command frame, with a nonce no other command on this
+    /// connection has carried, and gives the nonce its reply will carry.
+    fn write_command(
+        &mut self,
+        cmd: &str,
+        evt: Option<&str>,
+        args: Value,
+    ) -> Result<String, SendError> {
         self.nonce += 1;
         let nonce = format!("anibeam-{}-{}", std::process::id(), self.nonce);
         let mut command = json!({"cmd": cmd, "args": args, "nonce": nonce});
@@ -130,6 +131,14 @@ impl<S: Stream> Connection<S> {
             command["evt"] = json!(evt);
         }
         self.stream.write_all(&encode(FRAME, &command))?;
+        Ok(nonce)
+    }
+
+    /// Sends one command and reads its reply, so the socket never fills. An
+    /// ERROR reply is a rejection; anything else that goes wrong means the
+    /// connection is gone.
+    fn command(&mut self, cmd: &str, args: Value) -> Result<Value, SendError> {
+        let nonce = self.write_command(cmd, None, args)?;
         let reply = self.next_reply(|v| v["nonce"] == nonce.as_str())?;
         if reply["evt"] == "ERROR" {
             let message = reply["data"]["message"].as_str().unwrap_or("rejected");
@@ -141,7 +150,7 @@ impl<S: Stream> Connection<S> {
     /// Sets the activity, or clears it with `None`.
     pub fn set_activity(&mut self, activity: Option<&Value>) -> Result<(), SendError> {
         let args = json!({"pid": std::process::id(), "activity": activity});
-        self.command("SET_ACTIVITY", None, args).map(|_| ())
+        self.command("SET_ACTIVITY", args).map(|_| ())
     }
 
     /// Answers someone's Ask to Join: an invite, which hands them the join
@@ -152,8 +161,7 @@ impl<S: Stream> Connection<S> {
         } else {
             "CLOSE_ACTIVITY_JOIN_REQUEST"
         };
-        self.command(cmd, None, json!({"user_id": user_id}))
-            .map(|_| ())
+        self.command(cmd, json!({"user_id": user_id})).map(|_| ())
     }
 
     /// Everything Discord has said unasked since the last poll, reading only
@@ -374,41 +382,43 @@ impl Transport for Discord {
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(SendError::Gone("not connected".to_string()));
-        };
-        let result = conn.set_activity(activity.map(Activity::to_json).as_ref());
-        if matches!(result, Err(SendError::Gone(_))) {
-            self.conn = None;
-        }
-        result
+        self.with_conn(|conn| conn.set_activity(activity.map(Activity::to_json).as_ref()))
+            .unwrap_or_else(not_connected)
     }
 
+    /// With no connection there is nothing to read, which is no failure.
     fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
-        let Some(conn) = self.conn.as_mut() else {
-            return Ok(Vec::new());
-        };
-        let result = conn.poll();
-        if result.is_err() {
-            self.conn = None;
-        }
-        result
+        self.with_conn(Connection::poll)
+            .unwrap_or_else(|| Ok(Vec::new()))
     }
 
     fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(SendError::Gone("not connected".to_string()));
-        };
-        let result = conn.answer(user_id, invite);
-        if matches!(result, Err(SendError::Gone(_))) {
-            self.conn = None;
-        }
-        result
+        self.with_conn(|conn| conn.answer(user_id, invite))
+            .unwrap_or_else(not_connected)
     }
 
     fn close(&mut self) {
         self.conn = None;
     }
+}
+
+impl Discord {
+    /// Runs `f` on the open connection, or gives None when there is none. A connection
+    /// `f` finds gone is let go of; one Discord only refused something is kept.
+    fn with_conn<T>(
+        &mut self,
+        f: impl FnOnce(&mut Connection<Box<dyn Stream>>) -> Result<T, SendError>,
+    ) -> Option<Result<T, SendError>> {
+        let result = f(self.conn.as_mut()?);
+        if matches!(result, Err(SendError::Gone(_))) {
+            self.conn = None;
+        }
+        Some(result)
+    }
+}
+
+fn not_connected() -> Result<(), SendError> {
+    Err(SendError::Gone("not connected".to_string()))
 }
 
 /// Tries `len` candidates in turn from `from`, wrapping round, until one answers or
@@ -881,5 +891,30 @@ mod tests {
     fn an_unconnected_transport_sends_nothing() {
         let mut d = Discord::default();
         assert!(matches!(d.send(None), Err(SendError::Gone(_))));
+        assert_eq!(d.poll().unwrap(), vec![]);
+    }
+
+    /// A refusal keeps the connection, and a connection found gone is let go of, so the
+    /// worker connects again rather than writing to a dead socket.
+    #[test]
+    fn a_refusal_keeps_the_connection_and_a_gone_one_is_dropped() {
+        let fake = with(
+            opened(),
+            vec![(
+                FRAME,
+                json!({"cmd": "SET_ACTIVITY", "evt": "ERROR", "nonce": nonce(3),
+                       "data": {"code": 4000, "message": "bad large_image"}}),
+            )],
+        );
+        let conn = Connection::handshake(Box::new(fake) as Box<dyn Stream>, "123").unwrap();
+        let mut d = Discord {
+            conn: Some(conn),
+            next: 0,
+        };
+        assert!(matches!(d.send(None), Err(SendError::Rejected(_))));
+        assert!(d.conn.is_some(), "a refusal leaves the connection standing");
+        // Nothing more on the wire: the next send finds the stream at its end.
+        assert!(matches!(d.send(None), Err(SendError::Gone(_))));
+        assert!(d.conn.is_none(), "a gone connection is let go of");
     }
 }

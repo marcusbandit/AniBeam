@@ -133,6 +133,21 @@ pub fn load_row(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError>
     Ok(row)
 }
 
+/// The row of a connected account, or None. The row survives a disconnect
+/// with its credentials, so what says an account is connected is the
+/// instant it connected.
+pub(crate) fn connected(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError> {
+    Ok(load_row(conn, t)?.filter(|row| row.connected_at.is_some()))
+}
+
+/// [`connected`] from inside a job.
+pub(crate) async fn connected_async(
+    services: &Services,
+    t: Tracker,
+) -> Result<Option<Row>, CoreError> {
+    services.store.write_async(move |c| connected(c, t)).await
+}
+
 // What the shell is told -----------------------------------------------------
 
 /// Both accounts and which of them is the main one. Reads the keyring for
@@ -156,8 +171,7 @@ pub fn state(services: &Services) -> Result<TrackerState, CoreError> {
 /// `state` from inside a job. The keyring is synchronous underneath, so it
 /// runs on the blocking pool rather than on a tokio worker.
 pub async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreError> {
-    let owner = services.clone();
-    joined(services.handle.spawn_blocking(move || state(&owner)).await)?
+    through_services(services, state).await
 }
 
 fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount {
@@ -243,13 +257,7 @@ pub(crate) async fn credentials_async(
     services: &Arc<Services>,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let owner = services.clone();
-    joined(
-        services
-            .handle
-            .spawn_blocking(move || effective_credentials(&owner, t))
-            .await,
-    )?
+    through_services(services, move |s| effective_credentials(s, t)).await
 }
 
 // The calls ------------------------------------------------------------------
@@ -382,6 +390,14 @@ pub async fn access_token(trackers: &Trackers, t: Tracker) -> Result<Option<Stri
             Ok(None)
         }
     }
+}
+
+/// [`access_token`] for a call that cannot go on without one: no token is
+/// the tracker's failure, in the words a person reads.
+pub(crate) async fn token(trackers: &Trackers, t: Tracker) -> Result<String, CoreError> {
+    access_token(trackers, t)
+        .await?
+        .ok_or_else(|| tracker_error(t, crate::no_token()))
 }
 
 /// Whether a token is close enough to its expiry to be worth replacing.
@@ -568,6 +584,20 @@ where
     joined(services.handle.spawn_blocking(move || f(&secrets)).await)?
 }
 
+/// A call that goes through the `Services` accessor, from inside a job: on
+/// the blocking pool, as a calling thread would make it. Unlike
+/// [`with_secrets`] it may run the accessor's D-Bus probe, which is what the
+/// state and the credentials want; a bare keyring read uses
+/// `with_secrets`.
+async fn through_services<T, F>(services: &Arc<Services>, f: F) -> Result<T, CoreError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Services) -> Result<T, CoreError> + Send + 'static,
+{
+    let owner = services.clone();
+    joined(services.handle.spawn_blocking(move || f(&owner)).await)?
+}
+
 /// A blocking task that was cancelled or panicked, reported rather than
 /// unwrapped: nothing exported panics on anything.
 fn joined<T>(joined: Result<T, tokio::task::JoinError>) -> Result<T, CoreError> {
@@ -620,17 +650,17 @@ fn emit_series_changed(
     Ok(())
 }
 
-fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreError> {
+/// The series whose match carries this tracker's id, or with none named,
+/// every matched series.
+pub(crate) fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreError> {
     let sql = match t {
         Some(Tracker::Anilist) => "SELECT id FROM series WHERE anilist_id IS NOT NULL ORDER BY id",
         Some(Tracker::Mal) => "SELECT id FROM series WHERE mal_id IS NOT NULL ORDER BY id",
         None => "SELECT id FROM series WHERE provider IS NOT NULL ORDER BY id",
     };
-    let mut stmt = conn.prepare(sql)?;
-    let ids = stmt
-        .query_map([], |r| r.get::<_, i64>(0))?
-        .collect::<Result<Vec<i64>, _>>()?;
-    Ok(ids.into_iter().map(|id| id as u64).collect())
+    let mut stmt = conn.prepare_cached(sql)?;
+    let ids = stmt.query_map([], |r| Ok(r.get::<_, i64>(0)? as u64))?;
+    Ok(ids.collect::<Result<_, _>>()?)
 }
 
 #[cfg(test)]

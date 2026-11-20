@@ -5,7 +5,7 @@ The desktop sets Archivo's width and weight axes per role (apps/linux/qml/Tokens
 `roles`). Slint cannot set a variable font's axes, so each role becomes its own static
 family here, named after the role, and the pages pick a role by family name.
 
-    python3 -I scripts/cut-fonts.py      (from apps/android, needs fonttools)
+    python3 -I scripts/cut-fonts.py      (from apps/phone, needs fonttools)
 """
 import pathlib
 import sys

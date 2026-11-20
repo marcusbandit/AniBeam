@@ -5,12 +5,12 @@
 //! picked, and keeps reading the feed on its own, even while Anibeam is
 //! closed. What it does not know is when an episode is due. This module
 //! does: for each followed show it sets one timer for the episode that airs
-//! next, and one for an episode that aired in the last three days and is not
-//! here yet. At the moment it airs (and a little after) it asks the client
-//! to read the show's feed now; it looks again a few hours on, then a day
-//! on, each time only reading the library, and asking the feed again when
-//! the episode is still missing. Three days after it aired it stops and
-//! says so in one activity line, once; the rule itself goes on looking.
+//! next, and one for each episode that aired in the last three days and is
+//! not here yet. A little after it airs it asks the client to read the
+//! show's feed now; it looks again a few hours on, then a day on, each time
+//! reading the library first and asking the feed again only when the episode
+//! is still missing. Three days after it aired it stops and says so in one
+//! activity line, once; the rule itself goes on looking.
 //!
 //! Which shows are followed is what the last read of the client's rules
 //! linked to the library, kept in `follows`, so the timers are set at launch
@@ -30,41 +30,26 @@ use anibeam_foundation::services::Services;
 use anibeam_foundation::sync::recover;
 
 /// When a followed episode is looked for, counted from the moment it aired:
-/// the feed is asked a little after it airs, since a release takes a while
-/// to be posted, then the library is checked (and the feed asked again) a
-/// few hours on and a day on, and three days on the watch gives up.
-pub const STEPS: [(i64, Step); 4] = [
-    (20 * 60, Step::Refresh),
-    (6 * 3600, Step::Check),
-    (24 * 3600, Step::Check),
-    (72 * 3600, Step::GiveUp),
-];
+/// a little after it airs, since a release takes a while to be posted, then
+/// a few hours on and a day on. Each look is done if the episode is here and
+/// otherwise asks the feed again; the last, three days on, says so once and
+/// stops instead.
+pub const STEPS: [i64; 4] = [20 * 60, 6 * 3600, 24 * 3600, WINDOW];
 
-/// How far back an aired episode is still watched for after a restart.
+/// How far back an aired episode is still watched for after a restart: the
+/// last step.
 const WINDOW: i64 = 72 * 3600;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Step {
-    /// Ask the feed now.
-    Refresh,
-    /// Done if the episode is here; otherwise ask the feed again.
-    Check,
-    /// Done if the episode is here; otherwise say so once and stop.
-    GiveUp,
-}
 
 /// The steps still ahead of `now` for an episode that aired at `aired_at`,
 /// as absolute times. The last step already past is done now rather than
 /// dropped, since this process has not done it: a restart half an hour
 /// after an episode aired still asks the feed straight away, and one past
-/// three days gives up straight away.
-pub fn steps_ahead(aired_at: i64, now: i64) -> Vec<(i64, Step)> {
-    let all: Vec<(i64, Step)> = STEPS.iter().map(|(d, s)| (aired_at + d, *s)).collect();
-    let mut out: Vec<(i64, Step)> = Vec::new();
-    if let Some(&(_, step)) = all.iter().rev().find(|(at, _)| *at <= now) {
-        out.push((now, step));
-    }
-    out.extend(all.into_iter().filter(|(at, _)| *at > now));
+/// three days gives up straight away. The give-up is always the last time.
+pub fn steps_ahead(aired_at: i64, now: i64) -> Vec<i64> {
+    let all = STEPS.map(|d| aired_at + d);
+    // The steps are in order: past the first, look now
+    let mut out = if all[0] <= now { vec![now] } else { Vec::new() };
+    out.extend(all.into_iter().filter(|at| *at > now));
     out
 }
 
@@ -247,7 +232,8 @@ const NAP: u64 = 10 * 60;
 /// One episode's watch, step by step. True when it ended on its own (the
 /// episode arrived, or the watch gave up), so the next one can be armed.
 async fn watch(downloads: &Downloads, d: &Due) -> bool {
-    for (at, step) in steps_ahead(d.aired_at, anibeam_foundation::time::now_secs()) {
+    let steps = steps_ahead(d.aired_at, anibeam_foundation::time::now_secs());
+    for (i, &at) in steps.iter().enumerate() {
         // The runtime ends this sleep with the core, so a shutdown needs
         // nothing of its own here.
         loop {
@@ -270,14 +256,14 @@ async fn watch(downloads: &Downloads, d: &Due) -> bool {
                 continue;
             }
         };
-        match (now, step) {
-            (Standing::Arrived, _) => return true,
-            (Standing::Stale, _) => return false,
-            (Standing::Missing, Step::Refresh | Step::Check) => refresh(downloads, d.series).await,
-            (Standing::Missing, Step::GiveUp) => {
+        match now {
+            Standing::Arrived => return true,
+            Standing::Stale => return false,
+            Standing::Missing if i + 1 == steps.len() => {
                 give_up(&downloads.services, d).await;
                 return true;
             }
+            Standing::Missing => refresh(downloads, d.series).await,
         }
     }
     true
@@ -354,22 +340,17 @@ async fn give_up(services: &Services, d: &Due) {
     services.bus.say(
         Level::Warn,
         Stage::Downloads,
-        missed_line(&d.title, d.episode),
+        anibeam_contract::words!(
+            "core-downloads-episode-missed",
+            episode = d.episode,
+            title = &d.title
+        ),
         format!(
             "followed episode {} of series {} not here three days after it aired",
             d.episode, d.series
         ),
         EventBody::Notice,
     );
-}
-
-/// What the activity log says when a followed episode never came.
-pub fn missed_line(title: &str, episode: u32) -> anibeam_contract::Words {
-    anibeam_contract::words!(
-        "core-downloads-episode-missed",
-        episode = episode,
-        title = title
-    )
 }
 
 #[cfg(test)]
@@ -388,28 +369,23 @@ mod tests {
         assert_eq!(
             steps_ahead(aired, aired - H),
             vec![
-                (aired + 20 * 60, Step::Refresh),
-                (aired + 6 * H, Step::Check),
-                (aired + 24 * H, Step::Check),
-                (aired + 72 * H, Step::GiveUp),
+                aired + 20 * 60,
+                aired + 6 * H,
+                aired + 24 * H,
+                aired + 72 * H
             ]
         );
-        // Past the refresh, which this process never did: ask the feed now.
+        // Past the first look, which this process never did: look now.
         let now = aired + H;
-        assert_eq!(steps_ahead(aired, now)[0], (now, Step::Refresh));
-        assert_eq!(steps_ahead(aired, now)[1], (aired + 6 * H, Step::Check));
-        // After the first check: look again at once, then the rest.
+        assert_eq!(steps_ahead(aired, now)[..2], [now, aired + 6 * H]);
+        // After the second: look again at once, then the rest.
         let now = aired + 10 * H;
         assert_eq!(
             steps_ahead(aired, now),
-            vec![
-                (now, Step::Check),
-                (aired + 24 * H, Step::Check),
-                (aired + 72 * H, Step::GiveUp),
-            ]
+            vec![now, aired + 24 * H, aired + 72 * H]
         );
         let late = aired + 80 * H;
-        assert_eq!(steps_ahead(aired, late), vec![(late, Step::GiveUp)]);
+        assert_eq!(steps_ahead(aired, late), vec![late]);
     }
 
     fn teams() -> (tempfile::TempDir, Teams) {
@@ -418,21 +394,38 @@ mod tests {
         (dir, teams)
     }
 
+    fn exec(teams: &Teams, sql: &'static str) {
+        teams
+            .services
+            .store
+            .write(move |c| Ok(c.execute_batch(sql)?))
+            .unwrap();
+    }
+
+    /// The episodes `due` sets a timer for.
+    fn episodes(teams: &Teams, now: i64) -> Vec<u32> {
+        let found = teams.services.store.read(|c| due(c, now)).unwrap();
+        found.iter().map(|d| d.episode).collect()
+    }
+
     /// A followed show with episodes 1 to 3 out (1 here, 2 a day ago and
     /// missing, 3 a week ago and missing) and 4 due tomorrow.
     fn followed(teams: &Teams, now: i64) {
-        teams.services.store
+        exec(
+            teams,
+            "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0);
+             INSERT INTO anilist_media (id, media_type, title_romaji, status, format, fetched_at)
+               VALUES (9, 'ANIME', 'Show', 'RELEASING', 'TV', 0);
+             INSERT INTO series (source_id, kind, path, folder_name, added_at, provider, anilist_id)
+               VALUES (1, 'show', '/lib/Show', 'Show', 0, 'anilist', 9);
+             INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, sidecars, seen_at)
+               VALUES (1, '/lib/Show/01.mkv', 0, 0, 'episode', 1, 'EP1', '1', '[]', 0);
+             INSERT INTO follows (series_id, feed_url, read_at) VALUES (1, 'https://feed.invalid/rss', 0);",
+        );
+        teams
+            .services
+            .store
             .write(move |c| {
-                c.execute_batch(
-                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0);
-                     INSERT INTO anilist_media (id, media_type, title_romaji, status, format, fetched_at)
-                       VALUES (9, 'ANIME', 'Show', 'RELEASING', 'TV', 0);
-                     INSERT INTO series (source_id, kind, path, folder_name, added_at, provider, anilist_id)
-                       VALUES (1, 'show', '/lib/Show', 'Show', 0, 'anilist', 9);
-                     INSERT INTO files (series_id, path, size, mtime, kind, number, label, episode_key, sidecars, seen_at)
-                       VALUES (1, '/lib/Show/01.mkv', 0, 0, 'episode', 1, 'EP1', '1', '[]', 0);
-                     INSERT INTO follows (series_id, feed_url, read_at) VALUES (1, 'https://feed.invalid/rss', 0);",
-                )?;
                 for (n, at) in [
                     (1, now - 14 * 86_400),
                     (2, now - 86_400),
@@ -458,38 +451,15 @@ mod tests {
         let (_dir, teams) = teams();
         let now = 2_000_000_000;
         followed(&teams, now);
-        let found: Vec<u32> = teams
-            .services
-            .store
-            .read(|c| due(c, now))
-            .unwrap()
-            .iter()
-            .map(|d| d.episode)
-            .collect();
-        assert_eq!(found, vec![2, 4]);
+        assert_eq!(episodes(&teams, now), vec![2, 4]);
 
         // Given up on once, the recent miss is not watched again after a
         // restart; and an episode that arrives is not missing.
-        teams
-            .services
-            .store
-            .write(move |c| {
-                c.execute(
-                    "INSERT INTO follow_misses (series_id, episode, said_at) VALUES (1, 2, ?1)",
-                    [now],
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        let found: Vec<u32> = teams
-            .services
-            .store
-            .read(|c| due(c, now))
-            .unwrap()
-            .iter()
-            .map(|d| d.episode)
-            .collect();
-        assert_eq!(found, vec![4]);
+        exec(
+            &teams,
+            "INSERT INTO follow_misses (series_id, episode, said_at) VALUES (1, 2, 0)",
+        );
+        assert_eq!(episodes(&teams, now), vec![4]);
         // A step reads where the episode stands: here, gone stale with a new
         // date, or still missing.
         let due4 = Due {
@@ -498,27 +468,19 @@ mod tests {
             episode: 4,
             aired_at: now + 86_400,
         };
-        assert_eq!(
-            teams.services.store.read(|c| standing(c, &due4)).unwrap(),
-            Standing::Missing
-        );
+        let standing_of = |d: &Due| teams.services.store.read(|c| standing(c, d)).unwrap();
+        assert_eq!(standing_of(&due4), Standing::Missing);
         let due1 = Due {
             episode: 1,
             aired_at: now - 14 * 86_400,
             ..due4.clone()
         };
-        assert_eq!(
-            teams.services.store.read(|c| standing(c, &due1)).unwrap(),
-            Standing::Arrived
-        );
+        assert_eq!(standing_of(&due1), Standing::Arrived);
         let moved = Due {
             aired_at: now + 2 * 86_400,
             ..due4.clone()
         };
-        assert_eq!(
-            teams.services.store.read(|c| standing(c, &moved)).unwrap(),
-            Standing::Stale
-        );
+        assert_eq!(standing_of(&moved), Standing::Stale);
         teams.shutdown();
     }
 
@@ -548,42 +510,14 @@ mod tests {
         let (_dir, teams) = teams();
         let now = 2_000_000_000;
         followed(&teams, now);
-        teams
-            .services
-            .store
-            .write(|c| {
-                c.execute("UPDATE series SET hidden = 1", [])?;
-                Ok(())
-            })
-            .unwrap();
-        assert!(
-            teams
-                .services
-                .store
-                .read(|c| due(c, now))
-                .unwrap()
-                .is_empty()
-        );
-        teams
-            .services
-            .store
-            .write(|c| {
-                c.execute("UPDATE series SET hidden = 0", [])?;
-                Ok(())
-            })
-            .unwrap();
+        exec(&teams, "UPDATE series SET hidden = 1");
+        assert!(episodes(&teams, now).is_empty());
+        exec(&teams, "UPDATE series SET hidden = 0");
         teams
             .services
             .handle
             .block_on(remember(&teams.downloads, &[]));
-        assert!(
-            teams
-                .services
-                .store
-                .read(|c| due(c, now))
-                .unwrap()
-                .is_empty()
-        );
+        assert!(episodes(&teams, now).is_empty());
         teams.shutdown();
     }
 }
