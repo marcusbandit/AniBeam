@@ -36,6 +36,19 @@ const ANSWER: Duration = Duration::from_secs(10);
 /// How long a whole line may take. `am broadcast` waits on an ordered background broadcast,
 /// and Android calls a receiver that keeps it past 60 s not responding.
 const LINE: Duration = Duration::from_secs(45);
+/// How long a line may take on Android 13 and older, where the background queue hands out
+/// ordered broadcasts one at a time for the whole system: every other app's broadcast waits
+/// behind a long line. ctl.sh splits a long `wait` into short ones.
+const SHORT_LINE: Duration = Duration::from_secs(8);
+
+/// The time a line gets on this phone.
+fn line_time() -> Duration {
+    #[cfg(target_os = "android")]
+    if android::sdk() <= 33 {
+        return SHORT_LINE;
+    }
+    LINE
+}
 /// The most an answer carries, in UTF-8 bytes. Java holds it as UTF-16, about twice this
 /// for the mostly ASCII answers, and it crosses binder in one-way calls (to the system, then
 /// to `am`) whose shared buffer is about 512 KB: past it a call fails, the broadcast never
@@ -72,7 +85,8 @@ pub fn serve(line: &str) -> (bool, String) {
         Ok(c) => c,
         Err(e) => return (false, format!("error: {e}")),
     };
-    let budget = Budget(Instant::now() + LINE);
+    let line = line_time();
+    let budget = Budget(Instant::now() + line);
     let total = commands.len();
     let mut out = Vec::new();
     let mut ok = true;
@@ -80,12 +94,12 @@ pub fn serve(line: &str) -> (bool, String) {
         let said = match worst(&c) {
             Some(need) if need > budget.left() => format!(
                 "error: the line would run past its {} s; {} of {total} not run, send them on a line of their own",
-                LINE.as_secs(),
+                line.as_secs(),
                 total - i
             ),
             _ if budget.left().is_zero() => format!(
                 "error: the line ran out of its {} s; {} of {total} not run",
-                LINE.as_secs(),
+                line.as_secs(),
                 total - i
             ),
             _ => run(c, budget),
@@ -439,6 +453,9 @@ mod tests {
         assert_eq!(worst(&Command::Where), None);
         // Two of the longest waits cannot both fit in one line.
         assert!(2 * worst(&wait).unwrap() > LINE);
+        // Off the phone a line has the long budget.
+        assert_eq!(line_time(), LINE);
+        assert!(SHORT_LINE < LINE);
         let b = Budget(Instant::now() + Duration::from_secs(3));
         assert!(b.cap(ANSWER) <= Duration::from_secs(3));
     }

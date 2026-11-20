@@ -19,6 +19,24 @@ extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString) -> jstrin
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Android's API level, from `ro.build.version.sdk`; 0 when it cannot be read.
+pub fn sdk() -> i32 {
+    use std::ffi::{CStr, c_char};
+    unsafe extern "C" {
+        fn __system_property_get(name: *const c_char, value: *mut c_char) -> i32;
+    }
+    let mut value = [0 as c_char; 92];
+    let n = unsafe { __system_property_get(c"ro.build.version.sdk".as_ptr(), value.as_mut_ptr()) };
+    if n <= 0 {
+        return 0;
+    }
+    unsafe { CStr::from_ptr(value.as_ptr()) }
+        .to_str()
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
 /// Hands `Control.run` its body, then registers the receiver.
 pub fn start() {
     let natives = [(

@@ -305,6 +305,9 @@ struct Element {
     /// Shown, but under something drawn later that takes the touch there: a sheet, a menu,
     /// a question, the bar over a page scrolled under it.
     covered: bool,
+    /// Under the on-screen keyboard: out of a finger's reach, but a field there can still
+    /// hold the focus and be typed into.
+    under_keyboard: bool,
 }
 
 impl Element {
@@ -336,6 +339,7 @@ impl Element {
             (self.selected, " selected"),
             (!self.shown, " offscreen"),
             (self.covered, " covered"),
+            (self.under_keyboard, " under the keyboard"),
         ] {
             if on {
                 s.push_str(word);
@@ -356,7 +360,7 @@ impl Element {
 
     /// On screen and in reach of a finger.
     fn reachable(&self) -> bool {
-        self.shown && !self.covered
+        self.shown && !self.covered && !self.under_keyboard
     }
 }
 
@@ -434,9 +438,18 @@ impl Scene {
     /// Whether a touch area drawn after the item, and not its own, takes the touch at the
     /// point. Slint hands a touch to the last-drawn touch area under it.
     fn covers(&self, point: (f32, f32), order: usize, item: &ItemRc, ancestors: &[ItemRc]) -> bool {
-        if self.keyboard.is_some_and(|k| k.holds(point)) {
-            return true;
-        }
+        self.keyboard.is_some_and(|k| k.holds(point))
+            || self.touch_covers(point, order, item, ancestors)
+    }
+
+    /// `covers` without the keyboard: what is drawn over the point.
+    fn touch_covers(
+        &self,
+        point: (f32, f32),
+        order: usize,
+        item: &ItemRc,
+        ancestors: &[ItemRc],
+    ) -> bool {
         let near = near(ancestors);
         self.touches.iter().any(|t| {
             if t.order <= order || &t.item == item || !t.raw.holds(point) {
@@ -581,6 +594,7 @@ fn scene(w: &AppWindow, keep: Keep) -> Scene {
             centre,
             shown,
             covered: false,
+            under_keyboard: false,
         });
         ControlFlow::Continue(())
     });
@@ -599,7 +613,8 @@ fn scene(w: &AppWindow, keep: Keep) -> Scene {
         scrollers,
     };
     for e in out.iter_mut().filter(|e| e.shown) {
-        e.covered = scene.covers(e.centre, e.order, &e.item, &e.ancestors);
+        e.covered = scene.touch_covers(e.centre, e.order, &e.item, &e.ancestors);
+        e.under_keyboard = scene.keyboard.is_some_and(|k| k.holds(e.centre));
     }
     scene.elements = out;
     scene
@@ -643,12 +658,23 @@ fn listed(all: Vec<Element>) -> Vec<Element> {
 /// if any, else, unless `whole` says not to, the ones holding it. One walk, which skips every
 /// element whose label does not hold the words.
 fn matching(w: &AppWindow, label: &str, whole: bool) -> Vec<Element> {
+    matching_with(w, label, whole).0
+}
+
+/// `matching`, and whether its hits name the whole label (false when they only hold it).
+fn matching_with(w: &AppWindow, label: &str, whole: bool) -> (Vec<Element>, bool) {
     let want = norm(label);
     let list = listed(scene(w, Keep::Holding(&want)).elements);
     if list.iter().any(|e| names(&e.key, &want)) || whole {
-        list.into_iter().filter(|e| names(&e.key, &want)).collect()
+        (
+            list.into_iter().filter(|e| names(&e.key, &want)).collect(),
+            true,
+        )
     } else {
-        list.into_iter().filter(|e| e.key.contains(&want)).collect()
+        (
+            list.into_iter().filter(|e| e.key.contains(&want)).collect(),
+            false,
+        )
     }
 }
 
@@ -668,7 +694,25 @@ fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
             }
             (word, None, hits)
         }
-        Target::Label { label, nth } => (label, *nth, matching(w, label, false)),
+        Target::Label { label, nth } => {
+            let (hits, whole) = matching_with(w, label, false);
+            // Words that only sit inside labels ("episodes" in "Delete episodes") are a
+            // question back: acting on them could press a control nobody named.
+            if !whole && !hits.is_empty() && nth.is_none() {
+                let some: Vec<String> = hits
+                    .iter()
+                    .take(5)
+                    .enumerate()
+                    .map(|(i, e)| format!("  {}: {}", i + 1, e.line()))
+                    .collect();
+                return Err(format!(
+                    "no control is labelled {label:?}; {} hold the words, so give a whole label or --nth n:\n{}",
+                    hits.len(),
+                    some.join("\n")
+                ));
+            }
+            (label, *nth, hits)
+        }
     };
     if hits.is_empty() {
         return Err(format!(
@@ -921,10 +965,13 @@ fn pick_series(all: &[(u64, String)], series: &Series) -> Result<u64, String> {
     }
 }
 
+/// The fields in reach, numbered for `fill` and searched for the focus. One the keyboard
+/// covers still counts: it is the field the keyboard rose for, and numbering it out would
+/// shift every number after it while the keyboard is up.
 fn fields(w: &AppWindow) -> Vec<Element> {
     elements(w)
         .into_iter()
-        .filter(|e| e.reachable() && e.role == AccessibleRole::TextInput)
+        .filter(|e| e.shown && !e.covered && e.role == AccessibleRole::TextInput)
         .collect()
 }
 
@@ -1029,7 +1076,13 @@ fn finger(
             .contains(SupportedAccessibilityAction::Default)
         {
             e.item.accessible_action(&AccessibilityAction::Default);
-            let _ = reply.send(format!("pressed {said}"));
+            // The line again, so a switch answers with the state it turned to.
+            let now = scene(w, Keep::Holding(&e.key))
+                .elements
+                .into_iter()
+                .find(|n| n.item == e.item)
+                .map(|n| n.line());
+            let _ = reply.send(format!("pressed {}", now.unwrap_or(said)));
             return;
         }
     }
@@ -1463,6 +1516,12 @@ mod tests {
         let pressed = say(&format!("click {downloads:?}"));
         assert!(pressed.starts_with("pressed tab"), "{pressed}");
         assert_eq!(w.global::<Nav>().get_page(), 2, "{pressed}");
+        // Words that only sit inside a label are asked about, never pressed.
+        let partial = say("click ownloa");
+        assert!(
+            partial.starts_with("error: no control is labelled"),
+            "{partial}"
+        );
 
         // A search lands in Downloads with its words in the field.
         say("go home");

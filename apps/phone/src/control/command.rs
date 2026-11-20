@@ -461,7 +461,8 @@ fn parse(words: &[String]) -> Result<Command, String> {
                 return Err("fill needs a field (its number or placeholder) and the text".into());
             }
             let field = match args[0].parse::<usize>() {
-                Ok(n) if n > 0 => Field::Index(n),
+                Ok(0) => return Err("fill counts fields from 1; tree lists them".into()),
+                Ok(n) => Field::Index(n),
                 _ if args[0].trim().is_empty() => {
                     return Err("fill needs a field: its number or placeholder".into());
                 }
@@ -602,6 +603,11 @@ mod tests {
             parse_line("shot a.png")
                 .unwrap_err()
                 .contains("ctl.sh shot")
+        );
+        // Fields count from 1; a 0 is never a placeholder to search for.
+        assert_eq!(
+            parse_line("fill 0 x").unwrap_err(),
+            "fill counts fields from 1; tree lists them"
         );
         assert_eq!(
             one("click Cancel --nth 1"),
