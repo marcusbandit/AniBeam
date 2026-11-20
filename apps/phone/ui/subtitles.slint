@@ -244,6 +244,7 @@ export component SubtitleRows inherits VerticalLayout {
             HorizontalLayout {
                 alignment: start;
                 Switch {
+                    label: Tr.t("subs-bold");
                     on: SubtitleData.bold;
                     toggled => { SubtitleData.set-bold(!SubtitleData.bold); }
                 }

@@ -552,8 +552,8 @@ fn elements(w: &AppWindow) -> Vec<Element> {
     scene(w, Keep::All).elements
 }
 
-/// The elements worth listing: in reach, and without the text inside a control that names
-/// it already.
+/// The elements worth listing: in reach, and without the text a control beside it or around
+/// it names already: a button's label, a settings row's title next to its switch.
 fn listed(all: Vec<Element>) -> Vec<Element> {
     let shown: Vec<Element> = all.into_iter().filter(Element::reachable).collect();
     // The controls by their folded label, so each text looks only at the few that share it.
@@ -561,13 +561,17 @@ fn listed(all: Vec<Element>) -> Vec<Element> {
     for e in shown.iter().filter(|e| e.role != AccessibleRole::Text) {
         controls.entry(e.key.as_str()).or_default().push(e);
     }
+    let near = |e: &Element| e.ancestors[..e.ancestors.len().min(OWN_DEPTH)].to_vec();
     let keep: Vec<bool> = shown
         .iter()
         .map(|e| {
             e.role != AccessibleRole::Text
-                || !controls
-                    .get(e.key.as_str())
-                    .is_some_and(|c| c.iter().any(|o| o.holds(e.centre.0, e.centre.1)))
+                || !controls.get(e.key.as_str()).is_some_and(|c| {
+                    let mine = near(e);
+                    c.iter().any(|o| {
+                        o.holds(e.centre.0, e.centre.1) || near(o).iter().any(|a| mine.contains(a))
+                    })
+                })
         })
         .collect();
     shown
@@ -991,8 +995,33 @@ fn swipe(w: &AppWindow, from: (f32, f32), to: (f32, f32), ms: u64, reply: Sender
     SWIPE.with(|s| *s.borrow_mut() = Some(timer));
 }
 
+/// What is open over the page, by name, when something is: `go` acts on the page, which
+/// no finger reaches while a sheet, a question, the player or onboarding covers it.
+fn open_over(w: &AppWindow) -> Option<String> {
+    let over = w.invoke_over();
+    if over > 0 {
+        let name = usize::try_from(over)
+            .ok()
+            .and_then(|i| OVER.get(i - 1))
+            .unwrap_or(&"something new");
+        return Some(format!(
+            "the {name} is open over the page; back closes it first"
+        ));
+    }
+    w.global::<AppData>()
+        .get_onboarding()
+        .then(|| "onboarding is open; onboarding finish closes it first".to_string())
+}
+
 fn run(w: &AppWindow, command: Command) -> Result<String, String> {
     let data = w.global::<AppData>();
+    if matches!(
+        command,
+        Command::Go(_) | Command::Open(_) | Command::Search(_)
+    ) && let Some(why) = open_over(w)
+    {
+        return Err(why);
+    }
     Ok(match command {
         Command::Help => HELP.into(),
         Command::Go(tab) => {
@@ -1339,6 +1368,10 @@ mod tests {
         let steps = data.get_onboarding_steps();
         let dump = say("tree");
         assert!(dump.contains("more under what is open"), "{dump}");
+        // go acts on the page, which onboarding covers.
+        let page = w.global::<Nav>().get_page();
+        assert!(say("go library").starts_with("error: onboarding is open"));
+        assert_eq!(w.global::<Nav>().get_page(), page);
         assert!(
             say(&format!("click {downloads:?}")).starts_with("error: nothing in reach"),
             "{dump}"

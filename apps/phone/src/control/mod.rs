@@ -123,14 +123,15 @@ fn cut(answer: String) -> String {
         end -= 1;
     }
     let end = answer[..end].rfind('\n').unwrap_or(end);
-    let left = answer[end..].lines().filter(|l| !l.is_empty()).count();
-    // An error that was the last line stays the last line, so the result code holds.
-    let error = answer
+    // An error that was the last line stays the last line, so the result code holds, and
+    // is not counted among the lines left out.
+    let last = answer.lines().last().filter(|l| l.starts_with("error:"));
+    let left = answer[end..]
         .lines()
-        .last()
-        .filter(|l| l.starts_with("error:"))
-        .map(|l| format!("\n{l}"))
-        .unwrap_or_default();
+        .filter(|l| !l.is_empty())
+        .count()
+        .saturating_sub(usize::from(last.is_some()));
+    let error = last.map(|l| format!("\n{l}")).unwrap_or_default();
     format!(
         "{}\n... {left} more lines; narrow it with a filter{error}",
         &answer[..end]
@@ -326,11 +327,18 @@ fn perf(secs: f32, budget: Budget) -> String {
     let start = Instant::now();
     let before = thread_times();
     let span = Duration::from_secs_f32(secs);
+    // A ping that gets no answer is the stall perf is there to catch: it counts as a wait of
+    // its whole timeout, and the sample goes on.
     let mut waits = Vec::new();
-    while start.elapsed() < span {
+    let mut unanswered = 0;
+    while start.elapsed() < span && !budget.left().is_zero() {
+        let cap = budget.cap(ANSWER);
         match ping(budget) {
             Ok(d) => waits.push(d),
-            Err(e) => return e,
+            Err(_) => {
+                waits.push(cap);
+                unanswered += 1;
+            }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -356,10 +364,15 @@ fn perf(secs: f32, budget: Budget) -> String {
     let mut out = vec![
         format!("perf over {elapsed:.1} s"),
         format!(
-            "ui loop: {} calls, waited avg {avg:.1} ms, p95 {:.1} ms, max {:.1} ms",
+            "ui loop: {} calls, waited avg {avg:.1} ms, p95 {:.1} ms, max {:.1} ms{}",
             waits.len(),
             ms(p95),
-            ms(max)
+            ms(max),
+            if unanswered > 0 {
+                format!(", {unanswered} got no answer (counted at their timeout)")
+            } else {
+                String::new()
+            }
         ),
         frames,
     ];

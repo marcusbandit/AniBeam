@@ -486,6 +486,7 @@ export component EndpointItem inherits Rectangle {
             }
             if root.endpoint.installed: Switch {
                 y: (parent.height - self.height) / 2;
+                label: root.endpoint.name;
                 on: root.endpoint.enabled;
                 toggled => { root.toggle(); }
             }

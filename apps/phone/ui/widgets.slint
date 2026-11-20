@@ -364,8 +364,11 @@ export component CardStack inherits Rectangle {
 // An on and off switch, the desktop's: a dark pill with a grey knob, white when on.
 export component Switch inherits Rectangle {
     in property <bool> on;
+    // The setting it turns on and off, for a screen reader and control over adb.
+    in property <string> label;
     callback toggled();
     accessible-role: switch;
+    accessible-label: root.label;
     accessible-checkable: true;
     accessible-checked: root.on;
     accessible-action-default => { root.toggled(); }
@@ -616,6 +619,7 @@ export component ListRow inherits Rectangle {
     if root.switch: Switch {
         x: parent.width - Theme.pad - self.width;
         y: (parent.height - self.height) / 2;
+        label: root.label;
         on: root.on;
         toggled => { root.toggled(); }
     }
